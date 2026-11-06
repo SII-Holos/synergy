@@ -1,0 +1,171 @@
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import path from "path"
+import fs from "fs/promises"
+import { z } from "zod"
+import { BrowserOwner } from "./owner.js"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import {
+  BrowserSessionPageSchema,
+  BrowserPageIdSchema,
+  type BrowserSessionPage,
+} from "@ericsanchezok/synergy-browser-core"
+
+const StoredAnnotationSchema = z
+  .object({
+    id: z.string().min(1).max(20_000),
+    pageURL: z.string().max(20_000),
+    pageID: BrowserPageIdSchema,
+    ref: z.string().max(20_000).optional(),
+    element: z.string().max(100_000).optional(),
+    comment: z.string().min(1).max(20_000),
+    styleFeedback: z.record(z.string().max(1_000), z.string().max(10_000)).optional(),
+    resolved: z.boolean(),
+    createdAt: z.number().int().nonnegative(),
+  })
+  .strict()
+
+const StoredDownloadSchema = z
+  .object({
+    id: z.string().min(1).max(20_000),
+    pageID: BrowserPageIdSchema,
+    url: z.string().max(20_000),
+    suggestedFilename: z.string().min(1).max(1_024),
+    mimeType: z.string().max(256).optional(),
+    state: z.enum(["awaiting_approval", "pending", "completed", "failed", "blocked", "cancelled"]),
+    path: z.string().max(20_000).optional(),
+    size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+    createdAt: z.number().int().nonnegative(),
+  })
+  .strict()
+
+const StoredSessionSchema = z
+  .object({
+    version: z.literal(6),
+    pages: z.array(BrowserSessionPageSchema.omit({ navigation: true })).max(64),
+    timestamp: z.number().int().nonnegative(),
+    annotations: z.array(StoredAnnotationSchema).max(10_000).optional(),
+    downloads: z.array(StoredDownloadSchema).max(10_000).optional(),
+  })
+  .strict()
+
+export namespace BrowserStorage {
+  export const CURRENT_VERSION = 6
+
+  export type StoredAnnotation = z.infer<typeof StoredAnnotationSchema>
+  export type SessionState = Omit<z.infer<typeof StoredSessionSchema>, "version" | "pages"> & {
+    version?: number
+    pages: BrowserSessionPage[]
+  }
+
+  export function keyForOwner(owner: BrowserOwner.Info): string[] {
+    BrowserOwner.assertValid(owner)
+    return ["browser", "sessions-v5", BrowserOwner.storageID(owner)]
+  }
+
+  export function profileDir(owner: BrowserOwner.Info): string {
+    return path.join(Global.Path.data, "browser", "profiles", BrowserOwner.storageID(owner))
+  }
+
+  export function storageStatePath(owner: BrowserOwner.Info): string {
+    return path.join(profileDir(owner), "storage-state.json")
+  }
+
+  export function uploadsDir(owner: BrowserOwner.Info): string {
+    return path.join(Global.Path.data, "browser", "uploads", BrowserOwner.storageID(owner))
+  }
+
+  export function downloadsDir(owner: BrowserOwner.Info): string {
+    return path.join(Global.Path.data, "browser", "downloads", BrowserOwner.storageID(owner))
+  }
+
+  function sanitizeUrl(url: string): string {
+    if (!url) return url
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol === "file:") return "[local file]"
+      return parsed.toString()
+    } catch {
+      return url
+    }
+  }
+
+  export async function load(owner: BrowserOwner.Info): Promise<SessionState | null> {
+    const [raw] = await Storage.readMany([keyForOwner(owner)])
+    if (raw === undefined) return null
+    const state = StoredSessionSchema.parse(raw)
+    return { ...state, pages: state.pages.map((page) => ({ ...page, url: sanitizeUrl(page.url) })) }
+  }
+
+  /** Persist session state. Creates parent dirs if needed. */
+  export function validate(state: unknown) {
+    return StoredSessionSchema.parse(state)
+  }
+
+  export async function save(owner: BrowserOwner.Info, state: SessionState): Promise<void> {
+    const sanitized = StoredSessionSchema.parse({
+      ...state,
+      version: CURRENT_VERSION,
+      pages: state.pages.map(({ navigation: _navigation, ...page }) => ({
+        ...page,
+        isLoading: false,
+        url: sanitizeUrl(page.url),
+      })),
+    })
+    await Storage.write(keyForOwner(owner), sanitized)
+  }
+
+  export async function remove(owner: BrowserOwner.Info): Promise<void> {
+    await Storage.remove(keyForOwner(owner))
+  }
+
+  export async function ensureOwnerDirs(owner: BrowserOwner.Info): Promise<void> {
+    const browserRoot = path.join(Global.Path.data, "browser")
+    await ensureSecureDirectory(profileDir(owner), path.join(browserRoot, "profiles"))
+    await ensureSecureDirectory(uploadsDir(owner), path.join(browserRoot, "uploads"))
+    await ensureSecureDirectory(downloadsDir(owner), path.join(browserRoot, "downloads"))
+  }
+
+  export async function replaceFileAtomically(source: string, target: string): Promise<void> {
+    try {
+      await fs.rename(source, target)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== "EEXIST" && code !== "EPERM" && code !== "ENOTEMPTY") throw error
+    }
+    const backup = `${target}.${crypto.randomUUID()}.bak`
+    let moved = false
+    try {
+      await fs.rename(target, backup)
+      moved = true
+      await fs.rename(source, target)
+      await fs.rm(backup, { force: true })
+    } catch (error) {
+      if (moved) {
+        try {
+          await fs.rename(backup, target)
+        } catch (restoreError) {
+          throw new AggregateError([error, restoreError], "Browser state replacement and rollback both failed.")
+        }
+      }
+      throw error
+    }
+  }
+}
+
+async function ensureSecureDirectory(directory: string, boundary: string): Promise<void> {
+  await fs.mkdir(boundary, { recursive: true, mode: 0o700 })
+  await assertSecureDirectory(boundary, path.dirname(boundary))
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+  await assertSecureDirectory(directory, boundary)
+}
+
+async function assertSecureDirectory(directory: string, boundary: string): Promise<void> {
+  const info = await fs.lstat(directory)
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Browser storage directory is unsafe.")
+  const [realDirectory, realBoundary] = await Promise.all([fs.realpath(directory), fs.realpath(boundary)])
+  if (realDirectory !== realBoundary && !realDirectory.startsWith(`${realBoundary}${path.sep}`)) {
+    throw new Error("Browser storage directory escaped its boundary.")
+  }
+  await fs.chmod(directory, 0o700)
+}

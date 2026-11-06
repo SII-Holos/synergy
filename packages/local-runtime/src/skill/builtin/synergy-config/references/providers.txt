@@ -1,0 +1,559 @@
+# Providers and API Keys
+
+## Adding a provider — step-by-step procedure
+
+When a user wants to connect a provider (e.g., "configure MiniMax", "add my OpenAI key"), you MUST follow this procedure in order. Do NOT skip Step 1.
+
+### Step 1: Check the Models.dev registry (MANDATORY)
+
+Before writing ANY provider config, you MUST first check whether the provider already exists in the Models.dev registry. Fetch `https://models.dev/api.json` (use `webfetch`) and search for the provider by name or ID. If the online fetch fails or returns truncated output, fall back to searching the local cache at `~/.synergy/cache/models.json`.
+
+The registry contains most popular providers — including many you might not expect. Do NOT assume a provider needs custom config just because you haven't seen it configured before.
+
+Each registry entry has: provider ID, name, API URL, SDK package (`npm`), env var names (`env`), and a full model catalog with limits and pricing.
+
+IMPORTANT: A single provider may have **multiple variants** in the registry (e.g., `minimax` vs `minimax-coding-plan` vs `minimax-cn` vs `minimax-cn-coding-plan`). When searching, list ALL matching entries and pick the correct one based on:
+- **Plan type**: Coding Plan / Token Plan keys (often prefixed `sk-cp-`) need the `-coding-plan` variant. Pay-as-you-go keys use the base variant.
+- **Region**: `-cn` variants use Chinese endpoints (e.g., `minimaxi.com`), base variants use international endpoints (e.g., `minimax.io`). Region usually CANNOT be determined from the key alone — ask the user which platform they registered on if multiple region variants exist.
+
+**Search tips:**
+- Try multiple keywords — a provider may be listed under a different name than you expect (e.g., "Kimi" is listed as `moonshot` and `kimi`; "MiniMax" has `minimax`, `minimax-coding-plan`, `minimax-cn`, etc.)
+- Search both provider ID (top-level key) and provider `name` field for matches
+
+The provider ID you choose here is the exact key you MUST use in the credential store.
+
+**Cache structure:** The local cache (`~/.synergy/cache/models.json`) is a **flat dictionary** keyed by provider ID — NOT a nested list. Structure: `{ "<provider-id>": { "id": "...", "name": "...", "api": "...", "env": [...], "npm": "...", "models": {...} }, ... }`. Search by iterating top-level keys, NOT `data["providers"]`.
+
+**Fallback search command** (use when webfetch fails or is truncated):
+```bash
+python3 -c "
+import json, sys
+with open('$HOME/.synergy/cache/models.json') as f:
+    data = json.load(f)
+query = sys.argv[1].lower()
+for pid, p in data.items():
+    if query in pid.lower() or query in p.get('name', '').lower():
+        print(f'FOUND: {pid} — {p.get(\"name\", \"\")} — {p.get(\"api\", \"\")}')
+"
+```
+
+**If webfetch returns truncated output:** the full output is saved to a temporary file (path shown in the webfetch result). Use the `grep` tool to search that file for the provider name, or fall back to the local cache search above.
+
+**If found → go to Step 2a. If NOT found → go to Step 2b.**
+
+### Step 2a: Provider IS in registry → ONLY save API key
+
+If the provider is in the registry, it is a **built-in provider**. All metadata (name, API URL, SDK, models) is already defined. You ONLY need to save the API key to the credential store.
+
+IMPORTANT: Do NOT write provider config to `20-providers.jsonc` for built-in providers. It is unnecessary and can cause conflicts.
+
+```
+1. Read ~/.synergy/data/auth/provider-auth.json (create with the v2 store shape if missing)
+2. Add/merge `credentials["<provider-id>"]` as a v2 entry with `authKind: "api_key"` and `tokens.apiKey`
+   - The provider ID is the key from the registry (e.g., "minimax", "anthropic", "openai")
+3. Write back the file
+4. runtime_reload(target: "provider")
+5. Done — models are auto-discovered from the registry
+```
+
+### Step 2b: Provider is NOT in registry → write config + save API key
+
+⚠️ **Before proceeding to Step 2b, double-check your search:**
+1. Did you search with multiple keywords? (e.g., "kimi" AND "moonshot", "minimax" AND "minimax-cn")
+2. If using the local cache, did you search top-level keys of the flat dict — NOT `data["providers"]`?
+3. If webfetch was truncated, did you grep the full output file or use the fallback search command?
+4. Only proceed if you are confident the provider is truly absent from the registry.
+
+**CRITICAL:** `20-providers.jsonc` is a core configuration file. Incorrect modifications can prevent Synergy from starting.
+- NEVER overwrite the entire file — always use surgical edit (`oldString`/`newString` via the `edit` tool)
+- For built-in providers (found in registry), ONLY save credentials to `provider-auth.json` — do NOT add provider config to `20-providers.jsonc`
+- Read the file FIRST before any edit, and preserve all existing content including comments
+
+If the provider is not in the registry (e.g., a local vLLM server, a private proxy, a niche provider), you need BOTH credential store entry AND provider config in `20-providers.jsonc`:
+
+```
+1. Read ~/.synergy/data/auth/provider-auth.json (create with the v2 store shape if missing)
+2. Add/merge `credentials["<provider-id>"]` as a v2 entry with `authKind: "api_key"` and `tokens.apiKey`
+3. Write back the file
+4. Add provider config to `~/.synergy/config/synergy.d/20-providers.jsonc` under "provider":
+   "<provider-id>": {
+     "name": "Display Name",
+     "npm": "<sdk-package>",
+     "options": { "baseURL": "https://..." },
+     "models": {
+       "<model-name>": {
+         "id": "<api-model-id>",
+         "name": "<display-name>",
+         "limit": { "context": <tokens>, "output": <tokens> }
+       }
+     }
+   }
+5. runtime_reload(target: "provider")
+```
+
+### Optional: override built-in provider settings
+
+If a provider IS in the registry but the user wants to customize it (whitelist models, change timeout, different base URL, per-model endpoints), add ONLY the overrides — not the full provider definition. Unspecified fields fall back to the registry defaults.
+
+```jsonc
+{
+  "provider": {
+    "<provider-id>": {
+      "whitelist": ["Model-A", "Model-B"],
+      "options": { "timeout": 600000 }
+    }
+  }
+}
+```
+
+### Additional account for a registry provider
+
+When the user wants a second, independently selectable account for a provider that already exists in Models.dev, use a unique connection ID and set `modelsDevProviderID` to the canonical provider ID. Save credentials under the unique connection ID. Do not copy the canonical model list into config.
+
+```jsonc
+{
+  "provider": {
+    "deepseek-team": {
+      "modelsDevProviderID": "deepseek",
+      "name": "DeepSeek Team",
+      "env": ["DEEPSEEK_TEAM_API_KEY"]
+    }
+  }
+}
+```
+
+`modelsDevProviderID` inherits model catalog metadata. A registered `profile` can separately enable the canonical provider's runtime, auth recovery, usage, model factory, and credential-aware live-discovery behavior. The connection keeps its own provider ID, credentials, health state, live catalog snapshot, endpoint/SDK overrides, allowlist/blacklist, and explicit model overrides.
+
+Omit `profile` when the connection is only an OpenAI-compatible gateway that should share model metadata without canonical OAuth or request behavior.
+
+**Overriding baseURL for a built-in provider:**
+```jsonc
+{
+  "provider": {
+    "anthropic": {
+      "options": { "baseURL": "https://my-proxy.example.com/v1" }
+    }
+  }
+}
+```
+
+**Per-model endpoint and API key (same provider, different backends):**
+```jsonc
+{
+  "provider": {
+    "openai": {
+      "options": { "baseURL": "https://api.openai.com/v1" },
+      "models": {
+        "GPT-4o Proxy": {
+          "id": "gpt-4o",
+          "name": "GPT-4o Proxy",
+          "limit": { "context": 128000, "output": 16384 },
+          "options": {
+            "baseURL": "https://internal-proxy.example.com/v1",
+            "apiKey": "{env:PROXY_API_KEY}"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**IMPORTANT: API key placement.** Never put API keys directly in domain config files — they are stored in plain text. Instead:
+- **Provider-level key** → save to credential store (`~/.synergy/data/auth/provider-auth.json`). See Step 2a/2b above.
+- **Model-level key** → use `{env:VAR_NAME}` reference in `options.apiKey`, or save to credential store under a separate provider ID for that model's backend.
+
+The credential store is the preferred and most secure location for all API keys. The `{env:VAR_NAME}` syntax is the recommended way to reference keys in config when you need per-model overrides.
+
+## How providers work
+
+Synergy loads providers from two sources:
+1. **Built-in providers** — auto-discovered from the Models.dev registry (cached at `~/.synergy/cache/models.json`). They require only an API key to activate.
+2. **Custom providers** — defined in config under `"provider"`. Required for providers not in the registry, or to override registry defaults.
+
+## Credential resolution chain
+
+When loading a provider, Synergy resolves credentials in this order (highest priority last):
+
+1. **Environment variables** — provider-specific env vars (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). Each provider in the registry defines which env vars it checks.
+2. **Credential store** — `~/.synergy/data/auth/provider-auth.json`. This is the preferred method.
+3. **Config inline** — `provider.<id>.options.apiKey` or `provider.<id>.models.<name>.options.apiKey` in config. Supports `{env:VAR_NAME}` references. Model-level takes precedence over provider-level.
+4. **Plugin auth loaders** — for providers like GitHub Copilot that use OAuth flows.
+
+For built-in providers, adding the API key to the credential store is ALL you need. No config changes required.
+
+## Credential store
+
+Located at `~/.synergy/data/auth/provider-auth.json`. File is chmod 600 and separate from config. Imported auth files are handled by migrations only.
+
+Format — v2 JSON object mapping provider IDs to credential entries:
+```json
+{
+  "schemaVersion": 2,
+  "credentials": {
+    "openai": {
+      "providerID": "openai",
+      "authKind": "api_key",
+      "tokens": { "apiKey": "sk-..." },
+      "source": "cli",
+      "updatedAt": 1782345600000,
+      "pool": [
+        {
+          "id": "openai",
+          "status": "active",
+          "authKind": "api_key",
+          "tokens": { "apiKey": "sk-..." },
+          "source": "cli",
+          "usageCount": 0,
+          "updatedAt": 1782345600000
+        }
+      ]
+    }
+  }
+}
+```
+
+Auth entry types:
+- `authKind: "api_key"` with `tokens.apiKey` — standard API key (most common)
+- `authKind: "oauth"` with `tokens.accessToken`, `tokens.refreshToken`, and `expiresAt` — subscription/OAuth token
+- `authKind: "wellknown"` with `tokens.key` and `tokens.token` — well-known remote config auth
+
+## Environment variable references
+
+For inline config keys, use `{env:VAR_NAME}`:
+```jsonc
+{ "provider": { "my-provider": { "options": { "apiKey": "{env:MY_KEY}" } } } }
+```
+Resolved at config load time. The env var must exist in Synergy's shell.
+
+## Custom provider config fields
+
+```jsonc
+{
+  "provider": {
+    "<provider-id>": {
+      "name": "Display Name",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://api.example.com/v1"
+      },
+      "models": {
+        "<model-name>": {
+          "id": "api-model-id",
+          "name": "Display Name",
+          "cost": { "input": 3, "output": 15 },
+          "limit": { "context": 200000, "output": 8192 }
+        }
+      },
+      "whitelist": ["model-a"],
+      "blacklist": ["model-b"]
+    }
+  }
+}
+```
+
+Fields:
+- `name` — human-readable display name
+- `npm` — AI SDK package (see bundled list below)
+- `modelsDevProviderID` — canonical Models.dev provider ID whose model catalog this connection inherits
+- `api` — base API URL (alternative to `options.baseURL`)
+- `env` — array of env var names to check for API key
+- `options` — passed to the SDK constructor. Common: `apiKey`, `baseURL`, `timeout`, `queryParams`, `enterpriseUrl`, `setCacheKey`, `mergeSystemMessages`
+- `options.mergeSystemMessages` — merge leading system messages into one for strict endpoints that reject multiple/non-leading system messages with "System message must be at the beginning." (vLLM + Qwen chat templates; default false). When merging, the system cache breakpoint is clamped onto the merged block (single breakpoint over the whole merged system region); prefix-cache reuse of the merged block is preserved.
+- `models` — manually specify models. Key is display name, `id` is what's sent to API.
+- `models.<name>.cost` — `input` and `output` per million tokens
+- `models.<name>.limit` — token limits: `context` (window), optional `input` (explicit input cap), optional `output` (per-request output cap). How you fill these drives the soft-compaction strategy — see "Model token limits and soft compaction" below.
+- `models.<name>.options` — model-level SDK options that override provider-level `options`; unknown keys are forwarded into the request body as extra args (see the relay section below)
+- `models.<name>.reasoning` — declare the model as a reasoning model so effort variants are generated (boolean)
+- `models.<name>.reasoning_options` — effort values the API accepts, e.g. `[{ "type": "effort", "values": ["low", "medium", "high"] }]`
+- `models.<name>.interleaved` — declare streaming reasoning delivery, e.g. `{ "field": "reasoning_content" }` for DeepSeek-style APIs
+- `models.<name>.headers` — extra HTTP headers for this model (merged over provider headers)
+- `models.<name>.variants` — named variant option packs (see `references/models.txt`)
+- `models.<name>.provider.npm` — per-model SDK package override (e.g. route one relay model to the Anthropic SDK). Declared as `provider.npm` on the model — a direct model-level `npm` key is not part of the schema and is silently dropped.
+- `models.<name>.modalities` / `tool_call` / `attachment` / `temperature` — capability flags used by feature gating and the UI
+- `whitelist` — only load these models (from registry)
+- `blacklist` — exclude these models
+
+### Model-level options overrides
+
+Each model can specify its own `options` object that overrides the provider-level `options`. This is useful when models within the same provider use different endpoints or API keys:
+
+```jsonc
+{
+  "provider": {
+    "my-gateway": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://api-gateway.example.com/v1",
+        "apiKey": "key-for-default"
+      },
+      "models": {
+        "DeepSeek V3": {
+          "id": "deepseek-v3",
+          "name": "DeepSeek V3",
+          "limit": { "context": 64000 },
+          "options": {
+            "baseURL": "https://deepseek-internal.example.com/v1",
+            "apiKey": "key-for-deepseek"
+          }
+        },
+        "Qwen 3": {
+          "id": "qwen3",
+          "name": "Qwen 3",
+          "limit": { "context": 128000 }
+        }
+      }
+    }
+  }
+}
+```
+
+In this example:
+- **Qwen 3** uses the provider-level `baseURL` and `apiKey` (inherited from `my-gateway.options`)
+- **DeepSeek V3** overrides both `baseURL` and `apiKey` with its own values
+
+The merge rule: `model.options` spreads over `provider.options` (`{ ...provider.options, ...model.options }`). Any field set at the model level replaces the provider-level value.
+
+## Third-party relays and OpenAI-compatible gateways (中转站)
+
+Most third-party relay services — OpenAI-compatible aggregators, Chinese relay stations (中转站), corporate gateways — are configured as a custom provider with `@ai-sdk/openai-compatible`. `options` exist at two levels, and mixing them up is the most common failure:
+
+| Level | Reaches | Use for |
+|---|---|---|
+| `provider.<id>.options` | SDK constructor only | `baseURL`, `apiKey`, `headers`, `queryParams`, `timeout` |
+| `models.<name>.options` | SDK constructor AND request body | per-model endpoint/key overrides PLUS extra request-body args the relay requires |
+
+**Extra args (thinking switches, template args, vendor fields) must be written at the model level.** Unknown keys in `provider.<id>.options` are silently ignored; unknown keys in `models.<name>.options` are forwarded into the `/chat/completions` request body verbatim.
+
+Common relay-specific request-body args:
+- `enable_thinking: true` or `thinking: { "type": "enabled", "budgetTokens": 8192 }` — thinking-mode toggles (provider-dependent)
+- `reasoningEffort: "high"` — mapped by the SDK to `reasoning_effort`
+- `chat_template_kwargs`, `extra_body`, and other vendor fields — forwarded verbatim when written at the model level
+
+Full relay example — one connection, two backends:
+
+```jsonc
+{
+  "provider": {
+    "my-relay": {
+      "name": "My Relay",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://relay.example.com/v1",
+        "timeout": 600000
+      },
+      "models": {
+        "DeepSeek V4": {
+          "id": "deepseek-v4",
+          "name": "DeepSeek V4",
+          "reasoning": true,
+          "reasoning_options": [{ "type": "effort", "values": ["low", "medium", "high"] }],
+          "interleaved": { "field": "reasoning_content" },
+          "limit": { "context": 131072, "output": 16384 },
+          "options": { "enable_thinking": true }
+        },
+        "Claude via relay": {
+          "id": "claude-sonnet-4-5",
+          "name": "Claude via Relay",
+          "provider": { "npm": "@ai-sdk/anthropic" },
+          "limit": { "context": 200000, "output": 8192 },
+          "options": { "thinking": { "type": "enabled", "budgetTokens": 8192 } }
+        }
+      }
+    }
+  }
+}
+```
+
+Notes:
+- `interleaved` with `reasoning_content` is required for DeepSeek-style relays that stream reasoning separately — without it Synergy does not pass `reasoning_content` back and the API errors with "The reasoning_content in the thinking mode must be passed back to the API."
+- `reasoning` + `reasoning_options` generate the effort variants (low/medium/high/...) shown in model role and variant pickers. Without them the relay's default reasoning behavior is used and no effort selector appears.
+- `queryParams` (e.g. `{ "api-version": "..." }`) is only honored at the SDK level, so it belongs in `provider.<id>.options`.
+- `reasoning_options` / `interleaved` / per-model `provider.npm` are declared in JSONC directly — no UI currently exposes them.
+
+## Model token limits and soft compaction (context / input / output)
+
+Custom models declare their limits under `models.<name>.limit`. How you fill `context` / `input` / `output` directly determines the input envelope and when proactive compaction triggers:
+
+| Field | Meaning | If omitted |
+|---|---|---|
+| `context` | Total context window in tokens | 0 — no budget, proactive compaction never triggers |
+| `input` | Explicit max input tokens | The whole `context` window is treated as usable input |
+| `output` | Max output tokens per request | Capped at `384000`; requests are further capped to `context - 32000` headroom |
+
+Budgeting rules (authoritative details: `docs/architecture/llm-loop.md` "Prompt budget" and `docs/reference/configuration-layout.md` `compaction`):
+
+- **Usable input** — explicit `input` if set (and > 0), otherwise the full `context` window.
+- **Output per request** — declared `output`; when unset or `>= context` (shared-context models), capped to `context - 32000` so a raised default output cap cannot reject every nonempty prompt.
+- **Margin** — `min(32000, max(2048, ceil(context * 0.05)))`, reserved from the envelope.
+- **Input envelope** — with explicit `input`: exactly `input`. Without it: `context - output - margin` when `output < context` and that remainder is positive; otherwise the usable input (`context`).
+- **Soft compaction threshold** — `floor(envelope * 0.85)` by default, configurable via `compaction.overflowThreshold` (range 0.5–1). Proactive compaction triggers when the estimated input reaches this threshold. Compaction's own summarization output is bounded to `min(model output, 32000)`.
+
+### Recommended fill patterns
+
+**1. Shared-context model (most relays / OpenAI-compatible models)** — the API counts input + output together against `context`; leave `input` unset:
+
+```jsonc
+"limit": { "context": 131072, "output": 16384 }
+```
+
+Synergy reserves `output` + margin from the window and compacts at 85% of the remainder (here ~91.9k). Without `output`, requests cap at `context - 32000` and the envelope is the full context (compaction at 85% of 131072 ≈ 111.4k).
+
+**2. Documented separate input cap** (e.g. 400k context / 272k input / 128k output):
+
+```jsonc
+"limit": { "context": 400000, "input": 272000, "output": 128000 }
+```
+
+The envelope becomes exactly `input` (272k); compaction triggers at 85% of it (≈ 231.2k). Setting `input` disables output reservation — the explicit input limit is authoritative.
+
+**3. Conservative / unknown relay** — only `context`:
+
+```jsonc
+"limit": { "context": 131072 }
+```
+
+Safe default: envelope = full context, output capped at `context - 32000`, compaction at 85% of context.
+
+Note: the input footprint used for the threshold is `input + cache.read + cache.write` (Anthropic-style providers report cache tokens separately). If compaction triggers earlier than expected, cached-token usage is the usual cause.
+
+## Bundled SDK packages
+
+These are bundled and don't need installation:
+
+| Provider type | `npm` value |
+|---|---|
+| OpenAI-compatible (most common) | `@ai-sdk/openai-compatible` |
+| OpenAI | `@ai-sdk/openai` |
+| Anthropic | `@ai-sdk/anthropic` |
+| Google Generative AI | `@ai-sdk/google` |
+| Google Vertex AI | `@ai-sdk/google-vertex` |
+| Google Vertex Anthropic | `@ai-sdk/google-vertex/anthropic` |
+| Azure OpenAI | `@ai-sdk/azure` |
+| Amazon Bedrock | `@ai-sdk/amazon-bedrock` |
+| xAI (Grok) | `@ai-sdk/xai` |
+| Mistral | `@ai-sdk/mistral` |
+| Groq | `@ai-sdk/groq` |
+| DeepInfra | `@ai-sdk/deepinfra` |
+| Cerebras | `@ai-sdk/cerebras` |
+| Cohere | `@ai-sdk/cohere` |
+| Together AI | `@ai-sdk/togetherai` |
+| Perplexity | `@ai-sdk/perplexity` |
+| Vercel AI Gateway | `@ai-sdk/vercel` |
+| AI Gateway | `@ai-sdk/gateway` |
+| OpenRouter | `@openrouter/ai-sdk-provider` |
+
+For unlisted SDKs, Synergy auto-installs via `bun add`.
+
+## SDK selection guide (only needed for custom providers)
+
+- **`@ai-sdk/openai-compatible`** — default for ANY OpenAI-compatible API (third-party providers, local servers like Ollama/vLLM/LM Studio)
+- **`@ai-sdk/anthropic`** — ONLY for official Anthropic API or providers using Anthropic Messages API with `x-api-key` auth
+- **`@ai-sdk/openai`** — ONLY for official OpenAI. Uses the Responses API by default (not Chat Completions)
+- **Provider-specific SDKs** — use when available for correct auth/model routing
+
+## Local model providers
+
+Local model servers (Ollama, vLLM, LM Studio, etc.) expose OpenAI-compatible APIs. Configure them using `@ai-sdk/openai-compatible` with the server's `baseURL`.
+
+### Ollama
+
+Ollama runs at `http://localhost:11434` and exposes an OpenAI-compatible endpoint at `/v1`:
+
+```jsonc
+{
+  "provider": {
+    "ollama": {
+      "name": "Ollama",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "llama3.1": {
+          "id": "llama3.1",
+          "name": "Llama 3.1 8B",
+          "limit": { "context": 128000, "output": 4096 }
+        }
+      }
+    }
+  }
+}
+```
+
+No API key needed — omit the credential store entry entirely. If Ollama is already in the Models.dev registry, you may only need the provider config with `options.baseURL` override and model definitions.
+
+### vLLM / LM Studio / other OpenAI-compatible servers
+
+Same pattern — change `baseURL` to match the server:
+
+```jsonc
+{
+  "provider": {
+    "vllm": {
+      "name": "vLLM",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://localhost:8000/v1"
+      }
+    }
+  }
+}
+```
+
+For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and set `options.baseURL` to the server's `/v1` endpoint.
+
+## Provider-specific behaviors
+
+### Anthropic
+- Adds `anthropic-beta` header for extended features.
+- Rejects empty content messages — Synergy filters these automatically.
+- Credential store key: `"anthropic"`
+
+### Amazon Bedrock
+- Uses AWS credential chain: config `region`/`profile` → `AWS_REGION`/`AWS_PROFILE` env vars → default `us-east-1`.
+- Supports `AWS_BEARER_TOKEN_BEDROCK` env var or credential store key.
+- Automatically prefixes model IDs with region for cross-region inference.
+- Config options: `region`, `profile`, `endpoint` (or `baseURL`).
+
+### Google Vertex AI
+- Requires `GOOGLE_CLOUD_PROJECT` (or `GCP_PROJECT`) env var.
+- Optional: `GOOGLE_CLOUD_LOCATION` (default: `us-east5`).
+- No API key needed — uses Google Cloud ADC.
+
+### GitHub Copilot
+- Uses OAuth flow managed by a plugin. Auth stored as OAuth type in credential store.
+- Enterprise variant: `"github-copilot-enterprise"` with `enterpriseUrl` in options.
+
+### Cloudflare AI Gateway
+- Requires `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID` env vars.
+- Auth uses `CLOUDFLARE_API_TOKEN` (API token) as `cf-aig-authorization` header.
+
+### OpenRouter / Vercel
+- Adds `HTTP-Referer` and `X-Title` headers automatically.
+
+## Enable/disable providers
+
+```jsonc
+{
+  "disabled_providers": ["openrouter", "together"],
+  "enabled_providers": ["anthropic", "openai"]
+}
+```
+
+- `disabled_providers` — subtractive: listed providers are skipped.
+- `enabled_providers` — exclusive when non-empty: ONLY listed providers load.
+- An empty array in either key carries no filtering intent. It is ignored in that config layer, so any lower-priority provider filter remains effective; with no lower-priority value, the key resolves as unset.
+- These filters control runtime loading and model availability only. The Providers settings list still shows catalog and configured providers, marking filtered entries unavailable so users can inspect and re-enable them.
+
+## Troubleshooting
+
+- **Provider not loading** — verify the API key is in the credential store with the correct provider ID; check `enabled_providers`/`disabled_providers` are not filtering it out; reload with `runtime_reload(target: "provider")`.
+- **"Model not found" error** — the model ID must match what the provider's API expects; for a registry-backed account, set `modelsDevProviderID` instead of duplicating models; for a fully custom provider, add models under `provider.<id>.models`; check `whitelist`/`blacklist` are not filtering the model.
+- **API key not working** — verify the key format matches the provider variant (e.g., Coding Plan keys need the `-coding-plan` provider variant); check for extra whitespace; try the key with `curl` against the provider's API directly.
+- **Local model connection refused** — verify the server is running and the `baseURL` is correct; check the port number; ensure the server exposes an OpenAI-compatible `/v1` endpoint.
+- **Registry fetch failed** — if `https://models.dev/api.json` is unreachable, Synergy falls back to the local cache at `~/.synergy/cache/models.json`; you can also manually add providers via config.
+- **Extra args not taking effect (e.g. `enable_thinking` ignored)** — extra request-body args must live in `models.<name>.options`, not `provider.<id>.options`. Unknown keys in provider-level options are silently ignored.
+- **"reasoning_content ... must be passed back" error** — declare `interleaved: { "field": "reasoning_content" }` on the model so Synergy replays reasoning content on assistant messages.
+- **No reasoning-effort variants for a relay model** — declare `reasoning: true` and `reasoning_options` on the model. Without `reasoning: true` no variants are generated.
+- **Compaction triggers earlier than expected** — the input footprint includes cache read/write tokens (`input + cache.read + cache.write`). With large cached system prompts, raise `compaction.overflowThreshold` (0.5–1, default 0.85) in `120-runtime.jsonc`, or set an explicit `limit.input` so the envelope matches the API's real input cap.

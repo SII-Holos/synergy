@@ -1,0 +1,12 @@
+diff --git a/dist/clients/core/serverSentEvents.ts b/dist/clients/core/serverSentEvents.ts
+index 07cff3c3fd6638af2e4123b16a339d50651d93ce..f8e51765d89cd4864d31720c0c86bd2bd311438d 100644
+--- a/dist/clients/core/serverSentEvents.ts
++++ b/dist/clients/core/serverSentEvents.ts
+@@ -155,6 +155,6 @@ export const createSseClient = <TData = unknown>({
+         const abortHandler = () => {
+           try {
+-            reader.cancel();
++            void reader.cancel().catch(() => {});
+           } catch {
+             // noop
+           }

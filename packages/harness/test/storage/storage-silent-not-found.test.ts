@@ -1,0 +1,64 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { ObservabilityConfig } from "../../src/observability/config"
+import { ObservabilityIssues } from "../../src/observability/issues"
+import { ObservabilityStore } from "../../src/observability/store"
+import { Storage } from "../../src/storage/storage"
+import { clearObservabilityState, resetObservabilityState } from "../observability/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+beforeEach(() =>
+  runtime.run(() => {
+    resetObservabilityState()
+    ObservabilityStore.open()
+  }),
+)
+
+afterEach(() =>
+  runtime.run(() => {
+    clearObservabilityState()
+  }),
+)
+
+describe("storage silent NotFound reads", () => {
+  test("expected missing reads count as missing without error telemetry", () =>
+    runtime.run(async () => {
+      const key = ["storage-silent", Math.random().toString(36).slice(2), "missing"]
+
+      await expect(Storage.read(key, { silentNotFound: true })).rejects.toThrow()
+      ObservabilityStore.flush()
+
+      const issues = ObservabilityIssues.list({ module: "storage" })
+      expect(issues.filter((issue) => issue.code === "PERF_STORAGE_OPERATION_ERROR")).toHaveLength(0)
+
+      const errorRows = ObservabilityStore.queryMetrics({
+        since: 0,
+        names: ["storage.operation.error"],
+      })
+      expect(errorRows).toHaveLength(0)
+      const counts = ObservabilityStore.queryMetrics({ since: 0, names: ["storage.operation.count"] })
+      expect(counts.some((row) => JSON.parse(row.labels_json).status === "missing")).toBe(true)
+    }))
+
+  test("unexpected missing reads still raise the storage issue", () =>
+    runtime.run(async () => {
+      const key = ["storage-silent", Math.random().toString(36).slice(2), "missing"]
+
+      await expect(Storage.read(key)).rejects.toThrow()
+      ObservabilityStore.flush()
+
+      const issues = ObservabilityIssues.list({ module: "storage" })
+      expect(issues.filter((issue) => issue.code === "PERF_STORAGE_OPERATION_ERROR").length).toBeGreaterThan(0)
+    }))
+
+  test("silentNotFound is a no-op for successful reads", () =>
+    runtime.run(async () => {
+      const key = ["storage-silent", Math.random().toString(36).slice(2), "present"]
+      await Storage.write(key, { ok: true })
+
+      expect(await Storage.read<{ ok: boolean }>(key, { silentNotFound: true })).toEqual({ ok: true })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

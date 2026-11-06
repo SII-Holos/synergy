@@ -1,15 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { generateKeyPairSync } from "node:crypto"
 import { validateProductReleaseEnvironment } from "../../../script/release/validate-product-environment"
 
 function environment() {
-  const pair = generateKeyPairSync("ed25519")
-  const publicJwk = pair.publicKey.export({ format: "jwk" })
-  if (!publicJwk.x) throw new Error("Missing fixture Ed25519 public key")
   return {
     NPM_TOKEN: "npm-token",
-    BROWSER_HOST_MANIFEST_SIGNING_KEY: pair.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
-    BROWSER_HOST_MANIFEST_PUBLIC_KEY: Buffer.from(publicJwk.x, "base64url").toString("base64"),
     APPLE_ID: "release@example.com",
     APPLE_APP_SPECIFIC_PASSWORD: "app-password",
     APPLE_TEAM_ID: "team-id",
@@ -23,7 +17,7 @@ function environment() {
 }
 
 describe("product release environment", () => {
-  test("accepts complete signing material with a matching Browser Host key pair", () => {
+  test("accepts product signing material without independent Browser Host keys", () => {
     expect(() => validateProductReleaseEnvironment(environment())).not.toThrow()
   })
 
@@ -56,11 +50,5 @@ describe("product release environment", () => {
     const env = environment()
     delete (env as Partial<typeof env>).CSC_INSTALLER_LINK
     expect(() => validateProductReleaseEnvironment(env)).toThrow(/CSC_INSTALLER_LINK/)
-  })
-
-  test("rejects a mismatched Browser Host key pair", () => {
-    const env = environment()
-    env.BROWSER_HOST_MANIFEST_PUBLIC_KEY = environment().BROWSER_HOST_MANIFEST_PUBLIC_KEY
-    expect(() => validateProductReleaseEnvironment(env)).toThrow(/do not match/)
   })
 })

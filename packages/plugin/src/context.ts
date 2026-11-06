@@ -85,6 +85,8 @@ export const PluginHostServiceErrorCode = {
   AGENT_MODEL_ROLE_INVALID: "PLUGIN_AGENT_MODEL_ROLE_INVALID",
   AGENT_MODEL_ROLE_DENIED: "PLUGIN_AGENT_MODEL_ROLE_DENIED",
   RUNTIME_ENDPOINT_UNAVAILABLE: "PLUGIN_RUNTIME_ENDPOINT_UNAVAILABLE",
+  HOST_CONNECTION_LOCAL_REQUIRED: "PLUGIN_HOST_CONNECTION_LOCAL_REQUIRED",
+  HOST_CONNECTION_HUMAN_REQUIRED: "PLUGIN_HOST_CONNECTION_HUMAN_REQUIRED",
   RUNTIME_ENDPOINT_UNSAFE: "PLUGIN_RUNTIME_ENDPOINT_UNSAFE",
 } as const
 export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
@@ -162,7 +164,7 @@ export type BlueprintLoopInfo = {
   auditSessionID?: string
   auditTaskID?: string
   scopeID: string
-  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  status: "armed" | "running" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
   parentSessionID?: string
   firstPrompt?: string
@@ -197,11 +199,17 @@ export type LightLoopStartInput = {
   instructions: string
   correlationId: string
   executionAgent: string
-  reviewAgent: string
+  /** @deprecated Accepted and ignored; Light Loop completes through executor self-check. */
+  reviewAgent?: string
   model?: { providerID: string; modelID: string }
   executionTools?: Record<string, boolean>
+  /** @deprecated Accepted and ignored. */
   reviewTools?: Record<string, boolean>
-  budget: { maxRuntimeMs: number; maxIterations: number }
+  budget: {
+    maxRuntimeMs: number
+    /** @deprecated Accepted and ignored. */
+    maxIterations?: number
+  }
   parent?: PluginTaskParent
 }
 
@@ -347,6 +355,7 @@ export interface PluginInvocationContext {
   asset?: AssetHostService
   shell?: ShellHostService
   runtimeEndpoint?: RuntimeEndpointHostService
+  hostConnection?: import("./host-connection.js").HostConnectionHostService
 }
 
 export interface PluginActivationContext {

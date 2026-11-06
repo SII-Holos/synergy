@@ -1,0 +1,258 @@
+import { expect, test } from "bun:test"
+import { ComputerRuntime } from "../../src/computer/runtime"
+
+const metadata = {
+  snapshot_id: "s12345678",
+  elements: [{ element_index: 0 }],
+  tree_markdown: "[element_index 0] button Save",
+  windows: [],
+  synergy: { token: "native-proof", image_status: "unavailable", reason: "capture_unavailable" },
+  background_input: {
+    routes: [
+      { route: "accessibility", status: "available" },
+      { route: "pid_keyboard", status: "available" },
+    ],
+  },
+}
+
+function fixture() {
+  const calls: { name: string; args: Record<string, unknown> }[] = []
+  const runtime = new ComputerRuntime(async (name, args) => {
+    calls.push({ name, args })
+    return {
+      content: [{ type: "text", text: "observed" }],
+      structuredContent: metadata,
+    }
+  })
+  return { runtime, calls }
+}
+
+test("compact native observations retain semantic targets when screenshot capture is unavailable", async () => {
+  const actions: Record<string, unknown>[] = []
+  const runtime = new ComputerRuntime(async (name, args) => {
+    if (name === "get_window_state") {
+      const { elements: _elements, ...compact } = metadata
+      return {
+        content: [],
+        structuredContent: args.tree_format === "both" ? metadata : compact,
+      }
+    }
+    actions.push(args)
+    return { content: [], structuredContent: {} }
+  })
+  const observed = await runtime.execute("background", { type: "observe", pid: 10, windowId: 20 })
+  expect(observed.observation?.actions.set_value.available).toBe(true)
+  expect(observed.images).toHaveLength(0)
+  await runtime.execute("background", {
+    type: "action",
+    input: { action: "set_value", observationId: observed.observationId!, target: { elementIndex: 0 }, value: "65" },
+  })
+  expect(actions).toEqual([expect.objectContaining({ element_token: "s12345678:0", pid: 10, window_id: 20 })])
+})
+
+test("reset rejects a late observation and a fresh observation remains usable", async () => {
+  const pending = Promise.withResolvers<void>()
+  const entered = Promise.withResolvers<void>()
+  let block = true
+  const runtime = new ComputerRuntime(async () => {
+    if (block) {
+      block = false
+      entered.resolve()
+      await pending.promise
+    }
+    return { content: [], structuredContent: metadata }
+  })
+  const old = runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  await entered.promise
+  runtime.reset()
+  const fresh = await runtime.execute("b", { type: "observe", pid: 11, windowId: 21 })
+  pending.resolve()
+  await expect(old).rejects.toMatchObject({ code: "computer_runtime_reset" })
+  await expect(
+    runtime.execute("b", {
+      type: "action",
+      input: { action: "key", key: "return", observationId: fresh.observationId! },
+    }),
+  ).resolves.toHaveProperty("output")
+  expect((await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })).observationId).toBeTruthy()
+})
+
+test("actions bind to the owning task and latest exact window observation", async () => {
+  const { runtime, calls } = fixture()
+  const observed = await runtime.execute("task-a", { type: "observe", pid: 10, windowId: 20 })
+  await expect(
+    runtime.execute("task-b", {
+      type: "action",
+      input: { action: "click", observationId: observed.observationId!, target: { elementIndex: 0 } },
+    }),
+  ).rejects.toThrow("Observe")
+  await runtime.execute("task-a", {
+    type: "action",
+    input: { action: "click", observationId: observed.observationId!, target: { elementIndex: 0 } },
+  })
+  expect(calls.at(-1)).toEqual({
+    name: "click",
+    args: expect.objectContaining({
+      pid: 10,
+      window_id: 20,
+      element_token: "s12345678:0",
+      delivery_mode: "background",
+    }),
+  })
+  await expect(
+    runtime.execute("task-a", {
+      type: "action",
+      input: { action: "click", observationId: observed.observationId!, target: { elementIndex: 0 } },
+    }),
+  ).rejects.toThrow("Observe")
+})
+
+test("reset marks a delivered action uncertain and does not replay it", async () => {
+  const pending = Promise.withResolvers<void>()
+  const entered = Promise.withResolvers<void>()
+  let actions = 0
+  const runtime = new ComputerRuntime(async (name) => {
+    if (name === "press_key") {
+      actions++
+      entered.resolve()
+      await pending.promise
+    }
+    return { content: [], structuredContent: metadata }
+  })
+  const observed = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  const command = {
+    type: "action",
+    input: { action: "key", key: "return", observationId: observed.observationId! },
+  } as const
+  const action = runtime.execute("a", command)
+  await entered.promise
+  runtime.reset()
+  pending.resolve()
+  await expect(action).rejects.toMatchObject({ code: "computer_runtime_reset" })
+  await expect(runtime.execute("a", command)).rejects.toMatchObject({ code: "computer_observation_stale" })
+  expect(actions).toBe(1)
+})
+
+test("a new observation invalidates older references even for another task on that window", async () => {
+  const { runtime } = fixture()
+  const a = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  await runtime.execute("b", { type: "observe", pid: 10, windowId: 20 })
+  await expect(
+    runtime.execute("a", { type: "action", input: { action: "key", key: "return", observationId: a.observationId! } }),
+  ).rejects.toThrow("Observe")
+})
+
+test("different applications can execute concurrently", async () => {
+  let unblock!: () => void
+  const blocker = new Promise<void>((r) => (unblock = r))
+  const runtime = new ComputerRuntime(async (_name, args) => {
+    if (args.pid === 10) await blocker
+    return { content: [], structuredContent: metadata }
+  })
+  const a = runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  expect((await runtime.execute("b", { type: "observe", pid: 11, windowId: 21 })).observationId).toBeTruthy()
+  unblock()
+  await a
+})
+
+test("native errors remain errors and never retry an action", async () => {
+  const { runtime, calls } = fixture()
+  const a = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  await runtime.execute("a", { type: "release" })
+  await expect(
+    runtime.execute("a", { type: "action", input: { action: "key", key: "return", observationId: a.observationId! } }),
+  ).rejects.toThrow("Observe")
+  expect(calls.filter((x) => x.name === "press_key")).toHaveLength(0)
+})
+
+test("native failure consumes the action reference without replay", async () => {
+  let attempts = 0
+  const runtime = new ComputerRuntime(async (name) => {
+    if (name === "get_window_state") return { content: [], structuredContent: metadata }
+    attempts++
+    return { isError: true, content: [{ type: "text", text: "background_unavailable" }] }
+  })
+  const observed = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  const command = {
+    type: "action",
+    input: { action: "key", key: "return", observationId: observed.observationId! },
+  } as const
+  await expect(runtime.execute("a", command)).rejects.toMatchObject({ code: "computer_native_error" })
+  await expect(runtime.execute("a", command)).rejects.toThrow("Observe")
+  expect(attempts).toBe(1)
+})
+
+test.each([
+  "background_unavailable",
+  "off_space_or_ax_unresolved",
+  "same_pid_keyboard_ambiguity",
+  "minimized_or_hidden_window",
+])("background refusal %s never escalates or replays input", async (code) => {
+  const deliveries: unknown[] = []
+  const runtime = new ComputerRuntime(async (name, args) => {
+    if (name === "get_window_state") return { content: [], structuredContent: metadata }
+    deliveries.push(args.delivery_mode)
+    return {
+      isError: true,
+      content: [{ type: "text", text: "Retry with delivery_mode:foreground" }],
+      structuredContent: { code, escalation: { recommended: "foreground" } },
+    }
+  })
+  const observed = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  const command = {
+    type: "action",
+    input: { action: "key", key: "return", observationId: observed.observationId! },
+  } as const
+  await expect(runtime.execute("a", command)).rejects.toMatchObject({
+    code: "computer_background_unavailable",
+    message: expect.stringContaining("foreground:true"),
+  })
+  await expect(runtime.execute("a", command)).rejects.toMatchObject({ code: "computer_observation_stale" })
+  expect(deliveries).toEqual(["background"])
+})
+
+test("overlapping calls on the same process are refused without a desktop-wide lease", async () => {
+  let unblock!: () => void
+  const barrier = new Promise<void>((resolve) => (unblock = resolve))
+  const runtime = new ComputerRuntime(async () => {
+    await barrier
+    return { content: [], structuredContent: metadata }
+  })
+  const first = runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  await expect(runtime.execute("b", { type: "observe", pid: 10, windowId: 21 })).rejects.toThrow("application")
+  unblock()
+  await first
+})
+
+test("missing or foreign windows tell the agent to rediscover the target", async () => {
+  for (const code of ["window_id_not_found", "window_owner_pid_mismatch", "window_not_found", "owner_pid_mismatch"]) {
+    const runtime = new ComputerRuntime(async () => ({
+      isError: true,
+      content: [],
+      structuredContent: { code, suggestion: "internal native procedure" },
+    }))
+    await expect(runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })).rejects.toMatchObject({
+      code: "computer_window_unavailable",
+      message: expect.stringContaining("computer_apps"),
+    })
+  }
+})
+
+test("capture diagnostics stay bounded outside model-facing observation text", async () => {
+  const runtime = new ComputerRuntime(async () => ({
+    content: [],
+    structuredContent: {
+      ...metadata,
+      screenshot_error: {
+        code: "px_capture_unavailable",
+        reason: "capture permission rejected",
+        suggestion: "native-only procedure",
+      },
+    },
+  }))
+  const result = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  expect(result.metadata.computerDiagnostics).toEqual({
+    captureError: { code: "px_capture_unavailable", reason: "capture permission rejected" },
+  })
+  expect(result.output).not.toContain("native-only procedure")
+})

@@ -1,6 +1,6 @@
 ---
 name: find-logs
-description: Identify the exact Synergy backend and SYNERGY_HOME behind a local or managed runtime, inspect its logs and structured traces, and gather runtime evidence for failures. Use for errors, crashes, stuck sessions, tool calls, traces, daemon startup, performance incidents, multiple bun dev servers, reproducing state-dependent bugs, or adding temporary diagnostic instrumentation in an isolated worktree/runtime.
+description: Identify the exact Synergy backend and SYNERGY_HOME behind a local or managed runtime, inspect its logs and structured traces, and gather runtime evidence for failures. Use for errors, crashes, stuck sessions, native Workspace claim recovery, tool calls, traces, daemon startup, performance incidents, multiple bun dev servers, reproducing state-dependent bugs, or adding temporary diagnostic instrumentation in an isolated worktree/runtime.
 ---
 
 # Diagnose the Running Synergy Instance
@@ -35,6 +35,8 @@ The root is `$INSTANCE_HOME/.synergy/`; `SYNERGY_HOME` names its parent. A lock 
 
 If the process was launched with `--print-logs`, logs go to its terminal instead of a normal log file. Locate the owning terminal or rerun only an isolated test instance without that flag; do not restart the runtime carrying the current task.
 
+For managed Desktop startup, first isolate the latest `starting`/exit interval in Electron's server log. Historical plugin, channel or login errors in an appended log do not establish the current failure. Correlate the current launch's structured maintenance begin/stage/terminal events with the backend failure: ordinary health timeout, item-progress inactivity and a fixed SQLite maintenance deadline are different contracts. A journal checkpoint or database rewrite can be active without increasing an item count. Record the operation, last stage, elapsed time and budget; do not infer the engine's exact stuck stage when older logs contain only a migration step.
+
 ## Read the Correct Evidence
 
 The CLI is the supported inspection entry point once the home is known:
@@ -56,6 +58,8 @@ rg '^ERROR|service=(server-runtime|session|cortex)' "$LOG_FILE"
 
 For an installed managed service, `synergy logs` reads `$INSTANCE_HOME/.synergy/state/daemon/logs/server.log`, where the service captures the server's printed output. Resolve current paths from [Storage and paths](../../../docs/reference/storage-and-paths.md) rather than copying paths from an unrelated home.
 
+Browser import runs inside Desktop. Locate `browser-import.log` beside the Desktop-managed `server.log`: `SYNERGY_DESKTOP_LOG_DIR` when explicitly configured, otherwise `app.getPath("logs")/desktop` (source Electron on macOS commonly uses `~/Library/Logs/Electron/desktop`). Match the actual Desktop process and import time before reading it. JSON lines report browser family, data kind, phase, fixed error category, optional SQLite code/retry attempt and aggregate counts; source paths, websites, credentials and raw errors are deliberately absent. Backend `dev.log` alone cannot diagnose native import. Follow [change-browser-runtime](../change-browser-runtime/SKILL.md#local-browser-data) for isolated reproduction.
+
 Use structured observability when a trace, session, or tool call is known. These commands still require the resolved home:
 
 ```bash
@@ -65,6 +69,31 @@ SYNERGY_HOME="$INSTANCE_HOME" synergy logs --tool-call <call-id> --since 30m --j
 ```
 
 Correlate backend PID and port, server start time, reproduction time window, service, session, call, and trace. Find the earliest causal divergence or error; downstream cancellations are usually consequences, not separate root causes.
+
+When a model call fails, logs alone may not carry the cause. The persisted error and the authoritative call record do. Read the assistant message's structured error first: an `APIError` carries `isRetryable` and a `metadata` map that includes `networkKind`, `category`, `code`, `syscall`, and `endpointHost` when the failure was classified as a network failure. `networkKind: "indeterminate"` with `category: "tls-verification"` means a TLS verification failure with no attributing reason code from the runtime — the runtime drops the code precisely when it cannot attribute the failure. `endpointHost` names the host the request was sent to, which distinguishes an endpoint problem from a local interception problem; it carries only the host, never a path or credential.
+
+A `UnknownError` with no metadata means the failure reached neither the network classifier nor a structured provider branch; treat that as "unrecognized" and look for a nested cause rather than assuming a deterministic configuration error. When a terminal error is attributed to a task, confirm how it was surfaced: a Cortex task records `cortex.status = "error"` plus the task error string, and `SessionTerminalError` wraps the original terminal assistant error.
+
+Compare a failing call against its siblings before concluding the endpoint is broken. In the rollout records for the same run, a healthy call has `status: "completed"` with a `complete` response whose `bytes` match a normal payload; a transport break shows a small `partial` response with the error attached. If comparable requests immediately before and after succeeded, the failure is transient, not a persistent configuration fault.
+
+For a local interception hypothesis, check name resolution and routing before editing timeouts: a provider endpoint resolving into `198.18.0.0/15` or `240.0.0.0/4` indicates fake-IP DNS from a transparent proxy, and a default route bound to a `utun*`/`tun*` device indicates TUN-mode interception. Compare the certificate actually presented against the system trust store — genuine end-to-end TLS with a public issuer means the interception is at the DNS/routing layer rather than a TLS replacement. `synergy doctor` reports both checks directly.
+
+Never write a raw provider URL into a report, commit, or issue while doing this: provider keys are commonly embedded in the URL path, so only the host is publishable.
+
+For a long-running local migration that fails a request deadline, correlate the failure with system sleep/wake events before changing query timeouts. On macOS, inspect the relevant time window in `pmset -g log`. An idle-sleep inhibitor does not guarantee execution through lid closure or forced sleep. Resume only after confirming the previous owner exited, reuse committed migration checkpoints, and repeat checks required by the new transaction; do not skip integrity verification or launch a second owner.
+
+## Recover Native Workspace Coordination
+
+Use this procedure for persistent native write contention or a claims-ledger parse failure. Read [Workspace ownership](../../../docs/architecture/workspace-and-files.md#workspace-write-coordination) before classifying the failure. An agent must never stop, restart or repair the instance carrying its current task; host maintenance belongs in a separately authorized operator window.
+
+1. Distinguish an ordinary `WorkspaceBusyError` from JSON/schema failure or an unverifiable native process tree. Correlate the owning Runtime, claim kind/state, native ownership mechanism, PID/start identity and completion evidence. A shell exit, closed terminal connection, old PID or empty process-list snapshot does not prove all descendants exited.
+2. Resolve the OS-account coordination directory from [the owning implementation](../../../packages/local-runtime/src/file/mutation.ts), not `SYNERGY_HOME`, `TMPDIR` or `TEMP`. POSIX uses `/tmp/synergy-file-locks-<uid>`; Windows uses `.synergy-file-locks` under the OS-reported user profile. The affected ledger is `workspace-claims-v1.json`. Verify directory ownership, privacy and absence of symlinks before accessing it; do not bypass a failed check with a permission change.
+3. Keep a private copy of the evidence before maintenance. The ledger contains owner identifiers, tokens, paths and native receipt references; publish only redacted counts, kinds and failure categories. Read a copy for diagnosis. `WorkspaceCoordinator.inspect()` can reap claims and persist the ledger, so it is not a read-only file viewer. Do not create a replacement coordinator directory or change temporary-directory variables to evade an existing claim.
+4. For a verified live owner, use its normal cancellation or terminal shutdown and wait for complete native cleanup. Closing only the browser connection is insufficient. Leave other Sessions and Runtime instances alone; a host-wide writer can legitimately block unrelated directories. Verify a subsequent small native write after the owner finishes.
+5. For a valid Linux claim whose supervisor died without a completion receipt, retain the ledger and receipt. Arrange a host reboot with the operator, then verify the host boot identity changed. The native inspector treats an old-boot tree as exited, permitting normal coordinator reclamation; a Runtime restart alone does not. Do not forge a completion receipt, remove the claim by PID or impose an age-based expiry.
+6. For a malformed ledger, treat every recorded owner as unknown. Arrange host maintenance with automatic Synergy startup suspended, preserve a private evidence copy and reboot the host. Before any Runtime or native worker starts again, recheck the coordination directory and move only the affected regular ledger file to a new private quarantine filename. Keep its bytes and the rest of the directory intact; do not delete lock files, receipts or the whole directory. Start one Runtime, which creates a new ledger on first admission. If the host cannot be made exclusively offline after reboot, retain the failure and escalate instead of replacing the ledger.
+
+Verify recovery through a disposable, explicitly selected Workspace: create a uniquely named file, read its exact bytes, conditionally edit it, read it again and remove only that test file. Confirm a second operation is admitted after the first completes, the Runtime remains healthy, and any failed operation history still reports its actual result. Resume the other instances after this check. Recovery restores admission; it does not replay interrupted commands or manufacture missing snapshot evidence.
 
 ## Escalate to Runtime Reproduction
 

@@ -1,0 +1,21 @@
+export const twinCopy = {
+  title: { id: "digitalTwin.settings.title", message: "Digital Twin" },
+  description: {
+    id: "digitalTwin.settings.description",
+    message: "A living model of how you think and write.",
+  },
+  automatic: { id: "digitalTwin.settings.automatic", message: "Automatic next-input prediction" },
+  model: { id: "digitalTwin.settings.model", message: "Prediction model" },
+  follow: { id: "digitalTwin.settings.follow", message: "Follow current Session model" },
+  predict: { id: "digitalTwin.composer.predict", message: "Predict next input" },
+  predicting: { id: "digitalTwin.composer.predicting", message: "Predicting next input…" },
+  unavailable: { id: "digitalTwin.composer.unavailable", message: "Prediction unavailable. Try again." },
+  dismiss: { id: "digitalTwin.composer.dismiss", message: "Dismiss prediction message" },
+  reasonTurn: { id: "digitalTwin.reason.turn", message: "Available once this turn finishes" },
+  reasonDraft: { id: "digitalTwin.reason.draft", message: "Clear the draft to predict the next input" },
+  reasonPending: { id: "digitalTwin.reason.pending", message: "Finish attachments and pending items first" },
+  reasonComposing: { id: "digitalTwin.reason.composing", message: "Available after text input ends" },
+  reasonMode: { id: "digitalTwin.reason.mode", message: "Available in normal write mode" },
+  reasonReply: { id: "digitalTwin.reason.reply", message: "Available once a reply finishes cleanly" },
+  reasonView: { id: "digitalTwin.reason.view", message: "Prediction is unavailable in this view" },
+}

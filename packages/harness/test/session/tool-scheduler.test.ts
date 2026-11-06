@@ -1,0 +1,951 @@
+import { afterAll, describe, expect, test } from "bun:test"
+import type { Tool as AITool } from "ai"
+import { z } from "zod"
+import { SessionProcessor } from "../../src/session/processor"
+import { type ToolTaskInput, ToolScheduler, ToolTaskScheduler } from "../../src/session/tool-scheduler"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+afterAll(() =>
+  runtime.run(() => {
+    // The shutdown tests below stop the module-level ToolScheduler singleton
+    // (accepting=false). Restore it so sibling files sharing the same shard
+    // process — e.g. test/tool/auto-expand.test.ts dispatching through the real
+    // scheduler — are not rejected with "Tool scheduler is stopping".
+    ToolScheduler.configure()
+  }),
+)
+
+function processor() {
+  const slots = new Map<string, SessionProcessor.ToolExecutionSlot>()
+  const executions = new Map<string, Promise<unknown>>()
+  return {
+    message: { id: "msg_test" },
+    beginExecution(callID: string) {
+      const existing = slots.get(callID)
+      if (existing) return existing
+      const slot = SessionProcessor.createSlot(callID)
+      slots.set(callID, slot)
+      return slot
+    },
+    executeOnce<T>(callID: string, execute: () => Promise<T>) {
+      const existing = executions.get(callID)
+      if (existing) return existing as Promise<T>
+      const result = Promise.resolve().then(execute)
+      executions.set(callID, result)
+      return result
+    },
+    async updateToolCallState() {},
+  }
+}
+
+describe("ToolTaskScheduler", () => {
+  test("deduplicates a replayed call before invoking the executable tool", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({ maxConcurrent: 2, maxQueued: 8 })
+      const target = processor()
+      let executions = 0
+      const tool = {
+        async execute(input: unknown) {
+          executions++
+          target.beginExecution("call_same").complete(input, {
+            title: "done",
+            output: "completed",
+            metadata: {},
+          })
+          return { title: "done", output: "completed", metadata: {} }
+        },
+      } as unknown as AITool
+
+      const task = {
+        sessionID: "ses_test",
+        generation: 1,
+        messageID: "msg_test",
+        callID: "call_same",
+        toolName: "probe",
+        input: { value: 1 },
+        tool,
+        processor: target,
+        signal: new AbortController().signal,
+      }
+
+      const [first, second] = await Promise.all([scheduler.dispatch(task), scheduler.dispatch(task)])
+
+      expect(first).toBe(second)
+      expect(executions).toBe(1)
+      expect(first.state).toBe("completed")
+      expect(await target.beginExecution("call_same").promise).toMatchObject({ status: "completed" })
+      await scheduler.stop()
+    }))
+
+  test("re-executes a settled call when the same key is dispatched again", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({ maxConcurrent: 2, maxQueued: 8 })
+      const target = processor()
+      let executions = 0
+      const tool = {
+        async execute(input: unknown) {
+          executions++
+          target.beginExecution("call_again").complete(input, {
+            title: "done",
+            output: `executed-${executions}`,
+            metadata: {},
+          })
+          return { title: "done", output: `executed-${executions}`, metadata: {} }
+        },
+      } as unknown as AITool
+
+      const task = {
+        sessionID: "ses_test",
+        generation: 1,
+        messageID: "msg_test",
+        callID: "call_again",
+        toolName: "probe",
+        input: { value: 1 },
+        tool,
+        processor: target,
+        signal: new AbortController().signal,
+      }
+
+      const first = await scheduler.dispatch(task)
+      const second = await scheduler.dispatch(task)
+
+      // A settled task must not deduplicate a later dispatch with the same key:
+      // retries, replays, and fresh processor instances all need a new attempt.
+      expect(first.state).toBe("completed")
+      expect(second.state).toBe("completed")
+      expect(executions).toBe(2)
+      await scheduler.stop()
+    }))
+
+  test("cancels queued work without consuming an execution slot", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+      const target = processor()
+      let releaseFirst!: () => void
+      const firstBlocked = new Promise<void>((resolve) => {
+        releaseFirst = resolve
+      })
+      const started: string[] = []
+      const tool = {
+        async execute(input: { id: string }, options: { toolCallId: string }) {
+          started.push(input.id)
+          if (input.id === "first") await firstBlocked
+          target.beginExecution(options.toolCallId).complete(input, {
+            title: input.id,
+            output: input.id,
+            metadata: {},
+          })
+          return { title: input.id, output: input.id, metadata: {} }
+        },
+      } as unknown as AITool
+      const first = scheduler.dispatch({
+        sessionID: "ses_test",
+        generation: 1,
+        messageID: "msg_test",
+        callID: "call_first",
+        toolName: "probe",
+        input: { id: "first" },
+        tool,
+        processor: target,
+        signal: new AbortController().signal,
+      })
+      await Promise.resolve()
+
+      const queuedAbort = new AbortController()
+      const second = scheduler.dispatch({
+        sessionID: "ses_test",
+        generation: 1,
+        messageID: "msg_test",
+        callID: "call_second",
+        toolName: "probe",
+        input: { id: "second" },
+        tool,
+        processor: target,
+        signal: queuedAbort.signal,
+      })
+      queuedAbort.abort()
+      releaseFirst()
+
+      expect((await first).state).toBe("completed")
+      expect((await second).state).toBe("cancelled")
+      expect(started).toEqual(["first"])
+      await scheduler.stop()
+    }))
+
+  test("fails one task when the queue is full without disturbing running work", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 1 })
+      const target = processor()
+      let release!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const tool = {
+        async execute(input: { id: string }, options: { toolCallId: string }) {
+          if (input.id === "running") await blocked
+          target.beginExecution(options.toolCallId).complete(input, {
+            title: input.id,
+            output: input.id,
+            metadata: {},
+          })
+          return { title: input.id, output: input.id, metadata: {} }
+        },
+      } as unknown as AITool
+      const dispatch = (callID: string, id: string) =>
+        scheduler.dispatch({
+          sessionID: "ses_test",
+          generation: 1,
+          messageID: "msg_test",
+          callID,
+          toolName: "probe",
+          input: { id },
+          tool,
+          processor: target,
+          signal: new AbortController().signal,
+        })
+
+      const running = dispatch("call_running", "running")
+      await Promise.resolve()
+      const queued = dispatch("call_queued", "queued")
+      const rejected = await dispatch("call_rejected", "rejected")
+      release()
+
+      expect(rejected.state).toBe("failed")
+      expect(rejected.error).toContain("queue is full")
+      expect((await running).state).toBe("completed")
+      expect((await queued).state).toBe("completed")
+      await scheduler.stop()
+    }))
+
+  test("bounds aggregate queued input bytes while a tool slot is occupied", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8, maxQueuedBytes: 64 })
+      const target = processor()
+      let release!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const tool = {
+        async execute(input: { id: string }, options: { toolCallId: string }) {
+          if (input.id === "running") await blocked
+          target.beginExecution(options.toolCallId).complete(input, {
+            title: input.id,
+            output: input.id,
+            metadata: {},
+          })
+        },
+      } as unknown as AITool
+      const dispatch = (callID: string, input: { id: string; payload?: string }) =>
+        scheduler.dispatch({
+          sessionID: "ses_test",
+          generation: 1,
+          messageID: "msg_test",
+          callID,
+          toolName: "probe",
+          input,
+          tool,
+          processor: target,
+          signal: new AbortController().signal,
+        })
+
+      const running = dispatch("call_running_bytes", { id: "running" })
+      await Promise.resolve()
+      const rejected = await dispatch("call_queued_bytes", { id: "queued", payload: "x".repeat(128) })
+      release()
+
+      expect(rejected.state).toBe("failed")
+      expect(rejected.error).toContain("queue exceeded")
+      expect((await running).state).toBe("completed")
+      await scheduler.stop()
+    }))
+
+  test("admits another executor class while one class has reached its limit", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({
+        maxConcurrent: 2,
+        maxQueued: 8,
+        executorConcurrency: { local_process: 1, control_plane: 1 },
+      })
+      const target = processor()
+      let release!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const started: string[] = []
+      const tool = {
+        async execute(input: { id: string }, options: { toolCallId: string }) {
+          started.push(input.id)
+          if (input.id === "local-running") await blocked
+          target.beginExecution(options.toolCallId).complete(input, {
+            title: input.id,
+            output: input.id,
+            metadata: {},
+          })
+        },
+      } as unknown as AITool
+      const dispatch = (callID: string, id: string, executor: "local_process" | "control_plane") =>
+        scheduler.dispatch({
+          sessionID: "ses_test",
+          generation: 1,
+          messageID: "msg_test",
+          callID,
+          toolName: "probe",
+          executor,
+          input: { id },
+          tool,
+          processor: target,
+          signal: new AbortController().signal,
+        })
+
+      const first = dispatch("call_local_running", "local-running", "local_process")
+      const second = dispatch("call_local_queued", "local-queued", "local_process")
+      const control = dispatch("call_control", "control", "control_plane")
+      expect((await control).state).toBe("completed")
+      expect(started).toEqual(["local-running", "control"])
+      release()
+      expect((await first).state).toBe("completed")
+      expect((await second).state).toBe("completed")
+      await scheduler.stop()
+    }))
+
+  test("bounds an executor-saturated queue even when global capacity remains", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({
+        maxConcurrent: 4,
+        maxQueued: 1,
+        executorConcurrency: { local_process: 1 },
+      })
+      const target = processor()
+      let release!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const tool = {
+        async execute(input: { id: string }, options: { toolCallId: string }) {
+          if (input.id === "running") await blocked
+          target.beginExecution(options.toolCallId).complete(input, {
+            title: input.id,
+            output: input.id,
+            metadata: {},
+          })
+        },
+      } as unknown as AITool
+      const dispatch = (callID: string, id: string) =>
+        scheduler.dispatch({
+          sessionID: "ses_test",
+          generation: 1,
+          messageID: "msg_test",
+          callID,
+          toolName: "bash",
+          executor: "local_process",
+          input: { id },
+          tool,
+          processor: target,
+          signal: new AbortController().signal,
+        })
+
+      const running = dispatch("call_running", "running")
+      await Promise.resolve()
+      const queued = dispatch("call_queued", "queued")
+      const rejected = await dispatch("call_rejected", "rejected")
+
+      expect(rejected.state).toBe("failed")
+      expect(rejected.error).toContain("queue is full")
+      release()
+      expect((await running).state).toBe("completed")
+      expect((await queued).state).toBe("completed")
+      await scheduler.stop()
+    }))
+
+  test("bounds shutdown when an active tool ignores cancellation", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({
+        maxConcurrent: 1,
+        maxQueued: 1,
+        shutdownGraceMs: 5,
+      })
+      const target = processor()
+      let release!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const tool = {
+        async execute(input: unknown, options: { toolCallId: string }) {
+          await blocked
+          target.beginExecution(options.toolCallId).complete(input, {
+            title: "late",
+            output: "late",
+            metadata: {},
+          })
+        },
+      } as unknown as AITool
+      const task = scheduler.dispatch({
+        sessionID: "ses_test",
+        generation: 1,
+        messageID: "msg_test",
+        callID: "call_stuck",
+        toolName: "probe",
+        input: {},
+        tool,
+        processor: target,
+        signal: new AbortController().signal,
+      })
+      await Promise.resolve()
+
+      await scheduler.stop()
+      expect(await task).toMatchObject({
+        state: "interrupted",
+        error: "Tool scheduler shutdown grace elapsed",
+      })
+      expect((await target.beginExecution("call_stuck").promise).status).toBe("error")
+      release()
+      await Bun.sleep(0)
+      expect((await task).state).toBe("interrupted")
+    }))
+
+  test("restores default options when the runtime is reconfigured", () =>
+    runtime.run(async () => {
+      await ToolScheduler.stop()
+      ToolScheduler.configure({ maxConcurrent: 1 })
+      expect(ToolScheduler.stats().maxConcurrent).toBe(1)
+      await ToolScheduler.stop()
+
+      ToolScheduler.configure()
+      expect(ToolScheduler.stats().maxConcurrent).toBeGreaterThan(1)
+      await ToolScheduler.stop()
+    }))
+
+  test("rejects new work as soon as runtime shutdown starts", () =>
+    runtime.run(async () => {
+      await ToolScheduler.stop()
+      ToolScheduler.configure({ maxConcurrent: 1, shutdownGraceMs: 5 })
+      const target = processor()
+      let release!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const tool = {
+        async execute(input: unknown, options: { toolCallId: string }) {
+          await blocked
+          target.beginExecution(options.toolCallId).complete(input, {
+            title: "late",
+            output: "late",
+            metadata: {},
+          })
+        },
+      } as unknown as AITool
+      const input = {
+        sessionID: "ses_test",
+        generation: 1,
+        messageID: "msg_test",
+        callID: "call_shutdown_running",
+        toolName: "probe",
+        input: {},
+        tool,
+        processor: target,
+        signal: new AbortController().signal,
+      }
+      const running = ToolScheduler.dispatch(input)
+      await Promise.resolve()
+
+      const stopping = ToolScheduler.stop()
+      await expect(
+        ToolScheduler.dispatch({
+          ...input,
+          callID: "call_shutdown_rejected",
+        }),
+      ).rejects.toThrow("Tool scheduler is stopping")
+
+      await stopping
+      release()
+      expect((await running).state).toBe("interrupted")
+      ToolScheduler.configure()
+      await ToolScheduler.stop()
+    }))
+
+  test("keeps rejecting new work after runtime shutdown until reconfigured", () =>
+    runtime.run(async () => {
+      await ToolScheduler.stop()
+      const target = processor()
+      const tool = {
+        async execute(input: unknown, options: { toolCallId: string }) {
+          target.beginExecution(options.toolCallId).complete(input, {
+            title: "restarted",
+            output: "restarted",
+            metadata: {},
+          })
+        },
+      } as unknown as AITool
+      const input = {
+        sessionID: "ses_test",
+        generation: 1,
+        messageID: "msg_test",
+        callID: "call_after_shutdown",
+        toolName: "probe",
+        input: {},
+        tool,
+        processor: target,
+        signal: new AbortController().signal,
+      }
+
+      await expect(ToolScheduler.dispatch(input)).rejects.toThrow("Tool scheduler is stopping")
+
+      ToolScheduler.configure()
+      expect((await ToolScheduler.dispatch({ ...input, callID: "call_after_reconfigure" })).state).toBe("completed")
+      await ToolScheduler.stop()
+    }))
+})
+
+describe("nested plugin scheduling", () => {
+  function task(
+    callID: string,
+    execute: () => Promise<void>,
+    executor: ToolTaskInput["executor"] = "file",
+  ): ToolTaskInput {
+    const target = processor()
+    return {
+      sessionID: "ses_nested",
+      generation: 1,
+      messageID: "msg_nested",
+      callID,
+      toolName: "probe",
+      input: {},
+      processor: target,
+      executor,
+      signal: new AbortController().signal,
+      tool: {
+        inputSchema: z.object({}),
+        async execute() {
+          await execute()
+          const result = { title: callID, output: callID, metadata: {} }
+          target.beginExecution(callID).complete({}, result)
+          return result
+        },
+      },
+    }
+  }
+
+  test("a verified plugin parent lends one slot while siblings and ordinary work remain queued", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({
+        maxConcurrent: 1,
+        maxQueued: 8,
+        executorConcurrency: { plugin: 1, file: 1 },
+      })
+      const started = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const order: string[] = []
+      const parent = scheduler.dispatch(
+        task(
+          "parent",
+          async () => {
+            const first = scheduler.dispatch(
+              task("first", async () => {
+                order.push("first")
+                started.resolve()
+                await release.promise
+              }),
+              "parent",
+            )
+            const second = scheduler.dispatch(
+              task(
+                "second",
+                async () => {
+                  order.push("second")
+                },
+                "plugin",
+              ),
+              "parent",
+            )
+            expect((await first).state).toBe("completed")
+            expect((await second).state).toBe("completed")
+            order.push("parent")
+          },
+          "plugin",
+        ),
+      )
+      await started.promise
+      const ordinary = scheduler.dispatch(
+        task("ordinary", async () => {
+          order.push("ordinary")
+        }),
+      )
+      try {
+        expect(order).toEqual(["first"])
+        expect(scheduler.stats()).toMatchObject({ active: 1, queued: 2 })
+      } finally {
+        release.resolve()
+      }
+      expect((await parent).state).toBe("completed")
+      expect((await ordinary).state).toBe("completed")
+      expect(order).toEqual(["first", "second", "parent", "ordinary"])
+      await scheduler.stop()
+    }))
+
+  test("a missing, foreign, non-plugin or self parent cannot borrow scheduling ownership", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({ maxConcurrent: 2, maxQueued: 8 })
+      const release = Promise.withResolvers<void>()
+      const parent = scheduler.dispatch(task("parent", () => release.promise, "plugin"))
+      const fileParent = scheduler.dispatch(task("file-parent", () => release.promise))
+      let executed = false
+      const child = () =>
+        task("child", async () => {
+          executed = true
+        })
+      try {
+        await expect(scheduler.dispatch(child(), "missing")).rejects.toThrow("active plugin parent")
+        await expect(scheduler.dispatch({ ...child(), sessionID: "ses_other" }, "parent")).rejects.toThrow(
+          "active plugin parent",
+        )
+        await expect(scheduler.dispatch({ ...child(), messageID: "msg_other" }, "parent")).rejects.toThrow(
+          "active plugin parent",
+        )
+        await expect(scheduler.dispatch(child(), "file-parent")).rejects.toThrow("active plugin parent")
+        await expect(scheduler.dispatch({ ...child(), callID: "parent" }, "parent")).rejects.toThrow("distinct call ID")
+        expect(executed).toBe(false)
+      } finally {
+        release.resolve()
+        await Promise.all([parent, fileParent])
+        await scheduler.stop()
+      }
+    }))
+
+  test("ending a parent cancels its active and waiting children", () =>
+    runtime.run(async () => {
+      const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+      let running!: Promise<unknown>
+      let waiting!: Promise<unknown>
+      let queuedExecuted = false
+      const parent = scheduler.dispatch(
+        task(
+          "parent",
+          async () => {
+            const child = task("running", async () => {})
+            child.tool = {
+              inputSchema: z.object({}),
+              async execute(_args, options) {
+                await new Promise((_resolve, reject) =>
+                  options.abortSignal!.addEventListener("abort", () => reject(options.abortSignal!.reason), {
+                    once: true,
+                  }),
+                )
+              },
+            }
+            running = scheduler.dispatch(child, "parent")
+            waiting = scheduler.dispatch(
+              task("waiting", async () => {
+                queuedExecuted = true
+              }),
+              "parent",
+            )
+          },
+          "plugin",
+        ),
+      )
+      expect((await parent).state).toBe("completed")
+      expect(await running).toMatchObject({ state: "cancelled" })
+      expect(await waiting).toMatchObject({ state: "cancelled" })
+      expect(queuedExecuted).toBe(false)
+      await scheduler.stop()
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())
+
+test("workspace waits yield scheduler capacity and reacquire before execution resumes", () =>
+  runtime.run(async () => {
+    const { ExecutionCapacity } = await import("../../src/session/execution-capacity")
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+    const target = processor()
+    const waiting = Promise.withResolvers<void>()
+    const resume = Promise.withResolvers<void>()
+    const order: string[] = []
+    const dispatch = (id: string, execute: () => Promise<void>) =>
+      scheduler.dispatch({
+        sessionID: id,
+        generation: 1,
+        messageID: id,
+        callID: id,
+        toolName: "probe",
+        input: {},
+        processor: target,
+        signal: new AbortController().signal,
+        executor: "file",
+        tool: {
+          inputSchema: z.object({}),
+          async execute() {
+            await execute()
+            target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+            return {}
+          },
+        },
+      })
+    const blocked = dispatch("blocked", async () => {
+      await ExecutionCapacity.wait(async () => {
+        waiting.resolve()
+        await resume.promise
+      })
+      expect(scheduler.stats().active).toBe(1)
+      order.push("resumed")
+    })
+    await waiting.promise
+    const next = dispatch("independent", async () => {
+      order.push("independent")
+      resume.resolve()
+    })
+    expect((await next).state).toBe("completed")
+    expect((await blocked).state).toBe("completed")
+    expect(order).toEqual(["independent", "resumed"])
+    await scheduler.stop()
+  }))
+
+test("queued tools enter the dispatching context when another session releases capacity", () =>
+  runtime.run(async () => {
+    const { AsyncLocalStorage } = await import("node:async_hooks")
+    const context = new AsyncLocalStorage<string>()
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+    const target = processor()
+    const release = Promise.withResolvers<void>()
+    const observed: Array<string | undefined> = []
+    const dispatch = (id: string, execute: () => Promise<void>) =>
+      context.run(id, () =>
+        scheduler.dispatch({
+          sessionID: id,
+          generation: 1,
+          messageID: id,
+          callID: id,
+          toolName: "probe",
+          input: {},
+          processor: target,
+          signal: new AbortController().signal,
+          tool: {
+            inputSchema: z.object({}),
+            async execute() {
+              await execute()
+              observed.push(context.getStore())
+              target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+              return {}
+            },
+          },
+        }),
+      )
+    const one = dispatch("one", () => release.promise)
+    const two = dispatch("two", async () => {})
+    release.resolve()
+    await Promise.all([one, two])
+    expect(observed).toEqual(["one", "two"])
+    await scheduler.stop()
+  }))
+
+test("a nested plugin wait lends both its executor and the parent's global slot", () =>
+  runtime.run(async () => {
+    const { ExecutionCapacity } = await import("../../src/session/execution-capacity")
+    const scheduler = new ToolTaskScheduler({
+      maxConcurrent: 1,
+      maxQueued: 8,
+      executorConcurrency: { file: 1, plugin: 1 },
+    })
+    const target = processor()
+    const waiting = Promise.withResolvers<void>()
+    const resume = Promise.withResolvers<void>()
+    const order: string[] = []
+    const input = (id: string, executor: ToolTaskInput["executor"], execute: () => Promise<void>): ToolTaskInput => ({
+      sessionID: "ses_nested_wait",
+      generation: 1,
+      messageID: "msg_nested_wait",
+      callID: id,
+      toolName: id,
+      executor,
+      input: {},
+      processor: target,
+      signal: new AbortController().signal,
+      tool: {
+        inputSchema: z.object({}),
+        async execute() {
+          await execute()
+          target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+          return {}
+        },
+      },
+    })
+    const parent = scheduler.dispatch(
+      input("parent-wait", "plugin", async () => {
+        await scheduler.dispatch(
+          input("child-wait", "file", async () => {
+            await ExecutionCapacity.wait(async () => {
+              waiting.resolve()
+              await resume.promise
+            })
+            order.push("child")
+          }),
+          "parent-wait",
+        )
+        order.push("parent")
+      }),
+    )
+    await waiting.promise
+    const ordinary = scheduler.dispatch(
+      input("ordinary-wait", "file", async () => {
+        order.push("ordinary")
+        resume.resolve()
+      }),
+    )
+    await Promise.all([parent, ordinary])
+    expect(order).toEqual(["ordinary", "child", "parent"])
+    expect(scheduler.stats().active).toBe(0)
+    await scheduler.stop()
+  }))
+
+test("cancelled Workspace admission does not wait to regain an occupied tool slot", () =>
+  runtime.run(async () => {
+    const { ExecutionCapacity } = await import("../../src/session/execution-capacity")
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+    const target = processor()
+    const waiting = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const controller = new AbortController()
+    const input = (id: string, signal: AbortSignal, execute: () => Promise<void>): ToolTaskInput => ({
+      sessionID: id,
+      generation: 1,
+      messageID: id,
+      callID: id,
+      toolName: id,
+      input: {},
+      processor: target,
+      signal,
+      tool: {
+        inputSchema: z.object({}),
+        async execute() {
+          await execute()
+          target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+          return {}
+        },
+      },
+    })
+    const blocked = scheduler.dispatch(
+      input("blocked-cancel", controller.signal, () =>
+        ExecutionCapacity.wait(async () => {
+          waiting.resolve()
+          await new Promise((_resolve, reject) =>
+            controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true }),
+          )
+        }),
+      ),
+    )
+    await waiting.promise
+    const ordinary = scheduler.dispatch(input("ordinary-held", new AbortController().signal, () => release.promise))
+    controller.abort(new Error("cancelled"))
+    try {
+      expect((await blocked).state).toBe("cancelled")
+      expect(scheduler.stats().active).toBe(1)
+    } finally {
+      release.resolve()
+      await ordinary
+      await scheduler.stop()
+    }
+  }))
+
+test("Cortex and tool capacity recover together when a new tool races a returning wait", () =>
+  runtime.run(async () => {
+    const { ExecutionCapacity } = await import("../../src/session/execution-capacity")
+    const { Lock } = await import("../../src/util/lock")
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+    const target = processor()
+    const controller = new AbortController()
+    const waiting = Promise.withResolvers<void>()
+    const returnFirst = Promise.withResolvers<void>()
+    const firstResuming = Promise.withResolvers<void>()
+    const secondAdmitted = Promise.withResolvers<void>()
+    const startSecond = Promise.withResolvers<void>()
+    const owner = (second: boolean) => {
+      let lease: Disposable | undefined
+      let attempts = 0
+      const pause = () => {
+        lease?.[Symbol.dispose]()
+        lease = undefined
+      }
+      const resume = async () => {
+        if (lease) return
+        if (!second && ++attempts > 1) firstResuming.resolve()
+        lease = await Lock.writeWithSignal("fixture-cortex-capacity", controller.signal)
+      }
+      return {
+        pause,
+        resume,
+        fork: () => ({
+          pause,
+          async resume() {
+            await resume()
+            if (second) {
+              secondAdmitted.resolve()
+              await startSecond.promise
+            }
+          },
+          finish() {},
+        }),
+      }
+    }
+    const first = owner(false)
+    const second = owner(true)
+    const dispatch = (id: string, capacity: ReturnType<typeof owner>, execute: () => Promise<void>) =>
+      ExecutionCapacity.provide("cortex", capacity, () =>
+        scheduler
+          .dispatch({
+            sessionID: id,
+            generation: 1,
+            messageID: id,
+            callID: id,
+            toolName: "capacity-probe",
+            input: {},
+            processor: target,
+            signal: controller.signal,
+            tool: {
+              inputSchema: z.object({}),
+              async execute() {
+                await execute()
+                expect(scheduler.stats().active).toBe(1)
+                target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+                return {}
+              },
+            },
+          })
+          .finally(capacity.pause),
+      )
+    await first.resume()
+    const one = dispatch("returning", first, () =>
+      ExecutionCapacity.wait(async () => {
+        waiting.resolve()
+        await returnFirst.promise
+      }),
+    )
+    await waiting.promise
+    await second.resume()
+    const two = dispatch("starting", second, async () => {})
+    await secondAdmitted.promise
+    returnFirst.resolve()
+    await firstResuming.promise
+    startSecond.resolve()
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      const results = await Promise.race([
+        Promise.all([one, two]),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("Capacity recovery did not complete")), 1000)
+        }),
+      ])
+      expect(results.map((result) => result.state)).toEqual(["completed", "completed"])
+      expect(scheduler.stats().queued).toBe(0)
+    } finally {
+      clearTimeout(timeout)
+      controller.abort()
+      startSecond.resolve()
+      returnFirst.resolve()
+      first.pause()
+      second.pause()
+      await Promise.allSettled([one, two])
+      await scheduler.stop()
+    }
+  }))

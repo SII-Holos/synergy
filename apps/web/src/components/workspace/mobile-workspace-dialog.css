@@ -1,0 +1,18 @@
+[data-component="dialog"]:has(.mobile-workspace-dialog) {
+  --dialog-width: 100%;
+  --dialog-max-height: 100dvh;
+  padding: 0;
+  margin-left: 0;
+
+  [data-slot="dialog-content"].mobile-workspace-dialog {
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    background: var(--background-stronger);
+  }
+
+  .mobile-workspace-dialog [data-slot="dialog-body"] {
+    padding: 0;
+    overflow: hidden;
+  }
+}

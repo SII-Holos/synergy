@@ -2,6 +2,7 @@
 
 import { mkdir, readdir, rm } from "node:fs/promises"
 import path from "node:path"
+import { createIsolatedTestEnv } from "../../packages/testing/src/env"
 
 export type TestRunnerOptions = {
   /** Package root; test files are collected under `<root>/test`. */
@@ -20,8 +21,38 @@ export type TestRunnerOptions = {
   extraSerial?: string[]
 }
 
+export function frontendBatches(files: string[], options: Omit<TestRunnerOptions, "root">) {
+  const { timeoutMs, isolated, browserOnly, extraSerial = [] } = options
+  const isolatedSet = new Set(isolated)
+  const browserSet = new Set(browserOnly)
+  const extraSerialSet = new Set(extraSerial)
+  const batches = [
+    {
+      files: files.filter((file) => !isolatedSet.has(file) && !browserSet.has(file) && !extraSerialSet.has(file)),
+      timeout: timeoutMs,
+      browser: false,
+    },
+    ...files
+      .filter((file) => isolatedSet.has(file))
+      .map((file) => ({
+        files: [file],
+        timeout: options.isolatedTimeoutMs ?? timeoutMs,
+        browser: browserSet.has(file),
+      })),
+    {
+      files: files.filter((file) => browserSet.has(file) && !isolatedSet.has(file)),
+      timeout: options.browserTimeoutMs ?? timeoutMs,
+      browser: true,
+    },
+    ...extraSerial
+      .filter((file) => files.includes(file))
+      .map((file) => ({ files: [file], timeout: timeoutMs, browser: false })),
+  ]
+  return batches.map((batch, id) => ({ ...batch, id })).filter((batch) => batch.files.length)
+}
+
 /**
- * Sharded test runner shared by packages/app and packages/ui.
+ * Sharded test runner shared by apps/web and packages/ui.
  *
  * Collects `*.test.{ts,tsx}` files under `<root>/test`, runs the main batch in
  * one `bun test` process, then runs isolated files and the browser-only batch
@@ -30,9 +61,7 @@ export type TestRunnerOptions = {
  * `bun test` overwrites `coverage/lcov.info` on every invocation.
  */
 export async function runBatchedTests(options: TestRunnerOptions) {
-  const { root, timeoutMs, isolated, browserOnly, extraSerial = [] } = options
-  const isolatedTimeoutMs = options.isolatedTimeoutMs ?? timeoutMs
-  const browserTimeoutMs = options.browserTimeoutMs ?? timeoutMs
+  const { root, timeoutMs } = options
   const failedBatches: Array<{ shard: number; exitCode: number }> = []
 
   async function collectTests(directory: string): Promise<string[]> {
@@ -51,29 +80,48 @@ export async function runBatchedTests(options: TestRunnerOptions) {
   async function run(files: string[], shard: number, batch: { browser?: boolean; timeout?: number } = {}) {
     if (files.length === 0) return
     const coverage = process.argv.includes("--coverage")
-    const child = Bun.spawn(
-      [
-        process.execPath,
-        "test",
-        "--timeout",
-        String(batch.timeout ?? timeoutMs),
-        // Bun overwrites coverage/lcov.info on every invocation, so coverage
-        // mode writes each batch into its own shard directory; coverage:check
-        // merges them. Without this, the final serial batch would erase all
-        // coverage from the main batch.
-        ...(coverage ? ["--coverage", "--coverage-reporter=lcov", "--coverage-dir", `coverage/shards/${shard}`] : []),
-        ...(batch.browser ? ["--conditions=browser"] : []),
-        ...files,
-      ],
-      {
-        cwd: root,
-        stdin: "inherit",
-        stdout: "inherit",
-        stderr: "inherit",
-      },
-    )
-    const exitCode = await child.exited
-    if (exitCode !== 0) failedBatches.push({ shard, exitCode })
+    const reportRoot = path.join(root, "coverage/shards", String(shard))
+    await mkdir(reportRoot, { recursive: true })
+    const isolatedEnv = await createIsolatedTestEnv()
+    const started = Date.now()
+    try {
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          "test",
+          // Solid DOM fixtures provide their own compiler; prop-only fixtures use React.createElement.
+          "--jsx-runtime=classic",
+          "--timeout",
+          String(batch.timeout ?? timeoutMs),
+          "--reporter=junit",
+          `--reporter-outfile=${path.join(reportRoot, "junit.xml")}`,
+          // Bun overwrites coverage/lcov.info on every invocation, so coverage
+          // mode writes each batch into its own shard directory; coverage:check
+          // merges them. Without this, the final serial batch would erase all
+          // coverage from the main batch.
+          ...(coverage ? ["--coverage", "--coverage-reporter=lcov", "--coverage-dir", `coverage/shards/${shard}`] : []),
+          ...(batch.browser ? ["--conditions=browser"] : []),
+          ...(process.env.SYNERGY_TEST_SEED ? ["--randomize", "--seed", process.env.SYNERGY_TEST_SEED] : []),
+          ...(process.env.SYNERGY_TEST_NAME ? ["--test-name-pattern", process.env.SYNERGY_TEST_NAME] : []),
+          ...files,
+        ],
+        {
+          cwd: root,
+          env: isolatedEnv.env,
+          stdin: "inherit",
+          stdout: "inherit",
+          stderr: "inherit",
+        },
+      )
+      const exitCode = await child.exited
+      await Bun.write(
+        path.join(reportRoot, "timing.json"),
+        JSON.stringify({ files, started, completed: Date.now(), seconds: (Date.now() - started) / 1000, exitCode }),
+      )
+      if (exitCode !== 0) failedBatches.push({ shard, exitCode })
+    } finally {
+      await isolatedEnv.dispose()
+    }
   }
 
   const coverage = process.argv.includes("--coverage")
@@ -82,24 +130,11 @@ export async function runBatchedTests(options: TestRunnerOptions) {
     await mkdir(path.join(root, "coverage", "shards"), { recursive: true })
   }
 
-  const isolatedSet = new Set(isolated)
-  const browserSet = new Set(browserOnly)
-  const extraSerialSet = new Set(extraSerial)
-  const files = (await collectTests("test")).toSorted()
-  await run(
-    files.filter((file) => !isolatedSet.has(file) && !browserSet.has(file) && !extraSerialSet.has(file)),
-    0,
-  )
-  let shard = 1
-  for (const file of files.filter((file) => isolatedSet.has(file))) {
-    await run([file], shard++, { timeout: isolatedTimeoutMs })
-  }
-  await run(
-    files.filter((file) => browserSet.has(file)),
-    shard++,
-    { browser: true, timeout: browserTimeoutMs },
-  )
-  for (const file of extraSerial) await run([file], shard++)
+  const inventory = (await collectTests("test")).toSorted()
+  const files: string[] = process.env.SYNERGY_TEST_FILES ? JSON.parse(process.env.SYNERGY_TEST_FILES) : inventory
+  if (!files.length || files.some((file) => !inventory.includes(file)))
+    throw new Error("Unknown or empty test selection")
+  for (const batch of frontendBatches(files, options)) await run(batch.files, batch.id, batch)
 
   if (failedBatches.length > 0) {
     console.error(

@@ -10,10 +10,11 @@ description: Navigate and trace the Synergy codebase, identify subsystem ownersh
 1. Read [Architecture overview](../../../docs/architecture/README.md) and [Package map](../../../docs/reference/packages.md).
 2. Select only the relevant canonical documents:
    - runtime/Scope: `runtime-and-scope.md`
+   - experimental features, activation and graduation: `feature-lifecycle.md`
    - workspace and files: `workspace-and-files.md`
    - session/message/compaction: `session-and-messages.md`, `llm-loop.md`
    - Web state: `frontend-data-sync.md`
-   - Channels and Native Clarus: `channels.md`
+   - Channels: `channels.md`
    - permissions/tools: `execution-boundaries.md`
    - delegation: `cortex.md`
    - Plan, BlueprintLoop, Light Loop, Lattice: `workflows.md`
@@ -25,7 +26,7 @@ description: Navigate and trace the Synergy codebase, identify subsystem ownersh
    - HTTP/OpenAPI/SDK contract: `change-server-api`
    - durable state or migration: `change-persistence`
    - capability/permission/sandbox behavior: `change-execution-boundaries`
-   - Channel runtime, managed Projects, or Native Clarus: `change-channel-runtime`
+   - Channel runtime, managed Projects: `change-channel-runtime`
    - Browser/Desktop/WebRTC runtime: `change-browser-runtime`
    - plugin public/host/runtime behavior: `change-plugin-runtime`
 
@@ -53,3 +54,13 @@ For an explanation, report:
 For a change plan, name the smallest coherent set of owners and verification gates. Include SDK regeneration, config/help/docs sync, or persistence migration only when the change actually crosses those contracts.
 
 Do not reproduce a static directory inventory. Link canonical docs and cite current files or symbols so the analysis survives repository growth.
+
+## Read the Relevant Branch
+
+Before changing a boundary below, read its reference and the canonical document it links. Load only branches involved in the trace.
+
+| Change                                                                                     | Required reference                                       |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| Runtime registries, contexts, caches, callbacks, binding imports, startup or disposal      | [Runtime ownership](references/runtime-ownership.md)     |
+| Workspace/file identity, history, processes, Environment-backed views, API-only invocation | [Workspace evidence](references/workspace-evidence.md)   |
+| Components, optional owners, packaging, removal/reinstall, delayed migrations              | [Component lifecycle](references/component-lifecycle.md) |

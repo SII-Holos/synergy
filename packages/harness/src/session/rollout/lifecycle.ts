@@ -1,0 +1,289 @@
+import { Lock } from "../../util/lock"
+import { RolloutProcess } from "./process"
+import { Session } from ".."
+import { MessageV2 } from "../message-v2"
+import { SessionHistory } from "../history"
+import { SessionProgress } from "../progress"
+import { SessionInbox } from "../inbox"
+import { SessionWorkflowService } from "../workflow"
+import { SessionExecutionOwners } from "../execution-owners"
+import { Storage } from "../../storage/storage"
+import { RolloutLedger } from "./ledger"
+import { RolloutSchema } from "./schema"
+import { Config } from "../../config/config"
+import { Experiment } from "../../config/experiment"
+import { SessionManager } from "../manager"
+import { LoopJob } from "../loop-job"
+import { SessionCortexRuntime } from "../cortex-runtime"
+import { RolloutAdmissionError, RolloutRecordingError } from "./error"
+import { StorageBusyError, StorageClosedError } from "../../storage/errors"
+import { RolloutExecution } from "./execution"
+import { Bus } from "../../bus"
+import { SessionEvent } from "../event"
+import { ObservabilitySpans } from "../../observability/spans"
+
+export namespace RolloutLifecycle {
+  export function owner(session: Session.Info): RolloutSchema.Owner {
+    return { kind: "session", scopeID: session.scope.id, sessionID: session.id }
+  }
+
+  export async function parent(session: Session.Info): Promise<RolloutSchema.RunRecord["parent"]> {
+    if (!session.cortex) return undefined
+    const source = await Session.get(session.cortex.parentSessionID)
+    const messageID = session.cortex.parentMessageID
+    const message = await MessageV2.readInfo({ scopeID: source.scope.id, sessionID: source.id, messageID }).catch(
+      (error) => {
+        if (error instanceof Storage.NotFoundError) return undefined
+        throw error
+      },
+    )
+    if (!message) return { owner: owner(source), runID: null, messageID }
+    const runID = message.rootID ?? (message.role === "user" ? message.id : message.parentID)
+    return { owner: owner(source), runID, messageID }
+  }
+
+  export async function start(session: Session.Info, root: MessageV2.User, parts: MessageV2.Part[]) {
+    const segment = await RolloutLedger.beginSegment({
+      owner: owner(session),
+      runID: root.id,
+      input: JSON.parse(JSON.stringify({ message: root, parts })),
+      parent: await parent(session),
+    })
+    const { SessionFileChanges } = await import("../file-changes")
+    await ObservabilitySpans.measure(
+      { name: "session.prepare.file_baseline", module: "session", kind: "session", sessionID: session.id },
+      () => SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id }),
+    )
+    await RolloutExecution.start(segment)
+    return segment
+  }
+
+  export async function finishSegment(
+    segment: RolloutSchema.ExecutionSegment,
+    status: Parameters<typeof RolloutLedger.finishSegment>[1],
+  ) {
+    await RolloutExecution.stop(segment)
+    const completed = await RolloutLedger.finishSegment(segment, status)
+    if (segment.owner.kind === "session") {
+      const { SessionFileChanges } = await import("../file-changes")
+      await SessionFileChanges.finish(
+        { sessionID: segment.owner.sessionID, rootID: segment.runID, segmentID: segment.id },
+        { deferSummary: true },
+      )
+    }
+    return completed
+  }
+
+  export async function configuration(
+    session: Session.Info,
+    runID: string,
+    file?: Experiment.File,
+    model?: { providerID: string; modelID: string },
+    options?: { prepareOnly?: boolean },
+  ) {
+    const existing = await RolloutLedger.getRun(owner(session), runID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (existing?.configuration) return existing.configuration
+    try {
+      if (file) Experiment.assertRuntime(file.runtime)
+      const lineage = await parent(session)
+      const inherited = lineage?.runID
+        ? (
+            await RolloutLedger.getRun(lineage.owner, lineage.runID).catch((error) => {
+              if (error instanceof Storage.NotFoundError) return undefined
+              throw error
+            })
+          )?.configuration
+        : undefined
+      if (inherited && file)
+        throw new RolloutAdmissionError({ message: "Delegated runs inherit their parent experiment" })
+      const resolution = inherited ? undefined : await Config.resolveExecutionDetails()
+      const snapshot =
+        inherited ??
+        Experiment.capture(
+          resolution!.config,
+          file,
+          model ? { model: `${model.providerID}/${model.modelID}` } : {},
+          resolution!.sources,
+        )
+      return options?.prepareOnly ? snapshot : await RolloutLedger.configureRun(owner(session), runID, snapshot)
+    } catch (cause) {
+      // Deterministic admission failures park the queued task instead of
+      // letting the queue retry the same input forever. Transient storage
+      // pressure, recording failures, and cancellation aborts keep their own
+      // retry and terminal semantics.
+      if (
+        RolloutAdmissionError.isInstance(cause) ||
+        RolloutRecordingError.isInstance(cause) ||
+        cause instanceof DOMException ||
+        cause instanceof StorageBusyError ||
+        cause instanceof StorageClosedError
+      )
+        throw cause
+      throw new RolloutAdmissionError({ message: "Unable to resolve the task's execution configuration" }, { cause })
+    }
+  }
+
+  /** Validate experiments before enqueue; configuration and provenance attach after materialization. */
+  export async function assertQueuedExperiment(session: Session.Info, file?: Experiment.File) {
+    if (!file) return
+    Experiment.assertRuntime(file.runtime)
+    const lineage = await parent(session)
+    const inherited = lineage?.runID
+      ? (
+          await RolloutLedger.getRun(lineage.owner, lineage.runID).catch((error) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+        )?.configuration
+      : undefined
+    if (inherited) throw new RolloutAdmissionError({ message: "Delegated runs inherit their parent experiment" })
+  }
+
+  export async function cancel(sessionID: string, runID: string) {
+    const stored = await Session.get(sessionID)
+    const root = await MessageV2.readInfo({ scopeID: stored.scope.id, sessionID, messageID: runID }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    const session = SessionExecutionOwners.forRoot(stored, root)
+    const identity = owner(session)
+    let run = await RolloutLedger.requestCancel(identity, runID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!run) {
+      for (const item of [...(await SessionInbox.list(sessionID)), ...(await SessionInbox.listRemoved(sessionID))]) {
+        if (item.messageID !== runID) continue
+        run = await RolloutLedger.cancelUnopenedRun(identity, runID, item.time.created)
+        await SessionInbox.remove({ sessionID, itemID: item.id })
+        break
+      }
+      if (!run) {
+        const message = (await SessionHistory.modelMessages({ sessionID })).find((message) => message.info.id === runID)
+        if (message?.info.role === "user" && message.info.isRoot)
+          run = await RolloutLedger.cancelUnopenedRun(identity, runID, message.info.time.created)
+      }
+      if (!run) throw new Storage.NotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
+    }
+    if (run.status !== "running" && run.status !== "interrupted") return run
+    for (const item of await SessionInbox.list(sessionID))
+      if (item.messageID === runID) await SessionInbox.remove({ sessionID, itemID: item.id })
+    // Signal the live owner before waiting on it: requestCancel only marks
+    // the ledger, so without the root-scoped abort the wait below would
+    // block until the model or tool call finishes naturally.
+    SessionManager.signalAbort(sessionID, { rootID: runID })
+    await Promise.all(
+      (await Session.children(sessionID)).map(async (child) => {
+        if ((await parent(child))?.runID !== runID) return
+        if (child.cortex) await SessionCortexRuntime.cancelAndDrainTask(child.cortex.taskID)
+      }),
+    )
+    const latest = (await SessionHistory.modelMessages({ sessionID })).findLast(
+      (message) => message.info.role === "user" && message.info.isRoot,
+    )
+    if (latest?.info.id === runID && session.workflow)
+      await SessionWorkflowService.setNone(sessionID, { allowRunning: true })
+    while (SessionManager.getRuntime(sessionID)?.owner?.rootID === runID) await Bun.sleep(20)
+    // Detached turn work no longer observes the lease abort; cancel it
+    // explicitly and let its ledger writes settle before the run is closed.
+    LoopJob.cancelDetached(sessionID, new Set([runID]))
+    await LoopJob.settleDetached(sessionID, new Set([runID]))
+    await RolloutProcess.cancel(identity, runID)
+    using lock = await Lock.write(`session-rollout:${sessionID}:${runID}`)
+    if (!(await RolloutLedger.segments(identity, runID)).some((segment) => segment.status === "running"))
+      await settleOrphanedRecords(identity, runID)
+    return RolloutLedger.finishRun(identity, runID, "cancelled")
+  }
+
+  /**
+   * A silent run (no running segment) whose call/tool/process records are
+   * still "running" holds orphans from an interrupted turn: the abort path
+   * skips their completion and finishRun would refuse the run forever
+   * after. Settle them as interrupted so finalize can proceed; the ledger
+   * finishers are idempotent, so repeated reconciles stay safe.
+   */
+  async function settleOrphanedRecords(identity: RolloutSchema.Owner, runID: string) {
+    for (const call of await RolloutLedger.calls(identity, runID)) {
+      if (call.status !== "running") continue
+      await RolloutLedger.finishCall(identity, runID, call.id, {
+        status: "interrupted",
+        error: "Turn ended before call completion",
+      })
+    }
+    for (const tool of await RolloutLedger.tools(identity, runID)) {
+      if (tool.status !== "running") continue
+      await RolloutLedger.writeTool({
+        ...tool,
+        status: "interrupted",
+        ended: Date.now(),
+        error: "Turn ended; external side-effect completion is unknown",
+      })
+    }
+    for (const process of await RolloutLedger.processes(identity, runID)) {
+      if (process.status !== "running" || RolloutProcess.isActive(identity, runID, process.id)) continue
+      await RolloutLedger.writeProcess({ ...process, status: "interrupted", ended: Date.now() })
+    }
+  }
+
+  export async function reconcile(sessionID: string, runID: string, outcome?: "failed" | "cancelled") {
+    using lock = await Lock.write(`session-rollout:${sessionID}:${runID}`)
+    const stored = await Session.get(sessionID)
+    const root = await MessageV2.readInfo({ scopeID: stored.scope.id, sessionID, messageID: runID }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    const session = SessionExecutionOwners.forRoot(stored, root)
+    const identity = owner(session)
+    const run = await RolloutLedger.getRun(identity, runID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!run || run.status !== "running") return run
+    if (run.recording === "failed" && !outcome) {
+      throw new RolloutRecordingError({ message: "Cannot complete a rollout whose recording failed" })
+    }
+    const segments = await RolloutLedger.segments(identity, runID)
+    if (segments.some((segment) => segment.status === "running")) return run
+    await settleOrphanedRecords(identity, runID)
+    const lastSegment = segments.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id)).at(-1)
+    outcome ??= lastSegment?.status === "failed" || lastSegment?.status === "cancelled" ? lastSegment.status : undefined
+    for (const child of await Session.children(sessionID)) {
+      if (!child.cortex) continue
+      const lineage = await parent(child)
+      if (lineage?.runID !== runID) continue
+      if (child.cortex.status === "queued" || child.cortex.status === "running" || !child.cortex.settledAt) return run
+    }
+    if (!outcome && (await SessionWorkflowService.hasPendingExecution(session))) return run
+    if (
+      !outcome &&
+      (await SessionInbox.list(sessionID)).some((item) => item.mode === "steer" && item.status !== "failed")
+    )
+      return run
+    const messages = (await SessionHistory.effectiveMessageInfos(session)).map((info) => ({ info }))
+    const terminal = SessionProgress.findTerminalReply(messages, runID)
+    const latestRoot = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)
+    const answeredLater =
+      latestRoot &&
+      latestRoot.info.id !== runID &&
+      SessionProgress.findTerminalReply(messages, latestRoot.info.id) &&
+      !SessionProgress.needsModelCall(messages, latestRoot.info.id)
+    if (!outcome && (!terminal || (SessionProgress.needsModelCall(messages, runID) && !answeredLater))) return run
+    const status = outcome ?? (terminal?.info.role === "assistant" && terminal.info.error ? "failed" : "completed")
+    const completed = await RolloutLedger.finishRun(identity, runID, status)
+    if (completed.status === "completed" && terminal?.info.role === "assistant")
+      await Bus.publish(SessionEvent.RootCompleted, { sessionID, rootID: runID, assistantID: terminal.info.id })
+    return completed
+  }
+
+  export async function reconcileDelegatedRuns(sessionID: string, excluded: ReadonlySet<string>) {
+    const runs = new Set<string>()
+    for (const child of await Session.children(sessionID)) {
+      const lineage = await parent(child)
+      if (lineage?.runID && !excluded.has(lineage.runID)) runs.add(lineage.runID)
+    }
+    for (const runID of runs) await reconcile(sessionID, runID)
+  }
+}

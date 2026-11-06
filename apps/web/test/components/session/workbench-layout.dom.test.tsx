@@ -1,0 +1,634 @@
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { chromium, type Browser, type Page } from "playwright"
+import { createServer, type ViteDevServer } from "vite"
+import solid from "vite-plugin-solid"
+import tailwind from "@tailwindcss/vite"
+import { lingui } from "@lingui/vite-plugin"
+
+let browser: Browser
+let page: Page
+let server: ViteDevServer
+let directory: string
+let url: string
+const errors: string[] = []
+const source = path.resolve(import.meta.dir, "../../../src")
+
+beforeAll(async () => {
+  directory = await mkdtemp(path.join(import.meta.dir, ".workbench-layout-"))
+  await Bun.write(
+    path.join(directory, "index.html"),
+    '<!doctype html><div id="root"></div><script type="module" src="/main.tsx"></script>',
+  )
+  await Bun.write(
+    path.join(directory, "platform.ts"),
+    `export const usePlatform = () => ({ platform: "desktop", desktopWindow: { chrome: "native" } })`,
+  )
+  await Bun.write(path.join(directory, "decision.tsx"), "export const SessionDecisionOutlet = () => null")
+  await Bun.write(
+    path.join(directory, "plugin-host.ts"),
+    "export const usePluginHost = () => ({ safeUI: true, reportError() {} })",
+  )
+  await Bun.write(
+    path.join(directory, "execution.ts"),
+    `export const useExecution = () => ({retain() {},  available: () => false, state: {} });
+     export const useSDK = () => ({ client: {} });
+     export const useParams = () => ({ id: "fixture" })`,
+  )
+  await Bun.write(
+    path.join(directory, "main.tsx"),
+    `
+    import { createSignal, Show } from "solid-js"
+    import { render } from "solid-js/web"
+    import { I18nProvider } from "@lingui/solid"
+    import { setupI18n } from "@lingui/core"
+    import { TaskDetailsPopover } from ${JSON.stringify(`/@fs/${source}/components/execution/popover.tsx`)}
+    import { SidebarNavigation } from  ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar-navigation.tsx`)}
+    import  ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.css`)}
+    import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
+    import { DesktopNativeTitlebar } from ${JSON.stringify(`/@fs/${source}/components/app-shell/desktop-native-titlebar.tsx`)}
+    import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
+    import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
+    import { PluginPageOutlet } from ${JSON.stringify(`/@fs/${source}/plugin/shell-outlet.tsx`)}
+    import { PromptDock } from ${JSON.stringify(`/@fs/${source}/components/session/prompt-dock.tsx`)}
+    import { createPromptDockHeight } from ${JSON.stringify(`/@fs/${source}/components/session/prompt-dock-height.ts`)}
+    import "@ericsanchezok/synergy-ui/styles"
+    import ${JSON.stringify(`/@fs/${source}/index.css`)}
+    import ${JSON.stringify(`/@fs/${source}/components/session/session-inbox.css`)}
+    function App() {
+      const [fresh, setFresh] = createSignal(true)
+      const [columnWidth, setColumnWidth] = createSignal(800)
+      const [ready, setReady] = createSignal(true)
+      window.setComposerReady = setReady
+      const [height, setHeight] = createSignal(0)
+      const dock = createPromptDockHeight(setHeight)
+      const input = {
+        readOnly: () => false, primaryAction: () => "send", submit: async () => setFresh(false),
+        dragging: () => false, className: () => "", current: () => ({ mode: "normal" }),
+        setComposing: () => {}, dragOver: () => {}, dragLeave: () => {}, drop: async () => {},
+        editor: { label: () => "Message", completion: () => undefined, placeholder: () => undefined,
+          mount: () => () => {}, beforeInput: () => {}, input: () => {}, paste: async () => {}, keyDown: () => {} },
+        render: part => part === "toolbar" ? <div class="prompt-input-toolbar"><button class="prompt-input-submit" type="submit" data-send>Send</button></div> : null,
+      }
+      const greeting = () => <div data-greeting>Start a task</div>
+      const composer = { input: () => input, mount: dock.mount, ready, isNewSession: fresh,
+        readOnly: () => false, isGlobal: () => true, pendingText: () => "", scopeName: () => "Home",
+        branch: () => undefined, lastModified: () => undefined, links: () => [],
+        render: part => part === "status" ? <button data-status>Connection details</button> : null }
+      return <div style="height:100dvh"><PluginPageOutlet page="session" sessionId={fresh() ? undefined : "created"} fallback={() => <DefaultSession column={{ width: columnWidth, resize: setColumnWidth }} context={{layout: {
+        minimumWidth: () => undefined, promptHeight: height,
+        render: part => part === "composer" ? <PromptDock context={composer} /> : part === "conversation" ?
+          <div class="flex-1 min-h-0"><Show when={!fresh()}><header class="stb-root" style="justify-content:flex-end"><div class="stb-right"><TaskDetailsPopover inboxCount={1} inbox={() => <div class="session-inbox-list"><div class="session-inbox-row" data-inbox>Queued follow-up</div></div>} /></div></header></Show><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message><div data-component="session-turn" class="w-full"><div data-slot="session-turn-content"><div data-slot="session-turn-timeline-item" data-kind="text" data-reply>Reply</div><div data-slot="assistant-message-meta" data-footer>Completed</div></div></div></div>}>
+            <div class="session-empty-view"><div class="session-content-column">{greeting()}</div></div>
+          </Show></div> : null,
+      }}} />} /></div>
+    }
+    function ChromeFixture() {
+      const query = new URLSearchParams(location.search)
+      const [collapsed, setCollapsed] = createSignal(false)
+      const [custom, setCustom] = createSignal(false)
+      const route = () => <><div class="stb-root"><div class="stb-left"><button class="stb-selector-btn">Model</button></div><button>Panel</button></div><div data-ui-part="conversation" /></>
+      return <div class="app-shell app-shell--desktop-native-chrome" classList={{ "app-shell--sidebar-collapsed": collapsed() }} style="height:100dvh;display:flex;flex-direction:column;--desktop-native-titlebar-traffic-width:90px">
+        <DesktopNativeTitlebar />
+        <Show when={!custom()} fallback={<div data-custom>Third-party Shell</div>}>
+          <DefaultShell context={{shell: {render: part => part === "navigation" ? <aside class="sb-root sb-integrated" classList={{"sb-collapsed":collapsed()}} style={{width: collapsed() ? "0px" : "260px", "flex-shrink": 0}}><SidebarNavigation expanded={!collapsed()} labels={{expand:"Expand",collapse:"Collapse",search:"Search",newSession:"New task"}} onToggle={() => setCollapsed(!collapsed())} onSearch={()=>{}} onNew={()=>{}}><span class="sb-logo">Brand</span></SidebarNavigation></aside> : part === "route" ? route() : null}}} />
+        </Show>
+        <button data-shell-switch onClick={() => setCustom(true)} style="position:fixed;bottom:0;right:0">Switch Shell</button>
+      </div>
+    }
+    const i18n = setupI18n({ locale: "en", messages: { en: {} } })
+    render(() => <I18nProvider i18n={i18n}>{new URLSearchParams(location.search).has("chrome") ? <ChromeFixture /> : <App />}</I18nProvider>, document.getElementById("root"))
+  `,
+  )
+  server = await createServer({
+    configFile: false,
+    root: directory,
+    cacheDir: path.join(directory, ".vite"),
+    plugins: [
+      {
+        name: "workbench-plugin-host-fixture",
+        enforce: "pre",
+        resolveId(id, importer) {
+          if (id === "./host" && importer?.endsWith("/plugin/shell-outlet.tsx")) {
+            return path.join(directory, "plugin-host.ts")
+          }
+        },
+      },
+      solid(),
+      tailwind(),
+      ...lingui(),
+    ],
+    resolve: {
+      alias: [
+        { find: /^\.\/decision-surface$/, replacement: path.join(directory, "decision.tsx") },
+        { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
+        { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
+        { find: "@/context/sdk", replacement: path.join(directory, "execution.ts") },
+        { find: "@solidjs/router", replacement: path.join(directory, "execution.ts") },
+        { find: "@", replacement: source },
+      ],
+    },
+    optimizeDeps: {
+      noDiscovery: true,
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/jsx-runtime",
+        "@solid-primitives/resize-observer",
+        "@lingui/core",
+        "@lingui/solid",
+        "fuzzysort",
+        "zod",
+      ],
+    },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
+  })
+  await server.listen()
+  await server.warmupRequest("/main.tsx")
+  url = server.resolvedUrls!.local[0]!
+  browser = await chromium.launch({ headless: true })
+}, 60_000)
+
+beforeEach(async () => {
+  errors.length = 0
+  page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  page.setDefaultTimeout(5000)
+  page.setDefaultNavigationTimeout(30000)
+  page.on("pageerror", (error) => errors.push(error.message))
+})
+
+afterEach(async () => {
+  await page?.close()
+})
+
+afterAll(async () => {
+  await browser?.close()
+  await server?.close()
+  if (directory) await rm(directory, { recursive: true, force: true })
+})
+
+test("draft hydration preserves the editor and bottom anchor while temporarily disabling interaction", async () => {
+  await open()
+  const editor = page.getByRole("textbox", { name: "Message", exact: true })
+  await editor.focus()
+  const node = await editor.elementHandle()
+  const before = (await editor.boundingBox())!
+  await page.evaluate(() => (window as unknown as { setComposerReady(value: boolean): void }).setComposerReady(false))
+  await page.waitForTimeout(100)
+  expect(await node!.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await node!.evaluate((element) => !!element.closest("[inert]"))).toBe(true)
+  await page.evaluate(() => (window as unknown as { setComposerReady(value: boolean): void }).setComposerReady(true))
+  expect(await node!.evaluate((element) => element === document.activeElement)).toBe(true)
+  expect(await node!.evaluate((element) => element === document.querySelector('[role="textbox"]'))).toBe(true)
+  await page.evaluate(() => (window as unknown as { setComposerReady(value: boolean): void }).setComposerReady(false))
+  await page.waitForTimeout(100)
+  await page.evaluate(() => {
+    const button = document.createElement("button")
+    button.id = "outside-focus"
+    document.body.append(button)
+    button.focus()
+    ;(window as unknown as { setComposerReady(value: boolean): void }).setComposerReady(true)
+  })
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe("outside-focus")
+  await page.locator("#outside-focus").evaluate((element) => element.remove())
+  expect((await editor.boundingBox())!.y + (await editor.boundingBox())!.height).toBeCloseTo(
+    before.y + before.height,
+    1,
+  )
+  expect(errors).toEqual([])
+})
+
+async function open(width = 1440, height = 900) {
+  errors.length = 0
+  await page.setViewportSize({ width, height })
+  await page.goto(url)
+  await page
+    .locator("[data-send]")
+    .waitFor({ timeout: 5000 })
+    .catch((error) => {
+      throw new AggregateError(
+        [error, ...errors.map((message) => new Error(message))],
+        "Workbench fixture did not mount",
+      )
+    })
+  expect(errors).toEqual([])
+}
+
+async function bounds(selector: string) {
+  return page.locator(selector).evaluate((element) => element.getBoundingClientRect().toJSON())
+}
+
+test("compact input reserves responsive bottom space in the dock and available height", async () => {
+  for (const size of [
+    { width: 1440, height: 900, gap: 12 },
+    { width: 1024, height: 600, gap: 8 },
+    { width: 768, height: 812, gap: 12 },
+    { width: 375, height: 812, gap: 6 },
+  ]) {
+    await open(size.width, size.height)
+    const input = await bounds(".prompt-input-shell")
+    expect((await bounds(".session-composer-editor")).height).toBe(64)
+    expect(size.height - input.bottom).toBe(size.gap)
+    await page.waitForFunction(() => {
+      const pane = document.querySelector(".session-workbench-pane")!
+      const dock = document.querySelector(".session-prompt-dock")!
+      return (
+        Number.parseFloat(getComputedStyle(pane).getPropertyValue("--prompt-height")) ===
+        Math.ceil(dock.getBoundingClientRect().height)
+      )
+    })
+    const available = await page
+      .locator(".session-composer")
+      .evaluate((element) =>
+        Number.parseFloat((element as HTMLElement).style.getPropertyValue("--composer-available-height")),
+      )
+    expect(available).toBe(size.height - size.gap - 8)
+  }
+}, 20_000)
+
+test("new and existing tasks keep input actions without a reserved status footer", async () => {
+  await open()
+  expect(await page.locator("[data-status]").count()).toBe(0)
+  expect(await page.locator("[data-send]").isVisible()).toBe(true)
+  await page.locator("[data-send]").click()
+  expect(await page.locator("[data-status]").count()).toBe(0)
+  expect(await page.locator("[data-send]").isVisible()).toBe(true)
+  const dock = await bounds(".session-prompt-dock-content")
+  const input = await bounds(".prompt-input-shell")
+  expect(Math.abs(dock.bottom - input.bottom)).toBeLessThanOrEqual(1)
+}, 30_000)
+
+test("first send keeps the composer anchored and the editor mounted", async () => {
+  await open()
+  await page.locator('[role="textbox"]').fill("Unsent draft")
+  const editor = await page.locator('[role="textbox"]').elementHandle()
+  const before = await bounds(".prompt-input-shell")
+  expect(before.bottom).toBeGreaterThan(810)
+  expect(await page.locator("[data-greeting]").count()).toBe(1)
+  await page.locator("[data-send]").click()
+  await page.waitForTimeout(450)
+  const after = await bounds(".prompt-input-shell")
+  expect(Math.abs(after.bottom - before.bottom)).toBeLessThanOrEqual(1)
+  expect(await page.locator('[role="textbox"]').innerText()).toBe("Unsent draft")
+  expect(await editor!.evaluate((element) => element === document.querySelector('[role="textbox"]'))).toBe(true)
+  const content = await bounds(".session-conversation-content")
+  const column = await bounds(".session-prompt-dock-content")
+  expect(Math.abs(content.left - column.left)).toBeLessThanOrEqual(1)
+  expect(Math.abs(content.width - column.width)).toBeLessThanOrEqual(1)
+  expect(await page.locator('[role="textbox"]').count()).toBe(1)
+}, 20_000)
+
+test("task details contain the inbox on narrow panes and touch actions retain their hit area", async () => {
+  for (const width of [1440, 768, 375]) {
+    await open(width, 812)
+    await page.locator("[data-send]").click()
+    await page.getByRole("button", { name: "Task details", exact: true }).click()
+    await page.locator(".execution-compact-identity").hover()
+    await page.locator(".execution-identity-action").click()
+    await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+    await page.locator("[data-inbox]").waitFor()
+    const popover = await bounds(".execution-popover")
+    const inbox = await bounds("[data-inbox]")
+    expect(popover.left).toBeGreaterThanOrEqual(0)
+    expect(popover.right).toBeLessThanOrEqual(width)
+    expect(inbox.left).toBeGreaterThanOrEqual(popover.left)
+    expect(inbox.right).toBeLessThanOrEqual(popover.right)
+    await page.locator(".execution-inbox-back").click()
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-identity-action"))
+    await page.keyboard.press("Escape")
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-trigger"))
+    if (width === 375) {
+      const send = await bounds("[data-send]")
+      expect(send.width).toBeGreaterThanOrEqual(44)
+      expect(send.height).toBeGreaterThanOrEqual(44)
+    }
+  }
+}, 20_000)
+
+test("task details preserve the inbox throughout animated dismissal and return focus", async () => {
+  type DismissalWindow = Window & {
+    dismissalDone: boolean
+    dismissalFrames: Array<{ closed: boolean; title: string | null; inboxHidden: boolean }>
+  }
+  await open()
+  await page.locator("[data-send]").click()
+  const trigger = page.locator(".execution-trigger")
+  for (const action of ["close", "escape", "outside", "trigger"]) {
+    await trigger.click()
+    await page.locator(".execution-compact-identity").hover()
+    await page.locator(".execution-identity-action").click()
+    await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+    await page.locator("[data-inbox]").waitFor()
+    await page
+      .locator(".execution-popover")
+      .evaluate((element) => Promise.allSettled(element.getAnimations().map((animation) => animation.finished)))
+    await page.evaluate(() => {
+      const state = window as unknown as DismissalWindow
+      const popup = document.querySelector(".execution-popover")!
+      state.dismissalFrames = []
+      state.dismissalDone = false
+      const sample = () => {
+        if (!popup.isConnected) {
+          state.dismissalDone = true
+          return
+        }
+        state.dismissalFrames.push({
+          closed: popup.hasAttribute("data-closed"),
+          title: popup.querySelector('[data-slot="popover-title"]')!.textContent,
+          inboxHidden: !popup.querySelector(".execution-inbox-back"),
+        })
+        requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+    if (action === "close") await page.locator('[data-slot="popover-close-button"]').click()
+    if (action === "escape") await page.keyboard.press("Escape")
+    if (action === "outside") await page.locator('[role="textbox"]').click()
+    if (action === "trigger") await trigger.click()
+    await page.locator(".execution-popover").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => (window as unknown as DismissalWindow).dismissalDone)
+    const frames = await page.evaluate(() =>
+      (window as unknown as DismissalWindow).dismissalFrames.filter((frame) => frame.closed),
+    )
+    expect(frames.length).toBeGreaterThan(0)
+    expect(frames.every((frame) => frame.title === "Inbox history" && !frame.inboxHidden)).toBe(true)
+    await page.waitForFunction(
+      (outside) => document.activeElement?.matches(outside ? '[role="textbox"]' : ".execution-trigger"),
+      action === "outside",
+    )
+    await trigger.click()
+    await page.locator(".execution-identity-action").waitFor()
+    expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+    await page.waitForFunction(() => document.querySelector(".execution-popover")?.contains(document.activeElement))
+    await page.keyboard.press("Escape")
+    await page.locator(".execution-popover").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.classList.contains("execution-trigger"))
+    expect(errors).toEqual([])
+  }
+}, 30_000)
+
+test("reopening task details during dismissal resets navigation without moving focus out of the popup", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  await page.locator('[role="textbox"]').fill("Retained unsent draft")
+  await page.locator(".execution-trigger").click()
+  for (let cycle = 0; cycle < 4; cycle++) {
+    await page.locator(".execution-compact-identity").hover()
+    await page.locator(".execution-identity-action").click()
+    await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+    await page.locator("[data-inbox]").waitFor()
+    await page
+      .locator(".execution-popover")
+      .evaluate((element) => Promise.allSettled(element.getAnimations().map((animation) => animation.finished)))
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('[data-slot="popover-close-button"]')!.click()
+      document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+    })
+    await page.waitForFunction(() => {
+      const popup = document.querySelector(".execution-popover")
+      return popup && !popup.hasAttribute("data-closed")
+    })
+    await page.locator(".execution-popover").evaluate(async (element) => {
+      await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+    expect(
+      await page.locator(".execution-identity-action").evaluate((element) => element === document.activeElement),
+    ).toBe(true)
+    expect(await page.locator(".execution-inbox-back").count()).toBe(0)
+    expect(await page.locator('[role="textbox"]').textContent()).toBe("Retained unsent draft")
+    expect(await page.locator("[data-message]").isVisible()).toBe(true)
+  }
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("completed task detail dismissal cannot move focus out of a newly opened popup", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  await page.locator(".execution-trigger").click()
+  await page.locator(".execution-compact-identity").hover()
+  await page.locator(".execution-identity-action").click()
+  await page.getByRole("button", { name: "Inbox history", exact: true }).click()
+  await page.locator("[data-inbox]").waitFor()
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const popup = document.querySelector(".execution-popover")!
+        const trigger = document.querySelector<HTMLButtonElement>(".execution-trigger")!
+        const observer = new MutationObserver(() => {
+          if (popup.isConnected) return
+          observer.disconnect()
+          trigger.click()
+          resolve()
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+        document.querySelector<HTMLButtonElement>('[data-slot="popover-close-button"]')!.click()
+      }),
+  )
+  await page.locator(".execution-popover").evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  })
+  expect(await page.locator('[data-slot="popover-title"]').textContent()).toBe("Task details")
+  expect(await page.locator(".execution-popover").evaluate((element) => element.contains(document.activeElement))).toBe(
+    true,
+  )
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("long input grows upward and keeps actions in a short or narrow viewport", async () => {
+  for (const size of [
+    { width: 1024, height: 600 },
+    { width: 375, height: 812 },
+  ]) {
+    await open(size.width, size.height)
+    const before = await bounds(".prompt-input-shell")
+    await page
+      .locator('[role="textbox"]')
+      .fill(Array.from({ length: 30 }, (_, i) => `Line ${i + 1}: a long synthetic draft`).join("\n"))
+    const after = await bounds(".prompt-input-shell")
+    const action = await bounds("[data-send]")
+    expect(Math.abs(after.bottom - before.bottom)).toBeLessThanOrEqual(1)
+    expect(after.top).toBeGreaterThan(60)
+    expect(action.bottom).toBeLessThanOrEqual(size.height)
+    expect(action.left).toBeGreaterThanOrEqual(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    const editor = await page.locator('[role="textbox"]').evaluate((element) => {
+      const scroller = element.parentElement!
+      return { height: scroller.clientHeight, scroll: scroller.scrollHeight }
+    })
+    expect(editor.height).toBeLessThanOrEqual(Math.min(240, size.height * 0.4))
+    expect(editor.scroll).toBeGreaterThan(editor.height)
+  }
+}, 20_000)
+
+test("native host controls share the built-in row and retain third-party Shell space", async () => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(url + "?chrome")
+  for (const collapsed of [false, true]) {
+    if (collapsed) await page.locator("[data-sidebar-toggle]").click()
+    await page.locator(".stb-root").waitFor()
+    const native = await bounds(".desktop-native-titlebar")
+    const header = await bounds(".stb-root")
+    const model = await bounds(".stb-selector-btn")
+    const toggle = await bounds("[data-sidebar-toggle]")
+    expect(native.height).toBe(48)
+    expect(native.top).toBe(header.top)
+    expect(model.left).toBeGreaterThanOrEqual(native.right)
+    expect(toggle.left).toBeGreaterThanOrEqual(native.right)
+    expect(toggle.top).toBeLessThan(native.bottom)
+    await page.waitForFunction(
+      (width) => Math.abs(document.querySelector(".sb-root")!.getBoundingClientRect().width - width) < 0.01,
+      collapsed ? 0 : 260,
+    )
+    expect((await bounds(".sb-root")).width).toBe(collapsed ? 0 : 260)
+    expect(await page.locator(".sb-logo").isVisible()).toBe(false)
+    expect(
+      await page.locator(".stb-selector-btn").evaluate((el) => getComputedStyle(el).getPropertyValue("app-region")),
+    ).toBe("no-drag")
+  }
+  await page
+    .locator(".app-shell")
+    .evaluate((el) => (el as HTMLElement).style.setProperty("--desktop-native-titlebar-traffic-width", "0px"))
+  expect((await bounds("[data-sidebar-toggle]")).left).toBeLessThan(20)
+  expect((await bounds(".desktop-native-titlebar")).width).toBe(0)
+  await page.locator("[data-shell-switch]").click()
+  await page.locator("[data-custom]").waitFor({ state: "attached", timeout: 2000 })
+  expect((await bounds("[data-custom]")).top).toBe((await bounds(".desktop-native-titlebar")).bottom)
+}, 20_000)
+
+test("conversation width resizes the transcript and composer together without remounting the draft", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  const editor = page.getByRole("textbox", { name: "Message", exact: true })
+  await editor.fill("Retained draft")
+  await editor.evaluate((el) => (el.dataset.retained = "yes"))
+  const expectTextAlignment = async () => {
+    const start = (selector: string) =>
+      page.locator(selector).evaluate((element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return range.getClientRects()[0]!.left
+      })
+    const editorStart = await start('[role="textbox"]')
+    expect(Math.abs((await start("[data-reply]")) - editorStart)).toBeLessThanOrEqual(1)
+    expect(Math.abs((await start("[data-footer]")) - editorStart)).toBeLessThanOrEqual(1)
+  }
+  const handle = page.getByRole("separator", { name: "Resize conversation" })
+  await handle.press("ArrowRight")
+  expect((await bounds("[data-message]")).width).toBe(832)
+  expect((await bounds(".session-prompt-dock-content")).width).toBe(832)
+  await expectTextAlignment()
+  const box = await handle.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + box!.width / 2 + 100, box!.y + box!.height / 2)
+  await page.mouse.up()
+  expect((await bounds("[data-message]")).width).toBe(1032)
+  expect((await bounds(".session-prompt-dock-content")).width).toBe(1032)
+  await expectTextAlignment()
+  expect(await editor.getAttribute("data-retained")).toBe("yes")
+  expect(await editor.textContent()).toBe("Retained draft")
+  await handle.dblclick()
+  expect((await bounds("[data-message]")).width).toBe(800)
+  await expectTextAlignment()
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 375)
+  expect(await handle.isVisible()).toBe(false)
+  expect((await bounds(".session-prompt-dock-content")).width).toBe(375)
+  await expectTextAlignment()
+})
+
+test("conversation resize supports limits and cancels an active drag", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  const handle = page.getByRole("separator", { name: "Resize conversation" })
+  await handle.press("End")
+  expect((await bounds("[data-message]")).width).toBe(1440)
+  await handle.press("Home")
+  await handle.press("ArrowLeft")
+  expect((await bounds("[data-message]")).width).toBe(768)
+  const box = await handle.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + 100, box!.y + box!.height / 2)
+  await page.keyboard.press("Escape")
+  await page.mouse.up()
+  expect((await bounds("[data-message]")).width).toBe(768)
+  await page.setViewportSize({ width: 600, height: 812 })
+  await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 600)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 768)
+})
+
+test("cancelling a constrained column drag preserves the stored width and End uses an ultrawide pane", async () => {
+  await open(2400)
+  await page.locator("[data-send]").click()
+  const handle = page.getByRole("separator", { name: "Resize conversation" })
+  await handle.press("End")
+  expect((await bounds("[data-message]")).width).toBe(2400)
+  for (const cancel of ["escape", "pointercancel"]) {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    const box = await handle.boundingBox()
+    const paneRight = await page.locator(".session-workbench-pane").evaluate((el) => el.getBoundingClientRect().right)
+    expect(box!.x + box!.width).toBeLessThan(paneRight - 4)
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box!.x - 80, box!.y + box!.height / 2)
+    if (cancel === "escape") await page.keyboard.press("Escape")
+    else await handle.dispatchEvent("pointercancel", { pointerId: 1 })
+    await page.mouse.up()
+    await page.setViewportSize({ width: 2400, height: 900 })
+    await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 2400)
+  }
+})
+
+test("the column grip stays hidden until the pointer or keyboard reaches it", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  const handle = page.getByRole("separator", { name: "Resize conversation" })
+  const grip = () =>
+    handle.evaluate((element) => {
+      const style = getComputedStyle(element, "::after")
+      return { opacity: style.opacity, width: element.getBoundingClientRect().width }
+    })
+
+  expect((await grip()).opacity).toBe("0")
+  expect((await grip()).width).toBe(16)
+
+  const box = await handle.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('[role="separator"]')!, "::after").opacity === "1",
+  )
+
+  await page.mouse.move(0, 0)
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('[role="separator"]')!, "::after").opacity === "0",
+  )
+
+  // A keyboard user cannot position a grip they cannot see, so real Tab
+  // navigation must reveal it. Programmatic focus does not set the keyboard
+  // modality, which is why this walks the actual tab order.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  let reached = false
+  for (let step = 0; step < 60 && !reached; step++) {
+    await page.keyboard.press("Tab")
+    reached = await page.evaluate(
+      () => document.activeElement?.classList.contains("conversation-column-resize-handle") ?? false,
+    )
+  }
+  expect(reached).toBe(true)
+  expect(await handle.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+  // The grip fades in over 150ms, so wait for the transition to settle rather
+  // than reading the first frame.
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('[role="separator"]')!, "::after").opacity === "1",
+  )
+  expect((await grip()).opacity).toBe("1")
+  await handle.press("ArrowRight")
+  expect((await bounds("[data-message]")).width).toBe(832)
+})

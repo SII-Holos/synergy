@@ -6,9 +6,11 @@ import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
+import { reviewFileKey } from "./session-review-model"
 import { TURN_CHANGE_DESC } from "./tool-title-descriptors"
 import {
   turnChangeSummaryHiddenCount,
+  turnChangeSummaryFiles,
   turnChangeSummaryTitle,
   turnChangeSummaryToggleLabel,
   turnChangeSummaryVisibleDiffs,
@@ -19,6 +21,7 @@ export type { TurnChangeSummaryDiff } from "./turn-change-summary-panel-model"
 
 export type TurnChangeSummaryPanelProps = {
   diffs: TurnChangeSummaryDiff[]
+  totals?: { files: number; additions: number; deletions: number }
   state?: Exclude<TurnDiffPanelState, "hidden">
   animateReady?: boolean
   previewLimit?: number
@@ -30,43 +33,26 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
   const { _, i18n } = useLingui()
   const [store, setStore] = createStore({ expanded: false })
   const state = () => props.state ?? "ready"
+  const entering = props.animateReady === true
   const previewLimit = () => props.previewLimit ?? 3
-  const hiddenCount = createMemo(() => turnChangeSummaryHiddenCount(props.diffs, previewLimit()))
+  const files = createMemo(() => turnChangeSummaryFiles(props.diffs))
+  const hiddenCount = createMemo(() => turnChangeSummaryHiddenCount(files(), previewLimit()))
   const visibleDiffs = createMemo(() =>
-    turnChangeSummaryVisibleDiffs(props.diffs, { expanded: store.expanded, previewLimit: previewLimit() }),
+    turnChangeSummaryVisibleDiffs(files(), { expanded: store.expanded, previewLimit: previewLimit() }),
   )
-  const title = createMemo(() => turnChangeSummaryTitle(props.diffs.length, i18n()))
-  const statusText = createMemo(() =>
-    state() === "pending" ? _(TURN_CHANGE_DESC.calculating) : _(TURN_CHANGE_DESC.calculationFailed),
-  )
-  const label = createMemo(() => (state() === "ready" ? title() : statusText()))
+  const title = createMemo(() => turnChangeSummaryTitle(props.totals?.files ?? files().length, i18n()))
   const toggleLabel = createMemo(() =>
     turnChangeSummaryToggleLabel({ expanded: store.expanded, hiddenCount: hiddenCount() }, i18n()),
   )
 
   return (
-    <section
-      data-component="turn-change-summary-panel"
-      data-diff-state={state()}
-      classList={{ "turn-change-summary-entering": state() === "ready" && props.animateReady === true }}
-      aria-label={label()}
-      aria-busy={state() === "pending" ? "true" : undefined}
-      aria-live={state() === "error" ? "polite" : undefined}
-    >
-      <Show
-        when={state() === "ready"}
-        fallback={
-          <div data-slot="turn-change-summary-header">
-            <div data-slot="turn-change-summary-title-group">
-              <span data-slot="turn-change-summary-icon" aria-hidden="true">
-                <Icon name={getSemanticIcon("command.review")} size="small" />
-              </span>
-              <div data-slot="turn-change-summary-title-copy">
-                <div data-slot="turn-change-summary-title">{statusText()}</div>
-              </div>
-            </div>
-          </div>
-        }
+    <Show when={(props.totals?.files ?? files().length) > 0}>
+      <section
+        data-component="turn-change-summary-panel"
+        data-diff-state={state()}
+        classList={{ "turn-change-summary-entering": entering }}
+        aria-label={title()}
+        aria-busy={state() === "pending" ? "true" : undefined}
       >
         <div data-slot="turn-change-summary-header">
           <div data-slot="turn-change-summary-title-group">
@@ -75,17 +61,23 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             </span>
             <div data-slot="turn-change-summary-title-copy">
               <div data-slot="turn-change-summary-title">{title()}</div>
-              <DiffChanges changes={props.diffs} />
+              <DiffChanges changes={props.totals ?? files()} />
             </div>
           </div>
-          <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
-            {_(TURN_CHANGE_DESC.reviewChanges)}
-          </button>
+          <div data-slot="turn-change-summary-actions">
+            <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
+              {_(TURN_CHANGE_DESC.reviewChanges)}
+            </button>
+          </div>
         </div>
         <div data-slot="turn-change-summary-list">
           <For each={visibleDiffs()}>
             {(diff) => (
-              <button type="button" data-slot="turn-change-summary-row" onClick={() => props.onFileSelected(diff.file)}>
+              <button
+                type="button"
+                data-slot="turn-change-summary-row"
+                onClick={() => props.onFileSelected(reviewFileKey(diff))}
+              >
                 <span data-slot="turn-change-summary-file-info">
                   <FileIcon node={{ path: diff.file, type: "file" }} data-slot="turn-change-summary-file-icon" />
                   <span data-slot="turn-change-summary-file-path">
@@ -115,7 +107,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             {toggleLabel()}
           </button>
         </Show>
-      </Show>
-    </section>
+      </section>
+    </Show>
   )
 }

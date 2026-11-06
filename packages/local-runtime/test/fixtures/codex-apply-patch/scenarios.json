@@ -1,0 +1,619 @@
+{
+  "provenance": {
+    "upstream": {
+      "repository": "https://github.com/openai/codex",
+      "commit": "160b2b1ef62114eeb41e41e5e3be0000d944b713",
+      "path": "codex-rs/apply-patch/tests/fixtures/scenarios",
+      "tree": "e63f926297ff92caecb6d014b59c2819d67dbf6d",
+      "scenarioCount": 25,
+      "license": "Apache-2.0",
+      "licenseSha256": {
+        "LICENSE": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc",
+        "NOTICE": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
+      }
+    },
+    "downstream": {
+      "repository": "https://github.com/SII-Holos/synergy",
+      "baseCommit": "15842eafba2d0dbbd83e68ae40162bfda7432920",
+      "modifications": [
+        "Packed all upstream regular UTF-8 files and directory entries into JSON; decoded strings retain exact bytes, including CRLF, bare CR and terminal-newline state. The per-scenario SHA-256 map refers to the original upstream files.",
+        "The replay suite explicitly expects scenario 015 to reject during whole-patch preflight and leave its original empty input unchanged, rather than retain the earlier Add.",
+        "Scenario 014 is retained verbatim: its input actually ends in LF at this commit. A separate downstream regression removes only that final LF and expects the update not to add it back."
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "name": "001_add_file",
+      "input": {},
+      "patch": "*** Begin Patch\n*** Add File: bar.md\n+This is a new file\n*** End Patch\n",
+      "expected": {
+        "bar.md": {
+          "kind": "file",
+          "content": "This is a new file\n"
+        }
+      },
+      "sha256": {
+        "expected/bar.md": "dd96989d943734993ecd4dfc86a3b6809640f9690690ae5579044525316d03ef",
+        "patch.txt": "aa18ebd5e858578e491321489cd17515e03da90c169eda64bbcdce7599c5261b"
+      }
+    },
+    {
+      "name": "002_multiple_operations",
+      "input": {
+        "delete.txt": {
+          "kind": "file",
+          "content": "obsolete\n"
+        },
+        "modify.txt": {
+          "kind": "file",
+          "content": "line1\nline2\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Add File: nested/new.txt\n+created\n*** Delete File: delete.txt\n*** Update File: modify.txt\n@@\n-line2\n+changed\n*** End Patch\n",
+      "expected": {
+        "modify.txt": {
+          "kind": "file",
+          "content": "line1\nchanged\n"
+        },
+        "nested": {
+          "kind": "directory"
+        },
+        "nested/new.txt": {
+          "kind": "file",
+          "content": "created\n"
+        }
+      },
+      "sha256": {
+        "input/delete.txt": "abdcccf4a6a5fae3da2c8232d6fbf33b61d5db886742c35218e724b8e5c6b0e0",
+        "input/modify.txt": "2751a3a2f303ad21752038085e2b8c5f98ecff61a2e4ebbd43506a941725be80",
+        "expected/modify.txt": "7c3bb4651da2a3024085602195a360e4e084aee735e236bb455f3b2687edf876",
+        "expected/nested/new.txt": "59134a4054b27a3fc30e1ac81d9b9168dc0561f65982151324a021fe8ce88d06",
+        "patch.txt": "d3477a702074b84a8aa62fed091b40c5f8f5b4a86bb6f49894d3f9bdd12f1084"
+      }
+    },
+    {
+      "name": "003_multiple_chunks",
+      "input": {
+        "multi.txt": {
+          "kind": "file",
+          "content": "line1\nline2\nline3\nline4\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: multi.txt\n@@\n-line2\n+changed2\n@@\n-line4\n+changed4\n*** End Patch\n",
+      "expected": {
+        "multi.txt": {
+          "kind": "file",
+          "content": "line1\nchanged2\nline3\nchanged4\n"
+        }
+      },
+      "sha256": {
+        "input/multi.txt": "9a1fd5560147da610cde03a9e0cf1db3d4f93b53f46ac67e754cb42fb7fb911a",
+        "expected/multi.txt": "e32d16d64119533b3fd1521cb84c1850b15ed961381fc0dfe1d7cd9f3475e5b8",
+        "patch.txt": "b8fb2de70747f6316cec64bb3e13d5799c4ec5c4db760ff9016a28ec1acd5e97"
+      }
+    },
+    {
+      "name": "004_move_to_new_directory",
+      "input": {
+        "old": {
+          "kind": "directory"
+        },
+        "old/name.txt": {
+          "kind": "file",
+          "content": "old content\n"
+        },
+        "old/other.txt": {
+          "kind": "file",
+          "content": "unrelated file\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: old/name.txt\n*** Move to: renamed/dir/name.txt\n@@\n-old content\n+new content\n*** End Patch\n",
+      "expected": {
+        "old": {
+          "kind": "directory"
+        },
+        "old/other.txt": {
+          "kind": "file",
+          "content": "unrelated file\n"
+        },
+        "renamed": {
+          "kind": "directory"
+        },
+        "renamed/dir": {
+          "kind": "directory"
+        },
+        "renamed/dir/name.txt": {
+          "kind": "file",
+          "content": "new content\n"
+        }
+      },
+      "sha256": {
+        "input/old/name.txt": "40eda80edfc38b36bdcdc408aa6ff2cc40b708e46ece9dfd2b2801a05a18a5fc",
+        "input/old/other.txt": "6b48d86f459d6cab2a77f0cfccce4232d80d4047f3b5f11139a6b37fb9873a6e",
+        "expected/old/other.txt": "6b48d86f459d6cab2a77f0cfccce4232d80d4047f3b5f11139a6b37fb9873a6e",
+        "expected/renamed/dir/name.txt": "1c3ef9a7c817b4642bcb3cb1456fbce92a6f992df2e1d6ad9d8a2dfb4fdf42f6",
+        "patch.txt": "3a3982b7bed7fe95be34c697a5b1b9d99bab69bf0387b8b5adfb10953494d730"
+      }
+    },
+    {
+      "name": "005_rejects_empty_patch",
+      "input": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** End Patch\n",
+      "expected": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "sha256": {
+        "input/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "expected/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "patch.txt": "20f1032ab87728c78fe8c6428c853427441ba4297dd0efac72ab470ae76e9610"
+      }
+    },
+    {
+      "name": "006_rejects_missing_context",
+      "input": {
+        "modify.txt": {
+          "kind": "file",
+          "content": "line1\nline2\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: modify.txt\n@@\n-missing\n+changed\n*** End Patch\n",
+      "expected": {
+        "modify.txt": {
+          "kind": "file",
+          "content": "line1\nline2\n"
+        }
+      },
+      "sha256": {
+        "input/modify.txt": "2751a3a2f303ad21752038085e2b8c5f98ecff61a2e4ebbd43506a941725be80",
+        "expected/modify.txt": "2751a3a2f303ad21752038085e2b8c5f98ecff61a2e4ebbd43506a941725be80",
+        "patch.txt": "1f00db0e051d695801cc8607e1905d4c78b6e871bd91fad704585eaec14f2d5e"
+      }
+    },
+    {
+      "name": "007_rejects_missing_file_delete",
+      "input": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Delete File: missing.txt\n*** End Patch\n",
+      "expected": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "sha256": {
+        "input/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "expected/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "patch.txt": "fe9d2c5f1f4ffff1c077bb857609abafc08b83cac3f1633843daaa6704ceb8df"
+      }
+    },
+    {
+      "name": "008_rejects_empty_update_hunk",
+      "input": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: foo.txt\n*** End Patch\n",
+      "expected": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "sha256": {
+        "input/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "expected/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "patch.txt": "d47d0fd818c62fcf0b9d751e7e5db78353885b6a86e6b5622a1dbe1cba23c60a"
+      }
+    },
+    {
+      "name": "009_requires_existing_file_for_update",
+      "input": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: missing.txt\n@@\n-old\n+new\n*** End Patch\n",
+      "expected": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "sha256": {
+        "input/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "expected/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "patch.txt": "454e38dc74d6b1943f464155c4e3c5705896941fa0f2c3116e8ccd23601387bb"
+      }
+    },
+    {
+      "name": "010_move_overwrites_existing_destination",
+      "input": {
+        "old": {
+          "kind": "directory"
+        },
+        "old/name.txt": {
+          "kind": "file",
+          "content": "from\n"
+        },
+        "old/other.txt": {
+          "kind": "file",
+          "content": "unrelated file\n"
+        },
+        "renamed": {
+          "kind": "directory"
+        },
+        "renamed/dir": {
+          "kind": "directory"
+        },
+        "renamed/dir/name.txt": {
+          "kind": "file",
+          "content": "existing\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: old/name.txt\n*** Move to: renamed/dir/name.txt\n@@\n-from\n+new\n*** End Patch\n",
+      "expected": {
+        "old": {
+          "kind": "directory"
+        },
+        "old/other.txt": {
+          "kind": "file",
+          "content": "unrelated file\n"
+        },
+        "renamed": {
+          "kind": "directory"
+        },
+        "renamed/dir": {
+          "kind": "directory"
+        },
+        "renamed/dir/name.txt": {
+          "kind": "file",
+          "content": "new\n"
+        }
+      },
+      "sha256": {
+        "input/old/name.txt": "c85090422a84ecc24a6a47260e9fd590257f6e0e02dd774ccdcfb6a9d5e798b4",
+        "input/old/other.txt": "6b48d86f459d6cab2a77f0cfccce4232d80d4047f3b5f11139a6b37fb9873a6e",
+        "input/renamed/dir/name.txt": "d32cf044872a37e6439d9055f90a0da11f1e0b07fa4e79d6ec710764ce1e206a",
+        "expected/old/other.txt": "6b48d86f459d6cab2a77f0cfccce4232d80d4047f3b5f11139a6b37fb9873a6e",
+        "expected/renamed/dir/name.txt": "7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c",
+        "patch.txt": "9328b30823e578f20d2db55d35a15a1522eade17b5970ef5c76498f3aee00a96"
+      }
+    },
+    {
+      "name": "011_add_overwrites_existing_file",
+      "input": {
+        "duplicate.txt": {
+          "kind": "file",
+          "content": "old content\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Add File: duplicate.txt\n+new content\n*** End Patch\n",
+      "expected": {
+        "duplicate.txt": {
+          "kind": "file",
+          "content": "new content\n"
+        }
+      },
+      "sha256": {
+        "input/duplicate.txt": "40eda80edfc38b36bdcdc408aa6ff2cc40b708e46ece9dfd2b2801a05a18a5fc",
+        "expected/duplicate.txt": "1c3ef9a7c817b4642bcb3cb1456fbce92a6f992df2e1d6ad9d8a2dfb4fdf42f6",
+        "patch.txt": "6d6e6470a4368781be27f651176d9d7aefddadba6fbe62faa793e662cd7ac310"
+      }
+    },
+    {
+      "name": "012_delete_directory_fails",
+      "input": {
+        "dir": {
+          "kind": "directory"
+        },
+        "dir/foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Delete File: dir\n*** End Patch\n",
+      "expected": {
+        "dir": {
+          "kind": "directory"
+        },
+        "dir/foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "sha256": {
+        "input/dir/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "expected/dir/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "patch.txt": "d09813e03aaa691a3a0b225edba50674b536701425e3cb5a44d4d22c8a4a9c28"
+      }
+    },
+    {
+      "name": "013_rejects_invalid_hunk_header",
+      "input": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Frobnicate File: foo\n*** End Patch\n",
+      "expected": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "stable\n"
+        }
+      },
+      "sha256": {
+        "input/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "expected/foo.txt": "2b92ea252be0fbc26f70317cdaa7b6411ea634b50d55338cd8c495e4dbf25d1d",
+        "patch.txt": "c25c2ecd7e20f5e6dd846ee8f6596de766b443e9d9bdc8f0e0c391660826cc92"
+      }
+    },
+    {
+      "name": "014_update_file_appends_trailing_newline",
+      "input": {
+        "no_newline.txt": {
+          "kind": "file",
+          "content": "no newline at end\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: no_newline.txt\n@@\n-no newline at end\n+first line\n+second line\n*** End Patch\n",
+      "expected": {
+        "no_newline.txt": {
+          "kind": "file",
+          "content": "first line\nsecond line\n"
+        }
+      },
+      "sha256": {
+        "input/no_newline.txt": "4575dfcd1eb57fd3cf77e78f18f5bb0659ca38ace8564d5f53e42527c603629a",
+        "expected/no_newline.txt": "c2097f55f01fc297fc7f4acf21438123e06e4d409a818524428534e850642f4f",
+        "patch.txt": "832ebaa947ae0cd9b328be202adcd59da66c5fcf2f0a3ba624dc466e30287cac"
+      }
+    },
+    {
+      "name": "015_failure_after_partial_success_leaves_changes",
+      "input": {},
+      "patch": "*** Begin Patch\n*** Add File: created.txt\n+hello\n*** Update File: missing.txt\n@@\n-old\n+new\n*** End Patch\n",
+      "expected": {
+        "created.txt": {
+          "kind": "file",
+          "content": "hello\n"
+        }
+      },
+      "sha256": {
+        "expected/created.txt": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+        "patch.txt": "65ca3527c31b486bd893f0a323507a65ce698507e6c33db31c6d9ffd401f6ad0"
+      }
+    },
+    {
+      "name": "016_pure_addition_update_chunk",
+      "input": {
+        "input.txt": {
+          "kind": "file",
+          "content": "line1\nline2\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: input.txt\n@@\n+added line 1\n+added line 2\n*** End Patch\n",
+      "expected": {
+        "input.txt": {
+          "kind": "file",
+          "content": "line1\nline2\nadded line 1\nadded line 2\n"
+        }
+      },
+      "sha256": {
+        "input/input.txt": "2751a3a2f303ad21752038085e2b8c5f98ecff61a2e4ebbd43506a941725be80",
+        "expected/input.txt": "013834138420c9775178b8fcbcd6b03488b704fed7d44bf37dc385d53e443913",
+        "patch.txt": "888228c23cf6db16ad3194af46d2b6b7567dac7691053c0b67be1f5df179acd9"
+      }
+    },
+    {
+      "name": "017_whitespace_padded_hunk_header",
+      "input": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "old\n"
+        }
+      },
+      "patch": "*** Begin Patch\n  *** Update File: foo.txt\n@@\n-old\n+new\n*** End Patch\n",
+      "expected": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "new\n"
+        }
+      },
+      "sha256": {
+        "input/foo.txt": "01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee",
+        "expected/foo.txt": "7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c",
+        "patch.txt": "49a76c72c335007415680f75399e2f74c5bccd6b4c4b34a7d4c3174bffbfee48"
+      }
+    },
+    {
+      "name": "018_whitespace_padded_patch_markers",
+      "input": {
+        "file.txt": {
+          "kind": "file",
+          "content": "one\n"
+        }
+      },
+      "patch": " *** Begin Patch\n*** Update File: file.txt\n@@\n-one\n+two\n*** End Patch \n",
+      "expected": {
+        "file.txt": {
+          "kind": "file",
+          "content": "two\n"
+        }
+      },
+      "sha256": {
+        "input/file.txt": "2c8b08da5ce60398e1f19af0e5dccc744df274b826abe585eaba68c525434806",
+        "expected/file.txt": "27dd8ed44a83ff94d557f9fd0412ed5a8cbca69ea04922d88c01184a07300a5a",
+        "patch.txt": "2307c079befb8bccd3dd81d9f31b6fc2352a91c37a96a5117f5a5375312f78c4"
+      }
+    },
+    {
+      "name": "019_unicode_simple",
+      "input": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "line1\nnaïve café\nline3\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: foo.txt\n@@\n line1\n-naïve café\n+naïve café ✅\n*** End Patch\n",
+      "expected": {
+        "foo.txt": {
+          "kind": "file",
+          "content": "line1\nnaïve café ✅\nline3\n"
+        }
+      },
+      "sha256": {
+        "input/foo.txt": "6bc89526aeb4d8014b8e8afac4e7f1814bbab23e45ae6f8e37ef626da9f285ec",
+        "expected/foo.txt": "e9014b085eebfaaf1ff77d8e6017f9ca544e21667e2a8516563eaab2fdb1262f",
+        "patch.txt": "950630eb84c42a5c347636fcc49678e34667dd7976e19d70a7c0ed03d61fa8b4"
+      }
+    },
+    {
+      "name": "020_delete_file_success",
+      "input": {
+        "keep.txt": {
+          "kind": "file",
+          "content": "keep\n"
+        },
+        "obsolete.txt": {
+          "kind": "file",
+          "content": "obsolete\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Delete File: obsolete.txt\n*** End Patch\n",
+      "expected": {
+        "keep.txt": {
+          "kind": "file",
+          "content": "keep\n"
+        }
+      },
+      "sha256": {
+        "input/keep.txt": "f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85",
+        "input/obsolete.txt": "abdcccf4a6a5fae3da2c8232d6fbf33b61d5db886742c35218e724b8e5c6b0e0",
+        "expected/keep.txt": "f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85",
+        "patch.txt": "b80ae683dfd6e0cebe67997c81561a3d9ef9f55ef74673e327928677e7628b4f"
+      }
+    },
+    {
+      "name": "020_whitespace_padded_patch_marker_lines",
+      "input": {
+        "file.txt": {
+          "kind": "file",
+          "content": "one\n"
+        }
+      },
+      "patch": "*** Begin Patch \n*** Update File: file.txt\n@@\n-one\n+two\n *** End Patch\n",
+      "expected": {
+        "file.txt": {
+          "kind": "file",
+          "content": "two\n"
+        }
+      },
+      "sha256": {
+        "input/file.txt": "2c8b08da5ce60398e1f19af0e5dccc744df274b826abe585eaba68c525434806",
+        "expected/file.txt": "27dd8ed44a83ff94d557f9fd0412ed5a8cbca69ea04922d88c01184a07300a5a",
+        "patch.txt": "9ef1cc2e027d30b90db84ee02ff23bcb16382d490e554125d5fee89b272c2a31"
+      }
+    },
+    {
+      "name": "021_update_file_deletion_only",
+      "input": {
+        "lines.txt": {
+          "kind": "file",
+          "content": "line1\nline2\nline3\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: lines.txt\n@@\n line1\n-line2\n line3\n*** End Patch\n",
+      "expected": {
+        "lines.txt": {
+          "kind": "file",
+          "content": "line1\nline3\n"
+        }
+      },
+      "sha256": {
+        "input/lines.txt": "66663af9c7aa341431a8ee2ff27b72abd06c9218f517bb6fef948e4803c19e03",
+        "expected/lines.txt": "28387b210ad33ee091c9bc2b099fe33db9be20ef6c8de8427cec615cd87f775c",
+        "patch.txt": "19bec424380bc552ab1149500047502e9e6dd06952c6615553600df01e50d4b3"
+      }
+    },
+    {
+      "name": "022_update_file_end_of_file_marker",
+      "input": {
+        "tail.txt": {
+          "kind": "file",
+          "content": "first\nsecond\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: tail.txt\n@@\n first\n-second\n+second updated\n*** End of File\n*** End Patch\n",
+      "expected": {
+        "tail.txt": {
+          "kind": "file",
+          "content": "first\nsecond updated\n"
+        }
+      },
+      "sha256": {
+        "input/tail.txt": "dbea9325179efe46ea2add94f7b6b745ca983fabb208dc6d34aa064623d7ee23",
+        "expected/tail.txt": "b8074f984c9d414b623d1ea91f01912de5972a208a962cd66bf7ae0b467f6cd5",
+        "patch.txt": "350b3b8a57211b8bf0d2a09a573b4bb69e3765979c94cb4fca00307ed7192f3c"
+      }
+    },
+    {
+      "name": "023_preserves_crlf_line_endings",
+      "input": {
+        "lines.txt": {
+          "kind": "file",
+          "content": "one\r\ntwo\r\nthree\r\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: lines.txt\n@@\n-one\n+ONE\n two\n+between\n three\n*** End Patch\n",
+      "expected": {
+        "lines.txt": {
+          "kind": "file",
+          "content": "ONE\r\ntwo\r\nbetween\r\nthree\r\n"
+        }
+      },
+      "sha256": {
+        "input/lines.txt": "9fc4c6bdc7e5374b75e38fa9e1097577399bb74f1ccc33b1712d53a26d02c09a",
+        "expected/lines.txt": "0847510cfb20fcb37de9401eba3e8c713ff1917a8007ac5861f7dd4ccaaeff10",
+        "patch.txt": "d8b35b612e3c7ca94af39ceea7512e5682432b9b83d8704890cfff65fa11c441"
+      }
+    },
+    {
+      "name": "024_preserves_mixed_line_endings",
+      "input": {
+        "lines.txt": {
+          "kind": "file",
+          "content": "one\r\ntwo\rthree\nfour\r\n"
+        }
+      },
+      "patch": "*** Begin Patch\n*** Update File: lines.txt\n@@\n one\n two\n-three\n+THREE\n four\n*** End Patch\n",
+      "expected": {
+        "lines.txt": {
+          "kind": "file",
+          "content": "one\r\ntwo\rTHREE\r\nfour\r\n"
+        }
+      },
+      "sha256": {
+        "input/lines.txt": "92c50a656c2cff73369c78e3f770a652f8744db7074beb76a357135bcc35a811",
+        "expected/lines.txt": "915a2863bd4f19cfbf67805353bd92575b0615cd2f6d2efe47936986620f4981",
+        "patch.txt": "d2c9ac73cf59eb8536aaa3dc7b28b824328033a72a6950fb03cb269c8164cf51"
+      }
+    }
+  ]
+}

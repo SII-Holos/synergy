@@ -1,206 +1,135 @@
 # Plugin UI Contributions
 
-Synergy supports two UI paths: host-rendered declarations and user-approved trusted Solid components. There is no iframe tier or generic low-code UI DSL.
+UI API 6 supports host-rendered declarations and approved Solid components. Backend Plugin API 4 and runtime IPC 9 are independent versions. An executable UI artifact must declare `artifacts.ui.apiVersion: "6.0"`; a missing version identifies UI 4 and a `"5.0"` artifact is UI 5, and both are rejected before module evaluation. Incompatible UI does not disable the plugin's backend tools, operations, or declarative settings. The only vocabulary change from UI 5 is session status, where `recovering` is replaced by `paused`; see [the UI 6 migration](README.md#migrating-executable-ui-from-ui-api-5-to-6).
 
-## Contribution Kinds
+## Components and services
 
-| Kind                    | Purpose                                                     |
-| ----------------------- | ----------------------------------------------------------- |
-| `ui.workbenchPanel`     | side or bottom workbench surface                            |
-| `ui.navigationItem`     | sidebar or plugin page destination                          |
-| `ui.messageRenderer`    | renderer for a declared message type or one owned Tool card |
-| `ui.composerAction`     | component in a declared composer slot                       |
-| `ui.settings`           | schema-driven settings and optional custom component        |
-| `ui.theme`              | packaged structured JSON theme                              |
-| `ui.icon`               | packaged SVG icon                                           |
-| `ui.composerExtension`  | headless lifecycle for Composer document services           |
-| `ui.selectionExtension` | headless lifecycle for settled selected text                |
-| `ui.textAction`         | host-rendered action for the selected-text menu             |
-| `ui.messageSlot`        | additive content around canonical messages                  |
-| `ui.slot`               | trusted component in a host-declared surface position       |
+Every component receives exactly `PluginComponentProps<Context>`: one `context` property. This includes settings, tool cards, text-action results, headless extensions, resource panels, pages, and Shells. Specialization adds typed services inside that context. The [public types](../../packages/plugin/src/ui.ts) are authoritative; generated operation and event types do not require importing the App or Harness.
 
-The host owns placement, lifecycle, Scope/Session binding, accessibility shell, and disposal. Each registration returns one disposer and is removed before reload.
+```tsx
+import type { PluginComponentProps, PluginWorkbenchSurfaceContext } from "@ericsanchezok/synergy-plugin"
+import { Button, SettingRow } from "@ericsanchezok/synergy-plugin/components"
 
-## Slots
-
-`slot()` contributes a trusted component into a host-declared surface position. The host owns the slot vocabulary: a contribution targeting an undeclared slot is rejected with a contribution error, so the slot list below is the contract.
-
-```ts
-import { definePlugin, slot } from "@ericsanchezok/synergy-plugin"
-
-export default definePlugin({
-  id: "status-widget",
-  version: "1.0.0",
-  description: "Status widget",
-  contributions: [
-    slot({
-      id: "status",
-      slot: "sidebar.footer",
-      label: "Status",
-      component: { source: "./src/ui.tsx" },
-    }),
-  ],
-})
-```
-
-Declared host slots (v1):
-
-| Slot                     | Location                      | Notes                                            |
-| ------------------------ | ----------------------------- | ------------------------------------------------ |
-| `settings.section`       | settings content area         | appended below the active section                |
-| `sidebar.footer`         | sidebar bottom                | below the agent hub                              |
-| `session.header.actions` | session top bar right actions | `when: { session: true }` gates to open sessions |
-| `session.empty`          | empty conversation state      | fallback keeps the built-in empty state          |
-| `app.footer`             | app shell footer              | global footer                                    |
-
-The component receives `PluginSlotSurfaceContext` (the same `PluginSurfaceContext` contract). An optional `when: { session: boolean }` condition hides the entry unless the outlet reports the matching session context; a `session.header.actions` contribution typically sets `when: { session: true }` so it only appears inside an open session.
-
-A slot is a render position, so `component` is required — a contribution without a trusted component is rejected. If a slot's component fails to load or render, the host renders the shared plugin error card in that slot position instead of leaving it blank.
-
-Styling a surface (for example a parchment or brushed-metal footer) is done with the component's own CSS: plugin-kit extracts imported stylesheets into the plugin's `ui/index.css`, the host injects it as a `<link>` on registration, and selectors are namespaced by your own class names — prefix them with the plugin ID to avoid collisions. The theme color contract is not extended for surfaces; colors come from the theme's semantic tokens and surfaces are component-owned.
-
-## Trusted Components
-
-Reference source TSX from the contribution:
-
-```ts
-workbenchPanel({
-  id: "research-map",
-  label: "Research map",
-  surface: "side",
-  cardinality: "multi",
-  defaultResource: { id: "map", title: "Research map", state: { view: "map" } },
-  component: { source: "./src/ui/research-map.tsx" },
-})
-```
-
-The component exports a Solid component that receives `{ context: PluginSurfaceContext }` in source templates. plugin-kit compiles all trusted components into one named-export UI bundle, externalizes `solid-js`, `solid-js/web`, and `solid-js/store`, rewrites those imports to the host's shared runtime, and records the bundle hash. The plugin-kit CLI and standalone Synergy runtime include the compiler, so plugin projects do not install Babel presets. Bundles that include a private Solid runtime, use unsupported Solid subpaths, bypass host linking, or omit an export are rejected.
-
-Components may import CSS from the plugin project. plugin-kit extracts imported stylesheets into a sibling `ui/index.css` next to the UI bundle; the host injects that stylesheet as a `<link>` when the plugin surfaces are registered and removes it on reload, disable, or uninstall. CSS is bundled and namespaced only by the plugin author's own class names; the host does not rewrite selectors. Keep selectors prefixed with the plugin ID to avoid collisions with the host or other plugins. Assets referenced from CSS (for example `url(...)` images) are inlined as data URLs or emitted as hashed sibling assets next to the stylesheet; relative URLs resolve against the stylesheet's asset URL, so no extra declaration is required.
-
-Trusted code runs in the Synergy App context after explicit approval. This is a trust decision, not a sandbox claim.
-
-## Surface Context
-
-```ts
-interface PluginSurfaceContext {
-  pluginId: string
-  scopeId: string
-  sessionId?: string
-  surface: {
-    kind: string
-    id: string
-    resource?: { id: string; title?: string; state?: JsonValue }
-  }
-  operations: {
-    query(id: string, input?: unknown): Promise<unknown>
-    command(id: string, input?: unknown): Promise<unknown>
-  }
-  events: {
-    subscribe(eventId: string, listener: (event: unknown) => void): () => void
-  }
-  settings: {
-    get(): Promise<Record<string, JsonValue>>
-    replace(values: Record<string, JsonValue>): Promise<void>
-    subscribe(listener: (settings: Record<string, JsonValue>) => void): () => void
-  }
-  host: PluginUIHostActions
+export default function Panel({ context }: PluginComponentProps<PluginWorkbenchSurfaceContext>) {
+  return (
+    <SettingRow
+      title={context.tab().title ?? "Resource"}
+      description="Plugin resource"
+      trailing={<Button onClick={() => context.workbench.update(context.tab().id, { dirty: false })}>Save</Button>}
+    />
+  )
 }
 ```
 
-The operation client is bound to the component's own plugin. It can call only declared operations of the requested type. It never exposes a server URL or raw SDK client.
+| Service                | Responsibility                                                                                            |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `environment`          | Reactive route, Scope key, platform, locale, theme/mode, visibility and viewport                          |
+| `navigation`           | Typed destinations and history replacement                                                                |
+| `sessions`             | Existing Scope session collection, readiness and explicit refresh                                         |
+| `operations`, `events` | Same-plugin queries, commands and declared scoped event payloads                                          |
+| `settings`             | Scoped settings snapshots, writes and subscriptions                                                       |
+| `workbench`            | Panel discovery, resource tabs, activation, ordering, title/state/dirty updates and negotiated close      |
+| `resources`            | Open a file or artifact through the mounted host resource presenter; an unavailable presenter is an error |
+| `commands`             | Owned commands, host command execution and menu registrations                                             |
+| `extensions`           | Finite extension metadata and actual outlet rendering                                                     |
+| `overlays`             | Owned dialogs, protected confirmations and notifications                                                  |
+| `lifetime`             | Abort signal, activity access/notifications and idempotent `onDispose()` registrations                    |
 
-Use queries for complete snapshots and commands for intent. Subscribe to events to learn when a snapshot is stale, and dispose subscriptions during component cleanup. `settings.get()` and `subscribe()` are always bound to the component's plugin and Scope. `settings.replace()` is available only when `settings.write` was approved; it persists the complete settings object through the generated client and publishes the scoped settings change.
+Services enforce approved capabilities. Shell layout authority does not grant session mutation, draft writes, command registration, or resource access. Navigation, resource presentation and ordinary overlays require `ui.hostActions`; workbench reads/writes use `workbench.read`/`workbench.write`; session reads, submission and control remain separate capabilities. Operations also enforce their declared UI exposure and backend requirements.
 
-## Composer Extensions
+A mounted surface has one plugin generation, server, Scope, optional Session, contribution and resource identity. Leaving that identity aborts UI requests, revokes callbacks and releases subscriptions, command registrations, portals and owned DOM references. An already accepted server task continues under its domain owner. Do not retain a context for use after its lifetime ends.
 
-`composerExtension()` mounts one headless trusted component for each active Composer. Its specialized context provides the host-owned Composer document service. `composer.read` permits immutable revision/text/selection snapshots and the 700 ms settled hook; `composer.write` permits suffix completion, decorations, and revision-checked edits; `composer.intercept` permits the serial normal-message preflight hook.
+`synergy-plugin typegen` writes declarations under `src/generated/plugin-data/` from operation/event schemas. Import the generated `PluginDataContext` to infer valid IDs, inputs, outputs and event payloads. Queries return complete state; events carry scoped invalidations or small state changes. The host uses its existing event connection. It does not create a plugin event connection per component or refetch every component on each event.
 
-Completion inserts only after a collapsed caret. Decorations annotate existing ranges without editing them. `applyEdits()` performs the actual replacement and rejects stale revisions, overlapping/out-of-range edits, and file-pill crossings. A preflight callback returns only `Promise<void>`: a plugin may open its own workbench panel and await its own operation/event protocol, but Synergy defines no review result or language-specific state.
+## Public components
 
-Draft callbacks run in parallel after IME composition settles. Preflight callbacks run serially in contribution order and the next callback reads the previous callback's edits. Shell, commands, and workflow start actions do not enter this Web-only preflight path.
+Import `Button`, `Input`, `Select`, `Tabs`, `Menu`, `Dialog`, `Popover`, `Tooltip`, `FormField`, `SettingRow`, `EmptyState`, `ErrorState`, `Loading`, `Icon` and `HostView` from `@ericsanchezok/synergy-plugin/components`. These resolve to the host's UI implementation and shared Solid runtime. Semantic icons are typed by `@ericsanchezok/synergy-plugin/icons`; locale-sensitive number/date/relative-time/byte formatting is available from `@ericsanchezok/synergy-plugin/format`.
 
-## Selection and Text Actions
+Use `execution.elapsed`, `execution.tokens` and `execution.cost` for task metrics; `inbox.task`, `inbox.steer` and `inbox.context` distinguish queued input, steering and context updates. Use semantic tokens for their declared meaning. For example, `state.cancelled` denotes a cancelled task, while `action.close` denotes dismissing a control.
 
-`selectionExtension()` receives the immutable selected-text snapshot after the active selection has remained stable for 250 ms. The snapshot includes a host-generated `selectionId`, text, `document | code | terminal` source, `user_message | assistant_message | editable | other` origin, and editable/whole-container flags. Password, credential, explicitly excluded, and oversized selections are not distributed. DOM text, inputs, textareas, the Composer, Notes, Monaco source, and Terminal selection use the same App controller; Browser-page selection remains inside the Browser runtime boundary.
+Content editing uses `action.edit` (`pencil-line`); naming uses `action.rename` (`pencil`). Destructive removal or cancellation uses `action.remove` (`trash-2`) with an accessible label describing the operation.
 
-`textAction()` declares a label, order, a same-plugin UI-exposed command operation, and optional `when` constraints for source, origin, editability, and Unicode character bounds. The host evaluates those constraints against the frozen snapshot and invokes the operation with `{ selection }`.
+Surface expansion and contraction use `action.expand` (`maximize-2`, two diagonal outward arrows) and `action.collapse` (`minimize-2`, two diagonal inward arrows). Editors, panels and fullscreen content views share this pair. The stable `composer.expand` and `composer.collapse` tokens retain the same sizing meanings; `window.restore` shares the contraction glyph. These are the only same-meaning glyph aliases. New sizing controls reuse the generic action tokens; disclosure controls retain their navigation semantics.
 
-Actions are qualified by `pluginId + actionId`, so different plugins may use the same local ID or label without replacing each other. Native edit commands appear first; plugin actions follow in stable plugin groups ordered by group order, plugin name, action order, and local ID. Reload, disable, and uninstall remove only the owning plugin's actions.
+`FormField` supplies the control's ID, description and error relationships to its child function. `Popover.trigger` is a button component receiving trigger attributes, for example `trigger={props => <Button {...props}>Options</Button>}`. This preserves one accessible button and keyboard/focus behavior. Public dialogs, nested menus and popovers inherit the owning plugin's style and overlay layers; authors do not query host dialog DOM or select a global portal target.
 
-Without `presentation`, a text action is a command and closes after execution. With `presentation: { kind: "popover", component, width }`, the host replaces the menu with loading state and then mounts the trusted result component beside the selection. `PluginTextActionSurfaceContext` supplies the invocation ID, frozen selection, validated operation output, and `close()`. The host owns anchoring, viewport collision, one-surface-at-a-time behavior, focus restoration, Escape/outside-click handling, retry/error controls, cancellation, ARIA, and the narrow-screen bottom sheet. The plugin owns only result content; one failed operation or renderer does not affect other registered actions.
+Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preferences">…</Dialog>)`. Close that handle to close that dialog. `context.overlays.confirm()` uses the protected host decision surface. Disposing one plugin cannot close another plugin's dialog.
 
-## Message Slots
+## Shells and session presentation
 
-`messageSlot()` adds a lazy trusted component at `message.before`, `message.after`, or `message.actions`, optionally filtered to user or assistant roles. `PluginMessageSurfaceContext` contains only message ID and role; a plugin with `session.read` queries any required content through its own operation. Slots cannot replace the native message renderer.
+`shell()` declares a root component and optional page mapping. The finite page and extension catalogs live in [ui-catalog.ts](../../packages/plugin/src/ui-catalog.ts). Users select one Shell per server in Settings → General; installation alone does not activate it. An unavailable selection remains saved while the default Shell renders. A failing Shell falls back to the default presentation and is suppressed until explicitly retried or replaced.
 
-`messageRenderer()` may render a declared custom message type. For a plugin-owned Tool card, set `messageType: "tool"` and `tool` to the exact generated host tool name:
+`PluginShellContext` adds `shell`, and session pages provide `session`, `conversation`, `composerLayout`, `input` and `layout`. Default Shell, conversation, composer layout and editor presentations consume these public services. Domain providers retain the draft, session windows, submission, workflow, workbench and browser owners outside replaceable presentation.
 
-```ts
-messageRenderer({
-  id: "correction-card",
-  label: "Correction",
-  messageType: "tool",
-  tool: "plugin__language-coach__record-correction",
-  component: { source: "./src/ui/correction-card.tsx" },
-})
-```
+- `shell.render()` and `HostView` compose native navigation, route, footer, conversation, composer, side workbench and bottom workbench views. A view unsupported on that page throws explicitly.
+- `session` reads the existing bounded message/part window, status and history state and delegates history loading, return-to-latest, refresh, rewind and fork to the session owner.
+- The optional `conversation.activityView` service reads and writes explicit process/batch/reasoning expansion by stable projection key. The host retains these choices in its session layout; replacing a view does not create a second state owner. Its absence preserves independent shared-UI use.
+- The optional `conversation.preferWorkBrief()` accessor exposes the tool-row description preference under `session.read`. A missing accessor means `false`. Shared conversation renderers use recorded intent when enabled and non-empty, preserving action-and-target labels otherwise.
+- `conversation` supplies the shared turn projection, bounded render window, history controls, viewport bindings and canonical message actions. Replacing its view does not create another message store or derive message semantics. Custom viewports release their bound elements with `setScrollRef(undefined, scrollElement)` and `autoScroll.contentRef(undefined, contentElement)` so cleanup of a replaced view cannot clear its successor. Omitting the optional release element retains unconditional clearing. `autoScroll.readingAnchorOwner()` publishes the current viewport's accepted reading anchor as a read-only DOM owner. A virtual view may retain its containing row through layout changes; input classification and offset restoration remain owned by the viewport. Following, rebinding and disposal clear this owner. Do not retain it outside that viewport's lifetime.
+- `conversation.content.retain(summary)` returns a body lease whose `ready` promise describes that read, not continuing ownership of the body. Native leases expose optional synchronous `isCurrent()`: `false` after release, materializer invalidation, revalidation of its read or disposal, including invalidation of an already completed same-version read. A custom viewport may reuse a same-version lease while this probe is not false, and must release and renew a detached lease after summary refresh. The probe does not create a reactive subscription; summary/page freshness remains the owner's notification path. Calls retain the surface's `session.read` capability and lifetime checks.
+- `input` supplies revisioned text and selection, IME state, attachments, agent/model/variant choices and explicit submit/stop. Its optional native editor mounting API uses the same document as headless edits. Native workflow controls can be composed through the service's named control views.
+- `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status and priority views. The default layout places Inbox in Task details; custom layouts can still explicitly render its content through `render("inbox")`. That view keeps the native queue operations and session ownership without adding a default composer anchor. The service does not expose the SDK or synchronization store.
 
-The plugin must contribute that Tool itself; a renderer cannot replace another plugin's or a built-in Tool. The component receives `PluginToolMessageSurfaceContext`, which adds assistant message identity and the bounded Tool `name`, `input`, `metadata`, `title`, `output`, and `status`. It should render useful input/output even when a later query or event subscription is unavailable. Each plugin Tool card owns its own error boundary: a throwing renderer falls back to the normal host Tool card without replacing healthy sibling cards.
+Draft edits reject stale revisions, read-only state, overlapping ranges and file-pill crossings. Model selection retains explicit draft → session default → fallback resolution. Preflight work and late upload/submission results retain the captured draft identity; failed submission cannot overwrite subsequent user edits. IME prevents settlement/submission until composition ends. Detaching the presentation releases editor and scroll bindings without disposing domain state.
 
-## Resource Tabs
+Authentication, installation grants, runtime permission decisions, connection recovery and Browser ownership remain host-controlled. Desktop Browser uses native presentation; Web uses the existing WebRTC presentation. Shell replacement cannot allocate another page for a Session.
 
-`openWorkbenchPanel(panelId, resource)` preserves the opaque resource `id`, `title`, and JSON `state`. The host reuses an existing tab for the same `panelId + resource.id` and opens a separate tab for a different resource. The component reads the exact resource from `context.surface.resource`; it must not infer resource identity from a global variable or private route.
+## Extensions, commands and resources
 
-This supports one contribution with multiple stable views, such as a map, one tab per entity, and a diagnostics page. `defaultResource` is used when the workbench opens the panel without an explicit resource.
+The public extension catalog specifies context, cardinality, ordering, focus, overflow, collision handling and platform availability. Use `context.extensions.render()` for custom layouts. `app.footer` is required; omitting it invalidates a custom Shell. Optional outlets may be absent, but diagnostics distinguish registered contributions from contributions whose current workbench has no outlet.
 
-## Declarative Settings
+`slot()`, `composerAction()`, `messageSlot()`, `navigationItem()`, `workbenchPanel()` and custom settings use the same component mounting lifecycle. Conditions are finite typed expressions over host facts. IDs are namespaced by plugin before registration, so two plugins can use the same local contribution ID. UI commands can call declared operations; menus refer to existing command IDs and approved locations. Asynchronous failures reach the host's error presentation rather than becoming unhandled rejections.
 
-Object-form settings are rendered with the host's design system. Boolean fields use `SettingRow` and `Switch`; strings, numbers, and enums use host form controls and semantic tokens. The schema's top-level description is shown as page help. Saves are optimistic and roll back with a host notification if persistence fails. A plugin component should not reproduce the settings page chrome or form layout.
+Use qualified panel IDs, such as ``context.workbench.open(`${context.pluginId}:notes`, { id: "first", title: "First note" })``. Same-panel/same-resource opens reuse a tab; distinct resources retain independent state. `context.tab()` on a workbench component reads its current tab. Update title, state and `dirty` through `workbench.update()`, and register `beforeClose()` for asynchronous close negotiation. Explicit close, close-other and exclusive replacement share the owner's close policy. Refresh restores the existing versioned workbench layout; absent plugins produce an unavailable panel rather than rewriting plugin business data.
 
-A custom `ui.settings` component receives `PluginSettingsComponentProps`: the existing `pluginId`, `values`, and `onChange` props plus `context: PluginSettingsSurfaceContext`. The context is the same capability-bound surface contract used by other trusted UI, so Settings can call UI-exposed query/command operations and host confirmation or notification actions without learning the Synergy server URL or token. The host continues passing the legacy props so previously built settings components remain compatible.
+## Composer and selected-text extensions
 
-## Host Actions
+`composerExtension()` mounts headless logic for the active Composer. `composer.read` permits immutable revision/text/selection snapshots and the 700 ms settled hook; `composer.write` permits completions, decorations and revision-checked edits; `composer.intercept` permits serial normal-message preflight. Completion requires a collapsed caret. Draft callbacks run in parallel after IME settles; preflight callbacks run in contribution order and read preceding edits. Shell commands and workflow starts do not enter normal-message preflight.
 
-With approved `ui.hostActions`, trusted UI may call:
+`selectionExtension()` receives settled immutable text after 250 ms, with a selection ID, source, origin and editable/container flags. Passwords, credentials, excluded nodes and oversized selections are excluded. Browser-page selection stays with Browser ownership.
 
-- `openSession(sessionId)`
-- `openPluginPage(path, params?)`
-- `openWorkbenchPanel(panelId, resource?)`
-- `openResource({ kind: 'artifact' | 'file', uri })`
-- `notify(message, options?)`
-- `confirm(options)`
+`textAction()` refers to a same-plugin UI-exposed command operation and finite selection conditions. The command receives `{ selection }`. A result presentation receives `PluginTextActionSurfaceContext`: invocation ID, frozen selection, validated output and `close()`. The host owns the selection surface in `apps/web/src/components/text-selection/selection-toolbar.tsx`: ordering, duplicate-label qualification, loading/error/retry, cancellation, Escape, the narrow-screen sheet and its own built-in release action. The surface serves reading selections only — message prose, code and terminal output — because editable selections keep the native editing menu; see [the selection decision](../decisions/implemented/feature/2026-10-22-quote-a-selection-into-the-composer.md). Plugin actions remain distinct from native edit commands.
 
-Without that capability these calls fail. Prefer host actions over constructing Synergy routes or reaching into private app contexts.
+## Message renderers and settings
 
-## Themes and Icons
+`messageSlot()` adds content before, after or alongside message actions. A tool renderer must set `messageType: "tool"` and the exact owned Tool ID from `PluginToolId.format(pluginId, toolId)`. It cannot replace a host Tool or another plugin's Tool. `PluginToolMessageSurfaceContext` includes message identity and bounded tool name/input/output/metadata/status. Renderer failure falls back to the host card without removing healthy siblings.
 
-Themes and icons are host-rendered data contributions. They do not execute plugin UI code:
+Schema settings use native controls. A custom settings component receives only `context: PluginSettingsSurfaceContext`; `context.settings.values()`, `change()` and `status()` participate in the host form's save state. Scoped `get()`, `replace()` and `subscribe()` remain available for independent settings dialogs. There are no sibling `pluginId`, `values` or `onChange` props.
 
-```ts
-import { definePlugin, icon, theme } from "@ericsanchezok/synergy-plugin"
+## Themes, Skins and styles
 
-export default definePlugin({
-  id: "ocean-theme",
-  version: "1.0.0",
-  description: "Ocean theme",
-  contributions: [
-    theme({ id: "ocean", label: "Ocean", path: "themes/ocean.json" }),
-    icon({ id: "logo", path: "icons/logo.svg" }),
-  ],
-})
-```
+Themes own semantic colors through [the canonical theme parser](../reference/frontend-theming.md). Skins own fonts, backgrounds, textures, material radii/borders/shadows, density and decorative imagery. `skin()` references validated structured JSON with explicit packaged assets, light/dark appearances, narrow overrides and reduced-motion behavior. Theme references select a theme without embedding a component palette. Explicit user font choices take priority over Skin fonts.
 
-Theme JSON contains `name`, an `id` equal to the contribution ID, and complete `light.seeds` and `dark.seeds`. Each seed set defines `neutral`, `primary`, `success`, `warning`, `error`, `info`, `interactive`, `diffAdd`, and `diffDelete` as opaque hex colors. Optional `overrides` may address only canonical theme tokens. The host validates and resolves both variants before registration; arbitrary CSS, unknown tokens, cyclic references, and invalid contrast are rejected.
+Skin material targets are finite public `data-ui-part` values. Decorative layers cannot intercept input. Protected host surfaces stay outside the Skin root. Skin and Shell selection are independent and saved per server. A selected Skin whose plugin is unavailable falls back without erasing that selection.
 
-The template includes `themes/theme.schema.json`. Theme tooling may import `ThemeSchema`, `parseTheme()`, `resolveTheme()`, and the token catalog from `@ericsanchezok/synergy-plugin/theme`. Plugin Kit `build`, `validate`, and `dev` validate both source and packaged Theme JSON with that public parser. Missing or escaping paths, malformed JSON, ID mismatches, and resolver failures stop the command with a nonzero result. Theme and icon content hashes are part of the generation, so declarative-only edits receive new asset URLs; dev keeps its last valid generation when validation fails.
+Plugin Kit parses imported CSS as an AST. It scopes selectors to the plugin's mount and owned portals, namespaces keyframes/font families/layers, rewrites local asset references and rejects global/remote style escape paths. Stylesheets and all emitted image/font/module assets are listed and hashed in the artifact manifest. The host loads that explicit graph; it does not probe a neighboring stylesheet or rely on authors remembering selector prefixes. Trusted JavaScript still runs in the App's context after approval: CSS isolation is not a JavaScript sandbox.
 
-The host namespaces theme and icon IDs as `<plugin-id>:<contribution-id>`. Surface `icon` fields continue to use the plugin-local contribution ID; the host resolves it to the namespaced registered icon. Assets are fetched and validated before an atomic reload replaces the previous generation.
+The host validates an entire candidate generation before replacement and retains the last valid generation if validation fails. The existing `plugin.ui.updated` stream event drives UI refresh. Stale loaders and callbacks cannot install into a replacement generation. Native module loading uses integrity-checked preload and shared module URLs; repeated surfaces share evaluation. Disposing a generation clears its registrations and loader references; it does not claim to unload the browser's ESM cache.
 
-## Scope and Reload
+Themes aggregate across enabled Scopes through the global theme registrar; icons and executable UI remain Scope-bound. Asset URLs preserve the configured server origin and proxy path prefix. Switching servers invalidates the previous generation and its pending requests.
 
-The Web host fetches contributions for the active Scope. Switching Scope rebuilds registrations with a new context. Runtime generations and asset URLs include the generation so stale bundles are not reused. The host resolves trusted UI bundles, themes, and icons against the active Synergy server URL, preserving remote origins and deployment path prefixes such as reverse-proxy mounts. A failure in one surface is reported for that contribution and does not remove unrelated plugin contributions.
+## Authoring, preview and recovery
 
-Themes are the one global exception to the Scope reload cycle: theme selection is a global preference (config `general.theme`), so `ui.theme` contributions are aggregated across every enabled scope by `GET /plugin/ui/contributions/themes` and registered by a registrar that survives Scope switches. Scope activation is lazy, so after a server restart the aggregate may not include a theme from a scope nobody has visited yet; in that window the Web keeps the selected theme id and renders degraded default tokens, and the theme re-applies once its scope activates and the registrar refetches. Icon registration stays Scope-scoped.
+`synergy-plugin preview` builds the plugin and starts an isolated real Synergy server with its own home and loopback port. The command uses the production App, normal plugin approval, production loaders and registries. It watches actual runtime/UI dependencies and declared resources, including dependencies outside the project. Invalid builds retain the last valid artifact. Capability changes require restarting preview and reviewing the new grant. Closing preview aborts and settles pending generation work before releasing its own runtime and home.
 
-Registration lifecycle changes are observable to already-mounted message resolvers. Unregistering a renderer, installing or replacing its loader, and completing the current lazy load each invalidate the registry. A Tool card that briefly falls back during reload therefore retries resolution and restores its custom renderer without a page refresh; completion from a stale loader remains ignored.
+The public `@ericsanchezok/synergy-plugin-kit/testing` entry exports isolated preview startup, explicit fixture approval and caller-owned browser-page helpers. The [packed template suite](../../test/plugin-ui5/templates-browser.test.ts), [functional sample](../../packages/plugin-kit/test/fixtures/ui5-functional/src/index.ts) and [workbench/Skin sample](../../packages/plugin-kit/test/fixtures/ui5-workbench/README.md) exercise the production host. Run `bun run plugin-ui:test` after building the App.
+
+Start with `?safe-ui=1` to skip executable third-party UI and Skins before loading them. Recovery stays active in that browser tab across routing and reloads. Settings → General → Restart normally explicitly clears it. This path does not depend on a third-party Shell rendering successfully; a synchronous plugin loop still requires reloading into recovery.
+
+Session questions and permissions remain mounted by the host. The native composer provides an inline outlet; custom session pages without that outlet retain a protected, viewport-bounded host surface automatically.
+
+### Virtual conversation content
+
+Virtual presentations can pass their accepted reading message identity to `conversation.onScheduleScrollSpy(container, messageID)`, avoiding a second DOM geometry scan. The one-argument form remains available for fully materialized presentations. The host retains reading selection; custom renderers retain their own measurement lifetime.
+
+UI API 6 conversation services may provide optional `content` methods for bounded summaries, original text, Part retention and target-window loading. A retained Part lease is released when its row unmounts; expansion and measured layout belong outside row lifetime. Message location accepts an optional Part identity after obtaining that window. Public service calls check capability and component lifetime before and after asynchronous work. Original text operations cover effective server history independently of the currently mounted content.
+
+## Tool invocation intent
+
+The host adds optional `workBrief` to the model-facing schema. Plugin authors declare only native business parameters. The host extracts common intent before execution and passes native arguments unchanged to plugin operations and MCP servers. A third-party `workBrief` field remains native: its schema is wrapped as `{ workBrief, toolInput }` for the model. Definitions and unwrap mappings are frozen per request. Registered result renderers retain precedence; otherwise the read-only result uses structured JSON or text. Common intent never changes permission admission or execution identity.
+
+## Retained workbench presentations
+
+A `ui.workbenchPanel` contribution may declare `retention: "pause"`. The host may retain that instance while another panel or Session is selected. `ctx.lifetime.active?.()` reports activity and `ctx.lifetime.onActivity?.(listener)` reports the initial state and transitions. Pause timers, layout work and detail subscriptions while inactive; resume from domain data on activation. Suspension does not abort the lifetime; eviction, plugin generation replacement or owner disposal does. A retained context keeps its original server/Scope/Session/resource identity. Activity does not grant permission to act for a later route.
+
+Panels without this declaration retain the existing disposal behavior. All panel modules, including concurrent pending imports, are cached by registration/loader generation; a failed import is retryable locally. A successfully loaded module does not re-enter loading during navigation.

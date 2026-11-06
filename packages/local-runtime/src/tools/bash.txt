@@ -1,0 +1,18 @@
+Run a shell command; default directory: ${directory}. Select another directory with workdir rather than cd. Use this for terminal operations and command-line reads (rg, rg --files, find); prefer the selected file interface for editing.
+
+- Verify the parent directory before creating files. Quote paths containing spaces and keep literal text out of shell interpolation.
+- Use supported non-interactive options or explicit input only when known and authorized. Run scripts through their entry points, avoid accidental REPLs, and retain diagnostic output.
+- Run validation directly: a successful output-filtering pipeline does not prove its earlier test or command passed.
+- Independent commands may run in parallel. Chain dependencies with &&; use ; only when earlier failure is irrelevant. Do not separate commands with unquoted newlines.
+
+${artifactGuidance}
+
+Output beyond ${maxLines} lines or ${maxBytes} bytes is saved to a file; read/search that file as needed. Manual output truncation is unnecessary.
+
+background: true immediately returns a processId. yieldSeconds controls auto-backgrounding (default 30); earlier completion returns normally. For long work use this tracked flow. Detached launches (tmux/screen/nohup/setsid/disown/shell &) require full_access or SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1. Continue independent work, then use process for completion, readiness or diagnosis; running does not prove progress.
+
+Git and publication:
+- Commit, push, open PRs or mutate external systems only when the user requests it. Never update Git configuration or force-push main/master. Destructive commands and hook/signing bypasses require explicit user authority.
+- Inspect status, diff and history before Git mutations; preserve unrelated dirty/untracked work and stage only task-owned files. Verify status afterward; do not create empty commits.
+- Amend only your own unpushed commit when the user requests it or a successful commit's hook changed intended files. After a failed/rejected commit, fix the issue and create a new commit.
+- Use gh for GitHub tasks. Review all branch commits before PR creation. Prepare outbound prose in a file for review and pass a file-input option (such as --body-file); do not interpolate it into a shell command. Return the PR URL after creation.

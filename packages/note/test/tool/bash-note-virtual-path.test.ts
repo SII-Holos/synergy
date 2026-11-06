@@ -1,0 +1,404 @@
+import { describe, expect, test } from "bun:test"
+import { mkdir, readdir, stat } from "node:fs/promises"
+import path from "node:path"
+import { NoteMarkdown, NoteStore } from "@ericsanchezok/synergy-note"
+import { registerNoteVirtualFileSource } from "@ericsanchezok/synergy-note/virtual-file-source"
+import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { BashTool } from "@ericsanchezok/synergy-local-runtime/tools/bash"
+import { BashVirtualFile } from "@ericsanchezok/synergy-local-runtime/tools/bash/virtual-file"
+import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+import { NativeExecutor } from "@ericsanchezok/synergy-local-runtime/environment/native-executor"
+import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
+const runtime = await testRuntime()
+
+const baseContext = {
+  sessionID: "test",
+  messageID: "",
+  callID: "",
+  agent: "test-strategist",
+  abort: AbortSignal.any([]),
+  metadata: () => {},
+  ask: async () => {},
+  extra: { shellBypassSandbox: true },
+} as any
+
+async function withNote<T>(markdown: string, fn: (noteID: string, root: string) => Promise<T>) {
+  await using tmp = await tmpdir({ git: true })
+  return ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const note = await NoteStore.create({
+        title: "Bash virtual file",
+        content: NoteMarkdown.fromMarkdown(markdown),
+      })
+      return fn(note.id, tmp.path)
+    },
+  })
+}
+
+async function waitForFinished(processID: string) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const finished = ProcessRegistry.getFinished(processID)
+    if (finished) return finished
+    await Bun.sleep(10)
+  }
+  throw new Error(`Process did not finish: ${processID}`)
+}
+
+describe("bash note virtual paths", () => {
+  test("passes note markdown as file bytes without evaluating shell syntax", () =>
+    runtime.run(async () => {
+      await withNote(
+        "safe\n$(touch should-not-run)\n`touch should-not-run-either`\n; touch still-not-code",
+        async (noteID, root) => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: `cat /synergy/note/${noteID}`,
+            },
+            { ...baseContext, workBrief: "Read reviewed note" },
+          )
+
+          expect(result.metadata.exit).toBe(0)
+          expect(result.output).toContain("$(touch should-not-run)")
+          expect(await Bun.file(`${root}/should-not-run`).exists()).toBe(false)
+          expect(await Bun.file(`${root}/should-not-run-either`).exists()).toBe(false)
+          expect(await Bun.file(`${root}/still-not-code`).exists()).toBe(false)
+        },
+      )
+    }))
+
+  test("supports quoted paths and multiple reviewed notes", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const left = await NoteStore.create({ title: "Left", content: NoteMarkdown.fromMarkdown("left") })
+          const right = await NoteStore.create({ title: "Right", content: NoteMarkdown.fromMarkdown("right") })
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command:
+                `cat '/synergy/note/${left.id}' && cat \"/synergy/note/${right.id}\" && ` +
+                `diff /synergy/note/${left.id} /synergy/note/${left.id}`,
+            },
+            { ...baseContext, workBrief: "Consume reviewed notes" },
+          )
+
+          expect(result.metadata.exit).toBe(0)
+          expect(result.output).toContain("left")
+          expect(result.output).toContain("right")
+        },
+      })
+    }))
+
+  test("preserves non-ASCII command text before a virtual path", () =>
+    runtime.run(async () => {
+      await withNote("reviewed", async (noteID) => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: `printf '你好\\n' && cat /synergy/note/${noteID}`,
+          },
+          { ...baseContext, workBrief: "Consume a reviewed note after Unicode text" },
+        )
+
+        expect(result.metadata.exit).toBe(0)
+        expect(result.output).toContain("你好")
+        expect(result.output).toContain("reviewed")
+      })
+    }))
+
+  test("does not resolve virtual-looking text in shell comments", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: "printf ok # /synergy/note/nte_missing",
+            },
+            { ...baseContext, workBrief: "Print literal text" },
+          )
+
+          expect(result.metadata.exit).toBe(0)
+          expect(result.output).toBe("ok\n\nShell exited with code 0.")
+          expect(result.metadata.output).toBe("ok")
+        },
+      })
+    }))
+
+  test("fails before spawning when a referenced note does not exist", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const marker = `${tmp.path}/spawned`
+          const tempRoot = path.join(tmp.path, "staging")
+          await mkdir(tempRoot)
+          await expect(
+            bash.execute(
+              {
+                command: `touch ${JSON.stringify(marker)} && cat /synergy/note/nte_missing`,
+              },
+              { ...baseContext, workBrief: "Consume missing note" },
+            ),
+          ).rejects.toThrow("Note not found: nte_missing")
+          expect(await Bun.file(marker).exists()).toBe(false)
+
+          const command = "/synergy/note/nte_missing"
+          await using executor = await NativeExecutor.open({
+            target: { environmentID: "test", allocationID: "allocation", generation: 1 },
+            directory: path.join(tmp.path, "receipts"),
+            inputsRoot: tempRoot,
+            coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+          })
+          await expect(
+            BashVirtualFile.materialize({
+              command,
+              references: [{ startIndex: 0, endIndex: command.length, provider: "note", id: "nte_missing" }],
+              scopeID: ScopeContext.current.scope.id,
+              executor,
+              executionID: "missing",
+              shell: Shell.acceptable(),
+              platform: process.platform,
+            }),
+          ).rejects.toThrow("Note not found: nte_missing")
+          expect(await readdir(tempRoot)).toEqual([])
+        },
+      })
+    }))
+
+  test("removes private materialized files after foreground execution", () =>
+    runtime.run(async () => {
+      await withNote("reviewed", async (noteID) => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: `printf %s /synergy/note/${noteID}`,
+          },
+          { ...baseContext, workBrief: "Inspect staged note path" },
+        )
+        const materializedPath = result.output.trim()
+
+        expect(materializedPath).not.toContain("/synergy/note/")
+        expect(await Bun.file(materializedPath).exists()).toBe(false)
+      })
+    }))
+
+  test("quotes materialized paths without changing shell argument boundaries", () =>
+    runtime.run(async () => {
+      await withNote("reviewed", async (noteID, root) => {
+        const tempRoot = path.join(root, "temp with ' quote")
+        await mkdir(tempRoot)
+        const virtualPath = `/synergy/note/${noteID}`
+        const command = `cat ${virtualPath}`
+        await using executor = await NativeExecutor.open({
+          target: { environmentID: "test", allocationID: "allocation", generation: 1 },
+          directory: path.join(root, "receipts"),
+          inputsRoot: tempRoot,
+          coordinator: new WorkspaceCoordinator({ directory: path.join(root, "claims") }),
+        })
+        const materialized = await BashVirtualFile.materialize({
+          command,
+          references: [
+            {
+              startIndex: command.indexOf(virtualPath),
+              endIndex: command.length,
+              provider: "note",
+              id: noteID,
+            },
+          ],
+          scopeID: ScopeContext.current.scope.id,
+          executor,
+          executionID: "quoted",
+          shell: Shell.acceptable(),
+          platform: process.platform,
+        })
+        try {
+          const result = Bun.spawnSync([Shell.acceptable(), "-c", materialized.command], {
+            cwd: root,
+            stdout: "pipe",
+            stderr: "pipe",
+          })
+
+          expect(result.exitCode).toBe(0)
+          expect(result.stdout.toString()).toContain("reviewed")
+        } finally {
+          await materialized.cleanup()
+        }
+      })
+    }))
+
+  test("isolates concurrent materializations of the same note", () =>
+    runtime.run(async () => {
+      await withNote("reviewed", async (noteID) => {
+        const bash = await BashTool.init()
+        const execute = () =>
+          bash.execute(
+            {
+              command: `printf %s /synergy/note/${noteID}`,
+            },
+            { ...baseContext, workBrief: "Inspect concurrent note path" },
+          )
+        const [left, right] = await Promise.all([execute(), execute()])
+        const leftPath = left.output.trim()
+        const rightPath = right.output.trim()
+
+        expect(leftPath).not.toBe(rightPath)
+        expect(await Bun.file(leftPath).exists()).toBe(false)
+        expect(await Bun.file(rightPath).exists()).toBe(false)
+      })
+    }))
+
+  test("keeps files for background consumers and removes them on process exit", () =>
+    runtime.run(async () => {
+      await withNote("reviewed", async (noteID) => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: `printf '%s\\n' /synergy/note/${noteID}; sleep 0.2`,
+
+            yieldSeconds: 0.02,
+          },
+          { ...baseContext, workBrief: "Keep reviewed note available" },
+        )
+        const processID = result.metadata.processId
+        expect(processID).toBeString()
+
+        const running = ProcessRegistry.get(processID!)
+        const materializedPath = running?.output.trim()
+        expect(materializedPath).toBeString()
+        expect(await Bun.file(materializedPath!).exists()).toBe(true)
+        if (process.platform !== "win32") {
+          expect((await stat(materializedPath!)).mode & 0o777).toBe(0o400)
+          expect((await stat(path.dirname(materializedPath!))).mode & 0o777).toBe(0o700)
+        }
+
+        const finished = await waitForFinished(processID!)
+        expect(finished.command).toContain(`/synergy/note/${noteID}`)
+        expect(await Bun.file(materializedPath!).exists()).toBe(false)
+        ProcessRegistry.remove(processID!)
+      })
+    }))
+
+  test("reads the latest user-edited note after command approval", () =>
+    runtime.run(async () => {
+      await withNote("draft", async (noteID) => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: `cat /synergy/note/${noteID}`,
+          },
+          {
+            ...{
+              ...baseContext,
+              ask: async () => {
+                const current = await NoteStore.getAny(ScopeContext.current.scope.id, noteID)
+                await NoteStore.update(ScopeContext.current.scope.id, noteID, {
+                  expectedVersion: current.version,
+                  content: NoteMarkdown.fromMarkdown("user-reviewed"),
+                })
+              },
+              extra: {
+                sandboxPrepare: async (input: { command: string }) => ({
+                  command: Shell.acceptable(),
+                  args: ["-c", input.command],
+                  sandboxed: false,
+                }),
+              },
+            },
+            workBrief: "Read approved note revision",
+          },
+        )
+
+        expect(result.metadata.exit).toBe(0)
+        expect(result.output).toContain("user-reviewed")
+        expect(result.output).not.toContain("draft")
+      })
+    }))
+
+  test("prepares the sandbox from the materialized command and read-only staging root", () =>
+    runtime.run(async () => {
+      await withNote("sandboxed", async (noteID) => {
+        const bash = await BashTool.init()
+        let prepared: { command: string; extraReadRoots: string[] } | undefined
+        const result = await bash.execute(
+          {
+            command: `cat /synergy/note/${noteID}`,
+          },
+          {
+            ...{
+              ...baseContext,
+              extra: {
+                sandboxPrepare: async (input: { command: string; extraReadRoots: string[] }) => {
+                  prepared = input
+                  return {
+                    command: Shell.acceptable(),
+                    args: ["-c", input.command],
+                    sandboxed: false,
+                  }
+                },
+                sandboxFallback: "deny",
+              },
+            },
+            workBrief: "Read sandboxed note",
+          },
+        )
+
+        expect(result.metadata.exit).toBe(0)
+        expect(result.output).toContain("sandboxed")
+        expect(prepared?.command).not.toContain("/synergy/note/")
+        expect(prepared?.extraReadRoots).toHaveLength(1)
+      })
+    }))
+
+  test("cleans staged files when setup fails before the child is spawned", () =>
+    runtime.run(async () => {
+      await withNote("reviewed", async (noteID) => {
+        const bash = await BashTool.init()
+        let stagingRoot: string | undefined
+
+        await expect(
+          bash.execute(
+            {
+              command: `cat /synergy/note/${noteID}`,
+            },
+            {
+              ...{
+                ...baseContext,
+                metadata: () => {
+                  throw new Error("metadata unavailable")
+                },
+                extra: {
+                  sandboxPrepare: async (input: { command: string; extraReadRoots: string[] }) => {
+                    stagingRoot = input.extraReadRoots[0]
+                    return {
+                      command: Shell.acceptable(),
+                      args: ["-c", input.command],
+                      sandboxed: false,
+                    }
+                  },
+                },
+              },
+              workBrief: "Fail after staging",
+            },
+          ),
+        ).rejects.toThrow("metadata unavailable")
+
+        expect(stagingRoot).toBeString()
+        expect(await Bun.file(stagingRoot!).exists()).toBe(false)
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

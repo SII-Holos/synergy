@@ -1,0 +1,304 @@
+import { Config } from "../config/config"
+import { Log } from "../util/log"
+import {
+  SYNERGY_PROFILE_CAPABILITIES,
+  capabilityNonBypassable,
+  capabilityRisk,
+} from "@ericsanchezok/synergy-util/capability"
+import { PROFILE_IDS } from "./ids"
+import { controlledTempRoot } from "../sandbox/policy"
+import type { ProfileSandbox } from "./types"
+import type {
+  ControlProfile,
+  ProfileApproval,
+  ProfileId,
+  ProfileIdInput,
+  ResolutionContext,
+  ResolvedProfile,
+} from "./types"
+
+function rule(permission: string, action: "allow" | "deny" | "ask", nonBypassable = false) {
+  return { permission, pattern: "*", action, ...(nonBypassable ? { nonBypassable: true } : {}) }
+}
+
+function capabilityRule(permission: string, action: "allow" | "deny" | "ask") {
+  return rule(permission, action, capabilityNonBypassable(permission))
+}
+
+function rulesFor(actions: {
+  low: "allow" | "deny" | "ask"
+  medium: "allow" | "deny" | "ask"
+  high: "allow" | "deny" | "ask"
+}) {
+  return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
+    const risk = capabilityRisk(permission)
+    if (risk === "high") return capabilityRule(permission, actions.high)
+    if (risk === "low") return capabilityRule(permission, actions.low)
+    return capabilityRule(permission, actions.medium)
+  })
+}
+
+const GUARDED_MEDIUM_ALLOWED = new Set(["file_write", "network_request", "session_state", "browser_interact"])
+
+const AUTONOMOUS_MEDIUM_ALLOWED = new Set(["shell_remote_publish"])
+
+const AUTONOMOUS_DENIED = new Set([
+  "shell_hardline",
+  "shell_branch_mutation",
+  "shell_remote_write",
+  "shell_destructive",
+  "file_external_write",
+  "secrets",
+  "prompt_transform",
+  "compaction_transform",
+  "permission_hook",
+  "browser_eval_trusted",
+])
+
+const AUTONOMOUS_HIGH_ALLOWED = new Set(["identity_act", "communication_email", "channel_outbound", "platform_control"])
+
+function guardedRules() {
+  return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
+    if (permission === "shell_hardline") return capabilityRule(permission, "deny")
+    if (permission === "protected_op") return capabilityRule(permission, "ask")
+    const risk = capabilityRisk(permission)
+    if (risk === "low") return capabilityRule(permission, "allow")
+    if (risk === "high") return capabilityRule(permission, "ask")
+    if (GUARDED_MEDIUM_ALLOWED.has(permission)) return capabilityRule(permission, "allow")
+    return capabilityRule(permission, "ask")
+  })
+}
+
+function autonomousRules() {
+  const guarded = new Map(guardedRules().map((item) => [item.permission, item]))
+  return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
+    if (AUTONOMOUS_MEDIUM_ALLOWED.has(permission)) return capabilityRule(permission, "allow")
+    if (AUTONOMOUS_DENIED.has(permission)) return capabilityRule(permission, "deny")
+    if (permission === "protected_op") return capabilityRule(permission, "ask")
+    const guardedRule = guarded.get(permission)
+    if (guardedRule?.action === "allow") return guardedRule
+    const risk = capabilityRisk(permission)
+    if (risk === "medium") return capabilityRule(permission, "allow")
+    if (risk === "high" && AUTONOMOUS_HIGH_ALLOWED.has(permission)) return capabilityRule(permission, "allow")
+    return capabilityRule(permission, "ask")
+  })
+}
+
+function uniqueRoots(roots: string[]) {
+  return Array.from(new Set(roots.filter(Boolean)))
+}
+
+function workspaceFs(workspace: string | null, trustedRoots: string[] = []) {
+  const roots = workspace ? uniqueRoots([workspace, ...trustedRoots]) : []
+  return {
+    readRoots: roots,
+    writeRoots: roots,
+    protectedPaths: [],
+  }
+}
+
+function autonomousFs(workspace: string | null, trustedRoots: string[] = [], sessionKey?: string) {
+  // The controlled temporary root (workspace/.synergy/tmp, session-scoped when
+  // a session key is available) is a first-class autonomous write root:
+  // sandboxed shells are pointed at it through TMPDIR so their temporary
+  // files land inside the workspace boundary instead of the host's shared
+  // temporary directory.
+  return {
+    readRoots: workspace ? ["/"] : [],
+    writeRoots: workspace ? uniqueRoots([workspace, controlledTempRoot(workspace, sessionKey), ...trustedRoots]) : [],
+    protectedPaths: [],
+  }
+}
+
+function autonomousPolicy(workspace: string | null, trustedRoots: string[] = [], sessionKey?: string) {
+  return {
+    filesystem: autonomousFs(workspace, trustedRoots, sessionKey),
+    network: { mode: "restricted" as const },
+    sandbox: { mode: "workspace_write" as const, fallback: "deny" as const },
+  }
+}
+function workspacePolicy(workspace: string | null, trustedRoots: string[] = []) {
+  return {
+    filesystem: workspaceFs(workspace, trustedRoots),
+    network: { mode: "restricted" as const },
+    sandbox: { mode: "workspace_write" as const, fallback: "warn" as const },
+  }
+}
+
+function fullAccessPolicy() {
+  return {
+    filesystem: {
+      readRoots: ["/"],
+      writeRoots: ["/"],
+      protectedPaths: [],
+    },
+    network: { mode: "enabled" as const },
+    sandbox: { mode: "none" as const, fallback: "allow" as const },
+  }
+}
+
+function approval(mode: ProfileApproval["mode"]): ProfileApproval {
+  switch (mode) {
+    case "guarded":
+      return { mode, lowRisk: "allow", mediumRisk: "ask", highRisk: "ask" }
+    case "autonomous":
+      return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "deny" }
+    case "full_access":
+      return { mode, lowRisk: "allow", mediumRisk: "allow", highRisk: "allow" }
+  }
+}
+
+function summary(id: ProfileId, profile: Omit<ControlProfile, "filesystem" | "network">, workspace: string | null) {
+  return {
+    profileId: id,
+    sandbox: profile.sandbox,
+    label: profile.label,
+    brief: profile.description,
+    approval: profile.approval,
+    deniedCapabilities: profile.ruleset.filter((item) => item.action === "deny").map((item) => item.permission),
+    workspaceRoot: workspace,
+  }
+}
+
+export function normalizeProfileId(id: string | undefined): ProfileId {
+  if (!id) return "guarded"
+  if ((PROFILE_IDS as readonly string[]).includes(id)) return id as ProfileId
+  return "guarded"
+}
+
+const LOG = Log.create({ service: "control-profile" })
+
+export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<ProfileSandbox> {
+  const defaults: Record<ProfileId, ProfileSandbox> = {
+    guarded: { mode: "workspace_write", fallback: "warn" },
+    // Autonomous never prompts and runs unattended: when the OS sandbox cannot
+    // be prepared, the operation is denied (fail-closed) instead of running
+    // unsandboxed. Operators can override through sandbox.fallbackPolicy or
+    // sandbox.enabled=false, or switch to guarded/full_access.
+    autonomous: { mode: "workspace_write", fallback: "deny" },
+    full_access: { mode: "none", fallback: "allow" },
+  }
+  const profile = { ...defaults[profileId] }
+
+  let sandboxCfg: any = null
+  try {
+    const cfg = await Config.current()
+    sandboxCfg = cfg.sandbox
+  } catch {
+    LOG.debug("no config context available for sandbox resolution, using profile defaults", { profile: profileId })
+  }
+
+  if (!sandboxCfg) {
+    LOG.debug("no sandbox config found, using profile defaults", { profile: profileId, defaults: profile })
+    return profile
+  }
+
+  LOG.debug("sandbox config loaded", {
+    profile: profileId,
+    enabled: sandboxCfg.enabled,
+    fallbackPolicy: sandboxCfg.fallbackPolicy,
+    backend: sandboxCfg.backend,
+    hasWindowsConfig: Boolean(sandboxCfg.windows),
+    hasNetworkConfig: Boolean(sandboxCfg.network),
+    hasMacosConfig: Boolean(sandboxCfg.macos),
+    hasLinuxConfig: Boolean(sandboxCfg.linux),
+  })
+
+  if (sandboxCfg.enabled === false && profile.mode !== "none") {
+    LOG.warn("sandbox.enabled=false in config overrides profile sandbox. Sandbox is disabled.", {
+      profile: profileId,
+      profileMode: profile.mode,
+    })
+    return { mode: "none", fallback: "allow" }
+  }
+
+  if (sandboxCfg.fallbackPolicy) {
+    profile.fallback = sandboxCfg.fallbackPolicy
+    LOG.info("sandbox fallback policy overridden by config", {
+      profile: profileId,
+      fallbackPolicy: sandboxCfg.fallbackPolicy,
+    })
+  }
+
+  if (sandboxCfg.backend && sandboxCfg.backend !== "auto") {
+    profile.backend = sandboxCfg.backend
+    LOG.info("sandbox backend overridden by config", {
+      profile: profileId,
+      backend: sandboxCfg.backend,
+    })
+  }
+
+  if (sandboxCfg.windows?.level) {
+    profile.windowsLevel = sandboxCfg.windows.level
+    LOG.info("sandbox windows level overridden by config", {
+      profile: profileId,
+      windowsLevel: sandboxCfg.windows.level,
+    })
+  }
+
+  LOG.debug("resolved effective sandbox", { profile: profileId, effective: profile })
+  return profile
+}
+
+export async function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): Promise<ResolvedProfile> {
+  const id = normalizeProfileId(idInput)
+  const { workspace, sessionKey } = ctx
+  if (workspace !== null && (typeof workspace !== "string" || !workspace))
+    throw new Error("Workspace must be an explicit path or null")
+  const trustedRoots = ctx.trustedRoots ?? []
+  const effectiveSandbox = await resolveEffectiveSandbox(id)
+
+  switch (id) {
+    case "guarded": {
+      const policy = workspacePolicy(workspace, trustedRoots)
+      const profile = {
+        valid: true,
+        label: "Guarded",
+        description:
+          "Asks before risky work: shell, external writes, identity, or platform actions. Ordinary reads, safe local edits, and network lookups proceed automatically.",
+        ruleset: guardedRules(),
+        ...policy,
+        sandbox: effectiveSandbox,
+        approval: approval("guarded"),
+      }
+      return { ...profile, summary: summary(id, profile, workspace) }
+    }
+
+    case "autonomous": {
+      const policy = autonomousPolicy(workspace, trustedRoots, sessionKey)
+      const profile = {
+        valid: true,
+        label: "Autonomous",
+        description:
+          "Never asks. Ordinary safe work is auto-approved, while high-risk operations are auto-denied instead of prompting, so a run cannot stall waiting for a human.",
+        ruleset: autonomousRules(),
+        ...policy,
+        sandbox: effectiveSandbox,
+        approval: approval("autonomous"),
+      }
+      return {
+        ...profile,
+        summary: summary(id, profile, workspace),
+      }
+    }
+
+    case "full_access": {
+      const policy = fullAccessPolicy()
+      const profile = {
+        valid: true,
+        label: "Full Access",
+        description: "Allow all tool requests without workspace, shell, or network approval prompts.",
+        ruleset: rulesFor({ low: "allow", medium: "allow", high: "allow" }),
+        ...policy,
+        sandbox: effectiveSandbox,
+        approval: approval("full_access"),
+      }
+      return { ...profile, summary: summary(id, profile, workspace) }
+    }
+  }
+}
+
+export async function getProfileLabel(id: string): Promise<string> {
+  const profile = await buildProfile(normalizeProfileId(id), { workspace: "/", workspaceType: "main" })
+  return profile.label
+}

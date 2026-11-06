@@ -66,28 +66,26 @@ Capabilities govern Host Services; they do not claim to restrict direct OS acces
 
 `runtime.endpoint.read` exposes `context.runtimeEndpoint.get()`. It accepts no arguments and returns only the current loopback HTTP origin plus an opaque listener generation. It never returns a token, route, SDK client, or wider server configuration. Loopback and wildcard binds are served over loopback and return a normalized `http://127.0.0.1:<port>` URL; a bind that excludes loopback makes the service fail closed. External process management remains plugin-owned.
 
+`host.connection.manage` adds optional `context.hostConnection` for local device discovery providers, gateway configuration and confirmed pairing. Harness keeps signing keys and credentials, and denies connection management from Agent or remote invocations. The provider publishes only the gateway endpoint; paired devices appear in native device and paused-task transfer selectors. See [Host connections](../../docs/architecture/host-connections.md).
+
 `task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
 
 `agent.call` exposes bounded Sessionless Agent work only to an executable contribution that lists it in `requires`. `context.agent.call()` waits for text; `context.agent.start()` returns a call ID immediately and reports its memory-only terminal result to the same plugin generation and Scope through `agent.call.after`. By default a plugin may call only a hidden Agent owned by its active generation; capability constraints may allow additional Agent names, permitted model roles, and lower host runtime/input/output ceilings. Calls may choose an allowed Synergy role but never a concrete provider/model ID. Neither path has tools, Session history, or Cortex lifecycle.
 
 ## Trusted UI
 
-Trusted Solid components receive `PluginSurfaceContext`. The component uses bound `operations.query/command`, scoped `events.subscribe`, settings `get/subscribe`, capability-gated `settings.replace`, and capability-gated host actions. plugin-kit compiles TSX and binds `solid-js`, `solid-js/web`, and `solid-js/store` to the host runtime; plugins must not ship a private Solid runtime.
-
-Source component shape:
+UI API 6 uses `PluginComponentProps<Context>` with one `context` property for every executable surface. The public service types cover environment/navigation, session collections and messages, draft/editor/submission, workbench resources, commands, overlays and lifetime. Specialized settings values, changes and save status live in `context.settings`. Import host components through `@ericsanchezok/synergy-plugin/components`, semantic icon types through `/icons`, formatting through `/format`, and Skin schemas through `/skin`.
 
 ```tsx
-import type { Component } from "solid-js"
-import type { PluginSurfaceContext } from "@ericsanchezok/synergy-plugin/ui"
+import type { PluginComponentProps } from "@ericsanchezok/synergy-plugin"
+import { EmptyState } from "@ericsanchezok/synergy-plugin/components"
 
-const Panel: Component<{ context: PluginSurfaceContext }> = (props) => (
-  <section aria-label={props.context.surface.id}>Plugin content</section>
-)
-
-export default Panel
+export default function Panel({ context }: PluginComponentProps) {
+  return <EmptyState title={context.surface.id} description="Plugin content" />
+}
 ```
 
-A custom `ui.settings` component uses `PluginSettingsComponentProps`. It receives `context: PluginSettingsSurfaceContext` together with the compatible `pluginId`, `values`, and `onChange` props, allowing bound UI operations and approved host actions without a raw Synergy client.
+Plugin Kit generates `artifacts.ui.apiVersion`, named exports and hashes for the full JS/CSS/font/image graph. The host shares Solid, scopes styles and portals, and disposes registrations by generation. UI 4 executable surfaces require a rebuild and migration; backend API4 compatibility remains independent. See [UI contributions](../../docs/plugins/ui-contributions.md) for services, Shells, Skins and real-host preview, and [UI 4 migration](../../docs/migrations/plugin-ui-4-to-5.md) for the breaking changes.
 
 ## Runtime and Data
 

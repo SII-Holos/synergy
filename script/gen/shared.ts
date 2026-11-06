@@ -169,7 +169,12 @@ export function resolveIdentifier(source: string, identifier: string): string | 
 
 export function zodTypeOf(expr: string): string | null {
   const trimmed = expr.trim()
-  const enumMatch = trimmed.match(/z\s*\.\s*enum\s*\(\s*\[([^\]]*)\]/)
+  const lazy = trimmed.match(/^z\s*\.\s*lazy\s*\(\s*\(\s*\)\s*=>\s*(z\b[\s\S]+|[A-Za-z_][\w.]*)/)
+  if (lazy) return zodTypeOf(lazy[1]!)
+  // A field's type is its outermost constructor. Probing anywhere in the
+  // expression reports a nested child's type instead, so every probe is
+  // anchored: an object holding a `z.enum` is still an object.
+  const enumMatch = trimmed.match(/^z\s*\.\s*enum\s*\(\s*\[([^\]]*)\]/)
   if (enumMatch) {
     const values = enumMatch[1]!
       .split(",")
@@ -178,23 +183,23 @@ export function zodTypeOf(expr: string): string | null {
     if (values.length > 0) return values.map((value) => `"${value}"`).join(" | ")
     return "enum"
   }
-  const object = trimmed.match(/z\s*\.\s*(strictObject|object)\s*\(/)
+  const object = trimmed.match(/^z\s*\.\s*(strictObject|object)\s*\(/)
   if (object) return "object"
   const simple = trimmed.match(
-    /z\s*\.\s*(string|number|boolean|bigint|date|literal|lazy|never|any|unknown|void|null|undefined)\s*\(/,
+    /^z\s*\.\s*(?:coerce\s*\.\s*)?(string|number|boolean|bigint|date|literal|lazy|never|any|unknown|void|null|undefined)\s*\(/,
   )
   if (simple) return simple[1]!
-  const array = trimmed.match(/z\s*\.\s*array\s*\(/)
+  const array = trimmed.match(/^z\s*\.\s*array\s*\(/)
   if (array) return "array"
-  const record = trimmed.match(/z\s*\.\s*record\s*\(/)
+  const record = trimmed.match(/^z\s*\.\s*record\s*\(/)
   if (record) return "record"
-  const union = trimmed.match(/z\s*\.\s*(union|discriminatedUnion)\s*\(/)
+  const union = trimmed.match(/^z\s*\.\s*(union|discriminatedUnion)\s*\(/)
   if (union) return "union"
-  const intersection = trimmed.match(/z\s*\.\s*(intersection|and)\s*\(/)
+  const intersection = trimmed.match(/^z\s*\.\s*(intersection|and)\s*\(/)
   if (intersection) return "intersection"
-  const tuple = trimmed.match(/z\s*\.\s*tuple\s*\(/)
+  const tuple = trimmed.match(/^z\s*\.\s*tuple\s*\(/)
   if (tuple) return "tuple"
-  const effect = trimmed.match(/z\s*\.\s*(custom|instanceof|function|promise|map|set)\s*\(/)
+  const effect = trimmed.match(/^z\s*\.\s*(custom|instanceof|function|promise|map|set)\s*\(/)
   if (effect) return effect[1]!
   const identifier = trimmed.match(/^([A-Za-z_][A-Za-z0-9_.]*)/)
   if (identifier) return identifier[1]!
@@ -202,7 +207,7 @@ export function zodTypeOf(expr: string): string | null {
 }
 
 export function inlineDescribe(expr: string): string | null {
-  const marker = expr.lastIndexOf(".describe(")
+  const marker = owningDescribe(expr)
   if (marker < 0) return null
   const openIndex = expr.indexOf("(", marker)
   const closeIndex = matchClose(expr, openIndex, "(", ")")
@@ -212,6 +217,29 @@ export function inlineDescribe(expr: string): string | null {
     .map((match) => stringLiteral(match[1]!))
     .filter((value): value is string => value !== null)
   return parts.length > 0 ? parts.join("") : null
+}
+
+// Only a `.describe()` chained at the field's own top level documents that
+// field. A describe nested inside an object literal documents the nested
+// property, so taking the last match would attribute a child's text to the
+// parent.
+function owningDescribe(expr: string) {
+  let depth = 0
+  let quote: string | null = null
+  let marker = -1
+  for (let i = 0; i < expr.length; i++) {
+    const char = expr[i]!
+    if (quote) {
+      if (char === "\\") i++
+      else if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'" || char === "`") quote = char
+    else if (char === "(" || char === "{" || char === "[") depth++
+    else if (char === ")" || char === "}" || char === "]") depth--
+    else if (depth === 0 && char === "." && expr.startsWith(".describe(", i)) marker = i
+  }
+  return marker
 }
 
 export function isOptionalExpr(expr: string): boolean {
@@ -254,12 +282,21 @@ export function parseObjectFields(block: string): ObjectField[] {
     if (!match) continue
     const name = match[1]!
     let expr = match[2]!.trim()
-    if (expr === "z" || expr.endsWith(".")) {
+    if (expr === "z" || expr.endsWith(".") || lines[i + 1]?.trimStart().startsWith(".")) {
+      const indent = line.length - line.trimStart().length
       let j = i + 1
-      while (j < lines.length && j - i < 30) {
+      while (j < lines.length) {
         const nextLine = lines[j]!
-        expr += " " + nextLine.trim()
-        if (balanced(expr) && nextLine.trim().endsWith(",")) break
+        const trimmed = nextLine.trim()
+        const nextIndent = nextLine.length - nextLine.trimStart().length
+        // A sibling field or the enclosing block's closer ends the
+        // expression; a chain continuation never does, and neither does an
+        // interior `}` that closes a nested object. Bounding by these two
+        // conditions rather than a line count is what lets a large object
+        // reach its own trailing `.describe()`.
+        if (nextIndent <= indent && !trimmed.startsWith(".")) break
+        expr += " " + trimmed
+        if (balanced(expr) && trimmed.endsWith(",")) break
         j++
       }
     }
@@ -282,4 +319,36 @@ export function firstStringArg(source: string, after: string): string | null {
 
 export function mdCell(text: string): string {
   return text.replace(/\|/g, "\\|")
+}
+
+export async function resolveWorkspaceModule(directory: string, specifier: string): Promise<string | null> {
+  let base: string | undefined
+  if (specifier.startsWith(".")) base = path.resolve(directory, specifier)
+  else {
+    const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!
+    const manifest = JSON.parse(await readFile(path.join(REPO_ROOT, "package.json"), "utf8"))
+    for (const workspace of manifest.workspaces.packages as string[]) {
+      const pkg = JSON.parse(await readFile(path.join(REPO_ROOT, workspace, "package.json"), "utf8"))
+      if (pkg.name !== name) continue
+      const key = specifier === name ? "." : `.${specifier.slice(name.length)}`
+      const entry = Object.keys(pkg.exports ?? {}).find(
+        (entry) =>
+          entry === key ||
+          (entry.includes("*") && key.startsWith(entry.split("*")[0]) && key.endsWith(entry.split("*")[1])),
+      )
+      if (!entry) return null
+      let target = pkg.exports[entry]
+      if (typeof target === "object") target = target.bun ?? target.types ?? target.import
+      if (typeof target !== "string") return null
+      if (entry.includes("*"))
+        target = target.replace("*", key.slice(entry.split("*")[0].length, key.length - entry.split("*")[1].length))
+      base = path.join(REPO_ROOT, workspace, target)
+      break
+    }
+  }
+  if (!base) return null
+  for (const file of [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
+    if (await Bun.file(file).exists()) return file
+  }
+  return null
 }

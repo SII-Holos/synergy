@@ -2,7 +2,8 @@
 
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source("../../../../");
-@source not "../../../../app/src/locales";
+@source "../../../../../apps/web/src";
+@source not "../../../../../apps/web/src/locales";
 @import "./utilities.css";
 
 @import "../index.css";
@@ -67,7 +68,6 @@
   --shadow-xs-border: var(--shadow-xs-border);
   --shadow-xs-border-base: var(--shadow-xs-border-base);
   --shadow-xs-border-select: var(--shadow-xs-border-select);
-  --shadow-xs-border-focus: var(--shadow-xs-border-focus);
 
   --animate-pulse: var(--animate-pulse);
 }

@@ -8,6 +8,8 @@ Browser spans one owner/page model across headless control, Desktop-native prese
 
 ## Decision
 
+The [Desktop page and identity decision](2026-09-29-desktop-browser-pages-and-identities.md) supersedes this record's single-page composition and protocol/storage-version constraints. This record remains the rationale for bounded recovery, settling and evidence semantics.
+
 Strengthen the existing Protocol v2 owner/page path instead of adding a parallel recovery or automation model:
 
 - `BrowserSession.resumePage()` is the idempotent recovery entry. A live backend handles `resume` without replacing a healthy native generation; an in-flight native recovery is awaited; a failed native recovery starts a new bounded flight and resets only its transient recovery budget. The canonical owner and page identity remain stable while the native `WebContentsView`, CDP control, and diagnostics generation may be replaced. Resume-driven recovery is rate-limited (15s default cooldown) so the Agent path cannot loop a failing page; the native Retry control bypasses the cooldown.

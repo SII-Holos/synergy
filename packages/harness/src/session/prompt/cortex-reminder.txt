@@ -1,0 +1,5 @@
+## {{count}} Background Task(s) Running
+
+{{task_list}}
+
+The listed work is already delegated. Continue independent work without duplicating it, and integrate the results when complete.

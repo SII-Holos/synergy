@@ -1,0 +1,14 @@
+Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Choose one wake-up condition. Delivery stays with the originating conversation; use a separate recurring schedule when work must run independently.
+
+**Wake on another session's turn**: pass `onSessionEnd: {sessionID, agent?, finish?}` to react when the watched session ends a turn, optionally filtered by agent or finish state. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}`.
+
+**Timed wake-up** (external processes without an event source): the primary use case is **recursive adaptive monitoring**:
+- Start with a short delay (3–5min) to check an external process, experiment, or pipeline.
+- Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions.
+
+Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing.
+
+**Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed.
+
+Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires.
+If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool.

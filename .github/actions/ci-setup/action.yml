@@ -1,0 +1,150 @@
+name: CI environment
+description: Install the prerequisites declared by an execution unit
+inputs:
+  dependencies:
+    description: Install workspace dependencies
+    default: "true"
+  browser:
+    description: Install browser test dependencies
+    default: "false"
+  desktop:
+    description: Install Desktop packaging and smoke dependencies
+    default: "false"
+  sandbox:
+    description: Enable real Linux sandbox tests with the verified helper
+    default: "false"
+  policy:
+    description: Install secret scanning tools
+    default: "false"
+  native:
+    description: Cache Rust dependencies and compilation for native builders
+    default: "false"
+  build-cache:
+    description: Restore build and immutable benchmark package caches
+    default: "true"
+  benchmark-cache:
+    description: Restore verified external benchmark engine objects and indexes
+    default: "false"
+  cache-scope:
+    description: Keep cache writes from independent execution units separate
+    default: "shared"
+  workspaces:
+    description: Space-separated workspace dependency filters
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version: "1.4.3"
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      with:
+        version: "0.13.1"
+        enable-cache: true
+        cache-dependency-glob: benchmark/uv.lock
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.dependencies == 'true' && runner.os != 'Windows'
+      with:
+        path: ~/.bun/install/cache
+        key: bun-downloads-${{ runner.os }}-${{ runner.arch }}-1.4.3-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-downloads-${{ runner.os }}-${{ runner.arch }}-1.4.3-
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.policy == 'true'
+      with:
+        path: node_modules/.cache/prettier
+        key: prettier-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json', '.prettierignore', '.prettierrc*', 'prettier.config.*') }}-${{ github.sha }}
+        restore-keys: prettier-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json', '.prettierignore', '.prettierrc*', 'prettier.config.*') }}-
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.benchmark-cache == 'true' && inputs.build-cache == 'true'
+      with:
+        path: |
+          .artifacts/benchmark/cache/objects
+          .artifacts/benchmark/cache/indexes
+        key: benchmark-engines-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-bun1.4.3-${{ hashFiles('benchmark/src/synergy_bench/engines.py', 'benchmark/src/synergy_bench/cache.py', 'benchmark/uv.lock') }}-${{ inputs.cache-scope }}-${{ github.sha }}
+        restore-keys: benchmark-engines-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-bun1.4.3-${{ hashFiles('benchmark/src/synergy_bench/engines.py', 'benchmark/src/synergy_bench/cache.py', 'benchmark/uv.lock') }}-${{ inputs.cache-scope }}-
+    - name: Native compiler identity
+      if: inputs.native == 'true' && inputs.build-cache == 'true'
+      id: rust-key
+      shell: bash
+      run: |
+        identity=$(rustc -vV | bun -e 'console.log(new Bun.CryptoHasher("sha256").update(await Bun.stdin.text()).digest("hex"))')
+        echo "identity=$identity" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.native == 'true' && inputs.build-cache == 'true'
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          packages/local-runtime/src/process/native-pty/target
+          packages/local-runtime/src/sandbox/helper/target
+          packages/local-runtime/src/sandbox/helper-linux/target
+        key: rust-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-${{ steps.rust-key.outputs.identity }}-${{ hashFiles('packages/local-runtime/src/process/native-pty/**', 'packages/local-runtime/src/sandbox/helper/**', 'packages/local-runtime/src/sandbox/helper-linux/**') }}
+    - if: inputs.dependencies == 'true'
+      shell: bash
+      env:
+        HUSKY: "0"
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        CI_WORKSPACES: ${{ inputs.workspaces }}
+      run: |
+        args=(--frozen-lockfile)
+        if [ -n "$CI_WORKSPACES" ]; then
+          read -r -a workspaces <<< "$CI_WORKSPACES"
+          for workspace in "${workspaces[@]}"; do args+=(--filter "$workspace"); done
+        fi
+        bun install "${args[@]}"
+    - name: Test Git identity
+      shell: bash
+      run: |
+        git config --global user.email "ci@synergy.dev"
+        git config --global user.name "CI Runner"
+    - name: Chinese browser fonts
+      if: inputs.browser == 'true' && runner.os == 'Linux'
+      shell: bash
+      # Provenance: https://github.com/microsoft/playwright/blob/v1.64.1/packages/playwright-core/src/server/registry/nativeDeps.ts
+      # Local adaptation: install the Han font required by localized fixtures without reinstalling hosted browser libraries.
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends fonts-wqy-zenhei
+    - if: inputs.browser == 'true'
+      shell: bash
+      # Provenance: https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md
+      # Local adaptation: reuse the hosted image's browser libraries; real browser tests verify them.
+      run: bun run --cwd apps/web playwright install chromium
+    - if: inputs.desktop == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libarchive-tools rpm libgtk-3-0 libnss3 libxss1 libxtst6 libatspi2.0-0 libgbm1 libasound2t64
+        node apps/desktop/node_modules/electron/install.js
+    - if: runner.os == 'Linux' && inputs.dependencies == 'true'
+      shell: bash
+      run: |
+        if ! command -v rg >/dev/null; then
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+        fi
+    - if: inputs.sandbox == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bubblewrap apparmor
+        cat <<'PROFILE' | sudo tee /etc/apparmor.d/synergy-bwrap
+        abi <abi/4.0>,
+        include <tunables/global>
+        profile synergy-bwrap /usr/bin/bwrap flags=(unconfined) {
+          userns,
+          include if exists <local/bwrap>
+        }
+        PROFILE
+        sudo apparmor_parser -r /etc/apparmor.d/synergy-bwrap
+        mkdir -p packages/local-runtime/src/sandbox/helper-linux/target/release
+        install -m 0755 packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux packages/local-runtime/src/sandbox/helper-linux/target/release/synergy-sandbox-linux
+        mkdir -p "$HOME/.synergy/sandbox-helper"
+        install -m 0755 packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux "$HOME/.synergy/sandbox-helper/synergy-sandbox-linux"
+    - if: inputs.policy == 'true'
+      shell: bash
+      run: |
+        curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o "$RUNNER_TEMP/gitleaks.tar.gz"
+        (cd "$RUNNER_TEMP" && echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -)
+        tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+        sudo install -m 0755 "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks

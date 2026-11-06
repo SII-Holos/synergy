@@ -1,0 +1,74 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
+import { BrowserNativeLease } from "@ericsanchezok/synergy-browser-core/native-lease"
+import { BrowserBroker } from "./broker.js"
+import { BrowserOwner } from "./owner.js"
+
+const runtimeState = RuntimeContext.state(() => ({
+  consumed: new Map<string, number>(),
+}))
+const MAX_CONSUMED_LEASES = 2_048
+
+export namespace BrowserNativePresentation {
+  export function consume(owner: BrowserOwner.Info, serverOrigin: string, token: string | undefined): boolean {
+    const instanceState = runtimeState()
+
+    prune()
+    if (!token) return false
+    let claims: ReturnType<typeof BrowserNativeLease.verify>
+    try {
+      claims = BrowserNativeLease.verify(BrowserBroker.secret(), token)
+    } catch (error) {
+      const expired = error instanceof Error && /expired/i.test(error.message)
+      throw new BrowserProtocolError({
+        code: expired ? "browser_native_ticket_expired" : "browser_native_ticket_rejected",
+        message: expired
+          ? "The native Browser presentation ticket expired."
+          : "The native Browser presentation ticket was rejected.",
+        retryable: true,
+      })
+    }
+    const ownerKey = BrowserOwner.key(owner)
+    if (claims.ownerKey !== ownerKey) {
+      throw new BrowserProtocolError({
+        code: "browser_native_ticket_owner_mismatch",
+        message: "The native Browser presentation ticket owner does not match this workspace.",
+        retryable: true,
+      })
+    }
+    if (claims.serverOrigin !== new URL(serverOrigin).origin) {
+      throw new BrowserProtocolError({
+        code: "browser_native_ticket_origin_mismatch",
+        message: "The native Browser presentation ticket does not match this server.",
+        retryable: true,
+      })
+    }
+    if (instanceState.consumed.has(claims.nonce)) {
+      throw new BrowserProtocolError({
+        code: "browser_native_ticket_replayed",
+        message: "The native Browser presentation ticket was already used.",
+        retryable: true,
+      })
+    }
+    instanceState.consumed.set(claims.nonce, claims.expiresAt)
+    while (instanceState.consumed.size > MAX_CONSUMED_LEASES) {
+      const oldest = instanceState.consumed.keys().next().value
+      if (typeof oldest !== "string") break
+      instanceState.consumed.delete(oldest)
+    }
+    return true
+  }
+
+  export function resetForTest(): void {
+    const instanceState = runtimeState()
+
+    instanceState.consumed.clear()
+  }
+}
+
+function prune(): void {
+  const instanceState = runtimeState()
+
+  const now = Date.now()
+  for (const [nonce, expiresAt] of instanceState.consumed) if (expiresAt < now) instanceState.consumed.delete(nonce)
+}

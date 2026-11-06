@@ -1,0 +1,44 @@
+Create or replace the current session's task DAG: nodes describe work, `deps` describe prerequisites, and optional bindings connect delegated tasks to progress.
+
+Use a DAG when it clarifies meaningful dependencies, parallel branches or a plan that will evolve. Skip it for simple, trivially sequential or conversational work; creating a graph is not a required first action.
+
+## Nodes and execution
+
+Each node has an id, content, status and dependencies, with optional executor `assign`, task/session bindings and a short `memo`.
+
+- `pending`: prerequisites are not complete.
+- `running`: ready or in progress. Pending nodes automatically become running when all dependencies complete; this does not itself execute the work.
+- `blocked`: waiting for a decision, environment condition, evidence or an upstream issue.
+- `completed`: finished successfully; preserve as immutable history in an active DAG.
+- `failed`: attempted unsuccessfully; decide whether to revise, retry or cancel downstream work.
+- `cancelled`: no longer needed.
+
+Create nodes as pending, then act on ready nodes. Run independent branches concurrently when inputs and write/resource ownership allow it. Work directly or delegate according to the task; a graph does not require delegation. `task(background: true, dag_node_id: "<id>")` binds a task whose completion/failure updates that node automatically. Use `dagpatch` for self-executed status changes and `dagread` to inspect the graph.
+
+`assign` is an optional routing hint, not dispatch: `self` (default), `developer` (implementation), `explore` (code search), `scout` (external research), `scholar` (academic research), `scribe` (writing), or `advisor` (architecture review). Choose an available agent when actually delegating.
+
+## Updates and validation
+
+Re-call with the full node list to add work, remove unneeded pending/cancelled nodes or change pending dependencies. Resolve blockers, revise failed work or cancel work that is no longer needed. Do not rewrite completed history in an active graph. When all nodes are completed, cancelled or failed, a new graph can replace it without carrying over the old nodes.
+
+- Rejected: duplicate node IDs, unknown statuses, cycles.
+- Auto-fixed with warnings: unknown dependencies and self-dependencies are removed; invalid assignments are dropped (self is the default).
+- Warnings: dropping or changing completed nodes in an active graph, dropping running nodes, running/completed nodes with incomplete dependencies, pending nodes whose prerequisites failed/blocked/cancelled, or no root nodes.
+
+Valid status transitions:
+- pending → running, blocked, cancelled
+- running → completed, failed, blocked, cancelled
+- blocked → pending, cancelled
+- failed → pending
+- cancelled → pending
+- completed → no transitions within the active graph
+
+## Example
+
+```
+dagwrite({ nodes: [
+  { id: "investigate", content: "Resolve open requirements", status: "pending", deps: [] },
+  { id: "inventory", content: "Inventory existing resources", status: "pending", deps: [] },
+  { id: "deliver", content: "Produce and verify the result", status: "pending", deps: ["investigate", "inventory"] }
+]})
+```

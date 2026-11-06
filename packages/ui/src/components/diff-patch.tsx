@@ -1,7 +1,17 @@
-import { FileDiff, type FileDiffMetadata } from "@pierre/diffs"
+import { highlightInputAllowed } from "../pierre/cache-budget"
+import { FileDiff, type FileDiffMetadata, type RenderRange } from "@pierre/diffs"
 import { useLingui } from "@lingui/solid"
 import { createMediaQuery } from "@solid-primitives/media"
-import { createEffect, createMemo, onCleanup, Show, splitProps, type ComponentProps, type JSX } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  Show,
+  splitProps,
+  type ComponentProps,
+  type JSX,
+} from "solid-js"
 import { createDefaultOptions, styleVariables } from "../pierre"
 import { getWorkerPool } from "../pierre/worker"
 import { ensureSynergyHighlightTheme } from "../context/marked"
@@ -18,6 +28,10 @@ export interface DiffPatchProps {
   classList?: ComponentProps<"div">["classList"]
   /** Pre-parsed single-file metadata; DiffPatch parses `patch` when omitted. */
   metadata?: FileDiffMetadata
+  fallback?: JSX.Element
+  renderRange?: RenderRange
+  disableLineNumbers?: boolean
+  hunkSeparators?: "simple" | "line-info"
 }
 
 /**
@@ -30,7 +44,19 @@ export interface DiffPatchProps {
 export function DiffPatch(props: DiffPatchProps) {
   const { _ } = useLingui()
   let container!: HTMLDivElement
-  const [local] = splitProps(props, ["patch", "diffStyle", "class", "classList", "metadata"])
+  const [local] = splitProps(props, [
+    "patch",
+    "diffStyle",
+    "class",
+    "classList",
+    "metadata",
+    "fallback",
+    "renderRange",
+    "disableLineNumbers",
+    "hunkSeparators",
+  ])
+  const fallback = createMemo(() => local.fallback)
+  const [showFallback, setShowFallback] = createSignal(false)
 
   const mobile = createMediaQuery("(max-width: 640px)")
 
@@ -38,17 +64,20 @@ export function DiffPatch(props: DiffPatchProps) {
   // an unchanged patch string. The string memo stops that churn here so the
   // parse and render effects below only re-run when the patch truly changes.
   const patchText = createMemo(() => local.patch)
-  const metadata = createMemo<FileDiffMetadata | undefined>(() => local.metadata ?? parseRenderablePatch(patchText()))
+  const metadata = createMemo<FileDiffMetadata | undefined>(() =>
+    highlightInputAllowed(patchText()) ? (local.metadata ?? parseRenderablePatch(patchText())) : undefined,
+  )
 
   const options = createMemo(() => {
     const opts = {
       ...createDefaultOptions(local.diffStyle),
       disableErrorHandling: true,
     }
-    if (!mobile()) return opts
     return {
       ...opts,
-      disableLineNumbers: true,
+      disableLineNumbers: local.disableLineNumbers ?? mobile(),
+      disableVirtualizationBuffers: !!local.renderRange,
+      hunkSeparators: local.hunkSeparators,
     }
   })
 
@@ -57,12 +86,18 @@ export function DiffPatch(props: DiffPatchProps) {
   const renderPlainPatch = (patch: string) => {
     instance?.cleanUp()
     instance = undefined
-    const fallback = document.createElement("pre")
-    fallback.dataset.component = "diff-patch-fallback"
-    fallback.dataset.slot = "diff-preview-body"
-    fallback.setAttribute("aria-label", _(DIFF_DESC.fileDiffPreview))
-    fallback.textContent = patch
-    container.replaceChildren(fallback)
+    if (fallback() !== undefined) {
+      container.replaceChildren()
+      setShowFallback(true)
+      return
+    }
+    setShowFallback(false)
+    const plain = document.createElement("pre")
+    plain.dataset.component = "diff-patch-fallback"
+    plain.dataset.slot = "diff-preview-body"
+    plain.setAttribute("aria-label", _(DIFF_DESC.fileDiffPreview))
+    plain.textContent = patch
+    container.replaceChildren(plain)
   }
 
   createEffect(() => {
@@ -75,6 +110,7 @@ export function DiffPatch(props: DiffPatchProps) {
     // Read reactive values synchronously so Solid tracks them; a diffStyle
     // change must re-run this effect and re-render with the new layout.
     const opts = options()
+    const renderRange = local.renderRange
     let alive = true
 
     // Paint readable plain text immediately. The async upgrade below replaces
@@ -92,7 +128,8 @@ export function DiffPatch(props: DiffPatchProps) {
           const nextInstance = new FileDiff(opts, pool)
           instance = nextInstance
           container.innerHTML = ""
-          nextInstance.render({ fileDiff: parsed, containerWrapper: container })
+          nextInstance.render({ fileDiff: parsed, containerWrapper: container, renderRange })
+          setShowFallback(false)
         } catch {
           if (alive) renderPlainPatch(patch)
         }
@@ -117,8 +154,10 @@ export function DiffPatch(props: DiffPatchProps) {
         ...(local.classList ?? {}),
       }}
       style={styleVariables}
-      ref={container}
-    />
+    >
+      <Show when={showFallback()}>{fallback()}</Show>
+      <div ref={container} hidden={showFallback()} />
+    </div>
   )
 }
 
@@ -136,10 +175,18 @@ export interface DiffPatchGateProps extends Omit<DiffPatchProps, "patch" | "meta
 export function DiffPatchGate(props: DiffPatchGateProps) {
   const [local, others] = splitProps(props, ["patch", "fallback"])
   const patchText = createMemo(() => local.patch ?? "")
-  const metadata = createMemo(() => parseRenderablePatch(patchText()))
+  const large = createMemo(() => !highlightInputAllowed(patchText()))
+  const metadata = createMemo(() => (large() ? undefined : parseRenderablePatch(patchText())))
   return (
-    <Show when={metadata()} fallback={local.fallback}>
-      {(parsed) => <DiffPatch {...others} patch={patchText()} metadata={parsed()} />}
+    <Show
+      when={large()}
+      fallback={
+        <Show when={metadata()} fallback={local.fallback}>
+          {(parsed) => <DiffPatch {...others} patch={patchText()} metadata={parsed()} />}
+        </Show>
+      }
+    >
+      <DiffPatch {...others} patch={patchText()} />
     </Show>
   )
 }

@@ -1,0 +1,125 @@
+import { createSignal, Show, createEffect } from "solid-js"
+import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
+import { useLingui } from "@lingui/solid"
+import { SettingRow } from "@/components/settings/components/SettingsSettingRow"
+
+interface DeclarativeSettingsFormProps {
+  schema: Record<string, unknown>
+  values: Record<string, unknown>
+  onChange: (values: Record<string, unknown>) => void
+}
+
+export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
+  const { _ } = useLingui()
+  const [local, setLocal] = createSignal(props.values)
+  const inputClass =
+    "workbench-input-surface w-full rounded-lg border border-border-base/40 bg-input-base px-3 py-2 text-14-regular text-text-strong outline-none transition-colors placeholder:text-text-weaker"
+
+  createEffect(() => {
+    setLocal(props.values)
+  })
+
+  function handleChange(key: string, value: unknown) {
+    const next = { ...local(), [key]: value }
+    setLocal(next)
+    props.onChange(next)
+  }
+
+  const properties = (props.schema.properties ?? {}) as Record<string, Record<string, unknown>>
+  const fields = Object.entries(properties).map(([key, fieldSchema]) => {
+    const fieldType = fieldSchema.type ?? "string"
+    const fieldTitle = (fieldSchema.title ?? fieldSchema.description ?? key) as string
+    const fieldDescription = fieldSchema.description as string | undefined
+
+    const showDescription = !!fieldDescription && fieldTitle !== fieldDescription
+
+    let input
+    if (fieldSchema.enum) {
+      input = (
+        <MenuField
+          id={`plugin-setting-${key}`}
+          ariaLabel={fieldTitle}
+          ariaDescribedBy={showDescription ? `plugin-setting-${key}-description` : undefined}
+          value={(local()[key] as string) ?? ""}
+          options={(fieldSchema.enum as string[]).map((value) => ({ value, label: value }))}
+          onChange={(value) => handleChange(key, value)}
+        />
+      )
+    } else if (fieldType === "boolean") {
+      input = (
+        <Switch checked={!!local()[key]} hideLabel onChange={(checked) => handleChange(key, checked)}>
+          {fieldTitle}
+        </Switch>
+      )
+    } else if (fieldType === "number") {
+      input = (
+        <input
+          id={`plugin-setting-${key}`}
+          aria-label={fieldTitle}
+          type="number"
+          value={(local()[key] as number | string) ?? ""}
+          onChange={(e) => handleChange(key, Number(e.currentTarget.value))}
+          class={inputClass}
+        />
+      )
+    } else if (fieldSchema.format === "password") {
+      input = (
+        <input
+          id={`plugin-setting-${key}`}
+          aria-label={fieldTitle}
+          type="password"
+          value={(local()[key] as string) ?? ""}
+          onChange={(e) => handleChange(key, e.currentTarget.value)}
+          class={inputClass}
+        />
+      )
+    } else {
+      input = (
+        <input
+          id={`plugin-setting-${key}`}
+          aria-label={fieldTitle}
+          type="text"
+          value={(local()[key] as string) ?? ""}
+          onChange={(e) => handleChange(key, e.currentTarget.value)}
+          class={inputClass}
+        />
+      )
+    }
+
+    return fieldType === "boolean" ? (
+      <SettingRow
+        title={fieldTitle}
+        description={showDescription ? fieldDescription! : ""}
+        stateLabel={
+          local()[key]
+            ? _({ id: "app.plugin.settings.stateOn", message: "On" })
+            : _({ id: "app.plugin.settings.stateOff", message: "Off" })
+        }
+        trailing={input}
+      />
+    ) : (
+      <div class="settings-field flex flex-col gap-2 py-2">
+        <label class="settings-row-title" for={`plugin-setting-${key}`}>
+          {fieldTitle}
+        </label>
+        <Show when={showDescription}>
+          <p id={`plugin-setting-${key}-description`} class="settings-row-description">
+            {fieldDescription}
+          </p>
+        </Show>
+        {input}
+      </div>
+    )
+  })
+
+  const description = typeof props.schema.description === "string" ? props.schema.description : undefined
+  return (
+    <div class="declarative-settings-form flex flex-col">
+      <Show when={description}>
+        <p class="settings-row-description pb-3">{description}</p>
+      </Show>
+      {fields}
+    </div>
+  )
+}

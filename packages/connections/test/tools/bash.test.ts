@@ -1,0 +1,1000 @@
+import { $ } from "bun"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import path from "path"
+import { BashTool } from "@ericsanchezok/synergy-local-runtime/tools/bash"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import type { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
+import { Truncate } from "@ericsanchezok/synergy-harness/tool/truncation"
+import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
+import {
+  assertDetachedDaemonContainment,
+  detectDetachedDaemonRisk,
+  LocalBashBackend,
+  withLinuxChildOomPreference,
+} from "@ericsanchezok/synergy-local-runtime/tools/bash/local"
+import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime({ environment: true })
+
+async function worktreeFixture() {
+  const fixture = await tmpdir({
+    git: true,
+    init: async (directory) => {
+      const workspace = path.join(directory, "worktree")
+      await $`git worktree add --detach ${workspace} HEAD`.quiet().cwd(directory)
+      return workspace
+    },
+  })
+  return { ...fixture, path: fixture.extra, originalCheckout: fixture.path }
+}
+
+const inProject = <T>(fn: () => T) => runtime.run(() => withProjectScope(async () => fn()))
+
+const ctx = {
+  sessionID: "test",
+  messageID: "",
+  callID: "",
+  agent: "build",
+  abort: AbortSignal.any([]),
+  metadata: () => {},
+  ask: async () => {},
+  extra: {} as Record<string, unknown>,
+} as any
+
+function metadataTracker() {
+  const calls: Array<{ metadata: any }> = []
+  return {
+    calls,
+    ctx: {
+      ...ctx,
+      metadata: (val: any) => {
+        calls.push(val)
+      },
+    },
+  }
+}
+
+const projectRoot = path.join(__dirname, "../..")
+const originalShell = process.env.SHELL
+
+beforeEach(() =>
+  inProject(() => {
+    delete process.env.SHELL
+    Shell.preferred.reset()
+    Shell.acceptable.reset()
+  }),
+)
+
+afterEach(() =>
+  inProject(() => {
+    if (originalShell === undefined) delete process.env.SHELL
+    else process.env.SHELL = originalShell
+    Shell.preferred.reset()
+    Shell.acceptable.reset()
+  }),
+)
+
+function bunEval(script: string) {
+  const executable = process.execPath.replace(/\\/g, "/")
+  const encoded = Buffer.from(script).toString("base64")
+  const evalScript = `eval(Buffer.from('${encoded}', 'base64').toString())`
+  return `"${executable}" -e ${JSON.stringify(evalScript)}`
+}
+
+function sleepCommand(ms: number) {
+  return bunEval(`setTimeout(() => console.log("done"), ${ms})`)
+}
+
+async function withProjectScope<T>(fn: () => Promise<T>) {
+  return ScopeContext.provide({
+    scope: (await Scope.fromDirectory(projectRoot)).scope,
+    fn,
+  })
+}
+
+describe("tool.bash", () => {
+  test("basic", () =>
+    inProject(async () => {
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(projectRoot)).scope,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: "echo 'test'",
+            },
+            { ...ctx, workBrief: "Echo test message" },
+          )
+          expect(result.metadata.exit).toBe(0)
+          expect(result.metadata.output).toContain("test")
+        },
+      })
+    }))
+
+  test("leaves local commands unchanged outside Linux", () =>
+    inProject(() => {
+      expect(withLinuxChildOomPreference("echo unchanged", "darwin")).toBe("echo unchanged")
+    }))
+
+  test("wraps Linux commands with a best-effort OOM preference without breaking output or exit", () =>
+    inProject(async () => {
+      const command = withLinuxChildOomPreference("printf original-command", "linux")
+      expect(command).toContain("/proc/self/oom_score_adj")
+      expect(command).toEndWith("printf original-command")
+
+      const proc = Bun.spawn(["/bin/sh", "-c", command], {
+        env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+
+      expect(exitCode).toBe(0)
+      expect(stdout).toBe("original-command")
+    }))
+  test.skipIf(process.platform !== "linux")("applies the OOM victim preference to the local Bash child", () =>
+    inProject(async () => {
+      const command = withLinuxChildOomPreference("cat /proc/self/oom_score_adj")
+      const proc = Bun.spawn(["/bin/sh", "-c", command], {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+
+      expect(exitCode).toBe(0)
+      expect(stdout.trim()).toBe("1000")
+    }),
+  )
+
+  test("accepts positive timing controls and rejects invalid timing values", () =>
+    inProject(async () => {
+      const bash = await BashTool.init()
+      expect(bash.parameters.safeParse({ command: "echo ok" }).success).toBe(true)
+      expect(
+        bash.parameters.safeParse({
+          command: "echo ok",
+          background: true,
+          yieldSeconds: 1,
+        }).success,
+      ).toBe(true)
+      expect(
+        bash.parameters.safeParse({
+          command: "echo ok",
+          yieldSeconds: 0,
+        }).success,
+      ).toBe(false)
+      expect(bash.parameters.safeParse({ command: "echo ok", yieldSeconds: -1 }).success).toBe(false)
+    }))
+
+  test("rejects removed envID instead of falling back to local execution", () =>
+    inProject(async () => {
+      const bash = await BashTool.init()
+      expect(
+        bash.parameters.safeParse({
+          command: "echo unsafe",
+          envID: "legacy",
+        }).success,
+      ).toBe(false)
+    }))
+
+  test("auto-backgrounds long commands after yieldSeconds", () =>
+    inProject(async () => {
+      await withProjectScope(async () => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: sleepCommand(2000),
+
+            yieldSeconds: 0.05,
+          },
+          { ...ctx, workBrief: "Sleep briefly" },
+        )
+        expect(result.metadata.background).toBe(true)
+        expect(result.metadata.processId).toBeString()
+        expect(result.output).toContain("Command auto-backgrounded after 0.05s")
+        if (result.metadata.processId) ProcessRegistry.remove(result.metadata.processId)
+      })
+    }))
+
+  test("commands that finish before auto-backgrounding return foreground results", () =>
+    inProject(async () => {
+      await withProjectScope(async () => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: "echo foreground",
+
+            yieldSeconds: 1,
+          },
+          { ...ctx, workBrief: "Echo foreground" },
+        )
+        expect(result.metadata.background).toBeUndefined()
+        expect(result.metadata.exit).toBe(0)
+        expect(result.output).toContain("foreground")
+      })
+    }))
+
+  test("keeps reading inherited stdout until the process pipes close", () =>
+    inProject(async () => {
+      await withProjectScope(async () => {
+        const allowedCtx = {
+          ...ctx,
+          extra: { ...ctx.extra, shellAllowDetachedDaemons: true },
+        }
+        const result = await LocalBashBackend.execute(
+          {
+            command: "(sleep 0.05; printf late-tail) &",
+
+            yieldSeconds: 0,
+          },
+          { ...allowedCtx, workBrief: "Emit output after the parent exits" },
+        )
+
+        expect(result.metadata.exit).toBe(0)
+        expect(result.output).toContain("late-tail")
+      })
+    }))
+
+  test("clears child handles after an auto-backgrounded process closes", () =>
+    inProject(async () => {
+      ProcessRegistry.reset()
+      await withProjectScope(async () => {
+        const result = await LocalBashBackend.execute(
+          {
+            command: sleepCommand(100),
+
+            yieldSeconds: 0.01,
+          },
+          { ...ctx, workBrief: "Close tracked process" },
+        )
+        const processId = result.metadata.processId!
+        const tracked = ProcessRegistry.get(processId)!
+        expect(tracked.child).toBeDefined()
+
+        const deadline = Date.now() + 5000
+        while (!ProcessRegistry.getFinished(processId) && Date.now() < deadline) {
+          await Bun.sleep(10)
+        }
+
+        expect(ProcessRegistry.getFinished(processId)?.status).toBe("completed")
+        expect(tracked.child).toBeUndefined()
+        expect(tracked.stdin).toBeUndefined()
+        ProcessRegistry.remove(processId)
+      })
+    }))
+
+  test("parallel bash calls return independent inline outputs", () =>
+    inProject(async () => {
+      await withProjectScope(async () => {
+        const bash = await BashTool.init()
+        const [left, right] = await Promise.all([
+          bash.execute({ command: "echo left" }, { ...ctx, workBrief: "Echo left" }),
+          bash.execute({ command: "echo right" }, { ...ctx, workBrief: "Echo right" }),
+        ])
+        expect(left.metadata.exit).toBe(0)
+        expect(right.metadata.exit).toBe(0)
+        expect(left.output).toContain("left")
+        expect(right.output).toContain("right")
+      })
+    }))
+
+  test("detects detached daemon launch patterns without flagging normal command chaining", () =>
+    inProject(() => {
+      expect(detectDetachedDaemonRisk("tmux new-session -d -s app 'npm run dev'")?.kind).toBe("tmux_detached")
+      expect(detectDetachedDaemonRisk("tmux new -d -s app")?.kind).toBe("tmux_detached")
+      expect(detectDetachedDaemonRisk("screen -dmS app python server.py")?.kind).toBe("screen_detached")
+      expect(detectDetachedDaemonRisk("nohup npm run dev > server.log 2>&1 &")?.kind).toBe("nohup")
+      expect(detectDetachedDaemonRisk("setsid python worker.py")?.kind).toBe("setsid")
+      expect(detectDetachedDaemonRisk("sleep 100 & disown")?.kind).toBe("disown")
+      expect(detectDetachedDaemonRisk("python worker.py &")?.kind).toBe("shell_background")
+      expect(detectDetachedDaemonRisk("sleep 100 & echo done")?.kind).toBe("shell_background")
+      expect(detectDetachedDaemonRisk("echo first && echo second")).toBeUndefined()
+      expect(detectDetachedDaemonRisk("cd ..")).toBeUndefined()
+    }))
+
+  test("blocks detached daemon launch patterns before spawning locally", () =>
+    inProject(async () => {
+      await withProjectScope(async () => {
+        await expect(
+          LocalBashBackend.execute(
+            {
+              command: "nohup echo hi > daemon.log 2>&1 &",
+            },
+            { ...ctx, workBrief: "Launch detached daemon" },
+          ),
+        ).rejects.toThrow("Blocked detached daemon launch pattern")
+      })
+    }))
+
+  test("allows detached daemons with shellAllowDetachedDaemons context flag", () =>
+    inProject(async () => {
+      await withProjectScope(async () => {
+        const allowedCtx = {
+          ...ctx,
+          extra: { ...ctx.extra, shellAllowDetachedDaemons: true },
+        }
+        // no rejection expected; command may fail at runtime but should not be blocked
+        const result = await LocalBashBackend.execute(
+          {
+            command: "echo allowed",
+          },
+          { ...allowedCtx, workBrief: "Allowed daemon" },
+        )
+        expect(result.metadata.exit).toBe(0)
+      })
+    }))
+
+  test("allows detached daemons with full_access control profile", () =>
+    inProject(async () => {
+      await withProjectScope(async () => {
+        const fullAccessCtx = {
+          ...ctx,
+          extra: { ...ctx.extra, controlProfile: "full_access" },
+        }
+        const result = await LocalBashBackend.execute(
+          {
+            command: "echo allowed",
+          },
+          { ...fullAccessCtx, workBrief: "full_access daemon" },
+        )
+        expect(result.metadata.exit).toBe(0)
+      })
+    }))
+
+  test("rejects authorized detached daemons inside the Windows sandbox Job", () =>
+    inProject(() => {
+      expect(() =>
+        assertDetachedDaemonContainment({
+          platform: "win32",
+          detachedDaemonAllowed: true,
+          sandboxed: true,
+        }),
+      ).toThrow("Detached daemons are unavailable inside the Windows sandbox")
+    }))
+
+  test("promotes printed local artifacts as attachments", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: bunEval(
+                `Bun.write("contact-sheet.png", "fake image").then(() => {
+  console.log(process.cwd().replace(/\\\\/g, "/") + "/contact-sheet.png")
+})`,
+              ),
+            },
+            {
+              ...{
+                ...ctx,
+                messageID: "message_test",
+              },
+              workBrief: "Create contact sheet",
+            },
+          )
+
+          expect(result.metadata.exit).toBe(0)
+          expect(result.output).toContain("contact-sheet.png")
+          expect(result.attachments).toHaveLength(1)
+          expect(result.attachments?.[0].filename).toBe("contact-sheet.png")
+          expect(result.attachments?.[0].mime).toBe("image/png")
+          expect(result.attachments?.[0].url.startsWith("asset://")).toBe(true)
+        },
+      })
+    }))
+})
+
+describe("tool.bash permissions", () => {
+  test("asks for bash permission with correct pattern", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash.execute(
+            {
+              command: "echo hello",
+            },
+            { ...testCtx, workBrief: "Echo hello" },
+          )
+          expect(requests.length).toBe(1)
+          expect(requests[0].permission).toBe("bash")
+          expect(requests[0].patterns).toContain("echo hello")
+        },
+      })
+    }))
+
+  test("asks for bash permission without predicting a capability", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash.execute(
+            {
+              command: "ls -la 2>/dev/null; head -5 package.json",
+            },
+            { ...testCtx, workBrief: "Inspect files" },
+          )
+          expect(requests.length).toBe(1)
+          expect(requests[0].permission).toBe("bash")
+          // The tool asks for the shell itself; the gate owns capability
+          // classification, so the ask carries no predicted capability.
+          expect(requests[0].metadata.capability).toBeUndefined()
+        },
+      })
+    }))
+
+  test("asks for bash permission with multiple commands", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash.execute(
+            {
+              command: "echo foo && echo bar",
+            },
+            { ...testCtx, workBrief: "Echo twice" },
+          )
+          expect(requests.length).toBe(1)
+          expect(requests[0].permission).toBe("bash")
+          expect(requests[0].patterns).toContain("echo foo")
+          expect(requests[0].patterns).toContain("echo bar")
+        },
+      })
+    }))
+
+  test("does not emit external_directory directly when cd to parent", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash.execute(
+            {
+              command: "cd ../",
+            },
+            { ...testCtx, workBrief: "Change to parent directory" },
+          )
+          expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
+        },
+      })
+    }))
+
+  test("does not emit external_directory directly when workdir is outside project", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash.execute(
+            {
+              command: "ls",
+              workdir: "/tmp",
+            },
+            { ...testCtx, workBrief: "List /tmp" },
+          )
+          expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
+          expect(requests.find((r) => r.permission === "bash")).toBeDefined()
+        },
+      })
+    }))
+
+  test("does not ask for external_directory permission when rm inside project", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+
+          await Bun.write(path.join(tmp.path, "tmpfile"), "x")
+
+          await bash.execute(
+            {
+              command: "rm tmpfile",
+            },
+            { ...testCtx, workBrief: "Remove tmpfile" },
+          )
+
+          const extDirReq = requests.find((r) => r.permission === "external_directory")
+          expect(extDirReq).toBeUndefined()
+        },
+      })
+    }))
+
+  test("includes always patterns for auto-approval", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash.execute(
+            {
+              command: "git log --oneline -5",
+            },
+            { ...testCtx, workBrief: "Git log" },
+          )
+          expect(requests.length).toBe(1)
+          expect(requests[0].patterns.length).toBeGreaterThan(0)
+        },
+      })
+    }))
+
+  test("does not ask for bash permission when command is cd only", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash.execute(
+            {
+              command: "cd .",
+            },
+            { ...testCtx, workBrief: "Stay in current directory" },
+          )
+          const bashReq = requests.find((r) => r.permission === "bash")
+          expect(bashReq).toBeUndefined()
+        },
+      })
+    }))
+
+  test("uses direct execution after profile approval without preparing a sandbox", () =>
+    inProject(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const bash = await BashTool.init()
+          const testCtx = {
+            ...ctx,
+            extra: {
+              shellBypassSandbox: true,
+              sandboxPrepare: async () => {
+                throw new Error("sandbox should not be prepared")
+              },
+            },
+          }
+          const result = await bash.execute(
+            {
+              command: "echo approved",
+            },
+            { ...testCtx, workBrief: "Approved shell" },
+          )
+          expect(result.metadata.exit).toBe(0)
+          expect(result.output).toContain("approved")
+        },
+      })
+    }))
+})
+
+describe("tool.bash truncation", () => {
+  test("truncates output exceeding line limit", () =>
+    inProject(async () => {
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(projectRoot)).scope,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const lineCount = Truncate.MAX_LINES + 500
+          const result = await bash.execute(
+            {
+              command: bunEval(`for (let i = 1; i <= ${lineCount}; i++) console.log(i)`),
+            },
+            { ...ctx, workBrief: "Generate lines exceeding limit" },
+          )
+          expect((result.metadata as any).truncated).toBe(true)
+          expect(result.output).toContain("truncated")
+          expect(result.output).toContain("The tool call succeeded but the output was truncated")
+        },
+      })
+    }))
+
+  test("truncates output exceeding byte limit", () =>
+    inProject(async () => {
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(projectRoot)).scope,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const byteCount = Truncate.MAX_BYTES + 10000
+          const result = await bash.execute(
+            {
+              command: bunEval(`process.stdout.write("a".repeat(${byteCount}))`),
+            },
+            { ...ctx, workBrief: "Generate bytes exceeding limit" },
+          )
+          expect((result.metadata as any).truncated).toBe(true)
+          expect(result.output).toContain("truncated")
+          expect(result.output).toContain("The tool call succeeded but the output was truncated")
+        },
+      })
+    }))
+
+  test("does not truncate small output", () =>
+    inProject(async () => {
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(projectRoot)).scope,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: bunEval(`console.log("hello")`),
+            },
+            { ...ctx, workBrief: "Echo hello" },
+          )
+          expect((result.metadata as any).truncated).toBe(false)
+          expect(result.output.replace(/\r\n/g, "\n")).toBe("hello\n\nShell exited with code 0.")
+          expect(result.metadata.output).toBe("hello\n")
+        },
+      })
+    }))
+
+  test("full model-visible output retains command text when truncated", () =>
+    inProject(async () => {
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(projectRoot)).scope,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const lineCount = Truncate.MAX_LINES + 100
+          const result = await bash.execute(
+            {
+              command: bunEval(`for (let i = 1; i <= ${lineCount}; i++) console.log(i)`),
+            },
+            { ...ctx, workBrief: "Generate lines for file check" },
+          )
+          expect((result.metadata as any).truncated).toBe(true)
+
+          const filepath = (result.metadata as any).outputPath
+          expect(filepath).toBeTruthy()
+
+          const saved = await Bun.file(filepath).text()
+          const lines = saved.trim().split(/\r?\n/)
+          expect(lines.length).toBe(lineCount + 2)
+          expect(lines[0]).toBe("1")
+          expect(lines[lineCount - 1]).toBe(String(lineCount))
+          expect(lines[lineCount]).toBe("")
+          expect(lines[lineCount + 1]).toBe("Shell exited with code 0.")
+        },
+      })
+    }))
+})
+
+describe("tool.bash output cap", () => {
+  test("metadata output is capped at 30K via truncateMetadataOutput", () =>
+    inProject(async () => {
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(projectRoot)).scope,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: bunEval(`process.stdout.write("x".repeat(300000))`),
+            },
+            { ...ctx, workBrief: "Generate 300KB output" },
+          )
+          // truncateMetadataOutput caps at 30K; metadata.output should not exceed that
+          expect((result.metadata.output ?? "").length).toBeLessThanOrEqual(30_000 + 100) // small margin for truncation marker
+        },
+      })
+    }))
+
+  test("ProcessRegistry output is capped at 200K chars", () =>
+    inProject(async () => {
+      ProcessRegistry.reset()
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(projectRoot)).scope,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: bunEval(`process.stdout.write("x".repeat(300000))`),
+              yieldSeconds: 0.05,
+            },
+            { ...ctx, workBrief: "Generate 300KB output with auto-background" },
+          )
+          // On a fast machine 300K of "x" may complete before auto-background
+          // fires, returning via the foreground path without processId. Verify the
+          // output cap through whichever path was taken.
+          const processId = result.metadata.processId as string | undefined
+          if (processId) {
+            let output: string | undefined
+            let tail: string | undefined
+            for (let i = 0; i < 50; i++) {
+              const done = ProcessRegistry.getFinished(processId)
+              if (done) {
+                output = done.output
+                tail = done.tail
+                break
+              }
+              const running = ProcessRegistry.get(processId)
+              if (running?.exited) {
+                output = running.output
+                tail = running.tail
+                break
+              }
+              await Bun.sleep(200)
+            }
+            expect(output).toBeDefined()
+            expect(output!.length).toBe(200_000)
+            expect(tail!.length).toBeLessThanOrEqual(2_000)
+            ProcessRegistry.remove(processId)
+          } else {
+            // Foreground path: the output field is already capped via appendOutput.
+            expect(result.metadata.output).toBeDefined()
+            expect(result.metadata.output!.length).toBeLessThanOrEqual(200_000)
+          }
+        },
+      })
+      ProcessRegistry.reset()
+    }))
+})
+
+describe("tool.bash metadata throttling", () => {
+  test(
+    "high-frequency output produces fewer metadata updates than chunks",
+    () =>
+      inProject(async () => {
+        await ScopeContext.provide({
+          scope: (await Scope.fromDirectory(projectRoot)).scope,
+          fn: async () => {
+            const bash = await BashTool.init()
+            const tracker = metadataTracker()
+
+            await bash.execute(
+              {
+                command: `i=0; while [ $i -lt 100 ]; do echo "line $i"; i=$((i + 1)); done`,
+              },
+              { ...tracker.ctx, workBrief: "Rapid output test" },
+            )
+
+            expect(tracker.calls.length).toBeGreaterThanOrEqual(2)
+            expect(tracker.calls.length).toBeLessThan(30)
+          },
+        })
+      }),
+    15_000,
+  )
+
+  test("metadata is flushed on process exit even if timer has not fired", () =>
+    inProject(async () => {
+      await ScopeContext.provide({
+        scope: (await Scope.fromDirectory(projectRoot)).scope,
+        fn: async () => {
+          const bash = await BashTool.init()
+          const tracker = metadataTracker()
+
+          await bash.execute(
+            {
+              command: `echo "final output"`,
+            },
+            { ...tracker.ctx, workBrief: "Exit flush test" },
+          )
+
+          // The last metadata call should contain the final output
+          const lastCall = tracker.calls[tracker.calls.length - 1]
+          expect(lastCall.metadata.output).toContain("final output")
+        },
+      })
+    }))
+})
+
+describe("tool.bash workspace boundary enforcement", () => {
+  test("direct backend does not enforce worktree original-checkout boundary", () =>
+    inProject(async () => {
+      await using tmp = await worktreeFixture()
+      const originalCheckout = tmp.originalCheckout
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: tmp.path,
+          scopeID: (await tmp.scope()).id,
+          originalCheckout,
+        },
+        fn: async () => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: "echo 'direct backend'",
+              workdir: originalCheckout,
+            },
+            { ...ctx, workBrief: "Direct backend original checkout path" },
+          )
+          expect(result.output).toContain("direct backend")
+        },
+      })
+    }))
+
+  test("workdir inside active workspace does not trigger boundary rejection", () =>
+    inProject(async () => {
+      await using tmp = await worktreeFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: tmp.path,
+          scopeID: (await tmp.scope()).id,
+        },
+        fn: async () => {
+          const bash = await BashTool.init()
+          // Bash with workdir inside the active workspace should succeed
+          const result = await bash.execute(
+            {
+              command: "echo 'should work'",
+              workdir: tmp.path,
+            },
+            { ...ctx, workBrief: "Test in-workspace command" },
+          )
+          expect(result.metadata.exit).toBe(0)
+          expect(result.metadata.output).toContain("should work")
+        },
+      })
+    }))
+
+  test("does not emit external_directory directly when command traverses toward original checkout", () =>
+    inProject(async () => {
+      await using tmp = await worktreeFixture()
+      const originalCheckout = tmp.originalCheckout
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: tmp.path,
+          scopeID: (await tmp.scope()).id,
+          originalCheckout,
+        },
+        fn: async () => {
+          const bash = await BashTool.init()
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash.execute(
+            {
+              command: "cd ../original-checkout && echo 'escaped'",
+            },
+            { ...testCtx, workBrief: "Navigate to original checkout" },
+          )
+          expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
+        },
+      })
+    }))
+
+  test("does not emit external_directory directly when workdir is outside active workspace", () =>
+    inProject(async () => {
+      await using tmp = await worktreeFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: tmp.path,
+          scopeID: (await tmp.scope()).id,
+        },
+        fn: async () => {
+          const bash = await BashTool.init()
+          const outsideDir = "/tmp/outside-" + Math.random().toString(36).slice(2)
+          const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
+          const testCtx = {
+            ...ctx,
+            ask: async (req: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+              requests.push(req)
+            },
+          }
+          await bash
+            .execute(
+              {
+                command: "ls",
+                workdir: outsideDir,
+              },
+              { ...testCtx, workBrief: "List outside directory" },
+            )
+            .catch(() => undefined)
+          expect(requests.find((r) => r.permission === "external_directory")).toBeUndefined()
+        },
+      })
+    }))
+
+  test("local bash backend leaves workspace validation to ToolResolver gate", () =>
+    inProject(async () => {
+      await using tmp = await worktreeFixture()
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: {
+          type: "git_worktree",
+          path: tmp.path,
+          scopeID: (await tmp.scope()).id,
+          originalCheckout: tmp.originalCheckout,
+        },
+        fn: async () => {
+          const bash = await BashTool.init()
+          const result = await bash.execute(
+            {
+              command: "echo 'test'",
+              workdir: "/tmp",
+            },
+            { ...ctx, workBrief: "Direct backend invocation" },
+          )
+          expect(result.output).toContain("test")
+        },
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

@@ -1,0 +1,853 @@
+import { describe, expect, test } from "bun:test"
+import { APICallError } from "ai"
+import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
+
+describe("AgentTurnProtocol", () => {
+  test("preserves permitted expandable tool identities across the worker boundary", () => {
+    const input = {
+      user: { id: "message" },
+      sessionID: "session",
+      model: { id: "model", providerID: "provider" },
+      agent: { name: "assistant" },
+      system: [],
+      messages: [],
+      toolDefinitions: [],
+      activeToolIDs: ["read"],
+      availableToolIDs: ["read", "note_read"],
+      prepared: {
+        system: [],
+        baseSystemLength: 0,
+        provider: { options: {}, timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false } },
+        params: { options: {} },
+      },
+    }
+    const parsed = AgentTurnProtocol.TurnInputSchema.parse(input)
+    expect(parsed.activeToolIDs).toEqual(["read"])
+    expect(parsed.availableToolIDs).toEqual(["read", "note_read"])
+  })
+
+  test("requires complete worker memory snapshots at lifecycle boundaries", () => {
+    const memory: AgentTurnProtocol.WorkerMemory = {
+      rssBytes: 100,
+      heapUsedBytes: 80,
+      heapTotalBytes: 90,
+      externalBytes: 20,
+      arrayBuffersBytes: 10,
+    }
+
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "complete",
+        requestId: "turn",
+        turns: 1,
+        memoryBeforeDispose: { ...memory, externalBytes: 40 },
+        memory,
+      }),
+    ).toMatchObject({ type: "complete", memory: { arrayBuffersBytes: 10 } })
+    expect(() =>
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "complete",
+        requestId: "turn",
+        turns: 1,
+        memory: { rssBytes: 100, heapUsedBytes: 80 },
+      }),
+    ).toThrow()
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "released",
+        requestId: "turn",
+        turns: 1,
+        collection: "full",
+        memory,
+      }),
+    ).toMatchObject({ type: "released", collection: "full" })
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "heartbeat",
+        requestId: "turn",
+        turns: 1,
+        collection: "full",
+        memory,
+      }),
+    ).toMatchObject({ type: "heartbeat", collection: "full" })
+    expect(
+      AgentTurnProtocol.HostToWorkerSchema.parse({
+        type: "collect-memory",
+        requestId: "turn",
+      }),
+    ).toEqual({ type: "collect-memory", requestId: "turn" })
+  })
+
+  test("accepts a request at the configured byte boundary and rejects a larger request", () => {
+    const base = {
+      type: "run" as const,
+      requestId: "turn_test",
+      scope: {
+        type: "home" as const,
+        id: "home",
+        local: null,
+      },
+      workspace: null,
+      input: {
+        sessionID: "ses_test",
+        messages: [],
+      },
+    }
+    const baseBytes = AgentTurnProtocol.byteLength(base)
+    const paddingOverhead = AgentTurnProtocol.byteLength({ ...base, padding: "" }) - baseBytes
+    const accepted = {
+      ...base,
+      padding: "x".repeat(AgentTurnProtocol.REQUEST_MAX_BYTES - baseBytes - paddingOverhead),
+    }
+
+    expect(() => AgentTurnProtocol.assertRequestBound(accepted)).not.toThrow()
+    expect(() => AgentTurnProtocol.assertRequestBound({ ...accepted, padding: `${accepted.padding}xx` })).toThrow(
+      "Agent turn request exceeded",
+    )
+  })
+
+  test("bounds worker event frames independently from the total stream", () => {
+    const frame = {
+      type: "events" as const,
+      requestId: "turn_test",
+      sequence: 1,
+      events: [{ type: "text-delta", id: "text_1", text: "ok" }],
+    }
+
+    expect(() => AgentTurnProtocol.assertEventFrameBound(frame)).not.toThrow()
+    expect(() =>
+      AgentTurnProtocol.assertEventFrameBound({
+        ...frame,
+        events: [{ type: "text-delta", id: "text_1", text: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES) }],
+      }),
+    ).toThrow("Agent turn event frame exceeded")
+  })
+
+  test("projects start-step events before enforcing the worker frame bound", () => {
+    const [event] = AgentTurnProtocol.encodeEvents([
+      {
+        type: "start-step",
+        request: {
+          body: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+        },
+        warnings: [{ type: "other", message: "provider diagnostic" }],
+      },
+    ])
+    const frame = {
+      type: "events" as const,
+      requestId: "turn_test",
+      sequence: 1,
+      events: [event],
+    }
+
+    expect(event).toEqual({ type: "start-step" })
+    expect(() => AgentTurnProtocol.assertEventFrameBound(frame)).not.toThrow()
+  })
+
+  test("projects finish-step events to fields consumed by the Control Plane", () => {
+    const usage = {
+      inputTokens: 12,
+      outputTokens: 3,
+      totalTokens: 15,
+      inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+      outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+    }
+    const providerMetadata = {
+      codex: {
+        cachedInputTokens: 4,
+      },
+    }
+    const [event] = AgentTurnProtocol.encodeEvents([
+      {
+        type: "finish-step",
+        finishReason: "stop",
+        usage,
+        providerMetadata,
+        request: {
+          body: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+        },
+        response: {
+          body: "unused provider response",
+        },
+        warnings: [{ type: "other", message: "provider diagnostic" }],
+      },
+    ])
+    const frame = {
+      type: "events" as const,
+      requestId: "turn_test",
+      sequence: 1,
+      events: [event],
+    }
+
+    expect(event).toEqual({
+      type: "finish-step",
+      finishReason: "stop",
+      usage,
+      providerMetadata,
+    })
+    expect(() => AgentTurnProtocol.assertEventFrameBound(frame)).not.toThrow()
+  })
+
+  test("uses protocol-owned fields for other SDK events and drops unsupported diagnostics", () => {
+    const events = AgentTurnProtocol.encodeEvents([
+      {
+        type: "tool-result",
+        toolCallId: "call_1",
+        toolName: "read",
+        input: { filePath: "README.md" },
+        output: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+      },
+      {
+        type: "text-delta",
+        id: "text_1",
+        text: "ok",
+        providerMetadata: { codex: { itemId: "item_1" } },
+        diagnostic: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+      },
+      {
+        type: "raw",
+        rawValue: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+      },
+    ])
+    const frame = {
+      type: "events" as const,
+      requestId: "turn_test",
+      sequence: 1,
+      events,
+    }
+
+    expect(events).toEqual([
+      {
+        type: "tool-result",
+        toolCallId: "call_1",
+      },
+      {
+        type: "text-delta",
+        id: "text_1",
+        text: "ok",
+        providerMetadata: { codex: { itemId: "item_1" } },
+      },
+    ])
+    expect(AgentTurnProtocol.parseWorkerToHost(frame)).toEqual(frame)
+    expect(() => AgentTurnProtocol.assertEventFrameBound(frame)).not.toThrow()
+  })
+
+  test("counts binary payload bytes instead of only typed-array metadata", () => {
+    expect(AgentTurnProtocol.byteLength({ payload: new Uint8Array(1024) })).toBeGreaterThan(1024)
+  })
+
+  test("serializes turn snapshots and bounds every transfer chunk", () => {
+    const envelope = {
+      scope: {
+        type: "home" as const,
+        id: "home" as const,
+        local: null,
+      },
+      workspace: null,
+      input: {
+        user: { id: "msg_user" },
+        sessionID: "ses_test",
+        model: { id: "model", providerID: "provider" },
+        agent: { name: "synergy" },
+        system: ["x".repeat(AgentTurnProtocol.REQUEST_CHUNK_BYTES + 64)],
+        messages: [],
+        toolDefinitions: [],
+        prepared: {
+          system: [],
+          baseSystemLength: 0,
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
+          params: { options: {} },
+        },
+      },
+    }
+    const payload = AgentTurnProtocol.serializeTurn(envelope)
+    const first = payload.subarray(0, AgentTurnProtocol.REQUEST_CHUNK_BYTES)
+    const second = payload.subarray(AgentTurnProtocol.REQUEST_CHUNK_BYTES)
+
+    expect(() =>
+      AgentTurnProtocol.parseHostToWorker({
+        type: "run-chunk",
+        requestId: "turn",
+        index: 0,
+        data: first,
+      }),
+    ).not.toThrow()
+    expect(second.byteLength).toBeGreaterThan(0)
+    expect(AgentTurnProtocol.deserializeTurn(payload)).toEqual(envelope)
+    expect(() =>
+      AgentTurnProtocol.parseHostToWorker({
+        type: "run-chunk",
+        requestId: "turn",
+        index: 0,
+        data: new Uint8Array(AgentTurnProtocol.REQUEST_CHUNK_BYTES + 1),
+      }),
+    ).toThrow()
+  })
+
+  test("serializes the complete Control Plane provider worker plan", () => {
+    const envelope = {
+      scope: {
+        type: "home" as const,
+        id: "home" as const,
+        local: null,
+      },
+      workspace: null,
+      input: {
+        user: { id: "msg_user" },
+        sessionID: "ses_test",
+        model: { id: "model", providerID: "provider" },
+        modelSelection: {
+          model: { modelID: "model", providerID: "provider" },
+          thinking: { mode: "variant" as const, variant: "high" },
+          revision: 2,
+          rootID: "msg_user",
+        },
+        agent: { name: "synergy" },
+        system: [],
+        messages: [],
+        toolDefinitions: [],
+        prepared: {
+          system: [],
+          baseSystemLength: 0,
+          provider: {
+            profileID: "provider-profile",
+            key: "provider-key",
+            env: ["PROVIDER_API_KEY"],
+            options: { apiKey: "provider-key" },
+            baseOptions: { baseURL: "https://catalog.invalid/v1" },
+            explicitOptions: { baseURL: "https://connection.invalid/v1" },
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
+          params: { options: {} },
+        },
+      },
+    }
+
+    const payload = AgentTurnProtocol.serializeTurn(envelope)
+    expect(AgentTurnProtocol.deserializeTurn(payload)).toEqual(envelope)
+  })
+
+  test("round-trips tool-free suffix turns without reordering the tool catalog", () => {
+    const envelope: AgentTurnProtocol.TurnEnvelope = {
+      scope: { type: "home", id: "home", local: null },
+      workspace: null,
+      input: {
+        user: { id: "msg_user" },
+        sessionID: "ses_test",
+        model: { id: "model", providerID: "provider" },
+        agent: { name: "synergy" },
+        system: ["stable system"],
+        lateSystem: ["volatile advisory context"],
+        messages: [{ role: "user", content: "conversation to summarize" }],
+        promptSuffix: "Summarize this conversation without calling tools.",
+        toolChoice: "none",
+        toolDefinitions: [
+          { id: "write", description: "Write a file", inputSchema: { type: "object", properties: {} } },
+          { id: "read", description: "Read a file", inputSchema: { type: "object", properties: {} } },
+        ],
+        activeToolIDs: ["write", "read"],
+        prepared: {
+          system: ["stable system"],
+          baseSystemLength: 1,
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false },
+          },
+          params: { options: {} },
+        },
+      },
+    }
+
+    expect(AgentTurnProtocol.TurnInputSchema.parse(envelope.input)).toEqual(envelope.input)
+    const restored = AgentTurnProtocol.deserializeTurn(AgentTurnProtocol.serializeTurn(envelope))
+
+    expect(restored).toEqual(envelope)
+    expect(restored.input.toolChoice).toBe("none")
+    expect(restored.input.promptSuffix).toBe("Summarize this conversation without calling tools.")
+    expect(restored.input.toolDefinitions.map((definition) => definition.id)).toEqual(["write", "read"])
+  })
+
+  test("keeps Context Usage provenance and drafts out of the Agent worker protocol", () => {
+    const input = {
+      user: { id: "msg_user" },
+      sessionID: "ses_test",
+      model: { id: "model", providerID: "provider" },
+      agent: { name: "synergy" },
+      system: [],
+      messages: [],
+      toolDefinitions: [],
+      prepared: {
+        system: [],
+        baseSystemLength: 0,
+        provider: {
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+        },
+        params: { options: {} },
+      },
+    }
+
+    expect(
+      AgentTurnProtocol.TurnInputSchema.safeParse({
+        ...input,
+        contextUsageProvenance: { categories: {} },
+      }).success,
+    ).toBe(false)
+    expect(() =>
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "started",
+        requestId: "turn",
+        contextUsageDraft: { categories: {} },
+      }),
+    ).toThrow()
+  })
+
+  test("validates home and project runtime Scope snapshots", () => {
+    const input = {
+      user: { id: "msg_user" },
+      sessionID: "ses_test",
+      model: { id: "model", providerID: "provider" },
+      agent: { name: "synergy" },
+      system: [],
+      messages: [],
+      toolDefinitions: [],
+      prepared: {
+        system: [],
+        baseSystemLength: 0,
+        provider: {
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+        },
+        params: { options: {} },
+      },
+    }
+
+    expect(
+      AgentTurnProtocol.TurnEnvelopeSchema.safeParse({
+        scope: { type: "home", id: "home", local: null },
+        workspace: null,
+        input,
+      }).success,
+    ).toBe(true)
+    expect(
+      AgentTurnProtocol.TurnEnvelopeSchema.safeParse({
+        scope: {
+          type: "project",
+          id: "scope_test",
+          local: { directory: "/tmp/project", worktree: "/tmp/project", sandboxes: [] },
+          time: { created: 1, updated: 2 },
+        },
+        workspace: null,
+        input,
+      }).success,
+    ).toBe(true)
+    expect(
+      AgentTurnProtocol.TurnEnvelopeSchema.safeParse({
+        scope: { type: "project", id: "scope_test", directory: "/tmp/project", worktree: "/tmp/project" },
+        workspace: null,
+        input,
+      }).success,
+    ).toBe(false)
+  })
+
+  test("serializes errors without losing their stable identity", () => {
+    const source = Object.assign(new Error("provider failed"), {
+      name: "ProviderFailure",
+      code: "provider_unavailable",
+    })
+    const serialized = AgentTurnProtocol.serializeError(source)
+    const restored = AgentTurnProtocol.deserializeError(serialized)
+
+    expect(serialized).toMatchObject({
+      name: "ProviderFailure",
+      message: "provider failed",
+      code: "provider_unavailable",
+    })
+    expect(restored).toBeInstanceOf(Error)
+    expect(restored.name).toBe("ProviderFailure")
+    expect(restored.message).toBe("provider failed")
+    expect(restored.code).toBe("provider_unavailable")
+  })
+
+  test("preserves provider retry metadata and structured domain error data", () => {
+    const provider = new APICallError({
+      message: "rate limited",
+      url: "https://provider.invalid",
+      requestBodyValues: { secret: "not transferred" },
+      statusCode: 429,
+      responseHeaders: { "retry-after": "3" },
+      responseBody: '{"error":"slow down"}',
+      isRetryable: true,
+      data: { category: "quota" },
+      cause: Object.assign(new Error("socket reset"), { code: "ECONNRESET", syscall: "read" }),
+    })
+    const restoredProvider = AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(provider))
+    const domain = Object.assign(new Error("relogin"), {
+      name: "ProviderAuthRecoveryError",
+      data: { providerID: "provider", failureCode: "expired", actionRequired: true, message: "relogin" },
+    })
+    const restoredDomain = AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(domain)) as Error & {
+      data?: unknown
+    }
+
+    expect(APICallError.isInstance(restoredProvider)).toBe(true)
+    expect(restoredProvider).toMatchObject({
+      statusCode: 429,
+      responseHeaders: { "retry-after": "3" },
+      responseBody: '{"error":"slow down"}',
+      isRetryable: true,
+      data: { category: "quota" },
+    })
+    expect((restoredProvider as APICallError).requestBodyValues).toEqual({})
+    expect((restoredProvider.cause as Error & { code?: string }).code).toBe("ECONNRESET")
+    expect(restoredDomain).toMatchObject({
+      name: "ProviderAuthRecoveryError",
+      data: { providerID: "provider", failureCode: "expired", actionRequired: true, message: "relogin" },
+    })
+  })
+
+  test("rehydrates cancellation errors as DOMException", () => {
+    const restored = AgentTurnProtocol.deserializeError(
+      AgentTurnProtocol.serializeError(new DOMException("cancelled", "AbortError")),
+    )
+
+    expect(restored).toBeInstanceOf(DOMException)
+    expect(restored.name).toBe("AbortError")
+  })
+
+  test("preserves nested plain causes and aggregate failures through validated events", () => {
+    const source = new TypeError("fetch failed", {
+      cause: new AggregateError([{ message: "DNS failure", code: "ETIMEOUT", syscall: "getaddrinfo" }]),
+    })
+    const encoded = AgentTurnProtocol.SerializedError.parse(AgentTurnProtocol.serializeError(source))
+    expect(AgentTurnProtocol.deserializeError(encoded)).toMatchObject({
+      cause: {
+        name: "AggregateError",
+        errors: [{ message: "DNS failure", code: "ETIMEOUT", syscall: "getaddrinfo" }],
+      },
+    })
+  })
+
+  test("validates strict recursive causes and aggregate limits at every level", () => {
+    const leaf = { name: "Error", message: "leaf", code: "ECONNRESET", syscall: "read" }
+    const cause = { name: "AggregateError", message: "nested", cause: leaf, errors: Array(16).fill(leaf) }
+    const error = { name: "TypeError", message: "fetch failed", cause, errors: [cause] }
+
+    expect(AgentTurnProtocol.SerializedError.parse(error)).toEqual(error)
+    const aggregate = { ...error, errors: Array(16).fill(leaf) }
+    expect(AgentTurnProtocol.SerializedError.parse(aggregate)).toEqual(aggregate)
+    for (const invalid of [
+      { ...error, unexpected: true },
+      { ...error, cause: { ...cause, unexpected: true } },
+      { ...error, cause: { ...cause, cause: { ...leaf, unexpected: true } } },
+      { ...error, errors: [{ ...cause, errors: [{ ...leaf, unexpected: true }] }] },
+      { ...error, cause: { ...cause, errors: Array(17).fill(leaf) } },
+      { ...error, errors: [{ ...cause, errors: Array(17).fill(leaf) }] },
+      { ...error, errors: Array(17).fill(leaf) },
+    ]) {
+      expect(AgentTurnProtocol.SerializedError.safeParse(invalid).success).toBe(false)
+    }
+  })
+
+  test("bounds cause graphs and makes truncation explicit", () => {
+    const cyclic = Object.assign(new Error("cyclic"), { cause: undefined as unknown })
+    cyclic.cause = cyclic
+    expect(AgentTurnProtocol.SerializedError.parse(AgentTurnProtocol.serializeError(cyclic)).cause).toBeUndefined()
+    const errors = Array.from({ length: 20 }, () => new Error("failure"))
+    const serialized = AgentTurnProtocol.SerializedError.parse(
+      AgentTurnProtocol.serializeError(new AggregateError(errors)),
+    )
+    expect(serialized.errors?.length).toBeLessThanOrEqual(16)
+    expect(serialized.errors?.some((error) => error.code === "ERR_CAUSE_TRUNCATED")).toBe(true)
+  })
+
+  test("preserves structured errors embedded in stream events", () => {
+    const source = new APICallError({
+      message: "provider unavailable",
+      url: "https://provider.invalid",
+      requestBodyValues: {},
+      statusCode: 503,
+      isRetryable: true,
+    })
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([{ type: "error", error: source }]),
+    ) as Array<{ type: string; error: Error }>
+
+    expect(decoded.type).toBe("error")
+    expect(APICallError.isInstance(decoded.error)).toBe(true)
+    expect(decoded.error).toMatchObject({ statusCode: 503, isRetryable: true })
+  })
+
+  test("preserves plain structured errors embedded in stream events", () => {
+    const [decoded, nested] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([
+        {
+          type: "error",
+          error: {
+            name: "ProviderResponseError",
+            message: "upstream request failed",
+            code: "upstream_unavailable",
+            statusCode: 503,
+            isRetryable: true,
+            data: { requestID: "request_1" },
+          },
+        },
+        {
+          type: "error",
+          error: {
+            statusCode: 429,
+            error: {
+              name: "RateLimitError",
+              message: "retry later",
+              code: "rate_limit",
+              isRetryable: true,
+            },
+          },
+        },
+      ]),
+    ) as Array<{ type: string; error: Error & Record<string, unknown> }>
+
+    expect(decoded.type).toBe("error")
+    expect(decoded.error).toMatchObject({
+      name: "ProviderResponseError",
+      message: "upstream request failed",
+      code: "upstream_unavailable",
+      statusCode: 503,
+      isRetryable: true,
+      data: { requestID: "request_1" },
+    })
+    expect(nested.error).toMatchObject({
+      name: "RateLimitError",
+      message: "retry later",
+      code: "rate_limit",
+      statusCode: 429,
+      isRetryable: true,
+    })
+  })
+
+  test("maps issue repro type field into code and keeps message", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([
+        {
+          type: "error",
+          error: {
+            type: "server_error",
+            code: "upstream_unavailable",
+            message: "temporarily unavailable",
+            statusCode: 503,
+            isRetryable: true,
+          },
+        },
+      ]),
+    ) as Array<{ type: string; error: Error & { code?: unknown; statusCode?: unknown; isRetryable?: boolean } }>
+
+    expect(decoded.error.message).toBe("temporarily unavailable")
+    expect(decoded.error.code).toBe("upstream_unavailable")
+    expect(decoded.error.statusCode).toBe(503)
+    expect(decoded.error.isRetryable).toBe(true)
+  })
+
+  test("falls back to bounded JSON for plain object errors without a message", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([{ type: "error", error: { type: "server_error", code: "unavailable" } }]),
+    ) as Array<{ type: string; error: Error }>
+
+    expect(decoded.error.message).toContain("unavailable")
+    expect(decoded.error.message).not.toContain("Unknown structured error")
+    expect(decoded.error.message).not.toContain("[object Object]")
+  })
+
+  test("never fails serialization on circular plain object errors", () => {
+    const circular: Record<string, unknown> = { type: "server_error", message: "circular provider error" }
+    circular.self = circular
+
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([{ type: "error", error: circular }]),
+    ) as Array<{ type: string; error: Error }>
+
+    expect(decoded.error.message).toBe("circular provider error")
+  })
+
+  test("bounds oversized plain object error data without failing", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([
+        {
+          type: "error",
+          error: {
+            type: "server_error",
+            message: "oversized payload",
+            huge: "x".repeat(AgentTurnProtocol.ERROR_DATA_MAX_BYTES + 1024),
+          },
+        },
+      ]),
+    ) as Array<{ type: string; error: Error & { data?: unknown } }>
+
+    expect(decoded.error.message).toBe("oversized payload")
+    expect(decoded.error.data).toBeUndefined()
+  })
+
+  test("preserves scalar non-object errors unchanged", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([{ type: "error", error: "plain failure" }]),
+    ) as Array<{ type: string; error: Error }>
+
+    expect(decoded.error).toBeInstanceOf(Error)
+    expect(decoded.error.message).toBe("plain failure")
+  })
+
+  test("parses ack-window messages and round-trips them through the HostToWorker schema", () => {
+    const message = { type: "ack-window" as const, requestId: "turn", ackSequence: 7 }
+
+    expect(AgentTurnProtocol.parseHostToWorker(message)).toEqual(message)
+    expect(AgentTurnProtocol.HostToWorkerSchema.parse(message)).toEqual(message)
+  })
+
+  test("rejects unknown protocol fields and invalid frame counters", () => {
+    expect(() =>
+      AgentTurnProtocol.parseHostToWorker({
+        type: "ack-window",
+        requestId: "turn",
+        ackSequence: -1,
+      }),
+    ).toThrow()
+    expect(() =>
+      AgentTurnProtocol.parseHostToWorker({
+        type: "ack",
+        requestId: "turn",
+        sequence: 1,
+      }),
+    ).toThrow()
+    expect(() =>
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "pong",
+        unexpected: true,
+      }),
+    ).toThrow()
+  })
+
+  test("requires the Control Plane-prepared provider request plan", () => {
+    expect(
+      AgentTurnProtocol.TurnInputSchema.safeParse({
+        user: { id: "msg_user" },
+        sessionID: "ses_test",
+        model: { id: "model", providerID: "provider" },
+        agent: { name: "synergy" },
+        system: [],
+        messages: [],
+        toolDefinitions: [],
+      }).success,
+    ).toBe(false)
+  })
+
+  test("rejects executable or undeclared Control Plane fields", () => {
+    const input = {
+      user: { id: "msg_user" },
+      sessionID: "ses_test",
+      model: { id: "model", providerID: "provider" },
+      agent: { name: "synergy" },
+      system: [],
+      messages: [],
+      promptSuffix: "Summarize without calling tools.",
+      toolChoice: "none" as const,
+      toolDefinitions: [],
+      prepared: {
+        system: [],
+        baseSystemLength: 0,
+        provider: {
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+        },
+        params: { options: {} },
+      },
+    }
+
+    expect(AgentTurnProtocol.TurnInputSchema.parse(input)).toEqual(input)
+    for (const invalid of [
+      { ...input, executionTools: { bash: { execute() {} } } },
+      { ...input, onPhase: () => {} },
+    ]) {
+      expect(AgentTurnProtocol.TurnInputSchema.safeParse(invalid).success).toBe(false)
+    }
+  })
+
+  test("round-trips worker metric rows through the metrics frame", () => {
+    const frame = {
+      type: "metrics" as const,
+      requestId: "turn_test",
+      rows: [
+        {
+          name: "llm.fetch.headers",
+          value: 42,
+          unit: "ms" as const,
+          module: "llm" as const,
+          labels: { provider: "provider", model: "model", attempt: 2 },
+          sessionID: "ses_test",
+          messageID: "msg_test",
+          callID: "call_test",
+          traceId: "trc_test",
+          spanId: "spn_test",
+          parentSpanId: "spn_parent",
+          sampleRate: 1,
+        },
+      ],
+    }
+
+    expect(AgentTurnProtocol.parseWorkerToHost(frame)).toEqual(frame)
+    expect(() => AgentTurnProtocol.assertIpcFrameBound(frame)).not.toThrow()
+    expect(frame.rows[0]!.labels).toEqual({ provider: "provider", model: "model", attempt: 2 })
+  })
+
+  test("bounds metric rows, names, and labels", () => {
+    const row = { name: "llm.watchdog.fired", value: 1, unit: "count" as const, module: "llm" as const }
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({ type: "metrics", requestId: "turn_test", rows: [] }).success,
+    ).toBe(false)
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({
+        type: "metrics",
+        requestId: "turn_test",
+        rows: Array.from({ length: AgentTurnProtocol.METRIC_ROWS_MAX }, () => row),
+      }).success,
+    ).toBe(true)
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({
+        type: "metrics",
+        requestId: "turn_test",
+        rows: Array.from({ length: AgentTurnProtocol.METRIC_ROWS_MAX + 1 }, () => row),
+      }).success,
+    ).toBe(false)
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({
+        type: "metrics",
+        requestId: "turn_test",
+        rows: [{ ...row, name: "x".repeat(AgentTurnProtocol.METRIC_STRING_MAX_CHARS + 1) }],
+      }).success,
+    ).toBe(false)
+    expect(
+      AgentTurnProtocol.WorkerToHostSchema.safeParse({
+        type: "metrics",
+        requestId: "turn_test",
+        rows: [{ ...row, labels: { nested: { object: true } } }],
+      }).success,
+    ).toBe(false)
+  })
+
+  test("reports a metrics frame within the IPC frame bound", () => {
+    const frame = {
+      type: "metrics" as const,
+      requestId: "turn_test",
+      rows: Array.from({ length: AgentTurnProtocol.METRIC_ROWS_MAX }, (_, index) => ({
+        name: "llm.fetch.first_byte",
+        value: index,
+        unit: "ms" as const,
+        module: "llm" as const,
+        labels: { provider: "provider", model: "model", note: "x".repeat(4096) },
+      })),
+    }
+
+    expect(() => AgentTurnProtocol.assertIpcFrameBound(frame)).not.toThrow()
+  })
+})

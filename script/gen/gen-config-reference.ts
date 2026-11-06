@@ -2,11 +2,12 @@
 
 /**
  * Generates docs/reference/configuration.md from the static config domain
- * definitions (packages/synergy/src/config/domain.ts) and the Zod schema
- * (packages/synergy/src/config/schema.ts). Deterministic; supports --check.
+ * definitions and owner schemas selected by presets configuration.
+ * Deterministic; supports --check.
  */
 
 import path from "node:path"
+import ts from "@typescript/typescript6"
 import { readFile } from "node:fs/promises"
 import {
   findBlock,
@@ -18,10 +19,13 @@ import {
   stringLiteral,
   writeGenerated,
   type ObjectField,
+  inlineDescribe,
+  isOptionalExpr,
+  zodTypeOf,
 } from "./shared"
 
-const DOMAIN = path.join(REPO_ROOT, "packages/synergy/src/config/domain.ts")
-const SCHEMA = path.join(REPO_ROOT, "packages/synergy/src/config/schema.ts")
+const SCHEMA = path.join(REPO_ROOT, "packages/harness/src/config/schema.ts")
+const COMPOSITION = path.join(REPO_ROOT, "packages/presets/src/configuration.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/configuration.md")
 const GENERATOR = "gen-config-reference.ts"
 
@@ -67,67 +71,12 @@ export function parseDefCall(call: string): Domain | null {
   return { id: id.value, filename: filename.value, label: label.value, ownedKeys, mergePolicy: merge?.value ?? "merge" }
 }
 
-function splitTopLevelEntries(block: string): string[] {
-  const entries: string[] = []
-  let depth = 0
-  let start = 0
-  let inString: "'" | '"' | null = null
-  let inTemplate = false
-  let inLineComment = false
-  let inBlockComment = false
-  for (let i = 0; i < block.length; i++) {
-    const c = block[i]!
-    const prev = i > 0 ? block[i - 1] : ""
-    if (inLineComment) {
-      if (c === "\n") inLineComment = false
-      continue
-    }
-    if (inBlockComment) {
-      if (c === "*" && block[i + 1] === "/") {
-        inBlockComment = false
-        i++
-      }
-      continue
-    }
-    if (inTemplate) {
-      if (c === "`" && prev !== "\\") inTemplate = false
-      continue
-    }
-    if (inString) {
-      if (c === inString && prev !== "\\") inString = null
-      continue
-    }
-    if (c === "/" && block[i + 1] === "/") {
-      inLineComment = true
-      continue
-    }
-    if (c === "/" && block[i + 1] === "*") {
-      inBlockComment = true
-      continue
-    }
-    if (c === "'" || c === '"') {
-      inString = c
-      continue
-    }
-    if (c === "`") {
-      inTemplate = true
-      continue
-    }
-    if (c === "{" || c === "(" || c === "[") depth++
-    else if (c === "}" || c === ")" || c === "]") depth--
-    else if (c === "," && depth === 0) {
-      entries.push(block.slice(start, i))
-      start = i + 1
-    }
-  }
-  entries.push(block.slice(start))
-  return entries
-}
-
-export function parseDomainObject(body: string): Domain | null {
+export function parseDomainObject(body: string, constants: Readonly<Record<string, string>> = {}): Domain | null {
   const stringField = (key: string) => {
     const match = body.match(new RegExp(`\\b${key}\\s*:\\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*')`))
-    return match ? stringLiteral(match[1]!) : null
+    if (match) return stringLiteral(match[1]!)
+    const reference = body.match(new RegExp(`\\b${key}\\s*:\\s*([A-Za-z_$][\\w$]*)`))
+    return reference ? (constants[reference[1]!] ?? null) : null
   }
   const id = stringField("id")
   const filename = stringField("filename")
@@ -149,31 +98,125 @@ export function parseDomainObject(body: string): Domain | null {
   return { id, filename, label, ownedKeys, mergePolicy: mergePolicy ?? "merge" }
 }
 
+async function ownerSchemaPaths(): Promise<string[]> {
+  const composition = await readFile(COMPOSITION, "utf8")
+  const source = ts.createSourceFile(COMPOSITION, composition, ts.ScriptTarget.Latest, true)
+  return source.statements.filter(ts.isImportDeclaration).flatMap((statement) => {
+    const specifier = statement.moduleSpecifier
+    return ts.isStringLiteral(specifier) && specifier.text.endsWith("/config-schema")
+      ? [Bun.resolveSync(specifier.text, COMPOSITION)]
+      : []
+  })
+}
+
 async function parseDomains(): Promise<Domain[]> {
-  const source = await readFile(DOMAIN, "utf8")
-  const block = findBlock(source, "export const definitions = ", "[", "]")
-  if (!block) return []
-  const domains: Domain[] = []
-  for (const entry of splitTopLevelEntries(block)) {
-    const trimmed = entry.trim()
-    if (trimmed.startsWith("def(")) {
-      const call = findBlock(entry, "def", "(", ")")
-      const domain = call ? parseDefCall(call) : null
-      if (domain) domains.push(domain)
-    } else if (trimmed.startsWith("{")) {
-      const open = trimmed.indexOf("{")
-      const close = matchClose(trimmed, open, "{", "}")
-      const domain = close >= 0 ? parseDomainObject(trimmed.slice(open + 1, close)) : null
-      if (domain) domains.push(domain)
+  const files = [path.join(REPO_ROOT, "packages/harness/src/config/domain.ts"), ...(await ownerSchemaPaths())]
+  const domains = new Map<string, Domain>()
+  for (const file of files) {
+    const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
+    const constants: Record<string, string> = {}
+    const referenced = new Set(
+      [...source.text.matchAll(/\b(?:id|filename|label|mergePolicy)\s*:\s*([A-Za-z_$][\w$]*)/g)].map(
+        (match) => match[1],
+      ),
+    )
+    for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue
+      const bindings = statement.importClause?.namedBindings
+      if (!bindings || !ts.isNamedImports(bindings)) continue
+      const needed = bindings.elements.filter((binding) => referenced.has(binding.name.text))
+      if (!needed.length) continue
+      const filename = Bun.resolveSync(statement.moduleSpecifier.text, file)
+      const imported = ts.createSourceFile(filename, await readFile(filename, "utf8"), ts.ScriptTarget.Latest, true)
+      for (const declaration of imported.statements
+        .filter(ts.isVariableStatement)
+        .flatMap((item) => [...item.declarationList.declarations])) {
+        if (
+          !ts.isIdentifier(declaration.name) ||
+          !declaration.initializer ||
+          !ts.isStringLiteral(declaration.initializer)
+        )
+          continue
+        for (const binding of needed) {
+          if ((binding.propertyName ?? binding.name).text === declaration.name.text)
+            constants[binding.name.text] = declaration.initializer.text
+        }
+      }
     }
+    function collect(expression: ts.Expression) {
+      const array = ts.isSatisfiesExpression(expression) ? expression.expression : expression
+      const entries = ts.isArrayLiteralExpression(array)
+        ? array.elements
+        : ts.isObjectLiteralExpression(array)
+          ? [array]
+          : []
+      for (const entry of entries) {
+        const domain = ts.isObjectLiteralExpression(entry)
+          ? parseDomainObject(entry.getText(source), constants)
+          : ts.isCallExpression(entry)
+            ? parseDefCall(entry.arguments.map((arg) => arg.getText(source)).join(", "))
+            : null
+        if (!domain) continue
+        const current = domains.get(domain.id)
+        if (current) {
+          if (current.filename !== domain.filename)
+            throw new Error(`Configuration domain filename conflict: ${domain.id}`)
+          current.ownedKeys = [...new Set([...current.ownedKeys, ...domain.ownedKeys])]
+        } else domains.set(domain.id, domain)
+      }
+    }
+    function visit(node: ts.Node) {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ["definitions", "builtinDefinitions"].includes(node.name.getText(source)) &&
+        node.initializer
+      )
+        collect(node.initializer)
+      if (ts.isForOfStatement(node) && node.initializer.getText(source) === "const domain") collect(node.expression)
+      if (ts.isCallExpression(node) && node.expression.getText(source) === "ConfigDomain.register" && node.arguments[0])
+        collect(node.arguments[0])
+      ts.forEachChild(node, visit)
+    }
+    visit(source)
   }
-  return domains
+  return [...domains.values()].sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }))
 }
 
 async function infoFields(): Promise<ObjectField[]> {
-  const source = await readFile(SCHEMA, "utf8")
-  const block = findBlock(source, "export const Info = z", "(", ")")
-  return block ? parseObjectFields(block) : []
+  const owners = await ownerSchemaPaths()
+  const sources = await Promise.all([SCHEMA, ...owners].map((file) => readFile(file, "utf8")))
+  return sources.flatMap((source, index) => {
+    if (index === 0) {
+      const block = findBlock(source, "const CoreInfo = z", "(", ")")
+      if (!block) throw new Error(`Configuration schema fields missing for ${SCHEMA}`)
+      return parseObjectFields(block)
+    }
+    const parsed = ts.createSourceFile(owners[index - 1]!, source, ts.ScriptTarget.Latest, true)
+    const fields: ObjectField[] = []
+    function visit(node: ts.Node) {
+      if (ts.isVariableDeclaration(node) && node.name.getText(parsed) === "ConfigShape" && node.initializer) {
+        const expression = ts.isSatisfiesExpression(node.initializer) ? node.initializer.expression : node.initializer
+        if (!ts.isObjectLiteralExpression(expression))
+          throw new Error(`Configuration fields must be an object in ${owners[index - 1]}`)
+        for (const property of expression.properties) {
+          if (!ts.isPropertyAssignment(property))
+            throw new Error(`Configuration fields must be explicit in ${owners[index - 1]}`)
+          const name = ts.isStringLiteral(property.name) ? property.name.text : property.name.getText(parsed)
+          const expr = property.initializer.getText(parsed)
+          fields.push({
+            name,
+            expr,
+            type: zodTypeOf(expr),
+            optional: isOptionalExpr(expr),
+            description: inlineDescribe(expr),
+          })
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(parsed)
+    return fields
+  })
 }
 
 export async function generate(): Promise<string> {
@@ -184,7 +227,7 @@ export async function generate(): Promise<string> {
   const lines: string[] = [
     "# Configuration Reference",
     "",
-    "Generated from the config domain definitions in `packages/synergy/src/config/domain.ts` and the Zod schema in `packages/synergy/src/config/schema.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).",
+    "Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/presets/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).",
     "",
     "## Domains",
     "",
@@ -200,6 +243,7 @@ export async function generate(): Promise<string> {
     lines.push("| Key | Type | Description |", "| --- | --- | --- |")
     for (const key of domain.ownedKeys) {
       const field = byKey.get(key)
+      if (!field) throw new Error(`Configuration reference missing owned field ${key}`)
       const typeName = field?.type ?? "-"
       const optional = field?.optional ? " (optional)" : ""
       const description = field?.description ?? ""

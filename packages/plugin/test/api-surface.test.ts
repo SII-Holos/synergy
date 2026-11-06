@@ -186,7 +186,10 @@ describe("public API surface contracts", () => {
   })
 
   test("message and tool surface contexts compose PluginSurfaceContext", () => {
-    const base: PluginSurfaceContext = {
+    const base: Pick<
+      PluginSurfaceContext,
+      "pluginId" | "scopeId" | "surface" | "operations" | "events" | "settings" | "resources" | "workbench"
+    > = {
       pluginId: "p",
       scopeId: "s",
       surface: { kind: "tool", id: "t" },
@@ -202,28 +205,34 @@ describe("public API surface contracts", () => {
         replace: async () => undefined,
         subscribe: () => () => undefined,
       },
-      host: {
-        openSession: () => undefined,
-        openPluginPage: () => undefined,
-        openWorkbenchPanel: () => undefined,
-        openResource: () => undefined,
-        notify: () => undefined,
-        confirm: async () => true,
+      resources: { open: () => true },
+      workbench: {
+        panels: () => [],
+        tabs: () => [],
+        active: () => undefined,
+        opened: () => false,
+        show() {},
+        hide() {},
+        open: async () => undefined,
+        activate() {},
+        move() {},
+        update() {},
+        close: async () => true,
+        beforeClose: () => () => {},
       },
     }
 
-    base.host.openSession("s")
-    base.host.openPluginPage("settings", { tab: "general" })
-    base.host.openWorkbenchPanel("panel")
-    base.host.openResource({ kind: "file", uri: "file:///tmp/a.txt" })
-    base.host.notify("done", { kind: "success" })
+    base.resources.open({ kind: "file", uri: "file:///tmp/a.txt" })
     expect(base.operations.query<string>("op.id")).resolves.toBe("op.id")
     expect(base.settings.get()).resolves.toEqual({})
 
-    const message: PluginMessageSurfaceContext = { ...base, message: { id: "m", role: "assistant" } }
+    const message: typeof base & Pick<PluginMessageSurfaceContext, "message"> = {
+      ...base,
+      message: { id: "m", role: "assistant" },
+    }
     expect(message.message.role).toBe("assistant")
 
-    const tool: PluginToolMessageSurfaceContext = {
+    const tool: typeof message & Pick<PluginToolMessageSurfaceContext, "tool"> = {
       ...message,
       tool: { name: "inspect", input: { q: 1 }, metadata: {} },
     }

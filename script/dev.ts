@@ -4,6 +4,8 @@ import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
+import { RELEASE_CATALOG } from "./release/shared/packages"
+import { assertBunVersion } from "./check-bun-version"
 
 const DEFAULT_SERVER_PORT = 4096
 const DEFAULT_APP_PORT = 3000
@@ -12,17 +14,7 @@ const DEV_PROCESS_OWNER_ENV = "SYNERGY_DEV_PROCESS_OWNER"
 const devProcessOwners = new WeakMap<object, string>()
 
 export interface DevProcessSpec {
-  label:
-    | "server"
-    | "app"
-    | "desktop"
-    | "browser-host"
-    | "send"
-    | "build"
-    | "install"
-    | "generate"
-    | "sandbox"
-    | "build:plugin"
+  label: "server" | "app" | "desktop" | "send" | "build" | "install" | "generate" | "sandbox" | "build:plugin"
   command: string[]
   cwd: string
   env?: Record<string, string | undefined>
@@ -78,10 +70,11 @@ function appUrl(hostname: string, port: number) {
 
 function directories(repoRoot: string) {
   return {
-    app: path.join(repoRoot, "packages", "app"),
-    desktop: path.join(repoRoot, "packages", "desktop"),
-    plugin: path.join(repoRoot, "packages", "plugin"),
-    synergy: path.join(repoRoot, "packages", "synergy"),
+    app: path.join(repoRoot, RELEASE_CATALOG.web.directory),
+    desktop: path.join(repoRoot, RELEASE_CATALOG.desktop.directory),
+    plugin: path.join(repoRoot, RELEASE_CATALOG.plugin.directory),
+    product: path.join(repoRoot, RELEASE_CATALOG.presets.directory),
+    local: path.join(repoRoot, RELEASE_CATALOG.localRuntime.directory),
   }
 }
 
@@ -159,7 +152,7 @@ Common workflows:
 
 Options:
   --port <port>           Port for bun dev server/app
-  --server-port <port>    Server port for web/desktop (default: 4096)
+  --server-port <port>    Server port for web/desktop (default: 4096, managed: sticky then 4096-4099)
   --app-port <port>       Vite app port for web/desktop (default: 3000)
   --hostname <host>       Server and Vite bind hostname (default: 127.0.0.1)
   --attach <url>          Reuse an existing server instead of starting one
@@ -172,12 +165,15 @@ Options:
 
 function serverProcess(input: {
   repoRoot: string
+  entry: "dev-server" | "dev-web" | "dev-desktop"
   launchCwd: string
   bunPath: string
   port: number
   hostname: string
   printLogs?: boolean
+  desktop?: boolean
   browserHostSecret?: string
+  computerHostSecret?: string
 }): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const command = [
@@ -196,10 +192,19 @@ function serverProcess(input: {
   return {
     label: "server",
     command,
-    cwd: dirs.synergy,
+    cwd: dirs.product,
     env: {
       SYNERGY_CWD: process.env.SYNERGY_CWD ?? input.launchCwd,
+      SYNERGY_RUNTIME_ENTRY: input.entry,
+      SYNERGY_DAEMON: undefined,
+      SYNERGY_DESKTOP_STARTUP_PROGRESS: undefined,
+      SYNERGY_DESKTOP_PARENT_PID: undefined,
+      SYNERGY_INSTALLATION_PIN: undefined,
+      SYNERGY_INSTALLATION_ROOT: undefined,
+      SYNERGY_LAUNCHER_COMMAND: undefined,
+      SYNERGY_DESKTOP_BROWSER: input.desktop ? "1" : undefined,
       SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
+      SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET: input.computerHostSecret,
     },
     waitUrl: `${url}/global/health`,
     waitTimeoutMs: null,
@@ -221,7 +226,6 @@ function appProcess(input: {
     cwd: dirs.app,
     env: {
       VITE_SYNERGY_SERVER_URL: server,
-      VITE_SYNERGY_CALLBACK_URL: `${server}/holos/callback`,
     },
     waitUrl: appUrl(input.hostname, input.appPort),
   }
@@ -234,40 +238,40 @@ function desktopProcess(input: {
   appPort?: number
   appHostname?: string
   browserServerUrl?: string
+  computerServerUrl?: string
   browserHostSecret?: string
+  computerHostSecret?: string
+  serverPort?: number
 }): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const env: Record<string, string | undefined> = {
     BUN_BIN: input.bunPath,
     SYNERGY_DESKTOP_CHANNEL: "dev",
+    SYNERGY_DESKTOP_USER_DATA_DIR:
+      process.env.SYNERGY_DESKTOP_USER_DATA_DIR ??
+      (process.env.SYNERGY_HOME ? path.resolve(process.env.SYNERGY_HOME, ".synergy/desktop") : undefined),
     SYNERGY_DESKTOP_SERVER_MODE: input.mode,
+    SYNERGY_RUNTIME_ENTRY: input.mode === "managed" ? "dev-desktop-managed" : undefined,
+    SYNERGY_DAEMON: undefined,
+    SYNERGY_DESKTOP_STARTUP_PROGRESS: undefined,
+    SYNERGY_DESKTOP_PARENT_PID: undefined,
+    SYNERGY_INSTALLATION_PIN: undefined,
+    SYNERGY_INSTALLATION_ROOT: undefined,
+    SYNERGY_LAUNCHER_COMMAND: undefined,
     SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
+    SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET: input.computerHostSecret,
     SYNERGY_BROWSER_BROKER_SERVER_URL: input.browserServerUrl,
+    SYNERGY_COMPUTER_BROKER_SERVER_URL: input.computerServerUrl,
   }
   if (input.mode === "external")
     env.SYNERGY_DESKTOP_APP_URL = appUrl(input.appHostname ?? DEFAULT_HOSTNAME, input.appPort ?? DEFAULT_APP_PORT)
+  if (input.mode === "managed" && input.serverPort !== undefined)
+    env.SYNERGY_DESKTOP_SERVER_PORT = String(input.serverPort)
   return {
     label: "desktop",
     command: [input.bunPath, "run", "dev"],
     cwd: dirs.desktop,
     env,
-  }
-}
-
-function browserHostProcess(input: {
-  repoRoot: string
-  bunPath: string
-  serverUrl: string
-  secret: string
-}): DevProcessSpec {
-  return {
-    label: "browser-host",
-    command: [input.bunPath, "run", "browser-host:dev"],
-    cwd: directories(input.repoRoot).desktop,
-    env: {
-      SYNERGY_BROWSER_HOST_SERVER_URL: input.serverUrl,
-      SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.secret,
-    },
   }
 }
 
@@ -291,6 +295,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
   const parsed = parseArgs(rest)
   const dirs = directories(repoRoot)
   const browserHostSecret = randomBytes(32).toString("hex")
+  const computerHostSecret = process.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET ?? randomBytes(32).toString("hex")
 
   if (command === "prepare") {
     return {
@@ -317,12 +322,14 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       processes: [
         serverProcess({
           repoRoot,
+          entry: "dev-server",
           launchCwd,
           bunPath,
           port,
           hostname,
           printLogs: boolFlag(parsed.flags, "print-logs"),
           browserHostSecret,
+          computerHostSecret,
         }),
       ],
       requiredPorts: [{ label: "server", port, host: displayHost(hostname) }],
@@ -359,16 +366,17 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         : [
             serverProcess({
               repoRoot,
+              entry: "dev-web",
               launchCwd,
               bunPath,
               port: serverPort,
               hostname,
               printLogs: boolFlag(parsed.flags, "print-logs"),
               browserHostSecret,
+              computerHostSecret,
             }),
           ]),
       appProcess({ repoRoot, bunPath, appPort, attachUrl, hostname }),
-      ...(attach ? [] : [browserHostProcess({ repoRoot, bunPath, serverUrl: attachUrl, secret: browserHostSecret })]),
     ]
     return {
       kind: "run",
@@ -389,17 +397,33 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
   if (command === "desktop") {
     const managed = boolFlag(parsed.flags, "managed")
     if (managed) {
+      const requestedServerPort = parsed.flags["server-port"]
+      const managedServerPort =
+        typeof requestedServerPort === "string"
+          ? numberFlag(parsed.flags, "server-port", DEFAULT_SERVER_PORT)
+          : undefined
       const dependenciesInstalled = fs.existsSync(path.join(repoRoot, "node_modules"))
       const processes: DevProcessSpec[] = [
         ...(dependenciesInstalled ? [] : [{ label: "install" as const, command: [bunPath, "install"], cwd: repoRoot }]),
-        { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
+        {
+          label: "build:plugin",
+          command: [bunPath, "turbo", "build", "--filter=@ericsanchezok/synergy-plugin"],
+          cwd: repoRoot,
+        },
         {
           label: "build",
           command: [bunPath, "run", "build"],
           cwd: dirs.app,
           env: { SYNERGY_APP_BUILD_KIND: "local" },
         },
-        desktopProcess({ repoRoot, bunPath, mode: "managed", browserHostSecret }),
+        desktopProcess({
+          repoRoot,
+          bunPath,
+          mode: "managed",
+          serverPort: managedServerPort,
+          browserHostSecret,
+          computerHostSecret,
+        }),
       ]
       return {
         kind: "run",
@@ -408,7 +432,10 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         help,
         exitCode: 0,
         processes,
-        requiredPorts: [],
+        requiredPorts:
+          managedServerPort === undefined
+            ? []
+            : [{ label: "server", port: managedServerPort, host: displayHost(DEFAULT_HOSTNAME) }],
         requiredServers: [],
       }
     }
@@ -424,12 +451,15 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         : [
             serverProcess({
               repoRoot,
+              entry: "dev-desktop",
+              desktop: true,
               launchCwd,
               bunPath,
               port: serverPort,
               hostname,
               printLogs: boolFlag(parsed.flags, "print-logs"),
               browserHostSecret,
+              computerHostSecret,
             }),
           ]),
       appProcess({ repoRoot, bunPath, appPort, attachUrl, hostname }),
@@ -440,7 +470,9 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         appPort,
         appHostname: hostname,
         browserServerUrl: attach ? undefined : attachUrl,
+        computerServerUrl: attach ? undefined : attachUrl,
         browserHostSecret: attach ? undefined : browserHostSecret,
+        computerHostSecret: attach ? undefined : computerHostSecret,
       }),
     ]
     return {
@@ -470,8 +502,17 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         {
           label: "send",
           command: [bunPath, "run", "--conditions=browser", "./src/index.ts", "send", ...parsed.positionals],
-          cwd: dirs.synergy,
-          env: { SYNERGY_CWD: process.env.SYNERGY_CWD ?? launchCwd },
+          cwd: dirs.product,
+          env: {
+            SYNERGY_CWD: process.env.SYNERGY_CWD ?? launchCwd,
+            SYNERGY_RUNTIME_ENTRY: "dev-send",
+            SYNERGY_DAEMON: undefined,
+            SYNERGY_DESKTOP_STARTUP_PROGRESS: undefined,
+            SYNERGY_DESKTOP_PARENT_PID: undefined,
+            SYNERGY_INSTALLATION_PIN: undefined,
+            SYNERGY_INSTALLATION_ROOT: undefined,
+            SYNERGY_LAUNCHER_COMMAND: undefined,
+          },
         },
       ],
       requiredPorts: [],
@@ -784,7 +825,11 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
     { label: "generate", command: [bunPath, "./script/generate.ts"], cwd: repoRoot },
     // Build plugin (and its util dependency) before app so Vite can resolve
     // @ericsanchezok/synergy-plugin from its `dist/` exports map.
-    { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
+    {
+      label: "build:plugin",
+      command: [bunPath, "turbo", "build", "--filter=@ericsanchezok/synergy-plugin"],
+      cwd: repoRoot,
+    },
     {
       label: "build",
       command: [bunPath, "run", "build"],
@@ -795,12 +840,18 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   if (initial !== 0) return initial
 
   const platform = process.platform
+  await (await import("../packages/local-runtime/script/build-pty")).buildPty()
+  if (platform === "darwin") await (await import("../packages/harness/script/build-sqlite")).buildSqlite()
+  if (platform === "linux") {
+    const { buildWatcher } = await import("../packages/local-runtime/script/build-watcher")
+    await buildWatcher()
+  }
   if (platform !== "linux" && platform !== "win32") return 0
 
   const helperDir =
     platform === "linux"
-      ? path.join(dirs.synergy, "src", "sandbox", "helper-linux")
-      : path.join(dirs.synergy, "src", "sandbox", "helper")
+      ? path.join(dirs.local, "src", "sandbox", "helper-linux")
+      : path.join(dirs.local, "src", "sandbox", "helper")
   if (!fs.existsSync(path.join(helperDir, "Cargo.toml"))) {
     process.stderr.write("[sandbox] helper source not found; sandbox helper was not compiled\n")
     return 0
@@ -813,14 +864,14 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   const sandbox = await runSerial([
     {
       label: "sandbox",
-      command: [bunPath, "run", "packages/synergy/scripts/build-helper.ts", target, "--local"],
+      command: [bunPath, "run", path.join(dirs.local, "script", "build-helper.ts"), target, "--local"],
       cwd: repoRoot,
     },
   ])
   if (sandbox !== 0) return sandbox
   if (platform === "linux" && !(await commandExists("bwrap"))) {
     process.stderr.write(
-      "[sandbox] bwrap not found; install bubblewrap or run packages/synergy/scripts/download-bwrap.sh\n",
+      "[sandbox] bwrap not found; install bubblewrap or run packages/local-runtime/script/download-bwrap.sh\n",
     )
   }
   return 0
@@ -835,10 +886,17 @@ export async function runDevPlan(plan: DevPlan, options: PlanOptions = {}): Prom
     process.stderr.write(`${plan.message}\n\n${plan.help}`)
     return plan.exitCode
   }
+  await assertBunVersion(
+    options.repoRoot ?? defaultRepoRoot(),
+    options.bunPath ?? process.env.BUN_BIN ?? process.execPath,
+  )
   if (plan.mode === "prepare") {
     return runPrepare(options.repoRoot ?? defaultRepoRoot(), options.bunPath ?? process.env.BUN_BIN ?? process.execPath)
   }
-  if (plan.mode === "serial") return runSerial(plan.processes)
+  if (plan.mode === "serial") {
+    await assertPreflight(plan)
+    return runSerial(plan.processes)
+  }
   return runParallel(plan)
 }
 

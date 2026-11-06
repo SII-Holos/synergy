@@ -1,0 +1,331 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test, setDefaultTimeout } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { chromium, type Browser, type Page } from "playwright"
+import { createServer, type ViteDevServer } from "vite"
+import solidPlugin from "vite-plugin-solid"
+import tailwindcss from "@tailwindcss/vite"
+
+setDefaultTimeout(30000)
+
+let browser: Browser
+let page: Page
+let server: ViteDevServer
+let fixture: string
+const errors: string[] = []
+
+beforeAll(async () => {
+  fixture = await mkdtemp(path.join(import.meta.dir, ".popover-fixture-"))
+  const components = path.resolve(import.meta.dir, "../../src/components")
+  await Bun.write(
+    path.join(fixture, "index.html"),
+    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+  )
+  await Bun.write(
+    path.join(fixture, "locale.ts"),
+    'import { useLingui } from "@lingui/solid"; export const useLocale = () => ({i18n:{_: useLingui()._}})',
+  )
+  await Bun.write(
+    path.join(fixture, "main.tsx"),
+    `
+    import { createSignal, onMount, onCleanup } from "solid-js"
+    import { handleComposerTypingAutofocus } from ${JSON.stringify(`/@fs/${components}/prompt-input/typing-autofocus.ts`)}
+    import { setupI18n } from "@lingui/core"
+    import { I18nProvider } from "@lingui/solid"
+    import { RequestSubmissionNotice } from ${JSON.stringify(`/@fs/${components}/session/request-submission-notice.tsx`)}
+    import { PromptAddMenu } from ${JSON.stringify(`/@fs/${components}/prompt-input/add-menu.tsx`)}
+    import { PromptStartModeSelector } from ${JSON.stringify(`/@fs/${components}/prompt-input/start-options.tsx`)}
+    import "@ericsanchezok/synergy-ui/styles"
+    import ${JSON.stringify(`/@fs/${components}/../index.css`)}
+    import ${JSON.stringify(`/@fs/${components}/top-bar/session-top-bar.css`)}
+    import { render } from "solid-js/web"
+    import { ToolbarSelectorPopover } from ${JSON.stringify(`/@fs/${components}/toolbar-selector.tsx`)}
+    import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+    import { SidebarSectionButton } from ${JSON.stringify(`/@fs/${components}/sidebar/sidebar-section-button.tsx`)}
+    function Fixture() {
+      let input
+      onMount(()=>{ const handle=event=>handleComposerTypingAutofocus(event,input,false); document.addEventListener("keydown",handle); onCleanup(()=>document.removeEventListener("keydown",handle)) })
+      const [submission, setSubmission] = createSignal({status:"idle"})
+      const [retries, setRetries] = createSignal(0)
+      const [expanded, setExpanded] = createSignal(false)
+      const [selected, setSelected] = createSignal("None")
+      const item = (id, label, extra={}) => ({id,label,icon:"plus",onSelect:()=>setSelected(id),...extra})
+      return <>
+        <button>Before toolbar</button>
+        <ToolbarSelectorPopover title="Agent" triggerAs={props => <Tooltip value="Agent">
+          <button {...props}>Agent</button></Tooltip>}>
+          {close => <button onClick={close}>Choose agent</button>}
+        </ToolbarSelectorPopover>
+        <button>After toolbar</button>
+        <div class="synergy-workbench-canvas" style="width:400px;container-type:inline-size;container-name:prompt-input">
+          <PromptStartModeSelector groups={[{id:"location",label:"Location",options:[{id:"global",label:"Global",icon:"folder",selected:true,onSelect:()=>{}}]}]}/>
+        </div>
+        <PromptAddMenu sections={[
+          {id:"context",label:"Context",items:[item("files","Add files")]},
+          {id:"workflow",label:"Workflow",items:[item("light-loop","Light Loop"),item("plan","Plan",{ariaDisabled:true}),item("lattice","Lattice",{disabled:true}),item("boss","Boss")]}
+        ]}/>
+        <output>{selected()}</output>
+        <SidebarSectionButton open={expanded()} onClick={() => setExpanded(!expanded())}>Projects</SidebarSectionButton>
+        <div ref={input} contentEditable="true" aria-label="Composer"/>
+        <div data-testid="reading-area" style="height:80px">Read content</div>
+        <div class="stb-root" data-testid="mobile-toolbar">
+          <div class="stb-mobile flex w-full min-w-0 items-center">
+            <button class="stb-icon-btn">Nav</button>
+            <div class="stb-center flex min-w-0 flex-1 items-center justify-center">
+              <Tooltip value="Choose model"><button class="stb-selector-btn"><span class="stb-selector-label">Very long model display name</span><span class="stb-chevron">⌄</span></button></Tooltip>
+            </div>
+            <div class="stb-mobile-actions"><button class="stb-icon-btn">Info</button><button class="stb-icon-btn">New</button><button class="stb-icon-btn">More</button></div>
+          </div>
+        </div>
+        {["pending","error","unknown","settled","idle"].map(status=><button onClick={()=>setSubmission({status,...(["error","unknown"].includes(status)?{error:new Error("Offline")}: {})})}>State {status}</button>)}
+        <div data-testid="submission-notice"><RequestSubmissionNotice state={submission()} onRetry={()=>setRetries(value=>value+1)}/></div>
+        <span data-testid="retries">{retries()}</span>
+      </>
+    }
+    render(() => <I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><Fixture /></I18nProvider>, document.getElementById("root"))
+  `,
+  )
+  server = await createServer({
+    configFile: false,
+    root: fixture,
+    plugins: [solidPlugin(), tailwindcss()],
+    resolve: {
+      alias: [
+        { find: "@/context/locale", replacement: path.join(fixture, "locale.ts") },
+        { find: "@", replacement: path.resolve(components, "..") },
+      ],
+    },
+    cacheDir: path.join(fixture, ".vite"),
+    optimizeDeps: {
+      include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime", "@lingui/core", "@lingui/solid", "fuzzysort"],
+      noDiscovery: true,
+    },
+    server: {
+      host: "127.0.0.1",
+      port: await fixturePort(),
+      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
+    },
+  })
+  await server.listen()
+  await server.warmupRequest("/main.tsx")
+  browser = await chromium.launch({ headless: true })
+}, 60000)
+
+beforeEach(async () => {
+  errors.length = 0
+  page = await browser.newPage()
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto(server.resolvedUrls!.local[0]!)
+  await page
+    .getByRole("button", { name: "Agent", exact: true })
+    .waitFor({ timeout: 10000 })
+    .catch((error) => {
+      throw new Error([...errors, String(error)].join("\n"))
+    })
+})
+
+afterEach(async () => {
+  await page?.close()
+})
+
+afterAll(async () => {
+  await browser?.close()
+  await server?.close()
+  if (fixture) await rm(fixture, { recursive: true, force: true })
+})
+
+test("toolbar has one Tab stop and restores the native trigger after Escape", async () => {
+  const trigger = page.getByRole("button", { name: "Agent", exact: true })
+  await page.getByRole("button", { name: "Before toolbar" }).focus()
+  await page.keyboard.press("Tab")
+  expect(await trigger.evaluate((el) => el === document.activeElement)).toBe(true)
+  await page.keyboard.press("Tab")
+  expect(
+    await page.getByRole("button", { name: "After toolbar" }).evaluate((el) => el === document.activeElement),
+  ).toBe(true)
+  for (const key of ["Enter", "Space"]) {
+    await trigger.focus()
+    await page.keyboard.press(key)
+    await page.getByRole("button", { name: "Choose agent" }).waitFor()
+    expect(await trigger.getAttribute("aria-expanded")).toBe("true")
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Choose agent" }).waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.textContent === "Agent")
+  }
+  expect(errors).toEqual([])
+})
+
+test("sidebar disclosure supports native Enter and Space and announces its state", async () => {
+  const button = page.getByRole("button", { name: "Projects" })
+  await button.focus()
+  expect(await button.getAttribute("aria-expanded")).toBe("false")
+  await page.keyboard.press("Enter")
+  expect(await button.getAttribute("aria-expanded")).toBe("true")
+  await page.keyboard.press("Space")
+  expect(await button.getAttribute("aria-expanded")).toBe("false")
+  expect(errors).toEqual([])
+})
+
+test("Add menu preserves sections, action guards and keyboard dismissal", async () => {
+  const trigger = page.getByRole("button", { name: "Add", exact: true })
+  await trigger.click()
+  const list = page.locator('[data-component="list"]')
+  await list.waitFor()
+  const surface = page.getByRole("dialog", { name: "Add", exact: true })
+  const appearance = await surface.evaluate((el) => {
+    const style = getComputedStyle(el)
+    return { radius: style.borderRadius, animation: style.animationName }
+  })
+  expect(appearance).toEqual({ radius: "12px", animation: "popover-open" })
+  const rowHeights = await list
+    .locator('[data-slot="list-item"]')
+    .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height))
+  expect(Math.max(...rowHeights)).toBeLessThanOrEqual(38)
+  expect(await list.locator('[data-slot="list-item"]').allTextContents()).toEqual([
+    "Add files",
+    "Light Loop",
+    "Plan",
+    "Lattice",
+    "Boss",
+  ])
+  expect(await list.getByText("Context", { exact: true }).count()).toBe(1)
+  expect(await list.getByText("Workflow", { exact: true }).count()).toBe(1)
+  const gaps = await list
+    .locator('[data-slot="list-item"]')
+    .evaluateAll((items) =>
+      items
+        .slice(1)
+        .map((item, index) => item.getBoundingClientRect().top - items[index]!.getBoundingClientRect().bottom),
+    )
+  expect(gaps[0]).toBeGreaterThan(gaps[1]! + 4)
+  for (const name of ["Plan", "Lattice"]) {
+    await list.getByText(name, { exact: true }).click()
+    expect(await page.locator("output").textContent()).toBe("None")
+    expect(await list.isVisible()).toBe(true)
+  }
+  await list.getByText("Boss", { exact: true }).click()
+  expect(await page.locator("output").textContent()).toBe("boss")
+  await list.waitFor({ state: "detached" })
+  await trigger.press("Enter")
+  await list.waitFor()
+  await page.keyboard.press("Escape")
+  await list.waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Add")
+  expect(errors).toEqual([])
+})
+
+test("compact start selector keeps its icon centered through hover, focus and opening", async () => {
+  const trigger = page.getByRole("button", { name: "Start mode", exact: true })
+  const geometry = () =>
+    trigger.evaluate((button) => {
+      const bounds = button.getBoundingClientRect()
+      const icon = button.querySelector('[data-component="icon"]')!.getBoundingClientRect()
+      return {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        offset: icon.x + icon.width / 2 - bounds.x - bounds.width / 2,
+      }
+    })
+  const baseline = await geometry()
+  expect(Math.abs(baseline.offset)).toBeLessThanOrEqual(1)
+  expect(baseline.width).toBe(baseline.height)
+  await trigger.hover()
+  expect(await geometry()).toEqual(baseline)
+  await trigger.focus()
+  expect(await geometry()).toEqual(baseline)
+  await trigger.click()
+  await page.getByRole("dialog", { name: "Start mode", exact: true }).waitFor()
+  expect(await geometry()).toEqual(baseline)
+  expect(await page.getByRole("tooltip").count()).toBe(0)
+  await page.keyboard.press("Escape")
+  expect(errors).toEqual([])
+})
+
+test("reduced motion disables the actual open menu animation", async () => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.getByRole("button", { name: "Add", exact: true }).click()
+  const surface = page.getByRole("dialog", { name: "Add", exact: true })
+  await surface.waitFor()
+  expect(await surface.evaluate((el) => getComputedStyle(el).animationName)).toBe("none")
+  await page.keyboard.press("Escape")
+  await surface.waitFor({ state: "detached" })
+  expect(errors).toEqual([])
+})
+
+test("typing outside controls focuses the composer while sidebar keys retain their owner", async () => {
+  const projects = page.getByRole("button", { name: "Projects", exact: true })
+  await projects.focus()
+  await page.keyboard.press("Space")
+  expect(await projects.getAttribute("aria-expanded")).toBe("true")
+  expect(await projects.evaluate((el) => el === document.activeElement)).toBe(true)
+  expect(await page.getByLabel("Composer").textContent()).toBe("")
+  await page.getByTestId("reading-area").click()
+  await page.keyboard.press("x")
+  expect(await page.getByLabel("Composer").evaluate((el) => el === document.activeElement)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("long model names cannot overlap adjacent mobile toolbar controls", async () => {
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 460 })
+    const toolbar = page.getByTestId("mobile-toolbar")
+    const buttons = await toolbar.getByRole("button").evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect()
+        return { left: rect.left, right: rect.right, width: rect.width }
+      }),
+    )
+    expect(buttons).toHaveLength(5)
+    for (let index = 1; index < buttons.length; index++) {
+      expect(buttons[index]!.left).toBeGreaterThanOrEqual(buttons[index - 1]!.right)
+      expect(buttons[index]!.right).toBeLessThanOrEqual(width)
+    }
+    const model = toolbar.getByRole("button", { name: "Very long model display name" })
+    await model.focus()
+    expect(await model.evaluate((element) => element === document.activeElement)).toBe(true)
+  }
+  expect(errors).toEqual([])
+})
+
+test("submission notices expose recoverable errors without duplicate pending or settled banners", async () => {
+  const notice = page.getByTestId("submission-notice")
+  await page.getByRole("button", { name: "State pending", exact: true }).click()
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
+  await page.getByRole("button", { name: "State error", exact: true }).click()
+  expect(await notice.getByRole("alert").count()).toBe(1)
+  expect(await notice.getByRole("alert").textContent()).toContain("Submission failed.")
+  expect(await notice.getByText("Offline", { exact: true }).isVisible()).toBe(false)
+  await notice.getByText("Error details", { exact: true }).click()
+  expect(await notice.getByText("Offline", { exact: true }).isVisible()).toBe(true)
+  await notice.getByRole("button", { name: "Retry submission", exact: true }).click()
+  expect(await page.getByTestId("retries").textContent()).toBe("1")
+  await page.getByRole("button", { name: "State unknown", exact: true }).click()
+  expect(await notice.getByRole("alert").textContent()).toContain("The result could not be confirmed.")
+  expect(await notice.getByRole("button", { name: "Retry submission", exact: true }).count()).toBe(0)
+  await notice.getByRole("button", { name: "Check status", exact: true }).click()
+  expect(await page.getByTestId("retries").textContent()).toBe("2")
+  await page.getByRole("button", { name: "State settled", exact: true }).click()
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
+  await page.getByRole("button", { name: "State idle", exact: true }).click()
+  expect(await notice.getByRole("status").count()).toBe(0)
+  expect(await notice.getByRole("alert").count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test("Add is a circular standalone control with stable geometry", async () => {
+  const trigger = page.getByRole("button", { name: "Add", exact: true })
+  const before = await trigger.boundingBox()
+  expect(before?.width).toBe(32)
+  expect(before?.height).toBe(32)
+  expect(await trigger.evaluate((element) => getComputedStyle(element).borderRadius)).toBe("50%")
+  await trigger.hover()
+  expect(await trigger.boundingBox()).toEqual(before)
+  await trigger.click()
+  expect(await trigger.boundingBox()).toEqual(before)
+  expect(await page.getByRole("tooltip").count()).toBe(0)
+})

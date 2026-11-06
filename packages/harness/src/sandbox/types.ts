@@ -1,0 +1,123 @@
+// ------------------------------------------------------------------
+// Sandbox types — shared types for the sandbox subsystem
+// ------------------------------------------------------------------
+
+export type SandboxMode = "none" | "read_only" | "workspace_write"
+
+export type FallbackPolicy = "warn" | "allow" | "deny"
+export type SandboxNetworkMode = "full" | "restricted" | "proxy_only"
+
+export interface PlatformInfo {
+  platform: string
+  available: boolean
+  backend: string | null
+}
+
+export interface PrepareWrapperOpts {
+  command: string
+  args: string[]
+  workspace: string
+  originalCheckout?: string
+  executionCwd?: string
+  sandboxMode: SandboxMode
+  forcePlatform?: string
+  /** Explicit sandbox backend selection (e.g. "sandbox-exec", "seatbelt-deny-default") */
+  backend?: string
+  runtimeReadRoots?: string[]
+  extraReadRoots?: string[]
+  writableRoots?: string[]
+  extraWritableRoots?: string[]
+  protectedPaths?: string[]
+  dataDenyRoots?: string[]
+  stripDefaultHomeDenyRoot?: boolean
+  /** Network mode for the compiled sandbox profile. Defaults to "restricted". */
+  networkMode?: SandboxNetworkMode
+  /** Test-only helper override for backend unit tests; production callers should not set this. */
+  forceHelperPath?: string
+  /** Test-only helper verification override paired with forceHelperPath. */
+  forceHelperVerified?: boolean
+}
+
+export interface PrepareLinuxWrapperOpts {
+  command: string
+  args: string[]
+  workspace: string
+  sandboxMode: SandboxMode
+  runtimeReadRoots?: string[]
+  extraReadRoots?: string[]
+  extraWritableRoots?: string[]
+  protectedPaths?: string[]
+  /** Credential and sensitive paths that stay unreadable under the deny-list read model. */
+  dataDenyRoots?: string[]
+  forcePlatform?: string
+  /** Explicit sandbox backend selection (e.g. "bwrap-inline-debug") */
+  backend?: string
+  /** Network mode for the compiled sandbox profile. Defaults to "restricted". */
+  networkMode?: SandboxNetworkMode
+  /** Test-only helper override for backend unit tests; production callers should not set this. */
+  forceHelperPath?: string
+  /** Test-only helper verification override paired with forceHelperPath. */
+  forceHelperVerified?: boolean
+}
+
+export interface SeatbeltProfileOpts {
+  workspace: string
+  sandboxMode: "read_only" | "workspace_write"
+  runtimeReadRoots: string[]
+  literalReadRoots?: string[]
+  writableRoots: string[]
+  protectedPaths: string[]
+  dataDenyRoots?: string[]
+}
+export interface SandboxExecutionWrapper {
+  command: string
+  args: string[]
+  sandboxed: boolean
+  skipReason?: string
+  tempPath?: string
+  /** Native compiler containment metadata; never a Workspace coordination claim. */
+  writeFootprint?: { kind: "roots"; roots: string[] } | { kind: "host" }
+}
+
+export interface SandboxExecuteOpts {
+  fallbackPolicy: FallbackPolicy
+  env?: Record<string, string>
+  cwd?: string
+  signal?: AbortSignal
+  timeoutMs?: number
+  maxOutputBytes?: number
+  onStdout?: (chunk: Buffer) => void
+  onStderr?: (chunk: Buffer) => void
+  after_spawn?: (pid: number) => void | Promise<void>
+  networkMode?: SandboxNetworkMode
+}
+
+export interface SandboxExecuteResult {
+  exitCode: number
+  stdout: string
+  stderr: string
+  timedOut: boolean
+  truncated: boolean
+}
+/** Recovery action for a failed readiness check. */
+export interface ReadinessRecoveryAction {
+  action: string
+  label: string
+  command: string
+}
+
+export interface SandboxReadinessCheck {
+  id: string
+  label: string
+  status: "pass" | "warn" | "fail"
+  detail: string
+  recovery?: ReadinessRecoveryAction
+}
+
+export interface SandboxReadiness {
+  platform: "macos" | "linux" | "windows" | "unsupported"
+  backend: string | null
+  ready: boolean
+  checks: SandboxReadinessCheck[]
+  summary: string
+}

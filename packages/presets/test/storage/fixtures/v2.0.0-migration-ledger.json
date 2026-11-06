@@ -1,0 +1,28 @@
+{
+  "tag": "v2.0.0",
+  "commit": "4d674739ca4d8d959e28310d0d4864e1cc3e46ef",
+  "source": "packages/synergy/src/**/migration.ts",
+  "completed": [
+    "20260322-agenda-session-index",
+    "20260324-engram-experience-source-model",
+    "20260405-engram-memory-recall-mode",
+    "20260410-config-holos-top-level",
+    "20260411-holos-message-metadata-shape",
+    "20260411-session-endpoint-index",
+    "20260413-config-holos-legacy-cleanup",
+    "20260414-config-schema-local",
+    "20260415-engram-purge-invalid-experiences",
+    "20260420-agenda-flatten-task-delivery",
+    "20260422-config-inspire-remove-deprecated-keys",
+    "20260422-config-sii-to-plugin",
+    "20260423-agenda-run-index",
+    "20260423-engram-purge-tool-hallucination-intents",
+    "20260423-session-page-index-and-last-exchange",
+    "20260423-session-page-index-parentid",
+    "20260424-engram-q-updated-at-integer",
+    "20260424-scope-reclaim-orphans",
+    "20260425-engram-purge-oversized-tool-log-intents",
+    "20260425b-engram-purge-assistant-reasoning-intents",
+    "20260430-scope-add-type-directory"
+  ]
+}

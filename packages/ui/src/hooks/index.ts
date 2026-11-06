@@ -1,3 +1,5 @@
 export * from "./use-filtered-list"
 export * from "./create-auto-scroll"
 export * from "./create-animated-number"
+export { createDisclosureMotionRef } from "../utils/disclosure-motion"
+export { readSelectionRanges, readSelectionElements } from "../utils/selection"

@@ -1,24 +1,25 @@
 ---
 name: add-cli-command
-description: Add or modify a Synergy CLI command, command group, positional, option, alias, help text, exit behavior, or root command registration under packages/synergy/src/cli. Use for installed synergy CLI work; do not use for the repository-only bun dev orchestrator.
+description: Add or modify a Synergy CLI command, command group, positional, option, alias, help text, exit behavior, root command registration, or installed component runner dispatch and bootstrap IPC lifecycle. Use for installed synergy CLI work; do not use for the repository-only bun dev orchestrator.
 ---
 
 # Add a CLI Command
 
 ## Discover the Contract
 
-1. Read [CLI reference](../../../docs/reference/cli.md) and inspect `packages/synergy/src/index.ts`.
+1. Read [CLI reference](../../../docs/reference/cli.md), the single parser in `packages/cli/src/main.ts`, and the runtime command catalog in `packages/cli/src/cli/runtime-commands.ts`, and the selected owners’ `src/cli-adapter.ts`.
 2. Locate the nearest command with the same shape: local operation, server-attached operation, nested command group, streaming output, or destructive confirmation.
 3. Decide whether the behavior belongs in the installed `synergy` CLI or the source-only `bun dev` orchestrator. Edit `script/dev.ts` only for the latter.
 
 ## Implement
 
 1. Write a failing behavior test first when adding behavior or fixing a bug.
-2. Add or update a named command in `packages/synergy/src/cli/cmd/` with `cmd()`. Match neighboring yargs builder, positional, alias, and output patterns rather than imposing a parallel style.
+2. Add or update a named yargs command. CLI-dependent owners can use the public CLI `cmd()` helper; Local Runtime and Server must use their own typed command definitions to preserve the dependency direction. Generic commands belong to `packages/cli/src/cli/cmd/`; business commands live under the owning domain’s `cli/` directory and contribute through the owner’s lazy `src/cli-adapter.ts`. Match neighboring yargs builder, positional, alias, and output patterns rather than imposing a parallel style.
 3. Keep domain logic in its owning module. Let the command parse input, establish Scope or server attachment, call the domain API, format output, and set an appropriate exit status.
 4. Give every command, positional, and option useful help text. Support structured output when the adjacent command family already does.
-5. Register a root command in `packages/synergy/src/index.ts`; register a nested command in its owning command-group builder.
-6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics.
+5. Register a generic root command in the CLI’s core command catalog or a business command in its owning component’s `src/cli-adapter.ts`; register nested commands in their owning command-group builder. Preserve the injected runtime factory. Nested product Data commands enter through `runCli({ dataCommands })`; the core Data builder owns path, set-home and snapshots, while Presets contributes pack, merge and move and the root `migrate` alias.
+6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics. For a mixed local/attached command family, select `CommandEntry.storage` from parsed positionals so HTTP-only subcommands do not acquire the target Home lock. Test them while a real lock is held, and verify local subcommands still refuse competing ownership.
+   Installation commands use Plugin Host's installation manager. Keep module trust separate from API4 grants, preserve activation journals, and verify both next-start selection and workers pinned to an older running generation.
 7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
 ## Command Contract
@@ -27,14 +28,15 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 2. When the neighboring command family already supports structured output, support stable `--json` output with a documented success shape and machine-readable errors. Never include credentials in error output.
 3. Write self-explanatory help text: every command, positional, and option describes its purpose, and `--help` surfaces every major capability.
 4. Keep a raw escape hatch only where the family needs one. Never expose only a generic raw request command without high-level verbs.
+5. Setup flows must check registered configuration domains before exposing optional commands, showing guidance, probing owner-specific endpoints, constructing defaults or disabling a feature after a failed recommendation. Reject explicit unavailable owner input before requests or writes. Verify `core` and `full` compositions, including retained settings belonging to unloaded owners; model setup must not create or reset their configuration.
 
 ## Verify
 
 ```bash
-bun run packages/synergy/src/index.ts <command> --help
+bun run packages/presets/src/index.ts <command> --help
 ```
 
-Then run the narrow CLI/domain test from `packages/synergy`, followed by:
+Then run the narrow test from `packages/cli` or the command’s owning business package, followed by:
 
 ```bash
 bun run typecheck
@@ -43,10 +45,33 @@ bun run quality:quick
 
 For startup, daemon, port, Web, Desktop, auth, or data movement changes, test through an isolated `SYNERGY_HOME`; use the `develop-synergy` skill and never disrupt the active instance.
 
+## Installed component runner lifecycle
+
+Use this workflow for metadata-owned subprocess runners. Read [Installable packages](../../../docs/reference/installable-packages.md#trusted-host-components), [Runtime and Scope](../../../docs/architecture/runtime-and-scope.md#composition-and-migration-registration), and the [bootstrap IPC decision](../../../docs/decisions/implemented/bug-fix/2026-10-07-replay-component-runner-bootstrap-ipc.md) before changing dispatch.
+
+1. Keep optional runners in the owning component's `synergy.runners` metadata. Verify the installed launcher selects the declared export from its parent's pinned, sealed generation; do not add an optional runner to `CORE_RUNNERS` or load full product composition to obtain dispatch.
+2. In an IPC-consuming `main()`, register `process.on("message", ...)` synchronously before the first `await`. Return a Promise that covers the worker's lifetime through shutdown; a one-shot runner may settle when its operation finishes.
+3. Preserve the handoff order in `runComponentRunner`: invoke the export, capture its completion value, call the registration callback, then await completion. Ensure the launcher supplies `resumeWorker`, which removes the bootstrap receiver and replays buffered messages. This callback means listener registration, not asynchronous resource readiness; use the component's IPC protocol for the latter.
+4. Keep the RuntimeContext alive until the completion Promise settles, with disposal in `finally`. Do not dispose when the registration callback fires or return while detached worker work still owns the context.
+5. Exercise installed dispatch, not only a direct module import. Use a sealed synthetic installation with observable registration and disposal, spawn its pinned runner, and send `start` immediately without waiting for registration. Expect `registered` followed by an echo of the early `start`, no disposal while live, then normal exit and disposal after `shutdown` settles the runner. Check subprocess errors and clean up the fixture; never use the active runtime's Home.
+6. Keep an opted-in installed-worker bootstrap handoff separate from component protocol readiness. Emit its verified pin and runner only at receiver registration, after complete generation verification, and only for a child that explicitly requests the advertised channel. Preserve early IPC replay and keep old/source dispatch compatible. Test rejected or tampered pins before executable entry effects; a control record must not serve as a verification cache.
+
+Run the focused regression from the repository root:
+
+```bash
+bun test --cwd packages/cli test/component-runner.test.ts
+```
+
+The fixture checks shared launcher replay and context lifetime, not the component's resource initialization or query correctness. Record the actual result; the existence of this test is not passing evidence. Verify any component-specific asynchronous readiness separately through its own protocol.
+
 ## Synchronize Documentation
 
-Update [CLI reference](../../../docs/reference/cli.md) for user-visible syntax or behavior. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
+Run `bun script/gen/gen-cli-reference.ts` to update the generated [CLI reference](../../../docs/reference/cli.md); never hand-edit it. The generator follows both command catalogs, lazy contributions and component adapters’ `dataCommands`, `debugCommands` and `pluginCommands` contributions. Test both core and full help when changing availability or aliases. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
 
 ## Handoff
 
 Report the registered command path, domain API called, failure/exit behavior, manual invocation, tests, SDK generation status, and documentation updated.
+
+## Task execution commands
+
+Use the shared `RuntimeHandle` for a local writer and generated SDK methods for attached execution. Subscribe before submission, process interactions during command execution, and always remove signal listeners and drain cancellation in cleanup. Read durable run results instead of treating a session idle event as completion. Keep JSON stdout parseable and report unknown estimates separately from known cost. See [Rollout execution](../../../docs/reference/rollout.md).

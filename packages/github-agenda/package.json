@@ -1,0 +1,82 @@
+{
+  "name": "@ericsanchezok/synergy-github-agenda",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./component": "./src/component.ts",
+    "./github-trigger": "./src/github-trigger.ts",
+    "./http": "./src/http.ts",
+    "./preflight": "./src/preflight.ts",
+    "./register": "./src/register.ts",
+    "./schedule-description.txt": "./src/schedule-description.txt",
+    "./watch-description.txt": "./src/watch-description.txt",
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/github-agenda",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-agenda": "workspace:*",
+    "@ericsanchezok/synergy-github": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "github-agenda",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "githubAgenda",
+    "requires": {
+      "github": "1.1.26",
+      "agenda": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-github": "1.1.26",
+      "@ericsanchezok/synergy-agenda": "1.1.26"
+    },
+    "features": {
+      "kind": "bridge",
+      "definitions": [
+        {
+          "id": "github-agenda",
+          "owner": "github-agenda",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Github Agenda",
+          "description": "Provide github agenda capabilities.",
+          "component": "github-agenda"
+        }
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

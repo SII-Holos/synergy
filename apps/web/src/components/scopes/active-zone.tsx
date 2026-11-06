@@ -1,0 +1,174 @@
+import { createMemo, For, Show } from "solid-js"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { relativeTime } from "@/utils/time"
+import { isWorkingStatus } from "@/utils/session-status"
+import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import type { GlobalRuntimeIndex } from "@/context/session-data-view"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+
+interface ActiveZoneProps {
+  sessions: Session[]
+  runtime: GlobalRuntimeIndex
+  childStatus?: Record<string, { count: number; running: number }>
+  notification: {
+    session: { unseen: (sessionID: string) => { type: string }[] }
+  }
+  onSelectSession: (session: Session) => void
+}
+
+type ActiveReason = "working" | "permission" | "error" | "notification"
+
+export function getActiveReason(
+  session: Session,
+  runtime: GlobalRuntimeIndex,
+  notification: ActiveZoneProps["notification"],
+): ActiveReason | null {
+  if (isWorkingStatus(runtime.sessionStatus[session.id])) return "working"
+
+  if ((runtime.permissions[session.id]?.length ?? 0) > 0) return "permission"
+
+  const unseen = notification.session.unseen(session.id)
+  if (unseen.some((n) => n.type === "error")) return "error"
+  if (unseen.length > 0) return "notification"
+
+  return null
+}
+
+const REASON_ORDER: Record<ActiveReason, number> = {
+  working: 0,
+  permission: 1,
+  error: 2,
+  notification: 3,
+}
+export function ActiveZone(props: ActiveZoneProps) {
+  const { i18n } = useLocale()
+  const activeSessions = createMemo(() => {
+    const result: { session: Session; reason: ActiveReason }[] = []
+
+    for (const session of props.sessions) {
+      const reason = getActiveReason(session, props.runtime, props.notification)
+      if (reason) {
+        result.push({ session, reason })
+      }
+    }
+
+    result.sort((a, b) => {
+      const orderDiff = REASON_ORDER[a.reason] - REASON_ORDER[b.reason]
+      if (orderDiff !== 0) return orderDiff
+
+      const ta = a.session.time.updated ?? a.session.time.created
+      const tb = b.session.time.updated ?? b.session.time.created
+      return tb - ta
+    })
+
+    return result
+  })
+
+  return (
+    <Show when={activeSessions().length > 0}>
+      <div class="px-6 pt-1 pb-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-1.5">
+            <div class="size-1.5 rounded-full bg-icon-success-base animate-pulse" />
+            <span class="text-11-medium text-text-weak uppercase tracking-wider">
+              {i18n._(AP.scopesActiveZoneActive.id)}
+            </span>
+          </div>
+          <span class="text-10-medium bg-surface-raised-base px-1.5 py-0.5 rounded-md">{activeSessions().length}</span>
+        </div>
+
+        <div class="flex gap-2.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <For each={activeSessions()}>
+            {({ session, reason }, index) => (
+              <ActiveCard
+                session={session}
+                reason={reason}
+                runtime={props.runtime}
+                childStatus={props.childStatus?.[session.id]}
+                index={index}
+                onSelect={props.onSelectSession}
+              />
+            )}
+          </For>
+        </div>
+      </div>
+    </Show>
+  )
+}
+
+function ActiveCard(props: {
+  session: Session
+  reason: ActiveReason
+  runtime: GlobalRuntimeIndex
+  childStatus?: { count: number; running: number }
+  index: () => number
+  onSelect: (session: Session) => void
+}) {
+  const { i18n, fmt } = useLocale()
+  const statusText = createMemo(() => {
+    if (props.reason === "working") {
+      const status = props.runtime.sessionStatus[props.session.id]
+      if (status?.type === "retry") return status.message ?? i18n._(AP.scopesActiveZoneRetrying.id)
+      if (status?.type === "busy") return status.description ?? i18n._(AP.scopesActiveZoneWorking.id)
+      return i18n._(AP.scopesActiveZoneWorking.id)
+    }
+    if (props.reason === "permission") return i18n._(AP.scopesActiveZonePermission.id)
+    if (props.reason === "error") return i18n._(AP.scopesActiveZoneError.id)
+    return i18n._(AP.scopesActiveZoneNewActivity.id)
+  })
+
+  const updatedAt = () => props.session.time.updated ?? props.session.time.created
+  const isPinned = () => props.session.pinned && props.session.pinned > 0
+
+  return (
+    <div
+      class="min-w-[200px] max-w-[240px] flex flex-col rounded-[1.15rem] bg-surface-raised-base/90 p-3 border border-border-weaker-base/50 shadow-sm cursor-pointer transition-all duration-150 hover:bg-surface-raised-base-hover hover:border-border-base/60 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98]"
+      style={{
+        animation: "cardPopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+        "animation-delay": `${props.index() * 40}ms`,
+      }}
+      onClick={() => props.onSelect(props.session)}
+    >
+      <div class="flex items-center gap-1.5 mb-2">
+        <Show when={props.reason === "working"}>
+          <Spinner class="size-3" />
+        </Show>
+        <Show when={props.reason === "permission"}>
+          <div class="size-1.5 rounded-full bg-surface-warning-strong" />
+        </Show>
+        <Show when={props.reason === "error"}>
+          <div class="size-1.5 rounded-full bg-text-diff-delete-base" />
+        </Show>
+        <Show when={props.reason === "notification"}>
+          <div class="size-1.5 rounded-full bg-text-interactive-base" />
+        </Show>
+        <span class="text-11-regular text-text-weak truncate">{statusText()}</span>
+      </div>
+
+      <span class="text-12-medium text-text-base line-clamp-2">
+        {props.session.title || i18n._(AP.scopesSessionNewSession.id)}
+      </span>
+
+      <Show when={props.childStatus && props.childStatus.count > 0}>
+        <span class="text-10-regular text-text-weaker mt-1">
+          {props.childStatus!.running > 0
+            ? i18n._(AP.scopesActiveZoneTasksRunning.id, {
+                running: String(props.childStatus!.running),
+                count: String(props.childStatus!.count),
+              })
+            : i18n._(AP.scopesActiveZoneTasks.id, { count: props.childStatus!.count })}
+        </span>
+      </Show>
+
+      <div class="flex items-center justify-between mt-auto pt-2">
+        <span class="text-10-regular text-text-weak">{relativeTime(fmt, updatedAt())}</span>
+        <Show when={isPinned()}>
+          <Icon name={getSemanticIcon("action.pin")} size="small" class="text-text-weaker size-3" />
+        </Show>
+      </div>
+    </div>
+  )
+}

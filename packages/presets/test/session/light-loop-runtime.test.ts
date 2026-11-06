@@ -1,0 +1,442 @@
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
+import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
+import { LightLoopRuntime } from "@ericsanchezok/synergy-light-loop/light-loop/runtime"
+import { LightLoopTerminalStore } from "@ericsanchezok/synergy-light-loop/light-loop/terminal-hook"
+import { migrations } from "@ericsanchezok/synergy-light-loop/session-migration"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+const originalDeliverHookForPlugin = (Plugin as any).deliverHookForPlugin
+
+afterEach(() =>
+  runtime.run(() => {
+    ;(Plugin as any).deliverHookForPlugin = originalDeliverHookForPlugin
+  }),
+)
+
+async function createPluginLightLoop() {
+  const session = await Session.create({})
+  await Session.update(session.id, (draft) => {
+    draft.workflow = {
+      kind: "lightloop",
+      instructions: "Finish the plugin-owned task",
+      pluginOwner: {
+        pluginId: "test-plugin",
+        pluginGeneration: "generation-one",
+        scopeId: session.scope.id,
+        correlationId: "correlation-one",
+      },
+    }
+  })
+  return session
+}
+
+describe("LightLoop terminal hook delivery", () => {
+  test("reattach delivers a terminal result created while admitting a cold owner", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createPluginLightLoop()
+          const stored = await Session.get(session.id)
+          await Storage.write(["sessions", session.scope.id, session.id, "info"], {
+            ...stored,
+            cortex: {
+              taskID: "legacy-task",
+              parentSessionID: "legacy-parent",
+              parentMessageID: "legacy-message",
+              description: "Legacy plugin loop",
+              agent: "legacy-agent",
+              status: "completed",
+              startedAt: 1,
+            },
+            workflow: { ...stored.workflow, stopRequest: { summary: "Pending old review" } },
+          })
+          const get = Session.get
+          using admission = spyOn(Session, "get").mockImplementation(
+            Object.assign(
+              async (id: string) => {
+                if (id === session.id)
+                  await migrations[1].upSession!({ scopeID: session.scope.id, sessionID: id }, () => {})
+                return get(id)
+              },
+              { force: get.force, schema: get.schema },
+            ),
+          )
+          const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
+          ;(Plugin as any).deliverHookForPlugin = delivery
+          await LightLoopRuntime.reattachPluginTimers()
+          expect(delivery).toHaveBeenCalledTimes(1)
+          expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+            status: "failed",
+            error: "legacy_review_requires_restart",
+            hookDeliveredAt: expect.any(Number),
+          })
+        },
+      })
+    }))
+
+  test("reattach selects indexed loops and pending hooks without loading unrelated or acknowledged owners", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const unrelated = await Session.create({})
+          const finished = await createPluginLightLoop()
+          const pending = await createPluginLightLoop()
+          const orphan = await createPluginLightLoop()
+          const active = await createPluginLightLoop()
+          const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
+          ;(Plugin as any).deliverHookForPlugin = delivery
+          await LightLoopRuntime.setTerminalStatus(finished.id, "completed")
+          await LightLoopRuntime.setTerminalStatus(pending.id, "completed")
+          await LightLoopRuntime.setTerminalStatus(orphan.id, "completed")
+          for (const session of [pending, orphan]) {
+            const record = (await LightLoopTerminalStore.get(session))!
+            await LightLoopTerminalStore.put(session, { ...record, hookDeliveredAt: undefined })
+          }
+          await Storage.remove(
+            StoragePath.sessionInfo(Identifier.asScopeID(orphan.scope.id), Identifier.asSessionID(orphan.id)),
+          )
+          await SessionNav.removeNavEntry(orphan.scope.id, orphan.id)
+          await Session.update(active.id, (draft) => {
+            if (draft.workflow?.kind === "lightloop") draft.workflow.deadlineAt = Date.now() - 1
+          })
+          delivery.mockClear()
+          using gets = spyOn(Session, "get")
+          await LightLoopRuntime.reattachPluginTimers()
+          expect(gets.mock.calls.some(([id]) => id === unrelated.id || id === finished.id)).toBe(false)
+          try {
+            const deadline = Date.now() + 5000
+            while ((await LightLoopTerminalStore.get(active))?.hookDeliveredAt === undefined && Date.now() < deadline)
+              await Bun.sleep(10)
+            expect((await LightLoopTerminalStore.get(active))?.status).toBe("timed_out")
+            expect((await Session.get(active.id)).workflow).toBeUndefined()
+            expect(delivery).toHaveBeenCalledTimes(2)
+          } finally {
+            LightLoopRuntime.cancelDeadline(active.id)
+          }
+        },
+      })
+    }))
+
+  test("clears ordinary LightLoop state and persists the authoritative terminal record", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.workflow = {
+              kind: "lightloop",
+              instructions: "Finish the ordinary task",
+            }
+          })
+          const delivery = mock(async () => ({ status: "delivered", handlerCount: 1 }))
+          ;(Plugin as any).deliverHookForPlugin = delivery
+
+          await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+
+          expect((await Session.get(session.id)).workflow).toBeUndefined()
+          // Ordinary loops now persist a terminal record so headless drivers can
+          // distinguish approval from exhaustion, timeout, cancellation, and
+          // failure after the workflow is cleared.
+          expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+            status: "completed",
+            instructions: "Finish the ordinary task",
+            hookDeliveredAt: expect.any(Number),
+          })
+          expect(delivery).not.toHaveBeenCalled()
+        },
+      })
+    }))
+
+  test("unequips before acknowledging one successful matching delivery", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createPluginLightLoop()
+          const calls: unknown[][] = []
+          ;(Plugin as any).deliverHookForPlugin = mock(async (...args: unknown[]) => {
+            calls.push(args)
+            expect((await Session.get(session.id)).workflow).toBeUndefined()
+            return { status: "delivered", handlerCount: 1 }
+          })
+
+          await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+
+          expect((await Session.get(session.id)).workflow).toBeUndefined()
+          expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+            status: "completed",
+            instructions: "Finish the plugin-owned task",
+            hookDeliveredAt: expect.any(Number),
+          })
+          expect(calls).toEqual([
+            [
+              "test-plugin",
+              "generation-one",
+              "lightloop.after",
+              {
+                loop: {
+                  sessionID: session.id,
+                  status: "completed",
+                  instructions: "Finish the plugin-owned task",
+                },
+              },
+            ],
+          ])
+
+          await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+          expect(calls).toHaveLength(1)
+        },
+      })
+    }))
+
+  test.each([
+    {
+      name: "no handler",
+      delivery: {
+        status: "no_handler" as const,
+        handlerCount: 0,
+        error: "Plugin test-plugin has no handler for lightloop.after",
+      },
+    },
+    {
+      name: "plugin generation mismatch",
+      delivery: {
+        status: "plugin_mismatch" as const,
+        handlerCount: 0,
+        error: "Plugin test-plugin generation generation-one is not active",
+      },
+    },
+  ])(
+    "unequips and preserves an unacknowledged result for $name",
+    runtime.bind(async ({ delivery }) => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createPluginLightLoop()
+          ;(Plugin as any).deliverHookForPlugin = mock(async () => delivery)
+
+          await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+
+          expect((await Session.get(session.id)).workflow).toBeUndefined()
+          expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+            status: "completed",
+            hookError: delivery.error,
+          })
+          expect((await LightLoopTerminalStore.get(session))?.hookDeliveredAt).toBeUndefined()
+        },
+      })
+    }),
+  )
+
+  test("records handler failure and retries until delivery succeeds", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createPluginLightLoop()
+          let attempt = 0
+          ;(Plugin as any).deliverHookForPlugin = mock(async () => {
+            attempt++
+            if (attempt === 1) {
+              return {
+                status: "failed" as const,
+                handlerCount: 1,
+                error: "Hook lightloop.after handler on-finish failed: plugin state write failed",
+              }
+            }
+            return { status: "delivered" as const, handlerCount: 1 }
+          })
+
+          await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+          expect((await Session.get(session.id)).workflow).toBeUndefined()
+          expect((await LightLoopTerminalStore.get(session))?.hookError).toContain("plugin state write failed")
+
+          await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+          const terminal = await LightLoopTerminalStore.get(session)
+          expect(terminal?.hookDeliveredAt).toBeNumber()
+          expect(terminal?.hookError).toBeUndefined()
+          expect(attempt).toBe(2)
+        },
+      })
+    }))
+
+  test("serializes concurrent terminal calls into one acknowledged delivery", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createPluginLightLoop()
+          const delivery = mock(async () => {
+            await Bun.sleep(10)
+            return { status: "delivered" as const, handlerCount: 1 }
+          })
+          ;(Plugin as any).deliverHookForPlugin = delivery
+
+          await Promise.all([
+            LightLoopRuntime.setTerminalStatus(session.id, "completed"),
+            LightLoopRuntime.setTerminalStatus(session.id, "completed"),
+          ])
+
+          expect(delivery).toHaveBeenCalledTimes(1)
+          expect((await Session.get(session.id)).workflow).toBeUndefined()
+          expect((await LightLoopTerminalStore.get(session))?.hookDeliveredAt).toBeNumber()
+        },
+      })
+    }))
+
+  test("reattach retries a stale terminal hook without clearing a later ordinary workflow", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createPluginLightLoop()
+          await LightLoopTerminalStore.put(session, {
+            sessionID: session.id,
+            status: "completed",
+            instructions: "Finish the plugin-owned task",
+            pluginOwner: {
+              pluginId: "test-plugin",
+              pluginGeneration: "generation-one",
+              scopeId: session.scope.id,
+              correlationId: "correlation-one",
+            },
+            createdAt: Date.now(),
+          })
+          await Session.update(session.id, (draft) => {
+            draft.workflow = { kind: "lightloop", instructions: "Start a later ordinary task" }
+          })
+          const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
+          ;(Plugin as any).deliverHookForPlugin = delivery
+
+          await LightLoopRuntime.reattachPluginTimers()
+
+          // Reattach only retries the retained hook; it must not clear the
+          // ordinary loop that started afterwards on the same session.
+          expect(delivery).toHaveBeenCalledTimes(1)
+          expect((await Session.get(session.id)).workflow).toEqual({
+            kind: "lightloop",
+            instructions: "Start a later ordinary task",
+          })
+        },
+      })
+    }))
+
+  test("a new ordinary loop replaces a stale plugin terminal record on termination", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createPluginLightLoop()
+          await LightLoopTerminalStore.put(session, {
+            sessionID: session.id,
+            status: "completed",
+            instructions: "Finish the plugin-owned task",
+            pluginOwner: {
+              pluginId: "test-plugin",
+              pluginGeneration: "generation-one",
+              scopeId: session.scope.id,
+              correlationId: "correlation-one",
+            },
+            createdAt: Date.now(),
+          })
+          await Session.update(session.id, (draft) => {
+            draft.workflow = { kind: "lightloop", instructions: "Start a later ordinary task" }
+          })
+          const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
+          ;(Plugin as any).deliverHookForPlugin = delivery
+
+          await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+
+          // The stale plugin hook is retried best-effort, then the terminal
+          // record is replaced by the current ordinary loop's authoritative
+          // status and the workflow is cleared (single terminal path).
+          expect(delivery).toHaveBeenCalledTimes(1)
+          expect((await Session.get(session.id)).workflow).toBeUndefined()
+          const terminal = await LightLoopTerminalStore.get(session)
+          expect(terminal).toMatchObject({
+            status: "completed",
+            instructions: "Start a later ordinary task",
+          })
+          expect(terminal?.pluginOwner).toBeUndefined()
+        },
+      })
+    }))
+
+  test("failActiveLoop converts an active loop to the durable failed status", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.workflow = {
+              kind: "lightloop",
+              instructions: "Finish the ordinary task",
+            }
+          })
+
+          await LightLoopRuntime.failActiveLoop(session.id, "provider exploded")
+
+          expect((await Session.get(session.id)).workflow).toBeUndefined()
+          expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+            status: "failed",
+            instructions: "Finish the ordinary task",
+            error: "provider exploded",
+          })
+        },
+      })
+    }))
+
+  test("failActiveLoop leaves non-loop and already-terminal sessions untouched", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const plain = await Session.create({})
+          await LightLoopRuntime.failActiveLoop(plain.id, "boom")
+          expect((await Session.get(plain.id)).workflow).toBeUndefined()
+          expect(await LightLoopTerminalStore.get(plain)).toBeUndefined()
+
+          const terminal = await Session.create({})
+          await Session.update(terminal.id, (draft) => {
+            draft.workflow = {
+              kind: "lightloop",
+              instructions: "Already terminal",
+            }
+          })
+          await LightLoopRuntime.setTerminalStatus(terminal.id, "completed")
+          await LightLoopRuntime.failActiveLoop(terminal.id, "boom")
+          expect((await LightLoopTerminalStore.get(terminal))?.status).toBe("completed")
+
+          const failure = new Error("Session read unavailable")
+          using read = spyOn(Session, "get").mockRejectedValueOnce(failure)
+          await expect(LightLoopRuntime.failActiveLoop(plain.id, "boom")).rejects.toBe(failure)
+        },
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

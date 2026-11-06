@@ -1,6 +1,6 @@
 # Connections
 
-Synergy can connect to model and tool services through providers and MCP, messaging systems through Channels, mail servers through SMTP and IMAP, the Holos agent network, and remote Synergy hosts through Synergy Link. These boundaries serve different purposes and should not be conflated.
+Synergy can connect to model and tool services through providers and MCP, messaging systems through Channels, mail servers through SMTP and IMAP. These boundaries serve different purposes and should not be conflated.
 
 ## Channels
 
@@ -42,15 +42,21 @@ Each Feishu/Lark account can optionally set `projectDir` to bind its sessions to
 
 Each Feishu/Lark account can set a default model and one of that model's exposed variants. The account selection is written onto each inbound root message so the session header and provider request agree. A conversation-level `/model` override takes precedence over the account default; because that override selects a different model, it does not inherit the account model's variant.
 
-Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
+Channel sessions use the configured non-interactive control profile, which defaults to `autonomous`. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client. See [Control Profiles](../architecture/execution-boundaries.md#control-profiles).
 
 ### Feishu Boss Mode Routing
 
 When Runtime Boss Mode is enabled (`experimental.boss_mode` in the Runtime domain), every accepted Feishu group or direct message on an account routes to that account's runtime boss session instead of a per-chat session. The existing admission checks still apply first — `requireMention`, `allowGroup`, and `allowDM` — and the account's other settings are unchanged. The boss session is provisioned once per enabled account in the home scope with the endpoint keyed `scope:boss`; replies anchor back to the original inbound message (`replyToMessageId = messageId`).
 
+Boss-role sessions deliver replies **only through explicit `channel_push` tool calls** (R6): an inbound message is accepted silently (status reactions give lightweight progress feedback), no Feishu streaming card is created, and the outbound bridge never auto-delivers boss terminals. The boss must call `channel_push(text, chatId, replyToMessageId)` to reply. The provisioned boss endpoint stores a sentinel chat id (`"boss"`), so the real chat travels on each inbound message's metadata (`channelChatId`/`channelChatType`) and `channel_push` resolves its default target from that metadata. An anchored reply (`replyToMessageId`) to the chat the current inbound message arrived from, using the session's own account, is the normal answer path and requires no permission prompt; an unanchored new message, another chat, or another account crosses the communication boundary and asks for explicit permission. Non-boss Feishu sessions keep the automatic streaming/bridge delivery described under [Outbound Delivery Anchoring](#outbound-delivery-anchoring).
+
 Inbound user messages carry a source prefix of `[群: {chatName} | 发送者: {senderName} | {时间}]` and the metadata fields `channelChatId`, `channelChatName`, `channelSenderId`, and `channelSenderName`. The boss session runs one turn at a time: accepted messages enter a FIFO task queue, and repeated steers are coalesced so backlog stays bounded.
 
 Accounts configured with `projectDir` are not routed: the account keeps its existing per-chat behavior, and the runtime warns instead of using the boss session for Feishu ingress. Disabling `experimental.boss_mode` reverts routing to the per-chat sessions used before; the boss session and its history remain.
+
+The Boss Mode settings panel also offers **Open boss session**. The runtime flushes the pending Runtime-domain draft, then `POST /boss/session/open` returns the account-routed boss session when an enabled routable account exists, or idempotently creates a channel-less local boss session (home scope, `workflow` kind `boss` with role `boss`, running the `boss-synergy` primary agent) when none does, and the App navigates to it. The R6 explicit `channel_push` contract and its prompt hint apply only to account-routed sessions; a channel-less local boss session has no channel, so replies are read directly in the App. Requesting an open while `boss_mode` is disabled fails with `409 boss_disabled`.
+
+Opening a channel-less local boss session that has no conversation yet also starts a one-time greeting kickoff when a model is available: the runtime delivers a system-origin task root and wakes the session so the boss's short opening message appears immediately and the App lands on a formed chat; the world-overview steer is consumed in the same turn. Channel-routed boss sessions are never given a synthetic greeting — they form from real Feishu messages.
 
 ### Channel Commands
 
@@ -112,113 +118,27 @@ Outbound channel delivery uses a message-scoped reply anchor instead of a generi
 
 The Feishu/Lark provider supports per-account `replyInThread: true` in account configuration. When enabled, `provider.replyMessage()` includes `reply_in_thread: true` in the request body so the reply appears in a thread rather than at the top level of the chat.
 
+### Reaction-Only Replies
+
+A Feishu/Lark model can end a turn with only a reaction on the user's message — no text, no card, no attachment, and no new message or thread. The model triggers it through the typed `channel_reaction_only` tool, which records a terminal intent; the Channel runtime then applies one Feishu reaction to the inbound message and delivers nothing else. Trailing emoji in reply text are never treated as a trigger, and the intent is exclusive: it never accompanies another delivery.
+
+The capability is opt-in per account and is only offered to the model when the account explicitly enables `reactionOnlyReply.enabled: true` and resolves to a non-streaming configuration (the streaming card is created before the model runs and cannot be retracted, so a turn that must post nothing is only correct outside streaming). When it is not offered, delivery behaves exactly as before. The reaction is forced by the account's `reactionOnlyReply.forceReaction` (fallback `SILENT`) — the model never names one.
+
+Because the Feishu streaming card is created before the model runs, the reaction targets the user's own message rather than the reply anchor — in a threaded reply that anchor is the topic root. A successful turn records a delivered marker so a recovered or re-delivered run never reacts twice. A reaction call that fails is recorded as a failure and is never converted into a text reply.
+
 ### Continuation Delivery
 
 `SessionInvoke` propagates channel delivery metadata through continuation steps. When a steer message injected by Cortex (or another source) carries `channelPush`, `channelReply`, and `channelReplyToMessageId`, every assistant message produced in that continuation round inherits them. An unrelated user message that starts a new task root does not inherit the delivery metadata. If one continuation contains conflicting reply anchors, it keeps reply intent but omits the target so outbound delivery fails closed instead of replying to the wrong topic.
 
-### Native Clarus tasks
-
-Clarus is the built-in Project and Task provider and does not emit conversation ingress. A Holos identity creates its matching Channel account disabled by default; existing active identities receive the same account through the Holos migration runner. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity. While Holos is connecting or reconnecting, Clarus reports `waiting_for_transport` and waits without failing the Channel start.
-
-Project refresh discovers all visible non-archived remote Projects and provisions one deterministic managed Project Scope per `(provider, account, external Project)` identity, including Projects that currently have no Tasks. These are normal Project Scopes with files, Git, LSP, configuration, and Sessions, but the Sidebar shows them only under their Channel account rather than duplicating them in the generic Projects section.
-
-Remote Project state is displayed separately as active, paused, stale, or archived. Remote pause does not interrupt already accepted local work. Remote archive stops new assignment delivery but preserves the managed Scope, files, Sessions, task state, and result history. Active or remotely paused managed Projects cannot be locally archived; stale or remote-archived Projects use the normal local archive workflow.
-
-Only a Clarus task assignment creates or wakes a Session. One external Task ID has one stable unattended Session in its managed Project Scope; another run of that Task reuses the Session, while a retry represented by a new Task ID creates a new Session and preserves lineage. Clarus Task Sessions use the `autonomous` control profile so remote work cannot stall on an approval dialog visible only elsewhere.
-
-Task deadlines use durable Agenda guidance in the same Task Session. One hidden system-authored reminder steers the agent exactly three minutes before the current deadline, or as soon as safely possible when less than three minutes remain. It is not a visible user prompt or a second Agenda Session, and no reminder is sent after the deadline has passed. An acknowledged or authoritative extension reschedules the same reminder for the new deadline, result acknowledgement cancels it, and the standard Session Abort action stops local execution.
-
-Result submission and deadline extension persist their outbound record before dispatch. Only a request known not to have been sent can retry automatically; rejected or ambiguous requests do not. Account actions expose coalesced **Refresh Projects** and bounded, redacted diagnostics download when the provider supports them.
-
-See [Channels](../architecture/channels.md) for target identity, ownership, lifecycle, recovery, and diagnostics invariants.
-
-## Holos Identity
-
-Holos is an optional identity and agent-network layer. Synergy can create or import a Holos agent, store multiple local account credentials, select the active identity, and remove an identity from the local account store. The selected agent ID is the network identity used by the connection.
-
-The agent's public profile is read from and written to Holos. Local storage retains only the credentials and account metadata needed to reconnect; switching identities reloads the runtime around the newly active account.
-
-Authentication and network readiness are separate states. A valid saved identity can exist while its tunnel is connecting, disconnected, or failed. Product surfaces should check readiness before offering a network action rather than treating "logged in" as equivalent to "connected."
-
-## Holos Connection Lifecycle
-
-When Holos is enabled, the global runtime exchanges the active agent secret for a short-lived WebSocket token and opens an authenticated agent tunnel. Its observable states are `disabled`, `connecting`, `connected`, `disconnected`, and `failed`.
-
-The tunnel sends a heartbeat every 30 seconds and uses a 90-second missed-pong deadline. That deadline is checked inside the existing heartbeat interval; the first check after the threshold is reached closes the stale socket and enters the same bounded reconnect flow as an ordinary disconnect. Reconnection uses exponential backoff bounded at 30 seconds, stops after 50 failed attempts, and exposes a failed status rather than retrying invisibly forever.
-
-Disconnecting or losing heartbeat liveness removes the live provider and the Synergy Link execution client. Saved account credentials, contacts, and message history remain local and are available again after reconnection. Any Link or native Clarus request already dispatched when liveness is lost has an unknown remote result and is settled as ambiguous; mutating work must not be retried automatically.
-
-## Contacts, Reachability, and Blocking
-
-Contacts are a user-managed local address book of Holos agent IDs and display names. Adding a contact does not change the remote agent's account. A contact can be removed or marked blocked locally.
-
-Presence represents recent network reachability as `online`, `offline`, or `unknown`. It is an in-memory observation with a five-minute freshness bound, not a durable promise that an agent will accept or complete work.
-
-Inbound handling checks contact blocking before accepting a direct message. Blocking is therefore a local receive policy, while presence remains informational.
-
-## Agent Messaging
-
-Agents exchange direct messages through the authenticated Holos tunnel. Synergy stores inbound and outbound messages locally as per-contact threads.
-
-Each message records its direction, timestamp, contact, text, optional reply relationship, and source. Outbound entries progress through `sent`, `delivered`, or `failed`, retain a failure reason, and can be retried with the same message identity after connectivity returns. Removing a message or thread affects the local mailbox record.
-
-The mailbox is not a Synergy session transcript. It is network correspondence that can be surfaced to users or used to initiate other work without becoming part of an unrelated model context automatically.
-
-## Synergy Link
-
-Synergy Link uses the same authenticated Holos tunnel as a transport for explicit remote-execution sessions. The standalone Link host reads and updates the canonical active Holos account, so switching or removing that identity applies consistently to both runtimes. In the one-way A-controls-B model, A persists each remote host as a Link target with a stable local target ID, display name, target Holos agent ID, Link ID, enablement state, and optional local-agent allowlist. A does not copy or store B's Holos credentials; B remains responsible for approving, denying, or revoking access.
-
-The Synergy Link Settings page creates and manages these targets. A successful connection or connection test records B's observed host session and capabilities, including platform, architecture, runtime, and shell support. These observations are metadata, not a guarantee of current reachability.
-
-Target updates use an explicit `kind`: `metadata` changes at least one of the name, enablement state, or allowlist, while `relink` atomically supplies both the target Agent ID and Link ID. A Link ID belongs to only one persisted target. A successful relink persists the new locator and its verified reachability together; observations from the previous locator are never carried forward.
-
-The projected `availability` value is `connected` while a Link session is open, `unknown` when no Holos execution transport is connected, `reachable` only when a successful probe is at most five minutes old, and otherwise `unreachable`. The Settings page and `connect list_targets` use this live projection; persisted probe metadata remains available for diagnosis but does not override transport state or freshness.
-
-Agents use `connect list_targets` to discover only the enabled targets allowed for their agent name, then use the stable `targetID` for `connect`, `bash`, and `process` calls. Raw target agent and Link IDs remain available for legacy calls and manual diagnosis, but agents do not need them in the normal flow.
-
-The protocol currently distinguishes:
-
-- session lifecycle operations
-- remote Bash execution
-- remote process execution and process control
-
-Bash and process calls require an active Link session ID. Every request carries a protocol version, request ID, Link ID, target agent, tool/action, and typed payload. The host derives an internal execution lease from the authenticated caller and validated session; that lease is never accepted from the wire payload. Remote process records and output are scoped to `sessionID + caller Agent ID + caller owner user ID`, every process read/control operation enforces the lease, and session close, kick, disable, or idle expiry terminates the session's process trees and removes its retained output. Duplicate request IDs within one execution lease reuse the original in-flight or completed result; reusing the ID for a different request is rejected. Responses are correlated to the request, schema-validated, and normalized into typed remote or transport errors. A transport request times out after 30 seconds. Remote Bash yield is capped at five seconds before auto-backgrounding so the process handle can return well before that deadline; callers should use the returned process ID for tracked long-running work. Any supplied remote selector is classified through the non-bypassable remote-execution capability, and invalid, disconnected, or sessionless selectors fail closed instead of running the command locally.
-
-A re-open from the same authenticated caller reuses the active session and reports `reused: true`; probe and relink verification therefore do not close a session that the remote host reports as reused.
-
-The sender-side Holos tunnel checks pongs every 30 seconds with a 90-second deadline. A standalone Link host sends its own heartbeat every 60 seconds with a 180-second deadline. Both deadlines are three times their interval; the first heartbeat check after the threshold is reached closes the silent socket through the normal reconnect path. If transport liveness is lost after a Bash, process, session, or native request was dispatched, Synergy reports the result as unknown; agents must reconnect and inspect state instead of automatically retrying mutating work.
-
-### Host Identity and Ownership Semantics
-
-The Holos Agent ID is the device identity for a Link host. One physical or device instance (a container, VM, or bare-metal host) runs one Link host service bound to one Agent ID, and one Agent ID is active on exactly one device. The host persists its own Link ID (`link_…`), host session ID, label, owner registry, approval mode, trust list, and pending requests in its per-instance state root (`SYNERGY_LINK_HOME`, default `~/.synergy-link/`).
-
-Ownership and reachability are verified, not assumed. A sender target records the host's observed Link ID, host session, platform, architecture, runtime, and shell support only after a successful connection or test; those observations are metadata about one authenticated contact, not a standing guarantee of reachability. A routine probe whose observed Link ID differs from the target records failed reachability while preserving the prior authorization state; an identity mismatch during relink aborts the relink and preserves the original target. Only a `refused` probe sets authorization to `revoked`. An active Link session is one session per host per authenticated controlling agent; re-opening by the same controller reuses that session, while concurrent sessions from another controller remain `busy` until the active session closes or is kicked. Session access still follows the host's collaboration, trust, and approval policy.
-
-Running the same Agent ID on two devices is unsupported. Holos tunnel routing is last-writer-wins — the most recently connected instance receives the traffic and the earlier instance silently loses reachability — and no local mechanism can reliably prevent or detect that race. Deployment must enforce one Agent ID per device; see [Qizhi Synergy Link operations](../operations/qizhi-synergy-link.md) for the shared-filesystem deployment, verification, and recovery runbook.
-
-Host state is per-instance. Never share a writable `HOME`, the Synergy runtime home (`~/.synergy/`), Holos credential stores, `SYNERGY_LINK_HOME`, control sockets, PID files, logs, or temp directories between Link hosts. Shared read-only binaries and assets are acceptable. `SYNERGY_LINK_HOME` selects the host's state root; `synergy-link status`, `whoami`, and `doctor` interpret it. The host never stores the sender's credentials, and the sender never copies the host's Holos secret.
-
-### Host CLI
-
-The standalone `synergy-link` CLI manages the host:
-
-- Service: `server [--print-logs]`, `start`, `stop`, `restart`, `status`, `logs [-f] [--tail N] [--since DURATION]`
-- Identity: `login [--agent-id ID --agent-secret-file PATH]` (`PATH` may be `-` for one stdin line; argv secrets are deprecated), `logout`, `whoami`, `reconnect`, `doctor`
-- Collaboration: `mode <status|managed|standalone>`, `collaboration <enable|disable|status>`, `requests <list|show|approve|deny> [request-id]`, `session <status|kick|block>`, `approval <get|set <auto|manual|trusted-only>>`, `trust <list|add|remove> [agent|user] [value]`, `label <get|set <label>|clear>`
-
-`doctor` checks configuration directory, mode, local owner, auth presence, service process, connection state, and — when credentials exist — validates the secret against Holos. Local ownership is not applicable in standalone mode and is required only for a managed owner lease. Credential import verifies both that Holos accepts the secret and that the authenticated `/me` Agent ID matches the supplied Agent ID before replacing stored credentials. `whoami` reports the logged-in agent, mode, ownership, Link ID, label, and service state. `status` requests live state through the host control socket and labels that output `live`; when the socket is unavailable it prints a clearly marked `snapshot (last-known)` with the control error and exits nonzero so automation cannot mistake stale state for current health.
-
-### Boundaries
-
-Synergy Link does not make the remote filesystem part of the local Scope. It is an explicit execution boundary with its own session lifecycle, transport failures, and remote error semantics. When the Holos connection is disposed, pending requests fail and active local Link-session state is cleared.
-
 ## MCP and Model Providers
 
-MCP connections add external tools and resources to the agent runtime; model providers supply language and embedding models. Both are configured independently of Holos and Channels. A Holos identity does not provide model billing or API credentials, and a Channel account is not a model provider.
+MCP connections add external tools and resources to the agent runtime; model providers supply language and embedding models. Both are configured independently of Channels. A Channel account is not a model provider.
 
-Provider authentication health changes only in response to real model, usage, or model-discovery requests; Synergy does not periodically probe third-party accounts. A rejected OAuth request can refresh and retry once, with concurrent refreshes coalesced. Rate limits remain quota state, while timeouts, network failures, server failures, and unclassified forbidden responses leave credential health unchanged. When an account needs intervention, Sidebar, Providers, Usage, and related Settings surfaces present only the fact that action is required without exposing credential contents or third-party account identifiers.
+Provider authentication health changes only in response to real model, usage, or model-discovery requests; Synergy does not periodically probe third-party accounts. A rejected OAuth request can refresh and retry once, with concurrent refreshes coalesced. Rate limits remain quota state, while timeouts, network failures, server failures, and unclassified forbidden responses leave credential health unchanged. A first unclassified 401 rejection places the credential in a bounded cooldown instead of marking it dead — the cooldown honors the response's retry hints capped at ten minutes, a successful request returns the credential to service immediately, and only a rejection that repeats after the cooldown elapses within a thirty-minute window marks the credential dead and requires reconnecting. When an account needs intervention, Sidebar, Providers, Usage, and related Settings surfaces present only the fact that action is required without exposing credential contents or third-party account identifiers.
 
 When credential health is `action_required`, stored provider credentials can be cleared through Disconnect. Disconnect removes the Synergy-managed stored credential entry but preserves the provider catalog, model catalog, and configuration; the provider remains visible and can be reconnected. Environment and plugin-supplied credentials are unaffected because they are not stored by Synergy and remain active.
+
+Providers lists connected and unfinished accounts. Edit account opens the remark, credential update, enabled state and advanced endpoint controls for both default and named accounts. The optional remark is the connection's display name; changing it preserves model references and account identity. Add third-party provider selects a service type and connects a first or additional account through the same form. Add custom model API opens independent setup for a base URL, explicit Chat Completions, Responses or Anthropic Messages protocol, credentials and manual model catalog. Each custom model declares its context and output limits, tool calling, image input and reasoning capabilities. Saving configuration does not test connectivity. The account's More menu can preselect a service or remove a managed account. Unsaved inputs survive switching Settings sections; leaving an edited form asks before discarding them.
 
 Named provider account connections can be removed only after their model references are cleared. Synergy rejects removal while the connection is selected by a default or role model, an agent, command, category, Quick Switcher preference, or Feishu/Lark account; the response identifies the referencing configuration paths and leaves both the connection and its credentials unchanged.
 
@@ -230,11 +150,11 @@ Email is an optional direct integration configured in `110-email.jsonc`. SMTP ow
 
 `email_read` search evaluates date (`since`/`before`) and read/flag state filters on the mail server, and applies sender, subject, and body-text filters locally over a bounded newest-first window of recent mail (some servers, such as 163 Coremail, ignore IMAP header/body search keys). Results are returned newest-first, and results are flagged `truncated` when a local scan window is exhausted — narrow by date to scan older mail. Read results contain decoded text/HTML bodies plus attachment metadata (file name, size, content type); attachment contents are not downloaded. Messages larger than the 10 MB size cap return envelope data only and are flagged `truncated`.
 
-The `email_send` and `email_read` tools share the `communication.email` taxonomy. Reads are external I/O. Sending is both stateful and external, and it asks through a non-bypassable communication permission containing the recipient and subject. Email credentials remain config secrets; they are redacted from normal config responses and are not supplied by a Holos account or Channel provider.
+The `email_send` and `email_read` tools share the `communication.email` taxonomy. Reads are external I/O. Sending is both stateful and external, and it asks through a non-bypassable communication permission containing the recipient and subject. Email credentials remain config secrets; they are redacted from normal config responses and are not supplied by a Channel provider.
 
 ## GitHub Channel
 
-The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
+The GitHub Channel connects a GitHub App installation as a Channel (like Feishu). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
 
 - **Automatic PR review**: when `autoReview` is on, newly opened and updated pull requests are reviewed against their base, with actionable findings posted as comments.
 - **Bot summoning**: when `autoRespond` is on, comments that mention the bot handle (the GitHub App slug by default) wake the agent to answer questions about the repository or the change; newly opened issues are diagnosed and, when clearly actionable, fixed.
@@ -248,9 +168,11 @@ Agents never receive the token and cannot run `gh`, `git push`, or `git remote` 
 ## Boundaries
 
 - Channels translate external conversations and remote task assignments into canonical Synergy Sessions and managed Project Scopes.
-- Holos supplies optional network identity, reachability, contacts, and direct agent messaging.
-- Synergy Link performs typed remote session and process operations over Holos transport.
 - MCP supplies callable external tools; providers supply models.
-- Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
+- Email supplies direct SMTP/IMAP operations and are independent of Channel endpoints.
 - GitHub is a Channel endpoint: it connects a GitHub App installation through outbound API polling (no inbound webhook), translating repository events into agentic Sessions and comments.
-- Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.
+- Local projects, sessions, configuration, Library, Notes, and provider credentials work independently of external identities.
+
+## Testing a model account
+
+Provider settings distinguish saved configuration from an observed successful model request. After saving account and credential changes, Test connection sends a short request using the saved endpoint and an available text model. The result shows the model and elapsed time, or an authentication, quota, model, network or timeout failure. The test can consume a small provider charge and creates no chat. Editing the account invalidates the displayed result.

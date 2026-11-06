@@ -1,101 +1,296 @@
 import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
-import { gatesForMode } from "../../script/gates"
+import { catalog } from "../../script/ci/catalog"
+import { createPlan, executionQueue, LIMITS } from "../../script/ci/plan"
+import { latestExecutions } from "../../script/ci/github"
+import { commands } from "../../script/ci/run"
 
-const root = path.resolve(import.meta.dir, "..", "..")
-const ciSource = await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")
-
-const REQUIRED_NEEDS = [
-  "quality",
-  "typecheck",
-  "windows",
-  "test",
-  "package-validation",
-  "workflow-validation",
-  "secret-scan",
-  "desktop",
-  "smoke",
-  "coverage",
-]
-
-function parseJobNames(source: string): string[] {
-  const names: string[] = []
-  for (const match of source.matchAll(/^  ([a-z][a-z0-9-]*):\n    name:/gm)) {
-    names.push(match[1]!)
-  }
-  return names
+const root = path.resolve(import.meta.dir, "../..")
+interface Job {
+  name?: string
+  if?: string
+  needs?: string[]
+  "timeout-minutes"?: number
+  strategy?: { "max-parallel": number; "fail-fast": boolean }
+  steps?: { name?: string; if?: string | boolean; run?: string; uses?: string; with?: Record<string, unknown> }[]
+}
+const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")) as {
+  on: { push: { branches: string[] }; schedule: unknown[] }
+  concurrency: { "cancel-in-progress": string }
+  jobs: Record<string, Job>
 }
 
-function parseJobNeeds(source: string, job: string): string[] {
-  const jobBlock = source.split(new RegExp(`^  ${job}:`, "m"))[1] ?? ""
-  const needsBlock = jobBlock.split("\n    steps:", 1)[0] ?? ""
-  const needsSection = needsBlock.match(/needs:\n([\s\S]*?)(?=\n    \w|\n  \w|$)/)?.[1] ?? ""
-  return needsSection
-    .split("\n")
-    .map((line) => line.trim().replace(/^-\s*/, ""))
-    .filter(Boolean)
-}
-
-describe("CI topology", () => {
-  test("all-checks-passed exists with if: always()", () => {
-    const block = ciSource.split("  all-checks-passed:")[1] ?? ""
-    expect(block).toContain("if: always()")
-    expect(block).toContain("name: All checks passed")
+describe("required CI topology", () => {
+  test("policy checkout admits the exact base revision even after a multi-commit push", () => {
+    const checkout = workflow.jobs.contracts!.steps!.find((step) => step.uses?.startsWith("actions/checkout@"))
+    expect(checkout?.with?.["fetch-depth"]).toBe(0)
   })
 
-  test("all-checks-passed needs exactly the blocking matrix", () => {
-    const needs = parseJobNeeds(ciSource, "all-checks-passed")
-    expect(needs.sort()).toEqual([...REQUIRED_NEEDS].sort())
+  test("package rebuilding runs apart from consumers of workspace artifacts", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const unit = plan.units.find((unit) => unit.tasks.includes("packages"))!
+    expect(unit.build).toBe(false)
+    expect(executionQueue(unit)).toBe("contracts")
+    expect(tasks.filter((task) => unit.tasks.includes(task.id)).some((task) => task.kind === "suite")).toBe(false)
   })
-
-  test("all-checks-passed hard-fails on any non-success result", () => {
-    const block = ciSource.split("  all-checks-passed:")[1] ?? ""
-    expect(block).toContain('if [ "$result" != "success" ]')
-    expect(block).toContain("exit 1")
-    expect(block).toContain("GitHub counts a skipped required check as passing")
+  test("task-home stopping remains independent of the successful native semantics matrix", async () => {
+    const tasks = await catalog()
+    const controls = tasks.filter((task) => task.id.startsWith("native-synergy-task-home-"))
+    expect(controls.flatMap((task) => task.scenarios ?? []).sort()).toEqual([
+      "test_synergy_preserves_task_home_and_native_stopping",
+    ])
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const scenarios = [...controls, ...tasks.filter((task) => task.id.startsWith("native-synergy-semantics-"))]
+    expect(scenarios).toHaveLength(5)
+    for (const task of scenarios) expect(plan.units.filter((unit) => unit.tasks.includes(task.id))).toHaveLength(1)
   })
-
-  test("quality job runs the ci-static gate cluster", () => {
-    const block = ciSource.split("  quality:")[1]?.split("  typecheck:")[0] ?? ""
-    expect(block).toContain("bun script/gates.ts ci-static")
-    expect(block).toContain("SYNERGY_GATE_CONCURRENCY: 4")
+  test("package partitions occupy different runners even when historical weights are uneven", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    for (const unit of plan.units.filter((unit) => unit.pool === "linux")) {
+      const suites = tasks.filter((task) => unit.tasks.includes(task.id) && task.kind === "suite")
+      expect(new Set(suites.map((task) => task.package)).size).toBe(suites.length)
+    }
   })
-
-  test("coverage job runs the ci-coverage gate cluster", () => {
-    const block = ciSource.split("  coverage:")[1]?.split("  all-checks-passed:")[0] ?? ""
-    expect(block).toContain("bun script/gates.ts ci-coverage")
-    expect(block).toContain("timeout-minutes: 45")
+  test("consumers join only their required producer without reserving waiting runners", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    for (const unit of plan.units) {
+      const entries = tasks.filter((task) => unit.tasks.includes(task.id))
+      if (unit.pool === "linux" && unit.id !== "linux-contracts") {
+        const profiles = new Set(entries.map((task) => task.profile ?? "ordinary"))
+        expect(profiles.size).toBe(1)
+        const job = workflow.jobs[executionQueue(unit)]!
+        if (unit.full) expect(job.needs).toContain("prepare-full")
+        else if (unit.core) expect(job.needs).toContain("prepare-core")
+        else {
+          expect(job.needs).not.toContain("prepare-full")
+          expect(job.needs).not.toContain("prepare-core")
+        }
+      }
+      if (unit.pool === "docker") {
+        expect(entries.every((task) => task.needs.includes("benchmark-prepare") === unit.benchmark)).toBe(true)
+        const job = workflow.jobs[executionQueue(unit)]!
+        if (unit.benchmark) expect(job.needs).toContain("benchmark-prepare")
+        else expect(job.needs).not.toContain("benchmark-prepare")
+      }
+    }
+    const jobs = plan.units.map((unit) => ({
+      name: workflow.jobs[executionQueue(unit)]!.name!.replace("${{ matrix.id }}", unit.id),
+      run_attempt: 1,
+      status: "completed",
+      conclusion: "success",
+    }))
+    expect(
+      latestExecutions(plan, jobs)
+        .map((job) => job.unit)
+        .sort(),
+    ).toEqual(plan.units.map((unit) => unit.id).sort())
   })
-
-  test("the blocking matrix has exactly the ten required jobs", () => {
-    const jobs = parseJobNames(ciSource)
-    const blocking = jobs.filter((job) => job !== "all-checks-passed")
-    expect(blocking.sort()).toEqual([...REQUIRED_NEEDS].sort())
+  test("the stable required check waits for every executor, including PostgreSQL", () => {
+    const gate = workflow.jobs["all-checks-passed"]!
+    expect(gate.name).toBe("All checks passed")
+    expect(gate.if).toBe("always()")
+    expect(gate.needs?.toSorted()).toEqual(
+      Object.keys(workflow.jobs)
+        .filter((id) => id !== "all-checks-passed")
+        .sort(),
+    )
+    expect(gate.steps?.some((step) => step.run?.includes("ci.ts verify"))).toBe(true)
   })
-})
-
-describe("gate modes", () => {
-  test("ci-static excludes secrets, workflow, and coverage", () => {
-    const ids = gatesForMode("ci-static").map((gate) => gate.id)
-    expect(ids).not.toContain("secrets:check")
-    expect(ids).not.toContain("workflow:check")
-    expect(ids).not.toContain("coverage:check")
-    expect(ids).toContain("doc:check")
-    expect(ids).toContain("decision:check")
-    expect(ids).toContain("browser-crypto:check")
+  test("all execution queues are bounded and preserve failed reports", () => {
+    for (const [pool, limit] of Object.entries({
+      linux: 6,
+      linux_core: 1,
+      linux_full: 4,
+      docker_direct: 2,
+      contracts: 1,
+      docker: 6,
+      postgres: LIMITS.postgres,
+      windows: LIMITS.windows,
+      macos: LIMITS.macos,
+    })) {
+      const job = workflow.jobs[pool]!
+      expect(job.strategy?.["max-parallel"]).toBe(limit)
+      expect(job.strategy?.["fail-fast"]).toBe(false)
+      expect(job.steps?.some((step) => step.with?.["if-no-files-found"] === "error")).toBe(true)
+    }
+    expect(workflow.jobs.contracts!.needs).toEqual(["plan"])
+    expect(workflow.jobs.docker_direct!.needs).toEqual(["plan"])
+    expect(workflow.jobs.docker!.needs).toEqual(["plan", "benchmark-prepare"])
+    expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker_direct", "docker"])
   })
-
-  test("ci-coverage runs exactly the coverage gate", () => {
-    const ids = gatesForMode("ci-coverage").map((gate) => gate.id)
-    expect(ids).toEqual(["coverage:check"])
+  test("every dev/main push and the daily cold run remain enabled", () => {
+    expect(workflow.on.push.branches).toEqual(["dev", "main"])
+    expect(workflow.on.schedule.length).toBe(1)
+    expect(workflow.concurrency["cancel-in-progress"]).toContain("pull_request")
   })
-
-  test("local excludes coverage and browser-crypto but keeps the rest", () => {
-    const ids = gatesForMode("local").map((gate) => gate.id)
-    expect(ids).not.toContain("coverage:check")
-    expect(ids).not.toContain("browser-crypto:check")
-    expect(ids).toContain("format:check")
-    expect(ids).toContain("workflow:check")
+  test("every planned consumer downloads the original plan before executing", () => {
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      const execute =
+        job.steps?.findIndex((step) => /ci\.ts (?:run|verify|prepare-distributions)/.test(step.run ?? "")) ?? -1
+      if (execute < 0) continue
+      const download = job.steps!.findIndex(
+        (step) =>
+          step.uses?.startsWith("actions/download-artifact@") &&
+          step.with?.name === "ci-plan-${{ needs.plan.outputs.attempt }}",
+      )
+      expect(download, id).toBeGreaterThanOrEqual(0)
+      expect(download, id).toBeLessThan(execute)
+    }
+  })
+  test("bounded Docker groups retain each business task once and share preparation", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const controls = tasks.filter(
+      (task) => task.id.startsWith("native-synergy-semantics-") || task.id === "native-synergy-compaction",
+    )
+    const docker = plan.units.filter((unit) => unit.pool === "docker")
+    expect(docker).toHaveLength(LIMITS.docker)
+    expect(docker.some((unit) => unit.tasks.length > 1)).toBe(true)
+    expect(controls).toHaveLength(5)
+    const units = controls.map((task) => {
+      const assigned = plan.units.filter((unit) => unit.tasks.includes(task.id))
+      expect(assigned).toHaveLength(1)
+      expect(executionQueue(assigned[0]!, tasks)).toBe("docker")
+      return assigned[0]!.id
+    })
+    expect(new Set(units).size).toBeGreaterThan(0)
+    expect(docker.flatMap((unit) => unit.tasks).toSorted()).toEqual(
+      plan.selected
+        .filter((id) => tasks.find((task) => task.id === id)!.pool === "docker" && id !== "benchmark-prepare")
+        .toSorted(),
+    )
+  })
+  test("every prepared benchmark consumer restores its artifact before executing", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const archive = ".artifacts/ci/benchmark.tar.zst"
+    const producer = workflow.jobs["benchmark-prepare"]!.steps!.find(
+      (step) => step.uses?.startsWith("actions/upload-artifact@") && step.with?.path === archive,
+    )!
+    expect(producer).toBeDefined()
+    const consumers = tasks.filter((task) => task.needs.includes("benchmark-prepare"))
+    expect(consumers.length).toBeGreaterThan(0)
+    for (const task of consumers) {
+      const units = plan.units.filter((unit) => unit.tasks.includes(task.id))
+      expect(units).toHaveLength(1)
+      const job = workflow.jobs[executionQueue(units[0]!, tasks)]!
+      expect(job.needs, task.id).toContain("benchmark-prepare")
+      expect(units[0]!.benchmark, task.id).toBe(true)
+      expect(job.steps!.some((step) => step.name === "Execute planned tasks")).toBe(true)
+    }
+  })
+  test("benchmark preparation leaves cleanup time and retains pre-trial diagnostics on failure", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "diagnostic",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+      only: ["benchmark-prepare"],
+    })
+    const [command] = await commands(
+      tasks.find((task) => task.id === "benchmark-prepare")!,
+      plan,
+    )
+    const deadline = command!.args.indexOf("--timeout")
+    expect(deadline).toBeGreaterThan(0)
+    const seconds = Number(command!.args[deadline + 1])
+    expect(seconds).toBe(900)
+    const diagnostic = Bun.YAML.parse(
+      await readFile(path.join(root, ".github/workflows/ci-diagnostic.yml"), "utf8"),
+    ) as { jobs: Record<string, Job> }
+    for (const configured of [workflow, diagnostic]) {
+      const job = configured.jobs["benchmark-prepare"]!
+      expect(job["timeout-minutes"]! * 60 - seconds).toBeGreaterThanOrEqual(180)
+      const collect = job.steps!.find((step) => step.run?.includes("synergy_bench/ci_evidence.py"))!
+      expect(collect).toBeDefined()
+      expect(collect.if).toBe("failure() || cancelled()")
+      const args = collect.run!.split(/\s+/)
+      expect(args.slice(0, 3)).toEqual(["python3", "benchmark/src/synergy_bench/ci_evidence.py", "preparation"])
+      expect(args[args.indexOf("--root") + 1]).toBe(".artifacts/ci/benchmark")
+      const upload = job.steps!.find(
+        (step) =>
+          step.uses?.startsWith("actions/upload-artifact@") &&
+          step.with?.name === "ci-benchmark-preparation-diagnostics-${{ github.run_attempt }}",
+      )!
+      expect(upload?.if).toBe("failure() || cancelled()")
+      expect(upload?.with?.path).toBe("${{ runner.temp }}/benchmark-preparation-evidence")
+    }
+  })
+  test("diagnostics has one execution matrix capped at two and no required check", async () => {
+    const diagnostic = Bun.YAML.parse(
+      await readFile(path.join(root, ".github/workflows/ci-diagnostic.yml"), "utf8"),
+    ) as { jobs: Record<string, Job> }
+    expect(diagnostic.jobs.execute?.strategy?.["max-parallel"]).toBe(2)
+    expect(Object.values(diagnostic.jobs).some((job) => job.name === "All checks passed")).toBe(false)
   })
 })

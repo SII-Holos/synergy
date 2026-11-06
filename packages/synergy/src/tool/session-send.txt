@@ -1,6 +1,0 @@
-Send an actionable user message to a session. The target session's agent will process and respond to the message.
-
-The `target` parameter identifies which session to send to:
-- A session ID (e.g. "ses_xxx") to send to a specific session
-
-Only `role: "user"` is supported. Omitting `role` defaults to `user`. Calls with `role: "assistant"` are rejected; retry them with `role: "user"`.

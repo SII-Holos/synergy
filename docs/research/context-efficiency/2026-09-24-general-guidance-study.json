@@ -1,0 +1,5074 @@
+{
+  "reference": "Completed general process guidance and tool catalog deduplication study, 2026-09-24",
+  "final": true,
+  "scope": {
+    "tasks": 2,
+    "new_candidate_executions": 2,
+    "historical_reference_observations": 6,
+    "historical_pre_model_failures_retained": 2,
+    "published_observation_rows": 10
+  },
+  "conditions": {
+    "candidate_commit": "0826f9cbe07d908cd78a2b85b0a58314610d6d66",
+    "evaluator_commit": "0826f9cbe07d908cd78a2b85b0a58314610d6d66",
+    "baseline_commit": "024dd683e091d9fce3d1d26b79b2e188ce636b52",
+    "original_candidate_commit": "ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05",
+    "previous_waiting_candidate_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+    "frozen_evaluator": {
+      "python": "d82be5d514d3d872785ebebbcc961c753aaea150d1d75da580cb503fe4eda55e",
+      "runtime": "4d96556da9ad0ed6dda4bbe78bcbd8ce304831ed68a8a7a079b8ed5eb9323bc6",
+      "lock": "967459ccffc193cd81242fd087cfad8817900d31f13037c6e27ffbd6277883c1",
+      "project": "260d56e2feed21d23cda075be1ec38a5fd747b5b0d8c599332f753fa2268f8f4",
+      "python_version": "3.12.3",
+      "recipe_dependencies": "a44cf2b797a66c45b0189aca05de312ae617d997d85b4cf2bd668bba5a617f69"
+    },
+    "model": {
+      "model": "glm-5.3-flash",
+      "protocol": "chat-completions",
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "supports_developer_role": false,
+      "parameters": {
+        "temperature": 1,
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "low"
+      }
+    },
+    "platform": "linux/amd64",
+    "agent": "synergy-max",
+    "runtime": "full",
+    "jit": true,
+    "interaction": "unattended",
+    "question_tool_present": false,
+    "concurrency_setting": "auto",
+    "planned_ceiling": 2,
+    "repeat": 1,
+    "scheduler_seed": 20260921,
+    "solve_timeout_seconds": 10800,
+    "verifier_timeout_seconds": 10800,
+    "task_digests": {
+      "terminal-bench-2.1/compile-compcert": "b010e3868349cfc48ca7da4c2ffae41b22c46d4bae193b1e7a95a4f57d278566",
+      "terminal-bench-2.1/mailman": "85c8d4ff93d80fb3f219325eea2c879ec84954c203ce010f3b1cbd8470961deb"
+    },
+    "task_local_docker_config": true,
+    "shared_docker_config_modified": false,
+    "dependency_route_policy": "Explicit proxy only for environments with native internet access; provider inference direct",
+    "paid_preflights": 0,
+    "automatic_retries": 0
+  },
+  "timing": {
+    "launcher_started_at": "2026-09-24T09:08:41.669590+00:00",
+    "launcher_ended_at": "2026-09-24T09:41:05.700159+00:00",
+    "launcher_wall_seconds": 1944.030569,
+    "actual_dispatch_order": ["compile-compcert", "mailman"],
+    "peak_native_agent_overlap": 2,
+    "native_wrapper_overlap_seconds": 528.7509999275208
+  },
+  "observations": [
+    {
+      "observation": "historical_candidate",
+      "task": "terminal-bench-2.1/compile-compcert",
+      "cell": "0014",
+      "batch": "v9",
+      "source_commit": "ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05",
+      "evaluator_commit": "9783be0ab64d1d65b59b3c8c04c35283266f007f",
+      "terminal": true,
+      "reward": 1.0,
+      "functional_tests": "started",
+      "tests": {
+        "passed": 3
+      },
+      "requests": 277,
+      "usage": {
+        "input": {
+          "known": 16309026,
+          "unknown": 0,
+          "total": 16309026
+        },
+        "output": {
+          "known": 16507,
+          "unknown": 0,
+          "total": 16507
+        },
+        "total": {
+          "known": 16325533,
+          "unknown": 0,
+          "total": 16325533
+        },
+        "cacheRead": {
+          "known": 13329920,
+          "unknown": 0,
+          "total": 13329920
+        },
+        "cacheWrite": {
+          "known": 0,
+          "unknown": 277,
+          "total": null
+        },
+        "reasoning": {
+          "known": 3020,
+          "unknown": 0,
+          "total": 3020
+        }
+      },
+      "solve_seconds": 2908.656,
+      "native_execution_seconds": null,
+      "verifier_seconds": 1005.1067311270162,
+      "queue_seconds": 1.0949143171310425,
+      "stage_queues_seconds": {
+        "preparation": 0.00599190010689199,
+        "agent": 1.0888774039922282
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790152655.9045048,
+            "ended_at": 1790152663.2016397,
+            "wall_seconds": 7.297136027016677,
+            "active_seconds": 6.216933010960929,
+            "queue_seconds": 1.0802030160557479
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790152663.2068045,
+            "ended_at": 1790152663.3458757,
+            "wall_seconds": 0.1390718489419669,
+            "active_seconds": 0.1390718489419669,
+            "queue_seconds": 0.0
+          }
+        ],
+        "agent": [
+          {
+            "status": "completed",
+            "started_at": 1790152663.351838,
+            "ended_at": 1790155601.108664,
+            "wall_seconds": 2937.756826483994,
+            "active_seconds": 2937.756826483994,
+            "queue_seconds": 0.0
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790155601.4345248,
+            "ended_at": 1790155601.43915,
+            "wall_seconds": 0.004626846988685429,
+            "active_seconds": 0.004626846988685429,
+            "queue_seconds": 0.0
+          }
+        ],
+        "verifier": [
+          {
+            "status": "completed",
+            "started_at": 1790155601.451394,
+            "ended_at": 1790156606.5581243,
+            "wall_seconds": 1005.1067311270162,
+            "active_seconds": 1005.1067311270162,
+            "queue_seconds": 0.0
+          }
+        ]
+      },
+      "timing": {
+        "observed_requests": 277,
+        "statuses": {
+          "completed": 277
+        },
+        "request_interval_union_seconds": 1437.6719024181366,
+        "time_before_first_data_union_seconds": 1251.3467466831207,
+        "latency": {
+          "count": 277,
+          "median_seconds": 5.049638986587524,
+          "p95_seconds": 10.009520530700684,
+          "max_seconds": 20.45514178276062
+        },
+        "first_data_latency": {
+          "count": 277,
+          "median_seconds": 4.834661483764648,
+          "p95_seconds": 7.197519302368164,
+          "max_seconds": 17.562436819076538
+        },
+        "unknown_end_requests": 0,
+        "unknown_first_data_requests": 0
+      },
+      "observed_oom_events": 7,
+      "failure_reason": null,
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": true,
+      "recording": null,
+      "evidence_sha256": "93543008db563d81f904af8bf064f69d926ec0046c9a5d92ce6541c5d0199a5f",
+      "waiting_behavior": null,
+      "historical_raw_trajectory_available_for_this_audit": false,
+      "uncached_input_tokens": 2979106
+    },
+    {
+      "observation": "historical_baseline",
+      "task": "terminal-bench-2.1/compile-compcert",
+      "cell": "0015",
+      "batch": "v9",
+      "source_commit": "024dd683e091d9fce3d1d26b79b2e188ce636b52",
+      "evaluator_commit": "9783be0ab64d1d65b59b3c8c04c35283266f007f",
+      "terminal": true,
+      "reward": 1.0,
+      "functional_tests": "started",
+      "tests": {
+        "passed": 3
+      },
+      "requests": 113,
+      "usage": {
+        "input": {
+          "known": 2308484,
+          "unknown": 0,
+          "total": 2308484
+        },
+        "output": {
+          "known": 7256,
+          "unknown": 0,
+          "total": 7256
+        },
+        "total": {
+          "known": 2315740,
+          "unknown": 0,
+          "total": 2315740
+        },
+        "cacheRead": {
+          "known": 1799168,
+          "unknown": 0,
+          "total": 1799168
+        },
+        "cacheWrite": {
+          "known": 0,
+          "unknown": 113,
+          "total": null
+        },
+        "reasoning": {
+          "known": 2256,
+          "unknown": 0,
+          "total": 2256
+        }
+      },
+      "solve_seconds": 2906.559,
+      "native_execution_seconds": 2905.189,
+      "verifier_seconds": 993.1116792890243,
+      "queue_seconds": 33.10301433701534,
+      "stage_queues_seconds": {
+        "preparation": 1.039499438018538,
+        "agent": 32.06347264396027
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790152656.0329502,
+            "ended_at": 1790152693.5983806,
+            "wall_seconds": 37.56543070101179,
+            "active_seconds": 4.480276062968187,
+            "queue_seconds": 33.085154638043605
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790152693.6052449,
+            "ended_at": 1790152693.7469974,
+            "wall_seconds": 0.1417540090624243,
+            "active_seconds": 0.1417540090624243,
+            "queue_seconds": 0.0
+          }
+        ],
+        "agent": [
+          {
+            "status": "completed",
+            "started_at": 1790152693.7529483,
+            "ended_at": 1790155602.6721666,
+            "wall_seconds": 2908.9192193720955,
+            "active_seconds": 2908.9192193720955,
+            "queue_seconds": 0.0
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790155602.8059978,
+            "ended_at": 1790155602.8177934,
+            "wall_seconds": 0.01179646688979119,
+            "active_seconds": 0.01179646688979119,
+            "queue_seconds": 0.0
+          }
+        ],
+        "verifier": [
+          {
+            "status": "completed",
+            "started_at": 1790155602.8393095,
+            "ended_at": 1790156595.950988,
+            "wall_seconds": 993.1116792890243,
+            "active_seconds": 993.1116792890243,
+            "queue_seconds": 0.0
+          }
+        ]
+      },
+      "timing": {
+        "observed_requests": 113,
+        "statuses": {
+          "completed": 113
+        },
+        "request_interval_union_seconds": 454.1828212738037,
+        "time_before_first_data_union_seconds": 316.48046112060547,
+        "latency": {
+          "count": 113,
+          "median_seconds": 2.933863639831543,
+          "p95_seconds": 10.277163028717041,
+          "max_seconds": 24.744895458221436
+        },
+        "first_data_latency": {
+          "count": 113,
+          "median_seconds": 2.012702226638794,
+          "p95_seconds": 5.543731927871704,
+          "max_seconds": 8.730624675750732
+        },
+        "unknown_end_requests": 0,
+        "unknown_first_data_requests": 0
+      },
+      "observed_oom_events": 8,
+      "failure_reason": null,
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": true,
+      "recording": null,
+      "evidence_sha256": "7172777388de91ec8fd8842faa5b13e2f5839ce49431e76c19748206777f1d1b",
+      "waiting_behavior": null,
+      "historical_raw_trajectory_available_for_this_audit": false,
+      "uncached_input_tokens": 509316
+    },
+    {
+      "observation": "historical_candidate",
+      "task": "terminal-bench-2.1/mailman",
+      "cell": "0022",
+      "batch": "v9",
+      "source_commit": "ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05",
+      "evaluator_commit": "9783be0ab64d1d65b59b3c8c04c35283266f007f",
+      "terminal": true,
+      "reward": 1.0,
+      "functional_tests": "started",
+      "tests": {
+        "passed": 3
+      },
+      "requests": 183,
+      "usage": {
+        "input": {
+          "known": 17612370,
+          "unknown": 0,
+          "total": 17612370
+        },
+        "output": {
+          "known": 63960,
+          "unknown": 0,
+          "total": 63960
+        },
+        "total": {
+          "known": 17676330,
+          "unknown": 0,
+          "total": 17676330
+        },
+        "cacheRead": {
+          "known": 14629760,
+          "unknown": 0,
+          "total": 14629760
+        },
+        "cacheWrite": {
+          "known": 0,
+          "unknown": 183,
+          "total": null
+        },
+        "reasoning": {
+          "known": 29228,
+          "unknown": 0,
+          "total": 29228
+        }
+      },
+      "solve_seconds": 3743.959,
+      "native_execution_seconds": null,
+      "verifier_seconds": 583.2170027280226,
+      "queue_seconds": 63.358752702130005,
+      "stage_queues_seconds": {
+        "preparation": 1.9462283389875665,
+        "agent": 61.41248525807168
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790152656.8773897,
+            "ended_at": 1790152724.4349918,
+            "wall_seconds": 67.55760370509233,
+            "active_seconds": 4.213475105003454,
+            "queue_seconds": 63.34412860008888
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790152724.440543,
+            "ended_at": 1790152724.9624882,
+            "wall_seconds": 0.5219473390607163,
+            "active_seconds": 0.5219473390607163,
+            "queue_seconds": 0.0
+          }
+        ],
+        "agent": [
+          {
+            "status": "completed",
+            "started_at": 1790152724.971578,
+            "ended_at": 1790156508.3360233,
+            "wall_seconds": 3783.3644474539906,
+            "active_seconds": 3783.3644474539906,
+            "queue_seconds": 0.0
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790156508.5138268,
+            "ended_at": 1790156508.5211453,
+            "wall_seconds": 0.007319750962778926,
+            "active_seconds": 0.007319750962778926,
+            "queue_seconds": 0.0
+          }
+        ],
+        "verifier": [
+          {
+            "status": "completed",
+            "started_at": 1790156508.540521,
+            "ended_at": 1790157091.7575233,
+            "wall_seconds": 583.2170027280226,
+            "active_seconds": 583.2170027280226,
+            "queue_seconds": 0.0
+          }
+        ]
+      },
+      "timing": {
+        "observed_requests": 183,
+        "statuses": {
+          "completed": 183
+        },
+        "request_interval_union_seconds": 2229.8962953090668,
+        "time_before_first_data_union_seconds": 886.354465007782,
+        "latency": {
+          "count": 183,
+          "median_seconds": 9.670077562332153,
+          "p95_seconds": 30.79302978515625,
+          "max_seconds": 44.04170751571655
+        },
+        "first_data_latency": {
+          "count": 183,
+          "median_seconds": 4.799095392227173,
+          "p95_seconds": 8.258919715881348,
+          "max_seconds": 39.44150519371033
+        },
+        "unknown_end_requests": 0,
+        "unknown_first_data_requests": 0
+      },
+      "observed_oom_events": 34,
+      "failure_reason": null,
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": true,
+      "recording": null,
+      "evidence_sha256": "9e0e9a0704d739b678317b31082d5c7577582abc1ba5b9a723de91100aeb2a4e",
+      "waiting_behavior": null,
+      "historical_raw_trajectory_available_for_this_audit": false,
+      "uncached_input_tokens": 2982610
+    },
+    {
+      "observation": "historical_baseline",
+      "task": "terminal-bench-2.1/mailman",
+      "cell": "0023",
+      "batch": "v9",
+      "source_commit": "024dd683e091d9fce3d1d26b79b2e188ce636b52",
+      "evaluator_commit": "9783be0ab64d1d65b59b3c8c04c35283266f007f",
+      "terminal": true,
+      "reward": 1.0,
+      "functional_tests": "started",
+      "tests": {
+        "passed": 3
+      },
+      "requests": 53,
+      "usage": {
+        "input": {
+          "known": 1215503,
+          "unknown": 0,
+          "total": 1215503
+        },
+        "output": {
+          "known": 8326,
+          "unknown": 0,
+          "total": 8326
+        },
+        "total": {
+          "known": 1223829,
+          "unknown": 0,
+          "total": 1223829
+        },
+        "cacheRead": {
+          "known": 994240,
+          "unknown": 0,
+          "total": 994240
+        },
+        "cacheWrite": {
+          "known": 0,
+          "unknown": 53,
+          "total": null
+        },
+        "reasoning": {
+          "known": 4417,
+          "unknown": 0,
+          "total": 4417
+        }
+      },
+      "solve_seconds": 586.88,
+      "native_execution_seconds": 585.769,
+      "verifier_seconds": 2268.024498175946,
+      "queue_seconds": 19.14787913695909,
+      "stage_queues_seconds": {
+        "preparation": 0.0061590810073539615,
+        "agent": 19.14168304693885
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790152656.2798154,
+            "ended_at": 1790152680.4795678,
+            "wall_seconds": 24.199753341963515,
+            "active_seconds": 5.067115020938218,
+            "queue_seconds": 19.132638321025297
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790152680.4854748,
+            "ended_at": 1790152680.6273785,
+            "wall_seconds": 0.14190473593771458,
+            "active_seconds": 0.14190473593771458,
+            "queue_seconds": 0.0
+          }
+        ],
+        "agent": [
+          {
+            "status": "completed",
+            "started_at": 1790152680.6334174,
+            "ended_at": 1790153269.492042,
+            "wall_seconds": 588.8586255559931,
+            "active_seconds": 588.8586255559931,
+            "queue_seconds": 0.0
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790153269.5928018,
+            "ended_at": 1790153269.5981088,
+            "wall_seconds": 0.005308244959451258,
+            "active_seconds": 0.005308244959451258,
+            "queue_seconds": 0.0
+          }
+        ],
+        "verifier": [
+          {
+            "status": "completed",
+            "started_at": 1790153269.6162167,
+            "ended_at": 1790155537.6407132,
+            "wall_seconds": 2268.024498175946,
+            "active_seconds": 2268.024498175946,
+            "queue_seconds": 0.0
+          }
+        ]
+      },
+      "timing": {
+        "observed_requests": 53,
+        "statuses": {
+          "completed": 53
+        },
+        "request_interval_union_seconds": 414.5310802459717,
+        "time_before_first_data_union_seconds": 203.11041378974915,
+        "latency": {
+          "count": 53,
+          "median_seconds": 5.184113502502441,
+          "p95_seconds": 24.46036458015442,
+          "max_seconds": 46.43685531616211
+        },
+        "first_data_latency": {
+          "count": 53,
+          "median_seconds": 3.2148056030273438,
+          "p95_seconds": 9.281100273132324,
+          "max_seconds": 14.960585594177246
+        },
+        "unknown_end_requests": 0,
+        "unknown_first_data_requests": 0
+      },
+      "observed_oom_events": 0,
+      "failure_reason": null,
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": true,
+      "recording": null,
+      "evidence_sha256": "682d0ddf534b6babe4acbffb33b63143426ff23b27422d37796ecf31f53b911e",
+      "waiting_behavior": null,
+      "historical_raw_trajectory_available_for_this_audit": false,
+      "uncached_input_tokens": 221263
+    },
+    {
+      "observation": "startup_failure",
+      "task": "terminal-bench-2.1/compile-compcert",
+      "cell": "0000",
+      "batch": "waiting_prompt_initial",
+      "source_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "evaluator_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "terminal": true,
+      "reward": null,
+      "functional_tests": "not_started",
+      "tests": null,
+      "requests": 0,
+      "usage": null,
+      "known_token_lower_bound": 0,
+      "solve_seconds": null,
+      "native_execution_seconds": null,
+      "verifier_seconds": null,
+      "queue_seconds": 14.732821415998842,
+      "stage_queues_seconds": {
+        "preparation": 1.021449508999467,
+        "agent": 13.711091321999447
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790223693.070625,
+            "deadline_seconds": 1800,
+            "queue_seconds": 14.706868276000023,
+            "ended_at": 1790223711.7551603,
+            "wall_seconds": 18.684537382999224,
+            "active_seconds": 3.977669106999201
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790223711.7611556,
+            "deadline_seconds": 360.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790223711.8961167,
+            "wall_seconds": 0.134962846000235,
+            "active_seconds": 0.134962846000235
+          }
+        ],
+        "agent": [
+          {
+            "status": "failed",
+            "started_at": 1790223711.9022417,
+            "deadline_seconds": 11295.0,
+            "queue_seconds": 0.0,
+            "error": "RuntimeError",
+            "error_trace": [
+              {
+                "type": "RuntimeError",
+                "frames": [
+                  {
+                    "module": "synergy_bench.lifecycle",
+                    "function": "stage",
+                    "line": 79
+                  },
+                  {
+                    "module": "synergy_bench.trial",
+                    "function": "_execute_agent",
+                    "line": 64
+                  },
+                  {
+                    "module": "pier.trial.trial",
+                    "function": "_execute_agent",
+                    "line": 315
+                  },
+                  {
+                    "module": "pier.trial.execution",
+                    "function": "run_agent",
+                    "line": 254
+                  },
+                  {
+                    "module": "asyncio.tasks",
+                    "function": "wait_for",
+                    "line": 520
+                  },
+                  {
+                    "module": "synergy_bench.agent",
+                    "function": "run",
+                    "line": 137
+                  },
+                  {
+                    "module": "contextlib",
+                    "function": "__aenter__",
+                    "line": 210
+                  },
+                  {
+                    "module": "synergy_bench.agent",
+                    "function": "credential_file",
+                    "line": 108
+                  }
+                ]
+              }
+            ],
+            "ended_at": 1790223712.123428,
+            "wall_seconds": 0.2211871859999519,
+            "active_seconds": 0.2211871859999519
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790223712.249126,
+            "deadline_seconds": 300,
+            "queue_seconds": 0.0,
+            "ended_at": 1790223712.255502,
+            "wall_seconds": 0.0063772350004001055,
+            "active_seconds": 0.0063772350004001055
+          }
+        ]
+      },
+      "timing": null,
+      "observed_oom_events": null,
+      "failure_reason": "Unable to resolve credential file owner",
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": null,
+      "recording": null,
+      "evidence_sha256": "54f763e95755d5e1faf433c0b40c7fde516f517cc839e77dee94456bb040d209",
+      "waiting_behavior": null,
+      "audit": {
+        "checked_files": 30,
+        "hash_mismatches": [],
+        "resource_inventory": {
+          "container": {
+            "checked": true,
+            "remaining": 0
+          },
+          "network": {
+            "checked": true,
+            "remaining": 0
+          },
+          "volume": {
+            "checked": true,
+            "remaining": 0
+          }
+        }
+      },
+      "uncached_input_tokens": null
+    },
+    {
+      "observation": "startup_failure",
+      "task": "terminal-bench-2.1/mailman",
+      "cell": "0001",
+      "batch": "waiting_prompt_initial",
+      "source_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "evaluator_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "terminal": true,
+      "reward": null,
+      "functional_tests": "not_started",
+      "tests": null,
+      "requests": 0,
+      "usage": null,
+      "known_token_lower_bound": 0,
+      "solve_seconds": null,
+      "native_execution_seconds": null,
+      "verifier_seconds": null,
+      "queue_seconds": 1.092118157999721,
+      "stage_queues_seconds": {
+        "preparation": 1.03090812299979,
+        "agent": 0.06102328999986639
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790223692.9691477,
+            "deadline_seconds": 1800,
+            "queue_seconds": 1.0650356189999002,
+            "ended_at": 1790223698.146403,
+            "wall_seconds": 5.177257307999753,
+            "active_seconds": 4.112221688999853
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790223698.1525261,
+            "deadline_seconds": 360.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790223698.3353858,
+            "wall_seconds": 0.1828623109995533,
+            "active_seconds": 0.1828623109995533
+          }
+        ],
+        "agent": [
+          {
+            "status": "failed",
+            "started_at": 1790223698.3414142,
+            "deadline_seconds": 11295.0,
+            "queue_seconds": 0.0,
+            "error": "RuntimeError",
+            "error_trace": [
+              {
+                "type": "RuntimeError",
+                "frames": [
+                  {
+                    "module": "synergy_bench.lifecycle",
+                    "function": "stage",
+                    "line": 79
+                  },
+                  {
+                    "module": "synergy_bench.trial",
+                    "function": "_execute_agent",
+                    "line": 64
+                  },
+                  {
+                    "module": "pier.trial.trial",
+                    "function": "_execute_agent",
+                    "line": 315
+                  },
+                  {
+                    "module": "pier.trial.execution",
+                    "function": "run_agent",
+                    "line": 254
+                  },
+                  {
+                    "module": "asyncio.tasks",
+                    "function": "wait_for",
+                    "line": 520
+                  },
+                  {
+                    "module": "synergy_bench.agent",
+                    "function": "run",
+                    "line": 137
+                  },
+                  {
+                    "module": "contextlib",
+                    "function": "__aenter__",
+                    "line": 210
+                  },
+                  {
+                    "module": "synergy_bench.agent",
+                    "function": "credential_file",
+                    "line": 108
+                  }
+                ]
+              }
+            ],
+            "ended_at": 1790223698.6506114,
+            "wall_seconds": 0.3091989160002413,
+            "active_seconds": 0.3091989160002413
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790223698.822988,
+            "deadline_seconds": 300,
+            "queue_seconds": 0.0,
+            "ended_at": 1790223698.830649,
+            "wall_seconds": 0.007663479999791889,
+            "active_seconds": 0.007663479999791889
+          }
+        ]
+      },
+      "timing": null,
+      "observed_oom_events": null,
+      "failure_reason": "Unable to resolve credential file owner",
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": null,
+      "recording": null,
+      "evidence_sha256": "1b10242832688931d059961b6cff6900280c10453c44a06b2e772ed0b0295317",
+      "waiting_behavior": null,
+      "audit": {
+        "checked_files": 30,
+        "hash_mismatches": [],
+        "resource_inventory": {
+          "container": {
+            "checked": true,
+            "remaining": 0
+          },
+          "network": {
+            "checked": true,
+            "remaining": 0
+          },
+          "volume": {
+            "checked": true,
+            "remaining": 0
+          }
+        }
+      },
+      "uncached_input_tokens": null
+    },
+    {
+      "observation": "new_candidate",
+      "task": "terminal-bench-2.1/compile-compcert",
+      "cell": "0000",
+      "batch": "waiting_prompt_corrected_docker",
+      "source_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "evaluator_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "terminal": true,
+      "reward": 1.0,
+      "functional_tests": "started",
+      "tests": {
+        "passed": 3
+      },
+      "test_details": [
+        {
+          "source": "verifier/ctrf.json",
+          "counts": {
+            "passed": 3
+          },
+          "tests": [
+            {
+              "name": "test_outputs.py::test_compcert_exists_and_executable",
+              "status": "passed",
+              "message": null
+            },
+            {
+              "name": "test_outputs.py::test_compcert_valid_and_functional",
+              "status": "passed",
+              "message": null
+            },
+            {
+              "name": "test_outputs.py::test_compcert_rejects_unsupported_feature",
+              "status": "passed",
+              "message": null
+            }
+          ]
+        }
+      ],
+      "requests": 53,
+      "requests_by_purpose": {
+        "title": 2,
+        "synergy-max": 49,
+        "intent": 1,
+        "script": 1
+      },
+      "usage": {
+        "input": {
+          "known": 2304659,
+          "unknown": 0,
+          "total": 2304659
+        },
+        "output": {
+          "known": 9867,
+          "unknown": 0,
+          "total": 9867
+        },
+        "total": {
+          "known": 2314526,
+          "unknown": 0,
+          "total": 2314526
+        },
+        "cacheRead": {
+          "known": 1295872,
+          "unknown": 0,
+          "total": 1295872
+        },
+        "cacheWrite": {
+          "known": 0,
+          "unknown": 53,
+          "total": null
+        },
+        "reasoning": {
+          "known": 4529,
+          "unknown": 0,
+          "total": 4529
+        }
+      },
+      "solve_seconds": 3436.313,
+      "native_execution_seconds": 3432.638,
+      "verifier_seconds": 34.14355830100067,
+      "queue_seconds": 1.0935408099994675,
+      "stage_queues_seconds": {
+        "preparation": 0.006049933999747736,
+        "agent": 1.0873648169999797
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790224095.8283322,
+            "deadline_seconds": 1800,
+            "queue_seconds": 1.0784378939997623,
+            "ended_at": 1790224098.5765078,
+            "wall_seconds": 2.748177341999508,
+            "active_seconds": 1.6697394479997456
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790224098.5824366,
+            "deadline_seconds": 360.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790224098.7946713,
+            "wall_seconds": 0.2122368339996683,
+            "active_seconds": 0.2122368339996683
+          }
+        ],
+        "agent": [
+          {
+            "status": "completed",
+            "started_at": 1790224098.800716,
+            "deadline_seconds": 11295.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790227543.6026103,
+            "wall_seconds": 3444.801895926,
+            "active_seconds": 3444.801895926
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790227543.7043123,
+            "deadline_seconds": 300,
+            "queue_seconds": 0.0,
+            "ended_at": 1790227543.7106643,
+            "wall_seconds": 0.006353103000947158,
+            "active_seconds": 0.006353103000947158
+          }
+        ],
+        "verifier": [
+          {
+            "status": "completed",
+            "started_at": 1790227543.7244415,
+            "deadline_seconds": 12601.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790227577.8679948,
+            "wall_seconds": 34.14355830100067,
+            "active_seconds": 34.14355830100067
+          }
+        ]
+      },
+      "timing": {
+        "observed_requests": 53,
+        "statuses": {
+          "completed": 53
+        },
+        "request_interval_union_seconds": 512.0218152999878,
+        "time_before_first_data_union_seconds": 265.84203457832336,
+        "latency": {
+          "n": 53,
+          "min": 1.3198637962341309,
+          "max": 26.128682136535645,
+          "sum": 512.0218152999878,
+          "p50": 8.349513292312622,
+          "p90": 16.767606878280645,
+          "p95": 19.50044980049133,
+          "p99": 25.85159429550171
+        },
+        "first_data_latency": {
+          "n": 53,
+          "min": 0.9532806873321533,
+          "max": 19.520262956619263,
+          "sum": 265.84203457832336,
+          "p50": 4.501204967498779,
+          "p90": 7.9709367275238066,
+          "p95": 10.335959434509274,
+          "p99": 15.82650574684141
+        },
+        "unknown_end_requests": 0,
+        "unknown_first_data_requests": 0
+      },
+      "observed_oom_events": 0,
+      "resource_observations": {
+        "peak_memory_bytes": 4294967296,
+        "peak_cpu_percent": 221.34079715302494,
+        "sample_count": 3483,
+        "sample_interval_seconds": 1,
+        "peak_semantics": "maximum_observed_sample; short peaks may be missed",
+        "oom_coverage": "live_stream"
+      },
+      "failure_reason": null,
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": true,
+      "archive_sha256": "589e9233d2f8db56f3a244f016a4a9d088860e2affd08ea15bd93dbd44a6ede3",
+      "recording": "complete",
+      "archive_integrity": {
+        "complete": true,
+        "missing": []
+      },
+      "artifact_statuses": {
+        "complete": 497
+      },
+      "evidence_sha256": "ba53a41355a98b9eef24d0961cdb437007a961bbeb8195a63b4b884d7b3939bc",
+      "waiting_behavior": {
+        "cell": "0000",
+        "source": "native_rollout",
+        "tool_calls": 49,
+        "tool_counts": {
+          "bash": 35,
+          "process": 14
+        },
+        "process_actions": {
+          "poll": 11,
+          "write": 2,
+          "kill": 1
+        },
+        "blocking_polls": 11,
+        "blocking_windows_seconds": {
+          "300": 9,
+          "120": 2
+        },
+        "blocking_wait_duration": {
+          "n": 11,
+          "min": 103.639,
+          "max": 308.969,
+          "sum": 2533.298,
+          "p50": 300.237,
+          "p90": 300.454,
+          "p95": 304.7115,
+          "p99": 308.1175
+        },
+        "blocking_wait_union_seconds": 2533.298000097275,
+        "nonblocking_polls": 0,
+        "nonblocking_logs": 0,
+        "exact_repeated_process_outputs": 6,
+        "shell_status_or_log_candidates": 17,
+        "repeated_exact_bash_commands": 0,
+        "bash_nonzero_exit_codes": 8,
+        "interpretation": "Exact repeats and shell keyword matches require manual review; neither is automatically wasted work. Live events may omit unfinished tools."
+      },
+      "request_reconciliation": {
+        "status": "partial",
+        "fields": {
+          "input": {
+            "wire": 2304659,
+            "native": 2304659,
+            "status": "matched"
+          },
+          "output": {
+            "wire": 9867,
+            "native": 9867,
+            "status": "matched"
+          },
+          "total": {
+            "wire": 2314526,
+            "native": 2314526,
+            "status": "matched"
+          },
+          "cacheRead": {
+            "wire": 1295872,
+            "native": 1295872,
+            "status": "matched"
+          },
+          "cacheWrite": {
+            "wire": null,
+            "native": 0,
+            "status": "unknown"
+          },
+          "reasoning": {
+            "wire": 4529,
+            "native": 4529,
+            "status": "matched"
+          }
+        },
+        "requests": {
+          "mode": "response_id",
+          "status": "matched",
+          "wire_requests": 53,
+          "native_requests": 53,
+          "matched_requests": 53,
+          "coverage": 1.0,
+          "unidentified_wire_requests": 0,
+          "unidentified_native_requests": 0
+        },
+        "issue_counts": {
+          "missing_native": 0,
+          "missing_wire": 0,
+          "usage_mismatches": 0,
+          "unknown_completed_usage": 0,
+          "duplicate_response_ids": 0,
+          "request_body_mismatches": 0,
+          "unverified_request_bodies": 0
+        }
+      },
+      "audit": {
+        "checked_files": 367,
+        "hash_mismatches": [],
+        "request_conditions": {
+          "checked": 53,
+          "issues": []
+        },
+        "resource_inventory": {
+          "container": {
+            "checked": true,
+            "remaining": 0
+          },
+          "network": {
+            "checked": true,
+            "remaining": 0
+          },
+          "volume": {
+            "checked": true,
+            "remaining": 0
+          }
+        }
+      },
+      "uncached_input_tokens": 1008787
+    },
+    {
+      "observation": "new_candidate",
+      "task": "terminal-bench-2.1/mailman",
+      "cell": "0001",
+      "batch": "waiting_prompt_corrected_docker",
+      "source_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "evaluator_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "terminal": true,
+      "reward": 1.0,
+      "functional_tests": "started",
+      "tests": {
+        "passed": 3
+      },
+      "test_details": [
+        {
+          "source": "verifier/ctrf.json",
+          "counts": {
+            "passed": 3
+          },
+          "tests": [
+            {
+              "name": "test_outputs.py::test_simple_local_delivery",
+              "status": "passed",
+              "message": null
+            },
+            {
+              "name": "test_outputs.py::test_mlist_exists",
+              "status": "passed",
+              "message": null
+            },
+            {
+              "name": "test_outputs.py::test_join_announce_leave_flow",
+              "status": "passed",
+              "message": null
+            }
+          ]
+        }
+      ],
+      "requests": 39,
+      "requests_by_purpose": {
+        "title": 2,
+        "synergy-max": 35,
+        "intent": 1,
+        "script": 1
+      },
+      "usage": {
+        "input": {
+          "known": 1958248,
+          "unknown": 0,
+          "total": 1958248
+        },
+        "output": {
+          "known": 11474,
+          "unknown": 0,
+          "total": 11474
+        },
+        "total": {
+          "known": 1969722,
+          "unknown": 0,
+          "total": 1969722
+        },
+        "cacheRead": {
+          "known": 1489280,
+          "unknown": 0,
+          "total": 1489280
+        },
+        "cacheWrite": {
+          "known": 0,
+          "unknown": 39,
+          "total": null
+        },
+        "reasoning": {
+          "known": 5043,
+          "unknown": 0,
+          "total": 5043
+        }
+      },
+      "solve_seconds": 707.36,
+      "native_execution_seconds": 702.672,
+      "verifier_seconds": 61.24254134199964,
+      "queue_seconds": 3.844456666000042,
+      "stage_queues_seconds": {
+        "preparation": 0.006036457000845985,
+        "agent": 3.8382285889993
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790224095.8936088,
+            "deadline_seconds": 1800,
+            "queue_seconds": 3.829215168999326,
+            "ended_at": 1790224101.7139351,
+            "wall_seconds": 5.820327462000023,
+            "active_seconds": 1.9911122930006968
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790224101.7215364,
+            "deadline_seconds": 360.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790224101.8874292,
+            "wall_seconds": 0.16589427500002785,
+            "active_seconds": 0.16589427500002785
+          }
+        ],
+        "agent": [
+          {
+            "status": "completed",
+            "started_at": 1790224101.893587,
+            "deadline_seconds": 11295.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790224820.8344636,
+            "wall_seconds": 718.9408776849996,
+            "active_seconds": 718.9408776849996
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790224820.9387653,
+            "deadline_seconds": 300,
+            "queue_seconds": 0.0,
+            "ended_at": 1790224820.9456503,
+            "wall_seconds": 0.006886927000778087,
+            "active_seconds": 0.006886927000778087
+          }
+        ],
+        "verifier": [
+          {
+            "status": "completed",
+            "started_at": 1790224820.9592586,
+            "deadline_seconds": 12601.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790224882.2017992,
+            "wall_seconds": 61.24254134199964,
+            "active_seconds": 61.24254134199964
+          }
+        ]
+      },
+      "timing": {
+        "observed_requests": 39,
+        "statuses": {
+          "completed": 39
+        },
+        "request_interval_union_seconds": 444.8052728176117,
+        "time_before_first_data_union_seconds": 187.93039226531982,
+        "latency": {
+          "n": 39,
+          "min": 1.5291452407836914,
+          "max": 58.654627084732056,
+          "sum": 444.8052728176117,
+          "p50": 9.497618913650513,
+          "p90": 15.88755741119385,
+          "p95": 19.217395520210278,
+          "p99": 46.426128306388776
+        },
+        "first_data_latency": {
+          "n": 39,
+          "min": 1.0471787452697754,
+          "max": 10.827415943145752,
+          "sum": 187.93039226531982,
+          "p50": 4.454728603363037,
+          "p90": 7.342245054244995,
+          "p95": 7.774869990348819,
+          "p99": 10.369604396820066
+        },
+        "unknown_end_requests": 0,
+        "unknown_first_data_requests": 0
+      },
+      "observed_oom_events": 0,
+      "resource_observations": {
+        "peak_memory_bytes": 2101694464,
+        "peak_cpu_percent": 110.09078136200716,
+        "sample_count": 797,
+        "sample_interval_seconds": 1,
+        "peak_semantics": "maximum_observed_sample; short peaks may be missed",
+        "oom_coverage": "live_stream"
+      },
+      "failure_reason": null,
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": true,
+      "archive_sha256": "f6d063c16787e76c4ea5aa7a5716f1185375c61d977afaf3f5668aff79f74357",
+      "recording": "partial",
+      "archive_integrity": {
+        "complete": false,
+        "missing": []
+      },
+      "artifact_statuses": {
+        "complete": 363,
+        "partial": 2
+      },
+      "evidence_sha256": "d4326e06959a2a94b62c001fa9db80411cea5dc6e2e218d1342a0bb966e4ac44",
+      "waiting_behavior": {
+        "cell": "0001",
+        "source": "native_rollout",
+        "tool_calls": 34,
+        "tool_counts": {
+          "bash": 34
+        },
+        "process_actions": {},
+        "blocking_polls": 0,
+        "blocking_windows_seconds": {},
+        "blocking_wait_duration": {
+          "n": 0
+        },
+        "blocking_wait_union_seconds": 0.0,
+        "nonblocking_polls": 0,
+        "nonblocking_logs": 0,
+        "exact_repeated_process_outputs": 0,
+        "shell_status_or_log_candidates": 10,
+        "repeated_exact_bash_commands": 0,
+        "bash_nonzero_exit_codes": 13,
+        "interpretation": "Exact repeats and shell keyword matches require manual review; neither is automatically wasted work. Live events may omit unfinished tools."
+      },
+      "request_reconciliation": {
+        "status": "partial",
+        "fields": {
+          "input": {
+            "wire": 1958248,
+            "native": 1958248,
+            "status": "matched"
+          },
+          "output": {
+            "wire": 11474,
+            "native": 11474,
+            "status": "matched"
+          },
+          "total": {
+            "wire": 1969722,
+            "native": 1969722,
+            "status": "matched"
+          },
+          "cacheRead": {
+            "wire": 1489280,
+            "native": 1489280,
+            "status": "matched"
+          },
+          "cacheWrite": {
+            "wire": null,
+            "native": 0,
+            "status": "unknown"
+          },
+          "reasoning": {
+            "wire": 5043,
+            "native": 5043,
+            "status": "matched"
+          }
+        },
+        "requests": {
+          "mode": "response_id",
+          "status": "matched",
+          "wire_requests": 39,
+          "native_requests": 39,
+          "matched_requests": 39,
+          "coverage": 1.0,
+          "unidentified_wire_requests": 0,
+          "unidentified_native_requests": 0
+        },
+        "issue_counts": {
+          "missing_native": 0,
+          "missing_wire": 0,
+          "usage_mismatches": 0,
+          "unknown_completed_usage": 0,
+          "duplicate_response_ids": 0,
+          "request_body_mismatches": 0,
+          "unverified_request_bodies": 0
+        }
+      },
+      "audit": {
+        "checked_files": 283,
+        "hash_mismatches": [],
+        "request_conditions": {
+          "checked": 39,
+          "issues": []
+        },
+        "resource_inventory": {
+          "container": {
+            "checked": true,
+            "remaining": 0
+          },
+          "network": {
+            "checked": true,
+            "remaining": 0
+          },
+          "volume": {
+            "checked": true,
+            "remaining": 0
+          }
+        }
+      },
+      "uncached_input_tokens": 468968
+    },
+    {
+      "observation": "general_guidance_candidate",
+      "task": "terminal-bench-2.1/compile-compcert",
+      "cell": "0000",
+      "batch": "general_guidance",
+      "source_commit": "0826f9cbe07d908cd78a2b85b0a58314610d6d66",
+      "evaluator_commit": "0826f9cbe07d908cd78a2b85b0a58314610d6d66",
+      "terminal": true,
+      "reward": 1.0,
+      "functional_tests": "started",
+      "tests": {
+        "passed": 3
+      },
+      "test_details": [
+        {
+          "source": "verifier/ctrf.json",
+          "counts": {
+            "passed": 3
+          },
+          "tests": [
+            {
+              "name": "test_outputs.py::test_compcert_exists_and_executable",
+              "status": "passed",
+              "message": null
+            },
+            {
+              "name": "test_outputs.py::test_compcert_valid_and_functional",
+              "status": "passed",
+              "message": null
+            },
+            {
+              "name": "test_outputs.py::test_compcert_rejects_unsupported_feature",
+              "status": "passed",
+              "message": null
+            }
+          ]
+        }
+      ],
+      "requests": 21,
+      "requests_by_purpose": {
+        "title": 2,
+        "synergy-max": 17,
+        "intent": 1,
+        "script": 1
+      },
+      "usage": {
+        "input": {
+          "known": 653942,
+          "unknown": 0,
+          "total": 653942
+        },
+        "output": {
+          "known": 3870,
+          "unknown": 0,
+          "total": 3870
+        },
+        "total": {
+          "known": 657812,
+          "unknown": 0,
+          "total": 657812
+        },
+        "cacheRead": {
+          "known": 179712,
+          "unknown": 0,
+          "total": 179712
+        },
+        "cacheWrite": {
+          "known": 0,
+          "unknown": 21,
+          "total": null
+        },
+        "reasoning": {
+          "known": 1441,
+          "unknown": 0,
+          "total": 1441
+        }
+      },
+      "solve_seconds": 1752.954,
+      "native_execution_seconds": 1748.444,
+      "verifier_seconds": 36.20512595699984,
+      "queue_seconds": 1.10333701599302,
+      "stage_queues_seconds": {
+        "preparation": 0.006979145997320302,
+        "agent": 1.0961861059986404
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790241054.7987595,
+            "deadline_seconds": 1800,
+            "queue_seconds": 1.0873659999997471,
+            "ended_at": 1790241057.6480305,
+            "wall_seconds": 2.8492725149990292,
+            "active_seconds": 1.761906514999282
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790241057.654042,
+            "deadline_seconds": 360.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790241057.8699312,
+            "wall_seconds": 0.215891087998898,
+            "active_seconds": 0.215891087998898
+          }
+        ],
+        "agent": [
+          {
+            "status": "completed",
+            "started_at": 1790241057.875886,
+            "deadline_seconds": 11295.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790242815.5978968,
+            "wall_seconds": 1757.7220124840023,
+            "active_seconds": 1757.7220124840023
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790242815.7390788,
+            "deadline_seconds": 300,
+            "queue_seconds": 0.0,
+            "ended_at": 1790242815.7460315,
+            "wall_seconds": 0.006955136999749811,
+            "active_seconds": 0.006955136999749811
+          }
+        ],
+        "verifier": [
+          {
+            "status": "completed",
+            "started_at": 1790242815.7605598,
+            "deadline_seconds": 12601.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790242851.9656844,
+            "wall_seconds": 36.20512595699984,
+            "active_seconds": 36.20512595699984
+          }
+        ]
+      },
+      "timing": {
+        "observed_requests": 21,
+        "statuses": {
+          "completed": 21
+        },
+        "request_interval_union_seconds": 191.09643483161926,
+        "time_before_first_data_union_seconds": 100.13321876525879,
+        "latency": {
+          "n": 21,
+          "min": 1.0951311588287354,
+          "max": 23.7787127494812,
+          "sum": 191.09643483161926,
+          "p50": 8.085187911987305,
+          "p90": 13.756732940673828,
+          "p95": 23.09288501739502,
+          "p99": 23.641547203063965
+        },
+        "first_data_latency": {
+          "n": 21,
+          "min": 0.7669742107391357,
+          "max": 10.853685140609741,
+          "sum": 100.13321876525879,
+          "p50": 4.512198209762573,
+          "p90": 7.327275514602661,
+          "p95": 9.38703465461731,
+          "p99": 10.560355043411256
+        },
+        "unknown_end_requests": 0,
+        "unknown_first_data_requests": 0
+      },
+      "scheduling": [
+        {
+          "event": "queued",
+          "at": 1790241054.8780391,
+          "phase": "preparation",
+          "reason": "image_cache_lock"
+        },
+        {
+          "event": "admitted",
+          "at": 1790241054.8850136,
+          "phase": "preparation",
+          "reason": "image_cache_lock",
+          "queue_seconds": 0.006979145997320302
+        },
+        {
+          "event": "queued",
+          "at": 1790241055.0698054,
+          "phase": "agent",
+          "memory_bytes": 1207959552,
+          "cpus": 0.45
+        },
+        {
+          "event": "pressure",
+          "at": 1790241055.0762672,
+          "phase": "agent",
+          "reason": "host_sample_unavailable"
+        },
+        {
+          "event": "started",
+          "at": 1790241056.1659932,
+          "phase": "agent",
+          "queue_seconds": 1.0961861059986404
+        },
+        {
+          "event": "phase",
+          "at": 1790242815.7542467,
+          "phase": "verifier"
+        },
+        {
+          "event": "released",
+          "at": 1790242863.971684
+        }
+      ],
+      "observed_oom_events": 0,
+      "resource_observations": {
+        "peak_memory_bytes": 4294967296,
+        "peak_cpu_percent": 219.67060906515582,
+        "sample_count": 1805,
+        "sample_interval_seconds": 1,
+        "peak_semantics": "maximum_observed_sample; short peaks may be missed",
+        "oom_coverage": "live_stream",
+        "errors": []
+      },
+      "failure_reason": null,
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": true,
+      "archive_sha256": "b9ab96a8675ccbca1a8681f4bdb685771691ee770d533efaa5e77abe1754b55f",
+      "recording": "complete",
+      "archive_integrity": {
+        "complete": true,
+        "missing": []
+      },
+      "artifact_statuses": {
+        "complete": 185
+      },
+      "evidence_sha256": "81ae8646d34f1dbb684f7a064ec2a4a60a879d69a24c2671f9f8685e31ae4452",
+      "waiting_behavior": {
+        "cell": "0000",
+        "source": "native_rollout",
+        "tool_calls": 17,
+        "tool_counts": {
+          "bash": 11,
+          "process": 6
+        },
+        "process_actions": {
+          "poll": 6
+        },
+        "blocking_polls": 6,
+        "blocking_windows_seconds": {
+          "180": 1,
+          "300": 5
+        },
+        "blocking_wait_duration": {
+          "n": 6,
+          "min": 44.283,
+          "max": 301.225,
+          "sum": 1129.15,
+          "p50": 169.177,
+          "p90": 301.1395,
+          "p95": 301.18225,
+          "p99": 301.21645
+        },
+        "blocking_wait_union_seconds": 1129.1499996185303,
+        "nonblocking_polls": 0,
+        "nonblocking_logs": 0,
+        "exact_repeated_process_outputs": 1,
+        "shell_status_or_log_candidates": 3,
+        "repeated_exact_bash_commands": 0,
+        "bash_nonzero_exit_codes": 2,
+        "interpretation": "Exact repeats and shell keyword matches require manual review; neither is automatically wasted work. Live events may omit unfinished tools."
+      },
+      "manual_review": {
+        "actual_tests": {
+          "started": true,
+          "passed": 3,
+          "failed": 0,
+          "suite_seconds": 0.14
+        },
+        "interactive_input_requests_observed": 0,
+        "independent_work": "Source download and extraction ran while toolchain installation was active.",
+        "initial_noninteractive_install_lifetime_seconds": 457.5059998035431,
+        "toolchain_setup_lifetime_seconds": 701.885999917984,
+        "first_build_lifetime_seconds": 200.04299998283386,
+        "semantic_build_invocations": 2,
+        "findings": [
+          "The initial installer explicitly used noninteractive mode and completed with a recorded operation status of zero. No input-write or process-kill recovery occurred.",
+          "Toolchain installation completed after three blocking polls. One identical output repeat was a root-user warning during redirected installation, not evidence of deadlock.",
+          "Configuration first failed because Menhir was absent. The agent installed it and configured successfully.",
+          "The first build succeeded but the subsequent functional check could not link the runtime library at the configured installation prefix. Reconfiguration, a second build and installation fixed it.",
+          "A diagnostic unsupported compiler option produced an error while the compound shell command returned zero. Install/build commands printed their primary status but still ended with diagnostics; guidance is not runtime enforcement."
+        ],
+        "recording_limitations": []
+      },
+      "request_reconciliation": {
+        "status": "partial",
+        "fields": {
+          "input": {
+            "wire": 653942,
+            "native": 653942,
+            "status": "matched"
+          },
+          "output": {
+            "wire": 3870,
+            "native": 3870,
+            "status": "matched"
+          },
+          "total": {
+            "wire": 657812,
+            "native": 657812,
+            "status": "matched"
+          },
+          "cacheRead": {
+            "wire": 179712,
+            "native": 179712,
+            "status": "matched"
+          },
+          "cacheWrite": {
+            "wire": null,
+            "native": 0,
+            "status": "unknown"
+          },
+          "reasoning": {
+            "wire": 1441,
+            "native": 1441,
+            "status": "matched"
+          }
+        },
+        "requests": {
+          "mode": "response_id",
+          "status": "matched",
+          "wire_requests": 21,
+          "native_requests": 21,
+          "matched_requests": 21,
+          "coverage": 1.0,
+          "unidentified_wire_requests": 0,
+          "unidentified_native_requests": 0
+        },
+        "issue_counts": {
+          "missing_native": 0,
+          "missing_wire": 0,
+          "usage_mismatches": 0,
+          "unknown_completed_usage": 0,
+          "duplicate_response_ids": 0,
+          "request_body_mismatches": 0,
+          "unverified_request_bodies": 0
+        }
+      },
+      "audit": {
+        "checked_files": 175,
+        "hash_mismatches": [],
+        "request_conditions": {
+          "checked": 21,
+          "issues": []
+        },
+        "resource_inventory": {
+          "container": {
+            "checked": true,
+            "remaining": 0
+          },
+          "network": {
+            "checked": true,
+            "remaining": 0
+          },
+          "volume": {
+            "checked": true,
+            "remaining": 0
+          }
+        }
+      },
+      "uncached_input_tokens": 474230
+    },
+    {
+      "observation": "general_guidance_candidate",
+      "task": "terminal-bench-2.1/mailman",
+      "cell": "0001",
+      "batch": "general_guidance",
+      "source_commit": "0826f9cbe07d908cd78a2b85b0a58314610d6d66",
+      "evaluator_commit": "0826f9cbe07d908cd78a2b85b0a58314610d6d66",
+      "terminal": true,
+      "reward": 1.0,
+      "functional_tests": "started",
+      "tests": {
+        "passed": 3
+      },
+      "test_details": [
+        {
+          "source": "verifier/ctrf.json",
+          "counts": {
+            "passed": 3
+          },
+          "tests": [
+            {
+              "name": "test_outputs.py::test_simple_local_delivery",
+              "status": "passed",
+              "message": null
+            },
+            {
+              "name": "test_outputs.py::test_mlist_exists",
+              "status": "passed",
+              "message": null
+            },
+            {
+              "name": "test_outputs.py::test_join_announce_leave_flow",
+              "status": "passed",
+              "message": null
+            }
+          ]
+        }
+      ],
+      "requests": 24,
+      "requests_by_purpose": {
+        "title": 2,
+        "synergy-max": 20,
+        "intent": 1,
+        "script": 1
+      },
+      "usage": {
+        "input": {
+          "known": 958547,
+          "unknown": 0,
+          "total": 958547
+        },
+        "output": {
+          "known": 10372,
+          "unknown": 0,
+          "total": 10372
+        },
+        "total": {
+          "known": 968919,
+          "unknown": 0,
+          "total": 968919
+        },
+        "cacheRead": {
+          "known": 707904,
+          "unknown": 0,
+          "total": 707904
+        },
+        "cacheWrite": {
+          "known": 0,
+          "unknown": 24,
+          "total": null
+        },
+        "reasoning": {
+          "known": 6228,
+          "unknown": 0,
+          "total": 6228
+        }
+      },
+      "solve_seconds": 528.751,
+      "native_execution_seconds": 523.09,
+      "verifier_seconds": 131.4073966549986,
+      "queue_seconds": 3.866996602002473,
+      "stage_queues_seconds": {
+        "preparation": 0.004966491000232054,
+        "agent": 3.8619070040003862
+      },
+      "stages": {
+        "environment_preparation": [
+          {
+            "status": "completed",
+            "started_at": 1790241054.900414,
+            "deadline_seconds": 1800,
+            "queue_seconds": 3.8532180260008317,
+            "ended_at": 1790241060.3801277,
+            "wall_seconds": 5.479715171997668,
+            "active_seconds": 1.6264971459968365
+          }
+        ],
+        "harness_setup": [
+          {
+            "status": "completed",
+            "started_at": 1790241060.3891008,
+            "deadline_seconds": 360.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790241060.5568478,
+            "wall_seconds": 0.1677486750013486,
+            "active_seconds": 0.1677486750013486
+          }
+        ],
+        "agent": [
+          {
+            "status": "completed",
+            "started_at": 1790241060.5687892,
+            "deadline_seconds": 11295.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790241600.8672624,
+            "wall_seconds": 540.298474504998,
+            "active_seconds": 540.298474504998
+          }
+        ],
+        "artifacts": [
+          {
+            "status": "completed",
+            "started_at": 1790241600.9837406,
+            "deadline_seconds": 300,
+            "queue_seconds": 0.0,
+            "ended_at": 1790241600.9920528,
+            "wall_seconds": 0.008313301997986855,
+            "active_seconds": 0.008313301997986855
+          }
+        ],
+        "verifier": [
+          {
+            "status": "completed",
+            "started_at": 1790241601.0209231,
+            "deadline_seconds": 12601.0,
+            "queue_seconds": 0.0,
+            "ended_at": 1790241732.4283185,
+            "wall_seconds": 131.4073966549986,
+            "active_seconds": 131.4073966549986
+          }
+        ]
+      },
+      "timing": {
+        "observed_requests": 24,
+        "statuses": {
+          "completed": 24
+        },
+        "request_interval_union_seconds": 411.0859580039978,
+        "time_before_first_data_union_seconds": 118.00063347816467,
+        "latency": {
+          "n": 24,
+          "min": 0.9651908874511719,
+          "max": 176.74302530288696,
+          "sum": 411.0859580039978,
+          "p50": 10.414056062698364,
+          "p90": 17.589865374565125,
+          "p95": 28.68232582807538,
+          "p99": 143.13303068399424
+        },
+        "first_data_latency": {
+          "n": 24,
+          "min": 0.8105647563934326,
+          "max": 10.865612268447876,
+          "sum": 118.00063347816467,
+          "p50": 4.621957421302795,
+          "p90": 7.954943513870238,
+          "p95": 10.300079488754267,
+          "p99": 10.809968092441558
+        },
+        "unknown_end_requests": 0,
+        "unknown_first_data_requests": 0
+      },
+      "scheduling": [
+        {
+          "event": "queued",
+          "at": 1790241054.9539475,
+          "phase": "preparation",
+          "reason": "image_cache_lock"
+        },
+        {
+          "event": "admitted",
+          "at": 1790241054.9589128,
+          "phase": "preparation",
+          "reason": "image_cache_lock",
+          "queue_seconds": 0.004966491000232054
+        },
+        {
+          "event": "queued",
+          "at": 1790241055.104803,
+          "phase": "agent",
+          "memory_bytes": 1207959552,
+          "cpus": 0.45
+        },
+        {
+          "event": "pressure",
+          "at": 1790241055.1108856,
+          "phase": "agent",
+          "reason": "queue_priority_or_concurrency"
+        },
+        {
+          "event": "pressure",
+          "at": 1790241056.1795726,
+          "phase": "agent",
+          "reason": "resource_sample_unavailable"
+        },
+        {
+          "event": "started",
+          "at": 1790241058.9667106,
+          "phase": "agent",
+          "queue_seconds": 3.8619070040003862
+        },
+        {
+          "event": "phase",
+          "at": 1790241601.010737,
+          "phase": "verifier"
+        },
+        {
+          "event": "released",
+          "at": 1790241744.0073352
+        }
+      ],
+      "observed_oom_events": 0,
+      "resource_observations": {
+        "peak_memory_bytes": 2004324352,
+        "peak_cpu_percent": 107.52525868178597,
+        "sample_count": 688,
+        "sample_interval_seconds": 1,
+        "peak_semantics": "maximum_observed_sample; short peaks may be missed",
+        "oom_coverage": "live_stream",
+        "errors": []
+      },
+      "failure_reason": null,
+      "cleanup": {
+        "status": "completed",
+        "resources_removed": true,
+        "issues": []
+      },
+      "archive_readable": true,
+      "archive_sha256": "7d7655189b395145507c96e2b21680254a42d10d0c97cabf60f5474ea242b71a",
+      "recording": "partial",
+      "archive_integrity": {
+        "complete": false,
+        "missing": []
+      },
+      "artifact_statuses": {
+        "complete": 214,
+        "partial": 1
+      },
+      "evidence_sha256": "af0f07a3ef33346ade0147263f015f324a72f5880fad43f9a8db64bba0215d49",
+      "waiting_behavior": {
+        "cell": "0001",
+        "source": "native_rollout",
+        "tool_calls": 19,
+        "tool_counts": {
+          "bash": 19
+        },
+        "process_actions": {},
+        "blocking_polls": 0,
+        "blocking_windows_seconds": {},
+        "blocking_wait_duration": {
+          "n": 0
+        },
+        "blocking_wait_union_seconds": 0.0,
+        "nonblocking_polls": 0,
+        "nonblocking_logs": 0,
+        "exact_repeated_process_outputs": 0,
+        "shell_status_or_log_candidates": 2,
+        "repeated_exact_bash_commands": 0,
+        "bash_nonzero_exit_codes": 6,
+        "interpretation": "Exact repeats and shell keyword matches require manual review; neither is automatically wasted work. Live events may omit unfinished tools."
+      },
+      "manual_review": {
+        "actual_tests": {
+          "started": true,
+          "passed": 3,
+          "failed": 0,
+          "suite_seconds": 14.04
+        },
+        "interactive_input_requests_observed": 0,
+        "findings": [
+          "Two shell status keyword matches inspect the initial environment; they are not a progress-polling loop.",
+          "Mailman option placement, ListManager signature, owner roster, subscription utility, settings attribute and enum types caused diagnosis/recovery work.",
+          "At tool ordinals 11 and 13, a Python exception was followed by successful diagnostics, leaving shell exit 0. General exit-status guidance did not prevent every masked main-command error.",
+          "No process waiting occurred in either current Mailman or the preceding waiting-candidate trajectory; improvements cannot be attributed solely to process guidance.",
+          "The final supplied iterative check succeeded; all three native verifier tests ran and passed."
+        ],
+        "recording_limitations": {
+          "crc_valid": true,
+          "manifest_missing_files": [],
+          "native_recording": "partial",
+          "incomplete_process_streams": [
+            {
+              "tool_ordinal": 6,
+              "retained_bytes": 110,
+              "native_process_status": "interrupted",
+              "stream_status": "partial",
+              "tool_status": "completed",
+              "exit_code": 1,
+              "operation": "Mailman service start followed by status query"
+            }
+          ],
+          "limitation": "The interrupted process-stream marker remains; structural validity and complete request usage do not establish complete process output."
+        }
+      },
+      "request_reconciliation": {
+        "status": "partial",
+        "fields": {
+          "input": {
+            "wire": 958547,
+            "native": 958547,
+            "status": "matched"
+          },
+          "output": {
+            "wire": 10372,
+            "native": 10372,
+            "status": "matched"
+          },
+          "total": {
+            "wire": 968919,
+            "native": 968919,
+            "status": "matched"
+          },
+          "cacheRead": {
+            "wire": 707904,
+            "native": 707904,
+            "status": "matched"
+          },
+          "cacheWrite": {
+            "wire": null,
+            "native": 0,
+            "status": "unknown"
+          },
+          "reasoning": {
+            "wire": 6228,
+            "native": 6228,
+            "status": "matched"
+          }
+        },
+        "requests": {
+          "mode": "response_id",
+          "status": "matched",
+          "wire_requests": 24,
+          "native_requests": 24,
+          "matched_requests": 24,
+          "coverage": 1.0,
+          "unidentified_wire_requests": 0,
+          "unidentified_native_requests": 0
+        },
+        "issue_counts": {
+          "missing_native": 0,
+          "missing_wire": 0,
+          "usage_mismatches": 0,
+          "unknown_completed_usage": 0,
+          "duplicate_response_ids": 0,
+          "request_body_mismatches": 0,
+          "unverified_request_bodies": 0
+        }
+      },
+      "audit": {
+        "checked_files": 193,
+        "hash_mismatches": [],
+        "request_conditions": {
+          "checked": 24,
+          "issues": []
+        },
+        "resource_inventory": {
+          "container": {
+            "checked": true,
+            "remaining": 0
+          },
+          "network": {
+            "checked": true,
+            "remaining": 0
+          },
+          "volume": {
+            "checked": true,
+            "remaining": 0
+          }
+        }
+      },
+      "uncached_input_tokens": 250643
+    }
+  ],
+  "comparisons": [
+    {
+      "task": "terminal-bench-2.1/compile-compcert",
+      "reference_observation": "historical_candidate",
+      "reference_batch": "v9",
+      "reference_commit": "ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05",
+      "native_quality_preserved": true,
+      "request_percent_change": -92.4187725631769,
+      "token_percent_change": -95.9706552919283,
+      "uncached_input_percent_change": -84.08146605055342,
+      "solve_time_percent_change": -39.73319636285625
+    },
+    {
+      "task": "terminal-bench-2.1/compile-compcert",
+      "reference_observation": "historical_baseline",
+      "reference_batch": "v9",
+      "reference_commit": "024dd683e091d9fce3d1d26b79b2e188ce636b52",
+      "native_quality_preserved": true,
+      "request_percent_change": -81.41592920353982,
+      "token_percent_change": -71.59387496005596,
+      "uncached_input_percent_change": -6.888847002646692,
+      "solve_time_percent_change": -39.689715570886406
+    },
+    {
+      "task": "terminal-bench-2.1/compile-compcert",
+      "reference_observation": "new_candidate",
+      "reference_batch": "waiting_prompt_corrected_docker",
+      "reference_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "native_quality_preserved": true,
+      "request_percent_change": -60.37735849056604,
+      "token_percent_change": -71.57897556562337,
+      "uncached_input_percent_change": -52.99007620042685,
+      "solve_time_percent_change": -48.987359416909925
+    },
+    {
+      "task": "terminal-bench-2.1/mailman",
+      "reference_observation": "historical_candidate",
+      "reference_batch": "v9",
+      "reference_commit": "ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05",
+      "native_quality_preserved": true,
+      "request_percent_change": -86.88524590163934,
+      "token_percent_change": -94.51855107932472,
+      "uncached_input_percent_change": -91.59652116770212,
+      "solve_time_percent_change": -85.87722248026755
+    },
+    {
+      "task": "terminal-bench-2.1/mailman",
+      "reference_observation": "historical_baseline",
+      "reference_batch": "v9",
+      "reference_commit": "024dd683e091d9fce3d1d26b79b2e188ce636b52",
+      "native_quality_preserved": true,
+      "request_percent_change": -54.71698113207547,
+      "token_percent_change": -20.828890310656146,
+      "uncached_input_percent_change": 13.278315850368116,
+      "solve_time_percent_change": -9.904750545256269
+    },
+    {
+      "task": "terminal-bench-2.1/mailman",
+      "reference_observation": "new_candidate",
+      "reference_batch": "waiting_prompt_corrected_docker",
+      "reference_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+      "native_quality_preserved": true,
+      "request_percent_change": -38.46153846153846,
+      "token_percent_change": -50.80935279191683,
+      "uncached_input_percent_change": -46.55434912403405,
+      "solve_time_percent_change": -25.250084822438367
+    }
+  ],
+  "new_requests": [
+    {
+      "trial": "0000",
+      "index": 0,
+      "purpose": "title",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241062.874806,
+      "ended_at": 1790241064.1155167,
+      "duration_seconds": 1.240710735321045,
+      "first_byte_seconds": 1.1364071369171143,
+      "header_seconds": 1.126406192779541,
+      "usage_complete": true,
+      "input": 684,
+      "output": 13,
+      "total": 697,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 684,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 3287,
+      "response_bytes": 2150,
+      "system_bytes": 2547,
+      "user_bytes": 367,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 0,
+      "other_content_bytes": 0,
+      "messages": 3,
+      "schema_count": 0,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 36,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 1,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241076.7473178,
+      "ended_at": 1790241086.3475785,
+      "duration_seconds": 9.600260734558105,
+      "first_byte_seconds": 7.108626365661621,
+      "header_seconds": 7.09440279006958,
+      "usage_complete": true,
+      "input": 29376,
+      "output": 125,
+      "total": 29501,
+      "cache_read": 0,
+      "reasoning": 25,
+      "uncached": 29376,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 129951,
+      "response_bytes": 8779,
+      "system_bytes": 30082,
+      "user_bytes": 1319,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 97675,
+      "other_content_bytes": 0,
+      "messages": 4,
+      "schema_count": 30,
+      "response_reasoning_bytes": 89,
+      "response_text_bytes": 70,
+      "response_tool_argument_bytes": 223,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 2,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241092.262958,
+      "ended_at": 1790241116.0416708,
+      "duration_seconds": 23.7787127494812,
+      "first_byte_seconds": 9.38703465461731,
+      "header_seconds": 9.372908115386963,
+      "usage_complete": true,
+      "input": 36098,
+      "output": 570,
+      "total": 36668,
+      "cache_read": 0,
+      "reasoning": 403,
+      "uncached": 36098,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 159112,
+      "response_bytes": 98669,
+      "system_bytes": 30082,
+      "user_bytes": 1310,
+      "assistant_bytes": 70,
+      "historical_reasoning_bytes": 89,
+      "tool_result_bytes": 347,
+      "tool_call_bytes": 331,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 6,
+      "schema_count": 36,
+      "response_reasoning_bytes": 1163,
+      "response_text_bytes": 237,
+      "response_tool_argument_bytes": 276,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 3,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241237.8427422,
+      "ended_at": 1790241242.8631222,
+      "duration_seconds": 5.020380020141602,
+      "first_byte_seconds": 5.005539178848267,
+      "header_seconds": 4.997707843780518,
+      "usage_complete": true,
+      "input": 36886,
+      "output": 41,
+      "total": 36927,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 36886,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 161827,
+      "response_bytes": 790,
+      "system_bytes": 30082,
+      "user_bytes": 1310,
+      "assistant_bytes": 307,
+      "historical_reasoning_bytes": 1252,
+      "tool_result_bytes": 1097,
+      "tool_call_bytes": 717,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 8,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 87,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 4,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241424.5379224,
+      "ended_at": 1790241429.3842368,
+      "duration_seconds": 4.846314430236816,
+      "first_byte_seconds": 4.8323891162872314,
+      "header_seconds": 4.818842887878418,
+      "usage_complete": true,
+      "input": 36939,
+      "output": 41,
+      "total": 36980,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 36939,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 162194,
+      "response_bytes": 790,
+      "system_bytes": 30082,
+      "user_bytes": 1310,
+      "assistant_bytes": 307,
+      "historical_reasoning_bytes": 1252,
+      "tool_result_bytes": 1136,
+      "tool_call_bytes": 919,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 10,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 87,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 5,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241575.2141027,
+      "ended_at": 1790241587.1586466,
+      "duration_seconds": 11.944543838500977,
+      "first_byte_seconds": 5.39237380027771,
+      "header_seconds": 5.3783204555511475,
+      "usage_complete": true,
+      "input": 37057,
+      "output": 348,
+      "total": 37405,
+      "cache_read": 0,
+      "reasoning": 35,
+      "uncached": 37057,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 162733,
+      "response_bytes": 16484,
+      "system_bytes": 30082,
+      "user_bytes": 1310,
+      "assistant_bytes": 307,
+      "historical_reasoning_bytes": 1252,
+      "tool_result_bytes": 1340,
+      "tool_call_bytes": 1121,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 12,
+      "schema_count": 36,
+      "response_reasoning_bytes": 105,
+      "response_text_bytes": 141,
+      "response_tool_argument_bytes": 757,
+      "response_tool_calls": 2,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 6,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241617.9066942,
+      "ended_at": 1790241624.1109722,
+      "duration_seconds": 6.204277992248535,
+      "first_byte_seconds": 4.39691686630249,
+      "header_seconds": 4.3887646198272705,
+      "usage_complete": true,
+      "input": 37722,
+      "output": 96,
+      "total": 37818,
+      "cache_read": 35456,
+      "reasoning": 24,
+      "uncached": 2266,
+      "cache_rate": 0.9399289539260909,
+      "native_usage_match": true,
+      "request_bytes": 165194,
+      "response_bytes": 11743,
+      "system_bytes": 30082,
+      "user_bytes": 1310,
+      "assistant_bytes": 448,
+      "historical_reasoning_bytes": 1357,
+      "tool_result_bytes": 2314,
+      "tool_call_bytes": 2101,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 15,
+      "schema_count": 36,
+      "response_reasoning_bytes": 92,
+      "response_text_bytes": 111,
+      "response_tool_argument_bytes": 87,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 7,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241927.7063289,
+      "ended_at": 1790241932.5186608,
+      "duration_seconds": 4.812331914901733,
+      "first_byte_seconds": 4.800073146820068,
+      "header_seconds": 4.794171333312988,
+      "usage_complete": true,
+      "input": 37836,
+      "output": 41,
+      "total": 37877,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 37836,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 165818,
+      "response_bytes": 790,
+      "system_bytes": 30082,
+      "user_bytes": 1310,
+      "assistant_bytes": 559,
+      "historical_reasoning_bytes": 1449,
+      "tool_result_bytes": 2383,
+      "tool_call_bytes": 2303,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 17,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 87,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 8,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242235.9320583,
+      "ended_at": 1790242243.2725854,
+      "duration_seconds": 7.340527057647705,
+      "first_byte_seconds": 7.327275514602661,
+      "header_seconds": 7.312714338302612,
+      "usage_complete": true,
+      "input": 37895,
+      "output": 41,
+      "total": 37936,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 37895,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 166216,
+      "response_bytes": 790,
+      "system_bytes": 30082,
+      "user_bytes": 1310,
+      "assistant_bytes": 559,
+      "historical_reasoning_bytes": 1449,
+      "tool_result_bytes": 2452,
+      "tool_call_bytes": 2505,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 19,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 87,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 9,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242289.620994,
+      "ended_at": 1790242296.3591206,
+      "duration_seconds": 6.738126516342163,
+      "first_byte_seconds": 4.314315557479858,
+      "header_seconds": 4.2999818325042725,
+      "usage_complete": true,
+      "input": 38015,
+      "output": 113,
+      "total": 38128,
+      "cache_read": 0,
+      "reasoning": 17,
+      "uncached": 38015,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 166768,
+      "response_bytes": 9071,
+      "system_bytes": 30082,
+      "user_bytes": 1310,
+      "assistant_bytes": 559,
+      "historical_reasoning_bytes": 1449,
+      "tool_result_bytes": 2669,
+      "tool_call_bytes": 2707,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 21,
+      "schema_count": 36,
+      "response_reasoning_bytes": 65,
+      "response_text_bytes": 80,
+      "response_tool_argument_bytes": 221,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 10,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242297.3882763,
+      "ended_at": 1790242305.524946,
+      "duration_seconds": 8.136669635772705,
+      "first_byte_seconds": 4.361773729324341,
+      "header_seconds": 4.34978723526001,
+      "usage_complete": true,
+      "input": 38369,
+      "output": 151,
+      "total": 38520,
+      "cache_read": 32768,
+      "reasoning": 53,
+      "uncached": 5601,
+      "cache_rate": 0.8540227788058068,
+      "native_usage_match": true,
+      "request_bytes": 168419,
+      "response_bytes": 14736,
+      "system_bytes": 30082,
+      "user_bytes": 1788,
+      "assistant_bytes": 639,
+      "historical_reasoning_bytes": 1514,
+      "tool_result_bytes": 3212,
+      "tool_call_bytes": 3042,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 23,
+      "schema_count": 36,
+      "response_reasoning_bytes": 187,
+      "response_text_bytes": 62,
+      "response_tool_argument_bytes": 261,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 11,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242338.2965567,
+      "ended_at": 1790242345.0665596,
+      "duration_seconds": 6.770002841949463,
+      "first_byte_seconds": 4.471036672592163,
+      "header_seconds": 4.456865310668945,
+      "usage_complete": true,
+      "input": 39128,
+      "output": 124,
+      "total": 39252,
+      "cache_read": 0,
+      "reasoning": 13,
+      "uncached": 39128,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 171570,
+      "response_bytes": 8895,
+      "system_bytes": 30082,
+      "user_bytes": 1788,
+      "assistant_bytes": 701,
+      "historical_reasoning_bytes": 1701,
+      "tool_result_bytes": 5540,
+      "tool_call_bytes": 3417,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 25,
+      "schema_count": 36,
+      "response_reasoning_bytes": 63,
+      "response_text_bytes": 120,
+      "response_tool_argument_bytes": 238,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 12,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242375.8773677,
+      "ended_at": 1790242386.7402148,
+      "duration_seconds": 10.862847089767456,
+      "first_byte_seconds": 10.853685140609741,
+      "header_seconds": 10.839666843414307,
+      "usage_complete": true,
+      "input": 39465,
+      "output": 41,
+      "total": 39506,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 39465,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 173001,
+      "response_bytes": 790,
+      "system_bytes": 30082,
+      "user_bytes": 1788,
+      "assistant_bytes": 821,
+      "historical_reasoning_bytes": 1764,
+      "tool_result_bytes": 6265,
+      "tool_call_bytes": 3769,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 27,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 87,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 13,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242546.762941,
+      "ended_at": 1790242554.8481288,
+      "duration_seconds": 8.085187911987305,
+      "first_byte_seconds": 4.512198209762573,
+      "header_seconds": 4.50596809387207,
+      "usage_complete": true,
+      "input": 39633,
+      "output": 165,
+      "total": 39798,
+      "cache_read": 0,
+      "reasoning": 39,
+      "uncached": 39633,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 173698,
+      "response_bytes": 13113,
+      "system_bytes": 30082,
+      "user_bytes": 1788,
+      "assistant_bytes": 821,
+      "historical_reasoning_bytes": 1764,
+      "tool_result_bytes": 6627,
+      "tool_call_bytes": 3971,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 29,
+      "schema_count": 36,
+      "response_reasoning_bytes": 172,
+      "response_text_bytes": 82,
+      "response_tool_argument_bytes": 299,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 14,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242555.5706809,
+      "ended_at": 1790242568.2461946,
+      "duration_seconds": 12.675513744354248,
+      "first_byte_seconds": 4.598487615585327,
+      "header_seconds": 4.584360599517822,
+      "usage_complete": true,
+      "input": 39901,
+      "output": 266,
+      "total": 40167,
+      "cache_read": 32768,
+      "reasoning": 180,
+      "uncached": 7133,
+      "cache_rate": 0.8212325505626425,
+      "native_usage_match": true,
+      "request_bytes": 174842,
+      "response_bytes": 42289,
+      "system_bytes": 30082,
+      "user_bytes": 1788,
+      "assistant_bytes": 903,
+      "historical_reasoning_bytes": 1936,
+      "tool_result_bytes": 6944,
+      "tool_call_bytes": 4390,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 31,
+      "schema_count": 36,
+      "response_reasoning_bytes": 720,
+      "response_text_bytes": 94,
+      "response_tool_argument_bytes": 199,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 15,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242569.0249498,
+      "ended_at": 1790242582.7816827,
+      "duration_seconds": 13.756732940673828,
+      "first_byte_seconds": 4.757694244384766,
+      "header_seconds": 4.746647834777832,
+      "usage_complete": true,
+      "input": 40235,
+      "output": 276,
+      "total": 40511,
+      "cache_read": 39360,
+      "reasoning": 205,
+      "uncached": 875,
+      "cache_rate": 0.9782527650055921,
+      "native_usage_match": true,
+      "request_bytes": 176301,
+      "response_bytes": 42934,
+      "system_bytes": 30082,
+      "user_bytes": 1788,
+      "assistant_bytes": 997,
+      "historical_reasoning_bytes": 2656,
+      "tool_result_bytes": 7122,
+      "tool_call_bytes": 4697,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 33,
+      "schema_count": 36,
+      "response_reasoning_bytes": 821,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 205,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 16,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242583.4795806,
+      "ended_at": 1790242606.5724657,
+      "duration_seconds": 23.09288501739502,
+      "first_byte_seconds": 4.265786170959473,
+      "header_seconds": 4.256367444992065,
+      "usage_complete": true,
+      "input": 40554,
+      "output": 699,
+      "total": 41253,
+      "cache_read": 39360,
+      "reasoning": 438,
+      "uncached": 1194,
+      "cache_rate": 0.9705577748187602,
+      "native_usage_match": true,
+      "request_bytes": 177700,
+      "response_bytes": 101288,
+      "system_bytes": 30082,
+      "user_bytes": 1788,
+      "assistant_bytes": 997,
+      "historical_reasoning_bytes": 3477,
+      "tool_result_bytes": 7235,
+      "tool_call_bytes": 5010,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 35,
+      "schema_count": 36,
+      "response_reasoning_bytes": 1745,
+      "response_text_bytes": 239,
+      "response_tool_argument_bytes": 609,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 17,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242774.7118542,
+      "ended_at": 1790242787.125192,
+      "duration_seconds": 12.413337707519531,
+      "first_byte_seconds": 4.5016090869903564,
+      "header_seconds": 4.494884252548218,
+      "usage_complete": true,
+      "input": 41361,
+      "output": 332,
+      "total": 41693,
+      "cache_read": 0,
+      "reasoning": 9,
+      "uncached": 41361,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 180951,
+      "response_bytes": 64789,
+      "system_bytes": 30082,
+      "user_bytes": 1788,
+      "assistant_bytes": 1236,
+      "historical_reasoning_bytes": 5222,
+      "tool_result_bytes": 7608,
+      "tool_call_bytes": 5745,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 37,
+      "schema_count": 36,
+      "response_reasoning_bytes": 47,
+      "response_text_bytes": 1207,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 18,
+      "purpose": "intent",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242787.5600233,
+      "ended_at": 1790242788.6551545,
+      "duration_seconds": 1.0951311588287354,
+      "first_byte_seconds": 0.7669742107391357,
+      "header_seconds": 0.7527203559875488,
+      "usage_complete": true,
+      "input": 1210,
+      "output": 32,
+      "total": 1242,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 1210,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 6078,
+      "response_bytes": 5883,
+      "system_bytes": 4899,
+      "user_bytes": 807,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 0,
+      "other_content_bytes": 0,
+      "messages": 2,
+      "schema_count": 0,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 138,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 19,
+      "purpose": "title",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242788.838619,
+      "ended_at": 1790242791.556088,
+      "duration_seconds": 2.7174689769744873,
+      "first_byte_seconds": 2.138429641723633,
+      "header_seconds": 2.1266300678253174,
+      "usage_complete": true,
+      "input": 690,
+      "output": 13,
+      "total": 703,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 690,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 3275,
+      "response_bytes": 2150,
+      "system_bytes": 2547,
+      "user_bytes": 382,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 0,
+      "other_content_bytes": 0,
+      "messages": 2,
+      "schema_count": 0,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 36,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0000",
+      "index": 20,
+      "purpose": "script",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790242795.0812004,
+      "ended_at": 1790242805.0456722,
+      "duration_seconds": 9.964471817016602,
+      "first_byte_seconds": 1.2045927047729492,
+      "header_seconds": 1.189884901046753,
+      "usage_complete": true,
+      "input": 4888,
+      "output": 342,
+      "total": 5230,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 4888,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 18670,
+      "response_bytes": 66514,
+      "system_bytes": 6345,
+      "user_bytes": 11721,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 0,
+      "other_content_bytes": 0,
+      "messages": 2,
+      "schema_count": 0,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 1361,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 0,
+      "purpose": "title",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241067.1734295,
+      "ended_at": 1790241068.2656555,
+      "duration_seconds": 1.0922260284423828,
+      "first_byte_seconds": 0.9794795513153076,
+      "header_seconds": 0.9593369960784912,
+      "usage_complete": true,
+      "input": 835,
+      "output": 12,
+      "total": 847,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 835,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 3981,
+      "response_bytes": 2165,
+      "system_bytes": 2547,
+      "user_bytes": 1033,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 0,
+      "other_content_bytes": 0,
+      "messages": 3,
+      "schema_count": 0,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 51,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 1,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241080.2764657,
+      "ended_at": 1790241089.811684,
+      "duration_seconds": 9.535218238830566,
+      "first_byte_seconds": 6.761691570281982,
+      "header_seconds": 6.754761219024658,
+      "usage_complete": true,
+      "input": 29526,
+      "output": 122,
+      "total": 29648,
+      "cache_read": 0,
+      "reasoning": 16,
+      "uncached": 29526,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 130645,
+      "response_bytes": 9491,
+      "system_bytes": 30082,
+      "user_bytes": 1985,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 97675,
+      "other_content_bytes": 0,
+      "messages": 4,
+      "schema_count": 30,
+      "response_reasoning_bytes": 70,
+      "response_text_bytes": 104,
+      "response_tool_argument_bytes": 246,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 2,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241101.0959513,
+      "ended_at": 1790241107.643216,
+      "duration_seconds": 6.547264575958252,
+      "first_byte_seconds": 6.531700372695923,
+      "header_seconds": 6.5233635902404785,
+      "usage_complete": true,
+      "input": 37648,
+      "output": 105,
+      "total": 37753,
+      "cache_read": 22848,
+      "reasoning": 0,
+      "uncached": 14800,
+      "cache_rate": 0.606884827879303,
+      "native_usage_match": true,
+      "request_bytes": 166289,
+      "response_bytes": 1006,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 104,
+      "historical_reasoning_bytes": 70,
+      "tool_result_bytes": 6390,
+      "tool_call_bytes": 354,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 6,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 305,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 3,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241109.8526657,
+      "ended_at": 1790241286.595691,
+      "duration_seconds": 176.74302530288696,
+      "first_byte_seconds": 4.532445907592773,
+      "header_seconds": 4.523553133010864,
+      "usage_complete": true,
+      "input": 41020,
+      "output": 4959,
+      "total": 45979,
+      "cache_read": 35456,
+      "reasoning": 4769,
+      "uncached": 5564,
+      "cache_rate": 0.8643588493417845,
+      "native_usage_match": true,
+      "request_bytes": 180466,
+      "response_bytes": 1004063,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 104,
+      "historical_reasoning_bytes": 70,
+      "tool_result_bytes": 19716,
+      "tool_call_bytes": 767,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 8,
+      "schema_count": 36,
+      "response_reasoning_bytes": 20850,
+      "response_text_bytes": 554,
+      "response_tool_argument_bytes": 201,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 4,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241287.5126617,
+      "ended_at": 1790241294.6516676,
+      "duration_seconds": 7.139005899429321,
+      "first_byte_seconds": 4.337421655654907,
+      "header_seconds": 4.3292834758758545,
+      "usage_complete": true,
+      "input": 46301,
+      "output": 136,
+      "total": 46437,
+      "cache_read": 0,
+      "reasoning": 26,
+      "uncached": 46301,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 203291,
+      "response_bytes": 7364,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 658,
+      "historical_reasoning_bytes": 20920,
+      "tool_result_bytes": 20396,
+      "tool_call_bytes": 1082,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 10,
+      "schema_count": 36,
+      "response_reasoning_bytes": 115,
+      "response_text_bytes": 30,
+      "response_tool_argument_bytes": 340,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 5,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241295.3883328,
+      "ended_at": 1790241306.0297785,
+      "duration_seconds": 10.641445636749268,
+      "first_byte_seconds": 10.62368106842041,
+      "header_seconds": 10.609717607498169,
+      "usage_complete": true,
+      "input": 46452,
+      "output": 205,
+      "total": 46657,
+      "cache_read": 32768,
+      "reasoning": 0,
+      "uncached": 13684,
+      "cache_rate": 0.7054163437526909,
+      "native_usage_match": true,
+      "request_bytes": 204068,
+      "response_bytes": 1561,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 688,
+      "historical_reasoning_bytes": 21035,
+      "tool_result_bytes": 20432,
+      "tool_call_bytes": 1530,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 12,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 800,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 6,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241312.526728,
+      "ended_at": 1790241322.9109623,
+      "duration_seconds": 10.384234428405762,
+      "first_byte_seconds": 8.466337203979492,
+      "header_seconds": 8.452579259872437,
+      "usage_complete": true,
+      "input": 46754,
+      "output": 98,
+      "total": 46852,
+      "cache_read": 0,
+      "reasoning": 15,
+      "uncached": 46754,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 205532,
+      "response_bytes": 7086,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 688,
+      "historical_reasoning_bytes": 21035,
+      "tool_result_bytes": 20797,
+      "tool_call_bytes": 2498,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 14,
+      "schema_count": 36,
+      "response_reasoning_bytes": 56,
+      "response_text_bytes": 69,
+      "response_tool_argument_bytes": 193,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 7,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241327.5803134,
+      "ended_at": 1790241333.696039,
+      "duration_seconds": 6.115725517272949,
+      "first_byte_seconds": 4.524132490158081,
+      "header_seconds": 4.507922887802124,
+      "usage_complete": true,
+      "input": 46938,
+      "output": 90,
+      "total": 47028,
+      "cache_read": 46016,
+      "reasoning": 24,
+      "uncached": 922,
+      "cache_rate": 0.9803570667689292,
+      "native_usage_match": true,
+      "request_bytes": 206397,
+      "response_bytes": 5814,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 757,
+      "historical_reasoning_bytes": 21091,
+      "tool_result_bytes": 21081,
+      "tool_call_bytes": 2799,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 16,
+      "schema_count": 36,
+      "response_reasoning_bytes": 88,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 201,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 8,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241349.7023444,
+      "ended_at": 1790241360.5821555,
+      "duration_seconds": 10.87981104850769,
+      "first_byte_seconds": 10.865612268447876,
+      "header_seconds": 10.848665237426758,
+      "usage_complete": true,
+      "input": 47058,
+      "output": 271,
+      "total": 47329,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 47058,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 207044,
+      "response_bytes": 1936,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 757,
+      "historical_reasoning_bytes": 21179,
+      "tool_result_bytes": 21181,
+      "tool_call_bytes": 3108,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 18,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 1210,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 9,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241362.1048753,
+      "ended_at": 1790241367.9301972,
+      "duration_seconds": 5.825321912765503,
+      "first_byte_seconds": 4.328185558319092,
+      "header_seconds": 4.32134747505188,
+      "usage_complete": true,
+      "input": 47481,
+      "output": 71,
+      "total": 47552,
+      "cache_read": 46016,
+      "reasoning": 22,
+      "uncached": 1465,
+      "cache_rate": 0.9691455529580253,
+      "native_usage_match": true,
+      "request_bytes": 209096,
+      "response_bytes": 5432,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 757,
+      "historical_reasoning_bytes": 21179,
+      "tool_result_bytes": 21750,
+      "tool_call_bytes": 4455,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 20,
+      "schema_count": 36,
+      "response_reasoning_bytes": 104,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 201,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 10,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241368.9884913,
+      "ended_at": 1790241375.2304382,
+      "duration_seconds": 6.2419469356536865,
+      "first_byte_seconds": 4.66353440284729,
+      "header_seconds": 4.647915601730347,
+      "usage_complete": true,
+      "input": 47562,
+      "output": 66,
+      "total": 47628,
+      "cache_read": 46016,
+      "reasoning": 6,
+      "uncached": 1546,
+      "cache_rate": 0.9674950590807788,
+      "native_usage_match": true,
+      "request_bytes": 209675,
+      "response_bytes": 2204,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 757,
+      "historical_reasoning_bytes": 21283,
+      "tool_result_bytes": 21764,
+      "tool_call_bytes": 4768,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 22,
+      "schema_count": 36,
+      "response_reasoning_bytes": 42,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 251,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 11,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241376.2991602,
+      "ended_at": 1790241382.0202568,
+      "duration_seconds": 5.721096515655518,
+      "first_byte_seconds": 5.70704197883606,
+      "header_seconds": 5.699662208557129,
+      "usage_complete": true,
+      "input": 47706,
+      "output": 74,
+      "total": 47780,
+      "cache_read": 47168,
+      "reasoning": 0,
+      "uncached": 538,
+      "cache_rate": 0.988722592546011,
+      "native_usage_match": true,
+      "request_bytes": 210491,
+      "response_bytes": 973,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 757,
+      "historical_reasoning_bytes": 21325,
+      "tool_result_bytes": 22019,
+      "tool_call_bytes": 5132,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 24,
+      "schema_count": 36,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 269,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 12,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241382.9820542,
+      "ended_at": 1790241394.3282053,
+      "duration_seconds": 11.346151113510132,
+      "first_byte_seconds": 4.605065822601318,
+      "header_seconds": 4.597669363021851,
+      "usage_complete": true,
+      "input": 47982,
+      "output": 379,
+      "total": 48361,
+      "cache_read": 47168,
+      "reasoning": 34,
+      "uncached": 814,
+      "cache_rate": 0.9830353049060064,
+      "native_usage_match": true,
+      "request_bytes": 211815,
+      "response_bytes": 9118,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 757,
+      "historical_reasoning_bytes": 21325,
+      "tool_result_bytes": 22812,
+      "tool_call_bytes": 5513,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 26,
+      "schema_count": 36,
+      "response_reasoning_bytes": 129,
+      "response_text_bytes": 0,
+      "response_tool_argument_bytes": 1418,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 13,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241396.9125311,
+      "ended_at": 1790241427.525145,
+      "duration_seconds": 30.612613916397095,
+      "first_byte_seconds": 4.728284597396851,
+      "header_seconds": 4.713644981384277,
+      "usage_complete": true,
+      "input": 48678,
+      "output": 906,
+      "total": 49584,
+      "cache_read": 47424,
+      "reasoning": 469,
+      "uncached": 1254,
+      "cache_rate": 0.9742388758782201,
+      "native_usage_match": true,
+      "request_bytes": 214591,
+      "response_bytes": 102835,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 757,
+      "historical_reasoning_bytes": 21454,
+      "tool_result_bytes": 23728,
+      "tool_call_bytes": 7074,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 28,
+      "schema_count": 36,
+      "response_reasoning_bytes": 2138,
+      "response_text_bytes": 108,
+      "response_tool_argument_bytes": 1748,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 14,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241431.0049832,
+      "ended_at": 1790241448.235139,
+      "duration_seconds": 17.23015570640564,
+      "first_byte_seconds": 4.408940553665161,
+      "header_seconds": 4.395180702209473,
+      "usage_complete": true,
+      "input": 49688,
+      "output": 521,
+      "total": 50209,
+      "cache_read": 35456,
+      "reasoning": 227,
+      "uncached": 14232,
+      "cache_rate": 0.7135726936081146,
+      "native_usage_match": true,
+      "request_bytes": 219330,
+      "response_bytes": 54401,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 865,
+      "historical_reasoning_bytes": 23592,
+      "tool_result_bytes": 24158,
+      "tool_call_bytes": 8974,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 30,
+      "schema_count": 36,
+      "response_reasoning_bytes": 954,
+      "response_text_bytes": 158,
+      "response_tool_argument_bytes": 1014,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 15,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241454.3858263,
+      "ended_at": 1790241471.1192842,
+      "duration_seconds": 16.733457803726196,
+      "first_byte_seconds": 4.360526084899902,
+      "header_seconds": 4.34650731086731,
+      "usage_complete": true,
+      "input": 50478,
+      "output": 451,
+      "total": 50929,
+      "cache_read": 47424,
+      "reasoning": 196,
+      "uncached": 3054,
+      "cache_rate": 0.9394983953405444,
+      "native_usage_match": true,
+      "request_bytes": 222605,
+      "response_bytes": 49300,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 1023,
+      "historical_reasoning_bytes": 24546,
+      "tool_result_bytes": 25011,
+      "tool_call_bytes": 10116,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 32,
+      "schema_count": 36,
+      "response_reasoning_bytes": 837,
+      "response_text_bytes": 148,
+      "response_tool_argument_bytes": 939,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 16,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241473.3889258,
+      "ended_at": 1790241484.9845922,
+      "duration_seconds": 11.595666408538818,
+      "first_byte_seconds": 5.4836626052856445,
+      "header_seconds": 5.4691784381866455,
+      "usage_complete": true,
+      "input": 52054,
+      "output": 315,
+      "total": 52369,
+      "cache_read": 47424,
+      "reasoning": 83,
+      "uncached": 4630,
+      "cache_rate": 0.9110539055596112,
+      "native_usage_match": true,
+      "request_bytes": 229387,
+      "response_bytes": 21326,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 1171,
+      "historical_reasoning_bytes": 25383,
+      "tool_result_bytes": 29464,
+      "tool_call_bytes": 11182,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 34,
+      "schema_count": 36,
+      "response_reasoning_bytes": 399,
+      "response_text_bytes": 55,
+      "response_tool_argument_bytes": 984,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 17,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241486.9235535,
+      "ended_at": 1790241501.6771438,
+      "duration_seconds": 14.75359034538269,
+      "first_byte_seconds": 4.6388490200042725,
+      "header_seconds": 4.627031326293945,
+      "usage_complete": true,
+      "input": 53486,
+      "output": 297,
+      "total": 53783,
+      "cache_read": 50176,
+      "reasoning": 207,
+      "uncached": 3310,
+      "cache_rate": 0.9381146468234678,
+      "native_usage_match": true,
+      "request_bytes": 235648,
+      "response_bytes": 46706,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 1226,
+      "historical_reasoning_bytes": 25782,
+      "tool_result_bytes": 33881,
+      "tool_call_bytes": 12294,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 36,
+      "schema_count": 36,
+      "response_reasoning_bytes": 984,
+      "response_text_bytes": 77,
+      "response_tool_argument_bytes": 268,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 18,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241502.630766,
+      "ended_at": 1790241513.0746436,
+      "duration_seconds": 10.443877696990967,
+      "first_byte_seconds": 4.4645843505859375,
+      "header_seconds": 4.453128337860107,
+      "usage_complete": true,
+      "input": 53839,
+      "output": 308,
+      "total": 54147,
+      "cache_read": 50176,
+      "reasoning": 42,
+      "uncached": 3663,
+      "cache_rate": 0.9319638180501124,
+      "native_usage_match": true,
+      "request_bytes": 237436,
+      "response_bytes": 17101,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 1303,
+      "historical_reasoning_bytes": 26766,
+      "tool_result_bytes": 34072,
+      "tool_call_bytes": 12679,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 38,
+      "schema_count": 36,
+      "response_reasoning_bytes": 206,
+      "response_text_bytes": 151,
+      "response_tool_argument_bytes": 1081,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 19,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241514.420589,
+      "ended_at": 1790241523.9655075,
+      "duration_seconds": 9.544918537139893,
+      "first_byte_seconds": 4.982978343963623,
+      "header_seconds": 4.9677228927612305,
+      "usage_complete": true,
+      "input": 54190,
+      "output": 136,
+      "total": 54326,
+      "cache_read": 53184,
+      "reasoning": 84,
+      "uncached": 1006,
+      "cache_rate": 0.9814356892415574,
+      "native_usage_match": true,
+      "request_bytes": 239366,
+      "response_bytes": 20229,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 1454,
+      "historical_reasoning_bytes": 26972,
+      "tool_result_bytes": 34279,
+      "tool_call_bytes": 13889,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 40,
+      "schema_count": 36,
+      "response_reasoning_bytes": 379,
+      "response_text_bytes": 46,
+      "response_tool_argument_bytes": 111,
+      "response_tool_calls": 1,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "tool_calls",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 20,
+      "purpose": "synergy-max",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241531.800351,
+      "ended_at": 1790241549.5443776,
+      "duration_seconds": 17.74402666091919,
+      "first_byte_seconds": 4.662129640579224,
+      "header_seconds": 4.648167610168457,
+      "usage_complete": true,
+      "input": 54783,
+      "output": 504,
+      "total": 55287,
+      "cache_read": 53184,
+      "reasoning": 8,
+      "uncached": 1599,
+      "cache_rate": 0.9708121132468102,
+      "native_usage_match": true,
+      "request_bytes": 241607,
+      "response_bytes": 98216,
+      "system_bytes": 30082,
+      "user_bytes": 1991,
+      "assistant_bytes": 1500,
+      "historical_reasoning_bytes": 27351,
+      "tool_result_bytes": 35688,
+      "tool_call_bytes": 14114,
+      "tool_schema_bytes": 125847,
+      "other_content_bytes": 0,
+      "messages": 42,
+      "schema_count": 36,
+      "response_reasoning_bytes": 39,
+      "response_text_bytes": 1986,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 21,
+      "purpose": "intent",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241550.195719,
+      "ended_at": 1790241552.2372448,
+      "duration_seconds": 2.0415258407592773,
+      "first_byte_seconds": 1.1263389587402344,
+      "header_seconds": 1.1198904514312744,
+      "usage_complete": true,
+      "input": 1361,
+      "output": 27,
+      "total": 1388,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 1361,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 6772,
+      "response_bytes": 4530,
+      "system_bytes": 4899,
+      "user_bytes": 1473,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 0,
+      "other_content_bytes": 0,
+      "messages": 2,
+      "schema_count": 0,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 122,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 22,
+      "purpose": "title",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241552.5461476,
+      "ended_at": 1790241553.5113385,
+      "duration_seconds": 0.9651908874511719,
+      "first_byte_seconds": 0.8105647563934326,
+      "header_seconds": 0.8043584823608398,
+      "usage_complete": true,
+      "input": 841,
+      "output": 11,
+      "total": 852,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 841,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 3969,
+      "response_bytes": 2148,
+      "system_bytes": 2547,
+      "user_bytes": 1048,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 0,
+      "other_content_bytes": 0,
+      "messages": 2,
+      "schema_count": 0,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 34,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    },
+    {
+      "trial": "0001",
+      "index": 23,
+      "purpose": "script",
+      "status": "completed",
+      "http_status": 200,
+      "started_at": 1790241564.39058,
+      "ended_at": 1790241575.599041,
+      "duration_seconds": 11.208461046218872,
+      "first_byte_seconds": 1.407444715499878,
+      "header_seconds": 1.3970792293548584,
+      "usage_complete": true,
+      "input": 5886,
+      "output": 308,
+      "total": 6194,
+      "cache_read": 0,
+      "reasoning": 0,
+      "uncached": 5886,
+      "cache_rate": 0.0,
+      "native_usage_match": true,
+      "request_bytes": 25032,
+      "response_bytes": 60182,
+      "system_bytes": 6345,
+      "user_bytes": 17939,
+      "assistant_bytes": 0,
+      "historical_reasoning_bytes": 0,
+      "tool_result_bytes": 0,
+      "tool_call_bytes": 0,
+      "tool_schema_bytes": 0,
+      "other_content_bytes": 0,
+      "messages": 2,
+      "schema_count": 0,
+      "response_reasoning_bytes": 0,
+      "response_text_bytes": 1333,
+      "response_tool_argument_bytes": 0,
+      "response_tool_calls": 0,
+      "stream_usage_frames": 1,
+      "stream_invalid_lines": 0,
+      "finish_reasons": "stop",
+      "stream_framing": "sse"
+    }
+  ],
+  "new_tools": [
+    {
+      "cell": "0000",
+      "ordinal": 0,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241091.725,
+      "ended_at": 1790241091.978,
+      "duration_seconds": 0.253,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "1db4142dc51f630dc2054df139f8887f4bcb3e3f61141f2f7ccfd57bf417aa8e",
+      "output_digest": "23b835d3c1c41521dcc2aea3b3757896b59f397a4438841e43d4dc9ea2333632",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 1,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241116.344,
+      "ended_at": 1790241236.474,
+      "duration_seconds": 120.13,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": 120,
+      "input_digest": "7ef595fc0e8b8f970ca143bdef6d5a400138b01a0bdaa4bccfab832357333f4c",
+      "output_digest": "4efb8a768d193ba3653d4f491a0e5526c90f62f2bd76cffc324ee25b01fd3301",
+      "exit_code": null,
+      "shell_status_or_log_candidate": true,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 2,
+      "owner": 0,
+      "tool": "process",
+      "status": "completed",
+      "started_at": 1790241243.116,
+      "ended_at": 1790241423.27,
+      "duration_seconds": 180.154,
+      "process": 0,
+      "process_action": "poll",
+      "block": true,
+      "timeout_seconds": 180,
+      "yield_seconds": null,
+      "input_digest": "e43f903a15152e5a9aa37b31783069c51cf1af5dbfa33be4df057c25d8e0e7ff",
+      "output_digest": "72bfef1652947fb9067659f1e1f1e157deda01423a22eba1ef3165195e1ed545",
+      "exit_code": null,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": false,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 3,
+      "owner": 0,
+      "tool": "process",
+      "status": "completed",
+      "started_at": 1790241429.616,
+      "ended_at": 1790241573.85,
+      "duration_seconds": 144.234,
+      "process": 0,
+      "process_action": "poll",
+      "block": true,
+      "timeout_seconds": 300,
+      "yield_seconds": null,
+      "input_digest": "2cb51a5cec06201c7cb35acad4dc55d55b2d6ace4c5c11cae8e0dd2b18df4c35",
+      "output_digest": "33d010cd7d929c01810f9e779ae56daad31de381509fde15ecd210d9ba0f9fe9",
+      "exit_code": null,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": false,
+      "seconds_after_previous_same_query": 6.3459999561309814
+    },
+    {
+      "cell": "0000",
+      "ordinal": 4,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241587.483,
+      "ended_at": 1790241617.607,
+      "duration_seconds": 30.124,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "20f43c5db43306031dd63b2c6c1fdae7e0be942bf32f10cb53dd02b60c224471",
+      "output_digest": "3c50056268c558b2af1fc66cb2831002045e42524d9fc36b580f12c8218b3457",
+      "exit_code": null,
+      "shell_status_or_log_candidate": true,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 5,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241587.522,
+      "ended_at": 1790241607.408,
+      "duration_seconds": 19.886,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": 60,
+      "input_digest": "992f48098021defb8db526513f24340430f056a5659223a38b2b20d03b6f1594",
+      "output_digest": "5938fa808ad5c32c9e2ed20bef81588a6dd57827a4d311f367c0f2feb1fa7409",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 6,
+      "owner": 0,
+      "tool": "process",
+      "status": "completed",
+      "started_at": 1790241624.437,
+      "ended_at": 1790241925.662,
+      "duration_seconds": 301.225,
+      "process": 1,
+      "process_action": "poll",
+      "block": true,
+      "timeout_seconds": 300,
+      "yield_seconds": null,
+      "input_digest": "7d247f249fc92a15bc12ba017159fce560977ce546542475ed819f0548edd86a",
+      "output_digest": "35a6ec32f04514c97cb4518a47923bb50164f12d3c3e078f88ab5e9accc178f8",
+      "exit_code": null,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": false,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 7,
+      "owner": 0,
+      "tool": "process",
+      "status": "completed",
+      "started_at": 1790241932.783,
+      "ended_at": 1790242233.837,
+      "duration_seconds": 301.054,
+      "process": 1,
+      "process_action": "poll",
+      "block": true,
+      "timeout_seconds": 300,
+      "yield_seconds": null,
+      "input_digest": "7d247f249fc92a15bc12ba017159fce560977ce546542475ed819f0548edd86a",
+      "output_digest": "35a6ec32f04514c97cb4518a47923bb50164f12d3c3e078f88ab5e9accc178f8",
+      "exit_code": null,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": true,
+      "seconds_after_previous_same_query": 7.121000051498413
+    },
+    {
+      "cell": "0000",
+      "ordinal": 8,
+      "owner": 0,
+      "tool": "process",
+      "status": "completed",
+      "started_at": 1790242245.086,
+      "ended_at": 1790242289.369,
+      "duration_seconds": 44.283,
+      "process": 1,
+      "process_action": "poll",
+      "block": true,
+      "timeout_seconds": 300,
+      "yield_seconds": null,
+      "input_digest": "7d247f249fc92a15bc12ba017159fce560977ce546542475ed819f0548edd86a",
+      "output_digest": "7ea0f85f29c837a90877cdb0c6f0aa1f68a403ab3154e7be65c26edc118cad6d",
+      "exit_code": null,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": false,
+      "seconds_after_previous_same_query": 11.249000072479248
+    },
+    {
+      "cell": "0000",
+      "ordinal": 9,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790242296.684,
+      "ended_at": 1790242297.139,
+      "duration_seconds": 0.455,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": 60,
+      "input_digest": "4eaea349bf569bb5391de4064e982c7bd285d0bbf70dcaf24659debc9e868f05",
+      "output_digest": "bed118ca12ca5afa488b947acc31400a96e8fecbc55a87cfb832bab15ff7b2d1",
+      "exit_code": 2,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 10,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790242305.863,
+      "ended_at": 1790242337.978,
+      "duration_seconds": 32.115,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": 180,
+      "input_digest": "f9cba66b726b5323353ba9426f5f5585c5e92d4fc2ea6335f9f217338d4177dd",
+      "output_digest": "a7c64e3a4297e80642600ebd6a36e68b210db6d7ceb5e5a0ae4f0cbe30db498d",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 11,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790242345.32,
+      "ended_at": 1790242375.444,
+      "duration_seconds": 30.124,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "cbfdf1d21878e664cd0ca075bd3cf0077cdbc40e06f5a63a7944516e37737f33",
+      "output_digest": "3872b691254d2c4965bac9630437e57903cff8568b2553602ea3745050aa8c1f",
+      "exit_code": null,
+      "shell_status_or_log_candidate": true,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 12,
+      "owner": 0,
+      "tool": "process",
+      "status": "completed",
+      "started_at": 1790242387.163,
+      "ended_at": 1790242545.363,
+      "duration_seconds": 158.2,
+      "process": 2,
+      "process_action": "poll",
+      "block": true,
+      "timeout_seconds": 300,
+      "yield_seconds": null,
+      "input_digest": "ad2b25fef4e6a70de6a772d8890bdd566360479fa3e47847c234ffe729d289b9",
+      "output_digest": "94f4ca7a0bedffa19aa810b3fc1fc380ec9ad97877d18820e9bad0acb027a2e1",
+      "exit_code": null,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": false,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 13,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790242555.115,
+      "ended_at": 1790242555.303,
+      "duration_seconds": 0.188,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "b8d78d23dcdee180ee50c1a1f189e1f65b7776b63940eda9fdff36b16ddbd8d7",
+      "output_digest": "eea5e247df0edc679f1f53a0dbdc085135adafda41e0f38866a48509991a0403",
+      "exit_code": 2,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 14,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790242568.57,
+      "ended_at": 1790242568.758,
+      "duration_seconds": 0.188,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "74a0a89eb275e5c53fc80fb4aaaa879c2ffbeff04a0eb7686c895da077023e2a",
+      "output_digest": "a971eab4566a2f6d1ebcdcdca297988bcb954ac4bec81ad537097c1c56b97bd1",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 15,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790242583.034,
+      "ended_at": 1790242583.237,
+      "duration_seconds": 0.203,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "934c6d0c54e9f413ba0cdf1b217fcf597cfa080f10fd3e6c85a826a9a2ef60d4",
+      "output_digest": "94c7da5feb6016950db7916d6099349ab4d9f674516424311db0df2d7f47ae14",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0000",
+      "ordinal": 16,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790242606.884,
+      "ended_at": 1790242773.331,
+      "duration_seconds": 166.447,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": 240,
+      "input_digest": "8a1798dfdaeb970e5f0420868ad642e0479bf3746e0fd6bb42ffcff63949a517",
+      "output_digest": "346619736284bd2588b68eed447961bb2974a70034d8b847f3e8910c6f130ef6",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 0,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241099.438,
+      "ended_at": 1790241100.814,
+      "duration_seconds": 1.376,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "f77fb3bdc1d948f77fb4fc762e09be87ab578357ad121299980e6b93f5b07a2a",
+      "output_digest": "4b216d09a815f253bcd6bd9678f4124926716c2270810e4d57cecfaedb7436f9",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 1,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241108.084,
+      "ended_at": 1790241109.466,
+      "duration_seconds": 1.382,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "3accb04a4a74b146679cb45bf6e9d0f38000b407ced106d2ec37a8a2b677fdc6",
+      "output_digest": "8ba2df44e67926f7c1601164a86aad1e7849e7d47361c14477a896c22488a4fc",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": true,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 2,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241287.096,
+      "ended_at": 1790241287.272,
+      "duration_seconds": 0.176,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "97ddc7024c66790dcabc8a4527ca43eec3412e6a07501834f27ba3120d239baa",
+      "output_digest": "29f5a5cfb13a52982e186cda9f015bab7feb8c8bb813c1add7169a915ccae8cc",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": true,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 3,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241294.998,
+      "ended_at": 1790241295.134,
+      "duration_seconds": 0.136,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "f7f035112ad4534cb3f398a1a1dea4a7e99f38e15b9b8471fcae80e146d0116c",
+      "output_digest": "673311594541ce4ef9962f7bacc45dcf8f0dbe0689efed3608a534aedc8b657a",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 4,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241306.484,
+      "ended_at": 1790241312.147,
+      "duration_seconds": 5.663,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "3ef7a593cadc487bf25987d1b786f8e747ce9f8e8ba6bdcc48646a94c7eeea48",
+      "output_digest": "0f5de879dd83a1af07f43570155ca8cd93bb9dbb272ac78b6bf40f396acd8090",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 5,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241323.216,
+      "ended_at": 1790241327.35,
+      "duration_seconds": 4.134,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "c8713caa1112f11e5455d2fbd93cb31fedcb0394250b757960694b3ef4230617",
+      "output_digest": "c59e683adc384bdcef5b2cfc71582c682dee6a823476d36c08d2388caffb91c3",
+      "exit_code": 2,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 6,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241334.163,
+      "ended_at": 1790241349.435,
+      "duration_seconds": 15.272,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "d2189beaf01c73436fe28d6332a03339bf4950ff94cc9af67a0fea0fe48b3b50",
+      "output_digest": "f24811b1f4972fcbc3d6bade14e63646f37a92d41eff7a11741d4161944ff262",
+      "exit_code": 1,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 7,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241361.069,
+      "ended_at": 1790241361.744,
+      "duration_seconds": 0.675,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "deda4d555a25725a648b6ad4c77bc9b109737d02ff57177b4916dee4a209dfbc",
+      "output_digest": "ee2c9e94111c235bc2f467b9f60284a66bac64bddee2c093899bd6397f5b765d",
+      "exit_code": 1,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 8,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241368.346,
+      "ended_at": 1790241368.578,
+      "duration_seconds": 0.232,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "b071dc9da64d528ac5bf16f64969cda398d30b41003a546e6e3b97d99552d941",
+      "output_digest": "887432b77abdc0b425c1ce554105c26202a509080179c01f7578e1f0211dd4a7",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 9,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241375.5,
+      "ended_at": 1790241375.964,
+      "duration_seconds": 0.464,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "266af3c9bb6c1fdad3d9c3f0fe3ef008d774f5851f485deeceb3fb286582ba4a",
+      "output_digest": "c0c8538d43ff4329305b08d574000fae11151287d1fb63d4b6b848b5e5664f89",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 10,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241382.524,
+      "ended_at": 1790241382.677,
+      "duration_seconds": 0.153,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "660359fddf4e5847ecd4baf87b58dd788feaaa44c053c53a7ab7bdf0eae5ac0b",
+      "output_digest": "507592f3ffce5f1c9f98972897a10ca514c6c237f3328fd3c3ee6347f81c9a6c",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 11,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241394.809,
+      "ended_at": 1790241396.583,
+      "duration_seconds": 1.774,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "bb5b02f17f4208e165c0a9f35ccd178940f5bd07f2e43d45a52124c25c699e9a",
+      "output_digest": "a6895fe97571cc8f3ef05185cbd2d94c94ae707f13c4b23796077a76c2175260",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 12,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241428.003,
+      "ended_at": 1790241430.751,
+      "duration_seconds": 2.748,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "c6f7873beb7f22f944fc369bf875afacf219666c1bd6bcf4f3b760e43feb4a6b",
+      "output_digest": "abb41dc7419b83a7a3b5b69cc3441be329f0ae0ed065c9dd4b12303092449b19",
+      "exit_code": 1,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 13,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241448.704,
+      "ended_at": 1790241454.077,
+      "duration_seconds": 5.373,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "cabda241042a3f260dc239985b5f3adeaf9740ed0851f2306e08325ce9cea019",
+      "output_digest": "a8e40c9a63c48eb75474cadef0c60ce685b96601cc1e1aff55eb840ea6045d2a",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 14,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241471.418,
+      "ended_at": 1790241473.127,
+      "duration_seconds": 1.709,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "bf0327dc50193024702ab2d2f36edc675db54dda88764fa79cfa3641d3274db2",
+      "output_digest": "855c4dd9806e99aad74edc00fd3f26bad9d21391841f9b2944126e28231d2d7c",
+      "exit_code": 1,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 15,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241485.263,
+      "ended_at": 1790241486.625,
+      "duration_seconds": 1.362,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "4198c26de7cedb1d42e91e71d19dc9b2a0b0d8e93d3a8c8dcc0a54a1b677e764",
+      "output_digest": "96be9e6abbc9d96cedc022e97c95f1270eed9c4e2177659181596d65b7b1066e",
+      "exit_code": 1,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 16,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241502.143,
+      "ended_at": 1790241502.342,
+      "duration_seconds": 0.199,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "1f8433d67361b6d8598415a569aa82ece90f004efaa3936acbe65c11928d5fd8",
+      "output_digest": "dec53782773187903486e3a7f031fd1dd574a542a4fc9db97901924d9def2275",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 17,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241513.355,
+      "ended_at": 1790241514.044,
+      "duration_seconds": 0.689,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": null,
+      "input_digest": "a732cd26f40c8c02af60dd2fa5d30f8ea5b9185763ccc38e14d5d02370171748",
+      "output_digest": "3a981ab0a1cbecab34ae58ce595ba3d8c7ef024df634ab218064c97b2d73a59a",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    },
+    {
+      "cell": "0001",
+      "ordinal": 18,
+      "owner": 0,
+      "tool": "bash",
+      "status": "completed",
+      "started_at": 1790241524.485,
+      "ended_at": 1790241531.437,
+      "duration_seconds": 6.952,
+      "process": null,
+      "process_action": null,
+      "block": null,
+      "timeout_seconds": null,
+      "yield_seconds": 120,
+      "input_digest": "07b5a44c6084dea1beb02356bbcc135545377025afda8c649597f33a0e655287",
+      "output_digest": "cd8357c54df477b15f33817d86d9ab1d2588ca60e67d31bf784fef8207db0c82",
+      "exit_code": 0,
+      "shell_status_or_log_candidate": false,
+      "same_exact_output_as_previous_same_query": null,
+      "seconds_after_previous_same_query": null
+    }
+  ],
+  "costs": {
+    "sealed_history": [
+      {
+        "label": "Sealed family through completed process waiting study, counted once",
+        "sha256": "73ab28fe5080b170622342809eb18c731dbf99c199f311545bbd955127de51e9",
+        "observed_requests": 8484,
+        "known_tokens": 570956995,
+        "unknown_usage_requests": null,
+        "unknown_attempts": null,
+        "unconfirmed_dispatches": 2
+      }
+    ],
+    "new_requests": 45,
+    "new_known_tokens": 1626731,
+    "new_usage": {
+      "input": 1612489,
+      "output": 14242,
+      "total": 1626731,
+      "cacheRead": 887616,
+      "reasoning": 7669
+    },
+    "new_uncached_input_tokens": 724873,
+    "family_observed_requests": 8529,
+    "family_known_tokens_lower_bound": 572583726,
+    "monetary_total": null,
+    "uncertainty": "Historical unknown usage, failures, helpers and two unconfirmed dispatches remain in the sealed cost summary. Cache-write usage is unknown. Cache reads are included in input; reasoning is included in output. No exact monetary bill is available."
+  },
+  "audit": {
+    "evaluator_identity_verified": true,
+    "new_terminal_records": 2,
+    "one_attempt_per_cell": true,
+    "new_file_hashes_verified": 368,
+    "hash_mismatches": 0,
+    "all_owned_resources_removed": true,
+    "audit_sha256": "01e7f143e5819fe75c949e8eba63fc7f8be7d81acb0163f744ad2ab4248b3472",
+    "config_sha256": "4da5b289e7078de312540a1b7d64a3925462479cf44c830c8aaab2a9c8e02150",
+    "historical_report_sha256": "73ab28fe5080b170622342809eb18c731dbf99c199f311545bbd955127de51e9"
+  },
+  "free_validation": {
+    "checks": {
+      "process": {
+        "pass": 5,
+        "fail": 0
+      },
+      "time-units": {
+        "pass": 3,
+        "fail": 0
+      },
+      "agenda": {
+        "pass": 4,
+        "fail": 0
+      },
+      "bash": {
+        "pass": 46,
+        "fail": 0
+      },
+      "catalog": {
+        "pass": 15,
+        "fail": 0
+      },
+      "exposure": {
+        "pass": 55,
+        "fail": 0
+      },
+      "budgets": {
+        "pass": 4,
+        "fail": 0
+      },
+      "link-full": {
+        "pass": 239,
+        "fail": 0
+      }
+    },
+    "quality_gates_passed": 17,
+    "link_build": "passed",
+    "catalog_before_utf8": 150942,
+    "catalog_after_utf8": 127184,
+    "same_tool_names_order_schemas_exposure": true,
+    "permission_note": "Temporary-home paths differ between fixtures; catalog denial and exposure regressions pass.",
+    "paid_calls": 0,
+    "additional_agenda_dedup_tests": {
+      "pass": 35,
+      "fail": 0
+    }
+  },
+  "limitations": [
+    "Two single candidate observations with historical references, not a concurrent randomized comparison or full local-24 evaluation.",
+    "General waiting guidance and first-party catalog deduplication changed jointly; this is not an ablation separating their effects.",
+    "Evaluator revisions, dependency routing, calendar time and resource competition differ across batches; historical original raw trajectories remain unavailable.",
+    "Both current tasks have no observed OOM. Historical baseline CompCert and original candidates have OOM observations; sampled memory peaks do not prove OOM.",
+    "Mailman has no process calls in either the previous waiting run or this run, so its changes cannot be attributed solely to process polling.",
+    "Total tokens fall versus baseline, but combined uncached input is nearly unchanged. Token ratios are not monetary savings.",
+    "Mailman retains one partial interrupted service-command process stream; archive CRC and file hashes pass and all 24 provider requests reconcile, but not every process stream is complete.",
+    "Prompt guidance did not eliminate all wrong API guesses, semantically repeated build work or masked main-command failures. No runtime enforcement was added."
+  ]
+}

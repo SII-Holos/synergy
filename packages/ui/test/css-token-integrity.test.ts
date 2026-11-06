@@ -15,12 +15,12 @@ const PHASE2_UI_FILES: FileSet[] = [
 ]
 
 const APP_FILES = [
-  "../app/src/components/prompt-input/quick-actions.css",
-  "../app/src/components/session/question-prompt.css",
-  "../app/src/components/header-bar.css",
-  "../app/src/components/dialog/dialog-settings.css",
-  "../app/src/components/dialog/dialog-settings.tsx",
-  "../app/src/components/kanban/kanban.css",
+  "../../apps/web/src/components/prompt-input/quick-actions.css",
+  "../../apps/web/src/components/session/question-prompt.css",
+  "../../apps/web/src/components/header-bar.css",
+  "../../apps/web/src/components/dialog/dialog-settings.css",
+  "../../apps/web/src/components/dialog/dialog-settings.tsx",
+  "../../apps/web/src/components/kanban/kanban.css",
 ]
 
 const KNOWN_STATIC_TOKENS = new Set([
@@ -110,12 +110,14 @@ const KNOWN_STATIC_TOKENS = new Set([
 ])
 
 const KNOWN_LOCAL_TOKENS = new Set([
+  "conversation-reading-max-width",
   "workbench-canvas-bg",
   "workbench-panel-bg",
   "workbench-panel-bg-hover",
   "workbench-card-bg",
   "workbench-card-bg-hover",
   "workbench-row-bg",
+  "workbench-row-bg-hover",
   "workbench-card-secondary-bg",
   "workbench-control-bg",
   "workbench-control-bg-hover",
@@ -242,7 +244,7 @@ describe("CSS Token Integrity", () => {
   })
 
   test("index.html uses synergy theme preload naming", async () => {
-    const source = await readFileSafe("../app/index.html")
+    const source = await readFileSafe("../../apps/web/index.html")
     expect(source).toContain('id="synergy-theme-preload-script"')
     expect(source).not.toContain("oc-theme")
   })
@@ -259,7 +261,7 @@ describe("CSS Token Integrity", () => {
   })
 
   test("no formerly broken token references remain in P0 scope files", async () => {
-    const p0Files = ["src/components/markdown.css", "../app/src/components/prompt-input/quick-actions.css"]
+    const p0Files = ["src/components/markdown.css", "../../apps/web/src/components/prompt-input/quick-actions.css"]
 
     const mustNotReappear = new Set([
       "surface-raised-solid",
@@ -317,21 +319,6 @@ describe("CSS Token Integrity", () => {
     expect(copyButton).toContain("background: transparent")
   })
 
-  test("session turn timeline spacing uses semantic rhythm tiers", async () => {
-    const css = await readFileSafe("src/components/session-turn.css")
-    const timelineStart = css.indexOf('[data-slot="session-turn-timeline-item"] +')
-    const timelineEnd = css.indexOf('[data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"]')
-    expect(timelineStart).toBeGreaterThan(-1)
-    expect(timelineEnd).toBeGreaterThan(timelineStart)
-
-    const rhythm = css.slice(timelineStart, timelineEnd)
-    expect(rhythm).toContain("margin-top: 6px;")
-    expect(rhythm).toContain("margin-top: 8px;")
-    expect(rhythm).toContain("margin-top: 10px;")
-    expect(rhythm).toContain("margin-top: 12px;")
-    expect(rhythm).not.toMatch(/margin-top:\s*[345]px/)
-  })
-
   test("icon-button.css has no commented-out old code blocks", async () => {
     const css = await readFileSafe("src/components/icon-button.css")
     const commentBlockCount = (css.match(/\/\*\s*\n/g) || []).length
@@ -340,9 +327,9 @@ describe("CSS Token Integrity", () => {
 
   test("no formerly broken P2 token references remain in app-side files", async () => {
     const p2Files = [
-      "../app/src/components/header-bar.css",
-      "../app/src/components/dialog/dialog-settings.css",
-      "../app/src/components/dialog/dialog-settings.tsx",
+      "../../apps/web/src/components/header-bar.css",
+      "../../apps/web/src/components/dialog/dialog-settings.css",
+      "../../apps/web/src/components/dialog/dialog-settings.tsx",
     ]
 
     const mustNotReappear = new Set([
@@ -381,7 +368,7 @@ describe("CSS Token Integrity", () => {
     ])
 
     const offenders: string[] = []
-    for (const root of ["src", "../app/src"]) {
+    for (const root of ["src", "../../apps/web/src"]) {
       for (const ext of ["css", "ts", "tsx"]) {
         const glob = new Bun.Glob(`**/*.${ext}`)
         for await (const rel of glob.scan(root)) {

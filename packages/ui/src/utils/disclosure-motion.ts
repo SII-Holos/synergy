@@ -1,0 +1,241 @@
+import { createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js"
+import { useViewActivity } from "../context/view-activity"
+
+type Preparation = { read(): void; release(): void; measure(): void; play(): void }
+const preparations = new Set<Preparation>()
+let scheduled = false
+function prepare(work: Preparation) {
+  preparations.add(work)
+  if (scheduled) return
+  scheduled = true
+  queueMicrotask(() => {
+    scheduled = false
+    const work = [...preparations]
+    preparations.clear()
+    for (const item of work) item.read()
+    for (const item of work) item.release()
+    for (const item of work) item.measure()
+    for (const item of work) item.play()
+  })
+}
+
+export function createDisclosureMotion(
+  element: HTMLElement,
+  content = false,
+  onHidden?: () => void,
+  resize: boolean | (() => boolean) = true,
+  onSettled?: () => void,
+) {
+  const window = element.ownerDocument.defaultView
+  const reduced = window?.matchMedia?.("(prefers-reduced-motion: reduce)")
+  let animation: Animation | undefined
+  let animationTarget: boolean | undefined
+  let visible: boolean | undefined
+  let pending: Preparation | undefined
+  let pendingFrom: boolean | undefined
+  let disposed = false
+  const cancelPreparation = () => {
+    if (pending) preparations.delete(pending)
+    pending = undefined
+  }
+  const cancel = () => {
+    if (!animation) return
+    animation.onfinish = null
+    void animation.finished.catch(() => undefined)
+    animation.cancel()
+    animation = undefined
+    animationTarget = undefined
+  }
+  const settle = () => {
+    cancelPreparation()
+    cancel()
+    element.hidden = !visible
+    element.inert = !visible
+    element.removeAttribute("data-motion-changing")
+    element.removeAttribute("data-motion-resizing")
+    element.removeAttribute("data-motion-exiting")
+    if (!visible) onHidden?.()
+    onSettled?.()
+  }
+  const changedPreference = () => {
+    if (reduced?.matches) settle()
+  }
+  reduced?.addEventListener?.("change", changedPreference)
+
+  return {
+    resize(from: number, to: number) {
+      if (disposed || !visible || content || pending || Math.abs(from - to) < 1) return
+      if (reduced?.matches || typeof element.animate !== "function") {
+        settle()
+        return
+      }
+      const height = animation ? element.getBoundingClientRect().height : from
+      const style = window?.getComputedStyle(element)
+      const duration = style?.getPropertyValue("--motion-duration-base").trim()
+      const milliseconds = duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : 180
+      const easing = style?.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)"
+      cancel()
+      element.setAttribute("data-motion-changing", "")
+      const current = element.animate(
+        [
+          { height: `${height}px`, minHeight: "0px" },
+          { height: `${to}px`, minHeight: "0px" },
+        ],
+        { duration: milliseconds, easing, fill: "both" },
+      )
+      animation = current
+      animationTarget = true
+      current.onfinish = () => {
+        if (animation === current && !pending) settle()
+      }
+    },
+    setVisible(next: boolean, animate = false, appear = false) {
+      if (disposed) return
+      if (next === visible) {
+        if (!animate || reduced?.matches) settle()
+        return
+      }
+      const initial = visible === undefined
+      const from = pending ? pendingFrom : initial ? false : visible
+      if (pending && !animation && next === from) {
+        visible = next
+        settle()
+        return
+      }
+      const animated =
+        animate &&
+        !reduced?.matches &&
+        typeof element.animate === "function" &&
+        (!initial || (next && appear)) &&
+        !(content && next && !appear)
+      const resizing = (typeof resize === "function" ? resize() : resize) && !(next && content)
+      const hidden = element.hidden
+      cancelPreparation()
+      visible = next
+      element.inert = !next
+      if (next) element.removeAttribute("aria-hidden")
+      else element.setAttribute("aria-hidden", "true")
+      if (!animated) {
+        settle()
+        return
+      }
+      element.hidden = false
+      if (animation && animationTarget === next) {
+        if (animation.playState === "finished") settle()
+        return
+      }
+      let height = 0,
+        target = 0,
+        opacity: string | number = next ? 0.65 : 1,
+        transform = next ? "translateY(2px)" : "translateY(0)",
+        milliseconds = next ? 180 : 240,
+        easing = "cubic-bezier(0.2, 0, 0, 1)"
+      const work: Preparation = {
+        read() {
+          if (pending !== work) return
+          if (resizing && !hidden) height = element.getBoundingClientRect().height
+          const style = window?.getComputedStyle(element)
+          if (animation) {
+            opacity = style?.opacity ?? opacity
+            transform = style?.transform ?? transform
+          }
+          const duration = style?.getPropertyValue(`--motion-duration-${next ? "base" : "slow"}`).trim()
+          if (duration) milliseconds = parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000)
+          easing = style?.getPropertyValue("--motion-ease-standard").trim() || easing
+        },
+        release() {
+          if (pending === work) cancel()
+        },
+        measure() {
+          if (pending === work && next && resizing) target = element.getBoundingClientRect().height
+        },
+        play() {
+          if (pending !== work) return
+          pending = undefined
+          const frames: Keyframe[] =
+            next && content
+              ? [{ opacity }, { opacity: 1 }]
+              : !resizing
+                ? [
+                    { opacity, transform },
+                    { opacity: next ? 1 : 0, transform: "translateY(0)" },
+                  ]
+                : [
+                    { height: `${initial ? 0 : height}px`, minHeight: "0px", opacity },
+                    { height: `${target}px`, minHeight: "0px", opacity: next ? 1 : 0 },
+                  ]
+          element.setAttribute("data-motion-changing", "")
+          element.toggleAttribute("data-motion-resizing", resizing)
+          if (!next) element.setAttribute("data-motion-exiting", "")
+          const current = element.animate(frames, { duration: milliseconds, easing, fill: "both" })
+          animation = current
+          animationTarget = next
+          current.onfinish = () => {
+            if (animation === current && !pending) settle()
+          }
+        },
+      }
+      pending = work
+      pendingFrom = from
+      prepare(work)
+    },
+    dispose() {
+      disposed = true
+      cancelPreparation()
+      cancel()
+      reduced?.removeEventListener?.("change", changedPreference)
+      element.removeAttribute("data-motion-changing")
+      element.removeAttribute("data-motion-resizing")
+      element.removeAttribute("data-motion-exiting")
+    },
+  }
+}
+
+export function createDisclosureMotionRef(options: {
+  visible: () => boolean
+  animate: () => boolean
+  appear?: () => boolean
+  content?: boolean
+  resize?: boolean | (() => boolean)
+  observeResize?: boolean
+  onHidden?: () => void
+  onSettled?: () => void
+}) {
+  const active = useViewActivity()
+  const [element, setElement] = createSignal<HTMLElement>()
+  const visible = createMemo(options.visible)
+  const state = createMemo(() => ({ visible: visible(), animate: active() && options.animate() }))
+  createEffect(() => {
+    const target = element()
+    if (!target) return
+    const motion = createDisclosureMotion(target, options.content, options.onHidden, options.resize, options.onSettled)
+    const child = target.firstElementChild
+    if (options.observeResize && child && typeof ResizeObserver !== "undefined") {
+      createEffect(() => {
+        if (!active()) return
+        let height = child.getBoundingClientRect().height
+        const observer = new ResizeObserver(() => {
+          if (!active()) return
+          const next = child.getBoundingClientRect().height
+          if (state().animate && height > 0 && !child.querySelector("[data-motion-changing]"))
+            untrack(() => motion.resize(height, next))
+          height = next
+        })
+        observer.observe(child)
+        onCleanup(() => observer.disconnect())
+      })
+    }
+    createEffect(() => {
+      const next = state()
+      untrack(() => motion.setVisible(next.visible, next.animate, options.appear?.()))
+    })
+    onCleanup(() => motion.dispose())
+  })
+  return (target: HTMLElement) => {
+    target.hidden = !untrack(visible)
+    setElement(target)
+    onCleanup(() => {
+      if (untrack(element) === target) setElement(undefined)
+    })
+  }
+}

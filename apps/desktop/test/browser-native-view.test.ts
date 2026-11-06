@@ -1,0 +1,213 @@
+import { describe, expect, test } from "bun:test"
+import { EventEmitter } from "node:events"
+import { BROWSER_PROTOCOL_VERSION, type BrowserNativeAttachRequest } from "@ericsanchezok/synergy-browser-core"
+
+const { BrowserNativeViewManager } = await import("../src/browser-native-view.js")
+
+describe("Browser native view manager", () => {
+  test("keeps a bounded still image while browser chrome covers the native page", async () => {
+    const events: unknown[] = []
+    const view = {
+      webContents: {
+        focus() {},
+        getTitle: () => "Test",
+        getURL: () => "https://example.com",
+        on() {},
+        off() {},
+        capturePage: async () => ({ isEmpty: () => false, toJPEG: () => Buffer.from("preview") }),
+      },
+      setBounds() {},
+      setVisible() {},
+    }
+    const manager = new BrowserNativeViewManager(
+      { webContents: { getZoomFactor: () => 1, on() {}, off() {} } } as never,
+      { attach: () => view, detach() {} } as never,
+      (event) => events.push(event),
+    )
+    const request = { protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey: "owner", pageId: "page" }
+    await manager.attach(request)
+    await manager.attach({ ...request, visible: false })
+    expect(events).toContainEqual({
+      type: "native.cover",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      pageId: "page",
+      url: "https://example.com",
+      dataUrl: "data:image/jpeg;base64,cHJldmlldw==",
+    })
+  })
+  test("updates visibility without detaching or recreating the native page", async () => {
+    const visibility: boolean[] = []
+    let attachCount = 0
+    let detachCount = 0
+    let bounds = { x: 0, y: 0, width: 1, height: 1 }
+    const view = {
+      webContents: {
+        focus() {},
+        getTitle: () => "",
+        getURL: () => "about:blank",
+        on() {},
+        off() {},
+      },
+      setBounds(next: typeof bounds) {
+        bounds = next
+      },
+      setVisible(visible: boolean) {
+        visibility.push(visible)
+      },
+    }
+    const pool = {
+      attach() {
+        attachCount += 1
+        return view
+      },
+      detach() {
+        detachCount += 1
+      },
+    }
+    const manager = new BrowserNativeViewManager(
+      { webContents: { getZoomFactor: () => 1, on() {}, off() {} } } as never,
+      pool as never,
+      () => {},
+    )
+    const hiddenRequest: BrowserNativeAttachRequest & { visible: boolean } = {
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: "scope:test:session:test",
+      pageId: "page-test",
+      bounds: { x: 12, y: 24, width: 640, height: 480 },
+      visible: false,
+    }
+
+    await manager.attach(hiddenRequest)
+    await manager.attach({ ...hiddenRequest, bounds: undefined, visible: true })
+
+    expect(visibility).toEqual([false, true])
+    expect(bounds).toEqual({ x: 12, y: 24, width: 640, height: 480 })
+    expect(attachCount).toBe(1)
+    expect(detachCount).toBe(0)
+  })
+
+  test("defaults older attach requests to visible", async () => {
+    const visibility: boolean[] = []
+    const view = {
+      webContents: {
+        focus() {},
+        getTitle: () => "",
+        getURL: () => "about:blank",
+        on() {},
+        off() {},
+      },
+      setBounds() {},
+      setVisible(visible: boolean) {
+        visibility.push(visible)
+      },
+    }
+    const pool = {
+      attach: () => view,
+      detach() {},
+    }
+    const manager = new BrowserNativeViewManager(
+      { webContents: { getZoomFactor: () => 1, on() {}, off() {} } } as never,
+      pool as never,
+      () => {},
+    )
+
+    await manager.attach({
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: "scope:test:session:test",
+      pageId: "page-test",
+    })
+
+    expect(visibility).toEqual([true])
+  })
+
+  test("atomically swaps an attached view when the page slot replaces its generation", async () => {
+    const operations: string[] = []
+    let replacement: ((view: any, previous: any) => void) | undefined
+    const makeView = (name: string) => ({
+      webContents: {
+        focus: () => operations.push(`focus:${name}`),
+        isFocused: () => true,
+        getTitle: () => "",
+        getURL: () => "about:blank",
+        on() {},
+        off() {},
+      },
+      getBounds: () => ({ x: 12, y: 24, width: 640, height: 480 }),
+      setBounds: () => operations.push(`bounds:${name}`),
+      getVisible: () => true,
+      setVisible: () => operations.push(`visible:${name}`),
+    })
+    const first = makeView("first")
+    const second = makeView("second")
+    const window = {
+      contentView: {
+        addChildView(view: unknown) {
+          operations.push(view === first ? "add:first" : "add:second")
+        },
+        removeChildView(view: unknown) {
+          operations.push(view === first ? "remove:first" : "remove:second")
+        },
+      },
+    }
+    const pool = {
+      attach: () => {
+        window.contentView.addChildView(first)
+        return first
+      },
+      detach() {},
+      onGeneration(_ownerKey: string, _pageId: string, listener: typeof replacement) {
+        replacement = listener
+        return () => undefined
+      },
+    }
+    const manager = new BrowserNativeViewManager(
+      { webContents: { getZoomFactor: () => 1, on() {}, off() {} }, contentView: window.contentView } as never,
+      pool as never,
+      () => {},
+    )
+    await manager.attach({
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: "scope:test:session:generation",
+      pageId: "page-generation",
+    })
+
+    replacement?.(second, first)
+
+    expect(operations).toContain("remove:first")
+    expect(operations).toContain("add:second")
+    expect(operations).toContain("bounds:second")
+    expect(operations).toContain("visible:second")
+    expect(operations).toContain("focus:second")
+  })
+})
+
+test("destroy releases listeners after the parent window has been destroyed", async () => {
+  const contents = new EventEmitter()
+  const pageContents = Object.assign(new EventEmitter(), { getURL: () => "about:blank" })
+  let destroyed = false
+  let detached = 0
+  let generationReleased = 0
+  const window = {
+    get webContents() {
+      if (destroyed) throw new Error("Object has been destroyed")
+      return contents
+    },
+  }
+  const manager = new BrowserNativeViewManager(
+    window as never,
+    {
+      attach: () => ({ webContents: pageContents, setVisible() {} }),
+      detach: () => detached++,
+      onGeneration: () => () => generationReleased++,
+    } as never,
+    () => {},
+  )
+  await manager.attach({ protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey: "owner", pageId: "page" })
+  destroyed = true
+  expect(() => manager.destroy()).not.toThrow()
+  expect(() => manager.destroy()).not.toThrow()
+  expect(detached).toBe(1)
+  expect(generationReleased).toBe(1)
+  expect(contents.eventNames()).toEqual([])
+  expect(pageContents.eventNames()).toEqual([])
+})

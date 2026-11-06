@@ -112,7 +112,7 @@
   /* Focus state */
   [data-slot="radio-group-wrapper"]:has([data-slot="radio-group-item-input"]:focus-visible)
     [data-slot="radio-group-indicator"] {
-    box-shadow: var(--shadow-xs-border-focus);
+    background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
   }
 
   /* Hide indicator when nothing is checked */

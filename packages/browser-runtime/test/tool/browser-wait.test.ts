@@ -1,0 +1,70 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { BrowserWaitTool } from "@ericsanchezok/synergy-browser-runtime/tools/browser-wait"
+import { BrowserToolHelper } from "@ericsanchezok/synergy-browser-runtime/tools/browser-shared"
+
+const originalResolvePage = BrowserToolHelper.resolvePage
+const originalExecute = BrowserToolHelper.execute
+
+beforeEach(() => {
+  BrowserToolHelper.resolvePage = async () =>
+    ({ id: "page-test", url: "https://example.com/", title: "Example", loading: false }) as never
+  BrowserToolHelper.execute = async () =>
+    ({
+      type: "wait",
+      pageId: "page-test",
+      matched: true,
+      elapsedMs: 312,
+      page: { id: "page-test", url: "https://example.com/", title: "Example", isLoading: false, lastActiveAt: null },
+    }) as never
+})
+
+afterEach(() => {
+  BrowserToolHelper.resolvePage = originalResolvePage
+  BrowserToolHelper.execute = originalExecute
+})
+
+function context() {
+  return {
+    sessionID: "ses_browser_wait_test",
+    messageID: "msg_browser_wait_test",
+    callID: "call_browser_wait_test",
+    agent: PrimaryAgentIdentity.names.coding,
+    abort: new AbortController().signal,
+    extra: {},
+    metadata() {},
+    async ask() {},
+  }
+}
+
+describe("tool.browser_wait", () => {
+  test("reports the satisfied condition with elapsed time and page state", async () => {
+    const tool = await BrowserWaitTool.init()
+    const result = await tool.execute(
+      { pageId: "page-test", condition: { type: "text", values: ["Ready"], match: "any" }, timeoutSeconds: 10 },
+      context(),
+    )
+
+    expect(result.output).toContain("Condition text was satisfied in 0.312s")
+    expect(result.metadata).toMatchObject({
+      condition: { type: "text", values: ["Ready"], match: "any" },
+      timeoutMs: 10_000,
+      matched: true,
+      elapsedMs: 312,
+      url: "https://example.com/",
+      title: "Example",
+      isLoading: false,
+    })
+  })
+
+  test("falls back to the configured timeout when elapsed time is absent", async () => {
+    BrowserToolHelper.execute = async () => ({ type: "wait", pageId: "page-test", matched: true }) as never
+    const tool = await BrowserWaitTool.init()
+    const result = await tool.execute(
+      { pageId: "page-test", condition: { type: "load", state: "load" }, timeoutSeconds: 10 },
+      context(),
+    )
+
+    expect(result.output).toContain("Condition load was satisfied within 10s")
+  })
+})

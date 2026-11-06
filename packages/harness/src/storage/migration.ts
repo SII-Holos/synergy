@@ -1,0 +1,189 @@
+import { MigrationRegistry } from "../migration/registry"
+import type { Migration } from "../migration/types"
+import { StorageCompat } from "./compat"
+import { Storage } from "./storage"
+import { StorageArtifactMigration } from "./artifact-migration"
+import { StorageDropScopeIndex } from "./drop-scope-index"
+import { StorageRecordsOwnerIndex } from "./owner-index"
+import { StorageFormatV3Migration } from "./format-v3-migration"
+import { StorageIncrementalVacuum } from "./incremental-vacuum"
+import { StorageFormatV3State } from "./format-v3-state"
+import { StoragePath } from "./path"
+import { EvidenceOwnerProjection } from "./evidence-owner-projection"
+import { UpgradeWork } from "./upgrade-work"
+
+export const migrations: Migration[] = [
+  {
+    id: "20261021-text-lexical-structure",
+    isApplied: async () => true,
+    scope: "global",
+    execution: "startup",
+    domain: "storage",
+    description: "Prepare the rebuildable ranked lexical index without reading historical bodies",
+    async up(progress) {
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20261010-demand-driven-history",
+    scope: "global",
+    execution: "startup",
+    description: "Keep historical imports paused until explicitly resumed; selected Sessions prepare on demand",
+    async up() {
+      await UpgradeWork.control("pause")
+    },
+  },
+  {
+    id: "20261001-text-projection-structure",
+    isApplied: async () => true,
+    scope: "global",
+    execution: "startup",
+    domain: "storage",
+    description: "Prepare bounded text projection storage without reading historical bodies",
+    async up(progress) {
+      progress(1, 1)
+    },
+  },
+  {
+    id: EvidenceOwnerProjection.id,
+    isApplied: async () => true,
+    scope: "global",
+    execution: "startup",
+    domain: "storage",
+    description: "Prepare incremental evidence owner statistics without scanning historical records at startup",
+    async up(progress) {
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20260929-retire-synergy-link",
+    emptyInput: [["synergy_link"], StoragePath.permissionRules()],
+    scope: "global",
+    execution: "startup",
+    description: "Remove retired Link targets and their obsolete permission rules",
+    async up(progress) {
+      await Storage.transaction(async () => {
+        const [stored] = await Storage.readMany<unknown>([StoragePath.permissionRules()])
+        if (Array.isArray(stored)) {
+          const kept = stored.filter(
+            (rule) => !rule || typeof rule !== "object" || rule.permission !== "shell_remote_execute",
+          )
+          if (kept.length !== stored.length) await Storage.write(StoragePath.permissionRules(), kept)
+        }
+        await Storage.removeTree(["synergy_link"])
+      })
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20260921-format-v3-maintenance-state",
+    isApplied: async () => Storage.current().store.options.backend === "postgres",
+    scope: "global",
+    execution: "startup",
+    description: "Separate committed format upgrades from resumable space reclamation",
+    async up() {
+      const store = Storage.current().store
+      const state = await StorageFormatV3State.read(store)
+      if (!state) return
+      await StorageFormatV3State.update(store, (current) => ({
+        ...current,
+        paused: current.paused ?? false,
+        releasedPages: current.releasedPages ?? 0,
+        invalidated: current.invalidated || (!current.fenced && store.keyEncodedAs === "hex"),
+      }))
+    },
+  },
+  {
+    id: "20260921-pending-owner-admission",
+    emptyInput: [["compat_catalog"]],
+    scope: "global",
+    execution: "startup",
+    description: "Protect unpublished historical records from business access",
+    async up() {
+      const store = Storage.current().store
+      for await (const locator of StorageCompat.catalog(store)) {
+        if (locator.status !== "imported")
+          await store.write(["compat_pending", locator.sessionID], { scopeID: locator.scopeID })
+      }
+    },
+  },
+  {
+    scope: "global",
+    id: StorageArtifactMigration.id,
+    description: "Pack legacy rollout artifacts with transactional byte references",
+    async up(progress) {
+      const handle = Storage.current()
+      let stage = "",
+        phase = 0
+      await StorageArtifactMigration.run({
+        dataRoot: handle.artifactDirectory,
+        store: handle.store,
+        progress(value) {
+          if (value.stage !== stage) {
+            stage = value.stage
+            phase++
+            progress(0, 0, phase)
+          }
+          progress(value.current, value.total, phase)
+        },
+      })
+      progress(1, 1, phase + 1)
+    },
+  },
+  {
+    scope: "global",
+    id: StorageIncrementalVacuum.id,
+    execution: "maintenance",
+    isApplied: () => Storage.current().store.incrementalVacuumEnabled(),
+    description: "Convert authoritative SQLite storage to incremental auto-vacuum",
+    domain: "storage",
+    async up(progress) {
+      progress(0, 0, 1)
+      await StorageIncrementalVacuum.run(progress)
+      progress(1, 1, 2)
+    },
+  },
+  {
+    id: StorageDropScopeIndex.id,
+    scope: "global",
+    execution: "startup",
+    description: "Drop the retired storage_records_scope index",
+    domain: "storage",
+    async up(progress) {
+      progress(0, 0, 1)
+      await StorageDropScopeIndex.run()
+      progress(1, 1, 1)
+    },
+  },
+  {
+    id: StorageRecordsOwnerIndex.id,
+    scope: "global",
+    execution: "startup",
+    description: "Create the storage_records_owner evidence enumeration index",
+    domain: "storage",
+    async up(progress) {
+      progress(0, 0, 1)
+      await StorageRecordsOwnerIndex.run()
+      progress(1, 1, 1)
+    },
+  },
+  {
+    id: StorageFormatV3Migration.id,
+    scope: "global",
+    execution: "maintenance",
+    dependsOn: [StorageIncrementalVacuum.id],
+    isApplied: () => StorageFormatV3Migration.isApplied(Storage.current().store),
+    description: "Rewrite records, nodes and artifact locators into the format 3 layout",
+    domain: "storage",
+    async up(progress) {
+      progress(0, 0, 1)
+      await StorageFormatV3Migration.run({
+        store: Storage.current().store,
+        progress: (current, total, phase) => progress(current, total, phase),
+      })
+    },
+  },
+]
+export function registerStorageMigrations() {
+  MigrationRegistry.register("storage", migrations)
+}

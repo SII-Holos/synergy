@@ -39,9 +39,17 @@ describe("capability metadata", () => {
 describe("permissionCapability", () => {
   test("maps registered permissions to their capability", () => {
     expect(permissionCapability("read")).toBe("file_read")
+    expect(permissionCapability("render")).toBe("session_state")
     expect(permissionCapability("bash")).toBe("shell")
     expect(permissionCapability("webfetch")).toBe("network_read")
     expect(permissionCapability("secrets")).toBe("secrets")
+  })
+
+  test("worktree archive shares the file-write permission of enter and leave", () => {
+    for (const permission of ["worktree_enter", "worktree_leave", "worktree_archive"]) {
+      expect(permissionCapability(permission)).toBe("file_write")
+      expect(permissionCategoryForKey(permissionCapability(permission))).toBe("files")
+    }
   })
 
   test("passes unknown permissions through unchanged", () => {

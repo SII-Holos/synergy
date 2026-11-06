@@ -1,0 +1,91 @@
+import { AgentTurn } from "../../src/session/agent-turn"
+import { runInProcessStream } from "../../src/session/agent-turn/in-process"
+import path from "node:path"
+import { registerPolicyWorkerEntrypoint } from "../../src/enforcement/policy-worker/process-host"
+import { RuntimeHandle, type RuntimeComposition } from "../../src/lifecycle/runtime"
+import { TransactionalStore } from "../../src/storage/transactional-store"
+import { runtimeHome } from "./runtime-home"
+import { ResourceHost } from "../../src/resources/host"
+
+export async function testRuntime(
+  options: {
+    home?: string
+    register?: () => void
+    composition?: RuntimeComposition
+    env?: Record<string, string | undefined>
+    postgres?: string
+    namespace?: string
+    traceClose?: boolean
+    resources?: ResourceHost.Source
+  } = {},
+) {
+  const fixture = await runtimeHome({ home: options.home })
+  const host = { ...fixture.host, env: { ...fixture.host.env, ...options.env } }
+  try {
+    const runtime = await RuntimeHandle.open({
+      host,
+      composition: {
+        ...options.composition,
+        register() {
+          AgentTurn.setInProcessStream(runInProcessStream)
+          ResourceHost.register(
+            options.resources ?? {
+              sample: async () => ({
+                sampledAt: Date.now(),
+                quality: "complete",
+                pressure: "normal",
+                domains: [{ kind: "physical", capacityBytes: 16 * 1024 ** 3, availableBytes: 8 * 1024 ** 3 }],
+                processRssBytes: 0,
+              }),
+            },
+          )
+          if (options.composition) options.composition.register()
+          else registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url))
+          options.register?.()
+        },
+      },
+      mode: "oneshot",
+      storage: {
+        kind: "owned",
+        async open() {
+          const store = await TransactionalStore.open(
+            options.postgres
+              ? { backend: "postgres", url: options.postgres, namespace: options.namespace ?? crypto.randomUUID() }
+              : {
+                  backend: "sqlite",
+                  filename: path.join(host.root, "authority.sqlite"),
+                  namespace: options.namespace ?? "test",
+                },
+          )
+          return {
+            handle: { store, artifactDirectory: path.join(host.root, "data") },
+            needsValidation: false,
+            async activate() {},
+          }
+        },
+      },
+    })
+    let closing: Promise<void> | undefined
+    async function closeWithTrace() {
+      const report = (stage: "runtime" | "fixture", state: "start" | "completed") =>
+        console.error("Runtime fixture close phase", JSON.stringify({ stage, state }))
+      report("runtime", "start")
+      try {
+        await runtime.close()
+        report("runtime", "completed")
+      } finally {
+        report("fixture", "start")
+        await fixture[Symbol.asyncDispose]()
+        report("fixture", "completed")
+      }
+    }
+    const close = () =>
+      (closing ??= options.traceClose
+        ? closeWithTrace()
+        : runtime.close().finally(() => fixture[Symbol.asyncDispose]()))
+    return { ...runtime, host, close, [Symbol.asyncDispose]: close }
+  } catch (error) {
+    await fixture[Symbol.asyncDispose]()
+    throw error
+  }
+}

@@ -15,13 +15,15 @@ Open a [GitHub Issue](https://github.com/SII-Holos/synergy/issues) with:
 
 If you're not sure whether something is a bug or intended behavior, open the issue anyway. We'd rather triage a question than miss a real problem.
 
+Substantial product additions, prompt/context changes and risky optimizations should start as experimental features. Follow [Develop a feature](.synergy/skill/develop-feature/SKILL.md) for declaration, disabled-state verification and graduation cleanup; fixes and behavior-preserving refactors do not automatically need flags.
+
 ## Suggesting Features
 
 For feature ideas or design discussions, open a [GitHub Issue](https://github.com/SII-Holos/synergy/issues) or start a [Discussion](https://github.com/SII-Holos/synergy/discussions). A good suggestion explains the problem you're trying to solve, not just the solution you have in mind — that context helps us find the right approach.
 
 ## Development Setup
 
-Use the Bun version pinned by the root `packageManager` field. Then:
+Use the Bun version pinned by the root `packageManager` field. `bun dev` checks the selected runtime before doing work; preparation does not upgrade a version manager's global selection. See [runtime selection and preparation](docs/reference/development.md#requirements-and-preparation). Then:
 
 ```bash
 git clone https://github.com/SII-Holos/synergy.git
@@ -39,7 +41,7 @@ Start the dev server:
 
 ```bash
 bun dev web            # start the server + Vite web UI
-bun dev desktop        # optional: start the Electron desktop shell too
+bun dev desktop        # alternative: server + Vite + Electron
 ```
 
 After editing code:
@@ -57,7 +59,8 @@ See the [development reference](docs/reference/development.md) for source modes,
 2. **Run the quality preflight.** Before opening your PR, run at minimum:
 
    ```bash
-   bun run quality:quick
+   bun run verify plan
+   bun run verify local --test <relevant-test-file>
    ```
 
    This checks formatting, linting, type-checking, monorepo dependency consistency, localization, package-guide and test-layout contracts, and package publishing validation. For a full check including all tests:
@@ -66,23 +69,23 @@ See the [development reference](docs/reference/development.md) for source modes,
    bun run quality
    ```
 
-   Core-runtime CI isolation can be reproduced from `packages/synergy` with `bun run test:ci`, which runs the complete suite as sequential fresh-process shards.
+   Harness CI isolation can be reproduced from `packages/harness` with `bun run test:ci`, which runs its complete suite as sequential fresh-process shards. Other runtime and business packages run their own tests; the root quality command includes the workspace graph.
 
    CI runs the full matrix — see [docs/operations/open-source-quality.md](docs/operations/open-source-quality.md) for the complete model.
 
    Frontend copy, accessibility text, and locale-sensitive formatting must also keep the localization catalogs and source contract current:
 
    ```bash
-   bun run --cwd packages/app i18n:extract
+   bun run --cwd apps/web i18n:extract
    bun run localization:check
    ```
 
    Browser capability or App bootstrap changes must also verify the source boundary and a genuine non-loopback HTTP origin:
 
    ```bash
-   bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
-   bun run --cwd packages/app build
-   bun packages/app/script/private-http-smoke.ts
+   bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts
+   bun run --cwd apps/web build
+   bun apps/web/script/private-http-smoke.ts
    ```
 
 3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
@@ -91,7 +94,7 @@ See the [development reference](docs/reference/development.md) for source modes,
 
 ### Pre-push vs CI layering
 
-The pre-push hook (`.husky/pre-push`) runs a fast subset: bun version check, formatting, lint, typecheck, and monorepo dependency validation. It does not run tests, secret scans, or workflow validation — those run in CI as separate parallel jobs. All CI jobs must pass for a PR to merge.
+The pre-push hook (`.husky/pre-push`) runs a fast subset: Bun version check, formatting, lint, typecheck, monorepo dependency validation, documentation, and decision validation. It does not run tests, secret scans, or workflow validation — those run in CI as separate parallel jobs. All CI jobs must pass for a PR to merge.
 
 ### Commit guidelines
 
@@ -116,19 +119,14 @@ When in doubt, look at a nearby file doing something similar and follow its lead
 
 ## Monorepo Structure
 
-Knowing where things live saves time:
+Choose the owner by responsibility. Harness owns execution and lifecycle mechanisms; Local Runtime supplies model and local-system implementations; CLI and Server expose execution through command-line and HTTP/WS interfaces; Presets explicitly assembles the complete product. Business packages own their services together with tools, routes, configuration, migrations and command contributions. Web and Desktop interfaces live under `apps/`.
 
-| Package            | Purpose                                            |
-| ------------------ | -------------------------------------------------- |
-| `packages/synergy` | Core runtime, server, CLI, agents, tools, sessions |
-| `packages/app`     | Web application                                    |
-| `packages/plugin`  | Plugin SDK (`@ericsanchezok/synergy-plugin`)       |
-| `packages/sdk/js`  | TypeScript SDK (`@ericsanchezok/synergy-sdk`)      |
-| `packages/ui`      | Shared UI components                               |
-| `packages/util`    | Shared utilities                                   |
+Follow the [architecture ownership map](docs/architecture/README.md#ownership-map) and [package map](docs/reference/packages.md) for package responsibilities, public imports and standalone builds. A package is a dependency and distribution unit; creating a package does not create another process. Import only declared exports and keep generic execution independent of optional business capabilities. Inspect adjacent owners before changing a shared operation.
 
-If your change touches one package, scan adjacent packages before assuming an abstraction boundary.
+The full installation still publishes the same `synergy` executable and complete default product. Source ownership changes must preserve command names and aliases, configuration and storage paths, migrations, API operation IDs, events, installed assets and update behavior. Validate both source startup and actual packaged installation when a change crosses those surfaces.
 
 ## Questions?
 
 If something isn't covered here, open a [Discussion](https://github.com/SII-Holos/synergy/discussions) or ask in an issue. There are no bad questions — only missing documentation that your question will help us write.
+
+For flaky failures and expensive fixtures, follow the [stability workflow](.synergy/skill/testing-guide/references/stability.md). Report original-batch reproduction, resource cleanup and cold/warm costs with test changes. `bun run test-policy:check` blocks focused tests and new retry or unisolated module-mock debt.

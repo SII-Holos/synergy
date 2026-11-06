@@ -1,0 +1,446 @@
+import { InputImages } from "./input-images"
+import { Context } from "../../util/context"
+import { RolloutTransportSchema } from "./transport-schema"
+import { record, RolloutRecordingError } from "./error"
+import { RolloutTiming } from "./timing"
+import { RolloutUsageCapture } from "./usage-capture"
+import { ObservabilityMetrics } from "../../observability/metrics"
+
+export namespace RolloutTransport {
+  export type Event = RolloutTransportSchema.Event
+  export type Sink = RolloutTransportSchema.Sink
+  export type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  export const sdkFetch: typeof globalThis.fetch = Object.assign(
+    (input: Parameters<typeof globalThis.fetch>[0], init?: Parameters<typeof globalThis.fetch>[1]) =>
+      fetch(globalThis.fetch, input, init),
+    { preconnect: globalThis.fetch.preconnect },
+  )
+  type Schedule = (callback: () => void, delay: number) => () => void
+  const schedule: Schedule = (callback, delay) => {
+    const timer = setTimeout(callback, delay)
+    return () => clearTimeout(timer)
+  }
+  const context = Context.create<{ sink: Sink; inputImages?: InputImages.Entry[]; schedule: Schedule }>(
+    "rollout.transport",
+  )
+  const responseHeaders = new Set(["x-request-id", "request-id", "x-amzn-requestid", "openai-processing-ms"])
+  const requestOptions = new Set([
+    "body",
+    "cache",
+    "credentials",
+    "headers",
+    "integrity",
+    "keepalive",
+    "method",
+    "mode",
+    "redirect",
+    "referrer",
+    "referrerPolicy",
+    "signal",
+    "duplex",
+    "window",
+  ])
+
+  const redactFailure = Context.create<boolean>("rollout-redact-errors")
+
+  export function redactErrors<T>(action: () => T): T {
+    return redactFailure.provide(true, action)
+  }
+
+  export function provide<T>(sink: Sink, action: () => T, options: { schedule?: Schedule } = {}): T {
+    return context.provide({ sink, schedule: options.schedule ?? schedule }, action)
+  }
+
+  export function inputImages(before: unknown) {
+    const current = context.tryUse()
+    const original = InputImages.compare(before, before).map((image) => image.sha256)
+    return (after: unknown) => {
+      if (current) current.inputImages = InputImages.retained(original, after)
+    }
+  }
+
+  export async function fetch(fetchFn: Fetch, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const current = context.tryUse()
+    const sink = current?.sink
+    const requestResponse: Fetch = async (request, options) => {
+      const response = await fetchFn(request, options)
+      if (!redactFailure.tryUse() || response.ok) return response
+      await response.body?.cancel()
+      return new Response(null, { status: response.status })
+    }
+    if (!sink) return requestResponse(input, init)
+    const attemptID = crypto.randomUUID()
+    const original = new Request(input, init)
+    const endpoint = new URL(original.url)
+    const controller = new AbortController()
+    const timing = RolloutTiming.create()
+    let content: ReturnType<typeof RolloutUsageCapture.create> | undefined
+    let finishing: Promise<void> | undefined
+    let recordingFailure: unknown
+    let responseOK = false
+    let cancelRequest: ((reason?: unknown) => Promise<void>) | undefined
+    async function emit(event: Event) {
+      if (recordingFailure) throw recordingFailure
+      const start = performance.now()
+      try {
+        await record(() => sink!(event))
+        if (event.type === "chunk") {
+          ObservabilityMetrics.record({
+            name: "rollout.transport.blocks",
+            value: 1,
+            unit: "count",
+            module: "llm",
+            labels: { channel: event.channel },
+            sampleRate: 1,
+          })
+          ObservabilityMetrics.record({
+            name: "rollout.transport.bytes",
+            value: event.data.byteLength,
+            unit: "bytes",
+            module: "llm",
+            labels: { channel: event.channel },
+            sampleRate: 1,
+          })
+        }
+      } catch (error) {
+        recordingFailure = error
+        controller.abort(error)
+        throw error
+      } finally {
+        ObservabilityMetrics.record({
+          name: "rollout.transport.archive_wait",
+          value: performance.now() - start,
+          unit: "ms",
+          module: "llm",
+          labels: { phase: event.type },
+          sampleRate: 0.02,
+        })
+      }
+    }
+    function finish(status: "completed" | "failed" | "cancelled", error?: unknown) {
+      timing.end()
+      finishing ??= (async () => {
+        await cancelRequest?.(error)
+        if (recordingFailure) throw recordingFailure
+        await emit({
+          type: "attempt-end",
+          attemptID,
+          status,
+          error: error instanceof Error ? error.message : undefined,
+          timing: timing.snapshot(),
+        })
+      })()
+      return finishing
+    }
+    function body(source: ReadableStream<Uint8Array>, channel: "request" | "response") {
+      const reader = source.getReader()
+      let cancelling = false
+      let pulling: Promise<void> | undefined
+      let closing: Promise<void> | undefined
+      let cancellation: Promise<void> | undefined
+      let upstreamCancellation: Promise<void> | undefined
+      let pending: Uint8Array | undefined
+      let nextRead: ReturnType<typeof reader.read> | undefined
+      let sourceEnded = false
+      let sourceFailure: unknown
+      let ahead: Promise<Uint8Array> | undefined
+      let delivering = true
+      let firstResponse = channel === "response"
+      const readNext = () =>
+        reader.read().then(
+          (next) => {
+            if (channel === "response") {
+              if (next.done) {
+                content?.finish()
+                timing.streaming(content?.streaming ?? false)
+                timing.end()
+              } else if (next.value.byteLength) {
+                timing.bytes()
+                content?.append(next.value)
+                timing.streaming(content?.streaming ?? false)
+              }
+            }
+            return next
+          },
+          (error) => {
+            if (channel === "response") timing.end()
+            throw error
+          },
+        )
+      async function readChunk() {
+        if (sourceFailure) throw sourceFailure
+        const buffer = new Uint8Array(RolloutTransportSchema.CHUNK_BYTES)
+        let filled = 0
+        let cancelTimer: (() => void) | undefined
+        let deadline: Promise<undefined> | undefined
+        try {
+          while (filled < buffer.byteLength && !sourceEnded) {
+            if (!pending) {
+              nextRead ??= readNext()
+              const next = deadline ? await Promise.race([nextRead, deadline]) : await nextRead
+              if (!next) break
+              nextRead = undefined
+              if (next.done) {
+                sourceEnded = true
+                break
+              }
+              pending = next.value
+            }
+            const length = Math.min(pending.byteLength, buffer.byteLength - filled)
+            buffer.set(pending.subarray(0, length), filled)
+            filled += length
+            pending = pending.byteLength > length ? pending.subarray(length) : undefined
+            if (filled && firstResponse) {
+              firstResponse = false
+              nextRead ??= readNext()
+              void nextRead.catch(() => {})
+              break
+            }
+            if (filled && !deadline)
+              deadline = new Promise((resolve) => {
+                cancelTimer = current!.schedule(() => resolve(undefined), channel === "response" ? 100 : 25)
+              })
+          }
+          return buffer.subarray(0, filled)
+        } catch (error) {
+          sourceFailure = error
+          if (filled) return buffer.subarray(0, filled)
+          throw error
+        } finally {
+          cancelTimer?.()
+        }
+      }
+      async function cancelUpstream(reason?: unknown) {
+        upstreamCancellation ??= reader.cancel(reason)
+        if (channel === "response") return upstreamCancellation
+        // A cloned upload can share cancellation acknowledgement with a live sibling.
+        void upstreamCancellation.catch(() => {})
+      }
+      function prefetch() {
+        if (channel !== "response" || sourceEnded || sourceFailure || cancelling) return
+        ahead = readChunk()
+        void ahead.then(
+          (chunk) => {
+            if (delivering && chunk.byteLength && !sourceEnded) timing.backpressure()
+          },
+          () => {},
+        )
+      }
+      function close(complete: boolean, reason?: unknown) {
+        closing ??= (async () => {
+          let cleanupError: unknown
+          try {
+            try {
+              if (!complete) await cancelUpstream(reason)
+            } catch (error) {
+              cleanupError = error
+            }
+            try {
+              if (ahead) {
+                const chunk = await ahead
+                ahead = undefined
+                if (chunk.byteLength && !recordingFailure)
+                  await emit({ type: "chunk", attemptID, channel, data: chunk, timing: timing.snapshot() })
+              }
+            } catch (error) {
+              cleanupError ??= error
+            }
+            try {
+              if (nextRead) {
+                const next = await nextRead
+                nextRead = undefined
+                if (!next.done) pending = next.value
+              }
+            } catch (error) {
+              cleanupError ??= error
+            }
+            while (pending?.byteLength && !recordingFailure) {
+              const data = pending.subarray(0, RolloutTransportSchema.CHUNK_BYTES)
+              pending = pending.subarray(data.byteLength)
+              await emit({
+                type: "chunk",
+                attemptID,
+                channel,
+                data,
+                ...(channel === "response" ? { timing: timing.snapshot() } : {}),
+              })
+            }
+          } catch (error) {
+            cleanupError = error
+          } finally {
+            try {
+              reader.releaseLock()
+            } catch (error) {
+              cleanupError ??= error
+            }
+          }
+          if (recordingFailure) throw recordingFailure
+          await emit({ type: "body-end", attemptID, channel, complete })
+          if (cleanupError && cleanupError !== reason && cleanupError !== sourceFailure) throw cleanupError
+        })()
+        return closing
+      }
+      let outputController: ReadableStreamDefaultController<Uint8Array>
+      function cancel(reason?: unknown) {
+        if (channel === "response") timing.end()
+        cancelling = true
+        cancellation ??= (async () => {
+          try {
+            await cancelUpstream(reason)
+          } catch {
+            // close() reports the same cancellation failure after admitted writes drain.
+          }
+          await pulling
+          await close(false, reason)
+          if (channel === "response") await finish("cancelled", reason)
+        })()
+        return cancellation
+      }
+      if (channel === "request") {
+        cancelRequest = async (reason) => {
+          try {
+            await cancel(reason)
+          } finally {
+            outputController.error(reason ?? new DOMException("Request upload ended", "AbortError"))
+          }
+        }
+      }
+      prefetch()
+      return new ReadableStream<Uint8Array>(
+        {
+          start(output) {
+            outputController = output
+          },
+          pull(output) {
+            pulling = (async () => {
+              try {
+                delivering = false
+                const current = ahead
+                ahead = undefined
+                const chunk = await (current ?? readChunk())
+                prefetch()
+                delivering = true
+                if (chunk.byteLength) {
+                  await emit({
+                    type: "chunk",
+                    attemptID,
+                    channel,
+                    data: chunk,
+                    ...(channel === "response" ? { timing: timing.snapshot() } : {}),
+                  })
+                  if (!cancelling) output.enqueue(chunk)
+                }
+                delivering = false
+                if (cancelling) return
+                if (!chunk.byteLength && sourceEnded) {
+                  await close(true)
+                  if (channel === "response") await finish(responseOK ? "completed" : "failed")
+                  output.close()
+                }
+              } catch (error) {
+                if (cancelling) return
+                let failure = error
+                try {
+                  await close(false, error)
+                  if (channel === "response" && !RolloutRecordingError.isInstance(error))
+                    await finish(original.signal.aborted ? "cancelled" : "failed", error)
+                } catch (cleanupError) {
+                  failure = recordingFailure ?? cleanupError
+                }
+                output.error(recordingFailure ?? failure)
+              }
+            })()
+            return pulling
+          },
+          cancel,
+        },
+        { highWaterMark: 0 },
+      )
+    }
+    await emit({
+      type: "attempt-start",
+      attemptID,
+      url: endpoint.origin + endpoint.pathname,
+      method: original.method,
+      mediaType: original.headers.get("content-type") ?? "application/octet-stream",
+      inputImages: current?.inputImages,
+      timing: timing.snapshot(),
+    })
+    const requestBody = original.body ? body(original.body, "request") : undefined
+    if (!requestBody) await emit({ type: "body-end", attemptID, channel: "request", complete: true })
+    const buffered =
+      typeof init?.body === "string" || init?.body instanceof ArrayBuffer || ArrayBuffer.isView(init?.body)
+    // Preserve a materialized SDK request's known length through HTTP proxies.
+    const wireBody =
+      requestBody && buffered ? new Uint8Array(await new Response(requestBody).arrayBuffer()) : requestBody
+    const request = new Request(original, {
+      ...(wireBody ? { body: wireBody, ...(buffered ? {} : { duplex: "half" }) } : {}),
+      signal: AbortSignal.any([original.signal, controller.signal]),
+    })
+    let response: Response | undefined
+    try {
+      const transportOptions = Object.fromEntries(
+        Object.entries(init ?? {}).filter(([key]) => !requestOptions.has(key)),
+      )
+      timing.sent()
+      const fetching = requestResponse(
+        request,
+        Object.keys(transportOptions).length ? transportOptions : undefined,
+      ).then(
+        (value) => {
+          const mediaType = value.headers.get("content-type") ?? "application/octet-stream"
+          timing.headers(false)
+          content = RolloutUsageCapture.create("unknown", mediaType, undefined, undefined, timing.content)
+          if (!value.body) timing.end()
+          responseOK = value.ok
+          return value.body
+            ? new Response(body(value.body, "response"), {
+                status: value.status,
+                statusText: value.statusText,
+                headers: value.headers,
+              })
+            : value
+        },
+        (error) => {
+          timing.end()
+          throw error
+        },
+      )
+      // Observe rejection while the durable sent marker is crossing the worker boundary.
+      void fetching.catch(() => {})
+      await emit({
+        type: "attempt-sent",
+        attemptID,
+        timing: timing.snapshot(),
+        requestImages:
+          current?.inputImages?.some((image) => image.status === "included") && wireBody instanceof Uint8Array
+            ? InputImages.wire(new TextDecoder().decode(wireBody))
+            : undefined,
+      })
+      response = await fetching
+      responseOK = response.ok
+      await emit({
+        type: "response",
+        attemptID,
+        status: response.status,
+        mediaType: response.headers.get("content-type") ?? "application/octet-stream",
+        headers: Object.fromEntries([...response.headers].filter(([key]) => responseHeaders.has(key.toLowerCase()))),
+        timing: timing.snapshot(),
+      })
+      if (!response.body) {
+        await emit({ type: "body-end", attemptID, channel: "response", complete: true })
+        await finish(responseOK ? "completed" : "failed")
+        return response
+      }
+      return response
+    } catch (error) {
+      try {
+        if (response?.body && !response.body.locked) await response.body.cancel(error)
+      } catch (cleanupError) {
+        if (!recordingFailure) throw cleanupError
+      }
+      await finish(original.signal.aborted ? "cancelled" : "failed", error)
+      throw recordingFailure ?? error
+    }
+  }
+}

@@ -1,0 +1,79 @@
+import { afterEach, describe, expect, mock, test } from "bun:test"
+import { AgendaReactor } from "../../src/agenda/reactor"
+import { AgendaStore } from "../../src/agenda/store"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+const originalInvoke = SessionInvoke.invoke
+const originalDriveRequest = SessionDrive.request
+
+afterEach(() =>
+  runtime.run(() => {
+    ;(SessionInvoke.invoke as typeof SessionInvoke.invoke) = originalInvoke
+    ;(SessionDrive.request as typeof SessionDrive.request) = originalDriveRequest
+  }),
+)
+
+describe("Agenda internal Session guidance", () => {
+  test("fires hidden system-origin guidance into the origin Session without an Agenda child Session", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Scheduled follow-up" })
+          let invokeCalls = 0
+          let drivenSessionID: string | undefined
+          ;(SessionInvoke.invoke as unknown as (...args: unknown[]) => unknown) = mock(async () => {
+            invokeCalls++
+            throw new Error("Session guidance must not create an Agenda execution Session")
+          })
+          ;(SessionDrive.request as unknown as (...args: unknown[]) => unknown) = mock(async (...args: unknown[]) => {
+            drivenSessionID = args[0] as string
+            return true
+          })
+
+          const item = await AgendaStore.create({
+            title: "Follow-up reminder",
+            prompt: "The Scheduled follow-up deadline is approaching.",
+            triggers: [{ type: "at", at: Date.now() + 60_000 }],
+            createdBy: "agent",
+            sessionID: session.id,
+            tags: ["fixture", "guidance"],
+            deliveryMode: "session_guidance",
+          })
+
+          const result = await AgendaReactor.execute(
+            { type: "manual", source: item.id, timestamp: Date.now() },
+            ScopeContext.current.scope.id,
+          )
+
+          expect(result.sessionID).toBeUndefined()
+          expect(invokeCalls).toBe(0)
+          expect(drivenSessionID).toBe(session.id)
+
+          const inbox = await SessionInbox.list(session.id)
+          expect(inbox).toHaveLength(1)
+          expect(inbox[0]!.mode).toBe("steer")
+          expect(inbox[0]!.message?.visible).toBe(false)
+          expect(inbox[0]!.message?.origin?.type).toBe("agenda")
+          expect(inbox[0]!.message?.parts).toEqual([
+            {
+              type: "text",
+              text: "The Scheduled follow-up deadline is approaching.",
+              origin: "system",
+            },
+          ])
+        },
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

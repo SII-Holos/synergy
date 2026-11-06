@@ -1,0 +1,3 @@
+[test]
+preload = ["@ericsanchezok/synergy-testing/preload"]
+timeout = 10000

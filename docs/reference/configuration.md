@@ -2,7 +2,7 @@
 
 # Configuration Reference
 
-Generated from the config domain definitions in `packages/synergy/src/config/domain.ts` and the Zod schema in `packages/synergy/src/config/schema.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).
+Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/presets/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).
 
 ## Domains
 
@@ -12,17 +12,23 @@ Generated from the config domain definitions in `packages/synergy/src/config/dom
 | `models` | `10-models.jsonc` | merge |
 | `providers` | `20-providers.jsonc` | merge |
 | `library` | `30-library.jsonc` | merge |
+| `anima` | `35-anima.jsonc` | merge |
+| `digital-twin` | `35-digital-twin.jsonc` | merge |
 | `mcp` | `40-mcp.jsonc` | merge |
 | `plugins` | `50-plugins.jsonc` | merge |
 | `skills` | `55-skills.jsonc` | merge |
+| `worktree` | `57-worktree.jsonc` | merge |
 | `agents` | `60-agents.jsonc` | merge |
 | `commands` | `70-commands.jsonc` | merge |
 | `permissions` | `80-permissions.jsonc` | merge |
 | `channels` | `90-channels.jsonc` | merge |
-| `holos` | `100-holos.jsonc` | merge |
 | `email` | `110-email.jsonc` | merge |
 | `github` | `115-github.jsonc` | merge |
 | `runtime` | `120-runtime.jsonc` | merge |
+| `voice` | `125-voice.jsonc` | merge |
+| `storage` | `130-storage.jsonc` | replace-domain |
+| `resources` | `135-resources.jsonc` | replace-domain |
+| `features` | `140-features.jsonc` | replace-domain |
 
 ## General
 
@@ -31,19 +37,23 @@ File: `00-general.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `$schema` | string (optional) | JSON schema reference for configuration validation |
-| `theme` | string (optional) | Theme name to use for the interface |
-| `keybinds` | Keybinds.optional (optional) | Custom keybind configurations |
-| `toast` | "info" \| "success" \| "warning" \| "error" (optional) | Toast notification preferences |
 | `logLevel` | Log.Level.optional (optional) | Log level |
 | `snapshot` | boolean (optional) |  |
-| `compactReasoning` | boolean (optional) | Show live reasoning in a compact single-line viewport |
 | `username` | string (optional) | Custom username to display in conversations instead of system username |
-| `locale` | "system" \| "en" \| "zh-CN" (optional) | UI locale (system = follow OS, default: system) |
-| `activityDisplay` | "full" \| "balanced" \| "minimal" (optional) | How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced) |
-| `defaultSessionWorkspace` | "main" \| "worktree" (optional) | Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout. |
-| `layout` | Layout.optional (optional) | @deprecated Always uses stretch layout. |
+| `attachment` | AttachmentConfig.optional (optional) | Prompt attachment upload limits (count and byte sizes) |
 | `embedding` | EmbeddingConfig |  |
 | `rerank` | RerankConfig |  |
+| `theme` | string (optional) | Theme name to use for the interface |
+| `keybinds` | Keybinds.optional (optional) | Custom keybind configurations |
+| `toast` | object (optional) | Toast notification preferences |
+| `compactReasoning` | boolean (optional) | Show a compact reasoning preview in the execution process (default: false) |
+| `preferWorkBrief` | boolean (optional) | Prefer a tool call's purpose description over its action and target when available (default: false) |
+| `welcomeGames` | boolean (optional) | Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting. |
+| `locale` | "system" \| "en" \| "zh-CN" (optional) | UI locale (system = follow OS, default: system) |
+| `activityDisplay` | "full" \| "balanced" \| "minimal" (optional) | Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced) |
+| `defaultSessionWorkspace` | "main" \| "worktree" (optional) | Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout. |
+| `defaultSessionEnvironmentProfile` | string (optional) | Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials. |
+| `layout` | Layout.optional (optional) | @deprecated Always uses stretch layout. |
 
 ## Models
 
@@ -51,15 +61,15 @@ File: `10-models.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `model` | string (optional) | Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5 |
-| `nano_model` | string (optional) | Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. |
-| `mini_model` | string (optional) | Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. |
-| `mid_model` | string (optional) | Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. |
-| `thinking_model` | string (optional) | Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. |
-| `long_context_model` | string (optional) | Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. |
-| `creative_model` | string (optional) | Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. |
-| `vision_model` | string (optional) | Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. |
-| `role_variant` | string (optional) | Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. |
+| `model` | string (optional) | Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role |
+| `nano_model` | string (optional) | Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model. null clears the role's model |
+| `mini_model` | string (optional) | Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model. null clears the role's model |
+| `mid_model` | string (optional) | Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model. null clears the role's model |
+| `thinking_model` | string (optional) | Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set. null clears the role's model |
+| `long_context_model` | string (optional) | Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set. null clears the role's model |
+| `creative_model` | string (optional) | Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set. null clears the role's model |
+| `vision_model` | string (optional) | Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability. null clears the role's model |
+| `role_variant` | record (optional) | Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant |
 | `quick_switcher` | QuickSwitcher.optional (optional) | Quick switcher model visibility preferences |
 
 ## Providers
@@ -68,10 +78,9 @@ File: `20-providers.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `provider` | string (optional) | Custom provider configurations and model overrides |
-| `providerCatalog` | ProviderCatalog.optional (optional) | Signed remote provider catalog configuration |
-| `enabled_providers` | string (optional) | When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters |
-| `disabled_providers` | string (optional) | Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters |
+| `provider` | record (optional) | Custom provider configurations and model overrides |
+| `enabled_providers` | array (optional) | When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters |
+| `disabled_providers` | array (optional) | Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters |
 
 ## Library
 
@@ -81,14 +90,30 @@ File: `30-library.jsonc` · Merge: merge
 | --- | --- | --- |
 | `library` | LibraryConfig |  |
 
+## Anima
+
+File: `35-anima.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `anima` | object (optional) |  |
+
+## Digital Twin
+
+File: `35-digital-twin.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `digitalTwin` | DigitalTwinContract.Settings.optional (optional) | Next-input prediction: automatic defaults to false; model defaults to the current Session model |
+
 ## MCP
 
 File: `40-mcp.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `mcp` | object (optional) | MCP (Model Context Protocol) server configurations |
-| `mcpDefaults` | McpDefaults.optional (optional) |  |
+| `mcp` | record (optional) | MCP (Model Context Protocol) server configurations |
+| `mcpDefaults` | McpDefaults.optional (optional) | Default settings applied to all MCP servers that don't override them |
 
 ## Plugins
 
@@ -97,7 +122,7 @@ File: `50-plugins.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `plugin` | string (optional) |  |
-| `pluginConfig` | string (optional) | Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config. |
+| `pluginConfig` | record (optional) | Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config. |
 | `pluginRuntimePolicy` | PluginRuntimePolicy.optional (optional) | Plugin runtime isolation policy configuration |
 | `pluginMarketplace` | PluginMarketplace.optional (optional) | Public plugin marketplace registry configuration |
 
@@ -109,19 +134,29 @@ File: `55-skills.jsonc` · Merge: merge
 | --- | --- | --- |
 | `skills` | SkillsConfig |  |
 
+## Worktrees
+
+File: `57-worktree.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `worktree` | WorktreeConfig |  |
+
 ## Agents
 
 File: `60-agents.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `default_agent` | string (optional) | Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid. |
+| `default_agent` | string (optional) | Default agent to use when none is specified. Must be a visible primary agent. Falls back to Atlas, then another visible primary if unavailable. |
+| `fileToolGroup` | FileToolGroup.optional (optional) |  |
 | `agent` | object (optional) | Agent configuration |
-| `external_agent` | string (optional) | External agent configurations (e.g. codex, claude-code) |
-| `instructions` | string (optional) | Additional instruction files or patterns to include |
-| `project_doc_fallback_filenames` | string (optional) | Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory |
+| `instructions` | array (optional) | Additional instruction files or patterns to include |
+| `project_doc_fallback_filenames` | array (optional) | Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory |
 | `project_doc_max_bytes` | number (optional) | Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery) |
-| `category` | string (optional) | Custom category configurations for background tasks. Categories define model and prompt presets. |
+| `category` | record (optional) | Custom category configurations for background tasks. Categories define model and prompt presets. |
+| `prompt` | object (optional) |  |
+| `external_agent` | record (optional) | External agent configurations (e.g. codex, claude-code) |
 
 ## Commands
 
@@ -129,7 +164,7 @@ File: `70-commands.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `command` | string |  |
+| `command` | record (optional) | Command configuration |
 
 ## Permissions
 
@@ -138,8 +173,10 @@ File: `80-permissions.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `permission` | Permission.optional (optional) |  |
-| `tools` | string (optional) |  |
+| `tools` | record (optional) |  |
 | `controlProfile` | ControlProfileId.optional (optional) | Default control profile applied to all agents |
+| `nonInteractiveControlProfile` | "autonomous" \| "full_access" (optional) | Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with. |
+| `fullAccessAcknowledged` | boolean (optional) | Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary. |
 | `sandbox` | SandboxConfig.optional (optional) | Sandbox configuration for workspace boundary enforcement |
 | `smartAllow` | boolean (optional) | Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow |
 
@@ -149,16 +186,7 @@ File: `90-channels.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `channel` | string (optional) | Channel configurations for messaging platform integrations |
-
-## Holos
-
-File: `100-holos.jsonc` · Merge: merge
-
-| Key | Type | Description |
-| --- | --- | --- |
-| `holos` | Holos.optional (optional) | Holos platform configuration |
-| `enterprise` | object (optional) | Enterprise URL |
+| `channel` | record (optional) | Channel configurations for selected messaging providers |
 
 ## Email
 
@@ -166,15 +194,15 @@ File: `110-email.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `email` | Email.optional (optional) | Outgoing email configuration |
+| `email` | Email.optional (optional) |  |
 
-## GitHub
+## Github
 
 File: `115-github.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `github` | Github.optional (optional) | GitHub integration settings (git identity sync, agenda watch) |
+| `github` | Github.optional (optional) |  |
 
 ## Runtime
 
@@ -185,13 +213,47 @@ File: `120-runtime.jsonc` · Merge: merge
 | `server` | Server.optional (optional) | Server configuration for synergy serve and web commands |
 | `timeout` | number (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
 | `cortex` | object (optional) | Cortex task scheduling configuration |
-| `execution` | object (optional) | Maximum queued Agent turns waiting for a worker (default: 256) |
+| `execution` | object (optional) | Process isolation, worker recycling, and bounded execution scheduling |
 | `watcher` | object (optional) |  |
-| `formatter` | object (optional) |  |
-| `lsp` | object (optional) |  |
-| `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
-| `lspDiagnostics` | "error" \| "warning" (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
-| `question` | object (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
-| `compaction` | object (optional) | Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8. |
-| `experimental` | object (optional) | Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it |
+| `question` | object (optional) |  |
+| `retry` | object (optional) | Automatic session model retry configuration |
+| `compaction` | object (optional) |  |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
+| `boss` | object (optional) |  |
+| `formatter` | union (optional) |  |
+| `lsp` | union (optional) |  |
+| `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
+| `lspDiagnostics` | object (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
+| `toolExposure` | object (optional) |  |
+
+## Voice
+
+File: `125-voice.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `voice` | VoiceConfig |  |
+
+## Storage
+
+File: `130-storage.jsonc` · Merge: replace-domain
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `storage` | StorageConfiguration.optional (optional) |  |
+
+## Workspaces and Environments
+
+File: `135-resources.jsonc` · Merge: replace-domain
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `resources` | ResourcesConfig |  |
+
+## Experimental features
+
+File: `140-features.jsonc` · Merge: replace-domain
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `features` | FeaturePreferences.optional (optional) |  |

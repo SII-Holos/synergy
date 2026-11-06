@@ -27,11 +27,20 @@ export interface SynergyCapabilityDefinition {
 }
 
 export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinition> = {
-  shell_read: {
-    category: "runtime",
-    severity: "low",
-    title: "Run read-only shell commands",
-    description: "Can run shell commands classified as read-only.",
+  computer_observe: {
+    category: "platform",
+    severity: "high",
+    title: "Observe desktop applications",
+    description:
+      "Can enumerate native applications and read screenshots and accessibility information in Full Access mode.",
+    nonBypassable: true,
+  },
+  computer_interact: {
+    category: "platform",
+    severity: "high",
+    title: "Control desktop applications",
+    description: "Can operate observed native application windows using background input in Full Access mode.",
+    nonBypassable: true,
   },
   shell: {
     category: "runtime",
@@ -52,13 +61,6 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     title: "Run remote-write shell commands",
     description: "Can modify existing remote state outside ordinary branch/PR publication workflows.",
   },
-  shell_remote_execute: {
-    category: "runtime",
-    severity: "high",
-    title: "Execute commands on remote host",
-    description: "Can run bash/process commands on a remote Synergy Link host.",
-    nonBypassable: true,
-  },
   shell_remote_publish: {
     category: "runtime",
     severity: "medium",
@@ -70,14 +72,16 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     category: "runtime",
     severity: "high",
     title: "Run destructive shell commands",
-    description: "Can run commands that may delete, overwrite, or rewrite important local state.",
+    description:
+      "Can run commands that the OS sandbox cannot express: host-level or system-location destruction, irreversible local history loss, and privilege escalation.",
     nonBypassable: true,
   },
   shell_hardline: {
     category: "runtime",
     severity: "high",
     title: "Run forbidden shell commands",
-    description: "Matches shell commands that Synergy treats as a hard safety boundary.",
+    description:
+      "Matches the machine-wide commands Synergy refuses under every profile: filesystem-root and home destruction, filesystem-format and power tools, fork bombs, and raw-device writes.",
     nonBypassable: true,
   },
   file_write: {
@@ -318,10 +322,8 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
 export const SYNERGY_PROFILE_CAPABILITIES = [
   "file_read",
   "file_write",
-  "shell_read",
   "shell",
   "shell_branch_mutation",
-  "shell_remote_execute",
   "shell_remote_publish",
   "shell_remote_write",
   "shell_destructive",
@@ -351,6 +353,8 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "protected_op",
   "session_state",
   "browser_interact",
+  "computer_observe",
+  "computer_interact",
   "browser_inspect",
   "browser_eval_readonly",
   "browser_eval_trusted",
@@ -373,20 +377,17 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   edit: "file_write",
   write: "file_write",
   revise_file: "file_write",
+  apply_patch: "file_write",
   resolve_conflicts: "file_write",
   save_file: "file_write",
   bash: "shell",
   external_directory: "file_external_read",
   webfetch: "network_read",
-  websearch: "network_read",
-  arxiv_search: "network_read",
-  arxiv_download: "network_read",
   download: "network_read",
   network_request: "network_request",
   scan_document: "file_read",
   look_at: "file_read",
   view_image: "file_read",
-  attach: "file_read",
   ast_grep: "file_read",
   lsp: "file_read",
   dagread: "file_read",
@@ -395,7 +396,7 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   task_output: "file_read",
   question: "file_read",
   skill: "file_read",
-  render: "file_read",
+  render: "session_state",
   agenda_list: "file_read",
   agenda_logs: "file_read",
   session_list: "file_read",
@@ -414,6 +415,8 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   doom_loop: "session_state",
   worktree_enter: "file_write",
   worktree_leave: "file_write",
+  worktree_archive: "file_write",
+  agent_config: "config:write",
   session_data: "session_data",
   workspace_data: "workspace_data",
   "config:read": "config:read",

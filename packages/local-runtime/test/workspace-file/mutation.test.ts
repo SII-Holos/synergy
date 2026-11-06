@@ -1,0 +1,302 @@
+import { afterAll, expect, test } from "bun:test"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { NativeFileMutation } from "../../src/file/mutation-core"
+import { WorkspaceFileService } from "../../src/workspace-file/service"
+import { WorkspaceFileRead } from "../../src/workspace-file/read"
+import { testRuntime } from "../support/runtime"
+
+const runtime = await testRuntime()
+afterAll(() => runtime.close())
+
+test("a file that grows after metadata capture cannot bypass the preview read bound", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const filename = path.join(tmp.path, "image.png")
+        await fs.writeFile(filename, Buffer.from([137, 80, 78, 71]))
+        const result = await WorkspaceFileRead.read(
+          { path: filename, mode: "document" },
+          {
+            resolve: WorkspaceFileService.resolve,
+            validate: WorkspaceFileService.assertRealpathInside,
+            node: async (input) => {
+              const node = await WorkspaceFileService.node(input)
+              await fs.writeFile(filename, Buffer.alloc(11 * 1024 * 1024))
+              return node
+            },
+          },
+        ).then(
+          () => "accepted",
+          (error: Error) => error.name,
+        )
+        expect(result).toBe("WorkspaceFileWriteConflictError")
+      },
+    })
+  }))
+
+test("reading an internal symbolic link returns the full target content", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const content = "original target bytes\r\n".repeat(50)
+        await fs.writeFile(path.join(tmp.path, "target.txt"), content)
+        await fs.symlink("target.txt", path.join(tmp.path, "alias.txt"), "file")
+        const result = await WorkspaceFileService.read({ path: "alias.txt", mode: "document" })
+        expect(result).toMatchObject({
+          kind: "text",
+          content,
+          totalBytes: Buffer.byteLength(content),
+          contentVersion: FileTime.version(content),
+        })
+        expect(result.node.size).toBe(Buffer.byteLength(content))
+      },
+    })
+  }))
+
+test("atomic file replacement preserves mode without changing an external hard link", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await using other = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const file = path.join(tmp.path, "script.sh")
+        const alias = path.join(other.path, "alias.sh")
+        await Bun.write(file, "old\n")
+        await fs.chmod(file, 0o751)
+        const mode = (await fs.stat(file)).mode & 0o777
+        await fs.link(file, alias)
+        await WorkspaceFileService.write({
+          path: "script.sh",
+          content: "new\n",
+          expectedVersion: FileTime.version("old\n"),
+          encoding: "utf-8",
+          createParents: false,
+          conflictPolicy: "fail",
+        })
+        expect(await Bun.file(file).text()).toBe("new\n")
+        expect(await Bun.file(alias).text()).toBe("old\n")
+        expect((await fs.stat(file)).mode & 0o777).toBe(mode)
+      },
+    })
+  }))
+
+test("file creation uses a missing-content precondition and preserves base64 bytes", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const bytes = Uint8Array.from([0, 255, 128, 13, 10, 1])
+        const input = {
+          path: "nested/ data.bin ",
+          content: Buffer.from(bytes).toString("base64"),
+          expectedVersion: null,
+          encoding: "base64" as const,
+          createParents: true,
+          conflictPolicy: "fail" as const,
+        }
+        const result = await WorkspaceFileService.write(input)
+        expect(result.existed).toBe(false)
+        expect(result.contentVersion).toBe(FileTime.version(bytes))
+        expect(await Bun.file(path.join(tmp.path, input.path)).bytes()).toEqual(bytes)
+        await expect(WorkspaceFileService.write(input)).rejects.toThrow("changed")
+      },
+    })
+  }))
+
+test("invalid UTF-8 remains binary and malformed base64 cannot create a file", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Bun.write(path.join(tmp.path, "invalid.txt"), Uint8Array.from([0x61, 0xff, 0x62]))
+        expect((await WorkspaceFileService.read({ path: "invalid.txt", mode: "document" })).kind).toBe("binary")
+        await expect(
+          WorkspaceFileService.write({
+            path: "new.bin",
+            content: "AA!",
+            encoding: "base64",
+            expectedVersion: null,
+            createParents: false,
+            conflictPolicy: "fail",
+          }),
+        ).rejects.toThrow("base64")
+        expect(await Bun.file(path.join(tmp.path, "new.bin")).exists()).toBe(false)
+      },
+    })
+  }))
+
+test("concurrent native processes cannot both replace the same content version", async () => {
+  await using tmp = await tmpdir()
+  const target = path.join(tmp.path, "shared.txt")
+  await Bun.write(target, "old")
+  const implementation = path.resolve(import.meta.dir, "../../src/file/mutation-core.ts")
+  const jobs = ["one", "two"].map((content) =>
+    Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `
+    import { NativeFileMutation } from ${JSON.stringify(implementation)};
+    try { await NativeFileMutation.write({ path: ${JSON.stringify(target)}, content: ${JSON.stringify(content)}, expectedVersion: ${JSON.stringify(FileTime.version("old"))} }); console.log("written") }
+    catch (error) { console.log(error.name); process.exitCode = error.name === "WorkspaceFileWriteConflictError" ? 0 : 1 }
+  `,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    ),
+  )
+  try {
+    const results = await Promise.all(
+      jobs.map(async (job) => ({ output: await new Response(job.stdout).text(), code: await job.exited })),
+    )
+    expect(results.every((result) => result.code === 0)).toBe(true)
+    expect(results.map((result) => result.output.trim()).sort()).toEqual(["WorkspaceFileWriteConflictError", "written"])
+    expect(["one", "two"]).toContain(await Bun.file(target).text())
+    expect((await fs.readdir(tmp.path)).filter((name) => name.includes(".synergy-write-"))).toEqual([])
+  } finally {
+    for (const job of jobs) if (job.exitCode === null) job.kill()
+  }
+}, 10_000)
+
+test.skipIf(process.platform === "win32")(
+  "explicit native write modes are exact under a restrictive umask",
+  async () => {
+    await using tmp = await tmpdir()
+    const implementation = path.resolve(import.meta.dir, "../../src/file/mutation-core.ts")
+    const job = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `
+        import fs from "node:fs/promises";
+        import path from "node:path";
+        import { NativeFileMutation } from ${JSON.stringify(implementation)};
+        process.umask(0o077);
+        const root = ${JSON.stringify(tmp.path)};
+        const modes = [];
+        for (const mode of [0o751, 0o777, 0]) {
+          const filename = path.join(root, "nested", String(mode));
+          await NativeFileMutation.write({ path: filename, content: "created", expectedVersion: null, createParents: true, mode });
+          modes.push((await fs.stat(filename)).mode & 0o777);
+        }
+        const filename = path.join(root, "default");
+        await NativeFileMutation.write({ path: filename, content: "created", expectedVersion: null });
+        const defaultMode = (await fs.stat(filename)).mode & 0o777;
+        await fs.chmod(filename, 0o731);
+        await NativeFileMutation.write({ path: filename, content: "preserved" });
+        const preservedMode = (await fs.stat(filename)).mode & 0o777;
+        await NativeFileMutation.write({ path: filename, content: "replaced", mode: 0o750 });
+        console.log(JSON.stringify({ modes, defaultMode, preservedMode, replacedMode: (await fs.stat(filename)).mode & 0o777, content: await fs.readFile(filename, "utf8") }));
+      `,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    try {
+      const [output, error, code] = await Promise.all([
+        new Response(job.stdout).text(),
+        new Response(job.stderr).text(),
+        job.exited,
+      ])
+      expect(error).toBe("")
+      expect(code).toBe(0)
+      expect(JSON.parse(output)).toEqual({
+        modes: [0o751, 0o777, 0],
+        defaultMode: 0o600,
+        preservedMode: 0o731,
+        replacedMode: 0o750,
+        content: "replaced",
+      })
+    } finally {
+      if (job.exitCode === null) job.kill()
+    }
+  },
+)
+
+test("invalid native write modes cannot create files or parents", async () => {
+  await using tmp = await tmpdir()
+  for (const mode of [-1, 0o1000, 1.5, NaN, Infinity]) {
+    const input = { path: path.join(tmp.path, "absent", "file"), content: "never", createParents: true, mode }
+    await expect(NativeFileMutation.write(input)).rejects.toThrow()
+    expect(await fs.stat(path.dirname(input.path)).catch(() => undefined)).toBeUndefined()
+  }
+})
+
+test.skipIf(process.platform === "win32")(
+  "explicit write modes cannot bypass native version or mode checks",
+  async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "file")
+    await Bun.write(filename, "original")
+    const entries = (await fs.readdir(tmp.path)).sort()
+    await fs.chmod(filename, 0o600)
+    const input = { path: filename, content: "never", mode: 0o777 }
+    await expect(NativeFileMutation.write({ ...input, expectedVersion: "stale" })).rejects.toThrow("changed")
+    expect((await fs.stat(filename)).mode & 0o777).toBe(0o600)
+    let validations = 0
+    await expect(
+      NativeFileMutation.write({
+        ...input,
+        expectedVersion: FileTime.version("original"),
+        async validate() {
+          if (++validations === 2) await fs.chmod(filename, 0o640)
+        },
+      }),
+    ).rejects.toThrow("changed")
+    expect(await Bun.file(filename).text()).toBe("original")
+    expect((await fs.stat(filename)).mode & 0o777).toBe(0o640)
+    await fs.chmod(filename, 0o444)
+    await expect(NativeFileMutation.write(input)).rejects.toThrow("read-only")
+    expect((await fs.stat(filename)).mode & 0o777).toBe(0o444)
+    expect((await fs.readdir(tmp.path)).sort()).toEqual(entries)
+  },
+)
+
+test("a changed parent symlink or cancelled write leaves the targets untouched", async () => {
+  await using tmp = await tmpdir()
+  await using other = await tmpdir()
+  const original = path.join(tmp.path, "original")
+  const link = path.join(tmp.path, "link")
+  await fs.mkdir(original)
+  await fs.symlink(original, link, "dir")
+  await Bun.write(path.join(original, "a.txt"), "old")
+  await Bun.write(path.join(other.path, "a.txt"), "external")
+  let validations = 0
+  await expect(
+    NativeFileMutation.write({
+      path: path.join(link, "a.txt"),
+      content: "new",
+      expectedVersion: FileTime.version("old"),
+      mode: 0o751,
+      async validate() {
+        if (++validations === 1) {
+          await fs.unlink(link)
+          await fs.symlink(other.path, link, "dir")
+        }
+      },
+    }),
+  ).rejects.toThrow("changed")
+  expect(await Bun.file(path.join(original, "a.txt")).text()).toBe("old")
+  expect(await Bun.file(path.join(other.path, "a.txt")).text()).toBe("external")
+  const controller = new AbortController()
+  await expect(
+    NativeFileMutation.write({
+      path: path.join(original, "a.txt"),
+      content: "new",
+      signal: controller.signal,
+      async validate() {
+        controller.abort(new Error("cancelled"))
+      },
+    }),
+  ).rejects.toThrow("cancelled")
+  expect((await fs.readdir(original)).sort()).toEqual(["a.txt"])
+})

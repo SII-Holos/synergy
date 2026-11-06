@@ -6,14 +6,33 @@ useDefault = true
 [allowlist]
 description = "Repository fixtures and explicit fake token markers."
 paths = [
-  '''packages/synergy/test/.*/fixtures/.*''',
-  '''packages/synergy/test/tool/fixtures/.*'''
+  '''packages/(acp|code-tools|external-agents|formatter|link-client|lsp|mcp)/test/.*/fixtures/.*''',
+  '''packages/browser-runtime/test/.*/fixtures/.*''',
+  '''packages/cli/test/.*/fixtures/.*''',
+  '''packages/computer-runtime/test/.*/fixtures/.*''',
+  '''packages/connections/test/.*/fixtures/.*''',
+  '''packages/harness/test/.*/fixtures/.*''',
+  '''packages/library/test/.*/fixtures/.*''',
+  '''packages/media/test/.*/fixtures/.*''',
+  '''packages/note/test/.*/fixtures/.*''',
+  '''packages/plugin-host/test/.*/fixtures/.*''',
+  '''packages/presets/test/.*/fixtures/.*''',
+  '''packages/local-runtime/test/.*/fixtures/.*''',
+  '''packages/server/test/.*/fixtures/.*''',
+  '''packages/testing/test/.*/fixtures/.*''',
+  '''packages/workbench/test/.*/fixtures/.*''',
+  '''packages/workflows/test/.*/fixtures/.*'''
 ]
 regexes = [
   '''example[_-]?(api|auth)?[_-]?key''',
   '''fake[_-]?(token|secret|key)''',
   '''dummy[_-]?(token|secret|key)''',
-  '''placeholder[_-]?(token|secret|key)'''
+  '''placeholder[_-]?(token|secret|key)''',
+  # Literal option in public error-stack test names retained in the local-24 research evidence.
+  '''^includeCauses=direct$''',
+  # Public evidence SHA-256 values next to the credential-owner error in
+  # docs/research/context-efficiency/2026-09-24-process-waiting-study.csv.
+  '''^(54f763e95755d5e1faf433c0b40c7fde516f517cc839e77dee94456bb040d209|1b10242832688931d059961b6cff6900280c10453c44a06b2e772ed0b0295317)$'''
 ]
 stopwords = [
   # Public Feishu wiki node / doc tokens used in release-log-workflow skill:
@@ -22,9 +41,9 @@ stopwords = [
   "DUT9wguAFiMl6pkFL8gcHWrmnoc",
   "OGrmdkSyPoxLdrxLc9xceKH7nfd",
   # Public OAuth client IDs from provider modules:
-  # - Ov23li8tweQw6odWQebz: packages/synergy/src/provider/copilot.ts · CopilotOAuth.OAUTH_CLIENT_ID
-  # - 9d1c250a-e61b-44d9-88ed-5944d1962f5e: packages/synergy/src/provider/anthropic-oauth.ts · AnthropicOAuth.OAUTH_CLIENT_ID
-  # - b1a00492-073a-47ea-816f-4c329264a828: packages/synergy/src/provider/grok.ts · GrokProvider.OAUTH_CLIENT_ID (public Grok CLI OAuth client, from https://x.ai/cli/install.sh)
+  # - Ov23li8tweQw6odWQebz: packages/harness/src/provider/copilot.ts · CopilotOAuth.OAUTH_CLIENT_ID
+  # - 9d1c250a-e61b-44d9-88ed-5944d1962f5e: packages/harness/src/provider/anthropic-oauth.ts · AnthropicOAuth.OAUTH_CLIENT_ID
+  # - b1a00492-073a-47ea-816f-4c329264a828: packages/harness/src/provider/grok.ts · GrokProvider.OAUTH_CLIENT_ID (public Grok CLI OAuth client, from https://x.ai/cli/install.sh)
   "Ov23li8tweQw6odWQebz",
   "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
   "b1a00492-073a-47ea-816f-4c329264a828"

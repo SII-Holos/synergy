@@ -11,7 +11,6 @@ describe("first-party tool title copy", () => {
       [CLASSIFIER_LABEL_DESC.blueprint, "Manage Blueprints"],
       [TOOL_TITLE_DESC.bash, "Execute command"],
       [TOOL_TITLE_DESC.webfetch, "Read web page"],
-      [TOOL_TITLE_DESC.websearch, "Search web"],
       [TOOL_TITLE_DESC.session_list, "View sessions"],
       [TOOL_TITLE_DESC.scope_list, "View Scopes"],
       [TOOL_TITLE_DESC.blueprints, "View Blueprints"],

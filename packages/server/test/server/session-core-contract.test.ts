@@ -1,0 +1,315 @@
+import { expect, test } from "bun:test"
+import { Hono } from "hono"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { createScopeBootstrapRoute } from "../../src/server/scope-bootstrap-route"
+import { SessionRoute } from "../../src/server/session"
+import { SessionExportRoute } from "../../src/server/session-export"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+const app = new Hono().route("/session", SessionRoute()).route("/session", SessionExportRoute())
+const json = (method: string, body: unknown) => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+})
+
+test("core session reads and bootstrap share read-only long-term review metadata without Workbench", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Long-term review fixture" })
+        const empty = await Session.create({ title: "Unreviewed fixture" })
+        const memory = { markdown: "# Existing knowledge", revision: 1 }
+        await Session.update(session.id, (draft) => {
+          draft.longTermMemory = memory
+        })
+        const reviewedThrough = { created: 12, messageID: Identifier.ascending("message") }
+        const source = { version: 1, digest: "a".repeat(64) }
+        await Storage.write(
+          StoragePath.sessionLongTermMemory(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(session.id)),
+          { reviewedThrough, source },
+        )
+        const detail = await app.request(`/session/${session.id}`)
+        expect(detail.status).toBe(200)
+        const info = await detail.json()
+        expect(info).toMatchObject({ longTermMemory: memory, longTermMemoryReview: { reviewedThrough } })
+        expect(info.longTermMemoryReview).toEqual({ reviewedThrough })
+        const list = await (await app.request("/session")).json()
+        expect(list.data.find((item: Session.Info) => item.id === session.id)).toEqual(info)
+        expect(list.data.find((item: Session.Info) => item.id === empty.id)).not.toHaveProperty("longTermMemoryReview")
+        const bootstrap = new Hono().route("/scope", createScopeBootstrapRoute())
+        for (const path of ["/scope/bootstrap-core", "/scope/bootstrap"]) {
+          const response = await bootstrap.request(path)
+          expect(response.status).toBe(200)
+          const data = await response.json()
+          expect(data.sessions.data.find((item: Session.Info) => item.id === session.id)).toEqual(info)
+        }
+        const patched = await app.request(
+          `/session/${session.id}`,
+          json("PATCH", {
+            title: "Retained review",
+            longTermMemoryReview: { reviewedThrough: { ...reviewedThrough, created: 999 } },
+          }),
+        )
+        expect(patched.status).toBe(200)
+        expect(await patched.json()).toHaveProperty("longTermMemoryReview", { reviewedThrough })
+        expect(await Storage.read(["sessions", session.scope.id, session.id, "info"])).not.toHaveProperty(
+          "longTermMemoryReview",
+        )
+      },
+    })
+  }))
+
+test("POST and PATCH /session preserve normalized tags", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const createdResponse = await app.request(
+          "/session",
+          json("POST", { title: "Tagged route fixture", tags: ["# focus", " focus", "focus"] }),
+        )
+        expect(createdResponse.status).toBe(200)
+        const created = (await createdResponse.json()) as Session.Info
+        expect(created.tags).toEqual(["focus"])
+
+        const filteredResponse = await app.request("/session?tag=%23focus&parentOnly=true")
+        expect(filteredResponse.status).toBe(200)
+        const filtered = (await filteredResponse.json()) as { total: number; data: Session.Info[] }
+        expect(filtered.total).toBe(1)
+        expect(filtered.data.map((session) => session.id)).toContain(created.id)
+
+        const patchedResponse = await app.request(
+          `/session/${created.id}`,
+          json("PATCH", { tags: ["# planning", "  planning ", "planning"] }),
+        )
+        expect(patchedResponse.status).toBe(200)
+        expect((await patchedResponse.json()).tags).toEqual(["planning"])
+
+        const patchedFilteredResponse = await app.request("/session?tag=%23%20planning&parentOnly=true")
+        expect(patchedFilteredResponse.status).toBe(200)
+        expect((await patchedFilteredResponse.json()).total).toBe(1)
+
+        await app.request(`/session/${created.id}`, { method: "DELETE" })
+      },
+    })
+  }))
+
+test("POST /session normalizes and bounds a tags array", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const normalized = await app.request(
+          "/session",
+          json("POST", { title: "Canonical tags", tags: ["", " # ", "# focus", " focus", "focus", 42] }),
+        )
+        expect(normalized.status).toBe(400)
+
+        const defaulted = await app.request("/session", json("POST", { title: "Default tags" }))
+        expect(defaulted.status).toBe(200)
+        expect((await defaulted.json()).tags).toEqual([])
+
+        const duplicateBounded = await app.request(
+          "/session",
+          json("POST", { title: "Duplicate tags", tags: Array(21).fill("# focus") }),
+        )
+        expect(duplicateBounded.status).toBe(200)
+        expect((await duplicateBounded.json()).tags).toEqual(["focus"])
+
+        const canonical = await app.request(
+          "/session",
+          json("POST", { title: "Canonical tags", tags: ["", " # ", "# focus", " focus", "focus"] }),
+        )
+        expect(canonical.status).toBe(200)
+        expect((await canonical.json()).tags).toEqual(["focus"])
+
+        const tooLong = await app.request("/session", json("POST", { title: "Long tag", tags: [`#${"a".repeat(41)}`] }))
+        expect(tooLong.status).toBe(400)
+
+        const tooMany = await app.request(
+          "/session",
+          json("POST", {
+            title: "Too many tags",
+            tags: Array.from({ length: 21 }, (_, index) => `tag-${index}`),
+          }),
+        )
+        expect(tooMany.status).toBe(400)
+
+        expect(await app.request("/session?tag=&parentOnly=true")).toHaveProperty("status", 400)
+      },
+    })
+  }))
+
+test("core HTTP sessions support listing, fork, file export and import without product domains", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const create = await app.request("/session", json("POST", { title: "Route research fixture" }))
+        expect(create.status).toBe(200)
+        const session = (await create.json()) as Session.Info
+        expect((await (await app.request(`/session/${session.id}`)).json()).id).toBe(session.id)
+        const list = await (await app.request("/session?search=Route%20research&limit=2&offset=0")).json()
+        expect(list.data.map((item: Session.Info) => item.id)).toEqual([session.id])
+        expect(list.total).toBe(1)
+        expect((await app.request("/session/status")).status).toBe(200)
+        for (const resource of ["children", "todo", "dag", "message", "diff"]) {
+          const response = await app.request(`/session/${session.id}/${resource}`)
+          expect(response.status).toBe(200)
+          expect(await response.json()).toEqual(
+            resource === "children" ? { items: [], nextCursor: null, total: 0 } : [],
+          )
+        }
+        expect((await app.request(`/session/${session.id}/message/page?limit=1`)).status).toBe(200)
+        const invalidCursor = await app.request(`/session/${session.id}/message/page?cursor=invalid`)
+        expect(invalidCursor.status).toBe(400)
+        const forkResponse = await app.request(`/session/${session.id}/fork`, json("POST", {}))
+        expect(forkResponse.status).toBe(200)
+        const fork = (await forkResponse.json()) as Session.Info
+        expect(fork.id).not.toBe(session.id)
+        const updated = await app.request(
+          `/session/${session.id}`,
+          json("PATCH", { title: "Renamed research fixture", pinned: 1 }),
+        )
+        expect(updated.status).toBe(200)
+        expect((await updated.json()).title).toBe("Renamed research fixture")
+        expect((await app.request(`/session/${session.id}/export/estimate`)).status).toBe(200)
+        const download = await app.request(`/session/${session.id}/export`)
+        expect(download.headers.get("content-type")).toContain("application/gzip")
+        const data = new Uint8Array(await download.arrayBuffer())
+        const report = JSON.parse(Buffer.from(Bun.gunzipSync(data)).toString())
+        expect(report.rootSessionID).toBe(session.id)
+        expect((await app.request(`/session/${session.id}/export?run=invalid`)).status).toBe(400)
+        const form = new FormData()
+        form.set("file", new File([data], "session.json.gz", { type: "application/gzip" }))
+        const imported = await app.request("/session/import", { method: "POST", body: form })
+        expect(imported.status).toBe(200)
+        const importedInfo = (await imported.json()) as { rootSessionID: string; sessionCount: number }
+        expect(importedInfo.sessionCount).toBe(1)
+        expect((await Session.get(importedInfo.rootSessionID)).title).toContain("Renamed research fixture")
+        const malformed = new FormData()
+        malformed.set("file", new File(["not json"], "broken.json"))
+        expect((await app.request("/session/import", { method: "POST", body: malformed })).status).toBe(400)
+        const missing = new FormData()
+        missing.set("file", "not a file")
+        expect((await app.request("/session/import", { method: "POST", body: missing })).status).toBe(400)
+        expect((await app.request(`/session/${session.id}/abort`, { method: "POST" })).status).toBe(200)
+        for (const id of [session.id, fork.id, importedInfo.rootSessionID])
+          expect((await app.request(`/session/${id}`, { method: "DELETE" })).status).toBe(200)
+        expect((await Session.list()).data).toEqual([])
+      },
+    })
+  }))
+
+test("abort reports what it actually did instead of an unconditional success", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const create = await app.request("/session", json("POST", { title: "Abort contract fixture" }))
+        const session = (await create.json()) as Session.Info
+
+        const response = await app.request(`/session/${session.id}/abort`, { method: "POST" })
+        expect(response.status).toBe(200)
+        const result = (await response.json()) as {
+          outcome: string
+          repaired: boolean
+          abandoned: boolean
+          paused: boolean
+        }
+
+        // The payload must distinguish "a running turn was stopped" from "nothing
+        // was running"; a bare `true` made a no-op stop indistinguishable from a
+        // real one, which is what left the stuck session un-abortable.
+        expect(Object.keys(result).sort()).toEqual(["abandoned", "outcome", "paused", "repaired"])
+        expect(["idle", "not_found"]).toContain(result.outcome)
+        expect(result.repaired).toBe(false)
+        expect(result.abandoned).toBe(false)
+        // The stop still records the pause latch: the session is now stopped and
+        // awaits an explicit continue, which is a real state change the client
+        // must be told about rather than a silent success.
+        expect(result.paused).toBe(true)
+      },
+    })
+  }))
+
+test("POST /session/:id/part/pages refreshes a message window in a single request", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const create = await app.request("/session", json("POST", { title: "Part pages batch fixture" }))
+        const session = (await create.json()) as Session.Info
+        const messageIDs: string[] = []
+        const partIDs = new Map<string, string[]>()
+        for (let index = 0; index < 3; index++) {
+          const messageID = `msg_batch_${index.toString(16).padStart(21, "0")}`
+          messageIDs.push(messageID)
+          await Session.updateMessage({
+            id: messageID,
+            sessionID: session.id,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            time: { created: index + 1 },
+            isRoot: index === 0,
+            visible: true,
+          })
+          const parts = Array.from(
+            { length: index + 2 },
+            (_, part) => `prt_batch_${index.toString().padStart(2, "0")}_${part.toString().padStart(2, "0")}`,
+          )
+          partIDs.set(messageID, parts)
+          for (const [part, partID] of parts.entries())
+            await Session.updatePart({
+              id: partID,
+              messageID,
+              sessionID: session.id,
+              type: "text",
+              text: `batch m${index} p${part}`,
+            })
+        }
+        const response = await app.request(
+          `/session/${session.id}/part/pages`,
+          json("POST", { messageIDs, limit: 100 }),
+        )
+        expect(response.status).toBe(200)
+        const pages = (await response.json()) as Record<
+          string,
+          { items: { id: string; messageID: string }[]; hasMore: boolean; nextCursor: string | null }
+        >
+        expect(Object.keys(pages)).toEqual(messageIDs)
+        for (const messageID of messageIDs) {
+          expect(pages[messageID].items.map((part) => part.id)).toEqual(partIDs.get(messageID) ?? [])
+          expect(pages[messageID].hasMore).toBe(false)
+          expect(pages[messageID].nextCursor).toBeNull()
+        }
+        const invalid = await app.request(`/session/${session.id}/part/pages`, json("POST", { messageIDs: [] }))
+        expect(invalid.status).toBe(400)
+        const missing = await app.request(
+          `/session/${session.id}/part/pages`,
+          json("POST", { messageIDs: ["msg_0000000000000000000000000000"] }),
+        )
+        // Contract parity with the single-message part/page route: an unknown
+        // message surfaces as the same server-side error, not a silent 200.
+        expect(missing.status).toBe(500)
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

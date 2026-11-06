@@ -1,0 +1,9 @@
+OpenAI Codex
+Copyright 2025 OpenAI
+
+The patch parser and matching behavior in src/file-patch.ts are adapted from
+https://github.com/openai/codex/tree/160b2b1ef62114eeb41e41e5e3be0000d944b713/codex-rs/apply-patch/src
+under the Apache License, Version 2.0. The license is included in LICENSE.codex.
+
+Synergy modifications retain the selected Workspace execution boundary, preserve
+BOM and terminal-newline state, and report hunk-level recovery diagnostics.

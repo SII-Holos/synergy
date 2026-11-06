@@ -7,7 +7,13 @@ import {
 } from "./contribution.js"
 import type { PluginActivationContext } from "./context.js"
 import type { PluginManifest, PluginManifestContribution } from "./manifest.js"
-import { PLUGIN_API_4_BASE_SYNERGY_RANGE, PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
+import {
+  PLUGIN_UI_6_BASE_SYNERGY_RANGE,
+  PLUGIN_UI_API_VERSION,
+  PLUGIN_API_4_BASE_SYNERGY_RANGE,
+  PLUGIN_API_VERSION,
+  PLUGIN_MANIFEST_VERSION,
+} from "./version.js"
 import { PluginToolId } from "./ids.js"
 import { HOST_OWNED_MESSAGE_TYPES, PLUGIN_MODEL_ROLES } from "./plugin-types.js"
 
@@ -48,8 +54,9 @@ export interface PluginDefinition extends PluginDefinitionInput {
 
 export interface CompiledPluginArtifacts {
   generation: string
+  skins?: Record<string, Pick<Extract<PluginManifestContribution, { kind: "ui.skin" }>, "sha256" | "assets">>
   runtime?: { entry: string; sha256: string }
-  ui?: { entry: string; sha256: string; exports?: Record<string, string> }
+  ui?: NonNullable<PluginManifest["artifacts"]["ui"]> & { exports?: Record<string, string> }
 }
 
 function validateId(id: string, label: string) {
@@ -107,6 +114,9 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
       }
     }
     const handlerId = contributionHandlerId(contribution)
+    if (contribution.kind === "ui.shell" && !contribution.requires?.includes("ui.shell")) {
+      throw new Error(`Contribution "${contribution.id}" requires ui.shell`)
+    }
     if (handlerId) handlerIds.push(handlerId)
     if (contribution.kind === "hook" && contribution.point === "session.user-message.after") {
       if (!contribution.requires?.includes("session.read")) {
@@ -228,6 +238,7 @@ function compileContribution(
       return {
         ...base,
         kind: "tool",
+        ...(contribution.requiresWorkspace === undefined ? {} : { requiresWorkspace: contribution.requiresWorkspace }),
         description: contribution.description,
         input: schemaToJsonSchema(contribution.input),
         ...(contribution.exposure ? { exposure: contribution.exposure } : {}),
@@ -272,8 +283,27 @@ function compileContribution(
         surface: contribution.surface,
         cardinality: contribution.cardinality,
         requiresSession: contribution.requiresSession,
+        retention: contribution.retention,
         defaultResource: contribution.defaultResource,
         component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
+      }
+    case "ui.command":
+    case "ui.menu":
+      return { ...contribution }
+    case "ui.shell":
+      return {
+        ...base,
+        kind: "ui.shell",
+        label: contribution.label,
+        icon: contribution.icon,
+        order: contribution.order,
+        component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`)!,
+        pages: Object.fromEntries(
+          Object.entries(contribution.pages ?? {}).map(([page, component]) => [
+            page,
+            compiledComponent(component, artifacts, `${contribution.kind}:${contribution.id}:${page}`)!,
+          ]),
+        ),
       }
     case "ui.navigationItem":
       return {
@@ -369,6 +399,11 @@ function compileContribution(
       }
     case "ui.theme":
       return { ...base, kind: "ui.theme", label: contribution.label, path: contribution.path }
+    case "ui.skin": {
+      const skin = artifacts.skins?.[contribution.id]
+      if (!skin) throw new Error(`Missing compiled Skin assets for ${contribution.id}`)
+      return { ...base, kind: "ui.skin", label: contribution.label, path: contribution.path, ...skin }
+    }
     case "ui.icon":
       return { ...base, kind: "ui.icon", path: contribution.path }
     case "lifecycle.install":
@@ -384,10 +419,25 @@ export function compilePluginManifest(
   definition: PluginDefinition,
   artifacts: CompiledPluginArtifacts,
 ): PluginManifest {
+  const requiresUIBaseline =
+    artifacts.ui?.apiVersion === PLUGIN_UI_API_VERSION ||
+    definition.contributions.some(
+      (item) => item.kind === "ui.skin" || item.kind === "ui.command" || item.kind === "ui.menu",
+    )
+  const synergy = !requiresUIBaseline
+    ? definition.compatibility.synergy
+    : definition.compatibility.synergy === PLUGIN_API_4_BASE_SYNERGY_RANGE
+      ? PLUGIN_UI_6_BASE_SYNERGY_RANGE
+      : definition.compatibility.synergy
+          .split("||")
+          .flatMap((range) =>
+            PLUGIN_UI_6_BASE_SYNERGY_RANGE.split("||").map((baseline) => `${baseline.trim()} ${range.trim()}`),
+          )
+          .join(" || ")
   const manifest: PluginManifest = {
     manifestVersion: PLUGIN_MANIFEST_VERSION,
     apiVersion: PLUGIN_API_VERSION,
-    compatibility: definition.compatibility,
+    compatibility: { synergy },
     id: definition.id,
     name: definition.name ?? definition.id,
     version: definition.version,
@@ -403,7 +453,16 @@ export function compilePluginManifest(
     artifacts: {
       generation: artifacts.generation,
       ...(artifacts.runtime ? { runtime: artifacts.runtime } : {}),
-      ...(artifacts.ui ? { ui: { entry: artifacts.ui.entry, sha256: artifacts.ui.sha256 } } : {}),
+      ...(artifacts.ui
+        ? {
+            ui: {
+              entry: artifacts.ui.entry,
+              sha256: artifacts.ui.sha256,
+              ...(artifacts.ui.apiVersion ? { apiVersion: artifacts.ui.apiVersion } : {}),
+              ...(artifacts.ui.resources ? { resources: artifacts.ui.resources } : {}),
+            },
+          }
+        : {}),
     },
   }
   return manifest

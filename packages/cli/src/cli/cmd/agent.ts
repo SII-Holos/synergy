@@ -1,0 +1,244 @@
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import * as prompts from "@clack/prompts"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
+import { AgentConfig } from "@ericsanchezok/synergy-harness/agent/config-crud"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { EOL } from "os"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import type { Argv } from "yargs"
+
+type AgentMode = "all" | "primary" | "subagent"
+
+const SHARED_TOOLS = [
+  "bash",
+  "process",
+  "file_search",
+  "webfetch",
+  "task",
+  "todowrite",
+  "todoread",
+  "dagwrite",
+  "dagread",
+]
+
+const AgentCreateCommand = cmd({
+  command: "create",
+  describe: "create a new agent",
+  builder: (yargs: Argv) =>
+    yargs
+      .option("path", {
+        type: "string",
+        describe: "directory path to generate the agent file",
+      })
+      .option("description", {
+        type: "string",
+        describe: "what the agent should do",
+      })
+      .option("mode", {
+        type: "string",
+        describe: "agent mode",
+        choices: ["all", "primary", "subagent"] as const,
+      })
+      .option("tools", {
+        type: "string",
+        describe:
+          "comma-separated tool permission allowlist (default: all); fileToolGroup in scoped configuration selects the file interface",
+      })
+      .option("model", {
+        type: "string",
+        alias: ["m"],
+        describe: "model to use in the format of provider/model",
+      }),
+  async handler(args) {
+    const toolScope = ScopeContext.tryScope() ?? (await Scope.resolve({ directory: process.cwd() }))
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const availableTools = [
+          ...SHARED_TOOLS,
+          ...(await ScopeContext.provide({ scope: toolScope, fn: () => ToolRegistry.fileInterfaceIDs() })),
+        ]
+        const cliPath = args.path
+        const cliDescription = args.description
+        const cliMode = args.mode as AgentMode | undefined
+        const cliTools = args.tools
+
+        const isFullyNonInteractive = cliPath && cliDescription && cliMode && cliTools !== undefined
+
+        if (!isFullyNonInteractive) {
+          UI.empty()
+          prompts.intro("Create agent")
+        }
+
+        const instanceScope = ScopeContext.current.scope
+
+        // Determine scope/path
+        let targetDirectory: string | undefined
+        let scope: "global" | "project" = "global"
+        if (cliPath) {
+          targetDirectory = cliPath
+        } else if (instanceScope.type === "project" && instanceScope.local?.vcs === "git") {
+          const scopeResult = await prompts.select({
+            message: "Location",
+            options: [
+              {
+                label: "Current project",
+                value: "project" as const,
+                hint: ScopeContext.current.directory,
+              },
+              {
+                label: "Global",
+                value: "global" as const,
+                hint: Global.Path.config,
+              },
+            ],
+          })
+          if (prompts.isCancel(scopeResult)) throw new UI.CancelledError()
+          scope = scopeResult
+        }
+
+        // Get description
+        let description: string
+        if (cliDescription) {
+          description = cliDescription
+        } else {
+          const query = await prompts.text({
+            message: "Description",
+            placeholder: "What should this agent do?",
+            validate: (x) => (x && x.length > 0 ? undefined : "Required"),
+          })
+          if (prompts.isCancel(query)) throw new UI.CancelledError()
+          description = query
+        }
+
+        // Generate agent
+        const spinner = prompts.spinner()
+        spinner.start("Generating agent configuration...")
+        const model = args.model ? Provider.parseModel(args.model) : undefined
+        const generated = await Agent.generate({ description, model }).catch((error) => {
+          spinner.error(`LLM failed to generate agent: ${error.message}`)
+          if (isFullyNonInteractive) process.exit(1)
+          throw new UI.CancelledError()
+        })
+        spinner.stop(`Agent ${generated.identifier} generated`)
+
+        // Select tools
+        let selectedTools: string[]
+        if (cliTools !== undefined) {
+          selectedTools = cliTools ? cliTools.split(",").map((t) => t.trim()) : availableTools
+        } else {
+          const result = await prompts.multiselect({
+            message: "Select tools to enable",
+            options: availableTools.map((tool) => ({
+              label: tool,
+              value: tool,
+            })),
+            initialValues: availableTools,
+          })
+          if (prompts.isCancel(result)) throw new UI.CancelledError()
+          selectedTools = result
+        }
+
+        // Get mode
+        let mode: AgentMode
+        if (cliMode) {
+          mode = cliMode
+        } else {
+          const modeResult = await prompts.select({
+            message: "Agent mode",
+            options: [
+              {
+                label: "All",
+                value: "all" as const,
+                hint: "Can function in both primary and subagent roles",
+              },
+              {
+                label: "Primary",
+                value: "primary" as const,
+                hint: "Acts as a primary/main agent",
+              },
+              {
+                label: "Subagent",
+                value: "subagent" as const,
+                hint: "Can be used as a subagent by other agents",
+              },
+            ],
+            initialValue: "all" as const,
+          })
+          if (prompts.isCancel(modeResult)) throw new UI.CancelledError()
+          mode = modeResult
+        }
+
+        // Build tools config
+        const tools: Record<string, boolean> = {}
+        for (const tool of availableTools) {
+          if (!selectedTools.includes(tool)) {
+            tools[tool] = false
+          }
+        }
+
+        // Persist through the validated agent config CRUD service
+        const created = await AgentConfig.create({
+          name: generated.identifier,
+          description: generated.whenToUse,
+          mode,
+          prompt: generated.systemPrompt,
+          ...(Object.keys(tools).length > 0 ? { tools } : {}),
+          scope,
+          directory: targetDirectory,
+        }).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error)
+          if (isFullyNonInteractive) {
+            console.error(`Error: ${message}`)
+            process.exit(1)
+          }
+          prompts.log.error(message)
+          throw new UI.CancelledError()
+        })
+
+        const createdPath = created.file ?? `${created.name} (config entry)`
+        if (isFullyNonInteractive) {
+          console.log(createdPath)
+        } else {
+          prompts.log.success(`Agent created: ${createdPath}`)
+          prompts.outro("Done")
+        }
+      },
+    })
+  },
+})
+
+const AgentListCommand = cmd({
+  command: "list",
+  describe: "list all available agents",
+  async handler() {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const agents = await Agent.list()
+        const sortedAgents = agents.sort((a, b) => {
+          if (a.native !== b.native) {
+            return a.native ? -1 : 1
+          }
+          return a.name.localeCompare(b.name)
+        })
+
+        for (const agent of sortedAgents) {
+          process.stdout.write(`${agent.name} (${agent.mode})` + EOL)
+          process.stdout.write(`  ${JSON.stringify(agent.permission, null, 2)}` + EOL)
+        }
+      },
+    })
+  },
+})
+
+export const AgentCommand = cmd({
+  command: "agent",
+  describe: "manage agents",
+  builder: (yargs) => yargs.command(AgentCreateCommand).command(AgentListCommand).demandCommand(),
+  async handler() {},
+})

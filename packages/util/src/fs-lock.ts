@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import fs, { type FileHandle } from "node:fs/promises"
 import path from "node:path"
 import { processStartIdentity } from "./process-identity"
+import { retrySleep } from "./retry"
 
 export interface FileLockOptions {
   directory: string
@@ -10,6 +11,17 @@ export interface FileLockOptions {
   timeoutMs?: number
   staleMetadataMs?: number
   timeoutMessage?: string
+  signal?: AbortSignal
+}
+
+export class FileLockTimeoutError extends Error {
+  constructor(
+    readonly key: string,
+    message?: string,
+  ) {
+    super(message ?? `Timed out acquiring file lock for ${key}`)
+    this.name = "FileLockTimeoutError"
+  }
 }
 
 const DEFAULT_RETRY_MS = 25
@@ -17,7 +29,6 @@ const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_STALE_METADATA_MS = 5_000
 const VERIFIED_LIVE_TTL_MS = 1_000
 
-export const HOLOS_ACCOUNTS_WRITE_LOCK_KEY = "holos-accounts:write"
 export const LEGACY_API_KEY_WRITE_LOCK_KEY = "legacy-api-key:write"
 
 export function authLockDirectory(synergyRoot: string): string {
@@ -32,6 +43,7 @@ export function fileLockPath(directory: string, key: string): string {
 export async function withFileLock<T>(options: FileLockOptions, fn: () => Promise<T>): Promise<T> {
   const lock = await acquireFileLock(options)
   try {
+    options.signal?.throwIfAborted()
     return await fn()
   } finally {
     await lock.release()
@@ -49,6 +61,7 @@ interface OwnerSnapshot {
 }
 
 async function acquireFileLock(options: FileLockOptions): Promise<{ release(): Promise<void> }> {
+  options.signal?.throwIfAborted()
   const retryMs = options.retryMs ?? DEFAULT_RETRY_MS
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const staleMetadataMs = options.staleMetadataMs ?? DEFAULT_STALE_METADATA_MS
@@ -61,8 +74,9 @@ async function acquireFileLock(options: FileLockOptions): Promise<{ release(): P
   const verifiedLiveUntil = new Map<string, number>()
 
   while (true) {
+    options.signal?.throwIfAborted()
     if (Date.now() - startedAt >= timeoutMs) {
-      throw new Error(options.timeoutMessage ?? `Timed out acquiring file lock for ${options.key}`)
+      throw new FileLockTimeoutError(options.key, options.timeoutMessage)
     }
     let handle: FileHandle
     try {
@@ -82,7 +96,7 @@ async function acquireFileLock(options: FileLockOptions): Promise<{ release(): P
       if (snapshot && (await isStaleOwner(filename, snapshot, staleMetadataMs, verifiedLiveUntil))) {
         if (await removeStaleLock(filename, snapshot.contents)) continue
       }
-      await sleep(retryMs)
+      await retrySleep(Math.min(retryMs, Math.max(0, timeoutMs - (Date.now() - startedAt))), options.signal)
       continue
     }
     try {
@@ -203,8 +217,4 @@ function processExists(pid: number): boolean {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code !== "ESRCH"
   }
-}
-
-async function sleep(milliseconds: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds))
 }

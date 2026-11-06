@@ -14,8 +14,8 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsgo --noEmit",
-    "build": "bun run --cwd ../util build && rm -rf dist && tsc -p tsconfig.build.json"
+    "typecheck": "tsc --noEmit",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {
@@ -87,21 +87,49 @@
       "bun": "./src/auth-types.ts",
       "types": "./src/auth-types.ts",
       "import": "./dist/auth-types.js"
+    },
+    "./skin": {
+      "bun": "./src/skin.ts",
+      "types": "./src/skin.ts",
+      "import": "./dist/skin.js"
+    },
+    "./components": {
+      "bun": "./src/components.ts",
+      "types": "./src/components.ts",
+      "import": "./dist/components.js"
+    },
+    "./icons": {
+      "bun": "./src/icons.ts",
+      "types": "./src/icons.ts",
+      "import": "./dist/icons.js"
+    },
+    "./format": {
+      "bun": "./src/format.ts",
+      "types": "./src/format.ts",
+      "import": "./dist/format.js"
+    },
+    "./package": {
+      "bun": "./src/package.ts",
+      "types": "./src/package.ts",
+      "import": "./dist/package.js"
     }
   },
   "files": [
     "dist"
   ],
   "dependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*"
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*"
   },
   "peerDependencies": {
+    "solid-js": ">=1.9.10 <2.0.0",
     "zod": ">=4.0.0"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
+    "solid-js": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"
   }

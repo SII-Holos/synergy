@@ -1,0 +1,1582 @@
+import { TEST_AGENT_NAME, SECONDARY_TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
+import { describe, expect, test } from "bun:test"
+import { createStore } from "solid-js/store"
+import type { Config } from "@ericsanchezok/synergy-sdk/client"
+import { buildPatch } from "../../../../src/components/settings/hooks/useConfigPatch"
+import { ensureInit } from "../../../../src/components/settings/hooks/useSettingsForm"
+import { defaultSettingsState } from "../../../../src/components/settings/types"
+
+describe("settings config patch", () => {
+  test("compaction threshold saves values down to 20%", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.compactionOverflowThreshold = "0.20"
+    expect(buildPatch({ cfg: {}, state, originalMcps: {} }).compaction).toMatchObject({ overflowThreshold: 0.2 })
+    state.runtime.compactionOverflowThreshold = "0.10"
+    expect(buildPatch({ cfg: {}, state, originalMcps: {} })).not.toHaveProperty("compaction")
+  })
+  test("agent and file group drafts use Atlas and text replacement defaults", () => {
+    const state = defaultSettingsState("enter")
+    expect(state.agents.defaultAgent).toBe("atlas")
+    expect(state.agents.fileToolGroup).toBe("replace")
+    expect(buildPatch({ cfg: {}, state, originalMcps: {} })).not.toHaveProperty("fileToolGroup")
+    state.agents.fileToolGroup = "hashline"
+    const patch = buildPatch({ cfg: {}, state, originalMcps: {} })
+    expect(patch.fileToolGroup).toBe("hashline")
+    expect(patch).not.toHaveProperty("agent")
+    expect(patch).not.toHaveProperty("default_agent")
+  })
+  test("autonomous routines are loaded from and saved to their Anima owner", () => {
+    const cfg = { anima: { enabled: false } } as Config
+    const [state, setSettings] = createStore(defaultSettingsState("enter"))
+    ensureInit({
+      cfg,
+      setName: "global",
+      initialized: () => false,
+      initializedForSet: undefined,
+      refreshing: () => false,
+      sendShortcut: () => "enter",
+      colorScheme: () => "system",
+      setSettings,
+      setInitialized: () => {},
+      originalMcpsRef: { current: {} },
+      builtinMcps: [],
+    })
+    expect(state.library.autonomy).toBe("false")
+    setSettings("library", "autonomy", "true")
+    const patch = buildPatch({ cfg, state, originalMcps: {} })
+    expect(patch.anima).toEqual({ enabled: true })
+    expect(patch).not.toHaveProperty("library")
+    expect(buildPatch({ cfg, state, originalMcps: {}, hasFeature: () => false })).not.toHaveProperty("anima")
+  })
+  test("tool description preference defaults off and saves both toggle directions", () => {
+    for (const saved of [undefined, true, false]) {
+      const cfg = saved === undefined ? {} : { preferWorkBrief: saved }
+      const [state, setSettings] = createStore(defaultSettingsState("enter"))
+      ensureInit({
+        cfg,
+        setName: "global",
+        initialized: () => false,
+        initializedForSet: undefined,
+        refreshing: () => false,
+        sendShortcut: () => "enter",
+        colorScheme: () => "system",
+        setSettings,
+        setInitialized: () => {},
+        originalMcpsRef: { current: {} },
+        builtinMcps: [],
+      })
+      expect(state.general.preferWorkBrief).toBe(saved ?? false)
+      expect(buildPatch({ cfg, state, originalMcps: {} })).not.toHaveProperty("preferWorkBrief")
+      setSettings("general", "preferWorkBrief", !(saved ?? false))
+      expect(buildPatch({ cfg, state, originalMcps: {} }).preferWorkBrief).toBe(!(saved ?? false))
+    }
+  })
+
+  test("an untouched configuration without explicit timeout overrides stays clean", () => {
+    const [state, setSettings] = createStore(defaultSettingsState("enter", "system"))
+    ensureInit({
+      cfg: {},
+      setName: "global",
+      initialized: () => false,
+      initializedForSet: undefined,
+      refreshing: () => false,
+      sendShortcut: () => "enter",
+      colorScheme: () => "system",
+      setSettings,
+      setInitialized: () => {},
+      originalMcpsRef: { current: {} },
+      builtinMcps: [],
+    })
+    expect(buildPatch({ cfg: {}, state, originalMcps: {} })).not.toHaveProperty("timeout")
+  })
+  test("persists a Feishu account model variant", () => {
+    const state = defaultSettingsState("enter")
+    state.channels.feishuAccounts = [
+      {
+        key: "default",
+        enabled: true,
+        model: "openai-codex/gpt-5.6-sol",
+        variant: "high",
+      },
+    ]
+
+    const patch = buildPatch({
+      cfg: {
+        channel: {
+          feishu: {
+            type: "feishu",
+            accounts: {
+              default: {
+                appId: "app",
+                appSecret: "secret",
+                model: "openai-codex/gpt-5.6-sol",
+              },
+            },
+          },
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect((patch.channel as Config["channel"])?.feishu?.accounts.default).toMatchObject({
+      model: "openai-codex/gpt-5.6-sol",
+      variant: "high",
+    })
+  })
+  test("does not include theme in the general patch", () => {
+    // Theme is applied instantly via a fire-and-forget server call, not through
+    // the explicit-save patch. The patch must never carry a theme field.
+    const state = defaultSettingsState("enter")
+    state.general.theme = ""
+
+    const patch = buildPatch({
+      cfg: { theme: "ayu" } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("theme")
+  })
+
+  test("preserves other channel accounts while updating a Feishu model variant", () => {
+    const state = defaultSettingsState("enter")
+    state.channels.feishuAccounts = [
+      {
+        key: "default",
+        enabled: true,
+        model: "openai-codex/gpt-5.6-sol",
+        variant: "high",
+      },
+    ]
+    const github = {
+      type: "github" as const,
+      accounts: {
+        agent: {
+          enabled: true,
+          agent: SECONDARY_TEST_AGENT_NAME,
+          workspaceDir: "/tmp/channel-fixture",
+        },
+      },
+    }
+
+    const patch = buildPatch({
+      cfg: {
+        channel: {
+          feishu: {
+            type: "feishu",
+            accounts: {
+              default: {
+                appId: "app",
+                appSecret: "secret",
+              },
+            },
+          },
+          github,
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    const channel = patch.channel as NonNullable<Config["channel"]>
+    expect(channel.feishu?.accounts.default).toMatchObject({
+      model: "openai-codex/gpt-5.6-sol",
+      variant: "high",
+    })
+    expect(channel.github).toEqual(github)
+  })
+
+  test("model role drafts only materialize as server patch fields", () => {
+    const state = defaultSettingsState("enter")
+    state.models.model = "openai/gpt-5.5"
+    state.models.mini_model = ""
+
+    expect(
+      buildPatch({
+        cfg: {
+          model: "deepseek/deepseek-v4",
+          mini_model: "openai/gpt-5.5-mini",
+          timeout: {
+            invoke_sec: 21600,
+            provider: { ttfb_sec: 3600, idle_sec: 900 },
+            tool: { default_sec: 7200 },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).toEqual({
+      model: "openai/gpt-5.5",
+      mini_model: null,
+    })
+  })
+
+  test("clearing a role variant emits a per-role null and preserves siblings", () => {
+    const state = defaultSettingsState("enter")
+    state.roleVariant = { default: "", title: "low" }
+
+    const patch = buildPatch({
+      cfg: { role_variant: { default: "high", title: "low" } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.role_variant).toEqual({ default: null, title: "low" })
+  })
+
+  test("seeded role variant draft does not re-send stored variants", () => {
+    // After a clear save the normalized config omits the cleared key; a
+    // seeded draft must produce no variant patch, or the panel would stay
+    // permanently dirty across saves.
+    const state = defaultSettingsState("enter")
+    state.roleVariant = { title: "low" }
+
+    const patch = buildPatch({
+      cfg: { role_variant: { title: "low" } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("role_variant")
+  })
+
+  test("persists quick switcher model preferences through the models domain", () => {
+    const state = defaultSettingsState("enter")
+    state.models.quick_switcher = [{ providerID: "openai", modelID: "gpt-5.5", state: "add" }]
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.quick_switcher).toEqual({
+      models: [{ providerID: "openai", modelID: "gpt-5.5", state: "add" }],
+    })
+  })
+
+  test("clears quick switcher config when all preferences return to defaults", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { quick_switcher: { models: [{ providerID: "openai", modelID: "gpt-5.5", state: "remove" }] } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.quick_switcher).toEqual({ models: [] })
+  })
+
+  test("default agent draft persists as default_agent", () => {
+    const state = defaultSettingsState("enter")
+    state.agents.defaultAgent = SECONDARY_TEST_AGENT_NAME
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.default_agent).toBe(SECONDARY_TEST_AGENT_NAME)
+  })
+
+  test("default agent is sent when different from server config", () => {
+    const state = defaultSettingsState("enter")
+    state.agents.defaultAgent = TEST_AGENT_NAME
+
+    const patch = buildPatch({
+      cfg: { default_agent: SECONDARY_TEST_AGENT_NAME } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.default_agent).toBe(TEST_AGENT_NAME)
+  })
+
+  test("default agent not sent when unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { default_agent: "atlas" } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("default_agent")
+  })
+
+  test("persists post-write diagnostics policy without touching raw LSP server config", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "false",
+      lspDiagnosticsSeverity: "warning",
+      lspDiagnosticsScope: "file",
+    })
+
+    const patch = buildPatch({
+      cfg: {
+        lspWriteDiagnostics: true,
+        lspDiagnostics: { severity: "error", scope: "project" },
+        lsp: false,
+      } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.lspWriteDiagnostics).toBe(false)
+    expect(patch.lspDiagnostics).toEqual({ severity: "warning", scope: "file" })
+    expect(patch).not.toHaveProperty("lsp")
+  })
+
+  test("does not re-save unchanged post-write diagnostics policy", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "true",
+      lspDiagnosticsSeverity: "warning",
+      lspDiagnosticsScope: "delta",
+    })
+
+    const patch = buildPatch({
+      cfg: {
+        lspWriteDiagnostics: true,
+        lspDiagnostics: { severity: "warning", scope: "delta" },
+      } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("lspWriteDiagnostics")
+    expect(patch).not.toHaveProperty("lspDiagnostics")
+  })
+
+  test("keeps the absent diagnostics policy implicit at compatibility defaults", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "true",
+      lspDiagnosticsSeverity: "error",
+      lspDiagnosticsScope: "project",
+    })
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch).not.toHaveProperty("lspWriteDiagnostics")
+    expect(patch).not.toHaveProperty("lspDiagnostics")
+  })
+
+  test("persists an explicit Cortex concurrency maximum", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.cortexConcurrency = "3"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.cortex).toEqual({ maxConcurrentTasks: 3 })
+  })
+
+  test("does not materialize the default Cortex concurrency maximum", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("cortex")
+  })
+
+  test("omits unchanged or invalid Cortex concurrency values", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.cortexConcurrency = "6"
+
+    expect(
+      buildPatch({
+        cfg: { cortex: { maxConcurrentTasks: 6 } } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("cortex")
+
+    state.runtime.cortexConcurrency = "0"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("cortex")
+  })
+
+  test("persists an agent worker pool size while preserving other execution settings", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.agentWorkers = "3"
+
+    const patch = buildPatch({
+      cfg: { execution: { agentWorkers: 6, policyWorkers: 2 } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.execution).toEqual({ agentWorkers: 3, policyWorkers: 2 })
+  })
+
+  test("persists the configured automatic retry count", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.retryMaxAttempts = "3"
+
+    expect(
+      buildPatch({
+        cfg: { retry: { maxAttempts: 10 } } as Config,
+        state,
+        originalMcps: {},
+      }).retry,
+    ).toEqual({ maxAttempts: 3 })
+  })
+
+  test("persists unlimited automatic retries without changing the finite value", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.retryMaxAttempts = "20"
+    state.runtime.retryUnlimited = "true"
+
+    expect(
+      buildPatch({
+        cfg: { retry: { maxAttempts: 20, unlimited: false } } as Config,
+        state,
+        originalMcps: {},
+      }).retry,
+    ).toEqual({ maxAttempts: 20, unlimited: true })
+  })
+
+  test("clearing the agent worker pool size removes the explicit ceiling", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.agentWorkers = ""
+
+    expect(
+      buildPatch({
+        cfg: { execution: { agentWorkers: 6, policyWorkers: 2 } } as Config,
+        state,
+        originalMcps: {},
+      }).execution,
+    ).toEqual({ agentWorkers: null, policyWorkers: 2 })
+  })
+
+  test("keeps an already-adaptive pool out of the patch when the field stays cleared", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({ cfg: { execution: { policyWorkers: 2 } } as Config, state, originalMcps: {} }),
+    ).not.toHaveProperty("execution")
+  })
+
+  test("omits automatic, unchanged, and out-of-range agent worker pool sizes", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("execution")
+
+    state.runtime.agentWorkers = "6"
+    expect(
+      buildPatch({
+        cfg: { execution: { agentWorkers: 6 } } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("execution")
+
+    state.runtime.agentWorkers = "65"
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("execution")
+  })
+
+  test("provider idle timeout can be disabled with false", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.providerIdleTimeout = "false"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).timeout,
+    ).toEqual({
+      invoke_sec: 21600,
+      provider: { ttfb_sec: 3600, idle_sec: false },
+      tool: { default_sec: 7200 },
+    })
+  })
+
+  test("coauthor reminder defaults on without materializing prompt config", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).prompt,
+    ).toBeUndefined()
+  })
+
+  test("coauthor reminder can be disabled in prompt config", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.coauthorReminder = "false"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).prompt,
+    ).toEqual({ coauthorReminder: false })
+  })
+
+  test("coauthor reminder can be re-enabled from explicit false", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.coauthorReminder = "true"
+
+    expect(
+      buildPatch({
+        cfg: { prompt: { coauthorReminder: false } } as Config,
+        state,
+        originalMcps: {},
+      }).prompt,
+    ).toEqual({ coauthorReminder: true })
+  })
+
+  test("boss mode defaults off without materializing boss config", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toBeUndefined()
+  })
+
+  test("boss mode fields materialize in boss config when enabled", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({
+      enabled: true,
+      identityText: "Ops lead",
+      briefingIntervalDays: 7,
+    })
+  })
+
+  test("boss mode can be disabled and clears identity and briefing interval", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "false"
+    state.runtime.bossIdentityText = ""
+    state.runtime.bossBriefingIntervalDays = ""
+
+    expect(
+      buildPatch({
+        cfg: {
+          boss: {
+            enabled: true,
+            identityText: "Ops lead",
+            briefingIntervalDays: 7,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({
+      enabled: false,
+      // Explicit null clears the stored value: the SDK JSON serializer drops
+      // undefined keys, so undefined would never reach the server merge.
+      identityText: null,
+      briefingIntervalDays: null,
+    })
+  })
+
+  test("boss identity and briefing interval can be re-added from explicit values", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {
+          boss: {
+            enabled: false,
+            identityText: undefined,
+            briefingIntervalDays: undefined,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({
+      enabled: true,
+      identityText: "Ops lead",
+      briefingIntervalDays: 7,
+    })
+  })
+
+  test("does not re-save unchanged boss mode boss config", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {
+          boss: {
+            enabled: true,
+            identityText: "Ops lead",
+            briefingIntervalDays: 7,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("boss")
+  })
+
+  test("omits invalid boss briefing interval values instead of emitting them", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossBriefingIntervalDays = "0"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({ enabled: true })
+
+    state.runtime.bossBriefingIntervalDays = "-3"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({ enabled: true })
+
+    state.runtime.bossBriefingIntervalDays = "abc"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({ enabled: true })
+  })
+
+  test("boss persona preset materializes in boss config when selected", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossPersonaPreset = "project_manager"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({
+      enabled: true,
+      persona: { preset: "project_manager" },
+    })
+  })
+
+  test("custom boss persona materializes bounded trait numbers", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "custom"
+    state.runtime.bossPersonaFormality = "0.9"
+    state.runtime.bossPersonaConciseness = "0.25"
+    state.runtime.bossPersonaProactiveness = "0.6"
+    state.runtime.bossPersonaWarmth = "0.05"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({
+      persona: {
+        preset: "custom",
+        formality: 0.9,
+        conciseness: 0.25,
+        proactiveness: 0.6,
+        warmth: 0.05,
+      },
+    })
+  })
+
+  test("invalid custom traits fall back to the 0.5 default", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "custom"
+    state.runtime.bossPersonaFormality = "abc"
+    state.runtime.bossPersonaWarmth = "3"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({
+      persona: {
+        preset: "custom",
+        formality: 0.5,
+        conciseness: 0.5,
+        proactiveness: 0.5,
+        warmth: 0.5,
+      },
+    })
+  })
+
+  test("boss persona none clears a stored persona with explicit null", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "none"
+
+    expect(
+      buildPatch({
+        cfg: {
+          boss: {
+            persona: { preset: "ops_assistant" },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).boss,
+    ).toEqual({
+      persona: null,
+    })
+  })
+
+  test("boss persona none does not materialize a null without a stored persona", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "none"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+    expect(patch).not.toHaveProperty("boss")
+  })
+
+  test("does not re-emit an unchanged boss persona", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "ops_assistant"
+
+    const patch = buildPatch({
+      cfg: {
+        boss: {
+          persona: { preset: "ops_assistant" },
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+    expect(patch).not.toHaveProperty("boss")
+  })
+
+  test("boss name never materializes in the config patch", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossName = "Xiaofei"
+    state.runtime.bossPersonaPreset = "custom"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+    expect(patch.boss).not.toHaveProperty("boss_name")
+  })
+  test("does not re-save unchanged sandbox config when enabled is already explicit", () => {
+    const state = defaultSettingsState("enter")
+    state.safety.sandboxEnabled = "true"
+    state.safety.sandboxFallbackPolicy = "warn"
+
+    const patch = buildPatch({
+      cfg: {
+        sandbox: {
+          enabled: true,
+          fallbackPolicy: "warn",
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("sandbox")
+  })
+
+  test("persists sandbox only when values actually change", () => {
+    const state = defaultSettingsState("enter")
+    state.safety.sandboxEnabled = "false"
+
+    const patch = buildPatch({
+      cfg: {
+        sandbox: {
+          enabled: true,
+          fallbackPolicy: "warn",
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.sandbox).toEqual({
+      enabled: false,
+      fallbackPolicy: "warn",
+    })
+  })
+
+  test("persists toast mute and duration preferences on the general domain", () => {
+    const state = defaultSettingsState("enter")
+    state.general.mutedToasts = ["info", "success"]
+    state.general.toastDurations.warning = "2500"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: ["info", "success"],
+      durationOverrides: { warning: 2000 },
+    })
+  })
+
+  test("persists welcome games toggle on the general domain", () => {
+    const state = defaultSettingsState("enter")
+    state.general.welcomeGames = false
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).welcomeGames,
+    ).toBe(false)
+  })
+
+  test("does not emit welcome games patch when the preference is unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: { welcomeGames: true } as Config,
+        state,
+        originalMcps: {},
+      }).welcomeGames,
+    ).toBeUndefined()
+  })
+
+  test("unmuting the last toast type sends muted:[] so domain merge can clear it", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["info"],
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: [],
+    })
+  })
+
+  test("unmuting one type while duration overrides remain still clears that muted entry", () => {
+    const state = defaultSettingsState("enter")
+    state.general.toastDurations.warning = "2500"
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["info"],
+            durationOverrides: { warning: 2000 },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toEqual({
+      muted: [],
+      durationOverrides: { warning: 2000 },
+    })
+  })
+
+  test("does not emit toast patch when mute and duration preferences are unchanged", () => {
+    const state = defaultSettingsState("enter")
+    state.general.mutedToasts = ["error"]
+    state.general.toastDurations.info = "1000"
+
+    expect(
+      buildPatch({
+        cfg: {
+          toast: {
+            muted: ["error"],
+            durationOverrides: { info: 1000 },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).toast,
+    ).toBeUndefined()
+  })
+
+  test("persists a local embedding source and only sends a custom origin for custom mode", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.library, {
+      embeddingSource: "custom",
+      embeddingRemoteHost: "https://models.example/",
+    })
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).embedding).toEqual({
+      local: { source: "custom", remoteHost: "https://models.example/" },
+    })
+
+    Object.assign(state.library, { embeddingSource: "huggingface" })
+    expect(
+      buildPatch({
+        cfg: {
+          embedding: { local: { source: "custom", remoteHost: "https://models.example/" } },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).embedding,
+    ).toEqual({ local: { source: "huggingface" } })
+  })
+})
+
+describe("settings config patch locale", () => {
+  test("does not emit locale patch when server has no locale and form is at system default", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("locale")
+  })
+
+  test("emits locale patch when form diverges from absent server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "en"
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).locale).toBe("en")
+  })
+
+  test("emits locale patch when form diverges from explicit server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "zh-CN"
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} }).locale).toBe("zh-CN")
+  })
+
+  test("emits explicit system locale when switching from en back to system", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} }).locale).toBe("system")
+  })
+
+  test("emits explicit system locale when switching from zh-CN back to system", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: { locale: "zh-CN" } as Config, state, originalMcps: {} }).locale).toBe("system")
+  })
+
+  test("does not emit locale patch when form value matches server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "en"
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} })).not.toHaveProperty("locale")
+  })
+})
+
+describe("settings config patch activity display", () => {
+  test("does not emit activityDisplay when the form is at the balanced default", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("activityDisplay")
+  })
+
+  test("emits activityDisplay when the form diverges from an absent server value", () => {
+    const state = defaultSettingsState("enter")
+    state.general.activityDisplay = "full"
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).activityDisplay).toBe("full")
+  })
+
+  test("emits activityDisplay when the form diverges from an explicit server value", () => {
+    const state = defaultSettingsState("enter")
+    state.general.activityDisplay = "minimal"
+    expect(
+      buildPatch({ cfg: { activityDisplay: "balanced" } as Config, state, originalMcps: {} }).activityDisplay,
+    ).toBe("minimal")
+  })
+
+  test("does not emit activityDisplay when the form matches the server value", () => {
+    const state = defaultSettingsState("enter")
+    state.general.activityDisplay = "full"
+    expect(buildPatch({ cfg: { activityDisplay: "full" } as Config, state, originalMcps: {} })).not.toHaveProperty(
+      "activityDisplay",
+    )
+  })
+})
+
+describe("settings config patch performance monitoring", () => {
+  test("does not emit a performance patch when the form matches the effective value", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.performanceEnabled = "false"
+    expect(
+      buildPatch({
+        cfg: { observability: { enabled: false } } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("observability")
+  })
+
+  test("emits performance.enabled true when the master switch disabled it and the form is on", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.performanceEnabled = "true"
+    const patch = buildPatch({
+      cfg: { observability: { enabled: false } } as Config,
+      state,
+      originalMcps: {},
+    })
+    expect((patch.observability as { performance?: { enabled?: boolean } })?.performance?.enabled).toBe(true)
+  })
+
+  test("emits performance.enabled false when only performance.enabled is set on the server", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.performanceEnabled = "false"
+    const patch = buildPatch({
+      cfg: { observability: { performance: { enabled: true } } } as Config,
+      state,
+      originalMcps: {},
+    })
+    expect((patch.observability as { performance?: { enabled?: boolean } })?.performance?.enabled).toBe(false)
+  })
+})
+describe("settings config patch skills compatibility", () => {
+  test("does not emit a skills patch when the form matches compatibility defaults", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("skills")
+  })
+
+  test("emits only the diverging compatibility field", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.claude = false
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).skills).toEqual({
+      compatibility: { claude: false },
+    })
+  })
+
+  test("re-enables a source stored as explicit false", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.codex = true
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: true, claude: true, codex: false, openclaw: true },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).skills,
+    ).toEqual({
+      compatibility: { codex: true },
+    })
+  })
+
+  test("leaves untouched sources (including project-level overrides) out of the patch", () => {
+    // agents:false is a project-level override the home-scope form hydrated
+    // from the merged config. Changing only claude must not re-write agents
+    // into the global domain, otherwise the project override gets baked in.
+    const state = defaultSettingsState("enter")
+    state.skills.agents = false
+    state.skills.claude = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: false, claude: true, codex: true, openclaw: true },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).skills,
+    ).toEqual({
+      compatibility: { claude: false },
+    })
+  })
+
+  test("does not emit a skills patch when the form matches explicit server values", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.agents = false
+    state.skills.openclaw = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: false, claude: true, codex: true, openclaw: false },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("skills")
+  })
+})
+
+describe("settings config patch github integration", () => {
+  test("does not emit a github patch when the form matches defaults", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("github")
+  })
+
+  test("emits identity sync with overrides and clears a stored override on empty", () => {
+    const state = defaultSettingsState("enter")
+    state.github.identitySyncEnabled = true
+    state.github.identitySyncName = "  Codex Bot  "
+    state.github.identitySyncEmail = ""
+
+    expect(
+      buildPatch({
+        cfg: { github: { identitySync: { enabled: false, email: "old@example.com" } } } as Config,
+        state,
+        originalMcps: {},
+      }).github,
+    ).toEqual({
+      identitySync: { enabled: true, name: "Codex Bot", email: null },
+      watch: { enabled: true },
+    })
+  })
+
+  test("disabling the agenda watch emits the github patch", () => {
+    const state = defaultSettingsState("enter")
+    state.github.watchEnabled = false
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).github).toEqual({
+      identitySync: { enabled: false },
+      watch: { enabled: false },
+    })
+  })
+
+  test("does not emit a github patch when the form matches stored values", () => {
+    const state = defaultSettingsState("enter")
+    state.github.identitySyncEnabled = true
+    state.github.identitySyncName = "Codex Bot"
+    state.github.watchEnabled = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          github: {
+            identitySync: { enabled: true, name: "Codex Bot" },
+            watch: { enabled: false },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("github")
+  })
+})
+
+describe("settings config patch mcp expand-by-default", () => {
+  const localServer = {
+    key: "filesystem",
+    type: "local" as const,
+    enabled: true,
+    expandByDefault: false,
+    command: "npx foo",
+    url: "",
+    timeout: "",
+    environment: "",
+    headers: "",
+  }
+
+  test("omits expandByDefault when false so saving does not materialize the key", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer }]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({
+      filesystem: { type: "local", enabled: true, command: ["npx", "foo"] },
+    })
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).not.toHaveProperty("expandByDefault")
+  })
+
+  test("writes expandByDefault: true when enabled", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer, expandByDefault: true }]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toMatchObject({
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: true,
+    })
+  })
+
+  test("clears a stored expandByDefault while preserving unknown server fields", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer }]
+    const original = {
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: true,
+      toolBlacklist: ["editor"],
+    }
+    const cfg = { mcp: { filesystem: original } } as Config
+
+    const patch = buildPatch({ cfg, state, originalMcps: { filesystem: { ...original } } })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toEqual({
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      toolBlacklist: ["editor"],
+    })
+  })
+
+  test("writes expandByDefault: false when it overrides a global true default", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer }]
+
+    const patch = buildPatch({
+      cfg: { mcpDefaults: { expandByDefault: true } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toMatchObject({
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: false,
+    })
+  })
+
+  test("keeps an explicit stored false while saving other fields under a global true default", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer, command: "npx bar" }]
+    const original = {
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: false,
+      toolBlacklist: ["editor"],
+    }
+    const cfg = { mcpDefaults: { expandByDefault: true }, mcp: { filesystem: original } } as Config
+
+    const patch = buildPatch({ cfg, state, originalMcps: { filesystem: { ...original } } })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toEqual({
+      type: "local",
+      enabled: true,
+      command: ["npx", "bar"],
+      expandByDefault: false,
+      toolBlacklist: ["editor"],
+    })
+  })
+
+  test("omits expandByDefault when the server inherits the global true default untouched", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer, expandByDefault: true }]
+
+    const patch = buildPatch({
+      cfg: { mcpDefaults: { expandByDefault: true } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).not.toHaveProperty("expandByDefault")
+  })
+})
+
+describe("settings config patch builtin mcp", () => {
+  const builtin = (overrides: Partial<Record<string, unknown>>) => ({
+    name: "anysearch",
+    url: "https://api.anysearch.com/mcp",
+    status: { status: "connected" } as const,
+    keyConfigured: false,
+    toggle: true,
+    apiKeyDraft: "",
+    clearApiKey: false,
+    ...overrides,
+  })
+
+  test("toggling a built-in MCP server off writes the opt-out stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ toggle: false })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { enabled: false } })
+  })
+
+  test("re-enabling an opted-out built-in writes a bare enabled stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [
+      builtin({
+        name: "scholight",
+        url: "https://scholight.sanchezcloud.net/api/mcp",
+        status: { status: "disabled" } as const,
+        toggle: true,
+      }),
+    ]
+
+    const patch = buildPatch({
+      cfg: { mcp: { scholight: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.mcp).toEqual({ scholight: { enabled: true } })
+  })
+
+  test("built-in toggles matching stored state emit no mcp patch", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [
+      builtin({}),
+      builtin({
+        name: "scholight",
+        url: "https://scholight.sanchezcloud.net/api/mcp",
+        status: { status: "disabled" } as const,
+        toggle: false,
+      }),
+    ]
+
+    const patch = buildPatch({
+      cfg: { mcp: { scholight: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+
+  test("existing opt-out stubs are carried forward unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { mcp: { anysearch: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+
+  test("typing an API key writes the key onto the stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ apiKeyDraft: "as_sk_new" })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "as_sk_new" } })
+  })
+
+  test("clearing a stored key writes the empty-string marker", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ keyConfigured: true, clearApiKey: true })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "" } })
+  })
+
+  test("key and toggle-off merge onto the same stub and keep stored fields", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ keyConfigured: true, toggle: false, apiKeyDraft: "as_sk_rotated" })]
+
+    const patch = buildPatch({
+      cfg: { mcp: { anysearch: { apiKey: "__REDACTED__" } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "as_sk_rotated", enabled: false } })
+  })
+
+  test("a key draft matching nothing stored with no clear emits no mcp patch", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ apiKeyDraft: "   " })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+
+  // A stored built-in stub plus a typed server is the shape that made the
+  // panel permanently dirty: the builder hoists type-less stubs first while
+  // the domain file keeps its own insertion order, so a textual comparison
+  // reported a change on every save even though the content was identical.
+  const mixedOrderCases: Array<{ label: string; stored: Record<string, Record<string, unknown>> }> = [
+    {
+      label: "typed server stored before the stub",
+      stored: {
+        notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+        anysearch: { apiKey: "__REDACTED__" },
+      },
+    },
+    {
+      label: "stub stored before the typed server",
+      stored: {
+        anysearch: { apiKey: "__REDACTED__" },
+        notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+      },
+    },
+  ]
+
+  function mixedState() {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [
+      {
+        key: "notion",
+        type: "remote",
+        enabled: true,
+        expandByDefault: false,
+        command: "",
+        url: "https://mcp.notion.com/mcp",
+        timeout: "",
+        environment: "",
+        headers: "",
+      },
+    ]
+    state.mcps.builtins = [builtin({ keyConfigured: true })]
+    return state
+  }
+
+  for (const { label, stored } of mixedOrderCases) {
+    test(`a typed server plus an unchanged stored stub emits no mcp patch (${label})`, () => {
+      const patch = buildPatch({
+        cfg: { mcp: stored } as unknown as Config,
+        state: mixedState(),
+        originalMcps: { notion: { ...stored.notion } },
+      })
+
+      expect(patch).not.toHaveProperty("mcp")
+    })
+  }
+
+  test("a real built-in change still emits the mcp patch alongside a typed server", () => {
+    const state = mixedState()
+    state.mcps.builtins = [builtin({ keyConfigured: true, toggle: false })]
+    const stored = {
+      notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+      anysearch: { apiKey: "__REDACTED__" },
+    }
+
+    const patch = buildPatch({
+      cfg: { mcp: stored } as unknown as Config,
+      state,
+      originalMcps: { notion: { ...stored.notion } },
+    })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).anysearch).toEqual({
+      apiKey: "__REDACTED__",
+      enabled: false,
+    })
+    expect((patch.mcp as Record<string, Record<string, unknown>>).notion).toEqual(stored.notion)
+  })
+
+  test("a rotated key still emits the mcp patch alongside a typed server", () => {
+    const state = mixedState()
+    state.mcps.builtins = [builtin({ keyConfigured: true, apiKeyDraft: "as_sk_rotated" })]
+    const stored = {
+      notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+      anysearch: { apiKey: "__REDACTED__" },
+    }
+
+    const patch = buildPatch({
+      cfg: { mcp: stored } as unknown as Config,
+      state,
+      originalMcps: { notion: { ...stored.notion } },
+    })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).anysearch).toEqual({
+      apiKey: "as_sk_rotated",
+    })
+  })
+
+  // The reported symptom, reproduced through the real panel hydration path
+  // rather than a hand-built draft: load the exact config shape the user has,
+  // save it back, and confirm the panel reports no pending changes.
+  test("a real save of the affected config leaves the panel clean", () => {
+    const stored = {
+      notion: { type: "remote", url: "https://mcp.notion.com/mcp", enabled: true },
+      scholens: {
+        type: "remote",
+        url: "https://scholens.sanchezcloud.net/mcp",
+        headers: { Authorization: "Bearer __REDACTED__" },
+        enabled: true,
+      },
+      scholight: { apiKey: "__REDACTED__" },
+      anysearch: { apiKey: "__REDACTED__" },
+    }
+    const cfg = { mcp: stored } as unknown as Config
+    const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
+    const [state, setSettings] = createStore(defaultSettingsState("enter"))
+
+    ensureInit({
+      cfg,
+      setName: "global",
+      refreshing: () => false,
+      initialized: () => false,
+      initializedForSet: undefined,
+      sendShortcut: () => "enter",
+      colorScheme: () => "system",
+      setSettings,
+      setInitialized: () => undefined,
+      originalMcpsRef,
+      builtinMcps: [
+        {
+          name: "anysearch",
+          url: "https://api.anysearch.com/mcp",
+          status: { status: "connected" } as never,
+          keyConfigured: true,
+          keyHint: "••••1234",
+        },
+        {
+          name: "scholight",
+          url: "https://scholight.sanchezcloud.net/api/mcp",
+          status: { status: "connected" } as never,
+          keyConfigured: true,
+          keyHint: "••••5678",
+        },
+      ],
+    })
+
+    const patch = buildPatch({ cfg, state, originalMcps: originalMcpsRef.current })
+
+    expect(patch).not.toHaveProperty("mcp")
+
+    // Control: a genuine edit still produces a patch, so the fix cannot be
+    // passing merely by suppressing every mcp write.
+    setSettings("mcps", "builtins", 0, "toggle", false)
+    const edited = buildPatch({ cfg, state, originalMcps: originalMcpsRef.current })
+    expect(edited).toHaveProperty("mcp")
+  })
+})

@@ -2,6 +2,10 @@
 
 Synergy includes a first-class Performance settings panel for local runtime, frontend, network, and resource performance. Performance is the user-facing read model over Synergy's indexed observability store. Observability owns the canonical telemetry foundation: context propagation, redaction, events, metrics, spans, issues, resource samples, migrations, and diagnostics. Diagnostics is a support API and package capability backed by the same indexed data plus redacted logs and runtime inspection.
 
+Buffered browser metrics retain each sample’s validated Session, Scope and navigation attribution. Batch page context supplies missing attribution only; navigating before the next flush must not reassign earlier samples. Known navigation triggers pass a finite allowlist, while free-text and secret-like labels remain rejected.
+
+Scope bootstrap responses include per-field `Server-Timing` durations. Inspect these alongside request duration to distinguish provider, session status, command and product contribution loading during cold navigation.
+
 ## What the Performance panel shows
 
 Open the **Performance** workbench panel from the sidebar to inspect the default recent monitoring window. The panel summarizes:
@@ -19,13 +23,25 @@ Open the **Performance** workbench panel from the sidebar to inspect the default
 
 The Web panel loads a snapshot when it opens or when the selected time range changes. The snapshot remains stable until **Refresh** is selected; the panel does not poll, refresh after visibility changes, subscribe to live Performance events, or refetch charts as they enter the viewport.
 
+Issue counts select open aggregates last observed in the monitoring window; each aggregate's occurrence count is its lifetime total, not a count within that window. Default aggregates separate Scopes without splitting individual Sessions or calls. Their description, severity, recommendation, evidence and drill-down attribution describe the latest observation. Completed slow tools raise `PERF_TOOL_SLOW_EXECUTION`; `PERF_TOOL_STALLED` requires elapsed no-progress time, no declared wait and confirmed unresponsive execution owners. Heartbeats and quiet live processes do not establish stalled work, and an unknown owner remains unknown. Legacy default aggregates with unrecoverable mixed-Scope attribution remain suppressed diagnostic evidence rather than being marked resolved. See [issue attribution](../decisions/implemented/bug-fix/2026-10-21-preserve-performance-issue-attribution.md) and [execution progress](../decisions/implemented/bug-fix/2026-10-21-separate-execution-latency-and-progress.md).
+
+Resource threshold conditions aggregate by Scope, resource owner and code. Entry, escalation and finite healthy recovery produce explicit transitions; ongoing observations retain first/latest/peak measurements and precise occurrence deltas before the normal writer flush. Missing measurements, sampler errors and stopping sampling do not imply recovery. Historical open default resource alerts without reconstructable owner/recovery evidence remain suppressed evidence. See [condition observations](../decisions/implemented/feature/2026-10-21-coalesce-resource-condition-observations.md).
+
 Every record is stored with low-cardinality attribution such as source, module, Scope/session/request/tool/provider/process IDs, correlation IDs, trace IDs, span IDs, and safe labels. Sensitive prompt, response, header, credential, environment, raw body, and file-content data is redacted or omitted before it reaches public read models or diagnostics packages.
 
-Permission evaluation emits no per-check log record at INFO or higher. DEBUG keeps a bounded diagnostic record containing only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks do not expose command or path contents through observability.
+Permission evaluation emits no per-check log record by default. Enabling `observability.logMirror` keeps a bounded DEBUG record containing only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks do not expose command or path contents through observability.
 
-Server resource samples are kept separate from registered tool child process samples. A server sample also persists cgroup v2 gauges and lifetime OOM counters when available, plus a service-memory reading whose source and completeness remain explicit. Linux cgroup v2 reports the complete cgroup charge; other hosts fall back to the server RSS plus measurable registered child RSS and report partial coverage. Child aggregates use the single latest snapshot frame rather than the Top-5 display list. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored. Each live process retains at most 200,000 output characters in bounded segments; full output and the 2,000-character tail are materialized only when a consumer reads them.
+Server resource samples are kept separate from registered tool child process samples. A server sample also persists cgroup v2 gauges and lifetime OOM counters when available, plus a service-memory reading whose source and completeness remain explicit. Linux cgroup v2 reports the complete cgroup charge; other hosts fall back to the server RSS plus measurable registered child RSS and report partial coverage. Child aggregates use the single latest snapshot frame rather than the Top-5 display list. Registered child processes with confirmed exit evidence are settled into finished process history before new resource samples are stored; unknown owned-child liveness retains the process and its terminator. Each live process retains at most 200,000 output characters in bounded segments; full output and the 2,000-character tail are materialized only when a consumer reads them.
+
+Process CPU uses core equivalents: 100% means one fully occupied CPU core, and a multithreaded process can exceed 100%. Current and baseline server readings select server rows directly, while RSS peak and event-loop p95 cover the complete selected server window. Child counts and RSS cover the complete matching server frame, independently of detail limits. Diagnostics also selects server rows for server pressure. See [resource measurement](../decisions/implemented/bug-fix/2026-10-21-measure-current-process-resources.md).
+
+Child RSS collection uses the bounded asynchronous [process resource sampler](../architecture/runtime-and-scope.md#process-resource-sampling). A missing reading reduces measured coverage; it is not a zero-byte process measurement. Resource stats consumers await owner sampling without changing the Performance response schema.
 
 The owner rows are a unified read model, not a global process controller. Each process domain samples and recovers only resources it owns: Agent and Policy pools recycle their workers, plugin generations restart only their exact active generation, Browser retires only an idle Host with no active page, MCP owns its stdio close, tracked local processes own their descendant-pipe grace, and the Control Plane collects only its heap/external memory. The Performance layer aggregates these snapshots for attribution and admission-pressure decisions and never kills or recycles another domain. Linux service memory presents cgroup current, working set, and reclaimable cache as distinct values; they must not be treated as interchangeable RSS readings.
+
+Expected optional storage reads explicitly marked `silentNotFound` report `status=missing` and sampled duration without error metrics or issues. Unexpected absence and other failures retain error evidence, and slow reads retain full duration samples. `execution.tree.build`, `execution.owner.build` and `frontend.file.status.coalesced` expose reconstruction and invalidation work.
+
+Browser resource duration rows retain optional `preRequestMs`, `firstByteMs` and `transferMs` labels from monotonic Resource Timing boundaries. The pre-request phase includes browser admission and connection setup; first-byte time includes transit and server processing. These are not estimates of isolated server queue time. Compare them with the existing server `http.request.duration` and storage admission/operation metrics. Missing or opaque timing boundaries remain absent, and phase capture adds no extra telemetry rows.
 
 ## AI analysis
 
@@ -43,15 +59,21 @@ Canonical telemetry is stored locally in SQLite with WAL mode:
 
 The indexed store contains `obs_*` tables for metrics, spans, events, issues, resource samples, browser batches, and metadata. Runtime queries, diagnostics summaries, and diagnostics packages read this store instead of scanning trace files. Optional JSONL mirror files can be enabled for debugging exports, but they are not the runtime query source.
 
-Writes and reads are split across two SQLite connections. A dedicated telemetry subprocess owns the single write connection: the Control Plane enqueues records into a bounded batch (10,000 rows or 250 ms, whichever comes first) and sends whole batches over IPC, and the worker commits them in one transaction. All capacity maintenance — WAL checkpoint, retention deletes, incremental vacuum — runs on the worker's own timers with a per-pass time budget (default 500 ms); an over-budget pass reports `maintenanceDeferred` and resumes on the next tick, so maintenance never blocks the Control Plane event loop. The Control Plane reads through a separate `readonly` connection (WAL multi-reader), which keeps every query API synchronous; freshly written batches become visible within the 250 ms batch window. When a worker crashes, the Control Plane restarts it with backoff and counts the unconfirmed rows as dropped. A development fallback, `SYNERGY_OBSERVABILITY_INLINE=1`, runs the store with a single direct connection in-process (used by tests and as an operational rollback lever).
+A dedicated telemetry subprocess owns the single write connection: the Control Plane enqueues records into a bounded batch (10,000 rows or 250 ms, whichever comes first) and sends whole batches over IPC, and the worker commits them in one transaction. All capacity maintenance — WAL checkpoint, retention deletes, incremental vacuum — runs on the writer's own timers with a per-pass time budget (default 500 ms); an over-budget pass reports `maintenanceDeferred` and resumes on the next tick. Freshly written batches become visible within the 250 ms batch window. Queue eviction and rolled-back batches report dropped observation counts, including coalesced occurrences. When the writer crashes, the Control Plane restarts it with backoff and reports sent but unconfirmed observations as uncertain: they may have committed before acknowledgement was lost. It does not replay non-idempotent deltas or claim cross-crash lossless delivery.
+
+Dashboard metric aggregates and timeline buckets use a lazily opened, Runtime-owned readonly SQLite subprocess with bounded queue admission, an 8 MiB page cache and file mapping disabled. Each aggregate finalizes its statement after use so retained window/sort work does not accumulate in the statement cache. Queries yield while SQLite groups and sorts; analytics never occupies the authoritative Agent storage reader or the telemetry writer. Other bounded detail APIs retain the direct readonly connection. Dashboard highlights rank only metric families consumed by the projection, while exact totals and percentiles still cover the complete selected window. Identical in-flight summaries share a query even when new telemetry arrives; completed entries retain the one-second cache and data-version invalidation. Runtime closure drains the active analytics read, rejects queued work and closes its worker. A failed reader is replaced on the next request; the failing request retains its error. `SYNERGY_OBSERVABILITY_INLINE=1` keeps the direct in-process test/rollback mode, with the same asynchronous aggregate API. See [bounded observation work](../decisions/implemented/architecture/2026-10-19-bound-observation-work.md).
 
 Startup migrations import the previous indexed performance store when it exists. Legacy schema detection stays inside the observability migration boundary, copied rows are redacted into the canonical `obs_*` tables in bounded batches, and the central migration runner records completion only after the upgrade succeeds. The migration window is the only time the Control Plane opens the store directly for writing; the telemetry worker takes over before runtime startup completes. Runtime readers use only the canonical store.
+
+Telemetry migration transactions acquire write ownership before inspecting schemas or rows and retain it through metadata publication. Competing writers use the existing busy timeout; a migration failure rolls back its transaction and leaves central completion pending. See the [migration write-ownership decision](../decisions/implemented/bug-fix/2026-10-19-telemetry-migration-write-ownership.md).
 
 Observability schema v5 adds nullable cgroup and service-memory columns to `obs_resource_samples`. The additive migration `20260722-observability-resource-cgroup-v5` is idempotent; existing rows remain readable with `NULL` for fields that were not sampled.
 
 The configured SQLite limit applies to the combined database, WAL, and shared-memory footprint. Maintenance checkpoints WAL, incrementally reclaims free pages, and removes the globally oldest eligible historical rows in bounded batches. Running spans and open issues are protected from size eviction. If protected state or the minimum schema footprint prevents the configured limit from being reached, diagnostics expose the remaining excess instead of silently deleting live operational state. Full `VACUUM` is …
 
 High-frequency count signals such as LLM stream output, child-process output, and storage-operation counts are aggregated by attribution key before SQLite flush. Stream chunk-gap and throughput signals are summarized once per stream and output kind rather than written for every chunk. LLM memory checkpoints run at lifecycle boundaries and at a five-second periodic interval rather than for every provider chunk. This keeps writer queue depth bounded without removing trace, Scope, session, message, provider, tool, or process attribution.
+
+Authoritative-storage stalls are diagnosed through four series that the performance API accepts by name. `storage.queue.wait` and `storage.queue.hold` carry a `queue` label naming one of the store's serialized lanes (`store.writes`, `sqlite.writer`, `sqlite.reader`, `artifact.gate`, `artifact.pack`), so a wait that reached admission can be attributed to a lane and `hold` names the caller occupying it; `storage.queue.depth` records the window’s last per-lane backlog and `storage.queue.depth.peak` records its maximum. Each lane produces at most those two depth samples per one-second window, with a final partial window on shutdown. These gauges never sum depths or split by request, trace, message or Session identity. `storage.operation.duration` describes an operation's own work and excludes the admission wait those queue series report, so a slow operation and a queued one stay distinguishable instead of appearing as one interval twice. Retention reports per-pass counters plus `storage.retention.budget_ratio`, the authoritative footprint as a fraction of `storage.retentionBytes`. A window the byte budget cannot hold at the measured ingress rate raises `STORAGE_RETENTION_WINDOW_REDUCED`, a budget that cannot hold even the one-day floor raises `STORAGE_RETENTION_BUDGET_INFEASIBLE`, and a pass that fails to complete raises `STORAGE_RETENTION_PASS_FAILED`; each keeps the condition visible instead of leaving the store silently over budget.
 
 ## Cross-platform session memory benchmark
 
@@ -106,11 +128,17 @@ git -C /path/to/candidate checkout <candidate-revision>
 
 cd /path/to/baseline
 bun install
-bun run perf:memory:runtime --preset standard --scenario parallel > baseline.json
+bun run perf:memory:runtime --preset standard --scenario sequential > baseline.json
 
 cd /path/to/candidate
 bun install
-bun run perf:memory:runtime --preset standard --scenario parallel > candidate.json
+bun run perf:memory:runtime --preset standard --scenario sequential > candidate.json
+```
+
+Compare two `--preset standard --scenario sequential` artifacts with the runtime memory gate. The command requires the same workload fingerprint and exits non-zero when the final after-delete idle-relative retained sample, or any 5/30/120-second idle-relative sample, grows by more than 64 MiB server RSS, 96 MiB process-tree RSS, 64 MiB descendant RSS, 32 MiB heap, 32 MiB external memory, or 16 MiB ArrayBuffers. Override one allowance with `--max-rss-mib`, `--max-process-tree-rss-mib`, `--max-descendant-rss-mib`, `--max-heap-mib`, `--max-external-mib`, or `--max-array-buffers-mib`. The command reads JSON only. See [the compare gate](../decisions/implemented/testing/2026-11-02-session-memory-runtime-compare-gate.md).
+
+```bash
+bun run perf:memory:runtime:compare --baseline baseline.json --candidate candidate.json
 ```
 
 Only compare results whose workload contract version and workload fingerprint are identical. The stable JSON paths include workload-phase peaks, sequential deletion checkpoints, and 5/30/120-second absolute and idle-relative retained memory for server RSS, process-tree RSS, descendant RSS, heap, external memory, and ArrayBuffers. Candidate minus baseline is the memory-load delta: positive values are regressions and negative values are improvements.
@@ -133,6 +161,7 @@ Performance settings extend the existing runtime observability domain in `120-ru
         "sqliteEnabled": true,
         "jsonlMirrorEnabled": false,
         "maxSqliteBytes": 262144000,
+        "retentionBytes": 42949672960,
         "walCheckpointIntervalMs": 60000,
       },
     },
@@ -140,11 +169,29 @@ Performance settings extend the existing runtime observability domain in `120-ru
 }
 ```
 
-Use the generated SDK for non-streaming Performance API calls. The Performance SSE stream is `/global/performance/events` and emits refresh hints plus heartbeat events; clients should refetch summary after reconnect.
+Use the generated SDK for non-streaming Performance API calls. The Performance SSE stream is `/global/performance/events` and emits refresh hints plus heartbeat events. `performance.issue.raised` and `performance.issue.resolved` carry the same public Issue projection and Scope/Session filtering; recovery evidence accompanies the resolved issue. Clients should refetch summary after reconnect because the stream is not a replay log.
+
+The Timeline accepts `llm.stream.first_content` and `llm.stream.first_visible_text`, measuring dispatch-to-processor receipt from retained transport attempt timing. The first includes non-whitespace text, reasoning or tool input/name; the second requires visible text. Missing dispatch evidence increments their `.unavailable` counters rather than substituting a different clock. The historical `llm.stream.first_token` series retains its stream-open-to-first-text-or-reasoning-delta behavior, including empty deltas. None measures browser paint or provider-internal token generation; observations are persisted after stream disposal.
 
 Performance config updates reconfigure resource sampling, retention, capacity maintenance, and WAL checkpoint timers in the running server. Changing `storage.sqliteEnabled` still requires a restart because it changes store ownership and lifecycle. Browser telemetry uses bounded keepalive batches during page unload so the final batch stays within browser transport limits.
 
+`observability.performance.samplingRate` bounds default metric sampling. The browser token collector honors an explicitly configured rate for the apply/paint duration families, and while the key is unset it samples those two families at 10% so their row reduction holds; `frontend.token.receive.count` is never sampled because it is the exact volume measure. The rate is read by the Web client from the global config it already loads, so changing it applies from the next flush batch without a server restart.
+
 Session turns establish the root observability context. LLM and concurrent tool spans inherit that trace and record explicit parent span IDs; tool heartbeat and stalled updates retain the Scope captured when each tool starts rather than reading ambient timer context. Running spans left behind by an unclean shutdown are reconciled after the new runtime acquires the server process lock. Reconciliation ends each orphan at its persisted last activity time and marks it `interrupted`; graceful shutdown performs the same transition before resource storage stops. Inflight window filtering uses last activity rather than span start time. On Bun, heap-used divided by heap-total is not treated as a pressure ratio because those values do not share a trustworthy accounting invariant. Heap byte gauges remain visible, while ratio-based pressure issues are suppressed and diagnostics report the unavailable ratio reason.
+
+## Agent pool capacity and admission
+
+Session execution phases distinguish `preparing` from `queued_agent`. Admission and each turn's history, file and prompt preparation remain `preparing`; `queued_agent` starts at AgentTurn enqueue, and `running_agent` starts with the worker's start callback (or the in-process model boundary). Public busy/retry/idle/paused states are unchanged. Older `queued_agent` duration samples included preparation and must not be interpreted as pure worker wait. Existing `agent.queue.wait` and provider first-content clocks retain their definitions.
+
+Low-cardinality `session.prepare.repair`, `session.prepare.history_headers`, `session.prepare.tool_candidates`, `session.prepare.file_baseline` and `session.prepare.model_input` spans identify preparation work without recording message bodies or provider secrets. Read counts and preparation intervals describe different costs and must not be summed as independent foreground latency savings.
+
+The Agent worker ceiling resolves from a memory budget, and the effective value is recorded as `agent.pool.size` with a `source` label. `source=explicit` means `execution.agentWorkers` was set and used verbatim; `source=derived` means `defaultAgentWorkers()` computed `min(memoryCap, cpuCap, 64)` from half the effective memory limit divided by the per-worker soft recycle watermark (`agentWorkerMaxRssMb / 2`), raised to the resolved warm reserve. Derivation enumerates the cgroup ancestor chain itself because Bun and Node disagree about container limits and a leaf-only read misses a stricter parent. The value is resolved at startup and on configuration reload; it is not polled, so a container limit change takes effect on the next start or reload. To raise the ceiling beyond the derived value, set `execution.agentWorkers` explicitly.
+
+`GET /runtime/agent-workers` reports the same resolved pair — `configured`, `effective`, and `source` — from the single solver, so the Settings → Agents row can show the capacity that will actually run rather than only that sizing is automatic; `configured` is `null` while the machine decides. Clearing the field writes `null`, which the schema treats as unset and the runtime re-derives on the next reload.
+
+Queue metrics carry a `lane` label. Interactive turns are user-facing session turns; background turns are Sessionless `AgentCall.text()` work and sessions with a `parentID`. The pool serves interactive strictly first and keeps at least one slot available for background work, so a background lane that never drains indicates sustained interactive demand rather than starvation. Compare `agent.queue.wait{lane}` percentile-by-percentile: a healthy pool keeps interactive at sub-second p95 under a load of four or more concurrent turns with `agent.queue.depth` p50 at or below two. `agent.queue.depth` is emitted per lane, so the two lanes' depths do not sum into one sample.
+
+Provider throttling is the counter-pressure signal for the derived ceiling. When `llm.request.duration` rises together with 429 responses from `provider/retry.ts`, the pool is admitting more concurrent provider streams than the account tolerates; lower `execution.agentWorkers` to the largest value that keeps `agent.queue.wait` sub-second without sustained 429s. Raising the ceiling trades queue wait against provider pressure and worker memory, and the per-worker hard RSS and heap watermarks remain the containment boundary either way.
 
 ## Session memory pressure
 
@@ -173,6 +220,8 @@ Service pressure is classified independently from cgroup working set and current
 Soft service pressure compares the cgroup working set with the soft threshold. Critical service pressure compares the current cgroup charge with the critical threshold.
 
 Soft pressure is evidence for GC and turn-size telemetry only. Automatic heap snapshots are not taken on the soft path because snapshot generation itself allocates and can worsen allocation failures. Use ordinary resource samples, MessageCache counters, and LLM turn size metrics for diagnosis.
+
+Control Plane GC recovery compares process RSS before and immediately after the collection request. Its reported decrease is an observed RSS change, not final asynchronous reclamation or a JavaScript live-set estimate. Heap, external and ArrayBuffer gauges remain separate because their allocation categories can overlap.
 
 On Linux, every resource sample retains cgroup current charge, `memory.high`, `memory.max`, `memory.peak`, and lifetime OOM counters. In the metrics table, current is written at every resource interval, while the static high/max limits are written only when they change and at a low-frequency heartbeat controlled by `SYNERGY_CGROUP_STATIC_HEARTBEAT_MS` (default `300000`, minimum `30000`). Peak, swap, anonymous/file/kernel/slab breakdowns, reclaimable bytes, working set, `memory.events`, and PSI `some`/`full` pressure are sampled independently at `SYNERGY_CGROUP_DETAIL_INTERVAL_MS` (default `60000`, clamped to `30000`–`60000`); zero event and stall deltas are omitted. JSC and allocator gauges plus the twelve largest and fastest-growing object types are attempted at most once per `SYNERGY_LINUX_HEAP_STATS_INTERVAL_MS` (default `60000`), including after failed `heapStats()` reads. The first successful object-type sample establishes the growth baseline and reports zero deltas. These bounded diagnostics explain which boundary retained memory without turning stable cgroup values or repeated heap-stat failures into high-volume metric rows.
 
@@ -230,10 +279,12 @@ bun script/performance-benchmark.ts
 npx lhci autorun --config=lighthouserc.performance.cjs
 
 # Rollup visualizer report mode for app bundles, opt-in only
-bun packages/app/script/visualizer-report.ts
-SYNERGY_BUNDLE_VISUALIZER=1 bun run --cwd packages/app build
+bun apps/web/script/visualizer-report.ts
+SYNERGY_BUNDLE_VISUALIZER=1 bun run --cwd apps/web build
 ```
 
 k6 can be used with `script/performance-k6.js` when teams already rely on it, but it is not a runtime dependency because of its AGPL license.
 
 For browser investigations, use Playwright traces/HAR, Lighthouse CI against the Web app, and Rollup/Vite visualizer reports in development workflows. These tools complement the local Performance panel; they do not replace runtime telemetry.
+
+Timeline buckets and dashboard request counts, error rates and percentiles aggregate in SQLite across the selected time window. They do not truncate at 50,000 metric rows. Dashboard detail reads retain only the largest and latest samples per metric; tool-failure counters aggregate before presentation. Session navigation retains bounded timing state after its five-second deadline and records eventual completion; deadline observations do not contribute a false five-second completed duration.

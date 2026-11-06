@@ -1,0 +1,353 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
+import path from "path"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { FileSearchTool } from "../../src/tools/file-search"
+import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+
+const ctx = {
+  sessionID: "test-file-search",
+  messageID: "",
+  callID: "",
+  agent: "implementation-engineer",
+  abort: AbortSignal.any([]),
+  metadata: () => {},
+  ask: async () => {},
+}
+
+describe("tool.file_search", () => {
+  test("authorizes actual result paths before capturing search evidence", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "private.txt"), "needle\n")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          let captured = false
+          for (const mode of ["hybrid", "content", "paths"] as const) {
+            await expect(
+              tool.execute(
+                { mode, query: mode === "paths" ? "*.txt" : "needle" },
+                {
+                  ...ctx,
+                  async ask(request) {
+                    if (request.patterns.includes(path.join(tmp.path, "private.txt"))) throw new Error("path denied")
+                  },
+                  async recordActivity(capture) {
+                    captured = true
+                    return { kind: capture.kind }
+                  },
+                },
+              ),
+            ).rejects.toThrow("path denied")
+          }
+          expect(captured).toBe(false)
+        },
+      })
+    }))
+  test("precise modes retain exact syntax, ordering, Unicode columns and continuation", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "b.ts"), "界needle42\nneedle9\n")
+          await Bun.write(path.join(dir, "a.ts"), "needle1\n")
+          await Bun.write(path.join(dir, "ignore.txt"), "needle3\n")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const paths = await tool.execute({ mode: "paths", query: "*.ts", limit: 1 }, ctx)
+          expect(paths.metadata.count).toBe(1)
+          expect(paths.output).toContain("a.ts")
+          expect(paths.metadata.nextOffset).toBe(1)
+          const second = await tool.execute({ mode: "paths", query: "*.ts", limit: 1, offset: 1 }, ctx)
+          expect(second.output).toContain("b.ts")
+          expect(second.metadata.nextOffset).toBeUndefined()
+          const content = await tool.execute(
+            { mode: "content", syntax: "regex", query: "needle[0-9]+", include: "*.ts", limit: 2 },
+            ctx,
+          )
+          expect(content.output).toContain("a.ts:1:1")
+          expect(content.output).toContain("b.ts:1:2")
+          expect(content.metadata.nextOffset).toBe(2)
+          expect(content.metadata.pathCount).toBe(0)
+          await expect(tool.execute({ query: "x", syntax: "regex" }, ctx)).rejects.toThrow()
+          await expect(tool.execute({ mode: "paths", query: "*", syntax: "literal" }, ctx)).rejects.toThrow()
+          const empty = path.join(tmp.path, "empty")
+          await fs.mkdir(empty)
+          await expect(
+            tool.execute({ mode: "content", syntax: "regex", query: "[", path: empty }, ctx),
+          ).rejects.toThrow(/regex|parse/i)
+        },
+      })
+    }))
+  test("captures only displayed hits and distinguishes path and content evidence", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "needle.ts"), "const needle = 42")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          let text = ""
+          const recordActivity: NonNullable<Tool.Context["recordActivity"]> = async (capture) => {
+            text = capture.text
+            return { kind: capture.kind, mediaType: capture.mediaType, truncated: capture.truncated }
+          }
+          const result = await (
+            await FileSearchTool.init()
+          ).execute({ query: "needle", limit: 2 }, { ...ctx, recordActivity })
+          const captured = JSON.parse(text)
+          expect(captured.hits.length).toBe(result.metadata.count)
+          expect(captured.hits).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ kind: "path", path: "needle.ts" }),
+              expect.objectContaining({ kind: "content", path: "needle.ts", line: 1, text: "const needle = 42" }),
+            ]),
+          )
+        },
+      })
+    }))
+
+  test("reports byte-budget omissions separately from the requested result limit", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "data.txt"), `needle ${"界".repeat(500)}\n`.repeat(40))
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const result = await (await FileSearchTool.init()).execute({ query: "needle", limit: 100 }, ctx)
+          expect(result.metadata.truncated).toBe(true)
+          expect(result.metadata.count).toBeLessThan(40)
+          expect(result.output).toContain("shared budget")
+          expect(result.output).not.toContain("result limit")
+          expect(Buffer.byteLength(result.output)).toBeLessThanOrEqual(50 * 1024)
+        },
+      })
+    }))
+
+  test("path matches cannot consume the entire budget before content evidence", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          for (let i = 0; i < 8; i++) await Bun.write(path.join(dir, `needle-${i}.txt`), "unrelated")
+          await Bun.write(path.join(dir, "implementation.ts"), "export const needle = 42")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const result = await (await FileSearchTool.init()).execute({ query: "needle", limit: 3 }, ctx)
+          expect(result.output).toContain("[content] implementation.ts")
+          expect(result.metadata.truncated).toBe(true)
+          expect(result.metadata.count).toBeLessThanOrEqual(3)
+          expect(result.output).toContain("result limit")
+          expect(result.output).not.toContain("shared budget")
+        },
+      })
+    }))
+  test("returns fuzzy path matches with metadata", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await fs.mkdir(path.join(dir, "src", "components"), { recursive: true })
+          await Bun.write(path.join(dir, "src", "components", "file-panel.tsx"), "export const FilePanel = 1")
+        },
+      })
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const result = await tool.execute({ query: "file panel" }, ctx)
+          expect(result.output).toContain("file src/components/file-panel.tsx")
+          expect(result.metadata.pathCount).toBeGreaterThan(0)
+          expect(result.metadata.count).toBeGreaterThan(0)
+        },
+      })
+    }))
+
+  test("returns content matches with [content] prefix and line info", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await fs.mkdir(path.join(dir, "src"), { recursive: true })
+          await Bun.write(
+            path.join(dir, "src", "tool.ts"),
+            "export function ToolDefine(name: string) {\n  return { name }\n}\n",
+          )
+        },
+      })
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const result = await tool.execute({ query: "ToolDefine" }, ctx)
+          expect(result.output).toContain("[content]")
+          expect(result.output).toContain("src/tool.ts")
+          expect(result.output).toContain("ToolDefine")
+          expect(result.metadata.contentCount).toBeGreaterThan(0)
+        },
+      })
+    }))
+
+  test("merges path and content results in output", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await fs.mkdir(path.join(dir, "src"), { recursive: true })
+          await Bun.write(
+            path.join(dir, "src", "widget-name.tsx"),
+            "export function WidgetName() { return 'WidgetName widget' }\n",
+          )
+        },
+      })
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const result = await tool.execute({ query: "widget" }, ctx)
+          expect(result.output).toContain("file src/widget-name.tsx")
+          expect(result.output).toContain("[content] src/widget-name.tsx")
+          expect(result.metadata.pathCount).toBeGreaterThan(0)
+          expect(result.metadata.contentCount).toBeGreaterThan(0)
+        },
+      })
+    }))
+
+  test("empty query returns path-only results", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await fs.mkdir(path.join(dir, "src"), { recursive: true })
+          await Bun.write(path.join(dir, "src", "a.ts"), "// a")
+        },
+      })
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const result = await tool.execute({ query: "" }, ctx)
+          expect(result.output).toContain("file src/a.ts")
+          expect(result.output).not.toContain("[content]")
+          expect(result.output).not.toContain("[symbol]")
+          expect(result.metadata.contentCount).toBe(0)
+          expect(result.metadata.symbolCount).toBe(0)
+        },
+      })
+    }))
+
+  test("whitespace-only query returns path-only mode (no content/symbol search)", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+      })
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const result = await tool.execute({ query: "  " }, ctx)
+          expect(result.output).not.toContain("[content]")
+          expect(result.output).not.toContain("[symbol]")
+          expect(result.metadata.contentCount).toBe(0)
+          expect(result.metadata.symbolCount).toBe(0)
+        },
+      })
+    }))
+
+  test("returns zero-result guidance when nothing matches", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "readme.md"), "# nothing here")
+        },
+      })
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const result = await tool.execute({ query: "xyznonexistent12345" }, ctx)
+          expect(result.output).toContain("No results found")
+          expect(result.output).toContain("Tips:")
+          expect(result.metadata.count).toBe(0)
+        },
+      })
+    }))
+
+  test("metadata includes per-mode counts", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await fs.mkdir(path.join(dir, "src"), { recursive: true })
+          await Bun.write(path.join(dir, "src", "special-file.ts"), "export const SpecialName = 1")
+        },
+      })
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const result = await tool.execute({ query: "SpecialName" }, ctx)
+          expect(result.metadata.pathCount).toBeGreaterThanOrEqual(0)
+          expect(result.metadata.contentCount).toBeGreaterThanOrEqual(0)
+          expect(result.metadata.symbolCount).toBeGreaterThanOrEqual(0)
+          expect(result.metadata.count).toBe(
+            result.metadata.pathCount + result.metadata.contentCount + result.metadata.symbolCount,
+          )
+        },
+      })
+    }))
+
+  test("respects limit parameter for merged results", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await fs.mkdir(path.join(dir, "src"), { recursive: true })
+          // Create files with repeating pattern to generate multiple content matches
+          await Bun.write(path.join(dir, "src", "a.ts"), "commonMarker commonMarker\n" + "commonMarker\n".repeat(10))
+          await Bun.write(path.join(dir, "src", "b.ts"), "commonMarker\n".repeat(10))
+        },
+      })
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const result = await tool.execute({ query: "commonMarker", limit: 5 }, ctx)
+          expect(result.metadata.count).toBeLessThanOrEqual(5)
+        },
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

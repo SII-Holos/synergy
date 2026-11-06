@@ -1,0 +1,67 @@
+import { ApplyPatchTool } from "./tools/apply-patch"
+import { registerLocalToolInputHistory } from "./tool-input-history"
+import { registerToolGroup } from "./tool-group-worktree"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { BashTool } from "./tools/bash"
+import { EditTool } from "./tools/edit"
+import { FileSearchTool } from "./tools/file-search"
+import { ReadTool } from "./tools/read"
+import { ViewFileTool } from "./tools/view-file"
+import { ViewImageTool } from "./tools/view-image"
+import { ReviseFileTool } from "./tools/revise-file"
+import { ResolveConflictsTool } from "./tools/resolve-conflicts"
+import { SaveFileTool } from "./tools/save-file"
+import { ScanFilesTool } from "./tools/scan-files"
+import { TodoWriteTool, TodoReadTool } from "./tools/todo"
+import { DagWriteTool, DagReadTool, DagPatchTool } from "./tools/dag"
+import { WebFetchTool } from "./tools/webfetch"
+import { WriteTool } from "./tools/write"
+import { SessionListTool } from "./tools/session-list"
+import { SessionReadTool } from "./tools/session-read"
+import { SessionSearchTool } from "./tools/session-search"
+import { SessionSendTool } from "./tools/session-send"
+import { ScopeListTool } from "./tools/scope-list"
+import { SkillTool } from "./tools/skill"
+import { ProcessTool } from "./tools/process"
+import { AgentConfigTool, AgentConfigToolGroup } from "./tools/agent-config"
+import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
+import { RuntimeReloadTool } from "./tools/runtime-reload"
+
+export function registerLocalTools() {
+  registerLocalToolInputHistory()
+
+  registerToolGroup()
+  ToolExposure.registerGroups("local-runtime", [AgentConfigToolGroup])
+  ToolRegistry.registerToolProvider("local-runtime", () => {
+    const tools = [
+      BashTool,
+      EditTool,
+      ApplyPatchTool,
+      FileSearchTool,
+      ReadTool,
+      ViewFileTool,
+      ViewImageTool,
+      ReviseFileTool,
+      ResolveConflictsTool,
+      SaveFileTool,
+      ScanFilesTool,
+      TodoWriteTool,
+      TodoReadTool,
+      DagWriteTool,
+      DagReadTool,
+      DagPatchTool,
+      WebFetchTool,
+      WriteTool,
+      SessionListTool,
+      SessionReadTool,
+      SessionSearchTool,
+      SessionSendTool,
+      ScopeListTool,
+      SkillTool,
+      ProcessTool,
+      RuntimeReloadTool,
+      AgentConfigTool,
+    ]
+    return tools
+  })
+}

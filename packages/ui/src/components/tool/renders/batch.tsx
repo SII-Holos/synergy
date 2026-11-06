@@ -95,7 +95,7 @@ for (const name of researchToolNames) {
   })
 }
 
-const worktreeToolNames = ["worktree_enter", "worktree_leave", "worktree_list"] as const
+const worktreeToolNames = ["worktree_enter", "worktree_leave", "worktree_archive", "worktree_list"] as const
 
 for (const name of worktreeToolNames) {
   ToolRegistry.register({

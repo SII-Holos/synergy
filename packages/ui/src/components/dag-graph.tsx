@@ -1,176 +1,26 @@
 import type { I18n } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { For, Show, createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, onMount } from "solid-js"
-import { Portal } from "solid-js/web"
+import { Popover } from "./popover"
 import { Icon, type IconName } from "./icon"
 import { Markdown } from "./markdown"
 import "./dag-graph.css"
 import { DAG_CHROME_DESC } from "./tool-title-descriptors"
 import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "./semantic-icon"
+import {
+  MIN_CARD_H,
+  computeLayout,
+  focusTargets,
+  type CardHeight,
+  type DagNode,
+  type LayoutNode,
+} from "./dag-graph-layout"
 
-export interface DagNode {
-  id: string
-  content: string
-  status: string
-  deps: string[]
-  assign?: string
-  task_id?: string
-  session_id?: string
-  memo?: string
-  result?: string
-  worktree?: string
-}
-
-interface LayoutNode {
-  node: DagNode
-  layer: number
-  index: number
-  x: number
-  y: number
-  h: number
-}
-
-interface LayoutEdge {
-  from: LayoutNode
-  to: LayoutNode
-}
-
-const CARD_W = 280
-const MIN_CARD_H = 108
-const MAX_CARD_H = 400
-const GAP_X = 32
-const GAP_Y = 56
-const PAD_X = 48
-const PAD_Y = 40
-
-const HEADER_H = 26
-const LINE_H = 20
-const CARD_PAD_Y = 26
-const CARD_GAP = 10
-const CHAR_W = 7.1
+export type { DagNode } from "./dag-graph-layout"
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
-}
-
-function estimateCardH(content: string | undefined): number {
-  const text = content ?? ""
-  const textW = Math.max(1, CARD_W - 34)
-  const charsPerLine = Math.max(1, Math.floor(textW / CHAR_W))
-  const numLines = Math.max(1, Math.ceil(text.length / charsPerLine))
-  return clamp(CARD_PAD_Y + HEADER_H + CARD_GAP + numLines * LINE_H, MIN_CARD_H, MAX_CARD_H)
-}
-
-function originalIndex(nodes: DagNode[]) {
-  return new Map(nodes.map((node, index) => [node.id, index]))
-}
-
-export function computeLayout(rawNodes: DagNode[], containerWidth: number) {
-  const nodes = rawNodes.filter((n) => n.id && n.status)
-  if (nodes.length === 0) return { laid: [] as LayoutNode[], edges: [] as LayoutEdge[], width: 0, height: 0, cardW: 0 }
-
-  const map = new Map(nodes.map((n) => [n.id, n]))
-  const original = originalIndex(nodes)
-
-  const layers = new Map<string, number>()
-  const visiting = new Set<string>()
-  function depth(id: string): number {
-    if (layers.has(id)) return layers.get(id)!
-    if (visiting.has(id)) {
-      layers.set(id, 0)
-      return 0
-    }
-    const node = map.get(id)
-    const deps = node?.deps
-    if (!node || !Array.isArray(deps) || deps.length === 0) {
-      layers.set(id, 0)
-      return 0
-    }
-    visiting.add(id)
-    const val = Math.max(...deps.map((d) => depth(d))) + 1
-    visiting.delete(id)
-    layers.set(id, val)
-    return val
-  }
-  for (const n of nodes) depth(n.id)
-
-  const layerGroups = new Map<number, DagNode[]>()
-  for (const n of nodes) {
-    const l = layers.get(n.id) ?? 0
-    const group = layerGroups.get(l) ?? []
-    group.push(n)
-    layerGroups.set(l, group)
-  }
-
-  const maxLayer = Math.max(...layerGroups.keys(), 0)
-  const sortedGroups = new Map<number, DagNode[]>()
-  const order = new Map<string, number>()
-
-  for (let l = 0; l <= maxLayer; l++) {
-    const group = [...(layerGroups.get(l) ?? [])]
-    group.sort((a, b) => {
-      const avgA = averageDepOrder(a, order, original)
-      const avgB = averageDepOrder(b, order, original)
-      return avgA - avgB || (original.get(a.id) ?? 0) - (original.get(b.id) ?? 0)
-    })
-    sortedGroups.set(l, group)
-    group.forEach((node, index) => order.set(node.id, index))
-  }
-
-  const maxGroupSize = Math.max(...[...sortedGroups.values()].map((g) => g.length), 1)
-  const minWorldWidth = maxGroupSize * CARD_W + (maxGroupSize - 1) * GAP_X + PAD_X * 2
-  const worldWidth = Math.max(containerWidth || 600, minWorldWidth)
-
-  const layerHeights: number[] = []
-  for (let l = 0; l <= maxLayer; l++) {
-    const group = sortedGroups.get(l) ?? []
-    const maxH = Math.max(...group.map((n) => estimateCardH(n.content)), MIN_CARD_H)
-    layerHeights.push(maxH)
-  }
-
-  const laid: LayoutNode[] = []
-  const byId = new Map<string, LayoutNode>()
-
-  let cy = PAD_Y
-  for (let l = 0; l <= maxLayer; l++) {
-    const group = sortedGroups.get(l) ?? []
-    const rowWidth = group.length * CARD_W + Math.max(0, group.length - 1) * GAP_X
-    const offsetX = (worldWidth - rowWidth) / 2
-
-    for (let i = 0; i < group.length; i++) {
-      const ln: LayoutNode = {
-        node: group[i],
-        layer: l,
-        index: i,
-        x: offsetX + i * (CARD_W + GAP_X),
-        y: cy,
-        h: estimateCardH(group[i].content),
-      }
-      laid.push(ln)
-      byId.set(group[i].id, ln)
-    }
-    cy += layerHeights[l] + GAP_Y
-  }
-
-  const edges: LayoutEdge[] = []
-  for (const ln of laid) {
-    for (const dep of ln.node.deps ?? []) {
-      const from = byId.get(dep)
-      if (from) edges.push({ from, to: ln })
-    }
-  }
-
-  const height = cy - GAP_Y + PAD_Y
-
-  return { laid, edges, width: worldWidth, height, cardW: CARD_W }
-}
-
-function averageDepOrder(node: DagNode, layerOrder: Map<string, number>, fallback: Map<string, number>) {
-  const deps = node.deps ?? []
-  if (deps.length === 0) return fallback.get(node.id) ?? 0
-  const values = deps.map((dep) => layerOrder.get(dep) ?? fallback.get(dep) ?? fallback.get(node.id) ?? 0)
-  return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
 function statusLabel(status: string, i18n?: I18n) {
@@ -199,7 +49,6 @@ function statusCounts(nodes: DagNode[]) {
     pending: nodes.filter((n) => n.status === "pending").length,
   }
 }
-const NODE_INSPECTOR_HOVER_DELAY_MS = 2400
 
 interface NodeBadge {
   kind: "worktree" | "session" | "result"
@@ -255,24 +104,17 @@ export function DagGraph(props: {
   let ref: HTMLDivElement | undefined
   let viewport: HTMLDivElement | undefined
   let dragStart: { pointer: { x: number; y: number }; pan: { x: number; y: number } } | undefined
-  let clickNodeId: string | undefined
-  const [hoveredNodeId, setHoveredNodeId] = createSignal<string | undefined>(undefined)
-  const [inspectorNode, setInspectorNode] = createSignal<DagNode | undefined>(undefined)
-  const [inspectorPosition, setInspectorPosition] = createSignal({ x: 0, y: 0 })
-  let inspectorTimer: ReturnType<typeof setTimeout> | undefined
-
-  const clearInspectorTimer = () => {
-    clearTimeout(inspectorTimer)
-    inspectorTimer = undefined
-    setHoveredNodeId(undefined)
+  let dragCapture: HTMLElement | undefined
+  const [inspectorID, setInspectorID] = createSignal<string>()
+  const [inspectorAnchor, setInspectorAnchor] = createSignal<HTMLButtonElement>()
+  const closeNodeInspector = () => setInspectorID(undefined)
+  const activateNode = (node: DagNode, anchor: HTMLButtonElement) => {
+    if (props.frozen) return
+    props.onSelectNode?.(node)
+    if (props.enableInspector === false) return
+    setInspectorAnchor(anchor)
+    setInspectorID(node.id)
   }
-
-  const closeNodeInspector = () => {
-    clearInspectorTimer()
-    setInspectorNode(undefined)
-  }
-
-  const inspectorIsPinned = () => inspectorNode() !== undefined
 
   onMount(() => {
     if (!ref) return
@@ -283,16 +125,63 @@ export function DagGraph(props: {
     })
     observer.observe(ref)
     onCleanup(() => observer.disconnect())
-    onCleanup(closeNodeInspector)
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && inspectorNode()) closeNodeInspector()
-    }
-    document.addEventListener("keydown", handleKeyDown)
-    onCleanup(() => document.removeEventListener("keydown", handleKeyDown))
   })
 
   const nodes = createMemo(() => props.nodes ?? [])
-  const layout = createMemo(() => computeLayout(nodes(), containerWidth()))
+  const inspectorNode = createMemo(() => nodes().find((node) => node.id === inspectorID()))
+  createEffect(() => {
+    if (props.frozen || props.enableInspector === false || !inspectorNode()) closeNodeInspector()
+  })
+
+  // Content wraps by glyph, not by character count: card text mixes CJK and
+  // Latin, so a single per-character width under-measures every line and the
+  // tail is clipped by the card's fixed height. Measure the rendered cards
+  // instead. Measurements are keyed by card width because wrapping depends on
+  // it, and offsetHeight is used because the stage is CSS-scaled.
+  const [measured, setMeasured] = createSignal<{ cardW: number; heights: Map<string, number> }>({
+    cardW: 0,
+    heights: new Map(),
+  })
+  const measureCard: CardHeight = (node, cardW) => {
+    const current = measured()
+    return current.cardW === cardW ? current.heights.get(node.id) : undefined
+  }
+  const layout = createMemo(() => computeLayout(nodes(), containerWidth(), measureCard))
+
+  let measureRaf: number | undefined
+  onCleanup(() => {
+    if (measureRaf !== undefined) cancelAnimationFrame(measureRaf)
+  })
+  createEffect(() => {
+    const l = layout()
+    if (!ref || containerWidth() === 0 || l.laid.length === 0) return
+    if (measureRaf !== undefined) cancelAnimationFrame(measureRaf)
+    measureRaf = requestAnimationFrame(() => {
+      measureRaf = undefined
+      const cards = [...(ref?.querySelectorAll<HTMLElement>('[data-slot="dag-graph-card"]') ?? [])]
+      const previous = cards.map((card) => card.style.height)
+      for (const card of cards) card.style.height = "auto"
+      const natural = cards.map((card) => card.offsetHeight)
+      cards.forEach((card, index) => (card.style.height = previous[index]))
+
+      const heights = new Map<string, number>()
+      let changed = false
+      cards.forEach((card, index) => {
+        const id = card.dataset.id
+        // A card inside a display:none ancestor reports 0; keep the estimate
+        // until it is laid out rather than collapsing it to the minimum.
+        if (!id || natural[index] <= 0) return
+        heights.set(id, Math.max(MIN_CARD_H, natural[index]))
+        const current = l.laid.find((item) => item.node.id === id)?.h ?? 0
+        if (Math.abs(current - Math.max(MIN_CARD_H, natural[index])) > 0.5) changed = true
+      })
+      if (heights.size === 0) return
+      if (!changed && measured().cardW === l.cardW) return
+      setMeasured({ cardW: l.cardW, heights })
+    })
+  })
+
+  const layoutByID = createMemo(() => new Map(layout().laid.map((item) => [item.node.id, item])))
   const readySet = createMemo(() => new Set(props.ready ?? []))
   const counts = createMemo(() => statusCounts(nodes()))
 
@@ -329,13 +218,13 @@ export function DagGraph(props: {
 
   createEffect(() => {
     const focusId = props.focusNodeId
-    if (!focusId || hasUserMoved() || nodes().length > 200) return
+    if (props.frozen || !focusId || hasUserMoved() || nodes().length > 200) return
     const laid = layout().laid
     if (laid.length === 0) return
     const target = laid.find((ln) => ln.node.id === focusId)
     if (!target || target.h === 0) return
     requestAnimationFrame(() => {
-      fitToNodes([target])
+      fitToNodes(focusTargets(laid, [target]))
     })
   })
 
@@ -348,9 +237,9 @@ export function DagGraph(props: {
     const running = laid.filter((node) => node.node.status === "running")
     const ready = laid.filter((node) => readySet().has(node.node.id))
     const pending = laid.filter((node) => node.node.status === "pending")
-    fitToNodes(
-      running.length > 0 ? running : ready.length > 0 ? ready : pending.length > 0 ? pending.slice(0, 3) : laid,
-    )
+    const seeds =
+      running.length > 0 ? running : ready.length > 0 ? ready : pending.length > 0 ? pending.slice(0, 3) : laid
+    fitToNodes(focusTargets(laid, seeds))
   }
 
   function fitToNodes(targets: LayoutNode[]) {
@@ -407,49 +296,17 @@ export function DagGraph(props: {
     zoomAt(scale() * factor, event.clientX, event.clientY)
   }
 
-  function updateInspectorPosition(event: PointerEvent) {
-    const inspectorWidth = 380
-    const inspectorHeight = 440
-    const maxX = window.innerWidth - inspectorWidth
-    const maxY = window.innerHeight - inspectorHeight
-    setInspectorPosition({
-      x: Math.max(16, Math.min(event.clientX + 18, maxX)),
-      y: Math.max(16, Math.min(event.clientY + 18, maxY)),
-    })
-  }
-
-  function handleNodePointerEnter(node: DagNode, event: PointerEvent) {
-    if (props.enableInspector === false || inspectorIsPinned()) return
-    clearInspectorTimer()
-    setHoveredNodeId(node.id)
-    updateInspectorPosition(event)
-    inspectorTimer = setTimeout(() => {
-      setInspectorNode(node)
-      setHoveredNodeId(undefined)
-      inspectorTimer = undefined
-    }, NODE_INSPECTOR_HOVER_DELAY_MS)
-  }
-
-  function handleNodePointerMove(event: PointerEvent) {
-    if (hoveredNodeId() && !inspectorIsPinned()) updateInspectorPosition(event)
-  }
-
-  function handleNodePointerLeave() {
-    clearInspectorTimer()
-  }
   function handlePointerDown(event: PointerEvent) {
     if (event.button !== 0) return
     const target = event.target as HTMLElement | undefined
-    if (target?.closest("button")) return
-    clearInspectorTimer()
+    if (props.frozen || target?.closest('button:not([data-slot="dag-graph-node-action"])')) return
     setDragging(true)
     setHasUserMoved(true)
     props.onViewportInteraction?.()
     setPointerMoved(false)
-    const card = target?.closest('[data-slot="dag-graph-card"]')
-    clickNodeId = (card as HTMLElement | undefined)?.dataset.id ?? undefined
     dragStart = { pointer: { x: event.clientX, y: event.clientY }, pan: pan() }
-    viewport?.setPointerCapture(event.pointerId)
+    dragCapture = target?.closest<HTMLButtonElement>('[data-slot="dag-graph-node-action"]') ?? viewport
+    dragCapture?.setPointerCapture(event.pointerId)
   }
 
   function handlePointerMove(event: PointerEvent) {
@@ -466,14 +323,10 @@ export function DagGraph(props: {
   }
 
   function handlePointerUp(event: PointerEvent) {
-    if (!pointerMoved() && clickNodeId && props.onSelectNode) {
-      const node = nodes().find((n) => n.id === clickNodeId)
-      if (node) props.onSelectNode(node)
-    }
     setDragging(false)
     dragStart = undefined
-    clickNodeId = undefined
-    viewport?.releasePointerCapture(event.pointerId)
+    if (dragCapture?.hasPointerCapture(event.pointerId)) dragCapture.releasePointerCapture(event.pointerId)
+    dragCapture = undefined
   }
 
   return (
@@ -515,11 +368,11 @@ export function DagGraph(props: {
             <button type="button" onClick={fitView}>
               {_(DAG_CHROME_DESC.fit)}
             </button>
-            <button type="button" onClick={() => zoomAt(scale() * 0.86)}>
+            <button type="button" aria-label={_(DAG_CHROME_DESC.zoomOut)} onClick={() => zoomAt(scale() * 0.86)}>
               −
             </button>
             <span>{Math.round(scale() * 100)}%</span>
-            <button type="button" onClick={() => zoomAt(scale() * 1.16)}>
+            <button type="button" aria-label={_(DAG_CHROME_DESC.zoomIn)} onClick={() => zoomAt(scale() * 1.16)}>
               +
             </button>
           </div>
@@ -533,6 +386,10 @@ export function DagGraph(props: {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={(event) => {
+            setPointerMoved(true)
+            handlePointerUp(event)
+          }}
           onDblClick={focusActiveNodes}
         >
           <div
@@ -576,55 +433,62 @@ export function DagGraph(props: {
                 }}
               </For>
             </svg>
-            <For each={layout().laid}>
-              {(ln) => (
-                <div
-                  class="dag-node"
-                  data-slot="dag-graph-card"
-                  data-id={ln.node.id}
-                  data-status={ln.node.status}
-                  data-ready={readySet().has(ln.node.id)}
-                  data-selected={props.selectedNodeId && props.selectedNodeId === ln.node.id ? "true" : undefined}
-                  data-hovering={hoveredNodeId() === ln.node.id ? "true" : undefined}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={props.getNodeAriaLabel?.(ln.node) ?? `DAG node: ${ln.node.content}`}
-                  aria-pressed={props.selectedNodeId === ln.node.id}
-                  onPointerEnter={(event) => handleNodePointerEnter(ln.node, event)}
-                  onPointerMove={handleNodePointerMove}
-                  onPointerLeave={handleNodePointerLeave}
-                  onKeyDown={(e: KeyboardEvent) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault()
-                      props.onSelectNode?.(ln.node)
-                    }
-                  }}
-                  style={{
-                    left: `${ln.x}px`,
-                    top: `${ln.y}px`,
-                    width: `${layout().cardW}px`,
-                    height: `${ln.h}px`,
-                  }}
-                >
-                  <div data-slot="dag-graph-card-header">
-                    <span data-slot="dag-graph-status-dot" />
-                    <span data-slot="dag-graph-status-label">
-                      {props.getStatusLabel?.(ln.node) ?? statusLabel(ln.node.status, linguiI18n())}
-                    </span>
-                    <Show when={nodeBadges(ln.node, _).length > 0}>
+            <For each={layout().laid.map((item) => item.node.id)}>
+              {(nodeID) => {
+                const ln = () => layoutByID().get(nodeID)!
+                return (
+                  <div
+                    class="dag-node"
+                    data-slot="dag-graph-card"
+                    data-id={ln().node.id}
+                    data-status={ln().node.status}
+                    data-ready={readySet().has(ln().node.id)}
+                    data-selected={props.selectedNodeId && props.selectedNodeId === ln().node.id ? "true" : undefined}
+                    style={{
+                      left: `${ln().x}px`,
+                      top: `${ln().y}px`,
+                      width: `${layout().cardW}px`,
+                      height: `${ln().h}px`,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      data-slot="dag-graph-node-action"
+                      aria-label={
+                        props.getNodeAriaLabel?.(ln().node) ??
+                        _({
+                          id: "dag.node.label",
+                          message: "Task: {content}",
+                          values: { content: ln().node.content },
+                        })
+                      }
+                      aria-pressed={props.selectedNodeId === ln().node.id}
+                      aria-haspopup={props.enableInspector !== false ? "dialog" : undefined}
+                      aria-expanded={props.enableInspector !== false ? inspectorID() === ln().node.id : undefined}
+                      onClick={(event) => {
+                        if (event.detail && pointerMoved()) return
+                        activateNode(ln().node, event.currentTarget)
+                      }}
+                    >
+                      <span data-slot="dag-graph-card-header">
+                        <span data-slot="dag-graph-status-dot" aria-hidden="true" />
+                        <span data-slot="dag-graph-status-label">
+                          {props.getStatusLabel?.(ln().node) ?? statusLabel(ln().node.status, linguiI18n())}
+                        </span>
+                      </span>
+                      <span data-slot="dag-graph-card-content">{ln().node.content}</span>
+                    </button>
+                    <Show when={nodeBadges(ln().node, _).length > 0}>
                       <div data-slot="dag-graph-node-badges" aria-label={_(DAG_CHROME_DESC.nodeMetadata)}>
-                        <For each={nodeBadges(ln.node, _)}>
+                        <For each={nodeBadges(ln().node, _)}>
                           {(badge) =>
-                            badge.kind === "session" && ln.node.session_id && props.onOpenSession ? (
+                            badge.kind === "session" && ln().node.session_id && props.onOpenSession ? (
                               <button
                                 type="button"
                                 data-slot="dag-graph-node-badge"
                                 title={`${badge.label}: ${badge.value}`}
                                 aria-label={`${badge.label}: ${badge.value}`}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  props.onOpenSession?.(ln.node.session_id!)
-                                }}
+                                onClick={() => props.onOpenSession?.(ln().node.session_id!)}
                               >
                                 <Icon name={badge.icon} size="small" />
                               </button>
@@ -637,107 +501,102 @@ export function DagGraph(props: {
                         </For>
                       </div>
                     </Show>
-                    <Show when={hoveredNodeId() === ln.node.id && inspectorNode()?.id !== ln.node.id}>
-                      <span data-slot="dag-graph-hover-hold" aria-hidden="true" />
-                    </Show>
                   </div>
-                  <div data-slot="dag-graph-card-content" title={ln.node.content}>
-                    {ln.node.content}
-                  </div>
-                </div>
-              )}
+                )
+              }}
             </For>
           </div>
         </div>
         <Show when={props.enableInspector !== false}>
-          <Portal>
-            <Show keyed when={inspectorNode()}>
-              {(node) => (
-                <div
-                  data-slot="dag-node-preview"
-                  style={{
-                    left: `${inspectorPosition().x}px`,
-                    top: `${inspectorPosition().y}px`,
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <div data-slot="dag-node-preview-header">
-                    <span data-slot="dag-node-preview-status" data-status={node.status}>
-                      {props.getStatusLabel?.(node) ?? statusLabel(node.status, linguiI18n())}
-                    </span>
-                    <Show keyed when={node.assign}>
-                      {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}
-                    </Show>
-                    {node.session_id && props.onOpenSession ? (
-                      <button
-                        type="button"
-                        data-slot="dag-node-preview-open-session"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          props.onOpenSession?.(node.session_id!)
-                        }}
-                      >
-                        <Icon name={getSemanticIcon("action.open")} size="small" />
-                        {_(DAG_CHROME_DESC.openSession)}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      data-slot="dag-node-preview-close"
-                      aria-label={_(DAG_CHROME_DESC.closeDetails)}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        closeNodeInspector()
-                      }}
-                    >
-                      <Icon name={getSemanticIcon("action.close")} size="small" />
-                    </button>
-                  </div>
-                  <div data-slot="dag-node-preview-title">{node.content}</div>
-                  <div data-slot="dag-node-preview-meta">
-                    <Show keyed when={node.task_id}>
-                      {(taskID) => (
-                        <span title={taskID}>
-                          {_(DAG_CHROME_DESC.task)}: {displayIdentifier(taskID)}
-                        </span>
-                      )}
-                    </Show>
-                    <Show keyed when={node.session_id}>
-                      {(sessionID) => (
-                        <span title={sessionID}>
-                          {_(DAG_CHROME_DESC.session)}: {displayIdentifier(sessionID)}
-                        </span>
-                      )}
-                    </Show>
-                    <Show keyed when={node.worktree}>
-                      {(worktree) => (
-                        <span>
-                          {_(DAG_CHROME_DESC.worktree)}: {worktree}
-                        </span>
-                      )}
-                    </Show>
-                    <Show when={node.deps.length > 0}>
-                      <span>
-                        {_(DAG_CHROME_DESC.deps)}: {node.deps.join(", ")}
+          <Popover
+            open={!!inspectorNode()}
+            onOpenChange={(open) => {
+              if (!open) closeNodeInspector()
+            }}
+            anchorRef={inspectorAnchor}
+            placement="right-start"
+            class="dag-node-inspector"
+            title={_(DAG_CHROME_DESC.nodeDetails)}
+            translations={{ dismiss: _(DAG_CHROME_DESC.closeDetails) }}
+            contentProps={{
+              onCloseAutoFocus: (event: Event) => {
+                event.preventDefault()
+                const anchor = inspectorAnchor()
+                if (!props.frozen && anchor?.isConnected && !anchor.closest("[inert]"))
+                  anchor.focus({ preventScroll: true })
+              },
+            }}
+          >
+            <Show when={inspectorNode()}>
+              {(current) => {
+                const node = () => current()
+                return (
+                  <div data-slot="dag-node-preview">
+                    <div data-slot="dag-node-preview-header">
+                      <span data-slot="dag-node-preview-status" data-status={node().status}>
+                        {props.getStatusLabel?.(node()) ?? statusLabel(node().status, linguiI18n())}
                       </span>
+                      <Show keyed when={node().assign}>
+                        {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}
+                      </Show>
+                      {node().session_id && props.onOpenSession ? (
+                        <button
+                          type="button"
+                          data-slot="dag-node-preview-open-session"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            props.onOpenSession?.(node().session_id!)
+                          }}
+                        >
+                          <Icon name={getSemanticIcon("action.open")} size="small" />
+                          {_(DAG_CHROME_DESC.openSession)}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div data-slot="dag-node-preview-title">{node().content}</div>
+                    <div data-slot="dag-node-preview-meta">
+                      <Show keyed when={node().task_id}>
+                        {(taskID) => (
+                          <span title={taskID}>
+                            {_(DAG_CHROME_DESC.task)}: {displayIdentifier(taskID)}
+                          </span>
+                        )}
+                      </Show>
+                      <Show keyed when={node().session_id}>
+                        {(sessionID) => (
+                          <span title={sessionID}>
+                            {_(DAG_CHROME_DESC.session)}: {displayIdentifier(sessionID)}
+                          </span>
+                        )}
+                      </Show>
+                      <Show keyed when={node().worktree}>
+                        {(worktree) => (
+                          <span>
+                            {_(DAG_CHROME_DESC.worktree)}: {worktree}
+                          </span>
+                        )}
+                      </Show>
+                      <Show when={node().deps.length > 0}>
+                        <span>
+                          {_(DAG_CHROME_DESC.deps)}: {node().deps.join(", ")}
+                        </span>
+                      </Show>
+                    </div>
+                    <Show keyed when={node().memo}>
+                      {(memo) => <div data-slot="dag-node-preview-note">{memo}</div>}
+                    </Show>
+                    <Show keyed when={node().result}>
+                      {(result) => (
+                        <div data-slot="dag-node-preview-result">
+                          <Markdown text={result} cacheKey={`dag-node-result-${node().id}`} />
+                        </div>
+                      )}
                     </Show>
                   </div>
-                  <Show keyed when={node.memo}>
-                    {(memo) => <div data-slot="dag-node-preview-note">{memo}</div>}
-                  </Show>
-                  <Show keyed when={node.result}>
-                    {(result) => (
-                      <div data-slot="dag-node-preview-result">
-                        <Markdown text={result} cacheKey={`dag-node-result-${node.id}`} />
-                      </div>
-                    )}
-                  </Show>
-                </div>
-              )}
+                )
+              }}
             </Show>
-          </Portal>
+          </Popover>
         </Show>
         <div data-slot="dag-graph-hint">{_(DAG_CHROME_DESC.hint)}</div>
       </Show>

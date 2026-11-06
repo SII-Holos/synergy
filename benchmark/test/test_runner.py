@@ -1,0 +1,355 @@
+from pathlib import Path
+
+import pytest
+
+from synergy_bench.runner import execute_plan
+from synergy_bench.storage import atomic_json, read_json
+
+
+@pytest.mark.parametrize("completed", [0, 2])
+async def test_serial_execution_follows_frozen_schedule_including_resume(tmp_path, completed):
+    import asyncio
+
+    schedule = [
+        {"pair": pair, "variant": side, "task": pair}
+        for pair, sides in [("one", ["A", "B"]), ("two", ["B", "A"]), ("three", ["A", "B"])]
+        for side in sides
+    ]
+    plan = {"schedule": schedule, "concurrency": 1}
+    atomic_json(
+        tmp_path / "state.json",
+        {"trials": {f"{index:04d}": {"status": "completed", "attempt": 1} for index in range(completed)}},
+    )
+    observed = []
+
+    async def execute(item, attempt):
+        observed.append(item)
+        await asyncio.sleep(0)
+        return {"execution": {"outcome": "completed"}, "verifier": {"rewards": {"reward": 0}}}
+
+    await execute_plan(tmp_path, plan, execute)
+    assert observed == schedule[completed:]
+    await execute_plan(tmp_path, plan, execute)
+    assert observed == schedule[completed:]
+
+
+@pytest.mark.asyncio
+async def test_trial_failure_does_not_drop_other_pairs(tmp_path: Path) -> None:
+    plan = {"schedule": [{"pair": "p", "variant": "A"}, {"pair": "p", "variant": "B"}], "concurrency": 1}
+
+    async def execute(item: dict, attempt: Path) -> dict:
+        if item["variant"] == "A":
+            raise ValueError("test infrastructure error")
+        return {"execution": {"outcome": "completed"}}
+
+    await execute_plan(tmp_path, plan, execute)
+    state = read_json(tmp_path / "state.json")
+    assert len(state["trials"]) == 2
+    assert all(trial["status"] == "completed" for trial in state["trials"].values())
+    assert read_json(tmp_path / "trials/0000/attempt-001/evidence.json")["infrastructure_error"]["type"] == "ValueError"
+
+
+async def test_unsupported_docker_endpoint_blocks_remaining_trials_before_model_execution(tmp_path, monkeypatch):
+    from synergy_bench.docker_resources import DockerStats
+    from synergy_bench.runner import DispatchStopped
+
+    monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:2375")
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    plan = {"schedule": [{"pair": "p", "variant": "A"}, {"pair": "p", "variant": "B"}], "concurrency": 1}
+    attempted = []
+
+    async def execute(item, attempt):
+        attempted.append(item["variant"])
+        await DockerStats().snapshot()
+        pytest.fail("An unsupported endpoint must fail before model execution")
+
+    with pytest.raises(DispatchStopped, match="local Docker Unix endpoint"):
+        await execute_plan(tmp_path, plan, execute)
+    assert attempted == ["A"]
+    state = read_json(tmp_path / "state.json")
+    assert state["status"] == "blocked"
+    assert list(state["trials"]) == ["0000"]
+    result = read_json(tmp_path / "trials/0000/attempt-001/evidence.json")
+    assert result["infrastructure_error"]["type"] == "DockerEndpointError"
+
+
+@pytest.mark.parametrize(
+    ("kind", "blocked"),
+    [
+        ("DockerEndpointError", True),
+        ("ResourcePressureError", True),
+        ("ResourceRecordingError", True),
+        ("ValueError", False),
+    ],
+)
+async def test_native_trial_resource_errors_retain_their_shape_and_stop_dispatch(tmp_path, kind, blocked):
+    from pier.models.trial.result import ExceptionInfo
+
+    from synergy_bench.docker_resources import DockerEndpointError
+    from synergy_bench.evidence import collect_evidence
+    from synergy_bench.monitor import ResourceRecordingError
+    from synergy_bench.resources import ResourcePressureError
+    from synergy_bench.runner import DispatchStopped
+
+    errors = {
+        error.__name__: error
+        for error in [DockerEndpointError, ResourcePressureError, ResourceRecordingError, ValueError]
+    }
+    native = ExceptionInfo.from_exception(errors[kind]("fixture failure")).model_dump(mode="json")
+    plan = {"schedule": [{"pair": "p", "variant": "A"}, {"pair": "p", "variant": "B"}], "concurrency": 1}
+    attempted = []
+
+    async def execute(item, attempt):
+        attempted.append(item["variant"])
+        return collect_evidence(attempt / "native", {"exception_info": native})
+
+    if blocked:
+        with pytest.raises(DispatchStopped):
+            await execute_plan(tmp_path, plan, execute)
+    else:
+        await execute_plan(tmp_path, plan, execute)
+    assert attempted == (["A"] if blocked else ["A", "B"])
+    assert read_json(tmp_path / "state.json")["status"] == ("blocked" if blocked else "completed")
+    result = read_json(tmp_path / "trials/0000/attempt-001/evidence.json")
+    assert result["infrastructure_error"] == native
+
+
+async def test_exception_keeps_paid_wire_evidence_and_original_terminal(tmp_path):
+    plan = {"schedule": [{"pair": "p", "variant": "A"}], "concurrency": 1}
+
+    async def execute(item, attempt):
+        atomic_json(
+            attempt / "wire/one/request.json",
+            {
+                "id": "one",
+                "protocol": "chat-completions",
+                "status": "completed",
+                "usage": {"prompt_tokens": 10, "completion_tokens": 3},
+            },
+        )
+        atomic_json(
+            attempt / "evidence.json",
+            {"version": 5, "execution": {"outcome": "failed"}, "accounting": None, "evidence": {"valid": False}},
+        )
+        raise RuntimeError("export interrupted")
+
+    await execute_plan(tmp_path, plan, execute)
+    result = read_json(tmp_path / "trials/0000/attempt-001/evidence.json")
+    assert result["execution"]["outcome"] == "failed"
+    assert result["wire_usage"]["tokens"]["total"]["total"] == 13
+    assert "wire/one/request.json" in result["sidecar_files"]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_preserves_evidence_and_marks_attempt_interrupted(tmp_path: Path) -> None:
+    import asyncio
+
+    started = asyncio.Event()
+    plan = {"schedule": [{"pair": "p", "variant": "A"}], "concurrency": 1}
+
+    async def execute(item: dict, attempt: Path) -> dict:
+        (attempt / "partial.log").write_text("retained")
+        started.set()
+        await asyncio.Future()
+        return {}
+
+    running = asyncio.create_task(execute_plan(tmp_path, plan, execute))
+    await started.wait()
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+    assert read_json(tmp_path / "state.json")["trials"]["0000"]["status"] == "interrupted"
+    assert (tmp_path / "trials/0000/attempt-001/partial.log").read_text() == "retained"
+
+
+@pytest.mark.asyncio
+async def test_terminal_evidence_repairs_interrupted_state_without_paid_execution(tmp_path: Path) -> None:
+    plan = {"schedule": [{"pair": "p", "variant": "A"}], "concurrency": 1}
+    atomic_json(tmp_path / "state.json", {"trials": {"0000": {"status": "interrupted", "attempt": 1}}})
+    atomic_json(
+        tmp_path / "trials/0000/attempt-001/evidence.json",
+        {"version": 5, "attempt_status": "completed", "execution": {"outcome": "failed"}},
+    )
+
+    async def execute(item: dict, attempt: Path) -> dict:
+        pytest.fail("terminal attempts must not call the model again")
+
+    await execute_plan(tmp_path, plan, execute)
+    assert read_json(tmp_path / "state.json")["trials"]["0000"] == {"status": "completed", "attempt": 1}
+
+
+def test_changed_terminal_bytes_are_not_rescheduled(tmp_path: Path) -> None:
+    import hashlib
+
+    from synergy_bench.runner import verify_terminal
+
+    file = tmp_path / "owned/agent/events.jsonl"
+    file.parent.mkdir(parents=True)
+    file.write_bytes(b"original")
+    evidence = {
+        "version": 5,
+        "trial_directory": "owned",
+        "files": {"agent/events.jsonl": {"bytes": 8, "sha256": hashlib.sha256(b"original").hexdigest()}},
+    }
+    evidence.update(
+        execution=None,
+        export=None,
+        verifier=None,
+        pier_exception=None,
+        infrastructure_error=None,
+        accounting=None,
+        evidence={"valid": True, "issues": [], "archive_valid": True, "recording": "complete", "usage": "complete"},
+    )
+    verify_terminal(tmp_path, evidence)
+    file.write_bytes(b"modified")
+    with pytest.raises(ValueError, match="hash changed"):
+        verify_terminal(tmp_path, evidence)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["execution", "events"])
+async def test_resume_recovers_retained_terminal_before_scheduling_any_model(
+    tmp_path: Path, monkeypatch, source
+) -> None:
+    import time
+
+    from synergy_bench import runner
+    from synergy_bench.prepare import evaluator_identity
+    from synergy_bench.storage import digest
+
+    root = tmp_path / "run-12345678"
+    plan = {
+        "version": 4,
+        "result_version": 5,
+        "evaluator": evaluator_identity(),
+        "variants": {},
+        "tasks": {},
+        "config": {"platform": "linux/amd64", "export_timeout_seconds": 1},
+        "schedule": [{"pair": "p", "variant": "A", "task": "fixture"}],
+        "concurrency": 1,
+    }
+    plan["digest"] = digest(plan)
+    atomic_json(root / "owner.json", {"kind": "synergy-benchmark-run", "version": 1})
+    atomic_json(root / "plan.json", plan)
+    atomic_json(root / "state.json", {"trials": {"0000": {"status": "running", "attempt": 1}}})
+    attempt = root / "trials/0000/attempt-001"
+    project = "sb-12345678-0000-attempt-001"
+    atomic_json(attempt / "environment.json", {"project": project})
+    agent = attempt / project / "agent"
+    agent.mkdir(parents=True)
+    if source == "execution":
+        atomic_json(
+            agent / "execution.json",
+            {
+                "version": 3,
+                "outcome": "timeout",
+                "ended_at": time.time() * 1000,
+                "exit_code": 3,
+            },
+        )
+        (agent / "finished").write_text("done")
+    else:
+        import json
+
+        (agent / "events.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "result",
+                    "outcome": "timeout",
+                    "timestamp": time.time() * 1000,
+                    "sessionID": "s",
+                    "runID": "r",
+                    "exitCode": 3,
+                }
+            )
+            + "\n"
+        )
+    atomic_json(
+        attempt / "wire/started/request.json",
+        {"id": "started", "protocol": "chat-completions", "status": "dispatching", "usage": None},
+    )
+    monkeypatch.setattr(runner, "command", lambda *args, **kwargs: "")
+    atomic_json(
+        attempt / project / "result.json",
+        {
+            "verifier_result": {"rewards": {"reward": 0.0}},
+            "exception_info": {"exception_type": "AgentTimeoutError"},
+        },
+    )
+
+    async def execute(*args, **kwargs):
+        pytest.fail("Retained terminal execution must never call the model again")
+
+    monkeypatch.setattr(runner, "execute_trial", execute)
+    handed_back = False
+    original_read = Path.open
+
+    def guarded_read(path, *args, **kwargs):
+        if path.parent == agent and not handed_back:
+            raise PermissionError("container-owned private logs")
+        return original_read(path, *args, **kwargs)
+
+    def handoff(*args):
+        nonlocal handed_back
+        handed_back = True
+
+    monkeypatch.setattr(Path, "open", guarded_read)
+    monkeypatch.setattr(runner, "handoff_environment", handoff, raising=False)
+    monkeypatch.setattr(runner, "remove_environment", lambda *args: None)
+    await runner.resume(root)
+    result = read_json(attempt / "evidence.json")
+    assert result["attempt_status"] == "completed"
+    assert result["wire_usage"]["tokens"]["total"]["unknown"] == 1
+    assert "wire/started/request.json" in result["sidecar_files"]
+    assert result["verifier"]["rewards"] == {"reward": 0.0}
+    assert not result["evidence"]["valid"]
+    assert read_json(root / "state.json")["trials"]["0000"]["attempt"] == 1
+    assert len(list((root / "trials/0000").glob("attempt-*"))) == 1
+
+
+def test_terminal_gateway_evidence_is_checked_as_well_as_native_archive(tmp_path):
+    from synergy_bench.evidence import collect_evidence
+    from synergy_bench.runner import seal_attempt, verify_terminal
+    from synergy_bench.storage import atomic_json
+
+    result = collect_evidence(tmp_path / "owned", {})
+    result["trial_directory"] = "owned"
+    atomic_json(
+        tmp_path / "wire/request/request.json", {"id": "request", "protocol": "chat-completions", "usage": None}
+    )
+    seal_attempt(tmp_path, result)
+    verify_terminal(tmp_path, result)
+    atomic_json(
+        tmp_path / "wire/request/request.json",
+        {"id": "request", "protocol": "chat-completions", "usage": {"prompt_tokens": 0}},
+    )
+    with pytest.raises(ValueError, match="hash changed"):
+        verify_terminal(tmp_path, result)
+
+
+def test_initialize_checks_budget_outside_reader_lock_and_protects_explicit_inputs(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from synergy_bench import runner
+    from synergy_bench.cache import cache_activity, protected
+    from synergy_bench.config import Resources
+
+    cache = tmp_path / "cache"
+    config = SimpleNamespace(
+        cache="cache",
+        resources=Resources(),
+        variants={"native": SimpleNamespace(source=SimpleNamespace(artifact="cache/objects/frozen"))},
+    )
+    monkeypatch.setattr(runner, "load_config", lambda path: config)
+    checks = []
+
+    def budget(directory, **kwargs):
+        with cache_activity(directory, collection=True):
+            assert "frozen" in protected(directory)
+            checks.append(directory)
+
+    monkeypatch.setattr(runner, "enforce_budget", budget)
+    monkeypatch.setattr(runner, "_initialize", lambda path: tmp_path / "run")
+    assert runner.initialize(tmp_path / "config.yaml") == tmp_path / "run"
+    assert checks == [cache, cache]
+    assert "frozen" not in protected(cache)

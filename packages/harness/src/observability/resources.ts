@@ -1,0 +1,446 @@
+import { RuntimeContext } from "../lifecycle/context"
+import { ObservabilityClock } from "./clock"
+import { ObservabilityConfig } from "./config"
+import { ObservabilityContext } from "./context"
+import { ObservabilityIssues } from "./issues"
+import { ObservabilityMetrics } from "./metrics"
+import { ObservabilitySchema } from "./schema"
+import { ObservabilityStore } from "./store"
+import { ObservabilityRedaction } from "./redaction"
+import { ProcessRegistry } from "../process/registry"
+import { ProcessMemory } from "../process/memory-usage"
+import { ServiceMemory } from "../process/service-memory"
+import { LinuxRuntimeMemory } from "./linux-runtime-memory"
+import { ServiceMemoryMetrics } from "./service-memory-metrics"
+import { Log } from "../util/log"
+
+type PublicServiceMemory = NonNullable<ObservabilitySchema.ResourceSample["serviceMemory"]>
+
+const log = Log.create({ service: "observability.resources" })
+
+const serviceMemorySources = {
+  cgroup_v2: "cgroup_v2",
+  process_sum: "process_api",
+} satisfies Record<ServiceMemory.Source, PublicServiceMemory["source"]>
+
+function serviceMemoryCompleteness(complete: boolean): PublicServiceMemory["completeness"] {
+  return complete ? "full" : "partial"
+}
+
+export namespace ObservabilityResources {
+  const runtimeState = RuntimeContext.state(() => ({
+    timer: undefined as Timer | undefined,
+    lastCpu: process.cpuUsage(),
+    lastTime: performance.now(),
+    eventLoopExpected: Date.now(),
+    sampleIntervalMs: undefined as number | undefined,
+    sampleController: undefined as AbortController | undefined,
+    pendingSamples: new Set<Promise<void>>(),
+    lastRuntimeMetricSampleAt: 0,
+    io: { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 },
+  }))
+
+  export function addRead(bytes: number) {
+    const instanceState = runtimeState()
+
+    instanceState.io.appReadBytes += Math.max(0, bytes)
+    instanceState.io.appReadOps += 1
+  }
+
+  export function stats() {
+    const instanceState = runtimeState()
+
+    return { running: !!instanceState.timer, sampleIntervalMs: instanceState.sampleIntervalMs }
+  }
+
+  export function addWrite(bytes: number) {
+    const instanceState = runtimeState()
+
+    instanceState.io.appWrittenBytes += Math.max(0, bytes)
+    instanceState.io.appWriteOps += 1
+  }
+
+  export async function snapshot(
+    input: { role?: ObservabilitySchema.ResourceSample["process"]["role"]; processId?: string; pid?: number } = {},
+  ) {
+    const state = runtimeState()
+    state.sampleController?.abort()
+    const controller = new AbortController()
+    state.sampleController = controller
+    const pending = sampleResources(input, controller.signal)
+    state.pendingSamples.add(pending)
+    try {
+      await pending
+    } finally {
+      state.pendingSamples.delete(pending)
+      if (state.sampleController === controller) state.sampleController = undefined
+    }
+  }
+
+  async function sampleResources(
+    input: { role?: ObservabilitySchema.ResourceSample["process"]["role"]; processId?: string; pid?: number },
+    signal: AbortSignal,
+  ) {
+    const instanceState = runtimeState()
+
+    const config = ObservabilityConfig.current()
+    if (!config.enabled) return
+    const ctx = ObservabilityContext.current()
+    const now = ObservabilityClock.now()
+    const memory = process.memoryUsage()
+    const eventLoopNow = Date.now()
+    const lagMs = Math.max(0, eventLoopNow - instanceState.eventLoopExpected)
+    instanceState.eventLoopExpected = eventLoopNow + config.resourceSampleIntervalMs
+    const childProcesses = await ProcessRegistry.resourceSnapshot({ now, settleStale: true, signal })
+    if (signal.aborted) return
+    const cgroup = ServiceMemory.currentCgroupV2()
+    const serviceMemory = ServiceMemory.measure({ processRssBytes: memory.rss, children: childProcesses, cgroup })
+    const cpu = process.cpuUsage()
+    const elapsedMs = Math.max(1, performance.now() - instanceState.lastTime)
+    const userDelta = cpu.user - instanceState.lastCpu.user
+    const systemDelta = cpu.system - instanceState.lastCpu.system
+    const utilizationRatio = Math.max(0, (userDelta + systemDelta) / (elapsedMs * 1000))
+    instanceState.lastCpu = cpu
+    instanceState.lastTime = performance.now()
+    const sample = ObservabilitySchema.ResourceSample.parse({
+      sampleId: ObservabilityClock.id("res"),
+      time: now,
+      iso: ObservabilityClock.iso(now),
+      source: "process",
+      correlationId: ctx.correlationId,
+      traceId: ctx.traceId,
+      scopeID: ctx.scopeID,
+      sessionID: ctx.sessionID,
+      process: {
+        pid: input.pid ?? process.pid,
+        processId: input.processId ?? ctx.processId,
+        role: input.role ?? "server",
+      },
+      cpu: { userMicros: cpu.user, systemMicros: cpu.system, utilizationRatio },
+      memory: {
+        rssBytes: memory.rss,
+        heapTotalBytes: memory.heapTotal,
+        heapUsedBytes: memory.heapUsed,
+        externalBytes: memory.external,
+        arrayBuffersBytes: memory.arrayBuffers,
+      },
+      cgroup: cgroup
+        ? {
+            currentBytes: cgroup.currentBytes,
+            highBytes: cgroup.highBytes,
+            maxBytes: cgroup.maxBytes,
+            peakBytes: cgroup.peakBytes,
+            oomCount: cgroup.events?.oom,
+            oomKillCount: cgroup.events?.oomKill,
+          }
+        : undefined,
+      serviceMemory: {
+        rssBytes: serviceMemory.currentBytes,
+        source: serviceMemorySources[serviceMemory.source],
+        completeness: serviceMemoryCompleteness(serviceMemory.complete),
+      },
+      eventLoop: { lagMs, sampleWindowMs: config.resourceSampleIntervalMs },
+      io: { ...instanceState.io, osAvailable: false },
+      labels: {},
+    })
+    ObservabilityStore.insertResource(sample)
+    recordChildProcesses(now, config.resourceSampleIntervalMs, childProcesses)
+    recordResourceMetrics(memory, utilizationRatio, lagMs)
+    recordServiceMemoryMetrics(cgroup, now)
+    recordLinuxRuntimeMetrics()
+    detectPressure(sample, config)
+  }
+
+  export function start() {
+    const instanceState = runtimeState()
+
+    if (instanceState.timer) return
+    const config = ObservabilityConfig.current()
+    if (!config.enabled) return
+    instanceState.sampleIntervalMs = config.resourceSampleIntervalMs
+    instanceState.eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
+    instanceState.timer = setInterval(() => {
+      if (instanceState.sampleController) {
+        instanceState.eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
+        return
+      }
+      void snapshot().catch((error) => log.warn("resource sampling failed", { error }))
+    }, config.resourceSampleIntervalMs)
+    instanceState.timer.unref()
+  }
+
+  export function stop() {
+    const instanceState = runtimeState()
+
+    if (instanceState.timer) clearInterval(instanceState.timer)
+    instanceState.sampleController?.abort()
+    instanceState.sampleController = undefined
+    instanceState.timer = undefined
+    instanceState.sampleIntervalMs = undefined
+    ServiceMemoryMetrics.reset()
+    return Promise.all([...instanceState.pendingSamples].map((pending) => pending.catch(() => {}))).then(() => {})
+  }
+
+  export function reconfigure() {
+    stop()
+    start()
+  }
+
+  function recordChildProcesses(
+    now: number,
+    sampleWindowMs: number,
+    childProcesses: Awaited<ReturnType<typeof ProcessRegistry.resourceSnapshot>>,
+  ) {
+    ObservabilityMetrics.record({
+      name: "process.active.count",
+      value: childProcesses.length,
+      unit: "count",
+      module: "process",
+      source: "process",
+      labels: { role: "tool-child" },
+    })
+    for (const child of childProcesses) {
+      const commandFamily = ObservabilityRedaction.commandFamily(child.command)
+      const labels: Record<string, string | number | boolean> = {
+        command: commandFamily,
+        backgrounded: child.backgrounded,
+        ageMs: child.ageMs,
+        outputChars: child.outputChars,
+        truncated: child.truncated,
+      }
+      ObservabilityStore.insertResource(
+        ObservabilitySchema.ResourceSample.parse({
+          sampleId: ObservabilityClock.id("res"),
+          time: now,
+          iso: ObservabilityClock.iso(now),
+          source: "process",
+          process: { pid: child.pid, processId: child.id, role: "tool" },
+          memory: { rssBytes: child.rssBytes },
+          eventLoop: { sampleWindowMs },
+          io: { osAvailable: true },
+          labels,
+        }),
+      )
+      if (child.rssBytes === undefined) continue
+      ObservabilityMetrics.record({
+        name: "process.child.memory.rss",
+        value: child.rssBytes,
+        unit: "bytes",
+        module: "process",
+        source: "process",
+        processId: child.id,
+        pid: child.pid,
+        labels: { command: commandFamily, backgrounded: child.backgrounded },
+      })
+    }
+  }
+
+  function recordResourceMetrics(memory: NodeJS.MemoryUsage, utilizationRatio: number, lagMs: number) {
+    ObservabilityMetrics.record({
+      name: "process.memory.rss",
+      value: memory.rss,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+    ObservabilityMetrics.record({
+      name: "process.memory.heap_used",
+      value: memory.heapUsed,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+    ObservabilityMetrics.record({
+      name: "process.memory.heap_total",
+      value: memory.heapTotal,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+    ObservabilityMetrics.record({
+      name: "process.cpu.utilization",
+      value: utilizationRatio,
+      unit: "ratio",
+      module: "process",
+      source: "process",
+    })
+    ObservabilityMetrics.record({
+      name: "process.event_loop.lag",
+      value: lagMs,
+      unit: "ms",
+      module: "process",
+      source: "process",
+    })
+    ObservabilityMetrics.record({
+      name: "process.memory.external",
+      value: memory.external,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+    ObservabilityMetrics.record({
+      name: "process.memory.array_buffers",
+      value: memory.arrayBuffers,
+      unit: "bytes",
+      module: "process",
+      source: "process",
+    })
+  }
+
+  function recordServiceMemoryMetrics(cgroup: ServiceMemory.CgroupV2 | undefined, now: number) {
+    if (!cgroup) return
+    const labels = { source: "cgroup_v2", platform: "linux" }
+    for (const metric of ServiceMemoryMetrics.plan({ now, cgroup, env: RuntimeContext.current().host.env })) {
+      ObservabilityMetrics.record({
+        ...metric,
+        module: "process",
+        source: "process",
+        labels,
+      })
+    }
+  }
+
+  function recordLinuxRuntimeMetrics() {
+    const runtime = LinuxRuntimeMemory.sample()
+    if (!runtime || runtime.sampledAt === runtimeState().lastRuntimeMetricSampleAt) return
+    runtimeState().lastRuntimeMetricSampleAt = runtime.sampledAt
+    const labels = { platform: "linux" }
+    recordOptionalMetrics(
+      {
+        "runtime.jsc.heap_size": runtime.jscHeapSizeBytes,
+        "runtime.jsc.heap_capacity": runtime.jscHeapCapacityBytes,
+        "runtime.jsc.extra_memory": runtime.jscExtraMemoryBytes,
+        "runtime.allocator.rss": runtime.allocatorRssBytes,
+        "runtime.allocator.committed": runtime.allocatorCommittedBytes,
+        "runtime.allocator.reserved": runtime.allocatorReservedBytes,
+      },
+      "bytes",
+      labels,
+    )
+    recordOptionalMetrics(
+      {
+        "runtime.jsc.object_count": runtime.objectCount,
+        "runtime.jsc.protected_object_count": runtime.protectedObjectCount,
+        "runtime.allocator.abandoned_pages": runtime.allocatorAbandonedPages,
+      },
+      "count",
+      labels,
+    )
+    for (const item of runtime.topObjectTypes) {
+      ObservabilityMetrics.record({
+        name: "runtime.jsc.object_type.count",
+        value: item.count,
+        unit: "count",
+        module: "process",
+        source: "process",
+        labels: { ...labels, objectType: item.type },
+      })
+    }
+    for (const item of runtime.growingObjectTypes) {
+      ObservabilityMetrics.record({
+        name: "runtime.jsc.object_type.growth",
+        value: item.delta,
+        unit: "count",
+        module: "process",
+        source: "process",
+        labels: { ...labels, objectType: item.type },
+      })
+    }
+  }
+
+  function recordOptionalMetrics(
+    values: Record<string, number | undefined>,
+    unit: ObservabilitySchema.Unit,
+    labels: Record<string, string>,
+  ) {
+    for (const [name, value] of Object.entries(values)) {
+      if (value === undefined || !Number.isFinite(value)) continue
+      ObservabilityMetrics.record({
+        name,
+        value,
+        unit,
+        module: "process",
+        source: "process",
+        labels,
+      })
+    }
+  }
+
+  function detectPressure(
+    sample: ObservabilitySchema.ResourceSample,
+    config: ReturnType<typeof ObservabilityConfig.current>,
+  ) {
+    const heapRatio = ProcessMemory.heapUsageRatio({
+      heapUsedBytes: sample.memory.heapUsedBytes,
+      heapTotalBytes: sample.memory.heapTotalBytes,
+    })
+    const observations: Array<
+      Pick<
+        ObservabilityIssues.ConditionObservation,
+        "code" | "title" | "recommendation" | "observedValue" | "thresholdValue" | "unit"
+      >
+    > = [
+      {
+        code: "PERF_MEMORY_HIGH_RSS",
+        title: "High RSS memory usage",
+        recommendation: "Inspect resource trends and inflight operations to identify the owning process or tool.",
+        observedValue: sample.memory.rssBytes,
+        thresholdValue: config.thresholds.highRssBytes,
+        unit: "bytes",
+      },
+      {
+        code: "PERF_MEMORY_HIGH_HEAP_RATIO",
+        title: "High heap usage ratio",
+        recommendation: "Inspect memory trend and active sessions/tools before restarting the server.",
+        observedValue: heapRatio.available ? heapRatio.ratio : undefined,
+        thresholdValue: config.thresholds.highHeapUsedRatio,
+        unit: "ratio",
+      },
+      {
+        code: "PERF_CPU_HIGH_UTILIZATION",
+        title: "High CPU utilization",
+        recommendation: "Compare this sample with inflight spans and process registry entries.",
+        observedValue: sample.cpu.utilizationRatio,
+        thresholdValue: config.thresholds.highCpuUtilizationRatio,
+        unit: "ratio",
+      },
+      {
+        code: "PERF_EVENT_LOOP_LAG",
+        title: "Event loop lag detected",
+        recommendation: "Inspect CPU-heavy spans and recent process/tool output around the same timestamp.",
+        observedValue: sample.eventLoop.lagMs,
+        thresholdValue: config.thresholds.eventLoopLagMs,
+        unit: "ms",
+      },
+      {
+        code: "PERF_MEMORY_HIGH_EXTERNAL",
+        title: "High external memory usage",
+        observedValue: sample.memory.externalBytes,
+        thresholdValue: config.thresholds.highExternalBytes,
+        unit: "bytes",
+      },
+      {
+        code: "PERF_MEMORY_HIGH_ARRAY_BUFFERS",
+        title: "High ArrayBuffers memory usage",
+        observedValue: sample.memory.arrayBuffersBytes,
+        thresholdValue: config.thresholds.highArrayBuffersBytes,
+        unit: "bytes",
+      },
+    ]
+    for (const observation of observations) {
+      ObservabilityIssues.observeCondition({
+        ...observation,
+        owner: "control-plane",
+        module: "process",
+        severity: "warning",
+        scopeID: sample.scopeID,
+        state:
+          observation.observedValue === undefined || observation.thresholdValue === undefined
+            ? "unknown"
+            : observation.observedValue >= observation.thresholdValue
+              ? "active"
+              : "normal",
+      })
+    }
+  }
+}

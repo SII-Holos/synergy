@@ -1,3 +1,6 @@
+// Explicit test-runner devDependencies are invoked through Bun package scripts.
+// Server retains hono-openapi runtime peers that its vendor code imports dynamically.
+// dependency-cruiser is invoked with Bun forced as the runtime in deps:check.
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": [
@@ -12,7 +15,10 @@
     "packages/**/dist/**",
     "packages/**/release/**",
     "packages/sdk/js/src/gen/**",
-    "packages/synergy/test/tool/fixtures/large-image.png",
+    "apps/**/dist/**",
+    "apps/**/release/**",
+    "apps/web/test/**/.*-fixture-*/**",
+    "packages/ui/test/**/.*-fixture-*/**",
   ],
   "ignoreDependencies": [
     "@babel/preset-typescript",
@@ -20,7 +26,6 @@
     "@ericsanchezok/synergy-sdk",
     "@scope/plugin",
     "playwright",
-    "@sii-holos/holos-cli",
     "@shikijs/themes",
     "@shikijs/transformers",
     "@solid-primitives/bounds",
@@ -37,14 +42,8 @@
     "solid-tiptap",
     "tailwindcss",
     "virtua",
-    "@ai-sdk/provider-utils",
-    "@hono/zod-validator",
-    "chromium-bidi",
-    "mammoth",
-    "onnxruntime-common",
     "electron-builder-squirrel-windows",
     "tree-sitter-bash",
-    "xlsx",
     "turbo",
     "@tsconfig/bun",
     "@tsconfig/node22",
@@ -70,8 +69,14 @@
     "sqlite-vec-windows-x64",
   ],
   "ignoreBinaries": [
+    // Oryn entrypoints resolve inside the separately pinned .oryn-runtime checkout.
+    "script/run-workflow.ts",
+    "script/plan-workflow.ts",
+    "script/admit-workflow.ts",
+    "src/cli.ts",
     "swiftc",
     "codesign",
+    "openssl",
     "hdiutil",
     "sips",
     "iconutil",
@@ -79,6 +84,7 @@
     "taskkill.exe",
     "which",
     "gh",
+    "getconf",
     "dev",
     "synergy",
     "build",
@@ -96,6 +102,7 @@
     "latest",
     "gitleaks",
     "uvx",
+    "uv",
     "rg",
     "linux",
     "windows",
@@ -103,23 +110,25 @@
     "rev-parse",
     "pkg",
     "HEAD",
+    "generate",
   ],
   "ignoreUnresolved": [".json", ".svg"],
   "rules": {
     "catalog": "off",
   },
+  // Domain HTTP adapters intentionally reference an optional Server peer; the host loads them only when selected.
   "workspaces": {
-    "packages/synergy": {
-      "entry": ["bin/synergy", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-      "project": ["src/**/*.ts", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-    },
-    "packages/app": {
-      "entry": ["lingui.config.ts", "src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
-      "project": ["src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
-    },
-    "packages/desktop": {
-      "entry": ["script/**/*.ts", "test/**/*.ts"],
-      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    "benchmark": {
+      "entry": [
+        "runtime/entry.ts",
+        "runtime/trial.ts",
+        "runtime/prepare.ts",
+        "runtime/worker.ts",
+        "runtime/inspect.ts",
+        "runtime/compositions/*.ts",
+        "test/**/*.ts",
+      ],
+      "project": ["runtime/**/*.ts", "test/**/*.ts"],
     },
     "packages/ui": {
       "entry": [
@@ -140,6 +149,7 @@
     },
     "packages/plugin": {
       "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
     "packages/plugin-kit": {
       "entry": ["test/**/*.ts"],
@@ -148,6 +158,240 @@
     "packages/util": {
       "entry": ["src/**/*.ts"],
       "project": ["src/**/*.ts"],
+    },
+    "packages/harness": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/agent-runtime": {
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "entry": ["test/**/*.ts", "src/*-worker.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/local-runtime": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/cli": {
+      "entry": ["bin/synergy", "script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/server": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@hono/standard-validator", "zod-openapi"],
+    },
+    "packages/presets": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/digital-twin": {
+      "entry": ["script/**/*.ts", "test/**/*.ts", "src/worker.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server"],
+    },
+    "packages/browser-runtime": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/computer-runtime": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": [
+        "@ericsanchezok/synergy-server",
+        "@ericsanchezok/synergy-testing",
+        "@hono/standard-validator",
+      ],
+    },
+    "packages/library": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/note": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/agenda": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/light-loop": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/blueprint": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/lattice": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/boss": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/anima": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channels": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-feishu": {
+      "entry": ["test/**/*.ts", "script/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts", "script/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/github": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-github": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/email": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/agenda-blueprint": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/agenda-light-loop": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/plugin-agenda": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/plugin-blueprint": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/plugin-light-loop": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/boss-feishu": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/github-agenda": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-blueprint": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-light-loop": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-lattice": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/workflows": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/connections": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/workbench": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/mcp": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/lsp": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/formatter": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/acp": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/external-agents": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/code-tools": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/media": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server"],
+    },
+    "packages/plugin-host": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/testing": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      // Root CI planning consumes these through this workspace's filtered installation.
+      "ignoreDependencies": ["@ericsanchezok/synergy-util", "@typescript/typescript6"],
+    },
+    "apps/web": {
+      "entry": ["lingui.config.ts", "src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
+      "project": ["src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
+    },
+    "apps/desktop": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      // Electron supplies this Node built-in; the Bun-based analyzer does not list it.
+      "ignoreDependencies": ["node:sqlite"],
+    },
+    ".": {
+      "ignoreDependencies": ["dependency-cruiser", "@ericsanchezok/synergy-testing"],
     },
   },
 }

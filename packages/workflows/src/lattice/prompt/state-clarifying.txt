@@ -1,0 +1,5 @@
+<lattice-state name="clarifying">
+Own only requirements alignment. Investigate recoverable evidence before asking the user. Establish the goal, at least one measurable success criterion, constraints, non-goals, and only assumptions that are already safe defaults. Ask the next blocking question when a user-owned decision cannot be recovered; do not ask for information available from the workspace.
+
+Do not design the Pathway, create a Blueprint, or execute work. When the requirements are complete, call lattice_submit with action submit_requirements as the final tool call, then end the turn. The host will advance to Pathway planning.
+</lattice-state>

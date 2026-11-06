@@ -9,6 +9,10 @@
   user-select: none;
   cursor: default;
   outline: none;
+  transition:
+    background-color var(--motion-duration-fast),
+    color var(--motion-duration-fast),
+    border-color var(--motion-duration-fast);
   white-space: nowrap;
 
   &[data-variant="primary"] {
@@ -65,11 +69,15 @@
     }
   }
 
+  /* The neutral inset fill alone defines this control. A resting perimeter made
+     the shared secondary button read as a heavy slab next to the borderless
+     controls that already use the same fill token. The border keeps its width so
+     the box, padding and hit target do not shift by a pixel. */
   &[data-variant="secondary"] {
-    border: transparent;
+    border-color: transparent;
     background-color: var(--workbench-control-bg, var(--button-secondary-base));
     color: var(--text-strong);
-    box-shadow: var(--shadow-xs-border);
+    box-shadow: none;
 
     &:hover:not(:disabled) {
       background-color: var(--workbench-control-bg-hover, var(--button-secondary-hover));
@@ -79,18 +87,15 @@
     }
     &:focus-visible:not(:active) {
       background-color: var(--workbench-control-bg, var(--button-secondary-base));
-      box-shadow: var(--shadow-xs-border-focus);
     }
     &:focus-visible:active {
       box-shadow: none;
     }
     &:active:not(:disabled) {
       background-color: var(--workbench-selected-bg, var(--button-secondary-base));
-      scale: 0.99;
-      transition: all 150ms ease-out;
     }
     &:disabled {
-      border-color: var(--border-disabled);
+      border-color: transparent;
       background-color: var(--surface-disabled);
       color: var(--text-weak);
       cursor: not-allowed;
@@ -142,7 +147,7 @@
   }
 
   &[data-size="large"] {
-    height: 32px;
+    height: 40px;
     padding: 6px 12px;
 
     &[data-icon] {

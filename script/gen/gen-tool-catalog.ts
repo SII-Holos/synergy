@@ -1,14 +1,18 @@
 #!/usr/bin/env bun
+import { sourceFiles } from "../workspace-dependencies"
+import { resolveWorkspaceModule } from "./shared"
 
 /**
  * Generates docs/reference/tools.md from the static builtin tool list in
- * packages/synergy/src/tool/registry.ts, each tool module's Tool.define
- * call, and the canonical taxonomy in packages/synergy/src/tool/taxonomy.ts.
+ * packages/harness/src/tool/registry.ts, each tool module's Tool.define
+ * call, and the canonical taxonomy in packages/harness/src/tool/taxonomy.ts.
  * Deterministic; supports --check for freshness.
  */
 
 import path from "node:path"
 import { readdir, readFile } from "node:fs/promises"
+import ts from "@typescript/typescript6"
+import { ToolIntent } from "../../packages/harness/src/session/tool-intent"
 import {
   findAssign,
   findBlock,
@@ -21,9 +25,72 @@ import {
   writeGenerated,
 } from "./shared"
 
-const REGISTRY = path.join(REPO_ROOT, "packages/synergy/src/tool/registry.ts")
-const TOOL_DIR = path.join(REPO_ROOT, "packages/synergy/src/tool")
-const TAXONOMY = path.join(REPO_ROOT, "packages/synergy/src/tool/taxonomy.ts")
+async function schemaFields(file: string, name: string, seen = new Set<string>()): Promise<ToolEntry["parameters"]> {
+  const key = `${file}:${name}`
+  if (seen.has(key)) return []
+  seen.add(key)
+  const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
+  const parts = name.split(".")
+  for (const statement of source.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      const bindings = statement.importClause?.namedBindings
+      if (!bindings || !ts.isNamedImports(bindings)) continue
+      const binding = bindings.elements.find((item) => item.name.text === parts[0])
+      if (!binding) continue
+      const imported = Bun.resolveSync(statement.moduleSpecifier.text, path.dirname(file))
+      return schemaFields(imported, [binding.propertyName?.text ?? parts[0], ...parts.slice(1)].join("."), seen)
+    }
+  }
+  let statements: readonly ts.Statement[] = source.statements
+  for (const part of parts.slice(0, -1)) {
+    const namespace = statements.find(
+      (statement): statement is ts.ModuleDeclaration =>
+        ts.isModuleDeclaration(statement) && statement.name.text === part,
+    )
+    if (!namespace?.body || !ts.isModuleBlock(namespace.body)) return []
+    statements = namespace.body.statements
+  }
+  for (const statement of statements) {
+    if (!ts.isVariableStatement(statement)) continue
+    const declaration = statement.declarationList.declarations.find(
+      (item) => item.name.getText(source) === parts.at(-1),
+    )
+    if (!declaration?.initializer) continue
+    if (ts.isIdentifier(declaration.initializer))
+      return schemaFields(file, [...parts.slice(0, -1), declaration.initializer.text].join("."), seen)
+    let expression = declaration.initializer
+    while (ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)) {
+      const callee = expression.expression
+      const shape = expression.arguments[0]
+      if (callee.expression.getText(source) === "z" && ["object", "strictObject"].includes(callee.name.text)) {
+        if (!shape || !ts.isObjectLiteralExpression(shape)) return []
+        return shape.properties.flatMap((property) => {
+          if (!ts.isPropertyAssignment(property)) return []
+          const initializer = property.initializer
+          let base = initializer
+          while (ts.isCallExpression(base) && ts.isPropertyAccessExpression(base.expression))
+            base = base.expression.expression
+          const alias = ts.isIdentifier(base)
+            ? statements
+                .filter(ts.isVariableStatement)
+                .flatMap((item) => [...item.declarationList.declarations])
+                .find((item) => item.name.getText(source) === base.getText(source))?.initializer
+            : undefined
+          const value = alias
+            ? alias.getText(source) + initializer.getText(source).slice(base.getText(source).length)
+            : initializer.getText(source)
+          return parseObjectFields(`${property.name.getText(source)}: ${value}`)
+        })
+      }
+      expression = callee.expression
+    }
+  }
+  return []
+}
+
+const REGISTRY = path.join(REPO_ROOT, "packages/harness/src/tool/registry.ts")
+const TOOL_DIR = path.join(REPO_ROOT, "packages/harness/src/tool")
+const TAXONOMY = path.join(REPO_ROOT, "packages/harness/src/tool/taxonomy.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/tools.md")
 const GENERATOR = "gen-tool-catalog.ts"
 
@@ -54,14 +121,10 @@ async function resolveToolFile(
   )
   if (importMatch) {
     const specifier = importMatch[1]!
-    const base = specifier.startsWith(".") ? path.resolve(baseDir, specifier) : path.resolve(TOOL_DIR, specifier)
-    for (const candidate of [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
-      const exists = await readFile(candidate, "utf8")
-        .then(() => true)
-        .catch(() => false)
-      if (exists) return candidate
-    }
+    const resolved = await resolveWorkspaceModule(baseDir, specifier)
+    if (resolved) return resolved
   }
+
   if (baseDir !== TOOL_DIR) {
     for (const file of await readdir(baseDir, { recursive: true })) {
       const candidate = path.join(baseDir, file)
@@ -82,14 +145,14 @@ async function resolveToolFile(
 /** Domain register modules (src/&lt;domain&gt;/register.ts) contribute builtin
  * tools through ToolRegistry providers; harvest their names and dirs. */
 async function domainRegistries(): Promise<Array<{ source: string; dir: string }>> {
-  const srcRoot = path.dirname(TOOL_DIR)
+  const manifest = await Bun.file(path.join(REPO_ROOT, "package.json")).json()
   const out: Array<{ source: string; dir: string }> = []
-  for (const entry of await readdir(srcRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    for (const name of ["register.ts", "tools.ts"]) {
-      const registerPath = path.join(srcRoot, entry.name, name)
-      const source = await readFile(registerPath, "utf8").catch(() => "")
-      if (source) out.push({ source, dir: path.dirname(registerPath) })
+  for (const workspace of manifest.workspaces.packages as string[]) {
+    if (!workspace.startsWith("packages/")) continue
+    for (const file of sourceFiles(path.join(REPO_ROOT, workspace, "src"))) {
+      if (!/(?:register[^/]*|tools)\.ts$/.test(file)) continue
+      const source = await readFile(file, "utf8")
+      if (source.includes("ToolRegistry.registerToolProvider")) out.push({ source, dir: path.dirname(file) })
     }
   }
   return out
@@ -209,18 +272,18 @@ async function parseToolFile(
   const description = await descriptionOf(file, source, body)
 
   let parameters: Array<{ name: string; type: string | null; description: string | null; optional: boolean }> = []
-  const paramsBlock = findBlock(body, "parameters", "{", "}")
-  if (paramsBlock) {
-    parameters = parseObjectFields(paramsBlock)
+  const identifier = body.match(/parameters\s*:\s*([\w.]+)\s*,/)?.[1]
+  if (identifier && identifier !== "z") {
+    parameters = await schemaFields(file, identifier)
   } else if (/parameters\s*,/.test(body)) {
     const moduleParams = source.match(/const\s+parameters\s*=\s*z[\s\S]*?\.object\(\{/)
     if (moduleParams) {
-      const openIndex = source.indexOf(".object({", moduleParams.index! + moduleParams[0]!.length - 2)
-      if (openIndex > 0) {
-        const objectBlock = findBlock(source.slice(openIndex), "{", "{", "}")
-        if (objectBlock) parameters = parseObjectFields(objectBlock)
-      }
+      const objectBlock = findBlock(source.slice(moduleParams.index), "const parameters", "{", "}")
+      if (objectBlock) parameters = parseObjectFields(objectBlock)
     }
+  } else {
+    const paramsBlock = findBlock(body, "parameters", "{", "}")
+    if (paramsBlock) parameters = parseObjectFields(paramsBlock)
   }
 
   return { id, file: path.relative(REPO_ROOT, file), description, kind: classify(id), parameters }
@@ -250,7 +313,11 @@ export async function generate(): Promise<string> {
   const lines: string[] = [
     "# Tools Reference",
     "",
-    "Generated from the builtin tool registry in `packages/synergy/src/tool/registry.ts` and the canonical taxonomy in `packages/synergy/src/tool/taxonomy.ts`.",
+    "Generated from the builtin tool registry in `packages/harness/src/tool/registry.ts` and the canonical taxonomy in `packages/harness/src/tool/taxonomy.ts`.",
+    "",
+    "## Invocation intent",
+    "",
+    `Every model-visible tool schema includes optional \`workBrief\`: ${ToolIntent.description} Tool authors define only business parameters. The common intent is passed through the invocation context and does not affect execution identity or permissions. Conflicting or non-flat third-party schemas use \`{ workBrief, toolInput }\`, preserving native input.`,
     "",
     "## Tools",
     "",

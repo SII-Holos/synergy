@@ -1,0 +1,585 @@
+import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { requestErrorMessage } from "@/utils/error"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
+import type { useSDK } from "@/context/sdk"
+import type { useSync } from "@/context/sync"
+import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
+import { useLocale } from "@/context/locale"
+import { deriveSessionInboxView, isInboxItemInteractive } from "./session-inbox-utils"
+import { S } from "./session-i18n"
+import "./session-inbox.css"
+
+type SessionInboxProps = {
+  sessionID: string
+  sync: ReturnType<typeof useSync>
+  sdk: ReturnType<typeof useSDK>
+  freezeHint?: boolean
+  active?: boolean
+  hasCanonicalRoot?: boolean
+  compact?: boolean
+}
+
+function InboxDetail(props: { item: SessionInboxItem; i18n: ReturnType<typeof useLocale>["i18n"] }) {
+  const _ = (d: { id: string; message: string }) => props.i18n._(d)
+  const detailText = () => {
+    const lines: string[] = []
+    if (props.item.detail?.text) lines.push(props.item.detail.text)
+    if (props.item.detail?.attachments?.length) lines.push(props.item.detail.attachments.join("\n"))
+    return lines.join("\n\n").trim() || props.item.summary.preview || props.item.summary.title
+  }
+  const modeLabel = () => {
+    switch (props.item.mode) {
+      case "task":
+        return _(S.inboxQueued)
+      case "steer":
+        return _(S.inboxGuiding)
+      case "context":
+        return _(S.inboxContextUpdate)
+      default:
+        return _(S.inboxUpdate)
+    }
+  }
+  const deliveryDesc = () => {
+    switch (props.item.mode) {
+      case "task":
+        return _(S.inboxDeliveryTask)
+      case "steer":
+        return _(S.inboxDeliverySteer)
+      default:
+        return _(S.inboxDeliveryContext)
+    }
+  }
+  return (
+    <div class="session-inbox-detail">
+      <div class="text-12-medium text-text-strong">{modeLabel()}</div>
+      <Markdown
+        text={detailText()}
+        cacheKey={`session-inbox-detail-${props.item.id}`}
+        class="session-inbox-detail-markdown"
+      />
+      <Show when={props.item.status === "failed" && props.item.failReason}>
+        <div class="session-inbox-detail-meta">{props.item.failReason}</div>
+      </Show>
+      <div class="session-inbox-detail-meta">
+        <span>{props.item.source.label ?? props.item.source.type}</span>
+        <span>·</span>
+        <span>{deliveryDesc()}</span>
+      </div>
+    </div>
+  )
+}
+
+type InboxRowProps = {
+  item: SessionInboxItem
+  disabled?: boolean
+  onGuide: (item: SessionInboxItem) => void
+  onRemove: (item: SessionInboxItem) => void
+  onRetry: (item: SessionInboxItem) => void
+  i18n: ReturnType<typeof useLocale>["i18n"]
+}
+
+function CompactInboxRow(props: InboxRowProps) {
+  const _ = (d: { id: string; message: string }) => props.i18n._(d)
+  const [open, setOpen] = createSignal(false)
+  const interactive = () => isInboxItemInteractive(props.item)
+  const guideLabel = () => _(props.item.mode === "steer" ? S.inboxGuideQueue : S.inboxGuideSendNow)
+  const actions = () => (
+    <>
+      <Show when={interactive()}>
+        <button
+          type="button"
+          class="execution-icon-action"
+          disabled={props.disabled}
+          aria-label={props.item.status === "failed" ? _(S.inboxRetry) : guideLabel()}
+          onClick={() => (props.item.status === "failed" ? props.onRetry(props.item) : props.onGuide(props.item))}
+        >
+          <Icon
+            name={getSemanticIcon(
+              props.item.status === "failed"
+                ? "session.retry"
+                : props.item.mode === "steer"
+                  ? "inbox.task"
+                  : "inbox.steer",
+            )}
+            size="small"
+          />
+        </button>
+        <button
+          type="button"
+          class="execution-icon-action"
+          aria-label={_(S.inboxRemove)}
+          disabled={props.disabled}
+          onClick={() => {
+            setOpen(false)
+            props.onRemove(props.item)
+          }}
+        >
+          <Icon name={getSemanticIcon("action.close")} size="small" />
+        </button>
+      </Show>
+    </>
+  )
+  return (
+    <div
+      class="execution-compact-row execution-inbox-row"
+      data-open={open()}
+      data-mode={props.item.mode}
+      data-failed={props.item.status === "failed"}
+    >
+      <Popover
+        open={open()}
+        onOpenChange={setOpen}
+        placement="top-start"
+        class="session-inbox-row-tooltip"
+        triggerAs={(trigger) => (
+          <button {...trigger} type="button" class="execution-row-main">
+            <Icon
+              name={getSemanticIcon(
+                props.item.status === "failed"
+                  ? "state.error"
+                  : props.item.mode === "steer"
+                    ? "inbox.steer"
+                    : props.item.mode === "context"
+                      ? "inbox.context"
+                      : "inbox.task",
+              )}
+              size="small"
+            />
+            <span class="execution-row-title">{props.item.summary.preview || props.item.summary.title}</span>
+          </button>
+        )}
+      >
+        <InboxDetail item={props.item} i18n={props.i18n} />
+      </Popover>
+      <div class="execution-row-actions">{actions()}</div>
+    </div>
+  )
+}
+
+function InboxRow(props: InboxRowProps) {
+  const _ = (d: { id: string; message: string }) => props.i18n._(d)
+  const [menuOpen, setMenuOpen] = createSignal(false)
+  const failed = () => props.item.status === "failed"
+  const canInteract = () => !props.disabled && isInboxItemInteractive(props.item)
+  const preview = () => props.item.summary.preview || props.item.summary.title
+  const guideLabel = () => (props.item.mode === "steer" ? _(S.inboxGuideQueue) : _(S.inboxGuideSendNow))
+  const guideTitle = () => (props.item.mode === "steer" ? _(S.inboxGuideQueueTip) : _(S.inboxGuideSendNowTip))
+
+  const remove = () => {
+    setMenuOpen(false)
+    props.onRemove(props.item)
+  }
+
+  const timingLabel = () => {
+    if (failed()) return _(S.inboxFailedStatus)
+    switch (props.item.mode) {
+      case "task":
+        return _(S.inboxAfterTurn)
+      case "steer":
+        return _(S.inboxNextCall)
+      default:
+        return _(S.inboxContextTag)
+    }
+  }
+
+  const modeLabel = () => {
+    switch (props.item.mode) {
+      case "task":
+        return _(S.inboxQueued)
+      case "steer":
+        return _(S.inboxGuiding)
+      case "context":
+        return _(S.inboxContextUpdate)
+      default:
+        return _(S.inboxUpdate)
+    }
+  }
+
+  return (
+    <div class="session-inbox-row" data-mode={props.item.mode} data-failed={failed()} data-interactive={canInteract()}>
+      <Popover
+        placement="top-start"
+        class="session-inbox-row-tooltip"
+        triggerAs={(triggerProps) => (
+          <button {...triggerProps} type="button" class="session-inbox-row-main">
+            <div class="session-inbox-row-meta">
+              <span class="session-inbox-row-label">{modeLabel()}</span>
+              <span class="session-inbox-row-status" data-mode={props.item.mode} data-failed={failed()}>
+                {timingLabel()}
+              </span>
+            </div>
+            <div class="session-inbox-row-preview">{preview()}</div>
+          </button>
+        )}
+      >
+        <InboxDetail item={props.item} i18n={props.i18n} />
+      </Popover>
+      <Show when={canInteract()}>
+        <div class="session-inbox-actions">
+          <Show
+            when={!failed()}
+            fallback={
+              <button
+                type="button"
+                class="session-inbox-send-now"
+                aria-label={_(S.inboxRetry)}
+                aria-description={props.item.failReason ?? _(S.inboxFailed)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  props.onRetry(props.item)
+                }}
+              >
+                {_(S.inboxRetry)}
+              </button>
+            }
+          >
+            <button
+              type="button"
+              class="session-inbox-send-now"
+              aria-label={guideLabel()}
+              aria-description={guideTitle()}
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onGuide(props.item)
+              }}
+            >
+              {guideLabel()}
+            </button>
+          </Show>
+          <Popover
+            open={menuOpen()}
+            onOpenChange={setMenuOpen}
+            placement="bottom-end"
+            gutter={6}
+            class="session-inbox-menu-popover"
+            triggerAs={(triggerProps) => (
+              <button
+                {...triggerProps}
+                type="button"
+                class="session-inbox-more"
+                aria-label={_(S.inboxDetailAria)}
+                aria-expanded={menuOpen()}
+              >
+                <Icon name={getSemanticIcon("action.more")} size="small" />
+              </button>
+            )}
+          >
+            <div class="session-inbox-menu-list">
+              <button type="button" class="session-inbox-menu-item" onClick={remove}>
+                {_(S.inboxDelete)}
+              </button>
+            </div>
+          </Popover>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
+export function SessionInbox(props: SessionInboxProps) {
+  return (
+    <Show when={props.sessionID} keyed>
+      {(sessionID) => <SessionInboxContent {...props} sessionID={sessionID} />}
+    </Show>
+  )
+}
+
+function SessionInboxContent(props: SessionInboxProps) {
+  const sessionID = props.sessionID
+  const client = props.sdk.client
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
+  const [operations, setOperations] = createSignal<
+    Record<string, { kind: "remove" | "restore"; item: SessionInboxItem; pending: boolean; error?: unknown }>
+  >({})
+  const [controlPending, setControlPending] = createSignal<Set<string>>(new Set())
+  let removedRequest: AbortController | undefined
+  const removedActive = () => props.active !== false && !props.compact
+  const [removed, { refetch }] = createResource(
+    removedActive,
+    async () => {
+      removedRequest?.abort()
+      removedRequest = new AbortController()
+      return (await client.session.inboxRemoved({ sessionID }, { signal: removedRequest.signal, throwOnError: true }))
+        .data
+    },
+    { initialValue: [] },
+  )
+  createEffect(() => {
+    if (!removedActive()) removedRequest?.abort()
+  })
+  onCleanup(() => removedRequest?.abort())
+  const change = async (item: SessionInboxItem, kind: "remove" | "restore") => {
+    if (operations()[item.id]?.pending) return
+    const previous = operations()[item.id]
+    setOperations((all) => ({ ...all, [item.id]: { kind, item, pending: true } }))
+    try {
+      const records =
+        kind === "restore" || previous?.error
+          ? (await client.session.inboxRemoved({ sessionID }, { throwOnError: true })).data
+          : undefined
+      const isRemoved = records?.some((entry) => entry.id === item.id)
+      if (kind === "restore" && isRemoved !== false) {
+        await client.session.inboxRestore({ sessionID, itemID: item.id }, { throwOnError: true })
+      }
+      if (kind === "remove" && !isRemoved) {
+        await client.session.inboxRemove({ sessionID, itemID: item.id }, { throwOnError: true })
+      }
+      if (!props.compact) await refetch()
+      await props.sync.session.refresh(sessionID)
+      if (disposed) return
+      setOperations((all) => ({ ...all, [item.id]: { kind, item, pending: false } }))
+      if (kind === "remove")
+        showToast({
+          title: _(S.inboxRemovedHeading),
+          actions: [{ label: _(S.inboxRestore), onClick: () => void change(item, "restore") }],
+        })
+    } catch (error) {
+      if (disposed) return
+      setOperations((all) => ({ ...all, [item.id]: { kind, item, pending: false, error } }))
+    }
+  }
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
+  const dataView = createMemo(() => createSessionDataView(props.sync.data))
+  const view = createMemo(() =>
+    deriveSessionInboxView(
+      dataView().hasInboxBucket(props.sessionID) ? dataView().inboxFor(props.sessionID) : undefined,
+    ),
+  )
+  const items = createMemo(() => view().items)
+  const firstTaskLocked = (item: SessionInboxItem) =>
+    item.mode === "task" && item.status !== "failed" && props.hasCanonicalRoot === false
+  // Bulk "Send all" guides every actionable item; failed items stay out of
+  // it — only the retry path may re-drive a parked failure.
+  const actionableItems = createMemo(() =>
+    items().filter((item) => item.status !== "failed" && isInboxItemInteractive(item) && !firstTaskLocked(item)),
+  )
+
+  const note = createMemo(() => {
+    const steers = items().filter((i) => i.mode === "steer").length
+    const tasks = items().filter((i) => i.mode === "task").length
+    const contexts = items().filter((i) => i.mode === "context").length
+    if (steers > 0 && tasks > 0) return i18n._({ ...S.inboxQueueNextCall, values: { steers, tasks } })
+    if (steers > 1) return i18n._({ ...S.inboxQueueJoinModel, values: { count: steers } })
+    if (steers === 1) return _(S.inboxQueueJoinSingular)
+    if (tasks > 1) return i18n._({ ...S.inboxQueueTasks, values: { count: tasks } })
+    if (tasks === 1) return _(S.inboxQueueTasksSingular)
+    if (contexts > 1) return i18n._({ ...S.inboxQueueContexts, values: { count: contexts } })
+    if (contexts === 1) return _(S.inboxQueueContextSingular)
+    return _(S.inboxClear)
+  })
+
+  const guide = async (item: SessionInboxItem) => {
+    if (controlPending().has(item.id)) return
+    setControlPending((value) => new Set([...value, item.id]))
+    try {
+      await client.session.inboxGuide({ sessionID, itemID: item.id }, { throwOnError: true })
+    } catch (err) {
+      if (disposed) return
+      showToast({
+        type: "error",
+        title: _(S.inboxGuideFailed),
+        description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
+      })
+    } finally {
+      if (!disposed) setControlPending((value) => new Set([...value].filter((id) => id !== item.id)))
+    }
+  }
+
+  const retry = async (item: SessionInboxItem) => {
+    if (controlPending().has(item.id)) return
+    setControlPending((value) => new Set([...value, item.id]))
+    try {
+      await client.session.inboxRetry({ sessionID, itemID: item.id }, { throwOnError: true })
+    } catch (err) {
+      if (disposed) return
+      showToast({
+        type: "error",
+        title: _(S.inboxRetryFailed),
+        description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
+      })
+    } finally {
+      if (!disposed) setControlPending((value) => new Set([...value].filter((id) => id !== item.id)))
+    }
+  }
+
+  const guideAll = async () => {
+    const targets = actionableItems()
+    if (targets.length === 0) return
+    try {
+      for (const item of targets) {
+        await client.session.inboxGuide({ sessionID, itemID: item.id }, { throwOnError: true })
+      }
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: _(S.inboxGuideAllFailed),
+        description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
+      })
+    }
+  }
+
+  const remove = (item: SessionInboxItem) => void change(item, "remove")
+  const operationNotice = (item: SessionInboxItem) => (
+    <Show when={operations()[item.id]}>
+      {(operation) => (
+        <div class="session-inbox-operation" role={operation().error ? "alert" : "status"}>
+          <Show when={operation().pending}>{_(S.inboxOperationPending)}</Show>
+          <Show when={operation().error}>
+            <span>{_(operation().kind === "restore" ? S.inboxRestoreFailed : S.inboxRemoveFailed)}</span>
+            <Button variant="secondary" size="small" onClick={() => void change(item, operation().kind)}>
+              {_(operation().kind === "restore" ? S.inboxRetryRestore : S.inboxRetryRemove)}
+            </Button>
+            <details>
+              <summary>{_(S.transitionErrorDetails)}</summary>
+              <pre>{requestErrorMessage(operation().error, _(S.inboxRequestFailed))}</pre>
+            </details>
+          </Show>
+        </div>
+      )}
+    </Show>
+  )
+
+  return (
+    <Show when={!props.compact || items().length || Object.values(operations()).some((operation) => operation.error)}>
+      <section
+        class="session-inbox-panel"
+        classList={{ "execution-compact-section": props.compact }}
+        aria-label={_(S.inboxTitle)}
+      >
+        <Show when={props.compact}>
+          <h3>{_(S.inboxTitle)}</h3>
+        </Show>
+        <div
+          classList={{ "execution-compact-list": props.compact, "execution-inbox-list": props.compact }}
+          tabindex={props.compact ? 0 : undefined}
+          aria-label={props.compact ? _(S.inboxTitle) : undefined}
+        >
+          <Switch>
+            <Match when={view().status === "loading"}>
+              <div class="px-1 py-2 text-12-regular text-text-weak">{_(S.inboxLoading)}</div>
+            </Match>
+            <Match when={view().status === "empty"}>
+              <div class="px-1 py-2 text-12-regular text-text-weak">{_(S.inboxEmpty)}</div>
+            </Match>
+            <Match when={true}>
+              <div class="session-inbox-list">
+                <Show when={!props.compact && props.freezeHint}>
+                  <div class="px-1 py-1 text-11-medium text-text-subtle">{_(S.inboxFrozen)}</div>
+                </Show>
+                <Show when={!props.compact}>
+                  <div class="session-inbox-queue-note">
+                    <span>{note()}</span>
+                    <Show when={!props.freezeHint && actionableItems().length > 1}>
+                      <button type="button" class="session-inbox-send-all" onClick={guideAll}>
+                        {_(S.inboxSendAll)}
+                      </button>
+                    </Show>
+                  </div>
+                </Show>
+                <For each={items()}>
+                  {(item) => (
+                    <div>
+                      <Show
+                        when={props.compact}
+                        fallback={
+                          <InboxRow
+                            item={item}
+                            disabled={
+                              props.freezeHint ||
+                              firstTaskLocked(item) ||
+                              operations()[item.id]?.pending ||
+                              controlPending().has(item.id)
+                            }
+                            onGuide={guide}
+                            onRemove={remove}
+                            onRetry={retry}
+                            i18n={i18n}
+                          />
+                        }
+                      >
+                        <CompactInboxRow
+                          item={item}
+                          disabled={
+                            props.freezeHint ||
+                            firstTaskLocked(item) ||
+                            operations()[item.id]?.pending ||
+                            controlPending().has(item.id)
+                          }
+                          onGuide={guide}
+                          onRemove={remove}
+                          onRetry={retry}
+                          i18n={i18n}
+                        />
+                      </Show>
+                      {operationNotice(item)}
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Match>
+          </Switch>
+        </div>
+        <For
+          each={Object.values(operations()).filter(
+            (operation) =>
+              operation.error &&
+              !items().some((item) => item.id === operation.item.id) &&
+              (removed.error || !removed.latest?.some((item) => item.id === operation.item.id)),
+          )}
+        >
+          {(operation) => (
+            <div>
+              <span>{operation.item.summary.preview || operation.item.summary.title}</span>
+              {operationNotice(operation.item)}
+            </div>
+          )}
+        </For>
+        <Show when={!props.compact && removed.loading}>
+          <div role="status">{_(S.inboxLoading)}</div>
+        </Show>
+        <Show when={!props.compact && removed.error}>
+          <div role="alert" class="session-inbox-operation">
+            {_(S.inboxRemovedLoadFailed)}
+            <Button size="small" onClick={() => void refetch()}>
+              {_(S.inboxRetry)}
+            </Button>
+          </div>
+        </Show>
+        <Show when={!props.compact && !removed.error && removed.latest?.length}>
+          <div class="session-inbox-removed-list">
+            <h3>{_(S.inboxRemovedHeading)}</h3>
+            <For each={removed.latest}>
+              {(item) => (
+                <div class="session-inbox-removed-item">
+                  <details>
+                    <summary>{item.summary.preview || item.summary.title}</summary>
+                    <InboxDetail item={item} i18n={i18n} />
+                  </details>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    disabled={operations()[item.id]?.pending}
+                    onClick={() => void change(item, "restore")}
+                  >
+                    {_(S.inboxRestore)}
+                  </Button>
+                  {operationNotice(item)}
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </section>
+    </Show>
+  )
+}

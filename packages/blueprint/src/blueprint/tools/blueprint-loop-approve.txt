@@ -1,0 +1,1 @@
+Accept the bound BlueprintLoop only when every required outcome is verified and in scope. Briefly state the conclusion and decisive checks; reference detailed evidence. Only its recorded reviewer can approve; the host infers the loop.

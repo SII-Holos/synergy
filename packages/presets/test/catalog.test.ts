@@ -1,0 +1,75 @@
+import { expect, test } from "bun:test"
+import {
+  FULL_COMPONENTS,
+  presetPackage,
+  resolveBuiltinPackage,
+} from "@ericsanchezok/synergy-plugin-host/installation/catalog"
+import { desktopComponents, fullComponents } from "../src/components"
+import { SynergyPackage } from "@ericsanchezok/synergy-plugin/package"
+
+test("published component metadata agrees with the source composition", async () => {
+  const factories = new Map(fullComponents().map((component) => [component.id, component]))
+  for (const owner of FULL_COMPONENTS) {
+    const manifest = await Bun.file(new URL(`../../${owner}/package.json`, import.meta.url)).json()
+    const metadata = SynergyPackage.parse(manifest.synergy)
+    expect(metadata.kind).toBe("component")
+    if (metadata.kind !== "component") throw new Error("Expected component")
+    const factory = factories.get(metadata.id)!
+    expect(factory).toBeDefined()
+    expect(factory.apiVersion).toBe(metadata.apiVersion)
+    expect(factory.version).toBe(metadata.version)
+    expect(factory.requires).toEqual(metadata.requires)
+    for (const [packageName, version] of Object.entries(metadata.packages ?? {})) {
+      const dependencyOwner = packageName.replace("@ericsanchezok/synergy-", "")
+      const dependency = await Bun.file(new URL(`../../${dependencyOwner}/package.json`, import.meta.url)).json()
+      const dependencyMetadata = SynergyPackage.parse(dependency.synergy)
+      expect(dependencyMetadata.version).toBe(version)
+      if (dependencyMetadata.kind === "component" && metadata.requires?.[dependencyMetadata.id] !== undefined)
+        expect(metadata.requires[dependencyMetadata.id]).toBe(version)
+    }
+    factories.delete(metadata.id)
+  }
+  expect(factories.size).toBe(0)
+})
+
+test("core, full, Web and Desktop describe distinct installable selections", () => {
+  const version = "2.0.0"
+  expect(presetPackage("core", version).synergy.packages).toEqual({})
+  const full = presetPackage("full", version).synergy.packages
+  expect(full["@ericsanchezok/synergy-server"]).toBe(version)
+  expect(full["@ericsanchezok/synergy-mcp"]).toBe(version)
+  expect(full["@ericsanchezok/synergy-plugin-kit"]).toBe(version)
+  expect(full["@ericsanchezok/synergy-browser-runtime"]).toBeUndefined()
+  expect(Object.keys(full).some((name) => /web-app|desktop-app/.test(name))).toBe(false)
+  expect(presetPackage("web", version).synergy.packages).toEqual({
+    "@ericsanchezok/synergy-full": version,
+    "@ericsanchezok/synergy-web-app": version,
+  })
+  expect(presetPackage("desktop", version).synergy.packages).toEqual({
+    "@ericsanchezok/synergy-web": version,
+    "@ericsanchezok/synergy-desktop-app": version,
+    "@ericsanchezok/synergy-browser-runtime": version,
+  })
+})
+
+test("built-in shortcuts resolve to concrete versioned packages and preserve external sources", () => {
+  expect(resolveBuiltinPackage("mcp", "2.0.0")).toBe("@ericsanchezok/synergy-mcp@2.0.0")
+  expect(resolveBuiltinPackage("browser", "2.0.0")).toBe("@ericsanchezok/synergy-desktop@2.0.0")
+  expect(resolveBuiltinPackage("desktop", "2.0.0")).toBe("@ericsanchezok/synergy-desktop@2.0.0")
+  expect(resolveBuiltinPackage("@company/tools@3.0.0", "2.0.0")).toBe("@company/tools@3.0.0")
+  expect(resolveBuiltinPackage("github:company/tools#release", "2.0.0")).toBe("github:company/tools#release")
+})
+
+test("only the explicit Desktop composition includes browser hosting", async () => {
+  expect(fullComponents().some((component) => component.id === "browser-runtime")).toBe(false)
+  expect((await desktopComponents()).filter((component) => component.id === "browser-runtime")).toHaveLength(1)
+})
+
+test("offline data maintenance installs Lattice without requiring its runtime selection", async () => {
+  const metadata = SynergyPackage.parse((await Bun.file(new URL("../package.json", import.meta.url)).json()).synergy)
+  if (metadata.kind !== "component") throw new Error("Expected data maintenance component")
+  expect(metadata.packages?.["@ericsanchezok/synergy-lattice"]).toBe(metadata.version)
+  expect(metadata.requires?.lattice).toBeUndefined()
+  const lattice = await Bun.file(new URL("../../lattice/package.json", import.meta.url)).json()
+  expect(lattice.exports["./maintenance"]).toBeDefined()
+})

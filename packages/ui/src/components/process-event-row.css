@@ -1,0 +1,88 @@
+[data-slot="process-event-trigger"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-weak);
+  text-align: start;
+  font-family: var(--font-family-sans, system-ui);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  cursor: pointer;
+}
+[data-slot="process-event-icon"] {
+  display: flex;
+  flex: 0 0 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--icon-weak-base);
+}
+[data-slot="process-event-title"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-slot="process-event-trigger"]:is(:hover, [aria-pressed="true"]) {
+  color: var(--text-base);
+}
+[data-slot="process-event-trigger"][aria-pressed="true"] {
+  font-weight: var(--font-weight-medium);
+}
+[data-component="process-event-row"][data-kind="compaction"] [data-slot="process-event-title"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-component="process-event-row"][data-kind="compaction"][data-status="failed"] [data-slot="process-event-trigger"] {
+  color: var(--text-error);
+}
+[data-component="process-event-row"][data-kind="compaction"][data-status="failed"]
+  [data-slot="process-event-icon"]
+  [data-component="icon"] {
+  color: var(--icon-critical-base);
+}
+/* Provenance: https://github.com/anomalyco/opencode/blob/dev/packages/ui/src/components/text-shimmer.css
+   Local adaptation: one stable status label; existing theme tokens, no character layers or swap timers. */
+@supports (background-clip: text) {
+  [data-component="process-event-row"][data-kind="compaction"][data-status="running"]
+    [data-slot="process-event-title"] {
+    color: transparent;
+    background-image: linear-gradient(90deg, var(--text-weak) 40%, var(--text-strong) 50%, var(--text-weak) 60%);
+    background-size: 250% 100%;
+    background-clip: text;
+    animation: process-event-sweep 2s linear infinite;
+  }
+}
+@keyframes process-event-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+[data-slot="process-event-icon"][data-running] {
+  animation: process-event-spin 1s linear infinite;
+}
+@keyframes process-event-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  [data-component="process-event-row"][data-kind="compaction"][data-status="running"]
+    [data-slot="process-event-title"] {
+    animation: none;
+    background-image: none;
+    color: inherit;
+  }
+  [data-slot="process-event-icon"][data-running] {
+    animation: none;
+  }
+}

@@ -41,3 +41,9 @@ describe("ModelLimit constants", () => {
     expect(ModelLimit.OUTPUT_TOKEN_HEADROOM).toBeLessThan(ModelLimit.OUTPUT_TOKEN_MAX)
   })
 })
+
+test("total token usage includes reasoning exactly once", () => {
+  const tokens = { input: 1000, output: 500, reasoning: 100, cache: { read: 200, write: 50 } }
+  expect(ModelLimit.totalTokens(tokens)).toBe(1750)
+  expect(ModelLimit.nonReasoningOutput(tokens)).toBe(400)
+})

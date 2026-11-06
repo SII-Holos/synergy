@@ -1,0 +1,113 @@
+{
+  "name": "@ericsanchezok/synergy-workbench",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./stats/cli/stats": "./src/stats/cli/stats.ts",
+    "./stats/aggregator": "./src/stats/aggregator.ts",
+    "./project/tools": "./src/project/tools.ts",
+    "./presentation/service": "./src/presentation/service.ts",
+    "./presentation/tools": "./src/presentation/tools.ts",
+    "./presentation/tools/workbench-view": "./src/presentation/tools/workbench-view.ts",
+    "./project/startup": "./src/project/startup.ts",
+    "./project/session-health": "./src/project/session-health.ts",
+    "./project/vcs": "./src/project/vcs.ts",
+    "./project/worktree-janitor": "./src/project/worktree-janitor.ts",
+    "./push/bridge": "./src/push/bridge.ts",
+    "./stats/routes/stats": "./src/stats/routes/stats.ts",
+    "./performance/routes/performance-route": "./src/performance/routes/performance-route.ts",
+    "./push/routes/push": "./src/push/routes/push.ts",
+    "./project/ide": "./src/project/ide.ts",
+    "./performance/catalog": "./src/performance/catalog.ts",
+    "./performance/dashboard": "./src/performance/dashboard.ts",
+    "./push/service": "./src/push/service.ts",
+    "./push/store": "./src/push/store.ts",
+    "./project/tools/session-control": "./src/project/tools/session-control.ts",
+    "./project/tools/worktree-enter": "./src/project/tools/worktree-enter.ts",
+    "./project/tools/worktree-leave": "./src/project/tools/worktree-leave.ts",
+    "./project/tools/worktree-archive": "./src/project/tools/worktree-archive.ts",
+    "./project/tools/worktree-list": "./src/project/tools/worktree-list.ts",
+    "./performance/timeline": "./src/performance/timeline.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./agents": "./src/agents.ts",
+    "./performance/prompt/builder": "./src/performance/prompt/builder.ts",
+    "./project/routes/git": "./src/project/routes/git.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/workbench",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "0.4.0",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "web-push": "3.6.7",
+    "yargs": "18.2.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@types/web-push": "3.6.4",
+    "@types/yargs": "17.0.35",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "workbench",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "workbench",
+    "requires": {
+      "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "workbench",
+          "owner": "workbench",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Workbench",
+          "description": "Projects, task presentation, reviews and activity.",
+          "component": "workbench"
+        },
+        {
+          "id": "kanban",
+          "owner": "workbench",
+          "maturity": "experimental",
+          "activation": "restart",
+          "name": "Kanban",
+          "description": "View and organize tasks on a board."
+        }
+      ]
+    }
+  }
+}

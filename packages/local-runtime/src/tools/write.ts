@@ -1,0 +1,117 @@
+import { FileView } from "../file/view"
+import { FileMutation } from "../file/mutation"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { z } from "zod"
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { createTwoFilesPatch } from "diff"
+import DESCRIPTION from "./write.txt"
+import { File } from "../file/index"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
+import { trimDiff } from "./edit"
+import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
+import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/reload-executor"
+import { formatCompactReloadResult } from "@ericsanchezok/synergy-harness/config/reload-schema"
+import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
+import { SnapshotSchema } from "@ericsanchezok/synergy-harness/session/snapshot-schema"
+import { diffStats } from "./anchored-file"
+
+export const WriteTool = Tool.define(
+  "write",
+  {
+    description: DESCRIPTION,
+    parameters: z.object({
+      filePath: z.string().describe("The absolute path to the file to write (must be absolute, not relative)"),
+      content: z.string().describe("The content to write to the file"),
+    }),
+    async execute(params, ctx) {
+      const filepath = FileView.resolve(params.filePath)
+      const displayPath = FileView.display(filepath)
+
+      return FileTime.withLock(
+        filepath,
+        async () => {
+          const file = FileView.file(filepath)
+          const exists = await file.exists()
+          const contentOld = exists ? await FileMutation.readText(filepath) : ""
+          if (exists) FileTime.assert(ctx.sessionID, filepath, contentOld)
+
+          const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
+
+          await ctx.ask({
+            permission: "edit",
+            patterns: [displayPath],
+            metadata: {
+              filepath,
+              diff,
+            },
+          })
+
+          const beforeDiagnostics = await captureWriteDiagnosticsBefore()
+
+          if (exists) FileTime.assert(ctx.sessionID, filepath, await file.bytes())
+          const written = await FileMutation.write({
+            path: filepath,
+            content: params.content,
+            expectedVersion: exists ? FileTime.version(contentOld) : null,
+            createParents: true,
+            signal: ctx.abort,
+          })
+          await WorkspaceEvents.publish(File.Event.Edited, {
+            file: filepath,
+            contentVersion: written.contentVersion,
+          })
+          const finalContent = await FileMutation.readText(filepath)
+          const finalDiff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, finalContent))
+          const changeSummary = diffStats(finalDiff)
+          const filediff = SnapshotSchema.fromContents({
+            file: displayPath,
+            before: contentOld,
+            after: finalContent,
+            ...changeSummary,
+            preview: finalDiff,
+          })
+          FileTime.read(ctx.sessionID, filepath, finalContent)
+
+          const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filepath)
+          const runtimeReloadScope = RuntimeReloadPath.detectScopeForFile(filepath) ?? "auto"
+          const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(filepath)
+          const runtimeReload =
+            runtimeReloadTargets.length > 0
+              ? await RuntimeReloadExecutor.reload({
+                  targets: runtimeReloadTargets,
+                  scope: runtimeReloadScope,
+                  reason: `write:${displayPath}`,
+                })
+              : undefined
+
+          const diagnostics = await collectWriteDiagnostics(filepath, { before: beforeDiagnostics })
+          let output = diagnostics.output
+
+          if (runtimeReload) {
+            output += `\n${formatCompactReloadResult(runtimeReload)}\n`
+          }
+          if (builtinSourceWarning) {
+            output += `\n${builtinSourceWarning}\n`
+          }
+
+          return {
+            title: displayPath,
+            metadata: {
+              diagnostics: diagnostics.diagnostics,
+              diff: finalDiff,
+              filediff,
+              changeSummary,
+              filepath,
+              exists,
+              runtimeReload,
+              builtinSourceWarning,
+            },
+            output,
+          }
+        },
+        { signal: ctx.abort },
+      )
+    },
+  },
+  { requiresWorkspace: true, fileToolGroups: ["replace"], activityKind: "file-change" },
+)

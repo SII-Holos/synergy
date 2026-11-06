@@ -1,0 +1,235 @@
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron"
+import {
+  BrowserNativeViewEventSchema,
+  type BrowserNativeAttachRequest,
+  type BrowserNativePageRequest,
+  type BrowserNativePresentationCapabilityRequest,
+  type BrowserNativePresentationCapabilityResult,
+  type BrowserNativePresentationTicketRequest,
+  type BrowserNativePresentationTicketResult,
+  type BrowserNativeResizeRequest,
+  type BrowserNativeViewEvent,
+} from "@ericsanchezok/synergy-browser-core"
+import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
+import type { DesktopWindowState } from "./window-chrome.js"
+import {
+  mapSelectDirectoryDialogResponse,
+  type PortalDeniedDialogResponse,
+  type SelectDirectoryDialogBridgeResponse,
+} from "./directory-picker.js"
+import type { DesktopSkinUpdateV2, DesktopThemeEvent, DesktopThemeSnapshot, DesktopThemeSource } from "./theme.js"
+import type { DesktopServerStatus } from "./server-manager.js"
+import type { DesktopBadgeState } from "./ipc-contract.js"
+import type { DesktopPowerEvent, DesktopPowerSnapshot, DesktopPowerUpdate } from "./power-save.js"
+
+const browserNative = {
+  fileAction(input: import("@ericsanchezok/synergy-browser-core").BrowserFileAction) {
+    return ipcRenderer.invoke("browserNative.fileAction", input) as Promise<{ cancelled: boolean }>
+  },
+  dataAction(input: import("@ericsanchezok/synergy-browser-core").BrowserDataRequest) {
+    return ipcRenderer.invoke("browserNative.dataAction", input) as Promise<
+      import("@ericsanchezok/synergy-browser-core").BrowserDataResult
+    >
+  },
+  profileDataAction(input: import("@ericsanchezok/synergy-browser-core").BrowserProfileDataRequest) {
+    return ipcRenderer.invoke("browserNative.profileDataAction", input) as Promise<
+      import("@ericsanchezok/synergy-browser-core").BrowserDataResult
+    >
+  },
+  pageAction(input: import("@ericsanchezok/synergy-browser-core").BrowserPageActionRequest) {
+    return ipcRenderer.invoke("browserNative.pageAction", input) as Promise<
+      import("@ericsanchezok/synergy-browser-core").BrowserPageActionResult
+    >
+  },
+  attachView(input: BrowserNativeAttachRequest) {
+    return ipcRenderer.invoke("browserNative.attach", input) as Promise<void>
+  },
+  detachView(input: BrowserNativePageRequest) {
+    return ipcRenderer.invoke("browserNative.detach", input) as Promise<void>
+  },
+  focusView(input: BrowserNativePageRequest) {
+    return ipcRenderer.invoke("browserNative.focus", input) as Promise<void>
+  },
+  resizeView(input: BrowserNativeResizeRequest) {
+    return ipcRenderer.invoke("browserNative.resize", input) as Promise<void>
+  },
+  retryPage(input: BrowserNativePageRequest) {
+    return ipcRenderer.invoke("browserNative.retry", input) as Promise<void>
+  },
+  presentationCapability(input: BrowserNativePresentationCapabilityRequest) {
+    return ipcRenderer.invoke(
+      "browserNative.presentationCapability",
+      input,
+    ) as Promise<BrowserNativePresentationCapabilityResult>
+  },
+  createPresentationTicket(input: BrowserNativePresentationTicketRequest) {
+    return ipcRenderer.invoke(
+      "browserNative.presentationTicket",
+      input,
+    ) as Promise<BrowserNativePresentationTicketResult>
+  },
+  onEvent(listener: (event: BrowserNativeViewEvent) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: unknown) => {
+      const event = BrowserNativeViewEventSchema.safeParse(payload)
+      if (event.success) listener(event.data)
+    }
+    ipcRenderer.on("browser-native:event", wrapped)
+    return () => ipcRenderer.off("browser-native:event", wrapped)
+  },
+}
+
+const server = {
+  status() {
+    return ipcRenderer.invoke("desktop.server.status") as Promise<DesktopServerStatus | null>
+  },
+  restart() {
+    return ipcRenderer.invoke("desktop.server.restart") as Promise<DesktopServerStatus | null>
+  },
+  maintenance(operation?: "format" | "prune") {
+    return ipcRenderer.invoke("desktop.server.maintenance", operation) as Promise<DesktopServerStatus | null>
+  },
+  cancelMaintenance() {
+    return ipcRenderer.invoke("desktop.server.cancelMaintenance") as Promise<DesktopServerStatus | null>
+  },
+  diagnostics() {
+    return ipcRenderer.invoke("desktop.server.diagnostics") as Promise<string>
+  },
+}
+
+function openDirectoryPickerDialog(opts?: {
+  title?: string
+  multiple?: boolean
+}): Promise<string | string[] | PortalDeniedDialogResponse | null> {
+  const multiple = opts?.multiple ?? false
+  return ipcRenderer
+    .invoke("dialog:select-directory", { title: opts?.title, multiple })
+    .then((response: SelectDirectoryDialogBridgeResponse) => mapSelectDirectoryDialogResponse(response, multiple))
+}
+
+const update = {
+  status() {
+    return ipcRenderer.invoke("desktop.update.status")
+  },
+  setMode(mode: DesktopUpdateMode) {
+    return ipcRenderer.invoke("desktop.update.setMode", mode)
+  },
+  check(input?: { manual?: boolean }) {
+    return ipcRenderer.invoke("desktop.update.check", input ?? {})
+  },
+  download() {
+    return ipcRenderer.invoke("desktop.update.download")
+  },
+  installAndRestart() {
+    return ipcRenderer.invoke("desktop.update.installAndRestart")
+  },
+  onEvent(listener: (event: DesktopUpdateEvent) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: DesktopUpdateEvent) => listener(payload)
+    ipcRenderer.on("desktop-update:event", wrapped)
+    return () => ipcRenderer.off("desktop-update:event", wrapped)
+  },
+}
+
+const desktopZoom = {
+  get() {
+    return ipcRenderer.invoke("desktop.zoom.get") as Promise<number>
+  },
+  set(zoomFactor: number) {
+    return ipcRenderer.invoke("desktop.zoom.set", zoomFactor) as Promise<number>
+  },
+}
+
+const desktopShell = {
+  openExternal(url: string) {
+    return ipcRenderer.invoke("desktop.shell.openExternal", url) as Promise<void>
+  },
+}
+
+const desktopClipboard = {
+  writeText(text: string) {
+    return ipcRenderer.invoke("desktop.clipboard.writeText", text) as Promise<boolean>
+  },
+}
+
+const desktopStartup = {
+  appReady() {
+    return ipcRenderer.invoke("desktop.startup.appReady") as Promise<boolean>
+  },
+}
+
+const desktopTheme = {
+  get() {
+    return ipcRenderer.invoke("desktop.theme.get") as Promise<DesktopThemeSnapshot | null>
+  },
+  set(input: DesktopSkinUpdateV2) {
+    return ipcRenderer.invoke("desktop.theme.set", input) as Promise<DesktopThemeSnapshot | null>
+  },
+  setSource(source: DesktopThemeSource) {
+    return ipcRenderer.invoke("desktop.theme.setSource", source) as Promise<DesktopThemeSnapshot | null>
+  },
+  onEvent(listener: (event: DesktopThemeEvent) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: DesktopThemeEvent) => listener(payload)
+    ipcRenderer.on("desktop-theme:event", wrapped)
+    return () => ipcRenderer.off("desktop-theme:event", wrapped)
+  },
+}
+
+const desktopWindow = {
+  chrome: process.platform === "darwin" ? "native" : "custom",
+  minimize() {
+    return ipcRenderer.invoke("desktop.window.minimize") as Promise<void>
+  },
+  toggleMaximize() {
+    return ipcRenderer.invoke("desktop.window.toggleMaximize") as Promise<DesktopWindowState | null>
+  },
+  close() {
+    return ipcRenderer.invoke("desktop.window.close") as Promise<void>
+  },
+  state() {
+    return ipcRenderer.invoke("desktop.window.state") as Promise<DesktopWindowState | null>
+  },
+  onEvent(listener: (event: { type: "state"; state: DesktopWindowState }) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: { type: "state"; state: DesktopWindowState }) =>
+      listener(payload)
+    ipcRenderer.on("desktop-window:event", wrapped)
+    return () => ipcRenderer.off("desktop-window:event", wrapped)
+  },
+}
+
+const desktopBadge = {
+  setState(state: DesktopBadgeState) {
+    return ipcRenderer.invoke("desktop.badge.setState", state) as Promise<void>
+  },
+}
+
+const desktopPower = {
+  get() {
+    return ipcRenderer.invoke("desktop.power.get") as Promise<DesktopPowerSnapshot>
+  },
+  set(update: DesktopPowerUpdate) {
+    return ipcRenderer.invoke("desktop.power.set", update) as Promise<DesktopPowerSnapshot>
+  },
+  activityChanged() {
+    return ipcRenderer.invoke("desktop.power.activityChanged") as Promise<void>
+  },
+  onEvent(listener: (event: DesktopPowerEvent) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: DesktopPowerEvent) => listener(payload)
+    ipcRenderer.on("desktop-power:event", wrapped)
+    return () => ipcRenderer.off("desktop-power:event", wrapped)
+  },
+}
+
+contextBridge.exposeInMainWorld("synergyDesktop", {
+  platform: "desktop",
+  openDirectoryPickerDialog,
+  server,
+  update,
+  shell: desktopShell,
+  clipboard: desktopClipboard,
+  startup: desktopStartup,
+  theme: desktopTheme,
+  window: desktopWindow,
+  badge: desktopBadge,
+  power: desktopPower,
+  zoom: desktopZoom,
+  browserNative,
+})

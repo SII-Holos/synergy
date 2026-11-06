@@ -1,7 +1,7 @@
 import { $ } from "bun"
-import { PLUGIN_DIR } from "../shared/packages"
+import { REPO_ROOT } from "../shared/packages"
 
 export async function buildPlugin() {
   console.log("\n=== build plugin ===\n")
-  await $`bun run build`.cwd(PLUGIN_DIR)
+  await $`bun turbo build --filter=@ericsanchezok/synergy-plugin`.cwd(REPO_ROOT)
 }

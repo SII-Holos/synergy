@@ -1,0 +1,137 @@
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { chromium, type Browser, type Page } from "playwright"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
+let server: BrowserFixture, browser: Browser, page: Page, directory: string, base: string
+const appSrc = path.resolve(import.meta.dir, "../../../src")
+const errors: string[] = []
+const frames = () =>
+  page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+beforeAll(async () => {
+  directory = await mkdtemp(path.join(import.meta.dir, ".conversation-presentation-"))
+  await Bun.write(
+    path.join(directory, "index.html"),
+    `<!doctype html><style>
+    [data-conversation-presentation]{position:relative;flex:1;overflow:hidden}[data-conversation-current]{position:relative;height:100%;display:flex;flex-direction:column}
+    .fixture-column{display:flex;flex-direction:column;align-items:flex-start;gap:20px;width:100%}#flow [data-conversation-viewport]{height:300px;width:100%;overflow:auto}#flow .w-full{width:100%}
+    </style><div id="presentation" style="height:400px;display:flex"></div><div id="flow" style="width:500px;height:300px"></div><script type="module" src="/main.tsx"></script>`,
+  )
+  await Bun.write(
+    path.join(directory, "main.tsx"),
+    `
+    import {render} from "solid-js/web"
+    import {createMemo,createSignal,Show} from "solid-js"
+    import {I18nProvider} from "@lingui/solid"
+    import {setupI18n} from ${JSON.stringify(`/@fs/${path.resolve(appSrc, "../../../packages/ui/src/testing/i18n.tsx")}`)}
+    import {createAutoScroll} from ${JSON.stringify(`/@fs/${path.resolve(appSrc, "../../../packages/ui/src/hooks/create-auto-scroll.tsx")}`)}
+    import {ConversationPresentation} from ${JSON.stringify(`/@fs/${appSrc}/components/session/conversation-presentation.tsx`)}
+    import {ConversationViewport} from ${JSON.stringify(`/@fs/${appSrc}/components/session/conversation-viewport.tsx`)}
+    const [session,setSession]=createSignal("A"),[accepted,setAccepted]=createSignal("A"),[scope,setScope]=createSignal("scope"),[route,setRoute]=createSignal()
+    const prepared=createMemo(()=>accepted()===session())
+    const branch=createMemo(()=>prepared() || location.search!=="?preparation")
+    let leaves=0
+    window.presentation={select(id){setSession(id)},admit(id){setAccepted(id)},scope(id){setScope(id)},promote(){setRoute(session())},leaves(){return leaves}}
+    if(location.search!=="?flow") render(()=><I18nProvider i18n={setupI18n()}><ConversationPresentation owner={["server",scope(),route()??session()]} ready={accepted()===session()} onLeave={()=>leaves++}>
+      <header>Title {session()}</header><Show when={branch()} fallback={<p>Preparing this conversation</p>}><div style="height:300px;overflow:auto"><article style="height:800px"><p id="live-id">Body {session()}</p></article></div></Show>
+    </ConversationPresentation></I18nProvider>,document.getElementById("presentation"))
+    else render(()=>{const scroll=createAutoScroll({working:()=>false});return <I18nProvider i18n={setupI18n()}><ConversationViewport ready={true} scrolledUp={false} onScrolledUpChange={()=>{}} autoScroll={scroll} setScrollRef={scroll.scrollRef} contentClass="fixture-column"><article style="width:100%"><p>{"A naturally wrapping conversation paragraph. ".repeat(25)}</p></article></ConversationViewport></I18nProvider>},document.getElementById("flow"))
+  `,
+  )
+  server = await createBrowserFixture({ root: directory, aliases: [{ find: "@", replacement: appSrc }] })
+  base = server.url
+  browser = await chromium.launch({ headless: true })
+  page = await browser.newPage()
+  page.setDefaultTimeout(5000)
+  page.on("pageerror", (e) => errors.push(e.message))
+}, 90000)
+afterAll(async () => {
+  await browser?.close()
+  await server?.close()
+  if (directory) await rm(directory, { recursive: true, force: true })
+}, 15000)
+type Presentation = {
+  select(id: string): void
+  admit(id: string): void
+  scope(id: string): void
+  promote(): void
+  leaves(): number
+}
+const presentation = (action: "select" | "admit" | "scope", value: string) =>
+  page.evaluate(
+    ({ action, value }) => (window as unknown as { presentation: Presentation }).presentation[action](value),
+    { action, value },
+  )
+
+test("cold child navigation immediately exposes the target shell and keeps it visible through preparation", async () => {
+  await page.goto(base + "?preparation")
+  await page.getByText("Body A", { exact: true }).waitFor()
+  await frames()
+  await presentation("select", "B")
+  const current = page.locator("[data-conversation-current]")
+  expect(await current.textContent()).toContain("Title B")
+  expect(await current.textContent()).toContain("Preparing this conversation")
+  expect(await page.getByText("Body A", { exact: true }).count()).toBe(0)
+  expect(await page.locator("[data-conversation-retained]").count()).toBe(0)
+  expect(await current.evaluate((el) => getComputedStyle(el).opacity)).toBe("1")
+  expect(await current.evaluate((el) => (el as HTMLElement).inert)).toBe(false)
+  await presentation("admit", "B")
+  await frames()
+  expect(await current.textContent()).toContain("Body B")
+  expect(await current.evaluate((el) => getComputedStyle(el).opacity)).toBe("1")
+  expect(errors).toEqual([])
+})
+
+test("promoting a captured conversation to the same route preserves its admission", async () => {
+  await page.goto(base + "?presentation")
+  await page.getByText("Body A", { exact: true }).waitFor()
+  await frames()
+  const leaves = await page.evaluate(() => (window as unknown as { presentation: Presentation }).presentation.leaves())
+  await page.evaluate(() => (window as unknown as { presentation: Presentation }).presentation.promote())
+  await frames()
+  expect(await page.evaluate(() => (window as unknown as { presentation: Presentation }).presentation.leaves())).toBe(
+    leaves,
+  )
+  expect(await page.locator("[data-conversation-retained]").count()).toBe(0)
+  expect(await page.locator("[data-conversation-current]").evaluate((element) => (element as HTMLElement).inert)).toBe(
+    false,
+  )
+  expect(errors).toEqual([])
+})
+
+test("slow and superseded navigation immediately exposes only the target shell", async () => {
+  await page.goto(base + "?presentation")
+  await page.getByText("Body A", { exact: true }).waitFor()
+  await frames()
+  await presentation("select", "B")
+  const current = page.locator("[data-conversation-current]")
+  expect(await current.textContent()).toContain("Title B")
+  expect(await current.evaluate((el) => (el as HTMLElement).inert)).toBe(false)
+  expect(await current.evaluate((el) => getComputedStyle(el).opacity)).toBe("1")
+  expect(await page.getByText("Body A", { exact: true }).count()).toBe(0)
+  await presentation("select", "C")
+  await presentation("admit", "B")
+  await frames()
+  expect(await current.textContent()).toContain("Body C")
+  expect(await page.getByText("Body B", { exact: true }).count()).toBe(0)
+  await presentation("scope", "another-scope")
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  expect(await current.evaluate((el) => el.getAnimations().length)).toBe(0)
+  expect(await current.evaluate((el) => (el as HTMLElement).inert)).toBe(false)
+  expect(errors).toEqual([])
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+})
+
+test("the motion layer fills a start-aligned flex conversation column without collapsing prose width", async () => {
+  await page.goto(base + "?flow")
+  const article = page.locator("#flow article")
+  await article.waitFor()
+  const bounds = await article.boundingBox()
+  expect(bounds!.width).toBeGreaterThanOrEqual(498)
+  expect(bounds!.height).toBeLessThan(1000)
+  expect(
+    await page.locator("#flow [data-conversation-viewport]").evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true)
+})

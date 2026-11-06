@@ -1,0 +1,171 @@
+import { recordSessionSwitchTiming, recordSessionPhase } from "@/components/performance/browser-metrics"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+
+type Nav = {
+  id: string
+  dir?: string
+  from?: string
+  to: string
+  scopeID?: string
+  trigger?: string
+  start: number
+  marks: Record<string, number>
+  logged: boolean
+  timer?: ReturnType<typeof setTimeout>
+}
+
+const dev = import.meta.env.DEV
+
+const key = (dir: string | undefined, to: string) => `${dir ?? ""}:${to}`
+
+const now = () => performance.now()
+
+const uid = generateUUID
+
+const navs = new Map<string, Nav>()
+const pending = new Map<string, string>()
+const active = new Map<string, string>()
+
+const required = ["session:params", "session:data-ready", "session:interactive"]
+
+function flush(id: string, reason: "complete" | "timeout") {
+  const nav = navs.get(id)
+  if (!nav) return
+  if (nav.logged) return
+
+  nav.logged = reason === "complete"
+  if (nav.timer) clearTimeout(nav.timer)
+
+  const baseName = nav.marks["navigate:start"] !== undefined ? "navigate:start" : "session:params"
+  const base = nav.marks[baseName] ?? nav.start
+
+  recordSessionSwitchTiming({
+    sessionID: nav.to,
+    scopeID: nav.scopeID,
+    correlationId: nav.id,
+    navigationId: nav.id,
+    sessionSwitchId: nav.id,
+    startTime: base,
+    endTime: now(),
+    marks: nav.marks,
+    reason,
+    trigger: nav.trigger,
+  })
+
+  if (dev) {
+    const ms = Object.fromEntries(
+      Object.entries(nav.marks)
+        .slice()
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, t]) => [name, Math.round((t - base) * 100) / 100]),
+    )
+
+    console.log(
+      "perf.session-nav " +
+        JSON.stringify({
+          type: "perf.session-nav.v0",
+          id: nav.id,
+          dir: nav.dir,
+          from: nav.from,
+          to: nav.to,
+          scopeID: nav.scopeID,
+          trigger: nav.trigger,
+          base: baseName,
+          reason,
+          ms,
+        }),
+    )
+  }
+
+  if (reason === "timeout") return
+
+  navs.delete(id)
+  const activeKey = key(nav.dir, nav.to)
+  if (active.get(activeKey) === id) active.delete(activeKey)
+}
+
+function maybeFlush(id: string) {
+  const nav = navs.get(id)
+  if (!nav) return
+  if (nav.logged) return
+  if (!required.every((name) => nav.marks[name] !== undefined)) return
+  flush(id, "complete")
+}
+
+function ensure(id: string, data: Omit<Nav, "marks" | "logged" | "timer">) {
+  const existing = navs.get(id)
+  if (existing) return existing
+
+  if (navs.size >= 32) {
+    const oldest = navs.values().next().value!
+    if (oldest.timer) clearTimeout(oldest.timer)
+    navs.delete(oldest.id)
+    const oldestKey = key(oldest.dir, oldest.to)
+    if (active.get(oldestKey) === oldest.id) active.delete(oldestKey)
+    if (pending.get(oldestKey) === oldest.id) pending.delete(oldestKey)
+  }
+
+  const nav: Nav = {
+    ...data,
+    marks: {},
+    logged: false,
+  }
+  nav.timer = setTimeout(() => flush(id, "timeout"), 5000)
+  navs.set(id, nav)
+  return nav
+}
+
+export function navStart(input: { dir?: string; from?: string; to: string; scopeID?: string; trigger?: string }) {
+  for (const nav of navs.values()) if (nav.timer) clearTimeout(nav.timer)
+  navs.clear()
+  pending.clear()
+  active.clear()
+  const id = uid()
+  const start = now()
+  const nav = ensure(id, { ...input, id, start })
+  nav.marks["navigate:start"] = start
+
+  pending.set(key(input.dir, input.to), id)
+  return id
+}
+
+export function navParams(input: { dir?: string; from?: string; to: string; scopeID?: string }) {
+  const k = key(input.dir, input.to)
+  const pendingKey = pending.has(k) ? k : key(undefined, input.to)
+  const pendingId = pending.get(pendingKey)
+  if (pendingId) pending.delete(pendingKey)
+  if (!pendingId && active.has(k)) return active.get(k)!
+  const id = pendingId ?? uid()
+
+  const start = now()
+  const nav = ensure(id, { ...input, id, start, trigger: pendingId ? "key" : "route" })
+  nav.dir = input.dir
+  nav.scopeID = input.scopeID ?? nav.scopeID
+  nav.marks["session:params"] = start
+
+  active.set(k, id)
+  maybeFlush(id)
+  return id
+}
+
+export function navMark(input: { dir?: string; to: string; name: string }) {
+  const id = active.get(key(input.dir, input.to))
+  if (!id) return
+
+  const nav = navs.get(id)
+  if (!nav) return
+  if (nav.marks[input.name] !== undefined) return
+
+  nav.marks[input.name] = now()
+  if (nav.logged)
+    recordSessionPhase({
+      sessionID: nav.to,
+      scopeID: nav.scopeID,
+      correlationId: nav.id,
+      navigationId: nav.id,
+      sessionSwitchId: nav.id,
+      phase: input.name,
+      duration: nav.marks[input.name] - nav.start,
+    })
+  maybeFlush(id)
+}

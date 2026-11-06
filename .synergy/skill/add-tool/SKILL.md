@@ -1,6 +1,6 @@
 ---
 name: add-tool
-description: Add or modify a first-party Synergy tool, its Zod parameters, execution behavior, capability taxonomy, exposure, permission boundary, attachments, or Web tool-card registration. Use for packages/synergy/src/tool and the corresponding packages/ui registrations; use plugin docs for plugin-owned tools.
+description: Add or modify a first-party Synergy tool, its Zod parameters, execution behavior, capability taxonomy, exposure, permission boundary, attachments, or Web tool-card registration. Use for packages/harness/src/tool and the corresponding packages/ui registrations; use plugin docs for plugin-owned tools.
 ---
 
 # Add a First-party Tool
@@ -11,15 +11,25 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 2. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and inspect the nearest tool, its taxonomy entry, resolver path, renderer, and tests.
 3. Write the failing invariant test first. Cover the public result, permission/capability behavior, cancellation, and state change that matter to callers.
 
+Substantial new product capabilities also follow [develop-feature](../develop-feature/SKILL.md). Gate the owning module or operation once; tool exposure and capability permissions retain their own responsibilities.
+
 ## Implement the Backend
 
-1. Define the tool with the current `Tool.define(id, init, options?)` pattern in `packages/synergy/src/tool/`.
-2. Use precise Zod parameters and descriptions. Return the established `{ title, metadata, output, attachments? }` shape.
+1. Define the tool with `Tool.define(id, init, options?)` under the owning business package’s domain `tools/` directory. Harness owns generic definitions, discovery, execution and scheduling; concrete file/shell tools belong to `local-runtime`.
+2. Use precise Zod parameters and descriptions. Model-facing parameters must serialize to a JSON Schema object at the root; wrap a discriminated action union in an object field such as `input`. The production tool resolver excludes schemas without an object root. Test this boundary as well as individual variants. Return the established `{ title, metadata, output, attachments? }` shape.
 3. Honor `ctx.abort`, use `ctx.ask()` for operation-specific permission requests, and route filesystem, shell, network, remote, or external-write work through existing boundaries.
-4. Register the tool in `tool/registry.ts` using the local ordering and conditional-exposure pattern.
+4. Register through the owning package’s explicit tool contribution using `ToolRegistry.registerToolProvider`. Keep selection and ordering in the capability registration; only generic built-ins belong in the Harness registry.
+   Declare required lookup or lifecycle tools through exposure `companions` when they must be co-visible. Test transitive availability, denied/disabled/missing dependencies and temporary versus durable expansion through both discovery and model resolution. Keep optional workflow suggestions in guidance; required companions suppress the dependent tool when unavailable.
+
+   Keep discovery summaries and final model definitions on the same owner-provided exposure metadata. Build capability summaries from available members after permission, user and host filtering. Product-maintained MCP prose follows the [reviewed remote contract](../integrate-llm/references/runtime-context.md); discovery must not override it again. Test explicit residency, partial connections, changed remote definitions and retained expansion across Runtime reopen.
+
 5. Add an exact `tool/taxonomy.ts` entry with the correct domain kind and `stateful` / `externalIO` traits. Verify enforcement classification when arguments change the operation, such as local versus remote execution.
-6. Add persisted-state migrations in the owning domain when the tool changes stored data shape.
-7. Bound subprocess output while reading it: stream records, cap individual records and retained bytes, drain stderr concurrently, honor cancellation, and terminate the child when the consumer has enough results. Never call `text()` on potentially unbounded output and truncate only afterward.
+6. Tool authors declare business parameters only. The public request facade supplies optional `workBrief`; consume `ctx.workBrief` only when an operation needs a purpose/title. Never add frontend or scheduling explanations to Agent instructions. Name entity fields by object and meaning (for example `agendaDescription`), keep names consistent in results and examples, and register old tool-input names through `Tool.registerInputHistory`. Add persisted-state migrations in the owning domain when stored data shape changes.
+7. Capture actual observation evidence with `ctx.recordActivity`, including qualified resources and ranges; retain large content through Artifact references. Historical results must never re-read a changed file as the old observation. Keep tool return, root execution and background-process states separate.
+8. Bound subprocess output while reading it: stream records, cap individual records and retained bytes, drain stderr concurrently, honor cancellation, and terminate the child when the consumer has enough results. Never call `text()` on potentially unbounded output and truncate only afterward.
+   For file/search output, apply one UTF-8 budget across all ranges/files before recording displayed-line evidence. Setting `metadata.truncated` takes ownership of truncation and bypasses the generic wrapper; include diagnostics, warnings and the recovery footer in the final budget, including no-op paths. Test rendered output, continuation and seen-line evidence together. Preserve write status before optional previews, keep UI diffs separate, and verify consecutive edits after compact previews. Distinguish item-limit recovery from byte-budget recovery. Preserve distinct structural match ranges while deduplicating source-line metadata and rendered rows.
+9. Name time-budget parameters in seconds with a `Seconds` suffix (`timeoutSeconds`, `yieldSeconds`) and give second-valued bounds and defaults. Seconds are the unit at the agent- and human-facing boundary; convert to milliseconds at the single point of use, and keep internal persisted fields (for example `displayMs`) in milliseconds because renaming them would strand the observation on stored parts. State the unit and range in the parameter description. A budget window that hands work to the background is not a timeout: report it through `source` and label it for what it does, and read only argument names the model-facing schema actually exposes.
+10. Never fabricate a time anchor. Render an elapsed-time or countdown display only from a server-provided timestamp (`time.start`, `createdAt`); mounting the component is not an anchor, because a remount would restart the display. Render nothing when the anchor is absent rather than substituting local time, and show a terminal label once the window closes instead of a live-looking zero.
 
 ### Channel-owned delivery tools
 
@@ -32,30 +42,61 @@ When a tool prepares an interactive Channel artifact or another provider-owned m
 5. Route an accepted callback into a fresh user task through the normal session, tool, and permission pipeline; never invoke a model, command, or tool directly from the callback handler.
 6. Test card-only delivery, foreground/background races, provider callback namespace compatibility, identity and expiry rejection, event deduplication, and failure after an external side effect becomes unknowable.
 
+## File interfaces
+
+Declare first-party `fileToolGroups` only for the closed file-interface members in [Workspace and files](../../../docs/architecture/workspace-and-files.md#file-tool-interfaces). Propagate declarations through lazy tools; keep optional/shared tools outside this selector. Test catalog, discovery, companions, stale expansion and the final prepared schema, including configuration reload while a deferred definition is pinned. Interface choice never grants authority.
+
+Authorize file search observations against the actual selected file paths before returning content or recording read evidence. Search expressions and synthetic wildcard patterns are not resource paths. Exercise path-specific decisions through the production resolver and policy worker, including saved decisions after broader semantic rules.
+
+For mixed tools with directory-independent actions, keep static `requiresWorkspace: false` and declare the file-bearing actions through initialized `resourceNeeds(args)`. The existing resolver acquires their Session resources before creating the gate. File operations still call `ctx.ask` with resolved read/write paths; a manually constructed gate does not verify either resource acquisition or path-specific rules. Cover both through `ToolInvocation` with a protected actual Workspace root and an explicit file denial.
+
+For patch-like multi-file writes, use one pure grammar for policy and execution and the selected-view mutation owners. Preflight before effects, then revalidate identities and perform conditional sequential writes. Test content/mode and parent replacement, unrelated object revisions, update-then-move failure and cancellation through rollout capture. Keep the full stage ledger even when display text is bounded; a post-publication error is not proof of no effect. Never retry with a new operation identity to obtain a cleaner result.
+
+When adopting another tool's capabilities, pin and replay its behavioral fixtures through the real execution owner, not only its syntax parser. List host-specific differences explicitly. Patch matching changes must cover tier priority, repeated context, Unicode whitespace and source order; replacement/move changes must verify every actual target's read evidence, permissions, mode, conditional versions and partial effects. Record destination writes and source removals separately, retain complete per-file patches independently of bounded previews, and verify them through both tool presentation and Review without inventing historical paths. When a later destructive stage depends on a formatted file, advance its observation only through the formatter owner; test real in-place and atomic-replacement formatters as well as arbitrary listener replacements.
+
 ## Register the Web Presentation
 
 Complete all five first-party registrations:
 
-1. `packages/ui/src/components/icon.tsx` — tool icon registry
+1. `packages/ui/src/components/tool/icons.ts` — shared tool identity; register any new base glyph in `icon.tsx` and `plugin/builtin-icons.ts`
 2. `packages/ui/src/components/message-part.tsx` — title, subtitle, arguments, and tool-card metadata
 3. `packages/ui/src/components/tool-renders.tsx` — renderer group registration
-4. `packages/synergy/src/tool/taxonomy.ts` — runtime semantic classification
-5. `packages/ui/src/components/tool/classifier.ts` — fallback semantic category
+4. `packages/harness/src/tool/taxonomy.ts` — runtime semantic classification
+5. `packages/ui/src/components/tool/classifier.ts` — fallback semantic category, via the canonical `packages/util/src/activity.ts` mapping
 
 A renderer may either be registered by the render-group loop or self-register with `ToolRegistry.register()` and be imported for its side effect from the render-group entry point. In both cases, keep the registration reachable from the standard tool-render bundle and cover it with a render test.
 
 The tool icon registry is separate from the product semantic-token registry. Load `develop-frontend` and use semantic product icons for non-tool UI added around the feature. Preserve accessible pending, success, error, and attachment presentation.
 
+For explicit frontend presentation, use the existing [Workbench presentation](../../../docs/architecture/workbench-presentation.md) owner rather than tool-metadata effects or another native input path. Verify the mounted consumer and matching client execution receipt, not only an isolated open-panel helper. Keep a sent request, an applied view and loaded content distinct; exercise an absent consumer, wrong-client reply, reconnect without replay and a user selection made during asynchronous resolution.
+
 ## Tool Description Quality
 
-1. Write the description as a contract for a non-deterministic agent. It must answer four questions: what the tool does, when to use it (direct triggers and indirect signals), what inputs it accepts (types, constraints, defaults, and format examples), and what it returns (success shape and error conditions).
+Tools that generate or inspect files return canonical attachments from their owning operation. Generation delivers directly; inspection marks `presentation.purpose` as `evidence`. Use the shared attachment constructor and returned Asset references. Do not add a second delivery tool, visibility argument or mutable browser file-path route. Execution tools capture supported explicitly referenced Workspace outputs through the bounded discovery path. Verify that the model receives the reference and that final Markdown opens the same immutable bytes.
+
+1. Apply [agent-facing design](../integrate-llm/references/agent-facing-design.md). The complete tool contract explains purpose, invocation criteria, valid inputs and result handling. Put selection guidance in one discovery description before expansion; invocation prerequisites and unresolved mode choices remain in the tool description. Do not repeat schema field inventories, tutorials or internal presentation mechanics. Preserve authorization, failure distinctions and asynchronous result retrieval.
 2. Keep parameter names consistent across tools: use the same term for the same concept everywhere (for example, always `customer_id`, never `id` in one tool and `identifier` in another).
 3. Make error outputs actionable for agent recovery: state what went wrong, which input was invalid, and how to correct it (expected format plus an example). A generic "failed" message is not acceptable.
-4. Check the new tool against the consolidation principle: if a human cannot definitively say which tool to use for a given situation, the agent cannot either. Merge narrow overlapping tools unless independent invocation is required, and do not over-consolidate past roughly 8-10 parameters.
+   When a tool's structured completion status is needed for agent decisions, verify that the model-visible text also carries it while retaining raw output and metadata. Test foreground success, nonzero exit, signal, truncation and background behavior through the public tool result.
+
+   A tool that pauses its own execution must persist the reason and successful ToolPart before signalling the original lease through `afterPersist`. Never acquire a second execution lease or wait on the session control lock from that hook: concurrent user input can hold it while waiting for the old lease to drain. Test the real processor, concurrent input, conflicting control calls and failures before the hook; the durable pause must still prevent the next model turn. See [Blueprint blocker pause](../../../docs/decisions/implemented/bug-fix/2026-10-21-blueprint-blocker-pause-and-control-signals.md).
+
+4. For Workspace-changing tools, update the existing optimistic Web transition from completed metadata and align environment/agent guidance. Test caller departure separately from another target, denial and no-op; keep canonical Session events authoritative.
+5. Check the new tool against the consolidation principle: if a human cannot definitively say which tool to use for a given situation, the agent cannot either. Merge narrow overlapping tools unless independent invocation is required, and do not over-consolidate past roughly 8-10 parameters.
+6. Separate parameter defaults from recommended behavior. Background-command guidance must distinguish independent work, blocking completion waits, service readiness and delayed Agenda follow-up. Keep tool examples and primary-agent instructions consistent; a wait window ending does not authorize a restart. Verify existing execution with free process fixtures and measure model behavior in retained task trajectories, not prose-matching tests. See the [waiting guidance decision](../../../docs/decisions/implemented/bug-fix/2026-09-24-process-waiting-guidance.md).
+   Review whether a quiet command is running, awaiting input or failing before interpreting fewer polls as progress. Redirected installer output can hide an interactive prompt across repeated long waits. Count semantic build retries separately from byte-identical commands, and compare native tests, elapsed time, cache usage and resource failures alongside request count; the [completed two-task study](../../../docs/research/context-efficiency/2026-09-24-process-waiting-study.md) shows why prompt compliance alone does not establish faster completion.
+
+   Keep process guidance general: choose from independent work, completion waiting, service readiness and evidence-driven diagnosis. Cover actual local and remote background-result hints as well as static descriptions. Do not equate running with progress, silence with deadlock, or a confirmation flag with complete unattended configuration. Preserve primary command failures through diagnostic pipelines; do not implement output-keyword exit inference, automatic input, or retries to enforce prose. See [dependency and evidence based waiting](../../../docs/decisions/implemented/bug-fix/2026-09-24-evidence-based-process-guidance.md).
 
 ## Verify
 
-From `packages/synergy`, run the narrow tool test first. Add taxonomy, permission, migration, and server/UI tests when those contracts changed. Then run from the root:
+For a tool-failure analyzer, test persisted completed and errored parts with a tool ID outside the built-in search set. Verify that the declared category receives those records and triggers its intervention; testing only a built-in tool does not establish the registration contract.
+
+Search duplicate protection uses the persisted assistant's root and authoritative ToolParts. Test Runtime reopen, context compaction, same-root steers, a newer root, changed filters and failed history reads. Direct executor fixtures must persist their Session, assistant and terminal ToolParts and retain the Scope while executing; a fabricated context or a process-local attempt map cannot prove durable admission.
+
+For external reads with automatic retries, reuse the shared network classifier and cancellable backoff, verify that the operation is safe to replay, and put all attempts, body reads, and waits under one caller deadline. Keep one permission and deduplication admission per tool invocation. Test transient recovery, permanent rejection, cancelled backoff, body failure and size limits; do not turn a generic tool or MCP failure into automatic side-effect replay.
+
+From the tool’s owning package, run the narrow tool test first. Add taxonomy, permission, migration, and server/UI tests when those contracts changed. Then run from the root:
 
 ```bash
 bun run typecheck
@@ -70,6 +111,20 @@ Use an isolated development instance for an end-to-end model/tool call. Check th
 
 Update product or architecture docs when the tool introduces a user-visible concept or durable boundary. Update `AGENTS.md` only for a reusable repository rule. Do not copy the tool registry into documentation.
 
+For queued message tools, keep the admitted scheduling mode and message identity in the result and distinguish durable acceptance from a read acknowledgement. Verify next-model-call behavior through a real Session loop, not only a mocked delivery adapter; preserve task roots, in-flight tools, pause and cancellation fencing, including completion during authorization and root handoff. Check Runtime replacement after lock waits and final Rollout settlement with parked messages retained; a completed child status alone cannot prove execution settlement.
+
 ## Handoff
 
 Report the tool ID, registry/exposure, taxonomy and capabilities, UI registrations, denial/cancellation behavior, migrations, tests, and end-to-end result.
+
+## Measure coding observations
+
+Run `bun test test/tools/coding-observation-probe.test.ts` from `packages/local-runtime` with `SYNERGY_OBSERVATION_REPORT` set to a new absolute JSON output path. The fixed-input probe exercises small reads, sparse edits, disjoint ranges and full-file search; existing reports are never overwritten. Use the identical probe with frozen source versions and retain its identity separately from the measured implementation. Its UTF-8 byte counts establish tool presentation differences only; use native task outcomes and reconciled provider usage for task-level token and latency comparisons.
+
+For Browser tools, require an explicit page ID except list/open and keep descriptions agent-native: operation, relevant evidence, and a concise next step for failure. UI selection is never an implicit target. Follow [change-browser-runtime](../change-browser-runtime/SKILL.md) for authorization, revocation and uncertain-outcome tests.
+
+## Interactive output ownership
+
+Generated visual content is untrusted. Keep its source immutable, attach evidence to the producing Part, and validate completed-call and effective-history ownership before granting a state bridge. Persist bounded semantic and UI state through canonical session records; never dispatch an agent input directly from the document. Exercise revision conflicts, duplicate writes, fork independence and rollback through real storage.
+
+For declarative visual catalogs, validate references and finite computations before applying an update. Keep keyed preview state local until the completed producing call grants persistence; preserve focused controls and the last usable view across incomplete or failed updates. Test completion promotion, conflict recovery and standalone export with the same renderer. See [visual results](../../../docs/architecture/visual-results.md).

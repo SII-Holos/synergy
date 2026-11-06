@@ -1,0 +1,329 @@
+import path from "node:path"
+import { format, resolveConfig } from "prettier"
+import fs from "node:fs"
+import os from "node:os"
+import { $ } from "bun"
+import {
+  WEB_DIR,
+  CLI_DIR,
+  PRESETS_DIR,
+  LOCAL_RUNTIME_DIR,
+  RUNTIME_RELEASE_TARGETS,
+  NATIVE_TARGETS,
+  type RuntimeArtifactProfile,
+} from "./packages"
+import { resolveSandboxAsset, type SandboxRuntimeTarget } from "./build/sandbox-assets"
+import { prepareBuildModelsCatalog } from "./build/models-catalog"
+import { nativePlatformPackageNames } from "./build/native-build-packages"
+import { runtimeDependencies } from "./runtime-assets"
+import { writeRuntimeManifest } from "./runtime-contract"
+import { runtimeBuildPlan } from "./runtime-build-plan"
+import { prepareModuleArchives, stageModuleSeed } from "./module-seed"
+
+export async function buildRuntime(profile: RuntimeArtifactProfile) {
+  const dir = profile === "core" ? CLI_DIR : PRESETS_DIR
+  process.chdir(dir)
+  const plan = runtimeBuildPlan(profile)
+  const executable = RUNTIME_RELEASE_TARGETS[profile].executable
+  const buildCommit = (await $`git rev-parse --verify HEAD`.quiet().nothrow()).text().trim()
+  const { Script } = await import("./build/script-identity")
+  const singleFlag = process.argv.includes("--single")
+  const baselineFlag = process.argv.includes("--baseline")
+  const skipInstall = process.argv.includes("--skip-install")
+  const requireSandboxAssets = process.env.SYNERGY_REQUIRE_SANDBOX_ASSETS === "1"
+  const requestedTargets = new Set(
+    (process.env.SYNERGY_BUILD_TARGETS ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  )
+
+  const allTargets: {
+    os: string
+    arch: "arm64" | "x64"
+    abi?: "musl"
+    avx2?: false
+  }[] = [
+    {
+      os: "linux",
+      arch: "arm64",
+    },
+    {
+      os: "linux",
+      arch: "x64",
+    },
+    {
+      os: "linux",
+      arch: "x64",
+      avx2: false,
+    },
+    {
+      os: "linux",
+      arch: "arm64",
+      abi: "musl",
+    },
+    {
+      os: "linux",
+      arch: "x64",
+      abi: "musl",
+    },
+    {
+      os: "linux",
+      arch: "x64",
+      abi: "musl",
+      avx2: false,
+    },
+    {
+      os: "darwin",
+      arch: "arm64",
+    },
+    {
+      os: "darwin",
+      arch: "x64",
+    },
+    {
+      os: "darwin",
+      arch: "x64",
+      avx2: false,
+    },
+    {
+      os: "win32",
+      arch: "x64",
+    },
+    {
+      os: "win32",
+      arch: "arm64",
+    },
+    {
+      os: "win32",
+      arch: "x64",
+      avx2: false,
+    },
+  ]
+
+  const supportedTargets = allTargets.filter(
+    (item) => profile !== "full" || item.os !== "win32" || item.arch !== "arm64",
+  )
+  const targets =
+    requestedTargets.size > 0
+      ? supportedTargets.filter((item) => requestedTargets.has(targetKey(item)))
+      : singleFlag
+        ? supportedTargets.filter((item) => {
+            if (item.os !== process.platform || item.arch !== process.arch) {
+              return false
+            }
+
+            // When building for the current platform, prefer a single native binary by default.
+            // Baseline binaries require additional Bun artifacts and can be flaky to download.
+            if (item.avx2 === false) {
+              return baselineFlag
+            }
+
+            return true
+          })
+        : supportedTargets
+
+  const unmatched = [...requestedTargets].filter((key) => !targets.some((target) => targetKey(target) === key))
+  if (unmatched.length) throw new Error(`Unsupported ${profile} runtime targets: ${unmatched.join(", ")}`)
+  if (targets.length === 0) {
+    throw new Error(`No Synergy build targets matched SYNERGY_BUILD_TARGETS=${process.env.SYNERGY_BUILD_TARGETS}`)
+  }
+
+  const modelsCatalog = await prepareBuildModelsCatalog()
+  console.log(`using ${modelsCatalog.source} models catalog (${modelsCatalog.providerCount} providers)`)
+  await generateSchema(dir, profile)
+
+  fs.rmSync("dist", { recursive: true, force: true })
+
+  if (profile === "full" && process.argv.includes("--skip-web-build")) {
+    if (
+      !fs.existsSync(path.join(WEB_DIR, "dist/index.html")) ||
+      !fs.existsSync(path.join(WEB_DIR, "dist/.vite/manifest.json"))
+    )
+      throw new Error("Prebuilt Web output is missing its production manifest")
+  } else if (profile === "full") {
+    console.log("building web app")
+    await $`bun run --cwd ${WEB_DIR} build ${process.env.SYNERGY_CI_WEB_MANIFEST === "1" ? ["--manifest"] : []}`
+  }
+
+  const binaries: Record<string, string> = {}
+  if (!skipInstall) {
+    await ensureNativeBuildPackages()
+  }
+  const archives = await prepareModuleArchives({
+    profile,
+    version: Script.version,
+    output: path.resolve("dist/modules-packages"),
+    targets: process.env.SYNERGY_RELEASE_MODULE_TARGETS === "all" ? [...NATIVE_TARGETS] : targets,
+  })
+  for (const item of targets) {
+    const name = [
+      executable,
+      // changing to win32 flags npm for some reason
+      item.os === "win32" ? "windows" : item.os,
+      item.arch,
+      item.avx2 === false ? "baseline" : undefined,
+      item.abi === undefined ? undefined : item.abi,
+    ]
+      .filter(Boolean)
+      .join("-")
+    console.log(`building ${name}`)
+    const sandboxAsset = resolveSandboxAsset(item, { required: requireSandboxAssets })
+
+    await $`mkdir -p dist/${name}/bin`
+
+    await retryBuild(name, async () =>
+      Bun.build({
+        conditions: ["browser"],
+        tsconfig: "./tsconfig.json",
+        sourcemap: "external",
+        external: plan.external,
+        compile: {
+          autoloadBunfig: false,
+          autoloadDotenv: false,
+          //@ts-ignore (bun types aren't up to date)
+          autoloadTsconfig: true,
+          autoloadPackageJson: true,
+          target: name.replace(executable, "bun") as Bun.Build.CompileTarget,
+          outfile: `dist/${name}/bin/${executable}`,
+          execArgv: [`--user-agent=synergy/${Script.version}`, "--use-system-ca", "--"],
+          windows: {},
+        },
+        entrypoints: plan.entrypoints,
+        define: {
+          SYNERGY_COMMIT: JSON.stringify(/^[a-f0-9]{40,64}$/.test(buildCommit) ? buildCommit : ""),
+          SYNERGY_VERSION: JSON.stringify(Script.version),
+          SYNERGY_CHANNEL: JSON.stringify(Script.channel),
+          SYNERGY_LIBC: JSON.stringify(item.os === "linux" ? (item.abi ?? "glibc") : "glibc"),
+          SYNERGY_SANDBOX_HELPER_SHA256: JSON.stringify(sandboxAsset?.sha256 ?? ""),
+          SYNERGY_STANDALONE: "true",
+        },
+      }),
+    )
+
+    await Bun.file(`dist/${name}/package.json`).write(
+      JSON.stringify(
+        {
+          name,
+          version: Script.version,
+          os: [item.os],
+          cpu: [item.arch],
+        },
+        null,
+        2,
+      ),
+    )
+    binaries[name] = Script.version
+    await stageModuleSeed({
+      profile,
+      version: Script.version,
+      archives,
+      target: item,
+      destination: path.resolve("dist", name, "runtime"),
+    })
+    await writeRuntimeManifest(path.resolve("dist", name), name, profile)
+  }
+  return binaries
+
+  function targetKey(item: SandboxRuntimeTarget): string {
+    return [item.os, item.arch, item.avx2 === false ? "baseline" : undefined, item.abi].filter(Boolean).join("-")
+  }
+
+  type BunBuildOutput = Awaited<ReturnType<typeof Bun.build>>
+
+  async function retryBuild(name: string, build: () => Promise<BunBuildOutput>) {
+    let lastError: unknown
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const output = await build()
+        if (output.success) return output
+        throw new Error(output.logs.map((log) => log.message).join("\n") || `Bun build failed for ${name}`)
+      } catch (error) {
+        lastError = error
+        if (attempt === 3) break
+        console.warn(`building ${name} failed on attempt ${attempt}/3; retrying in 5s`)
+        await new Promise((resolve) => setTimeout(resolve, 5_000))
+      }
+    }
+    throw lastError
+  }
+
+  async function ensureNativeBuildPackages() {
+    const dependencies = await runtimeDependencies(profile)
+    const packages = nativePlatformPackageNames(dependencies)
+      .filter((name) => profile === "full" || name.startsWith("@parcel/watcher-"))
+      .map((name) => [name, dependencies[name]] as const)
+
+    for (const [name, version] of packages) {
+      await ensureNpmPackageExtracted(name, version)
+    }
+  }
+
+  async function ensureNpmPackageExtracted(name: string, version: string) {
+    const destination = path.join(
+      name.startsWith("@parcel/watcher-") ? LOCAL_RUNTIME_DIR : dir,
+      "node_modules",
+      ...name.split("/"),
+    )
+    if (fs.existsSync(path.join(destination, "package.json"))) return
+
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-native-package-"))
+    try {
+      await retryCommand(name, () => $`npm pack ${`${name}@${version}`} --silent`.cwd(temp).quiet())
+      const tarball = fs.readdirSync(temp).find((entry) => entry.endsWith(".tgz"))
+      if (!tarball) {
+        throw new Error(`npm pack did not produce a tarball for ${name}@${version}`)
+      }
+
+      fs.mkdirSync(destination, { recursive: true })
+      await $`tar -xzf ${path.join(temp, tarball)} -C ${destination} --strip-components=1`
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true })
+    }
+  }
+
+  async function retryCommand(name: string, command: () => Promise<unknown>) {
+    let lastError: unknown
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await command()
+        return
+      } catch (error) {
+        lastError = error
+        if (attempt === 3) break
+        console.warn(`installing ${name} failed on attempt ${attempt}/3; retrying in 5s`)
+        await new Promise((resolve) => setTimeout(resolve, 5_000))
+      }
+    }
+    throw lastError
+  }
+}
+
+export async function generateSchema(directory: string, profile: RuntimeArtifactProfile) {
+  const { RuntimeContext } = await import("../../../packages/harness/src/lifecycle/context")
+  const { createLocalHost } = await import("../../../packages/local-runtime/src/host")
+  const { Config } = await import("../../../packages/harness/src/config/config")
+  const { ConfigExtensions } = await import("../../../packages/harness/src/config/extensions")
+  const registrations =
+    profile === "full"
+      ? [(await import("../../../packages/presets/src/configuration")).registerFullConfiguration]
+      : [
+          (await import("../../../packages/local-runtime/src/config-schema")).registerConfig,
+          (await import("../../../packages/plugin-host/src/config-schema")).registerConfig,
+        ]
+  const context = RuntimeContext.create(createLocalHost())
+  const schema = context.run(() => {
+    try {
+      for (const register of registrations) register()
+      ConfigExtensions.completeRegistration()
+      return Config.jsonSchema()
+    } finally {
+      context.dispose()
+    }
+  })
+  const output = path.join(directory, "schema/config.schema.json")
+  const options = await resolveConfig(
+    path.join(profile === "core" ? CLI_DIR : PRESETS_DIR, "schema/config.schema.json"),
+  )
+  await Bun.write(output, await format(JSON.stringify(schema), { ...options, parser: "json" }))
+}

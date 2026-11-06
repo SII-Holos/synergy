@@ -157,6 +157,9 @@ render(
         <div id="churn-host">
           <DiffPatchGate patch={wrapper().patch} diffStyle="unified" fallback={<div>never</div>} />
         </div>
+        <div id="custom-host">
+          <DiffPatch patch={PATCH} fallback={<div data-custom-fallback>1 old / 1 new</div>} />
+        </div>
       </div>
     </I18nProvider>
   ),
@@ -263,6 +266,8 @@ describe("DiffPatch progressive rendering", () => {
     expect(richRender("#direct-host")).toBeNull()
     expect(churnFallback()?.textContent).toBe(PATCH)
     expect(gateFallback()).not.toBeNull()
+    expect(document.querySelector("#custom-host")?.textContent).toBe("1 old / 1 new")
+    expect(document.querySelector('#custom-host [data-component="diff-patch-fallback"]')).toBeNull()
     expect(harness.counts()).toEqual({ parse: 0, render: 0 })
 
     harness.resolveTheme()
@@ -271,7 +276,9 @@ describe("DiffPatch progressive rendering", () => {
     expect(directFallback()).toBeNull()
     expect(richRender("#churn-host")).not.toBeNull()
     // The upgrade reuses the already-parsed metadata — no second parse.
-    expect(harness.counts()).toEqual({ parse: 0, render: 2 })
+    expect(harness.counts()).toEqual({ parse: 0, render: 3 })
+    expect(richRender("#custom-host")).not.toBeNull()
+    expect(document.querySelector("[data-custom-fallback]")).toBeNull()
   })
 })
 

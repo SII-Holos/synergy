@@ -1,3 +1,5 @@
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { watchPluginSources } from "../lib/source-watch.js"
 import fs from "fs"
 import path from "path"
 import type { Argv } from "yargs"
@@ -6,20 +8,19 @@ import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 import { buildPluginProject } from "./build.js"
 
-function debounce(delay: number, callback: () => void) {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  return () => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(callback, delay)
-  }
-}
-
-export async function publishGeneration(pluginDir: string, serverUrl?: string) {
+export async function publishGeneration(
+  pluginDir: string,
+  serverUrl?: string,
+  dependencies?: (files: string[], valid: boolean) => void,
+  isolatedHome = process.env.SYNERGY_HOME,
+  signal?: AbortSignal,
+) {
+  signal?.throwIfAborted()
   const root = path.join(pluginDir, "dist", "dev")
   const staging = path.join(root, `.staging-${Date.now()}-${Math.random().toString(16).slice(2)}`)
   fs.mkdirSync(root, { recursive: true })
-  const built = await buildPluginProject(pluginDir, { outputDir: staging })
-  if (!built) {
+  const built = await buildPluginProject(pluginDir, { outputDir: staging, dependencies })
+  if (!built || signal?.aborted) {
     fs.rmSync(staging, { recursive: true, force: true })
     return false
   }
@@ -30,6 +31,25 @@ export async function publishGeneration(pluginDir: string, serverUrl?: string) {
   if (fs.existsSync(generationDir)) fs.rmSync(staging, { recursive: true, force: true })
   else fs.renameSync(staging, generationDir)
 
+  if (serverUrl) {
+    if (!isolatedHome) {
+      throw new Error("Live reload requires an explicit isolated SYNERGY_HOME")
+    }
+    const client = createSynergyClient({ baseUrl: serverUrl })
+    const result = await client.plugin.reloadDevelopment(
+      {
+        pluginId: manifest.id,
+        generation: manifest.artifacts.generation,
+        artifactDir: generationDir,
+      },
+      { signal },
+    )
+    if (result.error) {
+      const error: unknown = result.error
+      const message = typeof error === "string" ? error : JSON.stringify(error)
+      throw new Error(`Synergy dev reload failed: ${result.response.status} ${message}`)
+    }
+  }
   const pointer = path.join(root, "current.json")
   const temporaryPointer = `${pointer}.tmp`
   fs.writeFileSync(
@@ -45,21 +65,6 @@ export async function publishGeneration(pluginDir: string, serverUrl?: string) {
     .sort((left, right) => right.time - left.time)
   for (const old of generations.slice(3)) fs.rmSync(path.join(root, old.name), { recursive: true, force: true })
 
-  if (serverUrl) {
-    if (!process.env.SYNERGY_HOME) {
-      throw new Error("Live reload requires an explicit isolated SYNERGY_HOME")
-    }
-    const response = await fetch(new URL("/plugin/dev/reload", serverUrl), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        pluginId: manifest.id,
-        generation: manifest.artifacts.generation,
-        artifactDir: generationDir,
-      }),
-    })
-    if (!response.ok) throw new Error(`Synergy dev reload failed: ${response.status} ${await response.text()}`)
-  }
   UI.println(`generation ${manifest.artifacts.generation.slice(0, 12)} ready`)
   return true
 }
@@ -74,39 +79,63 @@ export const PluginDevCommand = cmd({
   async handler(args) {
     const pluginDir = path.resolve((args.path as string) ?? process.cwd())
     const serverUrl = args["server-url"] as string | undefined
-    let building = false
-    let queued = false
-    const build = async () => {
-      if (building) {
-        queued = true
-        return
-      }
-      building = true
-      try {
-        await publishGeneration(pluginDir, serverUrl)
-      } catch (error) {
-        UI.error(error instanceof Error ? error.message : String(error))
-      } finally {
-        building = false
-        if (queued) {
-          queued = false
-          void build()
-        }
-      }
-    }
-    await build()
-    UI.println(`Watching ${pluginDir}`)
-    const schedule = debounce(200, () => void build())
-    const watchers = ["src", "package.json", "themes", "icons"]
-      .map((relative) => path.join(pluginDir, relative))
-      .filter((target) => fs.existsSync(target))
-      .map((target) => fs.watch(target, { recursive: fs.statSync(target).isDirectory() }, schedule))
-
-    const shutdown = () => {
-      for (const watcher of watchers) watcher.close()
+    const watcher = watchPluginProject(pluginDir, { serverUrl, initialBuild: true })
+    const shutdown = async () => {
+      await watcher.close()
       process.exit(0)
     }
     process.on("SIGINT", shutdown)
     process.on("SIGTERM", shutdown)
   },
 })
+
+export function watchPluginProject(
+  pluginDir: string,
+  options: { serverUrl?: string; isolatedHome?: string; initialBuild?: boolean } = {},
+) {
+  let closed = false
+  const controller = new AbortController()
+  let pending: Promise<void> | undefined
+  let building = false
+  let queued = false
+  const build = async () => {
+    if (closed) return
+    if (building) {
+      queued = true
+      return
+    }
+    building = true
+    try {
+      await publishGeneration(pluginDir, options.serverUrl, watcher.update, options.isolatedHome, controller.signal)
+    } catch (error) {
+      if (!closed) UI.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      building = false
+      if (queued) {
+        queued = false
+        start()
+      }
+    }
+  }
+  const start = () => {
+    if (closed) return
+    if (building) {
+      queued = true
+      return
+    }
+    pending = build()
+  }
+  const watcher = watchPluginSources(pluginDir, start)
+  if (options.initialBuild) start()
+  UI.println(`Watching ${pluginDir}`)
+
+  return {
+    async close() {
+      closed = true
+      queued = false
+      watcher.close()
+      controller.abort()
+      await pending
+    },
+  }
+}

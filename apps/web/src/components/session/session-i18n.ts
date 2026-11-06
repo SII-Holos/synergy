@@ -1,0 +1,546 @@
+import type { I18n } from "@lingui/core"
+import type { ProgressIslandSnapshot } from "./session-progress-summary"
+import type { SessionActivity } from "@/utils/session-status"
+
+export const S = {
+  historyCopyTitle: { id: "session.history.copyTitle", message: "Copy conversation text" },
+  historyCopyDescription: {
+    id: "session.history.copyDescription",
+    message: "Copy all user and assistant text in this conversation",
+  },
+  historyCopied: { id: "session.history.copied", message: "Conversation copied" },
+  historyExportTitle: { id: "session.history.exportTitle", message: "Export conversation text" },
+  historyExportDescription: {
+    id: "session.history.exportDescription",
+    message: "Download all user and assistant text in this conversation",
+  },
+  historyTextFailed: { id: "session.history.textFailed", message: "Unable to read the conversation. Try again." },
+  historySearchTitle: { id: "session.history.searchTitle", message: "Search conversation" },
+  historySearchPlaceholder: { id: "session.history.searchPlaceholder", message: "Search all conversation history" },
+  historySearchReasoning: { id: "session.history.searchReasoning", message: "Include reasoning" },
+  historySearchTools: { id: "session.history.searchTools", message: "Include tool content" },
+  historySearchPreparing: {
+    id: "session.history.searchPreparing",
+    message: "Preparing history search… {count} parts ready",
+  },
+  historySearchMore: { id: "session.history.searchMore", message: "Continue searching" },
+  historySearchEmpty: { id: "session.history.searchEmpty", message: "No matching content" },
+  historySearchFailed: { id: "session.history.searchFailed", message: "Couldn’t search conversation" },
+  lspNoServers: { id: "session.lsp.noServers", message: "No LSP servers" },
+
+  // conversation.tsx
+  convRenderEarlier: { id: "session.conversation.renderEarlier", message: "Render earlier messages" },
+  convQueue: { id: "session.conversation.queue", message: "Queue" },
+  convGuide: { id: "session.conversation.guide", message: "Guide" },
+  convPending: { id: "session.conversation.pending", message: "Pending\u2026" },
+  convLoadEarlier: { id: "session.conversation.loadEarlier", message: "Load earlier messages" },
+  convLoadingEarlier: { id: "session.conversation.loadingEarlier", message: "Loading earlier messages..." },
+  convPausedTooltip: {
+    id: "session.conversation.pausedTooltip",
+    message: "Delivery paused during rollback. Will resume on redo or new task.",
+  },
+  convPaused: { id: "session.conversation.paused", message: "Paused" },
+  convMoveToQueue: { id: "session.conversation.moveToQueue", message: "Move back to queue" },
+  convGuideRun: { id: "session.conversation.guideRun", message: "Guide current run" },
+  convRemovePending: { id: "session.conversation.removePending", message: "Remove pending message" },
+  convEditPending: { id: "session.conversation.editPending", message: "Edit message" },
+  convEditPendingFailed: {
+    id: "session.conversation.editPendingFailed",
+    message: "The queued message could not be moved to the composer. Its saved content is preserved.",
+  },
+  convEditPendingDraft: {
+    id: "session.conversation.editPendingDraft",
+    message: "Send or clear the current draft before editing a queued message.",
+  },
+  convEditPendingChanged: {
+    id: "session.conversation.editPendingChanged",
+    message: "The draft changed while editing was prepared. Your draft is unchanged and the message remains queued.",
+  },
+  convEditPendingUnavailable: {
+    id: "session.conversation.editPendingUnavailable",
+    message: "This message is no longer available for editing. Refresh the conversation and try again.",
+  },
+
+  // conversation.tsx — pending timeline tooltips (these mirror the conv descriptors above
+  // but the checker sees the raw strings in title attributes)
+  convMoveToQueueTitle: { id: "session.conversation.moveToQueueTitle", message: "Move back to queue" },
+  convGuideRunTitle: { id: "session.conversation.guideRunTitle", message: "Guide current run" },
+  convRemovePendingTitle: { id: "session.conversation.removePendingTitle", message: "Remove pending message" },
+
+  // prompt-dock.tsx
+  dockBackToParent: { id: "session.dock.backToParent", message: "Back to parent" },
+
+  // commands.tsx — command registrations are product UI
+  cmdNewSession: { id: "session.cmd.newSession", message: "New session" },
+  cmdCategorySession: { id: "session.cmd.category.session", message: "Session" },
+  cmdCategoryFile: { id: "session.cmd.category.file", message: "File" },
+  cmdCategoryView: { id: "session.cmd.category.view", message: "View" },
+  cmdCategoryTerminal: { id: "session.cmd.category.terminal", message: "Terminal" },
+  cmdCategoryModel: { id: "session.cmd.category.model", message: "Model" },
+  cmdCategoryMcp: { id: "session.cmd.category.mcp", message: "MCP" },
+  cmdCategoryAgent: { id: "session.cmd.category.agent", message: "Agent" },
+  cmdDefaultEffort: { id: "session.cmd.effort.default", message: "Default" },
+
+  // prompt-dock.tsx — remaining hardcoded
+  dockLoadingPrompt: { id: "session.dock.loadingPrompt", message: "Loading prompt\u2026" },
+  dockParentSession: { id: "session.dock.parentSession", message: "Parent session" },
+  cmdNewSessionDesc: { id: "session.cmd.newSessionDesc", message: "Start a fresh conversation" },
+  cmdOpenFile: { id: "session.cmd.openFile", message: "Open file" },
+  cmdOpenFileDesc: { id: "session.cmd.openFileDesc", message: "Search and open a file" },
+  cmdRefreshFile: { id: "session.cmd.refreshFile", message: "Refresh current file" },
+  cmdRefreshFileDesc: { id: "session.cmd.refreshFileDesc", message: "Reload the active file and expanded folders" },
+  cmdToggleFileTree: { id: "session.cmd.toggleFileTree", message: "Toggle file tree" },
+  cmdToggleFileTreeDesc: { id: "session.cmd.toggleFileTreeDesc", message: "Show or hide the file explorer" },
+  cmdCollapseFolders: { id: "session.cmd.collapseFolders", message: "Collapse folders" },
+  cmdCollapseFoldersDesc: {
+    id: "session.cmd.collapseFoldersDesc",
+    message: "Collapse all folders in the file explorer",
+  },
+  cmdToggleTerminal: { id: "session.cmd.toggleTerminal", message: "Toggle terminal" },
+  cmdToggleTerminalDesc: { id: "session.cmd.toggleTerminalDesc", message: "Show or hide the terminal" },
+  cmdCloseSideWs: { id: "session.cmd.closeSideWs", message: "Close side workspace" },
+  cmdCloseSideWsDesc: { id: "session.cmd.closeSideWsDesc", message: "Close the side workspace" },
+  cmdNewTerminal: { id: "session.cmd.newTerminal", message: "New terminal" },
+  cmdNewTerminalDesc: { id: "session.cmd.newTerminalDesc", message: "Create a new terminal tab" },
+  cmdPrevMessage: { id: "session.cmd.prevMessage", message: "Previous message" },
+  cmdPrevMessageDesc: { id: "session.cmd.prevMessageDesc", message: "Go to the previous user message" },
+  cmdNextMessage: { id: "session.cmd.nextMessage", message: "Next message" },
+  cmdNextMessageDesc: { id: "session.cmd.nextMessageDesc", message: "Go to the next user message" },
+  cmdChooseModel: { id: "session.cmd.chooseModel", message: "Choose model" },
+  cmdChooseModelDesc: { id: "session.cmd.chooseModelDesc", message: "Select a different model" },
+  cmdToggleMcp: { id: "session.cmd.toggleMcp", message: "Toggle MCPs" },
+  cmdToggleMcpDesc: { id: "session.cmd.toggleMcpDesc", message: "Toggle MCPs" },
+  cmdCycleAgent: { id: "session.cmd.cycleAgent", message: "Cycle agent" },
+  cmdCycleAgentDesc: { id: "session.cmd.cycleAgentDesc", message: "Switch to the next agent" },
+  cmdCycleAgentRev: { id: "session.cmd.cycleAgentRev", message: "Cycle agent backwards" },
+  cmdCycleAgentRevDesc: { id: "session.cmd.cycleAgentRevDesc", message: "Switch to the previous agent" },
+  cmdCycleEffort: { id: "session.cmd.cycleEffort", message: "Cycle thinking effort" },
+  cmdCycleEffortDesc: { id: "session.cmd.cycleEffortDesc", message: "Switch to the next effort level" },
+  cmdUndo: { id: "session.cmd.undo", message: "Undo" },
+  cmdUndoDesc: { id: "session.cmd.undoDesc", message: "Undo the last message turn" },
+  cmdRedo: { id: "session.cmd.redo", message: "Redo" },
+  cmdRedoDesc: { id: "session.cmd.redoDesc", message: "Restore the last undone message turn" },
+  cmdRewindToHere: { id: "session.cmd.rewindToHere", message: "Rewind to here" },
+  cmdRewindToHereDesc: { id: "session.cmd.rewindToHereDesc", message: "Rewind session to the active message" },
+  cmdRestoreFiles: { id: "session.cmd.restoreFiles", message: "Restore files" },
+  cmdRestoreFilesDesc: { id: "session.cmd.restoreFilesDesc", message: "Restore files changed by the undone turn" },
+  cmdCompact: { id: "session.cmd.compact", message: "Compact session" },
+  cmdCompactDesc: { id: "session.cmd.compactDesc", message: "Summarize the session to reduce context size" },
+  cmdFork: { id: "session.cmd.fork", message: "Fork session" },
+  cmdForkDesc: { id: "session.cmd.forkDesc", message: "Fork the current message history" },
+
+  // commands.tsx — toasts
+  cmdToastEffortChanged: { id: "session.cmd.toast.effortChanged", message: "Thinking effort changed" },
+  cmdToastEffortChangedDesc: {
+    id: "session.cmd.toast.effortChangedDesc",
+    message: "The thinking effort has been changed to {effort}",
+  },
+  cmdToastFilesRestored: { id: "session.cmd.toast.filesRestored", message: "Files restored" },
+  cmdToastFilesRestoredDesc: {
+    id: "session.cmd.toast.filesRestoredDesc",
+    message: "{count, plural, one {# file} other {# files}} restored",
+  },
+  cmdToastNoModel: { id: "session.cmd.toast.noModel", message: "No model selected" },
+  cmdToastNoModelDesc: { id: "session.cmd.toast.noModelDesc", message: "Connect a provider to summarize this session" },
+  cmdToastCompactFailed: { id: "session.cmd.toast.compactFailed", message: "Compaction failed" },
+  cmdToastCompactFailedDesc: {
+    id: "session.cmd.toast.compactFailedDesc",
+    message: "Unable to compact this session.",
+  },
+
+  // dialog-rewind-confirm.tsx — remaining hardcoded
+  rewindStartingHere: { id: "session.rewind.startingHere", message: "starting here." },
+  rewindAssociatedWork: { id: "session.rewind.associatedWork", message: "associated with the hidden work." },
+
+  // rollback-dialog.tsx
+  rollbackCannotRedo: { id: "session.rollback.cannotRedo", message: "Cannot redo" },
+  rollbackCannotRedoDesc: {
+    id: "session.rollback.cannotRedo.desc",
+    message: "A new task has been started. The rollback can no longer be redone.",
+  },
+  rollbackRedoComplete: { id: "session.rollback.redoComplete", message: "Redo complete" },
+  rollbackRedoFailed: { id: "session.rollback.redoFailed", message: "Redo failed" },
+  rollbackCannotRedoNew: {
+    id: "session.rollback.cannotRedoNew",
+    message: "New messages have been added. This rollback can no longer be redone.",
+  },
+  rollbackFilesRestored: { id: "session.rollback.filesRestored", message: "Files restored" },
+  rollbackPartialRestore: {
+    id: "session.rollback.partialRestore",
+    message:
+      "{restored, plural, one {# file restored} other {# files restored}}; {failed, plural, one {# file could not be restored} other {# files could not be restored}}.",
+  },
+  rollbackFilesRestoreFailed: { id: "session.rollback.filesRestoreFailed", message: "Failed to restore files" },
+  rollbackRedo: { id: "session.rollback.redo", message: "Redo" },
+  rollbackRestoreFiles: { id: "session.rollback.restoreFiles", message: "Restore files ({count})" },
+  rollbackDismiss: { id: "session.rollback.dismiss", message: "Dismiss" },
+  rollbackRestoreTooltip: { id: "session.rollback.restoreTooltip", message: "Restore the rewound messages" },
+  rollbackComplete: { id: "session.rollback.complete", message: "Rewind complete" },
+
+  rollbackRequestFailed: { id: "session.rollback.requestFailed", message: "Request failed" },
+  rollbackRedoSuccessDesc: {
+    id: "session.rollback.redoSuccessDesc",
+    message: "Restored {count, plural, one {# message} other {# messages}}",
+  },
+  rollbackRestoreSuccessDesc: {
+    id: "session.rollback.restoreSuccessDesc",
+    message: "{count, plural, one {# file} other {# files}} restored",
+  },
+  rollbackCannotRedoTooltip: {
+    id: "session.rollback.cannotRedoTooltip",
+    message: "New messages have been added; cannot redo this rollback",
+  },
+  rollbackSummary: {
+    id: "session.rollback.bannerText",
+    message:
+      "Rewound {messages, plural, one {# message} other {# messages}} ({turns, plural, one {# turn} other {# turns}})",
+  },
+
+  // dialog-rewind-confirm.tsx
+  rewindTitle: { id: "session.rewind.title", message: "Rewind to this point" },
+  rewindBefore: {
+    id: "session.rewind.description.before",
+    message: 'Return to before "{title}". Hidden work can be redone until you start a new task.',
+  },
+  rewindBeforeUntitled: {
+    id: "session.rewind.description.untitled",
+    message: "Return to before this message. Hidden work can be redone until you start a new task.",
+  },
+  rewindConfirm: { id: "session.rewind.confirm", message: "Rewind" },
+  rewindConfirmRestore: { id: "session.rewind.confirmRestore", message: "Rewind and restore files" },
+  rewindFailed: { id: "session.rewind.failed", message: "Rewind failed" },
+  rewindRewinding: { id: "session.rewind.rewinding", message: "Rewinding…" },
+  rewindRetry: { id: "session.rewind.retry", message: "Retry" },
+  rewindRetrying: { id: "session.rewind.retrying", message: "Retrying…" },
+  rewindRetryFailed: { id: "session.rewind.retryFailed", message: "Retry failed" },
+  rewindCancel: { id: "session.rewind.cancel", message: "Cancel" },
+  rewindThisHides: { id: "session.rewind.thisHides", message: "This will hide" },
+  rewindOptional: { id: "session.rewind.optional", message: "Optional" },
+  rewindAlsoRestore: { id: "session.rewind.alsoRestore", message: "Also restore file changes" },
+  rewindAlsoRestoreHint: {
+    id: "session.rewind.alsoRestore.hint",
+    message:
+      "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the rollback dialog.",
+  },
+  rewindRequestFailed: { id: "session.rewind.requestFailed", message: "Request failed" },
+
+  // dialog-fork-confirm.tsx
+  forkConfirmTitle: { id: "session.fork.confirm.title", message: "Fork session" },
+  forkConfirmDescriptionCurrent: {
+    id: "session.fork.confirm.description.current",
+    message: "Copy the conversation into a new session.",
+  },
+  forkConfirmDescription: {
+    id: "session.fork.confirm.description",
+    message: "Copy the conversation through this reply into a new session.",
+  },
+  forkConfirmDescriptionPreview: {
+    id: "session.fork.confirm.description.preview",
+    message: 'Copy the conversation through "{preview}" into a new session.',
+  },
+  forkConfirmCopiedSummary: {
+    id: "session.fork.confirm.copiedSummary",
+    message:
+      "{kind, select, both {Copy {messages, plural, one {# message} other {# messages}} and {replies, plural, one {# reply} other {# replies}} into a new session.} messages {Copy {messages, plural, one {# message} other {# messages}} into a new session.} replies {Copy {replies, plural, one {# reply} other {# replies}} into a new session.} other {Copy the conversation into a new session.}}",
+  },
+  forkConfirmCopiedNote: {
+    id: "session.fork.confirm.copiedNote",
+    message: "Will fork from this reply at {time}.",
+  },
+  forkConfirmAction: { id: "session.fork.confirm.action", message: "Fork session" },
+  forkConfirmForking: { id: "session.fork.confirm.forking", message: "Forking…" },
+  forkConfirmCancel: { id: "session.fork.confirm.cancel", message: "Cancel" },
+  forkConfirmClose: { id: "session.fork.confirm.close", message: "Close dialog" },
+  forkConfirmFailed: { id: "session.fork.confirm.failed", message: "Fork failed" },
+  forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
+  forkLocationTitle: { id: "session.fork.location.title", message: "Working location" },
+  forkLocationMain: { id: "session.fork.location.main", message: "Main directory" },
+  forkLocationCreate: { id: "session.fork.location.create", message: "New worktree" },
+  forkLocationWorktree: { id: "session.fork.location.worktree", message: "Same worktree" },
+  forkLocationCurrent: { id: "session.fork.location.current", message: "Same workspace" },
+  forkLocationNone: { id: "session.fork.location.none", message: "No workspace" },
+  forkLocationLoading: { id: "session.fork.location.loading", message: "Loading working locations…" },
+  forkLocationFailed: { id: "session.fork.location.failed", message: "Couldn’t load working locations. Try again." },
+  forkLocationRetry: { id: "session.fork.location.retry", message: "Retry" },
+
+  // session-progress summary labels
+  progressEnded: { id: "session.progress.ended", message: "Ended" },
+  progressCancelled: { id: "session.progress.cancelled", message: "{count} cancelled" },
+  progressDone: { id: "session.progress.done", message: "Done · {count, plural, one {# task} other {# tasks}}" },
+  progressNeedsAttention: {
+    id: "session.progress.needsAttention",
+    message: "Needs attention · {count, plural, one {# failed} other {# failed}}",
+  },
+  progressNeedsAttentionBlocked: {
+    id: "session.progress.needsAttentionBlocked",
+    message: "Needs attention · {count, plural, one {# blocked} other {# blocked}}",
+  },
+  progressNeedsAttentionMixed: {
+    id: "session.progress.needsAttentionMixed",
+    message: "Needs attention · {failed} failed, {blocked} blocked",
+  },
+  progressReady: { id: "session.progress.ready", message: "Ready · {fraction}" },
+  progressWorkingLabel: {
+    id: "session.progress.workingLabel",
+    message: "Working {count, plural, one {# task} other {# tasks}}",
+  },
+  progressWorking: { id: "session.progress.working", message: "Working" },
+  progressInactive: {
+    id: "session.progress.inactive",
+    message: "{activity, select, waiting {Waiting for you} paused {Paused} idle {Unfinished} other {Status unknown}}",
+  },
+
+  // session-progress-island
+  progressSessionLabel: { id: "session.progress.sessionLabel", message: "Session progress" },
+  progressCompleteAria: {
+    id: "session.progress.completeAria",
+    message: "Session progress complete, {count, plural, one {# task} other {# tasks}} done",
+  },
+  progressAttentionAria: {
+    id: "session.progress.attentionAria",
+    message: "Session progress needs attention, {count} failed",
+  },
+  progressBlockedAria: {
+    id: "session.progress.blockedAria",
+    message: "Session progress needs attention, {count} blocked",
+  },
+  progressActiveAria: {
+    id: "session.progress.activeAria",
+    message: "Session progress, {completed} of {total} tasks complete",
+  },
+  progressDagTab: { id: "session.progress.dagTab", message: "DAG" },
+  progressTodoTab: { id: "session.progress.todoTab", message: "To-do" },
+  progressCurrentWork: { id: "session.progress.currentWork", message: "Current work" },
+  progressCompleteFraction: { id: "session.progress.completeFraction", message: "{completed}/{total} complete" },
+  progressViewLabel: { id: "session.progress.viewLabel", message: "Progress view" },
+  progressExpand: { id: "session.progress.expand", message: "Expand" },
+  progressCollapse: { id: "session.progress.collapse", message: "Collapse" },
+  progressClose: { id: "session.progress.close", message: "Close progress" },
+  progressNoActivePlan: { id: "session.progress.noActivePlan", message: "No active plan" },
+
+  // session-inbox
+  inboxQueued: { id: "session.inbox.queued", message: "Queued by you" },
+  inboxGuiding: { id: "session.inbox.guiding", message: "Guiding current run" },
+  inboxContextUpdate: { id: "session.inbox.contextUpdate", message: "Context update" },
+  inboxUpdate: { id: "session.inbox.update", message: "Update" },
+  inboxAfterTurn: { id: "session.inbox.afterTurn", message: "After turn" },
+  inboxNextCall: { id: "session.inbox.nextCall", message: "Next call" },
+  inboxContextTag: { id: "session.inbox.contextTag", message: "Context" },
+  inboxContext: { id: "session.inbox.contextWord", message: "Context" },
+  inboxDeliveryTask: {
+    id: "session.inbox.delivery.task",
+    message: "Sends after this turn; multiple queued items share one reply cycle.",
+  },
+  inboxDeliverySteer: {
+    id: "session.inbox.delivery.steer",
+    message: "Joins the current run before its next model request.",
+  },
+  inboxDeliveryContext: {
+    id: "session.inbox.delivery.context",
+    message: "Joined to the ongoing model call as context.",
+  },
+  inboxQueueNextCall: { id: "session.inbox.queue.nextCall", message: "{steers} next call · {tasks} after turn" },
+  inboxQueueJoinModel: {
+    id: "session.inbox.queue.joinModel",
+    message: "{count, plural, one {# item joins} other {# items join}} the next model call",
+  },
+  inboxQueueJoinSingular: {
+    id: "session.inbox.queue.joinSingular",
+    message: "Joins the current run's next model call",
+  },
+  inboxQueueTasks: {
+    id: "session.inbox.queue.tasks",
+    message: "{count, plural, one {# item sends} other {# items send}} together in one reply",
+  },
+  inboxQueueTasksSingular: { id: "session.inbox.queue.tasksSingular", message: "Sends automatically after this turn" },
+  inboxQueueContexts: { id: "session.inbox.queue.contexts", message: "{count} context updates waiting" },
+  inboxQueueContextSingular: { id: "session.inbox.queue.contextSingular", message: "Context update waiting" },
+  inboxClear: { id: "session.inbox.clear", message: "Inbox clear" },
+  inboxDetailAria: { id: "session.inbox.detailAria", message: "Queued message actions" },
+  inboxDebug: { id: "session.inbox.debug", message: "Checking for queued messages" },
+  inboxTitle: { id: "session.inbox.title", message: "Inbox" },
+  inboxEmpty: { id: "session.inbox.empty", message: "Inbox clear" },
+  inboxLoading: { id: "session.inbox.loading", message: "Loading inbox…" },
+  inboxFrozen: { id: "session.inbox.frozen", message: "Inbox frozen while rewinding" },
+  inboxSendAll: { id: "session.inbox.sendAll", message: "Send all now" },
+  inboxGuideQueue: { id: "session.inbox.guide.queue", message: "Queue" },
+  inboxGuideSendNow: { id: "session.inbox.guide.sendNow", message: "Send now" },
+  inboxGuideQueueTip: {
+    id: "session.inbox.guide.queueTip",
+    message: "Move this message back to the queued task list.",
+  },
+  inboxGuideSendNowTip: {
+    id: "session.inbox.guide.sendNowTip",
+    message: "Add this message to the current run's next model call.",
+  },
+  inboxGuideFailed: { id: "session.inbox.guideFailed", message: "Failed to send message now" },
+  inboxGuideAllFailed: { id: "session.inbox.guideAllFailed", message: "Failed to send queued messages now" },
+  inboxRequestFailed: { id: "session.inbox.requestFailed", message: "Request failed" },
+  inboxDelete: { id: "session.inbox.delete", message: "Delete" },
+  inboxRemove: { id: "session.inbox.remove", message: "Remove message" },
+  inboxOperationPending: { id: "session.inbox.operationPending", message: "Updating message…" },
+  inboxRemoveFailed: {
+    id: "session.inbox.removeFailed",
+    message: "Removal could not be confirmed. The message is preserved until the result is verified.",
+  },
+  inboxRestoreFailed: {
+    id: "session.inbox.restoreFailed",
+    message: "Restore could not be confirmed. The original content and execution settings are preserved.",
+  },
+  inboxRetryRemove: { id: "session.inbox.retryRemove", message: "Retry removal" },
+  inboxRetryRestore: { id: "session.inbox.retryRestore", message: "Retry restore" },
+  inboxRemovedHeading: { id: "session.inbox.removedHeading", message: "Removed messages" },
+  inboxRemovedLoadFailed: { id: "session.inbox.removedLoadFailed", message: "Removed messages could not be loaded." },
+  inboxRemoved: { id: "session.inbox.removed", message: "Removed queued message" },
+  inboxRemovedDesc: {
+    id: "session.inbox.removedDesc",
+    message: "The message has been removed from the inbox. Restoring it will add it to the queue tail.",
+  },
+  inboxRestore: { id: "session.inbox.restore", message: "Restore" },
+  inboxItemsWaiting: {
+    id: "session.inbox.itemsWaiting",
+    message: "{count} {count, plural, one {item} other {items}} waiting for your attention",
+  },
+  inboxSessionAria: { id: "session.inbox.sessionAria", message: "Session inbox" },
+  inboxFailedStatus: { id: "session.inbox.failedStatus", message: "Failed" },
+  inboxFailed: { id: "session.inbox.failed", message: "Failed to deliver" },
+  inboxRetry: { id: "session.inbox.retry", message: "Retry delivery" },
+  inboxRetryFailed: { id: "session.inbox.retryFailed", message: "Failed to retry message" },
+
+  // session-new-view
+  newSessionSubtitle: { id: "session.new.subtitle", message: "What are we building today?" },
+
+  // scopes
+  scopesActive: { id: "scopes.active", message: "Active" },
+  scopesSession: { id: "scopes.session", message: "session" },
+  scopesSubsession: { id: "scopes.subsession", message: "subsession" },
+  scopesRename: { id: "scopes.rename", message: "Rename" },
+  scopesArchive: { id: "scopes.archive", message: "Archive" },
+  scopesWorking: { id: "scopes.working", message: "Working…" },
+  scopesRetrying: { id: "scopes.retrying", message: "Retrying…" },
+  scopesPermissionRequest: { id: "scopes.permissionRequest", message: "Permission request" },
+  scopesError: { id: "scopes.error", message: "Error" },
+  scopesNewActivity: { id: "scopes.newActivity", message: "New activity" },
+
+  // subagent-dock.tsx
+  subagentDockLabel: { id: "session.subagent.dockLabel", message: "Active agents" },
+  subagentCancelFailed: { id: "session.subagent.cancelFailed", message: "Could not cancel agent" },
+  subagentToolsCount: { id: "session.subagent.toolsCount", message: "{count} tools" },
+  subagentRetry: { id: "session.subagent.retry", message: "Retry #{attempt}" },
+  subagentQueuedWait: { id: "session.subagent.queuedWait", message: "Queued \u2014 waiting for slot" },
+  subagentTapToOpen: { id: "session.subagent.tapToOpen", message: "Tap to open \u00b7 press and hold to cancel" },
+  subagentAriaLabel: {
+    id: "session.subagent.ariaLabel",
+    message: "Open {description}. Press and hold to cancel.",
+  },
+  subagentAriaQueued: { id: "session.subagent.ariaQueued", message: "{agent} queued" },
+  subagentRetryAria: { id: "session.subagent.retryAria", message: "{agent}: Retry #{attempt} \u2014 {message}" },
+
+  // subagent-session-footer.tsx
+  subagentFooterQueued: { id: "session.subagent.footer.queued", message: "Queued" },
+  subagentFooterRunning: { id: "session.subagent.footer.running", message: "Running" },
+  subagentFooterCompleted: { id: "session.subagent.footer.completed", message: "Completed" },
+  subagentFooterError: { id: "session.subagent.footer.error", message: "Error" },
+  subagentFooterCancelled: { id: "session.subagent.footer.cancelled", message: "Cancelled" },
+  subagentFooterInterrupted: { id: "session.subagent.footer.interrupted", message: "Interrupted" },
+  subagentFooterParent: { id: "session.subagent.footer.parent", message: "Parent" },
+  subagentFooterRetry: { id: "session.subagent.footer.retry", message: "Retry #{attempt}" },
+
+  submissionDismiss: { id: "session.submission.dismiss", message: "Dismiss" },
+  submissionRestoreDraft: { id: "session.submission.restoreDraft", message: "Restore draft" },
+  transitionContinue: { id: "session.transition.continue", message: "Continue task" },
+  transitionErrorDetails: { id: "session.transition.errorDetails", message: "Error details" },
+  transitionRecoveryFailed: {
+    id: "session.transition.recoveryFailed",
+    message: "Recovery could not be confirmed. Check the connection and retry.",
+  },
+  submissionRetry: { id: "session.submission.retryAction", message: "Retry" },
+
+  transitionDescCancelled: {
+    id: "session.transition.desc.cancelled",
+    message: "This message was cancelled. You can dismiss this notice.",
+  },
+  worktreeDialogTitle: { id: "session.worktree.dialog.title", message: "Move session to worktree?" },
+  worktreeDialogDesc: {
+    id: "session.worktree.dialog.desc",
+    message: "Create an isolated checkout and move this session into it. The main checkout stays unchanged.",
+  },
+  worktreeDialogNameLabel: { id: "session.worktree.dialog.nameLabel", message: "Worktree name" },
+  worktreeDialogNamePlaceholder: { id: "session.worktree.dialog.namePlaceholder", message: "Auto-generated" },
+  worktreeDialogCancel: { id: "session.worktree.dialog.cancel", message: "Cancel" },
+  worktreeDialogCreate: { id: "session.worktree.dialog.create", message: "Create worktree" },
+
+  worktreeTitleRefreshFailed: {
+    id: "session.worktree.title.refreshFailed",
+    message: "Could not refresh file location",
+  },
+  worktreeDescRefreshFailed: {
+    id: "session.worktree.desc.refreshFailed",
+    message: "The file location changed, but the task status could not be refreshed. {message}",
+  },
+  worktreeTitleLeaveFailed: { id: "session.worktree.title.leaveFailed", message: "Could not return to project files" },
+  worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Could not use the Worktree" },
+  worktreeSetupCommandFailed: {
+    id: "session.worktree.setupCommandFailed",
+    message: "The Worktree setup command failed.",
+  },
+  scopesNewSession: { id: "scopes.newSession", message: "New session" },
+  scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },
+  scopesTasksCount: { id: "scopes.tasksCount", message: "{count} tasks" },
+}
+
+export function describeProgress(
+  snapshot: ProgressIslandSnapshot,
+  i18n: I18n,
+  activity: SessionActivity | "unknown",
+): string {
+  if (snapshot.status === "hidden") return i18n._(S.progressSessionLabel)
+  if (snapshot.status === "complete") {
+    const label =
+      snapshot.total === 0
+        ? i18n._(S.progressEnded)
+        : i18n._({ ...S.progressCompleteAria, values: { count: snapshot.total } })
+    return snapshot.cancelled > 0
+      ? `${label}. ${i18n._({ ...S.progressCancelled, values: { count: snapshot.cancelled } })}`
+      : label
+  }
+  if (snapshot.failed > 0 && snapshot.blocked > 0)
+    return i18n._({ ...S.progressNeedsAttentionMixed, values: { failed: snapshot.failed, blocked: snapshot.blocked } })
+  if (snapshot.tone === "failed") return i18n._({ ...S.progressAttentionAria, values: { count: snapshot.failed } })
+  if (snapshot.tone === "blocked") return i18n._({ ...S.progressBlockedAria, values: { count: snapshot.blocked } })
+  const label = i18n._({ ...S.progressActiveAria, values: { completed: snapshot.completed, total: snapshot.total } })
+  return activity === "working" ? label : `${i18n._({ ...S.progressInactive, values: { activity } })}. ${label}`
+}
+
+export function progressExpandCollapse(expanded: boolean, i18n: I18n): string {
+  return expanded ? i18n._(S.progressCollapse) : i18n._(S.progressExpand)
+}
+
+export function formatProgressLabel(
+  snapshot: ProgressIslandSnapshot,
+  activeLabel: string | undefined,
+  i18n: I18n,
+  activity: SessionActivity | "unknown",
+): string {
+  if (snapshot.status === "hidden") return ""
+  if (snapshot.status === "complete") {
+    const label =
+      snapshot.total === 0 ? i18n._(S.progressEnded) : i18n._({ ...S.progressDone, values: { count: snapshot.total } })
+    return snapshot.cancelled > 0
+      ? `${label} · ${i18n._({ ...S.progressCancelled, values: { count: snapshot.cancelled } })}`
+      : label
+  }
+  if (snapshot.failed > 0 && snapshot.blocked > 0)
+    return i18n._({ ...S.progressNeedsAttentionMixed, values: { failed: snapshot.failed, blocked: snapshot.blocked } })
+  if (snapshot.tone === "failed") return i18n._({ ...S.progressNeedsAttention, values: { count: snapshot.failed } })
+  if (snapshot.tone === "blocked")
+    return i18n._({ ...S.progressNeedsAttentionBlocked, values: { count: snapshot.blocked } })
+  const fraction = `${snapshot.completed}/${snapshot.total}`
+  if (activity !== "working") return `${i18n._({ ...S.progressInactive, values: { activity } })} · ${fraction}`
+  const label = activeLabel?.trim()
+  if (label) return `${label} · ${fraction}`
+  if (snapshot.tone === "ready") return i18n._({ ...S.progressReady, values: { fraction } })
+  if (snapshot.active > 1)
+    return `${i18n._({ ...S.progressWorkingLabel, values: { count: snapshot.active } })} · ${fraction}`
+  return `${i18n._(S.progressWorking)} · ${fraction}`
+}

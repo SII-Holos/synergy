@@ -1,0 +1,2412 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
+import { upgradeAccessRecord } from "../migration/import"
+import { prepareSessionMigrations } from "../migration"
+import {
+  AttachmentPresentation as SharedAttachmentPresentation,
+  attachmentPurpose,
+} from "@ericsanchezok/synergy-util/attachment-presentation"
+import { isActivityGroupableTool, isCancelledMediaGeneration } from "@ericsanchezok/synergy-util/activity"
+import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { ToolIntent } from "./tool-intent"
+import { modelWorkingSetProjection, selectModelWorkingSet } from "./model-working-set"
+import { RuntimeContextMetadata } from "./runtime-context-schema"
+import { ToolActivityEvidence } from "./activity-evidence"
+import { RuntimeContext } from "../lifecycle/context"
+import { ModelSelection } from "./model-selection-schema"
+import { RolloutRecordingError } from "./rollout/error"
+import { BusEvent } from "../bus/bus-event"
+import path from "path"
+import z from "zod"
+import { RolloutSchema } from "./rollout/schema"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
+import { classifyNetworkError } from "@ericsanchezok/synergy-util/network-error"
+import { providerRetryable } from "../provider/retry"
+import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
+import { ProviderModelUnavailableError } from "../provider/model-unavailable-error"
+import { ProviderModelVariantUnavailableError } from "../provider/model-variant-unavailable-error"
+import { Identifier } from "../id/id"
+import { SymbolRange } from "./symbol-range"
+import { SnapshotSchema } from "./snapshot-schema"
+import { fn } from "../util/fn"
+import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import { PartContent } from "./part-content"
+import { ProviderTransform } from "../provider/transform"
+import { ProviderAuthRecoveryError } from "../provider/auth-recovery-error"
+import { STATUS_CODES } from "http"
+import { iife } from "../util/iife"
+import { type SystemError } from "bun"
+import type { Scope } from "../scope"
+import { Attachment } from "../attachment"
+import { Asset } from "../asset/asset"
+import { Log } from "../util/log"
+import { SessionBounds } from "./bounds"
+import {
+  ContextUsageSchema,
+  ContextSourceSchema,
+  ContextCategoryKeys,
+  type ContextCategoryKey,
+} from "./context-usage-schema"
+
+function networkErrorMetadata(error: Error, endpointHost?: string) {
+  const metadata: Record<string, string> = {
+    message: error.message,
+  }
+  const classification = classifyNetworkError(error)
+  const code = classification?.code
+  if (code) metadata.code = code
+  const syscall = classification?.syscall
+  if (typeof syscall === "string") metadata.syscall = syscall
+  if (classification?.kind) metadata.networkKind = classification.kind
+  if (classification?.category) metadata.category = classification.category
+  if (endpointHost) metadata.endpointHost = endpointHost
+  return metadata
+}
+export namespace MessageV2 {
+  export const ContextSource = ContextSourceSchema
+
+  const log = Log.create({ service: "message-v2" })
+
+  type SessionLookup = {
+    scope: Scope
+  }
+
+  const runtimeState = RuntimeContext.state(() => ({
+    requireSession: async (sessionID: string): Promise<SessionLookup> => {
+      throw new Error(`Session resolver is not installed for ${sessionID}`)
+    },
+  }))
+
+  export function installSessionResolver(resolver: (sessionID: string) => Promise<SessionLookup>) {
+    const instanceState = runtimeState()
+
+    instanceState.requireSession = resolver
+  }
+
+  export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
+  export const EmptyResponseError = NamedError.create("MessageEmptyResponseError", z.object({ message: z.string() }))
+  export const AbortedError = NamedError.create("MessageAbortedError", z.object({ message: z.string() }))
+  export const AuthError = NamedError.create(
+    "ProviderAuthError",
+    z.object({
+      providerID: z.string(),
+      message: z.string(),
+      failureCode: z.string().optional(),
+      actionRequired: z.boolean().optional(),
+    }),
+  )
+  export const APIError = NamedError.create(
+    "APIError",
+    z.object({
+      message: z.string(),
+      statusCode: z.number().optional(),
+      isRetryable: z.boolean(),
+      responseHeaders: z.record(z.string(), z.string()).optional(),
+      responseBody: z.string().optional(),
+      metadata: z.record(z.string(), z.string()).optional(),
+    }),
+  )
+  export type APIError = z.infer<typeof APIError.Schema>
+  export const SessionTerminalError = NamedError.create(
+    "SessionTerminalError",
+    z.object({
+      message: z.string(),
+      errorName: z.string(),
+    }),
+  )
+  export type SessionTerminalError = z.infer<typeof SessionTerminalError.Schema>
+
+  const PartBase = z.object({
+    id: z.string(),
+    sessionID: z.string(),
+    messageID: z.string(),
+  })
+
+  export const SnapshotPart = PartBase.extend({
+    type: z.literal("snapshot"),
+    snapshot: z.string(),
+    workspace: SnapshotSchema.Workspace.optional(),
+  }).meta({
+    ref: "SnapshotPart",
+  })
+  export type SnapshotPart = z.infer<typeof SnapshotPart>
+
+  export const PatchPart = PartBase.extend({
+    type: z.literal("patch"),
+    hash: z.string(),
+    checkpoint: z
+      .object({
+        version: z.literal(1),
+        rootID: z.string(),
+        segmentID: z.string(),
+        started: z.number(),
+        ended: z.number().optional(),
+        status: z.enum(["pending", "complete", "incomplete"]),
+        afterHash: z
+          .string()
+          .regex(/^[0-9a-f]{40}$/)
+          .optional(),
+        omissions: z.array(SnapshotSchema.Omission).optional(),
+        baselineOmissions: z.array(SnapshotSchema.Omission).optional(),
+        error: z.enum(["baseline_unavailable", "capture_failed", "interrupted", "legacy_range"]).optional(),
+      })
+      .optional(),
+    operation: z
+      .discriminatedUnion("status", [
+        z.object({ status: z.literal("pending"), toolCallID: z.string() }),
+        z.object({ status: z.literal("incomplete"), toolCallID: z.string() }),
+        z.object({
+          status: z.literal("complete"),
+          toolCallID: z.string(),
+          afterHash: z.string().regex(/^[0-9a-f]{40}$/),
+          baselineOmissions: z.array(SnapshotSchema.Omission).optional(),
+          omissions: z.array(SnapshotSchema.Omission).optional(),
+        }),
+      ])
+      .optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
+    files: z.string().array(),
+  }).meta({
+    ref: "PatchPart",
+  })
+  export type PatchPart = z.infer<typeof PatchPart>
+
+  export const TextPart = PartBase.extend({
+    type: z.literal("text"),
+    text: z.string(),
+    /** @deprecated Superseded by `origin`; read only as a fallback by isSystemPart. No writes. */
+    synthetic: z.boolean().optional(),
+    origin: z.enum(["user", "system"]).optional(),
+    time: z
+      .object({
+        start: z.number(),
+        end: z.number().optional(),
+      })
+      .optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
+  }).meta({
+    ref: "TextPart",
+  })
+  export type TextPart = z.infer<typeof TextPart>
+
+  export const ReasoningPart = PartBase.extend({
+    type: z.literal("reasoning"),
+    text: z.string(),
+    metadata: z.record(z.string(), z.any()).optional(),
+    time: z.object({
+      start: z.number(),
+      end: z.number().optional(),
+    }),
+  }).meta({
+    ref: "ReasoningPart",
+  })
+  export type ReasoningPart = z.infer<typeof ReasoningPart>
+
+  const AttachmentSourceBase = z.object({
+    text: z
+      .object({
+        value: z.string(),
+        start: z.number().int(),
+        end: z.number().int(),
+      })
+      .meta({
+        ref: "AttachmentSourceText",
+      }),
+  })
+
+  export const FileSource = AttachmentSourceBase.extend({
+    type: z.literal("file"),
+    path: z.string(),
+    workspace: ResourceReference.Workspace.optional(),
+    location: ResourceReference.Location.optional(),
+  }).meta({
+    ref: "FileSource",
+  })
+
+  export const SymbolSource = AttachmentSourceBase.extend({
+    type: z.literal("symbol"),
+    path: z.string(),
+    workspace: ResourceReference.Workspace.optional(),
+    range: SymbolRange,
+    name: z.string(),
+    kind: z.number().int(),
+  }).meta({
+    ref: "SymbolSource",
+  })
+
+  export const ResourceSource = AttachmentSourceBase.extend({
+    type: z.literal("resource"),
+    clientName: z.string(),
+    uri: z.string(),
+  }).meta({
+    ref: "ResourceSource",
+  })
+
+  export const AttachmentSource = z.discriminatedUnion("type", [FileSource, SymbolSource, ResourceSource]).meta({
+    ref: "AttachmentSource",
+  })
+
+  export const AttachmentPresentation = SharedAttachmentPresentation.meta({ ref: "AttachmentPresentation" })
+  export type AttachmentPresentation = z.infer<typeof AttachmentPresentation>
+
+  export const AttachmentModelPolicy = z
+    .discriminatedUnion("mode", [
+      z.object({
+        mode: z.literal("summary"),
+        summary: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("content"),
+        text: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("provider-file"),
+        summary: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("none"),
+      }),
+    ])
+    .meta({
+      ref: "AttachmentModelPolicy",
+    })
+  export type AttachmentModelPolicy = z.infer<typeof AttachmentModelPolicy>
+
+  export const AttachmentPart = PartBase.extend({
+    type: z.literal("attachment"),
+    artifact: RolloutSchema.ArtifactRef.optional(),
+    mime: z.string(),
+    filename: z.string().optional(),
+    url: z.string(),
+    localPath: z.string().optional(),
+    source: AttachmentSource.optional(),
+    presentation: AttachmentPresentation.optional(),
+    model: AttachmentModelPolicy.optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
+  }).meta({
+    ref: "AttachmentPart",
+  })
+  export type AttachmentPart = z.infer<typeof AttachmentPart>
+
+  export const CompactionPart = PartBase.extend({
+    type: z.literal("compaction"),
+    auto: z.boolean(),
+  }).meta({
+    ref: "CompactionPart",
+  })
+  export type CompactionPart = z.infer<typeof CompactionPart>
+
+  export const CompactionRecoveryPart = PartBase.extend({
+    type: z.literal("compaction_recovery"),
+    summary: z.string(),
+    mechanical: z.boolean(),
+    recoverySessionIDs: z.string().array().optional(),
+    validated: z.boolean(),
+  }).meta({
+    ref: "CompactionRecoveryPart",
+  })
+  export type CompactionRecoveryPart = z.infer<typeof CompactionRecoveryPart>
+  export const RetryPart = PartBase.extend({
+    type: z.literal("retry"),
+    attempt: z.number(),
+    error: APIError.Schema,
+    time: z.object({
+      created: z.number(),
+    }),
+  }).meta({
+    ref: "RetryPart",
+  })
+  export type RetryPart = z.infer<typeof RetryPart>
+
+  export const StepStartPart = PartBase.extend({
+    type: z.literal("step-start"),
+    snapshot: z.string().optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
+  }).meta({
+    ref: "StepStartPart",
+  })
+  export type StepStartPart = z.infer<typeof StepStartPart>
+
+  export const StepFinishPart = PartBase.extend({
+    type: z.literal("step-finish"),
+    accounting: RolloutSchema.MessageAccounting.optional(),
+    reason: z.string(),
+    snapshot: z.string().optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
+    cost: z.number(),
+    tokens: z.object({
+      input: z.number(),
+      output: z.number(),
+      reasoning: z.number(),
+      cache: z.object({
+        read: z.number(),
+        write: z.number(),
+      }),
+    }),
+  }).meta({
+    ref: "StepFinishPart",
+  })
+  export type StepFinishPart = z.infer<typeof StepFinishPart>
+
+  export const ToolStateInput = z
+    .union([z.record(z.string(), z.any()), z.array(z.unknown()), z.string(), z.number(), z.boolean(), z.null()])
+    .meta({ ref: "ToolStateInput" })
+
+  export const ToolStatePending = z
+    .object({
+      status: z.literal("pending"),
+      input: z.record(z.string(), z.any()),
+      raw: z.string(),
+      metadata: z.record(z.string(), z.any()).optional(),
+    })
+    .meta({
+      ref: "ToolStatePending",
+    })
+
+  export type ToolStatePending = z.infer<typeof ToolStatePending>
+
+  // While the LLM is streaming tool arguments (before the full JSON is parsed),
+  // we emit "generating" with the accumulated raw JSON and its character length.
+  // `input` is empty because arguments aren't fully parsed yet.
+  export const ToolStateGenerating = z
+    .object({
+      status: z.literal("generating"),
+      input: z.record(z.string(), z.any()),
+      raw: z.string(),
+      charsReceived: z.number(),
+      metadata: z.record(z.string(), z.any()).optional(),
+    })
+    .meta({
+      ref: "ToolStateGenerating",
+    })
+
+  export type ToolStateGenerating = z.infer<typeof ToolStateGenerating>
+
+  export const ToolStateRunning = z
+    .object({
+      status: z.literal("running"),
+      input: ToolStateInput,
+      title: z.string().optional(),
+      metadata: z.record(z.string(), z.any()).optional(),
+      time: z.object({
+        start: z.number(),
+      }),
+    })
+    .meta({
+      ref: "ToolStateRunning",
+    })
+  export type ToolStateRunning = z.infer<typeof ToolStateRunning>
+
+  export const ToolStateCompleted = z
+    .object({
+      status: z.literal("completed"),
+      input: ToolStateInput,
+      output: z.string(),
+      outputBytes: z.number().int().nonnegative().optional(),
+      outputArtifact: RolloutSchema.ArtifactRef.optional(),
+      outputTruncated: z.boolean().optional(),
+      title: z.string(),
+      metadata: z.record(z.string(), z.any()),
+      time: z.object({
+        start: z.number(),
+        end: z.number(),
+        compacted: z.number().optional(),
+      }),
+      attachments: AttachmentPart.array().optional(),
+    })
+    .meta({
+      ref: "ToolStateCompleted",
+    })
+  export type ToolStateCompleted = z.infer<typeof ToolStateCompleted>
+
+  export const ToolStateError = z
+    .object({
+      status: z.literal("error"),
+      input: ToolStateInput,
+      error: z.string(),
+      reason: z.literal("cancelled").optional(),
+      metadata: z.record(z.string(), z.any()).optional(),
+      time: z.object({
+        start: z.number(),
+        end: z.number(),
+      }),
+    })
+    .meta({
+      ref: "ToolStateError",
+    })
+  export type ToolStateError = z.infer<typeof ToolStateError>
+
+  export const ToolState = z
+    .discriminatedUnion("status", [
+      ToolStatePending,
+      ToolStateGenerating,
+      ToolStateRunning,
+      ToolStateCompleted,
+      ToolStateError,
+    ])
+    .meta({
+      ref: "ToolState",
+    })
+
+  export const ToolPart = PartBase.extend({
+    type: z.literal("tool"),
+    callID: z.string(),
+    tool: z.string(),
+    workBrief: z.string().optional(),
+    inputShape: z.enum(["flat", "envelope"]).optional(),
+    activityEvidence: ToolActivityEvidence.optional(),
+    state: ToolState,
+    metadata: z.record(z.string(), z.any()).optional(),
+  }).meta({
+    ref: "ToolPart",
+  })
+  export type ToolPart = z.infer<typeof ToolPart>
+
+  /**
+   * Wording for a tool call a process ended mid-flight. Shared by restore-time
+   * repair and the historical-data migration so both describe the condition
+   * identically; it mirrors the rollout ledger's interrupted-tool note, since
+   * the call is never replayed and its side effects are therefore unknown
+   * rather than absent.
+   */
+  export const INTERRUPTED_TOOL_ERROR =
+    "Runtime ended before this tool completed — the call was not replayed and its side effects are unknown"
+
+  /** Whether a tool state still awaits a settlement write: `pending` and
+   * `generating` never began, `running` is mid-call. Shared by restore-time
+   * repair and the historical migration so both classify identically. */
+  export function isUnsettledToolState(state: ToolPart["state"]): boolean {
+    return state.status === "pending" || state.status === "generating" || state.status === "running"
+  }
+
+  /**
+   * Closed set of message origin types (issue #281 §4.2). Second-level
+   * variation (e.g. blueprint loop_start vs loop_rejected) goes in `detail`,
+   * never as a new top-level type. Unknown/legacy values decode to "system"
+   * via `.catch` so stored data from older schemas still parses.
+   */
+  export const ORIGIN_TYPES = [
+    "user", // direct user input (TUI / desktop / HTTP)
+    "cortex", // background task / subagent completion
+    "agenda", // scheduled or event-driven wake-up
+    "blueprint", // BlueprintLoop control message
+    "channel", // external channel (Feishu, etc.)
+    "compaction", // compaction-injected continuation
+    "agent", // cross-session delivery (session_send)
+    "plugin", // plugin-delivered
+    "system", // other internal mechanisms / fallback
+  ] as const
+  export type OriginType = (typeof ORIGIN_TYPES)[number]
+
+  /** Origin types that render as a visible chip inside a turn. */
+  export const RENDERED_ORIGIN_TYPES = new Set<OriginType>([
+    "cortex",
+    "agenda",
+    "blueprint",
+    "channel",
+    "agent",
+    "plugin",
+  ])
+
+  export const OriginUser = z
+    .object({
+      type: z.enum(ORIGIN_TYPES).catch("system"),
+      sessionID: z.string().optional(),
+      taskID: Identifier.schema("cortex").optional(),
+      pluginID: z.string().optional(),
+      label: z.string().optional(),
+      detail: z.string().optional(),
+    })
+    .meta({ ref: "OriginUser" })
+  export type OriginUser = z.infer<typeof OriginUser>
+
+  const Base = z.object({
+    id: z.string(),
+    sessionID: z.string(),
+    visible: z.boolean().optional(),
+    includeInContext: z.boolean().optional(),
+    rootID: z.string().optional(),
+    referenceContext: ResourceReference.Context.optional(),
+  })
+
+  export const RootExecution = z
+    .object({
+      version: z.literal(1),
+      kind: z.literal("independent"),
+      previousRootID: Identifier.schema("message").optional(),
+    })
+    .strict()
+    .meta({ ref: "RootExecution" })
+  export type RootExecution = z.infer<typeof RootExecution>
+
+  export const User = Base.extend({
+    role: z.literal("user"),
+    isRoot: z.boolean().optional(),
+    execution: RootExecution.optional(),
+    time: z.object({
+      created: z.number(),
+    }),
+    summary: z
+      .object({
+        title: z.string().optional(),
+        body: z.string().optional(),
+        diffs: SnapshotSchema.FileDiff.array(),
+        diffState: SnapshotSchema.DiffState.optional(),
+        diffIssues: SnapshotSchema.Issue.array().optional(),
+        diffTotals: SnapshotSchema.Totals.optional(),
+        diffRevision: z.string().optional(),
+        diffObservedAt: z.number().optional(),
+        diffHasChanges: z.boolean().optional(),
+      })
+      .optional(),
+    agent: z.string(),
+    model: z.object({
+      providerID: z.string(),
+      modelID: z.string(),
+    }),
+    system: z.string().optional(),
+    tools: z.record(z.string(), z.boolean()).optional(),
+    variant: z.string().optional(),
+    thinking: ModelSelection.Thinking.optional(),
+    origin: OriginUser.optional(),
+    metadata: InputAssistance.Metadata.optional(),
+  }).meta({
+    ref: "UserMessage",
+  })
+  export type User = z.infer<typeof User>
+
+  export const Part = z
+    .discriminatedUnion("type", [
+      TextPart,
+      ReasoningPart,
+      AttachmentPart,
+      ToolPart,
+      StepStartPart,
+      StepFinishPart,
+      SnapshotPart,
+      PatchPart,
+      RetryPart,
+      CompactionPart,
+      CompactionRecoveryPart,
+    ])
+    .meta({
+      ref: "Part",
+    })
+  export type Part = z.infer<typeof Part>
+
+  export function canonicalPart<T extends Part>(part: T): T {
+    if (part.type !== "tool") return part
+    if (part.state.status !== "completed") return part
+    const bounded =
+      part.state.outputTruncated && typeof part.state.outputBytes === "number"
+        ? {
+            output: part.state.output,
+            outputBytes: part.state.outputBytes,
+            outputTruncated: true,
+          }
+        : SessionBounds.toolOutput(part.state.output)
+    return {
+      ...part,
+      state: {
+        ...part.state,
+        output: bounded.output,
+        outputBytes: bounded.outputBytes,
+        outputTruncated: bounded.outputTruncated || undefined,
+        metadata: canonicalMetadata(part.state.metadata),
+      },
+      metadata: part.metadata ? canonicalMetadata(part.metadata) : part.metadata,
+    } as T
+  }
+
+  export function canonicalMessage<T extends Info>(info: T): T {
+    if (info.role !== "user" || !info.summary) return info
+    const diffState = info.summary.diffState
+    const expiredPending = diffState?.status === "pending" && diffState.deadlineAt <= Date.now()
+    return {
+      ...info,
+      summary: {
+        ...info.summary,
+        diffs: SnapshotSchema.normalizeArray(info.summary.diffs) ?? [],
+        ...(expiredPending ? { diffState: { status: "error" as const, code: "timeout" as const } } : {}),
+      },
+    } as T
+  }
+
+  function canonicalMetadata(metadata: Record<string, any>): Record<string, any> {
+    const next = { ...metadata }
+    const filediff = SnapshotSchema.normalize(next.filediff)
+    if (filediff) next.filediff = filediff
+    const results = Array.isArray(next.results)
+      ? next.results.map((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return item
+          const result = { ...(item as Record<string, any>) }
+          const resultDiff = SnapshotSchema.normalize(result.filediff)
+          if (resultDiff) result.filediff = resultDiff
+          return result
+        })
+      : undefined
+    if (results) next.results = results
+    return next
+  }
+
+  // Model prompts must be JSON-safe: AI SDK validation rejects undefined,
+  // NaN, Infinity, and BigInt in providerOptions and tool outputs. Providers
+  // can attach such values to in-memory metadata, and v8 IPC preserves them.
+  export interface PromptSanitizationStats {
+    /** Values transformed to another JSON-safe type (BigInt/Date → string, NaN/Infinity → null). */
+    converted: number
+    /** undefined values removed: object keys dropped, array positions → null. */
+    dropped: number
+    /** Payloads that could not serialize (e.g. circular) and were removed whole. */
+    failed: number
+  }
+
+  function createPromptSanitizationStats(): PromptSanitizationStats {
+    return { converted: 0, dropped: 0, failed: 0 }
+  }
+
+  function jsonSafeReplacer(stats: PromptSanitizationStats): (key: string, value: unknown) => unknown {
+    return (_key: string, value: unknown) => {
+      if (typeof value === "bigint") {
+        stats.converted++
+        return value.toString()
+      }
+      if (value === undefined) {
+        stats.dropped++
+        return value
+      }
+      if (value instanceof Date) {
+        stats.converted++
+        return value
+      }
+      if (typeof value === "number" && !Number.isFinite(value)) {
+        stats.converted++
+        return value
+      }
+      return value
+    }
+  }
+
+  function sanitizePromptPayload<T>(value: T, stats: PromptSanitizationStats): T | undefined {
+    if (value === undefined) return undefined
+    if (typeof value === "string") return value
+    try {
+      return JSON.parse(JSON.stringify(value, jsonSafeReplacer(stats))) as T
+    } catch {
+      stats.failed++
+      return undefined
+    }
+  }
+
+  function modelProviderMetadata(
+    metadata: Record<string, any> | undefined,
+    stats: PromptSanitizationStats,
+    replayReasoning = false,
+  ): Record<string, any> | undefined {
+    if (!metadata) return undefined
+    const openai = metadata.openai
+    if (!openai || typeof openai !== "object" || Array.isArray(openai)) return sanitizePromptPayload(metadata, stats)
+    if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return sanitizePromptPayload(metadata, stats)
+
+    const nextOpenAI = { ...openai }
+    if (!replayReasoning) {
+      delete nextOpenAI.itemId
+      delete nextOpenAI.reasoningEncryptedContent
+    }
+
+    const next = { ...metadata }
+    if (Object.keys(nextOpenAI).length > 0) next.openai = nextOpenAI
+    else delete next.openai
+
+    return Object.keys(next).length > 0 ? sanitizePromptPayload(next, stats) : undefined
+  }
+
+  export const Assistant = Base.extend({
+    modelSelection: ModelSelection.Request.optional(),
+    role: z.literal("assistant"),
+    time: z.object({
+      created: z.number(),
+      completed: z.number().optional(),
+    }),
+    error: z
+      .discriminatedUnion("name", [
+        RolloutRecordingError.Schema,
+        AuthError.Schema,
+        NamedError.Unknown.Schema,
+        OutputLengthError.Schema,
+        AbortedError.Schema,
+        APIError.Schema,
+        ProviderModelUnavailableError.Schema,
+        ProviderModelVariantUnavailableError.Schema,
+      ])
+      .optional(),
+    parentID: z.string(),
+    modelID: z.string(),
+    providerID: z.string(),
+    profileID: z.string().optional(),
+    apiModelID: z.string().optional(),
+    /**
+     * @deprecated
+     */
+    mode: z.string(),
+    agent: z.string(),
+    path: z.object({
+      cwd: z.string().nullable(),
+      root: z.string().nullable(),
+    }),
+    summary: z.boolean().optional(),
+    compaction: z
+      .object({
+        coveredThrough: z.object({ created: z.number(), messageID: z.string() }),
+      })
+      .optional(),
+    accounting: RolloutSchema.MessageAccounting.optional(),
+    cost: z.number(),
+    tokens: z.object({
+      input: z.number(),
+      output: z.number(),
+      reasoning: z.number(),
+      cache: z.object({
+        read: z.number(),
+        write: z.number(),
+      }),
+    }),
+    contextUsage: ContextUsageSchema.optional(),
+    finish: z.string().optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
+  }).meta({
+    ref: "AssistantMessage",
+  })
+  export type Assistant = z.infer<typeof Assistant>
+
+  export function copyAccounting(info: Assistant, kind: "inherited" | "imported"): Assistant["accounting"] {
+    const previous = info.accounting
+    return {
+      kind,
+      source:
+        previous?.kind === "inherited" || previous?.kind === "imported"
+          ? previous.source
+          : {
+              sessionID: info.sessionID,
+              messageID: info.id,
+              callIDs: previous?.kind === "rollout" ? previous.callIDs : [],
+            },
+    }
+  }
+
+  export const Info = z.discriminatedUnion("role", [User, Assistant]).meta({
+    ref: "Message",
+  })
+  export type Info = z.infer<typeof Info>
+
+  export const PartSummary = z
+    .object({
+      id: z.string(),
+      sessionID: z.string(),
+      messageID: z.string(),
+      type: z.string(),
+      preview: z.string(),
+      render: z.boolean().optional(),
+      status: z.string().optional(),
+      tool: z.string().optional(),
+      reasoningKey: z.string().optional(),
+      display: z.enum(["activity", "content"]).optional(),
+      references: z.array(z.string().max(256)).max(32).optional(),
+      attachments: z
+        .object({
+          evidence: z.number().int().nonnegative(),
+          deliverable: z.number().int().nonnegative(),
+          references: z.array(z.string().max(256)).max(32).optional(),
+        })
+        .optional(),
+      content: z
+        .object({ version: z.string(), bytes: z.number().int().nonnegative() })
+        .meta({ ref: "SessionPartContentReference" }),
+    })
+    .meta({ ref: "SessionPartSummary" })
+  export type PartSummary = z.infer<typeof PartSummary>
+  export function summarizePart(part: Part): PartSummary {
+    const text = JSON.stringify(part)
+    const attachments =
+      part.type === "attachment"
+        ? [part]
+        : part.type === "tool" && part.state.status === "completed"
+          ? part.state.attachments
+          : undefined
+    const counts = attachments?.reduce(
+      (counts, attachment) => {
+        if (!attachment.presentation?.hidden) counts[attachmentPurpose(attachment)]++
+        return counts
+      },
+      { evidence: 0, deliverable: 0 },
+    )
+    const references = part.type === "text" && !isSystemPart(part) ? markdownAssetReferences(part.text) : []
+    const outputs = attachments
+      ?.filter(
+        (file) =>
+          !file.presentation?.hidden &&
+          attachmentPurpose(file) === "deliverable" &&
+          file.url.length <= 256 &&
+          AssetReference.parse(file.url),
+      )
+      .slice(0, 32)
+      .map((file) => file.url)
+    return {
+      id: part.id,
+      sessionID: part.sessionID,
+      messageID: part.messageID,
+      type: part.type,
+      render:
+        !["snapshot", "patch", "step-start", "step-finish"].includes(part.type) &&
+        (part.type !== "text" || !isSystemPart(part)) &&
+        (part.type !== "attachment" || !part.presentation?.hidden) &&
+        (part.type !== "tool" || !isCancelledMediaGeneration(part.state)) &&
+        (part.type !== "reasoning" || part.text.trim().length > 0),
+      preview:
+        part.type === "text" || part.type === "reasoning"
+          ? part.text.slice(0, 256)
+          : part.type === "tool"
+            ? part.tool
+            : part.type,
+      tool: part.type === "tool" ? part.tool : undefined,
+      status: part.type === "tool" ? part.state.status : undefined,
+      reasoningKey: part.type === "reasoning" ? reasoningItemKey(part.metadata) : undefined,
+      display:
+        part.type === "tool"
+          ? isActivityGroupableTool(part.tool, part.state.metadata)
+            ? "activity"
+            : "content"
+          : undefined,
+      references: references.length ? references : undefined,
+      attachments: counts && { ...counts, ...(outputs?.length ? { references: outputs } : {}) },
+      content: { version: new Bun.CryptoHasher("sha256").update(text).digest("hex"), bytes: Buffer.byteLength(text) },
+    }
+  }
+
+  export const Event = {
+    Updated: BusEvent.define(
+      "message.updated",
+      z.object({
+        info: Info,
+        content: z.object({ version: z.string(), bytes: z.number().int().nonnegative() }).optional(),
+      }),
+    ),
+    Removed: BusEvent.define(
+      "message.removed",
+      z.object({
+        sessionID: z.string(),
+        messageID: z.string(),
+      }),
+    ),
+    PartUpdated: BusEvent.define(
+      "message.part.updated",
+      z.object({
+        part: Part,
+        delta: z.string().optional(),
+        summary: PartSummary.optional(),
+      }),
+      { streaming: true },
+    ),
+    PartSummary: BusEvent.define(
+      "message.part.summary",
+      z.object({
+        summary: PartSummary,
+        delta: z.string().optional(),
+        subscription: z.number().int().optional(),
+        checkpointEpoch: z.string().optional(),
+        checkpointSeq: z.number().int().optional(),
+        stream: z
+          .object({ id: z.string(), revision: z.number().int().nonnegative(), offset: z.number().int().nonnegative() })
+          .optional(),
+        content: z
+          .discriminatedUnion("kind", [
+            z.object({ kind: z.literal("checkpoint"), part: Part }),
+            z.object({ kind: z.literal("reference"), checkpoint: z.string().uuid() }),
+            z.object({
+              kind: z.literal("anchor"),
+              streamID: z.string(),
+              revision: z.number().int().nonnegative(),
+              offset: z.number().int().nonnegative(),
+              part: z.union([TextPart.omit({ text: true }), ReasoningPart.omit({ text: true })]),
+            }),
+            z.object({ kind: z.literal("delta"), baseVersion: z.string(), delta: z.string() }),
+            z.object({
+              kind: z.literal("append"),
+              streamID: z.string(),
+              revision: z.number().int().nonnegative(),
+              offset: z.number().int().nonnegative(),
+              delta: z.string(),
+            }),
+          ])
+          .optional(),
+      }),
+      { streaming: true },
+    ),
+    PartRemoved: BusEvent.define(
+      "message.part.removed",
+      z.object({
+        sessionID: z.string(),
+        messageID: z.string(),
+        partID: z.string(),
+      }),
+    ),
+  }
+
+  export const WithParts = z.object({
+    info: Info,
+    parts: z.array(Part),
+  })
+  export type WithParts = z.infer<typeof WithParts>
+
+  export function copyForTransform(messages: WithParts[]): WithParts[] {
+    const copies = new WeakMap<object, object>()
+    function copy<T>(value: T): T {
+      // Share immutable strings: native deep cloning copies large tool outputs on every step.
+      if (value === null || typeof value !== "object") return value
+      const existing = copies.get(value)
+      if (existing) return existing as T
+      const prototype = Object.getPrototypeOf(value)
+      if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+        const result = structuredClone(value)
+        copies.set(value, result)
+        return result
+      }
+      const result: object = Array.isArray(value) ? new Array(value.length) : Object.create(prototype)
+      copies.set(value, result)
+      for (const [key, item] of Object.entries(value)) {
+        Object.defineProperty(result, key, {
+          value: copy(item),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        })
+      }
+      return result as T
+    }
+    return copy(messages)
+  }
+
+  export function extractText(parts: Part[], options?: { includeSynthetic?: boolean; maxLength?: number }): string {
+    const texts: string[] = []
+    for (const part of parts) {
+      if (part.type !== "text") continue
+      if (!options?.includeSynthetic && isSystemPart(part)) continue
+      texts.push(part.text)
+    }
+    const joined = texts.join("\n").trim()
+    return options?.maxLength ? joined.slice(0, options.maxLength) : joined
+  }
+
+  export function isPromptVisible(msg: WithParts) {
+    if (msg.info.includeInContext !== undefined) return msg.info.includeInContext
+    return includeInContextFromMetadata(msg.info.metadata)
+  }
+
+  function includeInContextFromMetadata(metadata: Record<string, any> | undefined): boolean {
+    if (metadata?.promptVisible === false) return false
+    const command = metadata?.command
+    if (command && typeof command === "object" && "promptVisible" in command && command.promptVisible === false)
+      return false
+    return true
+  }
+
+  // ── Read-time semantics derivation (issue #281 §12.2) ───────────────────
+  //
+  // The single place legacy metadata (synthetic / noReply / guided / source)
+  // is interpreted. Applied once over the ordered message list at the read
+  // boundary so every consumer — loop, compaction, frontend — reads only the
+  // canonical fields (rootID / isRoot / visible / includeInContext / origin
+  // and part.origin) and never the legacy heuristics.
+
+  /**
+   * Whether a part is system-injected rather than user-authored. Prefers the
+   * canonical part.origin, falling back to the legacy `synthetic` flag for parts
+   * that predate it. The single predicate all consumers should use instead of
+   * reading `part.synthetic` directly.
+   */
+  export type SemanticPart = {
+    type: Part["type"]
+    origin?: TextPart["origin"]
+    synthetic?: boolean
+    checkpoint?: unknown
+  }
+
+  export function isSystemPart(part: SemanticPart): boolean {
+    if (part.type === "patch" && part.checkpoint) return true
+    if (part.type === "compaction") return true
+    if (part.type !== "text") return false
+    if (part.origin !== undefined) return part.origin === "system"
+    return part.synthetic === true
+  }
+
+  export function isDeliverableAttachment(attachment: AttachmentPart): boolean {
+    return attachmentPurpose(attachment) === "deliverable"
+  }
+
+  function partIsSystem(part: SemanticPart): boolean {
+    return isSystemPart(part)
+  }
+
+  function allPartsSystem(parts: SemanticPart[]): boolean {
+    if (parts.length === 0) return true
+    return parts.every(partIsSystem)
+  }
+
+  /**
+   * Map legacy delivery metadata (source / sourceSessionID / channelPush …) to a
+   * canonical origin. Shared by write-time (createUserMessage) and read-time
+   * derivation so there is a single source of truth for the mapping (§4.2).
+   */
+  export function originFromMetadata(metadata: Record<string, any> | undefined): OriginUser {
+    if (!metadata) return { type: "user" }
+    if (metadata.compactionBoundary === true) return { type: "system", detail: "manual_compaction" }
+    const source = metadata.source
+    const sessionID = typeof metadata.sourceSessionID === "string" ? metadata.sourceSessionID : undefined
+    if (source === "cortex") {
+      const taskID = Identifier.schema("cortex").safeParse(metadata.sourceTaskID)
+      const label = typeof metadata.sourceTitle === "string" ? metadata.sourceTitle : undefined
+      return {
+        type: "cortex",
+        sessionID,
+        ...(taskID.success ? { taskID: taskID.data } : {}),
+        ...(label ? { label } : {}),
+      }
+    }
+    if (source === "mailbox" || source === "agenda") return { type: "agenda", sessionID }
+    if (typeof source === "string" && source.startsWith("blueprint_loop_"))
+      return { type: "blueprint", detail: source.replace(/^blueprint_loop_/, "") }
+    if (metadata.channelPush || metadata.mailbox) return { type: "channel" }
+    if (sessionID?.trim()) {
+      const label = typeof metadata.sourceName === "string" ? metadata.sourceName.trim() : ""
+      return { type: "agent", sessionID, ...(label ? { label } : {}) }
+    }
+    return { type: "user" }
+  }
+
+  export interface OwnerInput {
+    origin?: OriginUser
+    metadata?: Record<string, unknown>
+  }
+
+  export function requiredOwners(input: OwnerInput): string[] {
+    const declared = input.metadata?.requiredOwners
+    const owners = new Set<string>(
+      declared === undefined
+        ? []
+        : Array.isArray(declared)
+          ? declared.map((owner) => (typeof owner === "string" && owner.trim() ? owner : ""))
+          : [""],
+    )
+    const origins = [input.origin, originFromMetadata(input.metadata)]
+    for (const origin of origins) {
+      if (origin?.type === "agenda") owners.add("agenda")
+      if (origin?.type === "blueprint") owners.add("blueprint")
+      if (origin?.type === "channel") owners.add("channels")
+      if (origin?.type === "plugin") owners.add("plugin-host")
+    }
+    const source = input.metadata?.source
+    if (typeof source === "string") {
+      if (source.startsWith("blueprint_loop_")) owners.add("blueprint")
+      if (source.startsWith("light_loop_")) owners.add("light-loop")
+      if (source === "lattice" || source.startsWith("lattice_")) owners.add("lattice")
+    }
+    return [...owners].sort()
+  }
+
+  export function isHumanInput(input: OwnerInput): boolean {
+    return (input.origin ?? originFromMetadata(input.metadata)).type === "user" && requiredOwners(input).length === 0
+  }
+
+  export function isIndependentRoot(input: Info | undefined): boolean {
+    return input?.role === "user" && input.isRoot === true && input.execution?.kind === "independent"
+  }
+
+  export function executionMessages(messages: WithParts[], root: User): WithParts[] {
+    if (!isIndependentRoot(root)) return messages
+    return messages.flatMap((message) => {
+      if (message.info.role !== "user" || message.info.isRoot || !requiredOwners(message.info).length) return [message]
+      const parts = message.parts.filter((part) => !isSystemPart(part))
+      if (parts.length === message.parts.length) return [message]
+      return parts.length ? [{ ...message, parts }] : []
+    })
+  }
+
+  /** Whether an origin renders as a visible chip when its message is non-root. */
+  export function originRenders(origin: OriginUser): boolean {
+    return RENDERED_ORIGIN_TYPES.has(origin.type)
+  }
+
+  // Origins that never own a loop: their messages are always injected into an
+  // existing task, never a task root.
+  const NON_ROOT_ORIGIN_TYPES = new Set<OriginType>(["cortex", "compaction", "system"])
+
+  function deriveIsRoot(user: User, origin: OriginUser, parts: SemanticPart[]): boolean {
+    const metadata = user.metadata
+    if (metadata?.noReply === true) return false
+    if (metadata?.guided === true) return false
+    if (NON_ROOT_ORIGIN_TYPES.has(origin.type)) return false
+    if (!includeInContextFromMetadata(metadata)) return false
+    return !allPartsSystem(parts)
+  }
+
+  function deriveVisible(user: User, origin: OriginUser, parts: SemanticPart[]): boolean {
+    const synthetic = user.metadata?.synthetic === true || allPartsSystem(parts)
+    if (!synthetic) return true
+    return RENDERED_ORIGIN_TYPES.has(origin.type)
+  }
+
+  function deriveParts<P extends SemanticPart>(parts: P[]): P[] {
+    let changed = false
+    const next = parts.map((part) => {
+      if (part.type !== "text" || part.origin !== undefined) return part
+      changed = true
+      return { ...part, origin: part.synthetic ? ("system" as const) : ("user" as const) }
+    })
+    return changed ? next : parts
+  }
+
+  /**
+   * Populate canonical semantic fields for any message that predates them.
+   * Enrich historical Cortex origins from their stable Inbox delivery key.
+   * The projection is idempotent and leaves persisted input unchanged.
+   */
+  export function deriveSemantics<P extends SemanticPart>(
+    messages: { info: Info; parts: P[] }[],
+  ): { info: Info; parts: P[] }[] {
+    let rootID: string | undefined
+    return messages.map((msg) => {
+      const parts = deriveParts(msg.parts)
+      if (msg.info.role === "user") {
+        const user = msg.info as User
+        let origin = user.origin ?? originFromMetadata(user.metadata)
+        if (user.origin?.type === "user" && user.metadata?.compactionBoundary === true)
+          origin = originFromMetadata(user.metadata)
+        if (origin.type === "cortex" && !origin.taskID && typeof user.metadata?.inboxDeliveryKey === "string") {
+          const key = user.metadata.inboxDeliveryKey
+          const prefix = "cortex:taskNotification:"
+          const taskID = Identifier.schema("cortex").safeParse(
+            key.startsWith(prefix) ? key.slice(prefix.length) : undefined,
+          )
+          if (taskID.success) origin = { ...origin, taskID: taskID.data }
+        }
+        const isRoot = user.isRoot ?? deriveIsRoot(user, origin, parts)
+        const resolvedRoot = user.rootID ?? (isRoot ? user.id : (rootID ?? user.id))
+        if (isRoot) rootID = resolvedRoot
+        else if (rootID === undefined) rootID = resolvedRoot
+        const info: User = {
+          ...user,
+          isRoot,
+          rootID: resolvedRoot,
+          origin,
+          visible: user.visible ?? deriveVisible(user, origin, parts),
+          includeInContext: user.includeInContext ?? includeInContextFromMetadata(user.metadata),
+        }
+        return parts === msg.parts && info === msg.info ? msg : { info, parts }
+      }
+      const assistant = msg.info as Assistant
+      const resolvedRoot = assistant.rootID ?? rootID ?? assistant.parentID
+      const info: Assistant = { ...assistant, rootID: resolvedRoot }
+      return { info, parts }
+    })
+  }
+
+  function attachmentName(part: AttachmentPart): string {
+    if (part.filename) return part.filename
+    if (part.localPath) return path.basename(part.localPath)
+    return "unnamed attachment"
+  }
+
+  function attachmentSummary(part: AttachmentPart): string {
+    const model = part.model
+    if (model?.mode === "summary" || model?.mode === "provider-file") {
+      if (model.summary?.trim()) return model.summary.trim()
+    }
+    return `${attachmentName(part)} (${part.mime})`
+  }
+
+  function attachmentModelPath(part: AttachmentPart): string | undefined {
+    if (!part.url.startsWith("asset://")) return part.localPath
+    return Asset.resolvePath(part.url.slice("asset://".length)) ?? part.localPath
+  }
+
+  function attachmentModelMode(part: AttachmentPart): AttachmentModelPolicy["mode"] {
+    return part.model?.mode ?? "summary"
+  }
+
+  function shouldSendAttachmentFile(part: AttachmentPart): boolean {
+    if (attachmentModelMode(part) !== "provider-file") return false
+    if (part.url.startsWith("asset://") && !Asset.isValidId(part.url.slice("asset://".length))) return false
+    return part.mime !== "application/x-directory"
+  }
+
+  function shouldExternalizeAttachment(part: AttachmentPart): boolean {
+    if (!part.url.startsWith("data:")) return false
+    return true
+  }
+
+  async function externalizeAttachment(part: AttachmentPart): Promise<AttachmentPart> {
+    if (!shouldExternalizeAttachment(part)) return part
+    const decoded = Attachment.decodeDataUrl(part.url)
+    const assetID = await Asset.write(decoded.buffer, part.mime, part.filename)
+    const attachmentMetadata =
+      part.metadata?.attachment &&
+      typeof part.metadata.attachment === "object" &&
+      !Array.isArray(part.metadata.attachment)
+        ? part.metadata.attachment
+        : {}
+    return {
+      ...part,
+      url: `asset://${assetID}`,
+      localPath: part.localPath ?? Asset.resolvePath(assetID),
+      metadata: {
+        ...part.metadata,
+        attachment: {
+          ...attachmentMetadata,
+          size: decoded.buffer.length,
+        },
+      },
+    }
+  }
+
+  async function externalizePart(part: Part): Promise<{ part: Part; changed: boolean }> {
+    if (part.type === "attachment") {
+      const next = await externalizeAttachment(part)
+      return { part: next, changed: next !== part }
+    }
+    if (part.type !== "tool" || part.state.status !== "completed" || !part.state.attachments?.length) {
+      return { part, changed: false }
+    }
+    let changed = false
+    const attachments = await Promise.all(
+      part.state.attachments.map(async (attachment) => {
+        const next = await externalizeAttachment(attachment)
+        if (next !== attachment) changed = true
+        return next
+      }),
+    )
+    if (!changed) return { part, changed: false }
+    return {
+      part: {
+        ...part,
+        state: {
+          ...part.state,
+          attachments,
+        },
+      },
+      changed: true,
+    }
+  }
+
+  function attachmentHash(part: AttachmentPart): string {
+    return new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+  }
+
+  export interface ModelMessageContribution {
+    text: string
+    nativeURL?: string
+    source?: string
+    messageID?: string
+    partID?: string
+    path?: string[]
+    selector?: string[]
+    range?: { start: number; end: number }
+    precision?: "source" | "role"
+    segments?: Array<{ source: string; start: number; end: number }>
+  }
+
+  export interface ModelMessageProvenance {
+    categories: Record<ContextCategoryKey, ModelMessageContribution[]>
+    items: Record<ContextCategoryKey, number>
+    injections?: { text: string; source: string }[]
+  }
+
+  export function createModelMessageProvenance(): ModelMessageProvenance {
+    return {
+      categories: Object.fromEntries(
+        ContextCategoryKeys.map((key) => [key, [] as ModelMessageContribution[]]),
+      ) as ModelMessageProvenance["categories"],
+      items: Object.fromEntries(ContextCategoryKeys.map((key) => [key, 0])) as ModelMessageProvenance["items"],
+    }
+  }
+
+  function addModelMessageContribution(
+    provenance: ModelMessageProvenance,
+    category: keyof ModelMessageProvenance["categories"],
+    text: string | undefined,
+    part?: Part,
+    source?: string,
+  ) {
+    if (!text) return
+    provenance.categories[category].push({
+      text,
+      source,
+      messageID: part?.messageID,
+      partID: part?.id,
+      precision: "source",
+    })
+    provenance.items[category]++
+  }
+
+  function appendAttachmentModelParts(
+    parts: UIMessage["parts"],
+    part: AttachmentPart,
+    provenance: ModelMessageProvenance,
+    options: { keptHashes?: Set<string>; includeLocalPath?: boolean } = {},
+  ) {
+    const mode = attachmentModelMode(part)
+    if (mode === "none") return
+    provenance.items.attachments++
+    const reference =
+      part.url.startsWith("asset://") && Asset.isValidId(part.url.slice("asset://".length)) ? part.url : undefined
+
+    if (mode === "content") {
+      const content = part.model?.mode === "content" ? part.model.text : undefined
+      const text = content?.trim() ? content : `[Attachment content: ${attachmentSummary(part)}]`
+      parts.push({ type: "text", text })
+      provenance.categories.attachments.push({
+        text,
+        source: attachmentName(part),
+        messageID: part.messageID,
+        partID: part.id,
+        precision: "source",
+      })
+      return
+    }
+
+    if (!shouldSendAttachmentFile(part)) {
+      const summary = attachmentSummary(part)
+      const localPath = attachmentModelPath(part)
+      const toolHint =
+        options.includeLocalPath && localPath && !Attachment.isText(part.mime) && !part.mime.startsWith("image/")
+          ? ". Attached as-is; use file tools to inspect"
+          : ""
+      const description = [
+        summary,
+        reference ? `Reference: ${reference}` : undefined,
+        options.includeLocalPath && localPath ? `Local path: ${localPath}${toolHint}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(". ")
+      const text = `[Attachment: ${description}]`
+      parts.push({ type: "text", text })
+      provenance.categories.attachments.push({
+        text,
+        source: attachmentName(part),
+        messageID: part.messageID,
+        partID: part.id,
+        precision: "source",
+      })
+      return
+    }
+
+    const localPath = attachmentModelPath(part)
+    if (reference) {
+      const text = `[Attachment: ${attachmentSummary(part)}. Reference: ${reference}${options.includeLocalPath && localPath ? `. Local path: ${localPath}` : ""}]`
+      parts.push({ type: "text", text })
+      provenance.categories.attachments.push({
+        text,
+        source: attachmentName(part),
+        messageID: part.messageID,
+        partID: part.id,
+        precision: "source",
+      })
+    } else if (options.includeLocalPath && localPath) {
+      const text = `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${localPath}]`
+      parts.push({ type: "text", text })
+      provenance.categories.attachments.push({
+        text,
+        source: attachmentName(part),
+        messageID: part.messageID,
+        partID: part.id,
+        precision: "source",
+      })
+    }
+
+    const keptHashes = options.keptHashes
+    if (keptHashes && !Attachment.isText(part.mime)) {
+      const hash = attachmentHash(part)
+      if (!keptHashes.has(hash)) {
+        const text = `[Image: ${attachmentName(part)} — previously shared]`
+        parts.push({ type: "text", text })
+        provenance.categories.attachments.push({
+          text,
+          source: attachmentName(part),
+          messageID: part.messageID,
+          partID: part.id,
+          precision: "source",
+        })
+        return
+      }
+    }
+
+    provenance.categories.attachments.push({
+      text: "",
+      nativeURL: part.url,
+      source: attachmentName(part),
+      messageID: part.messageID,
+      partID: part.id,
+      precision: "source",
+    })
+    parts.push({
+      type: "file",
+      url: part.url,
+      mediaType: part.mime,
+      filename: part.filename,
+    })
+  }
+
+  function isTerminalToolPart(part: Part): part is ToolPart {
+    return part.type === "tool" && (part.state.status === "completed" || part.state.status === "error")
+  }
+
+  function isAISDKToolError(part: ToolPart) {
+    return (
+      part.state.status === "error" && part.state.metadata?.toolDiagnostic?.metadata?.source === "ai_sdk_tool_error"
+    )
+  }
+
+  function canonicalTerminalToolParts(parts: Part[]) {
+    const canonical = new Map<string, ToolPart>()
+    for (const part of parts) {
+      if (!isTerminalToolPart(part)) continue
+      const existing = canonical.get(part.callID)
+      if (!existing || (isAISDKToolError(existing) && !isAISDKToolError(part))) {
+        canonical.set(part.callID, part)
+      }
+    }
+    return new Set(canonical.values())
+  }
+
+  export async function projectModelMessages(
+    input: WithParts[],
+    opts?: {
+      maxHistoryImages?: number
+      model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
+    },
+  ): Promise<{
+    messages: ModelMessage[]
+    messageSources: string[]
+    provenance: ModelMessageProvenance
+    sanitization: PromptSanitizationStats
+  }> {
+    // Pass 1: collect unique image hashes in order of first appearance
+    const imageHashSet = new Set<string>()
+    const orderedHashes: string[] = []
+    for (const msg of input) {
+      if (msg.info.role !== "user" || !isPromptVisible(msg)) continue
+      for (const part of msg.parts) {
+        if (part.type !== "attachment") continue
+        if (!shouldSendAttachmentFile(part)) continue
+        if (Attachment.isText(part.mime) || part.mime === "application/x-directory") continue
+        const hash = attachmentHash(part)
+        if (!imageHashSet.has(hash)) {
+          imageHashSet.add(hash)
+          orderedHashes.push(hash)
+        }
+      }
+    }
+
+    let keptHashes: Set<string>
+    if (opts?.maxHistoryImages !== undefined) {
+      const keepCount = Math.max(0, opts.maxHistoryImages)
+      if (keepCount === 0) {
+        keptHashes = new Set()
+      } else {
+        const kept = orderedHashes.slice(-keepCount)
+        keptHashes = new Set(kept)
+      }
+    } else {
+      keptHashes = imageHashSet
+    }
+
+    const result: UIMessage[] = []
+    const sources = new Map<string, string>()
+    const provenance = createModelMessageProvenance()
+    const sanitization = createPromptSanitizationStats()
+
+    for (const msg of input) {
+      if (msg.parts.length === 0 || !isPromptVisible(msg)) continue
+      const start = result.length
+
+      if (msg.info.role === "user") {
+        const userMessage: UIMessage = {
+          id: msg.info.id,
+          role: "user",
+          parts: [],
+        }
+        result.push(userMessage)
+        for (const part of msg.parts) {
+          // part.origin has no effect on model visibility (spec §4.4):
+          // system-injected text is meant for the model too.
+          if (part.type === "text") {
+            userMessage.parts.push({
+              type: "text",
+              text: part.text,
+            })
+            addModelMessageContribution(
+              provenance,
+              isSystemPart(part) ? "injectedContext" : "userMessages",
+              part.text,
+              part,
+              msg.info.origin?.type === "system" && msg.info.origin.detail === "runtime-context"
+                ? "runtime-context"
+                : undefined,
+            )
+            if (
+              msg.info.origin?.type === "system" &&
+              msg.info.origin.detail === "runtime-context" &&
+              isSystemPart(part)
+            ) {
+              const metadata = RuntimeContextMetadata.parse(msg.info.metadata?.runtimeContext)
+              const segments: NonNullable<ModelMessageContribution["segments"]> = []
+              let cursor = 0
+              for (const source of metadata.sources) {
+                if (!RuntimeContextMetadata.verified(source, part.text) || !source.range || source.range.start < cursor)
+                  continue
+                if (source.range.start > cursor)
+                  segments.push({ source: "runtime-context", start: cursor, end: source.range.start })
+                segments.push({ source: source.id, ...source.range })
+                cursor = source.range.end
+              }
+              if (cursor < part.text.length)
+                segments.push({ source: "runtime-context", start: cursor, end: part.text.length })
+              const contribution = provenance.categories.injectedContext.at(-1)
+              if (contribution) contribution.segments = segments
+            }
+          }
+          if (part.type === "attachment") {
+            appendAttachmentModelParts(userMessage.parts, part, provenance, { keptHashes, includeLocalPath: true })
+          }
+        }
+      }
+
+      if (msg.info.role === "assistant") {
+        if (
+          msg.info.error &&
+          !(
+            MessageV2.AbortedError.isInstance(msg.info.error) &&
+            msg.parts.some((part) => part.type !== "step-start" && part.type !== "reasoning")
+          )
+        ) {
+          continue
+        }
+        const assistantMessage: UIMessage = {
+          id: msg.info.id,
+          role: "assistant",
+          parts: [],
+        }
+        const canonicalToolParts = canonicalTerminalToolParts(msg.parts)
+        const sameModel =
+          !opts?.model ||
+          (msg.info.providerID === opts.model.providerID &&
+            (msg.info.apiModelID && opts.model.apiModelID
+              ? msg.info.apiModelID === opts.model.apiModelID &&
+                (!msg.info.profileID || !opts.model.profileID || msg.info.profileID === opts.model.profileID)
+              : msg.info.modelID === opts.model.modelID))
+        const replayCodexReasoning =
+          opts?.model?.profileID === "openai-codex" &&
+          msg.info.providerID === opts.model.providerID &&
+          msg.info.profileID === opts.model.profileID &&
+          !!opts.model.apiModelID &&
+          msg.info.apiModelID === opts.model.apiModelID
+        const encryptedReasoningIds = new Set(
+          replayCodexReasoning
+            ? msg.parts.flatMap((part) => {
+                if (part.type !== "reasoning") return []
+                const openai = part.metadata?.openai
+                return typeof openai?.itemId === "string" &&
+                  openai.itemId.length > 0 &&
+                  typeof openai.reasoningEncryptedContent === "string" &&
+                  openai.reasoningEncryptedContent.length > 0
+                  ? [openai.itemId]
+                  : []
+              })
+            : [],
+        )
+        for (const part of msg.parts) {
+          if (part.type === "text") {
+            assistantMessage.parts.push({
+              type: "text",
+              text: part.text,
+              providerMetadata: modelProviderMetadata(part.metadata, sanitization),
+            })
+            addModelMessageContribution(provenance, "assistantMessages", part.text, part)
+          }
+          if (part.type === "step-start")
+            assistantMessage.parts.push({
+              type: "step-start",
+            })
+          if (part.type === "tool") {
+            if (isTerminalToolPart(part) && !canonicalToolParts.has(part)) continue
+            if (part.state.status === "completed") {
+              if (part.state.attachments?.length) {
+                const attachmentIntroduction = `Tool ${part.tool} returned attachment results:`
+                const attachmentParts: UIMessage["parts"] = [
+                  {
+                    type: "text",
+                    text: attachmentIntroduction,
+                  },
+                ]
+                for (const attachment of part.state.attachments) {
+                  appendAttachmentModelParts(attachmentParts, attachment, provenance)
+                }
+                if (attachmentParts.length > 1) {
+                  result.push({
+                    id: Identifier.ascending("message"),
+                    role: "user",
+                    parts: attachmentParts,
+                  })
+                  addModelMessageContribution(provenance, "toolResults", attachmentIntroduction, part, part.tool)
+                }
+              }
+              const input = sanitizePromptPayload(
+                ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
+                sanitization,
+              )
+              const output = part.state.time.compacted
+                ? "[Old tool result content cleared]"
+                : sanitizePromptPayload(part.state.output, sanitization)
+              assistantMessage.parts.push({
+                type: ("tool-" + part.tool) as `tool-${string}`,
+                state: "output-available",
+                toolCallId: part.callID,
+                input,
+                output,
+                callProviderMetadata: modelProviderMetadata(part.metadata, sanitization),
+              })
+              addModelMessageContribution(provenance, "assistantMessages", JSON.stringify(input), part, part.tool)
+              addModelMessageContribution(
+                provenance,
+                part.tool === "skill" ? "skills" : "toolResults",
+                output,
+                part,
+                part.state.title || part.tool,
+              )
+            }
+            if (part.state.status === "error") {
+              const input = sanitizePromptPayload(
+                ToolIntent.encode(part.state.input, part.workBrief, part.inputShape),
+                sanitization,
+              )
+              assistantMessage.parts.push({
+                type: ("tool-" + part.tool) as `tool-${string}`,
+                state: "output-error",
+                toolCallId: part.callID,
+                input,
+                errorText: part.state.error,
+                callProviderMetadata: modelProviderMetadata(part.metadata, sanitization),
+              })
+              addModelMessageContribution(provenance, "assistantMessages", JSON.stringify(input), part, part.tool)
+              addModelMessageContribution(provenance, "toolResults", part.state.error, part, part.tool)
+            }
+          }
+          if (part.type === "reasoning") {
+            if (!sameModel) continue
+            assistantMessage.parts.push({
+              type: "reasoning",
+              text: part.text,
+              providerMetadata: modelProviderMetadata(
+                part.metadata,
+                sanitization,
+                encryptedReasoningIds.has(part.metadata?.openai?.itemId),
+              ),
+            })
+            addModelMessageContribution(provenance, "assistantMessages", part.text, part)
+          }
+        }
+        if (assistantMessage.parts.length > 0) {
+          result.push(assistantMessage)
+        }
+      }
+      for (let index = start; index < result.length; index++) sources.set(result[index].id, msg.info.id)
+    }
+
+    const converted = await Promise.all(
+      result
+        .filter((msg) => msg.parts.some((part) => part.type !== "step-start"))
+        .map(async (msg) => ({
+          source: sources.get(msg.id)!,
+          messages: await convertToModelMessages([msg]),
+        })),
+    )
+    return {
+      messages: converted.flatMap((item) => item.messages),
+      messageSources: converted.flatMap((item) => item.messages.map(() => item.source)),
+      provenance,
+      sanitization,
+    }
+  }
+
+  export async function toModelMessage(
+    input: WithParts[],
+    opts?: {
+      maxHistoryImages?: number
+      model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
+    },
+  ): Promise<ModelMessage[]> {
+    return (await projectModelMessages(input, opts)).messages
+  }
+
+  export function compareStorageOrder(a: Info, b: Info): number {
+    const created = a.time.created - b.time.created
+    if (created !== 0) return created
+    return a.id.localeCompare(b.id)
+  }
+
+  const MessageOrderState = z.object({
+    version: z.literal(1),
+    ready: z.literal(true),
+    count: z.number().int().nonnegative(),
+  })
+
+  type MessageOrderCache = {
+    markers: string[]
+    byMessageID: Map<string, string>
+  }
+
+  const messageOrderCache = Storage.state(() => new Map<string, MessageOrderCache>())
+  const MESSAGE_ORDER_CACHE_LIMIT = 64
+  const MESSAGE_ORDER_SIGN_BIT = 1n << 63n
+  const MESSAGE_ORDER_MASK = (1n << 64n) - 1n
+
+  function messageOrderKey(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
+    return `${scopeID}:${sessionID}`
+  }
+
+  function messageOrderNumberKey(value: number) {
+    const view = new DataView(new ArrayBuffer(8))
+    view.setFloat64(0, value, false)
+    const bits = view.getBigUint64(0, false)
+    const sortable = bits & MESSAGE_ORDER_SIGN_BIT ? ~bits & MESSAGE_ORDER_MASK : bits ^ MESSAGE_ORDER_SIGN_BIT
+    return sortable.toString(16).padStart(16, "0")
+  }
+
+  export function messageOrderMarker(info: Info) {
+    return `${messageOrderNumberKey(info.time.created)}_${info.id}`
+  }
+
+  function markerMessageID(marker: string) {
+    if (marker.length <= 17 || marker[16] !== "_") return undefined
+    return marker.slice(17)
+  }
+
+  function compareMessageOrderMarker(a: string, b: string) {
+    const timeA = a.slice(0, 16)
+    const timeB = b.slice(0, 16)
+    if (timeA !== timeB) return timeA < timeB ? -1 : 1
+    return a.slice(17).localeCompare(b.slice(17))
+  }
+  const MESSAGE_ORDER_REBUILD_CONCURRENCY = 32
+
+  async function writeMessageOrderMarkers(
+    scopeID: Identifier.ScopeID,
+    sessionID: Identifier.SessionID,
+    markers: string[],
+  ) {
+    for (let index = 0; index < markers.length; index += MESSAGE_ORDER_REBUILD_CONCURRENCY) {
+      await Promise.all(
+        markers
+          .slice(index, index + MESSAGE_ORDER_REBUILD_CONCURRENCY)
+          .map((marker) => Storage.write(StoragePath.sessionMessageOrderMarker(scopeID, sessionID, marker), {})),
+      )
+    }
+  }
+
+  function cacheMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID, markers: string[]) {
+    const key = messageOrderKey(scopeID, sessionID)
+    const value = {
+      markers: markers.slice(),
+      byMessageID: new Map(
+        markers.flatMap((marker) => {
+          const id = markerMessageID(marker)
+          return id ? [[id, marker] as const] : []
+        }),
+      ),
+    }
+    if (Storage.inWriteTransaction()) {
+      Storage.afterCommit(() => {
+        cacheMessageOrder(scopeID, sessionID, markers)
+      })
+      return value
+    }
+    messageOrderCache().delete(key)
+    messageOrderCache().set(key, {
+      markers,
+      byMessageID: new Map(
+        markers.flatMap((marker) => {
+          const messageID = markerMessageID(marker)
+          return messageID ? [[messageID, marker] as const] : []
+        }),
+      ),
+    })
+    while (messageOrderCache().size > MESSAGE_ORDER_CACHE_LIMIT) {
+      const oldest = messageOrderCache().keys().next().value
+      if (oldest === undefined) break
+      messageOrderCache().delete(oldest)
+    }
+    return messageOrderCache().get(key)!
+  }
+
+  async function rebuildMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
+    messageOrderCache().delete(messageOrderKey(scopeID, sessionID))
+    await Storage.write(StoragePath.sessionMessageOrderState(scopeID, sessionID), {
+      version: 1,
+      ready: false,
+    })
+    const infos = await readInfoList({ scopeID, sessionID })
+    await Storage.removeTree(StoragePath.sessionMessageOrderMarkersRoot(scopeID, sessionID))
+    const markers = infos.map(messageOrderMarker)
+    await writeMessageOrderMarkers(scopeID, sessionID, markers)
+    await Storage.write(StoragePath.sessionMessageOrderState(scopeID, sessionID), {
+      version: 1,
+      ready: true,
+      count: markers.length,
+    })
+    return cacheMessageOrder(scopeID, sessionID, markers)
+  }
+
+  async function loadMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
+    const key = messageOrderKey(scopeID, sessionID)
+    const cached = Storage.inTransaction() ? undefined : messageOrderCache().get(key)
+    if (cached) {
+      messageOrderCache().delete(key)
+      messageOrderCache().set(key, cached)
+      return cached
+    }
+
+    const [rawState, storedMarkers] = await Promise.all([
+      Storage.read<unknown>(StoragePath.sessionMessageOrderState(scopeID, sessionID), { silentNotFound: true }).catch(
+        (error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        },
+      ),
+      Storage.scan(StoragePath.sessionMessageOrderMarkersRoot(scopeID, sessionID)),
+    ])
+    const state = MessageOrderState.safeParse(rawState)
+    const markers = storedMarkers.toSorted(compareMessageOrderMarker)
+    const indexedIDs = new Set(markers.map(markerMessageID).filter((id): id is string => id !== undefined))
+    if (state.success && state.data.count === markers.length && indexedIDs.size === markers.length) {
+      return cacheMessageOrder(scopeID, sessionID, markers)
+    }
+    return rebuildMessageOrder(scopeID, sessionID)
+  }
+
+  async function messageOrderSnapshot(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
+    return Storage.transaction(async () => {
+      const key = messageOrderKey(scopeID, sessionID)
+      if (messageOrderCache().has(key)) {
+        const cached = Storage.inTransaction() ? undefined : messageOrderCache().get(key)
+        if (cached) return cached.markers.slice()
+      }
+
+      return (await loadMessageOrder(scopeID, sessionID)).markers.slice()
+    })
+  }
+
+  export async function writeInfo(input: { scopeID: Identifier.ScopeID; info: Info }) {
+    return Storage.transaction(async () => {
+      const info = canonicalMessage(input.info)
+      const sessionID = Identifier.asSessionID(info.sessionID)
+
+      const order = await loadMessageOrder(input.scopeID, sessionID)
+      const previousMarker = order.byMessageID.get(info.id)
+      const nextMarker = messageOrderMarker(info)
+      if (previousMarker === nextMarker) {
+        await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
+        await (await import("./history-display")).SessionHistoryDisplay.messageWritten(input.scopeID, info)
+        return info
+      }
+
+      messageOrderCache().delete(messageOrderKey(input.scopeID, sessionID))
+      await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, sessionID), {
+        version: 1,
+        ready: false,
+      })
+      await Storage.write(StoragePath.messageInfo(input.scopeID, sessionID, Identifier.asMessageID(info.id)), info)
+      await (await import("./history-display")).SessionHistoryDisplay.messageWritten(input.scopeID, info)
+      if (previousMarker) {
+        await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, previousMarker))
+      }
+      await Storage.write(StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, nextMarker), {})
+
+      const markers = order.markers
+        .filter((marker) => marker !== previousMarker)
+        .concat(nextMarker)
+        .sort(compareMessageOrderMarker)
+      await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, sessionID), {
+        version: 1,
+        ready: true,
+        count: markers.length,
+      })
+      cacheMessageOrder(input.scopeID, sessionID, markers)
+      return info
+    })
+  }
+
+  export async function removeInfo(input: {
+    scopeID: Identifier.ScopeID
+    sessionID: Identifier.SessionID
+    messageID: Identifier.MessageID
+  }) {
+    return Storage.transaction(async () => {
+      const order = await loadMessageOrder(input.scopeID, input.sessionID)
+      const marker = order.byMessageID.get(input.messageID)
+      if (!marker) {
+        await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
+        await (
+          await import("./history-display")
+        ).SessionHistoryDisplay.messageRemoved(input.scopeID, input.sessionID, input.messageID)
+        return
+      }
+
+      messageOrderCache().delete(messageOrderKey(input.scopeID, input.sessionID))
+      await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {
+        version: 1,
+        ready: false,
+      })
+      await Storage.remove(StoragePath.messageInfo(input.scopeID, input.sessionID, input.messageID))
+      await (
+        await import("./history-display")
+      ).SessionHistoryDisplay.messageRemoved(input.scopeID, input.sessionID, input.messageID)
+      await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, input.sessionID, marker))
+      const markers = order.markers.filter((candidate) => candidate !== marker)
+      await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {
+        version: 1,
+        ready: true,
+        count: markers.length,
+      })
+      cacheMessageOrder(input.scopeID, input.sessionID, markers)
+    })
+  }
+
+  export async function removeOrderIndex(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
+    return Storage.transaction(async () => {
+      messageOrderCache().delete(messageOrderKey(scopeID, sessionID))
+      await Storage.removeTree(StoragePath.sessionMessageOrderRoot(scopeID, sessionID))
+    })
+  }
+
+  export async function readInfoList(input: {
+    scopeID: Identifier.ScopeID
+    sessionID: Identifier.SessionID
+    signal?: AbortSignal
+  }): Promise<Info[]> {
+    const infos: Info[] = []
+    for await (const record of Storage.records<Info>({
+      kind: "message",
+      scopeID: input.scopeID,
+      sessionID: input.sessionID,
+    })) {
+      input.signal?.throwIfAborted()
+      infos.push(canonicalMessage(upgradeAccessRecord(record.key, record.value)))
+    }
+    return infos.sort(compareStorageOrder)
+  }
+
+  export async function readInfo(input: { scopeID: string; sessionID: string; messageID: string }) {
+    const key = StoragePath.messageInfo(
+      Identifier.asScopeID(input.scopeID),
+      Identifier.asSessionID(input.sessionID),
+      Identifier.asMessageID(input.messageID),
+    )
+    return canonicalMessage(upgradeAccessRecord(key, await Storage.read<Info>(key)))
+  }
+
+  export async function* partRecords(input: { scopeID: string; sessionID: string; messageID?: string }) {
+    for await (const record of Storage.records<PartContent.Stored>({ kind: "part", ...input }))
+      yield { ...record, value: upgradeAccessRecord(record.key, record.value) }
+  }
+
+  export async function hasCompactionPart(input: { scopeID: string; sessionID: string; messageID: string }) {
+    for await (const record of partRecords(input)) if (record.value.type === "compaction") return true
+    return false
+  }
+
+  export async function semanticParts(input: {
+    scopeID: string
+    sessionID: string
+    messageID: string
+  }): Promise<SemanticPart[]> {
+    const parts: SemanticPart[] = []
+    for await (const record of partRecords(input)) parts.push(record.value)
+    return parts
+  }
+
+  export async function unsettledToolParts(input: {
+    scopeID: string
+    sessionID: string
+    messageIDs: ReadonlySet<string>
+  }) {
+    if (!input.messageIDs.size) return []
+    const candidates: ToolPart[] = []
+    for await (const { value } of partRecords({ scopeID: input.scopeID, sessionID: input.sessionID })) {
+      if (value.type === "tool" && input.messageIDs.has(value.messageID) && isUnsettledToolState(value.state))
+        candidates.push(value)
+    }
+    const positions = new Map([...input.messageIDs].map((id, index) => [id, index]))
+    return candidates.sort(
+      (a, b) => positions.get(a.messageID)! - positions.get(b.messageID)! || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    )
+  }
+
+  export async function readToolPart(input: { scopeID: string; sessionID: string; messageID: string; partID: string }) {
+    const key = StoragePath.messagePart(
+      Identifier.asScopeID(input.scopeID),
+      Identifier.asSessionID(input.sessionID),
+      Identifier.asMessageID(input.messageID),
+      Identifier.asPartID(input.partID),
+    )
+    const [stored] = await Storage.readMany<PartContent.Stored>([key])
+    if (!stored) return
+    const part = upgradeAccessRecord(key, stored)
+    return part.type === "tool" ? part : undefined
+  }
+
+  export async function* readNewestInfos(input: {
+    scopeID: Identifier.ScopeID
+    sessionID: Identifier.SessionID
+    before?: string
+    limit?: number
+  }) {
+    if (input.limit !== undefined) {
+      const [raw] = await Storage.readMany([StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID)])
+      const state = MessageOrderState.safeParse(raw)
+      if (state.success) {
+        let after: string | undefined
+        let remaining = input.limit
+        while (remaining > 0) {
+          const page = await Storage.childKeys({
+            prefix: StoragePath.sessionMessageOrderMarkersRoot(input.scopeID, input.sessionID),
+            descending: true,
+            before: input.before,
+            after,
+            limit: Math.min(32, remaining),
+          })
+          const paths = page.keys.flatMap((key) => {
+            const id = markerMessageID(key.at(-1)!)
+            return id ? [StoragePath.messageInfo(input.scopeID, input.sessionID, Identifier.asMessageID(id))] : []
+          })
+          const infos = await Storage.readMany<Info>(paths)
+          for (const [index, info] of infos.entries()) {
+            if (!info) continue
+            remaining--
+            yield canonicalMessage(upgradeAccessRecord(paths[index]!, info))
+          }
+          after = page.after
+          if (after === undefined) break
+        }
+        return
+      }
+    }
+    const markers = await messageOrderSnapshot(input.scopeID, input.sessionID)
+    let index = markers.length - 1
+    if (input.before !== undefined) {
+      while (index >= 0 && markers[index]! >= input.before) index--
+    }
+    let yielded = 0
+    while (index >= 0 && (input.limit === undefined || yielded < input.limit)) {
+      const remaining = input.limit === undefined ? index + 1 : input.limit - yielded
+      const batchSize = yielded < 4 ? 1 : Math.min(32, index + 1, remaining)
+      const batch = markers
+        .slice(index - batchSize + 1, index + 1)
+        .toReversed()
+        .flatMap((marker) => {
+          const messageID = markerMessageID(marker)
+          return messageID ? [Identifier.asMessageID(messageID)] : []
+        })
+      index -= batchSize
+      const infos =
+        batch.length === 1
+          ? [
+              await Storage.read<Info>(StoragePath.messageInfo(input.scopeID, input.sessionID, batch[0])).catch(
+                (error) => {
+                  if (error instanceof Storage.NotFoundError) return undefined
+                  throw error
+                },
+              ),
+            ]
+          : await Storage.readMany<Info>(
+              batch.map((messageID) => StoragePath.messageInfo(input.scopeID, input.sessionID, messageID)),
+            )
+      for (const info of infos) {
+        if (!info) continue
+        yielded++
+        yield canonicalMessage(
+          upgradeAccessRecord(
+            StoragePath.messageInfo(input.scopeID, input.sessionID, Identifier.asMessageID(info.id)),
+            info,
+          ),
+        )
+        if (input.limit !== undefined && yielded >= input.limit) return
+      }
+    }
+  }
+
+  export const stream = fn(
+    z.object({
+      scopeID: z.string().optional(),
+      sessionID: Identifier.schema("session"),
+    }),
+    async function* (input) {
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
+      const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
+      const sessionID = input.sessionID as Identifier.SessionID
+
+      if (!input.scopeID) await prepareSessionMigrations({ scopeID, sessionID })
+
+      for await (const info of readNewestInfos({ scopeID, sessionID })) {
+        yield {
+          info,
+          parts: await parts({
+            scopeID,
+            sessionID: input.sessionID,
+            messageID: info.id,
+          }),
+        }
+      }
+    },
+  )
+
+  export const parts = fn(
+    z.object({
+      scopeID: z.string().optional(),
+      sessionID: Identifier.schema("session"),
+      messageID: Identifier.schema("message"),
+    }),
+    async (input) => {
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
+      const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
+      const sessionID = input.sessionID as Identifier.SessionID
+      const messageID = input.messageID as Identifier.MessageID
+      if (!input.scopeID) await prepareSessionMigrations({ scopeID, sessionID })
+      const results = await Storage.snapshot(async () => {
+        const parts: MessageV2.Part[] = []
+        for await (const record of Storage.records<PartContent.Stored>({ kind: "part", scopeID, sessionID, messageID }))
+          parts.push(upgradeAccessRecord(record.key, await PartContent.hydrate(record.key, record.value)))
+        return parts
+      })
+      const parts = await Promise.all(
+        results
+          .filter((p): p is MessageV2.Part => p !== undefined)
+          .map(async (part) => {
+            const externalized = await externalizePart(part)
+            if (externalized.changed) {
+              await Storage.write(
+                StoragePath.messagePart(scopeID, sessionID, messageID, externalized.part.id as Identifier.PartID),
+                externalized.part,
+              )
+            }
+            return externalized.part
+          }),
+      )
+      parts.sort((a, b) => (a.id > b.id ? 1 : -1))
+      return parts.map(withoutPrunedOutput)
+    },
+  )
+
+  export function withoutPrunedOutput(part: Part): Part {
+    if (part.type !== "tool" || part.state.status !== "completed" || !part.state.time.compacted) return part
+    return { ...part, state: { ...part.state, output: "" } }
+  }
+
+  export const get = fn(
+    z.object({
+      scopeID: z.string().optional(),
+      sessionID: Identifier.schema("session"),
+      messageID: Identifier.schema("message"),
+    }),
+    async (input) => {
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
+      const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
+      const sessionID = input.sessionID as Identifier.SessionID
+      const messageID = input.messageID as Identifier.MessageID
+      if (!input.scopeID) await prepareSessionMigrations({ scopeID, sessionID })
+      const info = canonicalMessage(
+        upgradeAccessRecord(
+          StoragePath.messageInfo(scopeID, sessionID, messageID),
+          await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scopeID, sessionID, messageID)),
+        ),
+      )
+      return {
+        info,
+        parts: await parts({ scopeID, sessionID: input.sessionID, messageID: input.messageID }),
+      }
+    },
+  )
+
+  export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
+    const messages: WithParts[] = []
+    for await (const message of stream) messages.push(message)
+    messages.sort((a, b) => compareStorageOrder(a.info, b.info))
+    const projection = modelWorkingSetProjection(messages.map((message) => message.info))
+    if (!projection || !messages[projection.boundaryIndex].parts.some((part) => part.type === "compaction"))
+      return messages
+    return selectModelWorkingSet(
+      messages,
+      projection,
+      (message) => message.info,
+      (message) => ({ ...message, info: { ...message.info, includeInContext: false } }),
+    )
+  }
+
+  export function fromError(e: unknown, ctx: { providerID: string; modelID?: string; endpointHost?: string }) {
+    const network = classifyNetworkError(e)
+    switch (true) {
+      case RolloutRecordingError.isInstance(e):
+        return e.toObject()
+      case network?.kind === "aborted":
+        return new MessageV2.AbortedError(
+          { message: e instanceof Error ? e.message : "Request aborted" },
+          {
+            cause: e,
+          },
+        ).toObject()
+      case e instanceof DOMException && e.name === "TimeoutError":
+        return new MessageV2.APIError(
+          {
+            message: e.message || "Idle timeout: no data received from provider",
+            isRetryable: providerRetryable(e) ?? false,
+          },
+          { cause: e },
+        ).toObject()
+      case MessageV2.OutputLengthError.isInstance(e):
+        return e
+      case MessageV2.EmptyResponseError.isInstance(e):
+        return new MessageV2.APIError(
+          {
+            message: e.data.message,
+            isRetryable: true,
+            metadata: { code: "empty_response" },
+          },
+          { cause: e },
+        ).toObject()
+      case ProviderModelUnavailableError.isInstance(e):
+        return e
+      case ProviderModelVariantUnavailableError.isInstance(e):
+        return e
+      case LoadAPIKeyError.isInstance(e):
+        return new MessageV2.AuthError(
+          {
+            providerID: ctx.providerID,
+            message: e.message,
+          },
+          { cause: e },
+        ).toObject()
+      case ProviderAuthRecoveryError.isInstance(e):
+        return new MessageV2.AuthError(
+          {
+            providerID: e.data.providerID,
+            message: e.data.message,
+            failureCode: e.data.failureCode,
+            actionRequired: e.data.actionRequired,
+          },
+          { cause: e },
+        ).toObject()
+      case APICallError.isInstance(e) &&
+        ctx.modelID !== undefined &&
+        (e.statusCode === 400 || e.statusCode === 404) &&
+        /model.{0,80}(not found|does not exist|unsupported|unavailable)|unknown model/i.test(
+          `${e.message}\n${e.responseBody ?? ""}`,
+        ):
+        return new ProviderModelUnavailableError(
+          {
+            providerID: ctx.providerID,
+            modelID: ctx.modelID,
+            reason: "rejected_by_provider",
+          },
+          { cause: e },
+        ).toObject()
+      case (e as SystemError)?.code === "ECONNRESET" && providerRetryable(e) === true:
+        return new MessageV2.APIError(
+          {
+            message: "Connection reset by server",
+            isRetryable: true,
+            metadata: {
+              code: (e as SystemError).code ?? "",
+              syscall: (e as SystemError).syscall ?? "",
+              message: (e as SystemError).message ?? "",
+            },
+          },
+          { cause: e },
+        ).toObject()
+      case APICallError.isInstance(e):
+        const message = iife(() => {
+          let msg = e.message
+          if (msg === "") {
+            if (e.responseBody) return e.responseBody
+            if (e.statusCode) {
+              const err = STATUS_CODES[e.statusCode]
+              if (err) return err
+            }
+            return "Unknown error"
+          }
+          const transformed = ProviderTransform.error(ctx.providerID, e)
+          if (transformed !== msg) {
+            return transformed
+          }
+          if (!e.responseBody || (e.statusCode && msg !== STATUS_CODES[e.statusCode])) {
+            return msg
+          }
+
+          try {
+            const body = JSON.parse(e.responseBody)
+            // try to extract common error message fields
+            const errMsg = body.message || body.error || body.error?.message
+            if (errMsg && typeof errMsg === "string") {
+              if (errMsg === msg) return msg
+              return `${msg}: ${errMsg}`
+            }
+          } catch {}
+
+          return `${msg}: ${e.responseBody}`
+        }).trim()
+
+        return new MessageV2.APIError(
+          {
+            message,
+            statusCode: e.statusCode,
+            isRetryable: providerRetryable(e) ?? false,
+            responseHeaders: e.responseHeaders,
+            responseBody: e.responseBody,
+            metadata: network ? networkErrorMetadata(e, ctx.endpointHost) : undefined,
+          },
+          { cause: e },
+        ).toObject()
+      case e instanceof Error && providerRetryable(e) !== undefined:
+        const structured = e as Error & {
+          statusCode?: unknown
+          responseHeaders?: Record<string, string>
+          responseBody?: string
+          code?: unknown
+        }
+        return new MessageV2.APIError(
+          {
+            message: structured.message,
+            statusCode: typeof structured.statusCode === "number" ? structured.statusCode : undefined,
+            isRetryable: providerRetryable(e) ?? false,
+            responseHeaders: structured.responseHeaders,
+            responseBody: structured.responseBody,
+            metadata: {
+              ...(typeof structured.code === "string" ? { code: structured.code } : {}),
+              ...networkErrorMetadata(structured, ctx.endpointHost),
+            },
+          },
+          { cause: e },
+        ).toObject()
+      case e instanceof Error:
+        return new NamedError.Unknown({ message: e.toString() }, { cause: e }).toObject()
+      default:
+        return new NamedError.Unknown({ message: JSON.stringify(e) }, { cause: e })
+    }
+  }
+}

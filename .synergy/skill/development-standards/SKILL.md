@@ -5,6 +5,8 @@ description: Route a Synergy source change to the current repository development
 
 # Apply Development Standards
 
+Test infrastructure changes must follow [the stability workflow](../testing-guide/references/stability.md), including original-batch reproduction and measured CI cost.
+
 ## Establish Ownership
 
 1. Read the nearest `AGENTS.md` and [Development reference](../../../docs/reference/development.md).
@@ -16,11 +18,13 @@ description: Route a Synergy source change to the current repository development
    - HTTP route, OpenAPI, SDK, or Web API client: `change-server-api`
    - durable state, schema, index, or migration: `change-persistence`
    - capabilities, permissions, control profiles, enforcement, or sandboxing: `change-execution-boundaries`
-   - Channel targets, providers, managed Projects, or Native Clarus: `change-channel-runtime`
-   - Browser ownership/control, Desktop native presentation, or WebRTC: `change-browser-runtime`
+   - Channel targets, providers, managed Projects: `change-channel-runtime`
+   - Browser pages/identities, authorization or Desktop native presentation: `change-browser-runtime`
+   - native Computer observation, action admission, image delivery or Cua packaging: `change-computer-runtime`
    - plugin manifest, installation, runtime, bridge, marketplace, or UI host: `change-plugin-runtime`
    - built-in agent, CLI command, or first-party tool: `add-agent`, `add-cli-command`, or `add-tool`
    - tests or manual runtime validation: `testing-guide` and `develop-synergy`
+   - benchmark evaluator, native harnesses, accounting, cache or resource scheduling: `develop-benchmark`
    - Git/worktree/PR operations: `git-guide`
    - broad simplification audits or decision-record coalescing: `find-simplifications`
 5. Use canonical product, architecture, reference, plugin, and operations documents for system truth. Keep Skills procedural; do not copy whole architecture descriptions into them.
@@ -28,9 +32,16 @@ description: Route a Synergy source change to the current repository development
 ## Implement from Current Evidence
 
 1. Inspect schemas, tests, generated contracts, and at least one neighboring implementation before choosing a pattern.
-2. State the behavioral invariant and write the failing test first for new behavior or bug fixes.
+2. State the behavioral invariant and write the failing test first for new behavior or bug fixes. Apply [test value review](../testing-guide/SKILL.md#review-test-value-and-ci-cost) to both new and affected existing tests.
 3. Change the smallest coherent set of owners. Include migrations, events, SDK generation, UI registration, or docs only when the contract crosses them.
 4. Run the narrowest verification first, then expand according to the affected workflow.
+5. When a regression repeats after earlier fixes, trace the common owner across every producer and consumer before adding another special case. For startup/persistence changes, load both `change-persistence` and `develop-synergy`; verify real driver operations as well as parsed progress records.
+
+## Upgrade dependency groups
+
+Inventory registry versions, release channels, native artifacts and local patches before updating. Upgrade stable compatible groups together; document the smallest retained group when generated APIs or tested product behavior break. A passing compiler does not validate renamed runtime assets, compiler APIs or language-server protocols. Exercise lazy tool initialization, generated SDK calls, a real model turn with tools and image input, and actual native binaries. Keep compiler-API dependencies separate when the compiler no longer exposes that API. Reapply patches against installed sources and verify a frozen-lockfile install before acceptance.
+
+For substantial product additions, prompt/context changes and risky optimizations, load [develop-feature](../develop-feature/SKILL.md). Keep feature choices separate from business parameters and execution experiments.
 
 ## Capture New Rules
 
@@ -39,22 +50,20 @@ A durable development convention is part of the implementation deliverable, not 
 1. Search `.synergy/skill/` before recording a new rule.
 2. Update the focused owning Skill in the same change when a reusable constraint, required registration, approved pattern, or verification step emerges.
 3. Create a new verb-led development Skill when no existing workflow would reliably trigger for that class of change. Keep it focused and link it from this router, root `AGENTS.md`, and `llms.txt`.
-4. Update canonical docs when the rule describes product or architecture truth; update `packages/app/PRODUCT.md` when it describes durable interaction or visual behavior.
+4. Update canonical docs when the rule describes product or architecture truth; update `apps/web/PRODUCT.md` when it describes durable interaction or visual behavior.
 5. Keep root/package `AGENTS.md` concise: retain safety, global invariants, and Skill routing there; put executable steps and examples in Skills.
-6. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
+6. Review `.synergy/command/`, contribution/setup instructions, workspace guides and both ends of renamed symbols or file references when moving an owner. Keep historical evidence and public executable, package, configuration and installed-resource names intact. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
 7. Keep one nearest `AGENTS.md` for every root workspace package and validate coverage with `bun run package-guide:check`.
 
-## Preserve Harness-Core Layering
+## Preserve Harness Layering
 
-The `packages/synergy/src/` layer boundary is machine-enforced. Before adding any import, classify both endpoints with the layer table in [Ownership Map](../../../docs/architecture/README.md#ownership-map):
+Package ownership is machine-enforced. Before adding an import, identify both package owners in the [Ownership Map](../../../docs/architecture/README.md#ownership-map).
 
-1. L1 harness-core directories (`session/`, `tool/`, `agent/`, `config/`, `provider/`, `enforcement/`, `permission/`, `scope/`, `bus/`, `storage/`, `file/`, `workspace-file/`, `observability/`, `instruction/`, `migration/`, `sandbox/`, `control-profile/`) must never import product domains (`plugin/`, `cortex/`, `channel/`, `browser/`, `mcp/`, `blueprint/`, `lattice/`, `boss/`, `light-loop/`, `library/`, `note/`, `agenda/`, `holos/`, `skill/`, `command/`, `project/`, `question/`, `lsp/`, `email/`, `synergy-link/`, `remote/`, `acp/`, `external-agent/`, `superplan/`, `performance/`) or assembly (`server/`, `runtime/`, `cli/`, `daemon/`, `main/`). R1 is error-level.
-2. When L1 needs product behavior, invert it through the existing L1 port registries — `SessionPluginHooks`, `SessionToolContext`, `SessionCortexRuntime`, `SessionBlueprintState`, `InstructionRegistry`, `ToolMcpSource`, `ScopeStartup`, `RuntimeReloadExecutor`, `SkillSourceProviders`, `CommandSourceProviders`, `SessionEnvContributor` — with the product-side adapter registered in `src/product-registration.ts`. Do not invent a parallel registry when one of these fits.
-3. Product domains stay acyclic (R2, error). Break a new product↔product ring with the established patterns: extract a shared leaf module, or use a domain-internal setter injection (precedent: `setTerminalHookDeliverer`).
-4. New product-domain tools, migrations, and startup steps belong in the owning domain (`<domain>/tools.ts`, `<domain>/migration.ts`, `<domain>/startup.ts`), wired through the manifest — never appended to `tool/registry.ts` builtin arrays or `scope/runtime.ts`.
-5. Verify with `bun run deps:check` (repo root) before finishing; refresh the recorded baseline with `bun run deps:snapshot` only when the change is intentional, and explain the edge movement in the decision record.
-
-Do not add a rule only to a PR comment, prompt, or one package guide if future agents need it to implement the same change correctly.
+1. Harness cannot import CLI, HTTP Server, the generated SDK, or business packages. Default model SDK factories, local tools, native PTY, filesystem watchers and OS sandbox implementations belong to `local-runtime`; Harness retains permission policy and typed host ports.
+2. Use an existing typed source or registry when core execution needs optional behavior. Register it from the owning capability or full product composition before runtime startup; do not add package scanning or a generic service container.
+3. Import only declared package exports. Keep one source module per export target; do not add private cross-package relative imports or forwarding copies to bypass a cycle.
+4. Put a business domain's tools, routes, configuration, migrations, storage and CLI commands with its service. Only generic tool execution and scheduling belong to Harness.
+5. Run `bun run deps:check` after package/import changes. Workspace manifests own actual dependencies, `script/dependency-rules.json` owns allowed dependency directions, and the release catalog owns artifact selection. Keep platform-dependent assets in target-specific optional packages, and validate the packed closure outside the repository; generic package names must never carry different platform contents at the same version.
 
 ## Preserve External Provenance
 
@@ -70,3 +79,9 @@ Routine language usage, direct official API calls, and general patterns without 
 ## Handoff
 
 Report the owning workflows loaded, invariant changed, focused checks run, and any Skill or canonical document updated because a new development convention emerged.
+
+When splitting a namespace into a core mechanism and a business implementation, give the implementations distinct names and update value and type consumers. With the pinned Bun version, aliasing an imported namespace to avoid a same-name local namespace is insufficient after bundling. Verify real compiled behavior; see the [compiled runtime ownership decision](../../../docs/decisions/implemented/bug-fix/2026-09-08-compiled-runtime-namespace-ownership.md).
+
+Completion callbacks that perform model work must not hold the turn on that work: schedule it through the detached background pool (`LoopJob.scheduleDetached`) so it settles through `settleDetached` before rollout settlement, keeping nested model-call evidence in the ledger without stalling turn completion. See the [detached encoding decision](../../../docs/decisions/implemented/bug-fix/2026-09-13-experience-encode-detached-from-turn.md); the earlier await-inline rule it supersedes is archived.
+
+Release changes must carry the whole publishable dependency graph through archive validation, candidate publication and final tag promotion. Use the same packer for validation and publication. Never chmod or repack into a sealed runtime directory after generating its inventory. Native application metadata must bind the actual signed portable artifact from the owning platform job.

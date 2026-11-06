@@ -1,10 +1,8 @@
+import { getToolIcon } from "../icons"
 import { TOOL_TITLE_DESC, TOOL_LABEL_DESC } from "../../tool-title-descriptors"
 import { useLingui } from "@lingui/solid"
-import { createMemo, Show } from "solid-js"
-import { Dynamic } from "solid-js/web"
-import { checksum } from "@ericsanchezok/synergy-util/encode"
-import { useCodeComponent } from "../../../context/code"
-import { BasicTool } from "../../basic-tool"
+import { createMemo, For, Show } from "solid-js"
+import { BasicTool, useToolResultPresentation } from "../../basic-tool"
 import {
   AnchoredParseCodeTool,
   AnchoredResolveConflictsTool,
@@ -15,8 +13,69 @@ import {
 } from "../../anchored-tool-card"
 import { ToolRegistry, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
 import { ToolTextOutput } from "../../tool-output-text"
-import { ToolDiffPreview } from "../diff-preview"
-import { DiffPatchGate } from "../../diff-patch"
+import { ToolFilePreview, ToolPatchPreview } from "../content-preview"
+import { PATCH_OUTCOMES, patchOutcome, patchSections } from "../patch-result"
+
+ToolRegistry.register({
+  name: "apply_patch",
+  render(props) {
+    const { _ } = useLingui()
+    const resultOnly = useToolResultPresentation()
+    const sections = createMemo(() => patchSections(props.metadata?.sections))
+    const outcome = () => patchOutcome(props.metadata?.outcome)
+    const error = () => (typeof props.metadata?.error === "string" ? props.metadata.error : undefined)
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: getToolIcon(props.tool, props.input, props.metadata),
+          title: TOOL_TITLE_DESC["apply_patch"],
+          tags: outcome()
+            ? [
+                {
+                  label: _(PATCH_OUTCOMES[outcome()!]),
+                  tone: outcome() === "applied" ? "success" : outcome() === "no-change" ? "default" : "warning",
+                },
+              ]
+            : undefined,
+        }}
+      >
+        <Show
+          when={outcome()}
+          fallback={
+            <Show when={props.output}>
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={props.output!} />
+              </div>
+            </Show>
+          }
+        >
+          <Show
+            when={
+              error() && (!resultOnly || !sections().length) && !sections().some((section) => section.error === error())
+            }
+          >
+            <p class="break-words text-sm">{error()}</p>
+          </Show>
+          <div class="flex flex-col gap-4" data-component="patch-result">
+            <For each={sections().filter((section) => section.files.length)}>
+              {(section) => (
+                <div class="flex flex-col gap-2" data-component="patch-section" data-state={section.state}>
+                  <Show when={!resultOnly && section.error}>
+                    <p class="break-words text-sm">{section.error}</p>
+                  </Show>
+                  <For each={section.files}>
+                    {(file) => <ToolPatchPreview tool={props} path={file.file} patch={file.patch} />}
+                  </For>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </BasicTool>
+    )
+  },
+})
 
 ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
 ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
@@ -34,7 +93,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "scan-document",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["file_search"],
           subtitle: props.input.query as string | undefined,
           tags:
@@ -56,6 +115,7 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "edit",
   render(props) {
+    const resultOnly = useToolResultPresentation()
     const diagnostics = createMemo(() =>
       props.status === "completed" ? getDiagnostics(props.metadata.diagnostics, props.input.filePath) : [],
     )
@@ -63,7 +123,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "pen-line",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["edit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
           changes: props.metadata.filediff as { additions: number; deletions: number } | undefined,
@@ -73,12 +133,12 @@ ToolRegistry.register({
           {(filediff) => {
             const patch = () =>
               (props.metadata.diff as string | undefined) ?? (filediff().preview as string | undefined)
-            return (
-              <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={filediff()} />} />
-            )
+            return <ToolPatchPreview tool={props} path={props.input.filePath} patch={patch()} />
           }}
         </Show>
-        <DiagnosticsDisplay diagnostics={diagnostics()} />
+        <Show when={!resultOnly}>
+          <DiagnosticsDisplay diagnostics={diagnostics()} />
+        </Show>
       </BasicTool>
     )
   },
@@ -87,7 +147,6 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "write",
   render(props) {
-    const codeComponent = useCodeComponent()
     const diagnostics = createMemo(() =>
       props.status === "completed" ? getDiagnostics(props.metadata.diagnostics, props.input.filePath) : [],
     )
@@ -95,22 +154,14 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "text-select",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["write"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
       >
         <Show when={props.status !== "generating" && (props.input.content || props.input.filePath)}>
           <div data-component="write-content">
-            <Dynamic
-              component={codeComponent}
-              file={{
-                name: props.input.filePath ?? "file",
-                contents: props.input.content,
-                cacheKey: checksum(props.input.content),
-              }}
-              overflow="scroll"
-            />
+            <ToolFilePreview path={props.input.filePath} content={props.input.content ?? ""} />
           </div>
         </Show>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
@@ -126,7 +177,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "pen-line",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["multiedit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
@@ -139,14 +190,8 @@ ToolRegistry.register({
               <Show keyed when={lastResult?.filediff}>
                 {(filediff) => {
                   const patch = () =>
-                    (lastResult?.diff as string | undefined) ?? (filediff().preview as string | undefined)
-                  return (
-                    <DiffPatchGate
-                      patch={patch()}
-                      diffStyle="unified"
-                      fallback={<ToolDiffPreview diff={filediff()} />}
-                    />
-                  )
+                    (lastResult?.diff as string | undefined) ?? (filediff.preview as string | undefined)
+                  return <ToolPatchPreview tool={props} path={props.input.filePath} patch={patch()} />
                 }}
               </Show>
             )

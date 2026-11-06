@@ -1,3 +1,4 @@
+import { useExtensionOutlet } from "../context/extension-outlet"
 import { ErrorBoundary, For, Show, createEffect, createMemo, createSignal, onCleanup, type Component } from "solid-js"
 import { Dynamic } from "solid-js/web"
 
@@ -17,8 +18,7 @@ export interface ExternalMessageSlotEntry {
 }
 
 export let externalMessageSlotLookup:
-  | ((slot: MessageSlotName) => readonly ExternalMessageSlotEntry[] | undefined)
-  | undefined
+  ((slot: MessageSlotName) => readonly ExternalMessageSlotEntry[] | undefined) | undefined
 
 export function setExternalMessageSlotLookup(
   fn: (slot: MessageSlotName) => readonly ExternalMessageSlotEntry[] | undefined,
@@ -69,6 +69,7 @@ function MessageSlotEntryView(props: { entry: ExternalMessageSlotEntry; slotProp
 }
 
 export function MessageSlotOutlet(props: MessageSlotProps) {
+  useExtensionOutlet(props.slot)
   const entries = createMemo(() => {
     externalMessageSlotNotify()
     return [...(externalMessageSlotLookup?.(props.slot) ?? [])]

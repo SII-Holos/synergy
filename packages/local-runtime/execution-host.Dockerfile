@@ -1,0 +1,21 @@
+FROM rust:1.99.1-bookworm AS native
+WORKDIR /build
+COPY native/ .
+RUN cargo build --locked --release
+WORKDIR /sandbox
+COPY sandbox/ .
+RUN cargo build --locked --release
+
+FROM oven/bun:1.4.3-slim
+ENV BUN_INSTALL_CACHE_DIR=/var/lib/synergy-executor/bun-cache BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+RUN apt-get update && apt-get install -y --no-install-recommends bash bubblewrap ca-certificates git python3 ripgrep util-linux && rm -rf /var/lib/apt/lists/*
+# Provenance: https://bun.sh/docs/runtime/auto-install
+# Local adaptation: keep bundled supervisors on local resolution instead of downloading native libraries into noexec state.
+RUN mkdir -p /opt/synergy/bin /opt/synergy/node_modules /workspace /var/lib/synergy-executor && chown 1000:1000 /workspace && chmod 700 /var/lib/synergy-executor
+COPY --from=native /build/target/release/libsynergy_pty.so /opt/synergy/libsynergy_pty.so
+COPY watcher.node /opt/synergy/watcher.node
+COPY --from=native /sandbox/target/release/synergy-sandbox-linux /opt/synergy/bin/synergy-sandbox-linux
+COPY execution-host.js owned-worker.ts /opt/synergy/bin/
+WORKDIR /workspace
+EXPOSE 7443
+ENTRYPOINT ["bun", "--no-install", "/opt/synergy/bin/execution-host.js"]

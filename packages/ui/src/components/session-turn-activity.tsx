@@ -2,7 +2,6 @@ import type { MessageDescriptor } from "@lingui/core"
 import type { AssistantMessage, PermissionRequest, ReasoningPart, ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import {
   ACTIVITY_FAMILY_ORDER,
-  ActivityDerivedMetadataSchema,
   activityFamilyForTool,
   activityGroupKey,
   activityScopeForTool,
@@ -10,13 +9,12 @@ import {
   isActivityGroupableTool,
   MAX_ACTIVITY_GROUP_STEPS,
   resolveActivityDisplay,
-  type ActivityDerivedMetadata,
   type ActivityDisplayMode,
   type ActivityFamily,
   type ActivitySummaryState,
 } from "@ericsanchezok/synergy-util/activity"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import type { IconName } from "./icon"
+import type { IconSource } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { timelineItemStableKey, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
 export { resolveActivityDisplay }
@@ -27,9 +25,11 @@ export type ActivityStepProjection = {
   part: ToolPart
   family: ActivityFamily
   scopeKey: string
-  icon: IconName
+  icon: IconSource
   title: string | MessageDescriptor
   subtitle?: string
+  objectKind?: "path" | "command" | "query"
+  changes?: { additions: number; deletions: number }
   state: ActivityGroupState
 }
 
@@ -37,7 +37,7 @@ export type ActivityToolInfoResolver = (
   tool: string,
   input: Record<string, unknown>,
   metadata: Record<string, unknown>,
-) => Pick<ActivityStepProjection, "icon" | "title" | "subtitle">
+) => Pick<ActivityStepProjection, "icon" | "title" | "subtitle" | "objectKind">
 
 export type ActivityGroupItem = {
   kind: "activity-group"
@@ -48,8 +48,25 @@ export type ActivityGroupItem = {
   state: ActivityGroupState
   steps: ActivityStepProjection[]
   receipt: boolean
-  topic?: ActivityTextSummary
 }
+
+export type ActivityBatchItem = {
+  kind: "activity-batch"
+  key: string
+  message: AssistantMessage
+  steps: ActivityStepProjection[]
+  entries?: ActivityBatchEntry[]
+  facts: ActivitySummaryFact[]
+  state: ActivityGroupState
+  failures: number
+  fileReads?: number
+  fileReadOperations?: number
+  searchOperations?: number
+  inspectionOperations?: number
+}
+
+export type ActivityBatchEntry =
+  { kind: "tool"; step: ActivityStepProjection } | { kind: "reasoning"; item: ActivityReasoningSummaryItem }
 
 export type ActivityTextSummary = {
   state: ActivitySummaryState | "pending"
@@ -62,6 +79,8 @@ export type ActivityReasoningSummaryItem = ActivityTextSummary & {
   key: string
   message: AssistantMessage
   partID: string
+  partIDs?: string[]
+  continuation?: boolean
 }
 
 export type ActivitySummaryFact = {
@@ -76,7 +95,6 @@ export type ActivitySummaryItem = {
   total: number
   facts: ActivitySummaryFact[]
   completed: boolean
-  now?: NonNullable<ActivityDerivedMetadata["now"]>
 }
 
 export type ActivityReceiptItem = {
@@ -99,6 +117,7 @@ export type ActivityPassthroughItem = {
 }
 
 export type ActivityTimelineItem =
+  | ActivityBatchItem
   | ActivityGroupItem
   | ActivityReasoningSummaryItem
   | ActivitySummaryItem
@@ -112,8 +131,9 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function parsedInput(part: ToolPart): Record<string, unknown> {
-  if (Object.keys(part.state.input).length > 0) return part.state.input
-  if (part.state.status !== "pending" && part.state.status !== "generating") return part.state.input
+  const input = record(part.state.input)
+  if (Object.keys(input).length > 0) return input
+  if (part.state.status !== "pending" && part.state.status !== "generating") return input
   if (!part.state.raw) return {}
   try {
     return record(parsePartialJson(part.state.raw))
@@ -135,6 +155,12 @@ function permissionForStep(
 function stepState(part: ToolPart, permission: PermissionRequest | undefined): ActivityGroupState {
   if (permission) return "waiting-approval"
   if (part.state.status === "error") return "error"
+  if (
+    part.activityEvidence?.exitCode !== undefined &&
+    part.activityEvidence.exitCode !== null &&
+    part.activityEvidence.exitCode !== 0
+  )
+    return "error"
   if (part.state.status === "completed") return "done"
   return "running"
 }
@@ -148,6 +174,7 @@ function groupState(steps: readonly ActivityStepProjection[]): ActivityGroupStat
 
 function timelineItemIdentity(item: SessionTurnTimelineItem): string {
   if (item.kind === "compaction") return `compaction:${item.message.id}`
+  if (item.kind === "tool-attachments") return `tool-attachments:${item.message.id}:${item.part.id}`
   return `${item.message.id}:${item.part.id}`
 }
 
@@ -206,28 +233,49 @@ function makeStep(
   const input = parsedInput(part)
   const metadata = record(part.state.metadata)
   const family = activityFamilyForTool(part.tool, input, metadata)
-  const scope = activityScopeForTool(input, metadata, { family, workspaceRoot: message.path.root })
+  const scope = activityScopeForTool(input, metadata, { family, workspaceRoot: message.path.root ?? undefined })
   let info: ReturnType<ActivityToolInfoResolver>
   try {
     info = resolveToolInfo(part.tool, input, metadata)
   } catch {
     info = { icon: getSemanticIcon("performance.tools"), title: part.tool, subtitle: scope.label }
   }
+  const rawPath =
+    info.objectKind === "path"
+      ? [input.filePath, metadata.path, metadata.filepath].find(
+          (value): value is string => typeof value === "string" && !!value,
+        )
+      : undefined
+  const target = rawPath ?? info.subtitle
+  const root = message.path.root?.replaceAll("\\", "/").replace(/\/$/, "")
+  const path = info.objectKind === "path" ? target?.replaceAll("\\", "/") : undefined
+  const subtitle = path && root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : target
   const permission = permissionForStep(message.id, part, permissions)
+  const diff = record(metadata.changeSummary ?? metadata.filediff)
+  const additions = diff.additions,
+    deletions = diff.deletions
+  const changes =
+    family === "modify-files" &&
+    part.state.status === "completed" &&
+    typeof additions === "number" &&
+    Number.isSafeInteger(additions) &&
+    additions >= 0 &&
+    typeof deletions === "number" &&
+    Number.isSafeInteger(deletions) &&
+    deletions >= 0
+      ? { additions, deletions }
+      : undefined
   return {
     part,
     family,
     scopeKey: scope.key,
     icon: info.icon,
     title: info.title,
-    subtitle: info.subtitle ?? scope.label,
+    subtitle: subtitle ?? scope.label,
+    objectKind: info.objectKind,
+    changes,
     state: stepState(part, permission),
   }
-}
-
-function activityMetadata(message: AssistantMessage): ActivityDerivedMetadata | undefined {
-  const parsed = ActivityDerivedMetadataSchema.safeParse(message.metadata?.activity)
-  return parsed.success ? parsed.data : undefined
 }
 
 function reasoningSummary(message: AssistantMessage, partID: string, terminal: boolean): ActivityReasoningSummaryItem {
@@ -240,15 +288,10 @@ function reasoningSummary(message: AssistantMessage, partID: string, terminal: b
   }
 }
 
-function makeGroup(
-  message: AssistantMessage,
-  step: ActivityStepProjection,
-  receipt: boolean,
-  persistedKey?: string,
-): ActivityGroupItem {
+function makeGroup(message: AssistantMessage, step: ActivityStepProjection, receipt: boolean): ActivityGroupItem {
   return {
     kind: "activity-group",
-    key: persistedKey ?? activityGroupKey(message.id, step.family, step.scopeKey, step.part.id),
+    key: activityGroupKey(message.id, step.family, step.scopeKey, step.part.id),
     message,
     family: step.family,
     scopeKey: step.scopeKey,
@@ -265,45 +308,43 @@ export function projectAssistantActivityItems(input: {
   permissions: readonly PermissionRequest[]
   resolveToolInfo: ActivityToolInfoResolver
   isToolRenderBoundary?: (tool: string) => boolean
+  reasoningAnchors?: Readonly<Record<string, string>>
 }): ActivityTimelineItem[] {
   const result: ActivityTimelineItem[] = []
   const isRenderBoundary = input.isToolRenderBoundary ?? (() => false)
   const visibleByIdentity = new Map(input.visibleItems.map((item) => [timelineItemIdentity(item), item]))
   const visibleIdentities = new Set(visibleByIdentity.keys())
-  const metadata = activityMetadata(input.message)
-  const ordinaryPartIDs = new Set(
-    input.sourceItems.flatMap((item) => (isOrdinaryTool(item, isRenderBoundary) ? [item.part.id] : [])),
-  )
-  const persistedGroupByPartID = new Map<string, string>()
-  const validPersistedGroupKeys = new Set<string>()
-  for (const [key, group] of Object.entries(metadata?.groups ?? {})) {
-    const partIDs = group.signature?.split(":").filter(Boolean) ?? []
-    if (partIDs.length === 0 || partIDs.some((partID) => !ordinaryPartIDs.has(partID))) continue
-    validPersistedGroupKeys.add(key)
-    for (const partID of partIDs) persistedGroupByPartID.set(partID, key)
-  }
   let pendingGroup: ActivityGroupItem | undefined
-  let pendingPersistedKey: string | undefined
+  let pendingReasoning: { item: ActivityReasoningSummaryItem; anchor?: string } | undefined
 
   const flush = () => {
     if (!pendingGroup) return
-    const stored = metadata?.groups?.[pendingGroup.key]
-    const validStored =
-      stored && (!stored.signature || validPersistedGroupKeys.has(pendingGroup.key)) ? stored : undefined
-    if (validStored?.text) pendingGroup.topic = { state: validStored.state, text: validStored.text }
-    pendingGroup.state = pendingGroup.topic?.state === "live" ? "running" : groupState(pendingGroup.steps)
+    pendingGroup.state = groupState(pendingGroup.steps)
     result.push(pendingGroup)
     pendingGroup = undefined
-    pendingPersistedKey = undefined
   }
 
   for (const source of input.sourceItems) {
+    if (source.kind !== "reasoning") pendingReasoning = undefined
     if (!isOrdinaryTool(source, isRenderBoundary)) {
       flush()
       const visible = visibleByIdentity.get(timelineItemIdentity(source))
       if (source.kind === "reasoning") {
-        if (!visible) continue
-        result.push(reasoningSummary(input.message, source.part.id, visible.kind === "part"))
+        if (!visible) {
+          pendingReasoning = undefined
+          continue
+        }
+        const anchor = input.reasoningAnchors?.[source.part.id]
+        if (pendingReasoning && pendingReasoning.anchor === anchor) {
+          pendingReasoning.item.partIDs?.push(source.part.id)
+          continue
+        }
+        const item = reasoningSummary(input.message, anchor ?? source.part.id, visible.kind === "part")
+        item.partID = source.part.id
+        item.partIDs = [source.part.id]
+        item.continuation = anchor !== undefined && anchor !== source.part.id
+        result.push(item)
+        pendingReasoning = { item, anchor }
         continue
       }
       if (!visible) continue
@@ -326,20 +367,13 @@ export function projectAssistantActivityItems(input: {
       : (frozenStep(source.part) ??
         freezeStep(source.part, makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)))
     const receipt = isActivityReceiptTool(source.part.tool, step.family)
-    const defaultKey = activityGroupKey(input.message.id, step.family, step.scopeKey, step.part.id)
-    const legacyStored = metadata?.groups?.[defaultKey]
-    const persistedKey = receipt
-      ? undefined
-      : (persistedGroupByPartID.get(step.part.id) ?? (legacyStored && !legacyStored.signature ? defaultKey : undefined))
-
     const canMerge =
       !receipt &&
       pendingGroup &&
       !pendingGroup.receipt &&
       pendingGroup.steps.length < MAX_ACTIVITY_GROUP_STEPS &&
-      (persistedKey
-        ? pendingPersistedKey === persistedKey
-        : !pendingPersistedKey && pendingGroup.family === step.family && pendingGroup.scopeKey === step.scopeKey)
+      pendingGroup.family === step.family &&
+      pendingGroup.scopeKey === step.scopeKey
 
     if (canMerge && pendingGroup) {
       pendingGroup.steps.push(step)
@@ -348,8 +382,7 @@ export function projectAssistantActivityItems(input: {
     }
 
     flush()
-    pendingGroup = makeGroup(input.message, step, receipt, persistedKey)
-    pendingPersistedKey = persistedKey
+    pendingGroup = makeGroup(input.message, step, receipt)
   }
 
   flush()
@@ -360,6 +393,7 @@ export function isActivityTimelineItem(value: ActivityTimelineItem | unknown): v
   const kind = (value as { kind?: unknown }).kind
   return (
     kind === "activity-group" ||
+    kind === "activity-batch" ||
     kind === "activity-reasoning-summary" ||
     kind === "activity-summary" ||
     kind === "activity-receipt" ||
@@ -500,12 +534,6 @@ export function projectMinimalActivityItems<T>(
     const count = counts.get(family) ?? 0
     return count > 0 ? [{ family, count }] : []
   }).slice(0, 3)
-  const now = items.reduce<NonNullable<ActivityDerivedMetadata["now"]> | undefined>((latest, item) => {
-    if (!isActivityTimelineItem(item)) return latest
-    const candidate = activityMetadata(item.message)?.now
-    if (!candidate) return latest
-    return !latest || candidate.updatedAt > latest.updatedAt ? candidate : latest
-  }, undefined)
   const first = groups[0]
   const summary: ActivitySummaryItem = {
     kind: "activity-summary",
@@ -514,7 +542,6 @@ export function projectMinimalActivityItems<T>(
     total,
     facts,
     completed,
-    now,
   }
   let inserted = false
   const preservedMessages = new Set<string>()

@@ -1,0 +1,352 @@
+import { SessionRetry } from "../session/retry"
+import { Experiment } from "../config/experiment"
+import { RolloutLedger } from "../session/rollout/ledger"
+import type { ModelMessage, JSONSchema7 } from "ai"
+import { Agent } from "./agent"
+import { Provider } from "../provider/provider"
+import { AgentTurn } from "../session/agent-turn"
+import { MessageV2 } from "../session/message-v2"
+import { RolloutContext } from "../session/rollout/context"
+import { Identifier } from "../id/id"
+import { ScopeContext } from "../scope/context"
+import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import { RolloutRecordingError } from "../session/rollout/error"
+import { ToolIntent } from "../session/tool-intent"
+
+export namespace AgentCall {
+  export type ErrorCode =
+    | "agent_not_found"
+    | "model_unavailable"
+    | "input_too_large"
+    | "output_too_large"
+    | "incomplete_output"
+    | "timeout"
+    | "cancelled"
+    | "invalid_owner"
+
+  export class Error extends globalThis.Error {
+    readonly code: ErrorCode
+
+    constructor(code: ErrorCode, message: string, options?: globalThis.ErrorOptions) {
+      super(message, options)
+      this.name = "AgentCallError"
+      this.code = code
+    }
+  }
+
+  export type TextInput = {
+    agent: string
+    ownership?: "operation"
+    messages: ModelMessage[]
+    user?: MessageV2.User
+    sessionId?: string
+    userMetadata?: Record<string, string>
+    model?: Provider.Model
+    fallbackModel?: Provider.Model
+    modelRole?: Provider.ModelRole
+    signal?: AbortSignal
+    timeoutMs: number
+    retries: number
+    maxInputChars?: number
+    maxOutputChars: number
+    requireComplete?: boolean
+    small?: boolean
+    maxOutputTokens?: number
+    /** A schema-only output Tool; this call has no domain Tool executor. */
+    outputTool?: { name: string; description: string; schema: JSONSchema7; force?: boolean }
+  }
+
+  export type TextOutput = {
+    text: string
+    model: Provider.Model
+    usage?: Awaited<AgentTurn.Stream["usage"]>
+    toolCalls?: Array<{ name: string; input: unknown }>
+  }
+
+  function inputCharacters(messages: ModelMessage[]) {
+    return messages.reduce((total, message) => {
+      if (typeof message.content === "string") return total + message.content.length
+      return total + JSON.stringify(message.content).length
+    }, 0)
+  }
+
+  function interruption(input: { agent: string; signal?: AbortSignal; timeout: AbortController; timeoutMs: number }) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let onCancel: (() => void) | undefined
+    const promise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        input.timeout.abort(new DOMException("Agent call timed out", "TimeoutError"))
+        reject(new Error("timeout", `Agent ${input.agent} timed out after ${input.timeoutMs}ms`))
+      }, input.timeoutMs)
+      timer.unref?.()
+      if (input.signal) {
+        onCancel = () => reject(new Error("cancelled", `Agent ${input.agent} was cancelled`))
+        if (input.signal.aborted) onCancel()
+        else input.signal.addEventListener("abort", onCancel, { once: true })
+      }
+    })
+    // `interruption` is a sentinel consumed only through the `wait` races below.
+    // When the abort or timeout lands while no race is pending — the loop has
+    // already exited, or an await just resolved — nothing observes this
+    // rejection, so it surfaces as an unhandled rejection attributed to
+    // whichever test happens to be running. Claim it at creation; the signal
+    // itself is still delivered by the races and `abort.throwIfAborted()`.
+    promise.catch(() => {})
+    return {
+      promise,
+      dispose() {
+        if (timer !== undefined) clearTimeout(timer)
+        if (input.signal && onCancel) input.signal.removeEventListener("abort", onCancel)
+      },
+    }
+  }
+
+  export async function text(input: TextInput): Promise<TextOutput> {
+    const outputTool = input.outputTool && {
+      name: input.outputTool.name,
+      description: input.outputTool.description,
+      force: input.outputTool.force !== false,
+      binding: ToolIntent.snapshot(input.outputTool.schema),
+    }
+    if (!Experiment.current()) return Experiment.provide(await Experiment.resolve(), () => text(input))
+    const causal = RolloutContext.current()
+    if (
+      input.ownership !== "operation" &&
+      !input.user &&
+      causal?.owner.kind === "session" &&
+      (!input.sessionId || input.sessionId === causal.owner.sessionID)
+    ) {
+      const [root] = MessageV2.deriveSemantics([
+        await MessageV2.get({ sessionID: causal.owner.sessionID, messageID: causal.runID }),
+      ])
+      if (root.info.role !== "user" || !root.info.isRoot)
+        throw new Error("invalid_owner", "Causal agent calls require a persisted root user")
+      input = { ...input, user: { ...root.info, system: undefined, variant: undefined } }
+    }
+    if (causal?.signal)
+      input = { ...input, signal: AbortSignal.any([causal.signal, ...(input.signal ? [input.signal] : [])]) }
+    if (input.ownership === "operation" && (input.user || input.sessionId))
+      throw new Error("invalid_owner", "Independent operations carry source identity in metadata, not a session owner")
+    if (input.sessionId && (!input.user || input.user.sessionID !== input.sessionId))
+      throw new Error("invalid_owner", "Session agent calls require the triggering root user from that session")
+    if (!Number.isInteger(input.retries) || input.retries < 0)
+      throw new RangeError("Agent retries must be a nonnegative integer")
+    if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
+    if (input.maxInputChars !== undefined && inputCharacters(input.messages) > input.maxInputChars) {
+      throw new Error("input_too_large", `Agent ${input.agent} input exceeded ${input.maxInputChars} characters`)
+    }
+
+    const agent = await Agent.get(input.agent)
+    if (!agent) throw new Error("agent_not_found", `Agent is unavailable: ${input.agent}`)
+    const model =
+      input.model ??
+      (await (async () => {
+        const configured = input.modelRole
+          ? await Provider.resolveRoleModel(input.modelRole)
+          : await Agent.getAvailableModel(agent)
+        if (!configured) return input.fallbackModel
+        return await Provider.getModel(configured.providerID, configured.modelID).catch(() => input.fallbackModel)
+      })())
+    if (!model) throw new Error("model_unavailable", `Agent ${input.agent} has no available model`)
+    if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
+
+    const owningSessionID = input.user?.sessionID ?? input.sessionId
+    const inheritedOperation =
+      input.ownership !== "operation" && !owningSessionID && causal?.owner.kind === "operation" ? causal : undefined
+    const operationID = owningSessionID
+      ? undefined
+      : inheritedOperation?.owner.kind === "operation"
+        ? inheritedOperation.owner.operationID
+        : crypto.randomUUID()
+    const sessionID = owningSessionID ?? operationID!
+    const owner = owningSessionID
+      ? {
+          kind: "session" as const,
+          sessionID: owningSessionID,
+          scopeID: (
+            await Storage.read<{ scopeID: string }>(StoragePath.sessionIndex(Identifier.asSessionID(owningSessionID)))
+          ).scopeID,
+        }
+      : (inheritedOperation?.owner ?? {
+          kind: "operation" as const,
+          operationID: operationID!,
+          scopeID: ScopeContext.tryScope()?.id ?? "home",
+        })
+    const user: MessageV2.User =
+      input.user ??
+      ({
+        id: Identifier.ascending("message"),
+        sessionID,
+        role: "user",
+        time: { created: Date.now() },
+        agent: agent.name,
+        model: { providerID: model.providerID, modelID: model.id },
+        metadata: input.userMetadata,
+      } satisfies MessageV2.User)
+    const runID = input.user?.rootID ?? input.user?.id ?? inheritedOperation?.runID ?? operationID ?? user.id
+    if (owner.kind === "operation") {
+      await RolloutLedger.beginRun(owner, runID)
+      await RolloutLedger.configureRun(owner, runID, await Experiment.resolve())
+    }
+    let status: "completed" | "failed" | "cancelled" = "failed"
+    let failure: unknown
+    const timeout = new AbortController()
+    const output = new AbortController()
+    const abort = input.signal
+      ? AbortSignal.any([input.signal, timeout.signal, output.signal])
+      : AbortSignal.any([timeout.signal, output.signal])
+    const interrupted = interruption({
+      agent: input.agent,
+      signal: input.signal,
+      timeout,
+      timeoutMs: input.timeoutMs,
+    })
+    const wait = <T>(promise: Promise<T>) => Promise.race([promise, interrupted.promise])
+
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          abort.throwIfAborted()
+          const starting = AgentTurn.stream({
+            retryIndex: attempt,
+            agent,
+            user,
+            toolDefinitions: outputTool
+              ? [
+                  {
+                    id: outputTool.name,
+                    description: outputTool.description,
+                    inputSchema: outputTool.binding.nativeSchema,
+                  },
+                ]
+              : [],
+            toolChoice: outputTool?.force ? { type: "tool", toolName: outputTool.name } : undefined,
+            model,
+            small: input.small ?? true,
+            messages: input.messages,
+            abort,
+            sessionID,
+            system: [],
+            retries: 0,
+            recording: {
+              owner,
+              runID,
+              purpose: input.agent,
+            },
+            lane: "background",
+            maxOutputTokens: input.maxOutputTokens,
+          })
+          let stream: AgentTurn.Stream
+          try {
+            stream = await wait(starting)
+          } catch (error) {
+            await starting.then(
+              (late) => late.dispose(),
+              (failure: unknown) => {
+                if (RolloutRecordingError.isInstance(failure)) throw failure
+              },
+            )
+            throw error
+          }
+          try {
+            let value = ""
+            const toolCalls: Array<{ name: string; input: unknown }> = []
+            let outputCharacters = 0
+            let stopped = false
+            let finished = false
+            const iterator = stream.fullStream[Symbol.asyncIterator]()
+            while (true) {
+              const next = await wait(iterator.next())
+              if (next.done) break
+              const part = next.value
+              if (part.type === "error") throw part.error
+              if (part.type === "abort") throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
+              if (input.requireComplete) {
+                if (part.type.startsWith("tool-")) {
+                  throw new Error(
+                    "incomplete_output",
+                    `Agent ${input.agent} returned tool output instead of complete text`,
+                  )
+                }
+                if (part.type === "finish-step") {
+                  if (part.finishReason !== "stop") {
+                    throw new Error(
+                      "incomplete_output",
+                      `Agent ${input.agent} did not complete normally (${part.finishReason})`,
+                    )
+                  }
+                  stopped = true
+                }
+                if (part.type === "finish") finished = true
+              }
+              if (part.type === "tool-call" && outputTool) {
+                outputCharacters += (JSON.stringify(part.input) ?? "").length
+                if (outputCharacters > input.maxOutputChars) {
+                  output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
+                  throw new Error(
+                    "output_too_large",
+                    `Agent ${input.agent} output exceeded ${input.maxOutputChars} characters`,
+                  )
+                }
+                const value = part.input
+                const decoded =
+                  value && typeof value === "object" && !Array.isArray(value)
+                    ? ToolIntent.decode(outputTool.binding, value as Record<string, unknown>).input
+                    : value
+                toolCalls.push({ name: part.toolName, input: decoded })
+                continue
+              }
+              if (part.type !== "text-delta" || !part.text) continue
+              value += part.text
+              outputCharacters += part.text.length
+              if (outputCharacters <= input.maxOutputChars) continue
+              output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
+              throw new Error(
+                "output_too_large",
+                `Agent ${input.agent} output exceeded ${input.maxOutputChars} characters`,
+              )
+            }
+            const usage = await wait(stream.usage)
+            if (input.requireComplete && (!stopped || !finished)) {
+              throw new Error("incomplete_output", `Agent ${input.agent} ended without a complete stop`)
+            }
+            status = "completed"
+            return { text: value, model, usage, ...(outputTool ? { toolCalls } : {}) }
+          } finally {
+            await stream.dispose()
+          }
+        } catch (error) {
+          const classified = MessageV2.fromError(error, { providerID: model.providerID, modelID: model.id })
+          if (abort.aborted || attempt >= input.retries || SessionRetry.retryable(classified) === undefined) throw error
+          await wait(
+            SessionRetry.sleep(
+              SessionRetry.delay(attempt + 1, classified.name === "APIError" ? classified : undefined),
+              abort,
+            ),
+          )
+        }
+      }
+    } catch (error) {
+      failure = error
+      status = input.signal?.aborted || timeout.signal.aborted ? "cancelled" : "failed"
+      if (RolloutRecordingError.isInstance(error)) throw error
+      if (error instanceof Error) throw error
+      if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`, { cause: error })
+      if (timeout.signal.aborted) {
+        throw new Error("timeout", `Agent ${input.agent} timed out after ${input.timeoutMs}ms`, { cause: error })
+      }
+      throw error
+    } finally {
+      interrupted.dispose()
+      if (owner.kind === "operation" && !inheritedOperation) {
+        try {
+          await RolloutLedger.finishRun(owner, runID, status)
+        } catch (error) {
+          if (RolloutRecordingError.isInstance(failure)) throw failure
+          throw error
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,69 @@
+import fs from "node:fs/promises"
+import { createRequire } from "node:module"
+import path from "node:path"
+import type { BunPlugin } from "bun"
+import {
+  EMBEDDING_RUNTIME_MODULE,
+  EMBEDDING_RUNTIME_PATH,
+  EMBEDDING_RUNTIME_WASM,
+} from "@ericsanchezok/synergy-library/vector/embedding-runtime"
+
+const SOURCE_FILES = [EMBEDDING_RUNTIME_MODULE, EMBEDDING_RUNTIME_WASM] as const
+export const EMBEDDING_RUNTIME_REQUIRED_PATHS = SOURCE_FILES.map((file) => `${EMBEDDING_RUNTIME_PATH}/${file}`)
+
+export async function buildEmbeddingModule(output: string) {
+  const result = await Bun.build({
+    entrypoints: [path.join(import.meta.dir, "embedding-module.ts")],
+    outdir: path.join(output, "vector"),
+    naming: "packaged-embedding.js",
+    target: "bun",
+    conditions: ["browser"],
+    plugins: [standaloneEmbeddingBuildPlugin()],
+  })
+  if (!result.success) throw new Error(result.logs.map((log) => log.message).join("\n"))
+  await stageEmbeddingRuntimeAssets({ runtimeDir: output })
+}
+
+export async function stageEmbeddingRuntimeAssets(options: {
+  runtimeDir: string
+  onnxRuntimeWebDir?: string
+}): Promise<void> {
+  const source = options.onnxRuntimeWebDir ?? defaultOnnxRuntimeWebDir()
+  const destination = path.join(options.runtimeDir, EMBEDDING_RUNTIME_PATH)
+  await fs.rm(destination, { recursive: true, force: true })
+  await fs.mkdir(destination, { recursive: true })
+  for (const file of SOURCE_FILES) {
+    const sourceFile = path.join(source, "dist", file)
+    if (!(await Bun.file(sourceFile).exists())) {
+      throw new Error(`ONNX Web runtime is incomplete; missing dist/${file}: ${source}`)
+    }
+    await fs.copyFile(sourceFile, path.join(destination, file))
+  }
+}
+
+export function standaloneEmbeddingBuildPlugin(): BunPlugin {
+  const nativeStub = path.join(import.meta.dir, "embedding-native-stub.ts")
+  const onnxRuntime = path.join(import.meta.dir, "embedding-onnxruntime-web.ts")
+  const require = createRequire(path.resolve(import.meta.dir, "../package.json"))
+  // The distributed bundle hides this gateway behind createRequire; source bundling keeps WASM substitution visible.
+  // Upstream: https://unpkg.com/@huggingface/transformers@4.3.1/src/backends/onnx-node.js
+  const transformers = path.resolve(
+    path.dirname(require.resolve("@huggingface/transformers")),
+    "../src/transformers.js",
+  )
+  return {
+    name: "standalone-embedding-runtime",
+    setup(build) {
+      build.onResolve({ filter: /^@huggingface\/transformers$/ }, () => ({ path: transformers }))
+      build.onResolve({ filter: /^(\.\/onnx-node\.js|onnxruntime-node|sharp)$/ }, (args) => {
+        if (!args.importer.replaceAll("\\", "/").includes("/@huggingface/transformers/")) return
+        return { path: args.path === "sharp" ? nativeStub : onnxRuntime }
+      })
+    },
+  }
+}
+
+function defaultOnnxRuntimeWebDir(): string {
+  const require = createRequire(path.resolve(import.meta.dir, "../package.json"))
+  return path.dirname(require.resolve("onnxruntime-web/package.json"))
+}

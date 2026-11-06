@@ -1,3 +1,4 @@
+import { shellDefinition, shellSource, shellSessionSource, shellCSS } from "../templates/shell.js"
 import fs from "fs"
 import path from "path"
 import type { Argv } from "yargs"
@@ -5,9 +6,19 @@ import { renderThemeSchemaJson } from "@ericsanchezok/synergy-plugin/theme"
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 
-type TemplateName = "tool-ui" | "workbench-panel" | "navigation" | "api-connector" | "theme-icon" | "slot"
+export type TemplateName =
+  "tool-ui" | "workbench-panel" | "navigation" | "api-connector" | "theme-icon" | "slot" | "shell" | "skin"
 
-const templates: TemplateName[] = ["tool-ui", "workbench-panel", "navigation", "api-connector", "theme-icon", "slot"]
+export const PLUGIN_TEMPLATES: readonly TemplateName[] = [
+  "tool-ui",
+  "workbench-panel",
+  "navigation",
+  "api-connector",
+  "theme-icon",
+  "slot",
+  "shell",
+  "skin",
+]
 
 function currentPackageRange(): string {
   const pkg = JSON.parse(fs.readFileSync(path.resolve(import.meta.dir, "..", "..", "package.json"), "utf-8")) as {
@@ -26,6 +37,8 @@ function packageJson(name: string, usesSolid: boolean) {
       source: "./src/index.ts",
       scripts: {
         dev: "synergy-plugin dev",
+        typegen: "synergy-plugin typegen",
+        typecheck: "synergy-plugin typegen && tsc --noEmit",
         validate: "synergy-plugin validate --runtime-discovery",
         build: "synergy-plugin build",
         pack: "synergy-plugin pack",
@@ -36,7 +49,11 @@ function packageJson(name: string, usesSolid: boolean) {
         zod: "^4.0.0",
         ...(usesSolid ? { "solid-js": "^1.9.0" } : {}),
       },
-      devDependencies: { "@ericsanchezok/synergy-plugin-kit": version, typescript: "^5.8.0" },
+      devDependencies: {
+        "@ericsanchezok/synergy-plugin-kit": version,
+        "@types/bun": "^1.4.3",
+        typescript: "^7.0.2",
+      },
     },
     null,
     2,
@@ -50,6 +67,7 @@ function tsconfig() {
         target: "ESNext",
         module: "ESNext",
         moduleResolution: "bundler",
+        types: ["bun"],
         strict: true,
         skipLibCheck: true,
         jsx: "preserve",
@@ -63,9 +81,16 @@ function tsconfig() {
 }
 
 function definition(name: string, template: TemplateName): string {
+  if (template === "shell") return shellDefinition(name)
+  if (template === "skin")
+    return `import { definePlugin, skin } from "@ericsanchezok/synergy-plugin"
+export default definePlugin({ id: ${JSON.stringify(name)}, version: "0.1.0", description: "A structured Synergy Skin", contributions: [skin({ id: "paper", label: "Paper", path: "skins/paper.json" })] })
+`
+
   if (template === "tool-ui") {
-    return `import z from "zod"
+    return `import { z } from "zod"
 import { definePlugin, messageRenderer, tool } from "@ericsanchezok/synergy-plugin"
+import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
 
 export default definePlugin({
   id: "${name}",
@@ -75,13 +100,15 @@ export default definePlugin({
     tool({
       id: "greet",
       description: "Greet a user by name",
+      requiresWorkspace: false,
       input: z.object({ name: z.string() }),
       handler: async ({ name }) => ({ output: \`Hello, \${name}!\` }),
     }),
     messageRenderer({
       id: "greet-result",
       label: "Greeting",
-      messageType: "tool:greet",
+      messageType: "tool",
+      tool: PluginToolId.format("${name}", "greet"),
       component: { source: "./src/ui.tsx" },
     }),
   ],
@@ -124,7 +151,7 @@ export default definePlugin({
 `
   }
   if (template === "api-connector") {
-    return `import z from "zod"
+    return `import { z } from "zod"
 import { definePlugin, tool } from "@ericsanchezok/synergy-plugin"
 
 export default definePlugin({
@@ -134,6 +161,7 @@ export default definePlugin({
   contributions: [tool({
     id: "get-json",
     description: "Fetch JSON from a trusted API",
+    requiresWorkspace: false,
     input: z.object({ url: z.string().url() }),
     handler: async ({ url }) => ({ output: JSON.stringify(await fetch(url).then((response) => response.json()), null, 2) }),
   })],
@@ -171,15 +199,14 @@ export default definePlugin({
 }
 
 function ui(template: TemplateName): string | undefined {
+  if (template === "shell") return shellSource
   if (!(["tool-ui", "workbench-panel", "navigation", "slot"] as TemplateName[]).includes(template)) return undefined
-  return `import type { Component } from "solid-js"
-import type { PluginSurfaceContext } from "@ericsanchezok/synergy-plugin/ui"
+  return `import type { PluginComponentProps, PluginSurfaceContext } from "@ericsanchezok/synergy-plugin"
+import { EmptyState } from "@ericsanchezok/synergy-plugin/components"
 
-const PluginSurface: Component<{ context: PluginSurfaceContext }> = (props) => (
-  <section aria-label={props.context.surface.id}>Plugin content</section>
-)
-
-export default PluginSurface
+export default function PluginSurface({ context }: PluginComponentProps<PluginSurfaceContext>) {
+  return <section aria-label={context.surface.id}><EmptyState title="Ready" description="Add your plugin interface here." /></section>
+}
 `
 }
 
@@ -194,6 +221,45 @@ export function scaffoldPluginProject(name: string, template: TemplateName, targ
   ])
   const uiSource = ui(template)
   if (uiSource) files.set("src/ui.tsx", uiSource)
+  if (template === "shell") {
+    files.set("src/session.tsx", shellSessionSource)
+    files.set("src/shell.css", shellCSS)
+    files.set("src/assets.d.ts", 'declare module "*.css" {}\n')
+  }
+  if (template === "skin") {
+    files.set(
+      "skins/paper.json",
+      JSON.stringify(
+        {
+          version: 1,
+          id: "paper",
+          assets: { texture: { kind: "image", path: "assets/paper.svg" } },
+          light: {
+            density: "comfortable",
+            parts: {
+              workbench: { background: { asset: "texture", repeat: "repeat", fit: "auto", opacity: 0.25 } },
+              composer: { radius: 16, shadow: "soft" },
+            },
+          },
+          dark: {
+            density: "comfortable",
+            parts: {
+              workbench: { background: { asset: "texture", repeat: "repeat", fit: "auto", opacity: 0.1 } },
+              composer: { radius: 16, shadow: "soft" },
+            },
+          },
+          narrow: { density: "compact", parts: { composer: { radius: 8 } } },
+          reducedMotion: { decorations: "hide" },
+        },
+        null,
+        2,
+      ),
+    )
+    files.set(
+      "assets/paper.svg",
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M0 8h32M0 24h32" stroke="#9b8b73" stroke-opacity=".25" stroke-width=".5"/></svg>',
+    )
+  }
   if (template === "theme-icon") {
     files.set("themes/theme.schema.json", renderThemeSchemaJson())
     files.set(
@@ -256,7 +322,7 @@ export const PluginCreateCommand = cmd({
   builder: (yargs: Argv) =>
     yargs
       .positional("name", { type: "string", demandOption: true })
-      .option("template", { type: "string", choices: templates, default: "tool-ui" }),
+      .option("template", { type: "string", choices: PLUGIN_TEMPLATES, default: "tool-ui" }),
   async handler(args) {
     const name = String(args.name)
     if (!/^[a-z][a-z0-9-]*$/.test(name)) {

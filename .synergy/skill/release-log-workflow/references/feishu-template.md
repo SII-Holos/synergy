@@ -87,7 +87,7 @@ Example:
 
 [Synergy 1.2.1](https://www.feishu.cn/wiki/...)
 
-这一版聚焦在 Synergy Link 的安装、Holos CLI 登录和 managed mode 恢复能力。它补上了一键安装脚本和命令行登录路径，也修复了异常中断后可能残留的 orphaned managed mode 问题。
+这一版聚焦于工作区管理、执行环境切换和会话恢复能力。它优化了环境选择流程，也修复了异常中断后可能残留的会话状态问题。
 ```
 
 ## Ordering Rule

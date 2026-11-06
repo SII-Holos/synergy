@@ -1,0 +1,295 @@
+import { expect, test } from "bun:test"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { RolloutAccounting } from "@ericsanchezok/synergy-harness/session/rollout/accounting"
+
+async function run(
+  interaction?: "permission" | "question" | "foreign-permission" | "foreign-question",
+  command = false,
+  delayedCommand = false,
+  inputFailure?: string,
+  steered = false,
+  admission?: "delayed" | "failed" | "removed" | "stalled",
+) {
+  await using tmp = await tmpdir()
+  let polls = 0
+  let admissionPolls = 0
+  let prematureRunReads = 0
+  let cancelled = false
+  let rejected = false
+  let commandStarted = !delayedCommand
+  let experiment: unknown
+  const sessionID = "ses_test"
+  const interactionSessionID = interaction?.startsWith("foreign-") ? "ses_unrelated" : sessionID
+  let runID = "msg_test"
+  const state = () => ({
+    version: 1,
+    id: runID,
+    owner: { kind: "session", scopeID: "test", sessionID },
+    started: 1,
+    ended: polls >= 3 || cancelled ? 5 : undefined,
+    status: cancelled ? "cancelled" : polls >= 3 ? "completed" : "running",
+    recording: "complete",
+  })
+  using server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url)
+      if (url.pathname === "/event")
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              const event = interaction?.endsWith("permission")
+                ? {
+                    type: "permission.asked",
+                    properties: {
+                      id: "per_test",
+                      sessionID: interactionSessionID,
+                      permission: "bash",
+                      patterns: ["echo"],
+                      metadata: {},
+                      always: [],
+                    },
+                  }
+                : interaction?.endsWith("question")
+                  ? {
+                      type: "question.asked",
+                      properties: {
+                        id: "que_test",
+                        sessionID: interactionSessionID,
+                        questions: [{ header: "Choice", question: "Choose", options: [] }],
+                      },
+                    }
+                  : { type: "session.idle", properties: { sessionID } }
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`))
+              request.signal.addEventListener(
+                "abort",
+                () => {
+                  try {
+                    controller.close()
+                  } catch {}
+                },
+                { once: true },
+              )
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        )
+      if (url.pathname.endsWith("/command")) {
+        runID = (await request.json()).messageID
+        if (delayedCommand) await Bun.sleep(200)
+        commandStarted = true
+        const deadline = Date.now() + 5000
+        while (!cancelled && Date.now() < deadline) await Bun.sleep(10)
+        return Response.json({})
+      }
+      if (url.pathname.endsWith("/input")) {
+        if (inputFailure)
+          return Response.json({ name: inputFailure, data: { message: "input failed" } }, { status: 500 })
+        experiment = (await request.json()).experiment
+        return Response.json({
+          status: "queued",
+          ...(steered ? { runID } : {}),
+          item: {
+            id: "inb_test",
+            sessionID,
+            mode: steered ? "steer" : "task",
+            messageID: steered ? "msg_steer" : runID,
+            summary: { title: "hello" },
+            source: { type: "user" },
+            time: { created: 1 },
+            orderKey: "1",
+          },
+        })
+      }
+      if (url.pathname.endsWith("/cancel")) {
+        if (!commandStarted) return Response.json({ name: "NotFoundError" }, { status: 404 })
+        cancelled = true
+        return Response.json(state())
+      }
+      if (
+        url.pathname.includes("/permissions/") ||
+        url.pathname.includes("/permission/") ||
+        url.pathname.endsWith("/reject")
+      ) {
+        rejected = true
+        return Response.json(true)
+      }
+      if (url.pathname.endsWith(`/run/${runID}`)) {
+        if (admission && admissionPolls < 3 && !cancelled) {
+          prematureRunReads++
+          return Response.json({ name: "NotFoundError", data: { message: "Run has not started" } }, { status: 404 })
+        }
+        polls++
+        return Response.json(state())
+      }
+      if (url.pathname.endsWith(`/input/${runID}/status`)) {
+        admissionPolls++
+        const pending = admission === "stalled" || (admission === "delayed" && admissionPolls < 3)
+        const unavailable = admission === "failed" || admission === "removed"
+        if (!pending && !unavailable) polls++
+        return Response.json({
+          sessionID,
+          messageID: runID,
+          state: cancelled ? "cancelled" : unavailable ? admission : pending ? "accepted" : state().status,
+          durable: true,
+          canonical: !pending && !unavailable,
+          updatedAt: 1,
+          ...(admission === "failed"
+            ? { error: { code: "InputMaterializationError", message: "Saved input could not be prepared" } }
+            : {}),
+        })
+      }
+      if (url.pathname.endsWith("/result")) {
+        if (admission && admissionPolls < 3 && !cancelled) {
+          prematureRunReads++
+          return Response.json({ name: "NotFoundError", data: { message: "Run has not started" } }, { status: 404 })
+        }
+        return Response.json({
+          version: 1,
+          run: state(),
+          snapshots: [],
+          accounting: RolloutAccounting.empty(),
+          elapsedMs: 4,
+          elapsedActive: false,
+          elapsedLowerBound: false,
+        })
+      }
+      return Response.json({ name: "UnexpectedEndpoint", data: { message: url.pathname } }, { status: 404 })
+    },
+  })
+  const config = `${tmp.path}/experiment.json`
+  await Bun.write(config, JSON.stringify({ version: 1, label: "test", overrides: { compaction: { prune: false } } }))
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "--conditions=browser",
+      "src/index.ts",
+      "send",
+      "hello",
+      ...(command ? ["--command", "test"] : []),
+      "--session",
+      sessionID,
+      "--attach",
+      server.url.toString(),
+      "--format",
+      "json",
+      "--non-interactive",
+      "--timeout",
+      admission === "stalled" ? "1" : "10",
+      "--experiment",
+      config,
+    ],
+    {
+      cwd: import.meta.dir + "/../..",
+      env: { ...process.env, SYNERGY_HOME: `${tmp.path}/home`, SYNERGY_CWD: tmp.path },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  )
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  const events = stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+  return { events, stderr, exitCode, polls, cancelled, rejected, experiment, admissionPolls, prematureRunReads }
+}
+
+test("send waits for input admission without reading a nonexistent run", async () => {
+  const result = await run(undefined, false, false, undefined, false, "delayed")
+  expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.admissionPolls).toBeGreaterThanOrEqual(3)
+  expect(result.prematureRunReads).toBe(0)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", runID: "msg_test", exitCode: 0 })
+}, 20_000)
+
+for (const interaction of ["foreign-permission", "foreign-question"] as const)
+  test(`send ignores ${interaction} while input is awaiting admission`, async () => {
+    const result = await run(interaction, false, false, undefined, false, "delayed")
+    expect(result.exitCode, result.stderr).toBe(0)
+    expect(result.prematureRunReads).toBe(0)
+    expect(result.cancelled).toBe(false)
+    expect(result.rejected).toBe(false)
+    expect(result.events.at(-1)).toMatchObject({ type: "result", runID: "msg_test", exitCode: 0 })
+  }, 20_000)
+
+for (const admission of ["failed", "removed"] as const)
+  test(`send reports ${admission} input before an execution exists`, async () => {
+    const result = await run(undefined, false, false, undefined, false, admission)
+    expect(result.exitCode, result.stderr).toBe(2)
+    expect(result.prematureRunReads).toBe(0)
+    expect(result.cancelled).toBe(false)
+    expect(result.events.at(-1)).toMatchObject({
+      type: "failed",
+      error: admission === "failed" ? "Saved input could not be prepared" : "Input was removed before execution",
+      exitCode: 2,
+    })
+  }, 20_000)
+
+test("send timeout cancels input while it is still queued", async () => {
+  const result = await run(undefined, false, false, undefined, false, "stalled")
+  expect(result.cancelled, result.stderr).toBe(true)
+  expect(result.exitCode, result.stderr).toBe(3)
+  expect(result.prematureRunReads).toBe(0)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", outcome: "timeout", exitCode: 3 })
+}, 20_000)
+
+test("send ignores session idle and returns the persisted run result with sequenced JSON", async () => {
+  const result = await run()
+  expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.polls).toBeGreaterThanOrEqual(3)
+  expect(result.events.at(-1)).toMatchObject({
+    version: 1,
+    seq: result.events.length,
+    type: "result",
+    runID: "msg_test",
+    exitCode: 0,
+  })
+  expect(result.experiment).toMatchObject({ version: 1, label: "test", overrides: { compaction: { prune: false } } })
+}, 20_000)
+
+test("send tracks the original run when input steers a paused task", async () => {
+  const result = await run(undefined, false, false, undefined, true)
+  expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.polls).toBeGreaterThanOrEqual(3)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", runID: "msg_test", exitCode: 0 })
+}, 20_000)
+
+for (const interaction of ["permission", "question"] as const)
+  test(`non-interactive ${interaction} cancels the run and exits without granting permission`, async () => {
+    const result = await run(interaction)
+    expect(result.cancelled, result.stderr).toBe(true)
+    expect(result.rejected).toBe(true)
+    expect(result.exitCode, result.stderr).toBe(4)
+    expect(result.events.at(-1)).toMatchObject({ type: "result", outcome: "interaction_required", exitCode: 4 })
+  }, 20_000)
+
+test("command processes non-interactive approvals before the command response completes", async () => {
+  const result = await run("permission", true)
+  expect(result.cancelled, result.stderr).toBe(true)
+  expect(result.rejected).toBe(true)
+  expect(result.exitCode, result.stderr).toBe(4)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", outcome: "interaction_required", exitCode: 4 })
+}, 20_000)
+
+test("command cancellation waits for its durable run to be created", async () => {
+  const result = await run("permission", true, true)
+  expect(result.cancelled, result.stderr).toBe(true)
+  expect(result.exitCode, result.stderr).toBe(4)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", outcome: "interaction_required", exitCode: 4 })
+}, 20_000)
+
+for (const [name, exitCode] of [
+  ["RolloutRecordingError", 5],
+  ["UnknownError", 2],
+] as const)
+  test(`send preserves exit code ${exitCode} when input fails with ${name}`, async () => {
+    const result = await run(undefined, false, false, name)
+    expect(result.exitCode, result.stderr).toBe(exitCode)
+    expect(result.events.at(-1)).toMatchObject({ type: "failed", exitCode })
+  }, 20_000)

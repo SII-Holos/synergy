@@ -1,0 +1,3 @@
+- `{type:"github", resource:"pr"|"issue"|"workflow"|"check", repository:"owner/repo", number?, ref?, interval?, states?}` — fires when the watched GitHub resource changes state, polled on an interval (default 5m). `number` targets one PR/issue or workflow run id; `ref` targets a branch/tag/commit for workflow/check watches; `states` filters transitions (e.g. ["merged"], ["failure"]). Requires a connected GitHub credential — creation is rejected with connection steps when none resolves; do not substitute a generic `every` interval that shell-checks GitHub.
+
+For "wait until a GitHub resource reaches a state" requests, the github trigger IS the right schedule — prefer it over a generic `every` interval plus manual shell checks.

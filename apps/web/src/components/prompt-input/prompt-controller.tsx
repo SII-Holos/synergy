@@ -1,0 +1,2842 @@
+import { useNavigate } from "@solidjs/router"
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
+import { blueprintLoopFeatureAvailable } from "@/components/note/blueprint-run-session"
+import { DialogIndependentCopy } from "../dialog/dialog-independent-copy"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
+import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
+import type { PluginInputService, PluginInputViewPart } from "@ericsanchezok/synergy-plugin"
+import { useFilteredList } from "@ericsanchezok/synergy-ui/hooks"
+import {
+  createEffect,
+  on,
+  Component,
+  Show,
+  For,
+  onMount,
+  onCleanup,
+  Switch,
+  Match,
+  createMemo,
+  createSignal,
+  createUniqueId,
+  untrack,
+  lazy,
+  Suspense,
+} from "solid-js"
+import { createStore, produce } from "solid-js/store"
+import { createFocusSignal } from "@solid-primitives/active-element"
+import { useLocal } from "@/context/local"
+import { useSessionMeta } from "@/composables/use-session-meta"
+import { ModelSelectorPopover } from "@/components/dialog/dialog-select-model"
+import { topBar } from "@/locales/messages"
+import { useInput, type ControlProfileId } from "@/context/input"
+import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
+import { useFile, useProjectFiles } from "@/context/file"
+import {
+  DEFAULT_PROMPT,
+  isPromptEqual,
+  Prompt,
+  sanitizePrompt,
+  usePrompt,
+  UploadedAttachmentPart,
+  NoteAttachmentPart,
+  QuoteAttachmentPart,
+  SessionAttachmentPart,
+} from "@/context/prompt"
+import { useLayout } from "@/context/layout"
+import { useViewActivity } from "@/context/view-residency"
+import { useSDK } from "@/context/sdk"
+import { useGlobalSync } from "@/context/global-sync"
+import { useSessionTransition } from "@/context/session-transition"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { useParams } from "@/context/session-route"
+import { useSessionDataView } from "@/context/session-data-view"
+import { useSync } from "@/context/sync"
+import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
+import { useCommand } from "@/context/command"
+import { Persist, persisted } from "@/utils/persist"
+import { List } from "@ericsanchezok/synergy-ui/list"
+import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
+import { getAgentVisual } from "@/components/agent-visual"
+import type { Message } from "@ericsanchezok/synergy-sdk/client"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { isHomeScope } from "@/utils/scope"
+import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
+import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
+import type {
+  AtOption,
+  BlueprintSlot,
+  PromptInputProps,
+  PromptInputStore,
+  SlashCommand,
+} from "@/components/prompt-input/types"
+import { PromptAttachments } from "@/components/prompt-input/attachments"
+import { PromptPopover } from "@/components/prompt-input/popover"
+import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
+import { PromptAddMenu, type PromptAddMenuSection } from "@/components/prompt-input/add-menu"
+import type { PromptStartOptionGroup } from "@/components/prompt-input/start-options"
+import { projectFlowCopy } from "../dialog/project-flow-copy"
+import { locationCopy } from "../dialog/task-location-copy"
+import { SessionWorkContext } from "@/components/session/work-context"
+import { usePromptSubmit } from "@/components/prompt-input/submit"
+import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
+import { usePromptEditor } from "@/components/prompt-input/editor-hook"
+import { createPromptPartID, inlineLength, inlineText } from "@/components/prompt-input/content"
+import { registerQuoteTarget } from "@/components/prompt-input/quote-target"
+import { resolvePromptSubmitIntent, shouldAllowPromptSubmit } from "@/components/prompt-input/submit-intent"
+import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
+import {
+  resolvePromptControlState,
+  promptControlError,
+  canLongPressAbandon,
+  ABANDON_HOLD_MS,
+  ABANDON_HOLD_TOLERANCE_PX,
+} from "./control-state"
+import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { resolveBossWorkflowMenuState, resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
+import {
+  blueprintRequestErrorMessage,
+  resolveBlueprintLoopState,
+  resolveBlueprintSlotDisplay,
+  type BlueprintSlotDisplay,
+} from "@/components/prompt-input/blueprint-slot"
+import { isWorktreeWorkspaceSelection } from "@/components/session/worktree-session"
+import { restoreNewSessionRecovery } from "@/components/session/new-session-recovery"
+import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
+import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
+import { ComposerSlotOutlet } from "@ericsanchezok/synergy-ui/composer-slots"
+import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
+import { PI } from "./prompt-input-i18n"
+import { EditLightLoopDialog } from "./edit-light-loop-dialog"
+import { twinCopy } from "../digital-twin/copy"
+import type { PredictionControlApi } from "../digital-twin/composer"
+import { BlueprintDraftEntry, LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
+import { resolveLoopDisplay } from "./loop-status"
+import { createLoopStatusResource } from "./loop-status-resource"
+import { resolveLightLoopActivity } from "./light-loop-control"
+import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
+import { ComposerDocumentController } from "./composer-document"
+import { ComposerPresentation, bindComposerPresentation, expandedComposerKeyAction } from "./composer-presentation"
+import { createAbortRequestController } from "./abort-request"
+import { requestSessionContinue } from "./continue-request"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
+import { VoiceDictationButton } from "./use-voice-dictation"
+import { AgentSelector } from "./agent-selector"
+import { collectDictationContext } from "./voice-dictation-core"
+import { classifySessionActivity, isWorkingStatus } from "@/utils/session-status"
+
+import { sanitizePromptHistory, type PromptHistoryEntry } from "./history"
+
+function WorkflowChip(props: {
+  label: string
+  ariaLabel: string
+  tooltip: string
+  icon: IconName
+  working: () => boolean
+  onCancel: () => void | Promise<void>
+}) {
+  const { controller, i18n } = useLocale()
+  const blockedTooltip = () => {
+    controller.activeLocale()
+    return i18n._(PI.stopBeforeChange)
+  }
+  const handleClick = (event: MouseEvent) => {
+    if (!props.working()) {
+      void props.onCancel()
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    showToast({
+      type: "warning",
+      title: i18n._(PI.sessionRunning),
+      description: blockedTooltip(),
+    })
+  }
+
+  return (
+    <Tooltip placement="top" value={props.working() ? blockedTooltip() : props.tooltip}>
+      <button
+        type="button"
+        aria-label={props.ariaLabel}
+        aria-disabled={props.working()}
+        class="prompt-input-toolbar-button prompt-input-compact-control group flex items-center gap-1.5 text-text-weak"
+        classList={{
+          "hover:text-text-base": !props.working(),
+          "opacity-60 cursor-not-allowed": props.working(),
+        }}
+        onClick={handleClick}
+      >
+        <span class="relative flex size-4 shrink-0 items-center justify-center">
+          <span
+            class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity"
+            classList={{ "group-hover:opacity-0": !props.working() }}
+          >
+            <Icon name={props.icon} size="small" class="text-icon-weak-base" />
+          </span>
+          <span
+            class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity"
+            classList={{ "group-hover:opacity-100": !props.working() }}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" class="text-icon-base" />
+          </span>
+        </span>
+        <span class="prompt-input-compact-label text-12-medium leading-none">{props.label}</span>
+      </button>
+    </Tooltip>
+  )
+}
+
+const DraftAttachmentPreview = lazy(() =>
+  import("@/components/attachment-workbench/draft-preview").then((module) => ({
+    default: module.DraftAttachmentPreview,
+  })),
+)
+
+const DigitalTwinComposer = lazy(() =>
+  import("../digital-twin/composer").then((module) => ({ default: module.DigitalTwinComposer })),
+)
+const DigitalTwinPredictionButton = lazy(() =>
+  import("../digital-twin/composer").then((module) => ({ default: module.PredictionButton })),
+)
+
+export function createPromptInputController(props: PromptInputProps) {
+  const sdk = useSDK()
+  const { capabilities } = useGlobalSDK()
+  const workflowDialog = useDialog()
+  const navigate = useNavigate()
+  let workspaceRecoveryDialogID: string | undefined
+  onCleanup(() => {
+    if (workspaceRecoveryDialogID) workflowDialog.close(workspaceRecoveryDialogID)
+  })
+  const confirm = useConfirm()
+  const globalSync = useGlobalSync()
+  const fullAccessAck = useFullAccessAcknowledgement()
+  const sync = useSync()
+  const view = useSessionDataView()
+  const input = useInput()
+  const local = useLocal()
+  const files = useFile()
+  const projectFiles = useProjectFiles()
+  const prompt = usePrompt()
+  const layout = useLayout()
+  const workbench = useWorkbenchPanels()
+  const params = useParams()
+  const command = useCommand()
+  const sessionTransition = useSessionTransition()
+  const { controller, i18n } = useLocale()
+  let editorRef!: HTMLDivElement
+  const [editorElement, setEditorElement] = createSignal<HTMLDivElement>()
+  let fileInputRef!: HTMLInputElement
+  let scrollRef: HTMLDivElement | undefined
+  let slashPopoverRef!: HTMLDivElement
+
+  const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
+  const availableLocalLoop = createMemo(() => {
+    const slot = localArmedLoop()
+    if (!capabilities.has("blueprint")) return null
+    return slot?.type === "loop" && !blueprintLoopFeatureAvailable(slot, capabilities.has) ? null : slot
+  })
+  const [blueprintLoading, setBlueprintLoading] = createSignal(false)
+  const [newSessionSubmitPending, setNewSessionSubmitPending] = createSignal(false)
+  const [abortStopping, setAbortStopping] = createSignal(false)
+  const [store, setStore] = createStore<PromptInputStore>({
+    popover: null,
+    historyIndex: -1,
+    savedPrompt: null,
+    dragging: false,
+    mode: "normal",
+    applyingHistory: false,
+    switchingProfile: false,
+  })
+  const idle = { type: "idle" as const }
+  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
+  const sendShortcut = createMemo(() => input.sendShortcut())
+  const presentation = new ComposerPresentation()
+  const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const isReadOnly = () => !!props.readOnly || !!info()?.transfer
+  const blueprintBinding = createMemo(() => {
+    const binding = info()?.blueprint
+    const source = binding?.source ?? (info()?.workflow?.kind === "lattice" ? "lattice" : undefined)
+    return binding?.loopID && blueprintLoopFeatureAvailable({ source }, capabilities.has) ? binding : undefined
+  })
+  const activeWorkflow = createMemo(() => {
+    const workflow = params.id ? info()?.workflow : undefined
+    return workflow && runtimeFeatureAvailable("workflow", workflow.kind, capabilities.has) ? workflow : undefined
+  })
+  const backendLightLoopActive = createMemo(() =>
+    resolveLightLoopActivity({
+      workflow: activeWorkflow(),
+      entry: params.id ? layout.nav.navEntryForSession(sdk.scopeKey, params.id) : undefined,
+    }),
+  )
+  const status = createMemo(() => view().statusFor(params.id ?? "") ?? idle)
+  // Explicit state discrimination replaces the folded `type !== "idle"` test:
+  // a paused session is stopped, so it must offer Continue rather than a stop
+  // control, and no surface may infer "running" from "not idle".
+  const activity = createMemo(() => classifySessionActivity({ status: status() }))
+  const working = createMemo(() => isWorkingStatus(status()))
+  const [pendingPlan, setPendingPlan] = createSignal(false)
+  const [pendingLattice, setPendingLattice] = createSignal<{
+    mode: "auto" | "collaborative"
+    maxModelCalls: number
+  } | null>(null)
+  const [pendingLightLoop, setPendingLightLoop] = createSignal(false)
+  const [pendingBoss, setPendingBoss] = createSignal(false)
+  const storedLightLoop = createMemo(() =>
+    params.id ? backendLightLoopActive() || pendingLightLoop() : pendingLightLoop(),
+  )
+  const lightLoopInstructions = createMemo(() => {
+    const workflow = activeWorkflow()
+    return backendLightLoopActive() && workflow?.kind === "lightloop" ? workflow.instructions : undefined
+  })
+  const bossActive = createMemo(
+    () => capabilities.has("boss") && (params.id ? activeWorkflow()?.kind === "boss" : !!pendingBoss()),
+  )
+  // Only the root boss may exit Boss Mode; opening an idle worker must not
+  // offer the workflow chip's "exit" action (that would orphan the subtree).
+  const bossRootActive = createMemo(() => {
+    if (!capabilities.has("boss")) return false
+    if (!params.id) return !!pendingBoss()
+    const workflow = activeWorkflow()
+    return workflow?.kind === "boss" && workflow.role === "boss"
+  })
+  const sessionScopeID = createMemo(() => info()?.scope.id)
+  const blueprintLoopRequest = (loopID: string, scopeID = sessionScopeID()) => ({ id: loopID, scopeID })
+
+  createEffect(
+    on(
+      () => params.id,
+      (id) => {
+        if (id) {
+          setPendingPlan(false)
+          setPendingLattice(null)
+          setPendingLightLoop(false)
+          setPendingBoss(false)
+        }
+      },
+    ),
+  )
+
+  const loopOwner = createMemo(
+    () => (params.id && sessionScopeID() ? { sessionID: params.id, scopeID: sessionScopeID()! } : undefined),
+    undefined,
+    { equals: (a, b) => a?.sessionID === b?.sessionID && a?.scopeID === b?.scopeID },
+  )
+  const loopStatus = createLoopStatusResource({
+    client: sdk.client,
+    owner: loopOwner,
+    loopID: () => blueprintBinding()?.loopID,
+    reconnect: globalSync.reconnectVersion,
+    selection: capabilities.current,
+    hasFeature: capabilities.has,
+    getBlueprint: async (id, scopeID, signal) =>
+      (await sdk.client.blueprint.loop.get({ id, scopeID }, { signal })).data,
+  })
+  const sessionLoop = loopStatus.blueprint
+  createEffect(
+    on(
+      capabilities.current,
+      () => {
+        if (untrack(localArmedLoop)?.type === "loop") setLocalArmedLoop(null)
+      },
+      { defer: true },
+    ),
+  )
+
+  const abortSession = async (sessionID = params.id) => {
+    if (!sessionID) return
+    const result = await sdk.client.session.abort({ sessionID })
+    if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
+  }
+
+  /** Resume a paused session from the breakpoint the interruption left behind. */
+  const continueSession = async (sessionID = params.id) => {
+    if (!sessionID) return
+    await requestSessionContinue({
+      client: sdk.client,
+      sessionID,
+      requestID: generateUUID(),
+      pausedSince: info()?.paused?.since,
+      unavailableMessage: i18n._(PI.continueUnavailable),
+    })
+  }
+
+  /** The destructive gesture: terminalize the interrupted turn and cancel any
+   *  workflow bound to the session. The route is idempotent, so a repeat reports
+   *  what it changed rather than failing. */
+  const abandonSession = async (sessionID = params.id) => {
+    if (!sessionID) return
+    const result = await sdk.client.session.abandon({ sessionID })
+    if (result.error || !result.data) throw new Error(blueprintRequestErrorMessage(result.error))
+  }
+
+  /** The BlueprintLoop actually bound to this session, or undefined when there
+   *  is none or it already reached a terminal state — cancelling a finished loop
+   *  is not what "stop" means, and the store rejects that transition. */
+  const boundLoopID = createMemo(
+    () =>
+      resolveBlueprintLoopState({
+        loop: sessionLoop(),
+        activeLoopID: params.id ? blueprintBinding()?.loopID : undefined,
+      }).activeLoopID,
+  )
+  const blueprintModeLocked = createMemo(() => !!availableLocalLoop() || !!boundLoopID())
+  const lightLoopActive = createMemo(
+    () => capabilities.has("light-loop") && !blueprintModeLocked() && storedLightLoop(),
+  )
+  const storedPlan = createMemo(
+    () => capabilities.has("blueprint") && (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()),
+  )
+  const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
+
+  const abortController = createAbortRequestController({
+    request: () => abortSession(params.id),
+    setPending: setAbortStopping,
+  })
+  const reportControlError = (error: unknown) => {
+    const feedback = promptControlError(error)
+    showToast({
+      type: "error",
+      title: feedback.kind === "unavailable" ? i18n._(PI.continueUnavailable) : i18n._(PI.controlFailed),
+      description: feedback.description,
+    })
+  }
+  const abort = () => {
+    void abortController.run().catch(reportControlError)
+  }
+  const [continuePending, setContinuePending] = createSignal(false)
+  const continueController = createAbortRequestController({
+    request: () => continueSession(),
+    setPending: setContinuePending,
+  })
+  const [abandonPending, setAbandonPending] = createSignal(false)
+  const [predictionApi, setPredictionApi] = createSignal<PredictionControlApi>()
+  const abandonController = createAbortRequestController({
+    setPending: setAbandonPending,
+    request: async () => {
+      const selection = capabilities.current()
+      const sessionID = params.id
+      const slot = availableLocalLoop()
+      const boundID = boundLoopID()
+      await abandonSession(sessionID)
+      if (capabilities.current() !== selection) return
+      if (slot?.type === "loop" && slot.loopID !== boundID && blueprintLoopFeatureAvailable(slot, capabilities.has)) {
+        const result = await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(slot.loopID))
+        if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
+      }
+      if (params.id !== sessionID) return
+      if (localArmedLoop() === slot) setLocalArmedLoop(null)
+      setPendingLattice(null)
+      setPendingLightLoop(false)
+      showToast({ type: "info", title: i18n._(PI.abandonDone) })
+    },
+  })
+
+  const unsubBlueprintLoopUpdated = sdk.event.on("blueprint_loop.updated", (event) => {
+    loopStatus.update(event.properties.loop)
+  })
+  onCleanup(unsubBlueprintLoopUpdated)
+
+  const [abandonPress, setAbandonPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
+  const [abandonProgress, setAbandonProgress] = createSignal(0)
+  let abandonGestureConsumed = false
+  let abandonFrame: number | undefined
+  let abandonOrigin: { x: number; y: number } | undefined
+
+  /** The destructive gesture on the single composer control: terminalize the
+   *  interrupted turn and cancel any workflow bound to the session. There is no
+   *  confirmation dialog — the ring is the confirmation — so the press must not
+   *  fire during a drag or a scroll. */
+  const startAbandonPress = (event: PointerEvent) => {
+    abandonGestureConsumed = false
+    if (event.button !== 0 || abandonPress() || controlDisabled() || !canAbandon()) return
+    abandonOrigin = { x: event.clientX, y: event.clientY }
+    const owningSession = sessionKey()
+    const startedAt = performance.now()
+    const tick = (now: number) => {
+      if (now - startedAt >= 250) {
+        abandonGestureConsumed = true
+        setAbandonProgress(Math.min(1, (now - startedAt) / ABANDON_HOLD_MS))
+      }
+      abandonFrame = requestAnimationFrame(tick)
+    }
+    setAbandonProgress(0)
+    abandonFrame = requestAnimationFrame(tick)
+    setAbandonPress(
+      setTimeout(async () => {
+        setAbandonPress(null)
+        if (abandonFrame !== undefined) cancelAnimationFrame(abandonFrame)
+        abandonFrame = undefined
+        if (sessionKey() !== owningSession || !canAbandon()) return
+        abandonGestureConsumed = true
+        setAbandonProgress(1)
+        try {
+          await abandonController.run()
+        } catch (error) {
+          showToast({
+            type: "error",
+            title: i18n._(PI.abandonFailed),
+            description: blueprintRequestErrorMessage(error),
+          })
+        } finally {
+          setAbandonProgress(0)
+        }
+      }, ABANDON_HOLD_MS),
+    )
+  }
+
+  /** Any pointer travel beyond a few pixels is a drag or a scroll, not a hold. */
+  const trackAbandonPress = (event: PointerEvent) => {
+    if (!abandonOrigin || !abandonPress()) return
+    const travel = Math.hypot(event.clientX - abandonOrigin.x, event.clientY - abandonOrigin.y)
+    if (travel > ABANDON_HOLD_TOLERANCE_PX) {
+      abandonGestureConsumed = true
+      cancelLongPress()
+    }
+  }
+
+  const cancelLongPress = () => {
+    const timer = abandonPress()
+    if (timer) {
+      clearTimeout(timer)
+      setAbandonPress(null)
+    }
+    abandonOrigin = undefined
+    if (abandonFrame !== undefined) {
+      cancelAnimationFrame(abandonFrame)
+      abandonFrame = undefined
+    }
+    setAbandonProgress(0)
+  }
+  onCleanup(cancelLongPress)
+
+  const displayedBlueprintLoop = createMemo<BlueprintSlotDisplay | null>(() => {
+    if (!capabilities.has("blueprint")) return null
+    return resolveBlueprintSlotDisplay({
+      localSlot: availableLocalLoop(),
+      sessionLoop: sessionLoop(),
+      activeLoopID: params.id ? blueprintBinding()?.loopID : undefined,
+      hasFeature: capabilities.has,
+    })
+  })
+  const loopDisplay = createMemo(() =>
+    resolveLoopDisplay({
+      blueprint: sessionLoop(),
+      blueprintBinding: blueprintBinding(),
+      blueprintUnavailable: loopStatus.blueprintUnavailable(),
+      workflow: activeWorkflow(),
+      status: status(),
+    }),
+  )
+  const openLoopNote = () => {
+    const value = loopDisplay()
+    if (value?.noteID)
+      void workbench.openPanel("notes", {
+        reuseExisting: true,
+        init: { resourceId: value.noteID, source: sdk.scopeKey, title: value.title },
+      })
+  }
+  const [loopAction, setLoopAction] = createSignal<{ owner: string }>()
+  const cancelDisplayedLoop = async () => {
+    const owner = sessionKey(),
+      value = loopDisplay()
+    if (!value || value.terminal || loopAction()?.owner === owner) return
+    const action = { owner },
+      sessionID = params.id,
+      scopeID = sessionScopeID(),
+      loopID = boundLoopID(),
+      slot = availableLocalLoop()
+    setLoopAction(action)
+    try {
+      if (value.kind === "lightloop" && activeWorkflow()?.kind === "lightloop" && sessionID)
+        await sdk.client.workflow.session.cancelLightloop({ id: sessionID, scopeID }, { throwOnError: true })
+      else if (value.kind === "blueprint" && loopID) await abandonSession(sessionID)
+      if (sessionKey() !== owner) return
+      if (slot?.type === "loop" && slot.loopID === loopID && localArmedLoop() === slot) setLocalArmedLoop(null)
+    } catch (error) {
+      if (sessionKey() === owner) reportControlError(error)
+    } finally {
+      if (loopAction() === action) setLoopAction(undefined)
+    }
+  }
+  const [loopDetails, setLoopDetails] = createSignal<{ id: string; owner: string; loopID?: string }>()
+  createEffect(() => {
+    const details = loopDetails()
+    if (details && (!loopDisplay() || sessionKey() !== details.owner || boundLoopID() !== details.loopID)) {
+      workflowDialog.close(details.id)
+    }
+  })
+  onCleanup(() => {
+    const details = untrack(loopDetails)
+    if (details) workflowDialog.close(details.id)
+  })
+  const openLoopStatus = () => {
+    const owner = sessionKey()
+    const id = workflowDialog.show(
+      () => (
+        <LoopStatusDialog
+          value={() => (sessionKey() === owner ? loopDisplay() : undefined)}
+          onReviewer={() => {
+            const reviewer = loopDisplay()?.reviewerSessionID
+            if (sessionKey() === owner && reviewer) {
+              if (id) workflowDialog.close(id)
+              navigate(`/${params.dir}/session/${reviewer}`)
+            }
+          }}
+        />
+      ),
+      () => setLoopDetails(undefined),
+    )
+    if (id) setLoopDetails({ id, owner, loopID: boundLoopID() })
+  }
+  const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | "boss" | "extension" | undefined>(() => {
+    const workflow = activeWorkflow()?.kind
+    if (workflow) return workflow
+    if (capabilities.has("blueprint") && pendingPlan()) return "plan"
+    if (capabilities.has("light-loop") && pendingLightLoop()) return "lightloop"
+    if (capabilities.has("lattice") && pendingLattice()) return "lattice"
+    if (capabilities.has("boss") && pendingBoss()) return "boss"
+  })
+
+  const promptText = createMemo(() => inlineText(prompt.current()))
+  const sessionTransitionPending = createMemo(() => props.sessionTransitionPending === true)
+  const submitPending = createMemo(() => newSessionSubmitPending() || sessionTransitionPending())
+  const pendingUploads = createPendingAttachmentTracker()
+  onCleanup(() => pendingUploads.clear())
+  const attachmentsUploading = createMemo(() => pendingUploads.blocking())
+  const attachmentsFailed = createMemo(() => pendingUploads.pending().some((entry) => entry.status === "failed"))
+  const canSubmit = createMemo(() => {
+    if (isReadOnly() || props.locationPending || submitPending()) return false
+    const intent = resolvePromptSubmitIntent({
+      text: promptText(),
+      working: working(),
+      hasBlueprintSlot: !!availableLocalLoop(),
+    })
+    if (intent === "blocked") return false
+    if (attachmentsUploading()) return false
+    return shouldAllowPromptSubmit({
+      intent,
+      variantReady: local.model.variant.ready(),
+      requiresVariant: store.mode === "normal" && !availableLocalLoop(),
+    })
+  })
+  const hasDraft = createMemo(() => promptText().trim().length > 0)
+  const submitStopsSession = createMemo(() => working() && !hasDraft())
+  /** The one control's meaning. Every branch derives from the explicit session
+   *  activity, so a paused session can never render a stop control. */
+  const controlState = createMemo(() =>
+    resolvePromptControlState({
+      hasDraft: hasDraft(),
+      activity: activity(),
+      hasArmedWorkflow: !!displayedBlueprintLoop() && !!availableLocalLoop(),
+    }),
+  )
+  const canAbandon = createMemo(() =>
+    canLongPressAbandon({
+      hasDraft: hasDraft(),
+      activity: activity(),
+      hasBoundWorkflow:
+        !!boundLoopID() ||
+        !!availableLocalLoop() ||
+        (capabilities.has("light-loop") && backendLightLoopActive()) ||
+        activeWorkflow()?.kind === "lattice" ||
+        (capabilities.has("lattice") && !!pendingLattice()) ||
+        (capabilities.has("light-loop") && pendingLightLoop()),
+    }),
+  )
+  const controlDisabled = createMemo(() => {
+    if (isReadOnly() || abortStopping() || submitPending() || abandonPending() || (continuePending() && !working()))
+      return true
+    if (controlState() === "pause" || controlState() === "continue") return false
+    return !canSubmit()
+  })
+  const controlLabel = createMemo(() => {
+    if (abandonPending()) return i18n._(PI.abandoning)
+    if (continuePending() && !working()) return i18n._(PI.startingSession)
+    switch (controlState()) {
+      case "pause":
+        return i18n._(PI.pauseControl)
+      case "continue":
+        return i18n._(PI.continueControl)
+      default:
+        if (attachmentsFailed())
+          return i18n._({ id: "prompt.attachments.resolveFailed", message: "Review failed attachments" })
+        if (attachmentsUploading()) return i18n._(PI.submitWaitUploadsTitle)
+        if (activity() === "paused" && hasDraft()) return i18n._(PI.sendAndContinue)
+        if (working() && hasDraft()) return i18n._(PI.queueMessage)
+        return i18n._(PI.sendMessage)
+    }
+  })
+  const controlIcon = createMemo<IconName>(() => {
+    switch (controlState()) {
+      case "pause":
+        return getSemanticIcon("session.pause")
+      case "continue":
+        return getSemanticIcon("session.continue")
+      default:
+        return getSemanticIcon("prompt.submitArrow")
+    }
+  })
+  const controlHint = createMemo(() => {
+    switch (controlState()) {
+      case "pause":
+        return i18n._(PI.pauseControlHint)
+      case "continue":
+        return i18n._(PI.continueControlHint)
+      case "disabled":
+        return i18n._(PI.disabledControlHint)
+      default:
+        return activity() === "paused" ? i18n._(PI.steerHint) : undefined
+    }
+  })
+  const recoveryHintID = createUniqueId()
+  const controlTitle = () =>
+    abortStopping() ? i18n._(PI.stopping) : submitPending() ? i18n._(PI.startingSession) : controlLabel()
+  /** Pause and Continue are not submits, so they intercept the click; Send lets
+   *  the form's submit path run unchanged. */
+  const handleControlClick = (event: MouseEvent) => {
+    if (abandonGestureConsumed || abandonPending()) {
+      abandonGestureConsumed = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    if (controlState() === "pause") {
+      event.preventDefault()
+      abort()
+      return
+    }
+    if (controlState() === "continue") {
+      event.preventDefault()
+      void continueController.run().catch(reportControlError)
+    }
+  }
+
+  command.register(() => [
+    {
+      id: "session.abandon",
+      title: i18n._(PI.abandonExecution),
+      description: i18n._(PI.abandonDescription),
+      disabled: isReadOnly() || !canAbandon() || abandonPending(),
+      onSelect: () => {
+        const owningSession = sessionKey()
+        confirm.show({
+          title: PI.abandonExecution,
+          description: PI.abandonDescription,
+          confirmLabel: PI.abandonConfirm,
+          cancelLabel: PI.abandonBack,
+          tone: "danger",
+          onConfirm: async () => {
+            if (sessionKey() !== owningSession) return
+            await abandonController.run()
+          },
+        })
+      },
+    },
+  ])
+
+  createEffect(
+    on(
+      () => sessionKey(),
+      () => {
+        cancelLongPress()
+        abandonGestureConsumed = false
+        setLocalArmedLoop(null)
+        pendingUploads.clear()
+      },
+      { defer: true },
+    ),
+  )
+
+  const cancelArmedLoop = async () => {
+    const slot = availableLocalLoop()
+    if (!slot) return
+    setBlueprintLoading(true)
+    try {
+      if (slot.type === "loop") await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(slot.loopID))
+    } catch {
+      // If cancellation fails, still clear the slot locally — the loop is orphaned.
+    } finally {
+      setBlueprintLoading(false)
+      setLocalArmedLoop(null)
+    }
+  }
+  const scrollCursorIntoView = () => {
+    const container = scrollRef
+    const selection = window.getSelection()
+    if (!container || !selection || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    if (!editorRef?.contains(range.startContainer)) return
+
+    const rect = range.getBoundingClientRect()
+    if (!rect.height) return
+
+    const containerRect = container.getBoundingClientRect()
+    const top = rect.top - containerRect.top + container.scrollTop
+    const bottom = rect.bottom - containerRect.top + container.scrollTop
+    const padding = 12
+
+    if (top < container.scrollTop + padding) {
+      container.scrollTop = Math.max(0, top - padding)
+      return
+    }
+
+    if (bottom > container.scrollTop + container.clientHeight - padding) {
+      container.scrollTop = bottom - container.clientHeight + padding
+    }
+  }
+
+  const queueScroll = () => {
+    requestAnimationFrame(scrollCursorIntoView)
+  }
+
+  const setPlan = async (next: boolean, title?: string) => {
+    if (!capabilities.has("blueprint")) return
+    if (!params.id) {
+      setPendingPlan(next)
+      if (next) {
+        setPendingLattice(null)
+        setPendingLightLoop(false)
+      }
+      return true
+    }
+    try {
+      await sdk.client.workflow.session.set({
+        id: params.id,
+        workflowSetInput: { kind: next ? "plan" : "none" },
+      })
+      return true
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: title ?? i18n._(PI.submitFailedTogglePlan),
+        description: err instanceof Error ? err.message : i18n._(PI.blueprintUnknownError),
+      })
+      return false
+    }
+  }
+
+  const togglePlan = async () => {
+    if (blueprintModeLocked() || latticeActive() || lightLoopActive() || bossActive()) return
+    await setPlan(!storedPlan())
+  }
+
+  const equipPlanBlueprintOffer = async () => {
+    if (!capabilities.has("blueprint")) return
+    const selection = capabilities.current()
+    const sessionID = params.id
+    const offer = sessionID ? untrack(() => view().planBlueprintOfferFor(sessionID)?.offer) : undefined
+    if (!offer || !sessionID) return
+    if (working()) {
+      showToast({
+        type: "warning",
+        title: i18n._(PI.sessionRunning),
+        description: i18n._(PI.blueprintWaitResponse),
+      })
+      return
+    }
+    if (blueprintModeLocked()) {
+      showToast({
+        type: "warning",
+        title: i18n._(PI.blueprintSlotOccupied),
+        description: i18n._(PI.blueprintUnequipFirst),
+      })
+      return
+    }
+
+    try {
+      await sdk.client.workflow.session.set({
+        id: sessionID,
+        workflowSetInput: { kind: "none" },
+      })
+      if (capabilities.current() !== selection || params.id !== sessionID) return
+      setLocalArmedLoop({
+        type: "pending",
+        noteID: offer.noteID,
+        title: offer.title,
+        runMode: "current",
+      })
+      sync.planBlueprintOffer.equip(sessionID, offer.key)
+      showToast({
+        type: "info",
+        title: i18n._(PI.blueprintEquipped),
+        description: i18n._(PI.blueprintEquippedDesc),
+      })
+    } catch (err) {
+      if (capabilities.current() !== selection || params.id !== sessionID) return
+      showToast({
+        type: "error",
+        title: i18n._(PI.blueprintEquipFailed),
+        description: err instanceof Error ? err.message : i18n._(PI.genericRequestFailed),
+      })
+    }
+  }
+
+  // Lattice is active when the current session already has a run, or — on the
+  // new-session composer, mirroring Plan — when a config is armed for the
+  // first message. The armed config is applied on submit once the session exists.
+  const latticeActive = createMemo(
+    () => capabilities.has("lattice") && (params.id ? activeWorkflow()?.kind === "lattice" : !!pendingLattice()),
+  )
+  let openedLatticeSession: string | undefined
+
+  createEffect(() => {
+    const sessionID = params.id
+    if (!sessionID || activeWorkflow()?.kind !== "lattice" || openedLatticeSession === sessionID) return
+    openedLatticeSession = sessionID
+    void workbench.openPanel("lattice", { reuseExisting: true })
+  })
+
+  const enableLattice = async (config: LatticeEnableConfig) => {
+    if (!capabilities.has("lattice")) return
+    if (!params.id) {
+      // Defer: arm the config; submit applies it after the session is created.
+      setPendingLattice({ mode: config.mode, maxModelCalls: config.maxModelCalls })
+      setPendingPlan(false)
+      setPendingLightLoop(false)
+      return
+    }
+    await sdk.client.workflow.session.set({
+      id: params.id,
+      workflowSetInput: {
+        kind: "lattice",
+        mode: config.mode,
+        maxModelCalls: config.maxModelCalls,
+        goal: config.goal,
+      },
+    })
+    await workbench.openPanel("lattice", { reuseExisting: true })
+  }
+
+  const cancelLattice = async () => {
+    if (!capabilities.has("lattice")) return
+    if (!params.id) {
+      setPendingLattice(null)
+      return
+    }
+
+    try {
+      await sdk.client.workflow.session.set({
+        id: params.id,
+        workflowSetInput: { kind: "none" },
+      })
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: i18n._(PI.latticeCancelFailed),
+        description: err instanceof Error ? err.message : i18n._(PI.genericRequestFailed),
+      })
+    }
+  }
+
+  const openLatticeDialog = (event?: Event) => {
+    if (!capabilities.has("lattice")) return
+    if (blueprintModeLocked() || planActive() || lightLoopActive() || bossActive()) {
+      event?.preventDefault()
+      return
+    }
+    workflowDialog.show(() => <LatticeConfigDialog sdk={sdk} sessionID={params.id} onEnable={enableLattice} />)
+  }
+
+  const selectLatticeFromMenu = (event?: Event) => {
+    const state = resolveLatticeWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      latticeActive: latticeActive(),
+      planActive: planActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+
+    if (state.action === "cancel") {
+      void cancelLattice()
+      return
+    }
+
+    if (state.action === "open") {
+      openLatticeDialog(event)
+      return
+    }
+
+    event?.preventDefault()
+  }
+
+  const selectPlanFromMenu = (event?: Event) => {
+    if (blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive() || bossActive()) {
+      event?.preventDefault()
+      return
+    }
+    void togglePlan()
+  }
+
+  const setLightLoop = async (active: boolean) => {
+    if (!capabilities.has("light-loop")) return
+    if (!params.id || !backendLightLoopActive()) {
+      setPendingLightLoop(active)
+      if (active) {
+        setPendingPlan(false)
+        setPendingLattice(null)
+      }
+      return true
+    }
+    try {
+      await sdk.client.workflow.session.cancelLightloop({ id: params.id })
+      setPendingLightLoop(false)
+      return true
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: i18n._(PI.lightLoopToggleFailed),
+        description: err instanceof Error ? err.message : i18n._(PI.blueprintUnknownError),
+      })
+      return false
+    }
+  }
+
+  const selectLightLoopFromMenu = (event?: Event) => {
+    if (blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive() || bossActive()) {
+      event?.preventDefault()
+      return
+    }
+    void setLightLoop(true)
+  }
+
+  const setBoss = async (active: boolean, title?: string) => {
+    if (!capabilities.has("boss")) return
+    if (!params.id) {
+      setPendingBoss(active)
+      if (active) {
+        setPendingPlan(false)
+        setPendingLattice(null)
+        setPendingLightLoop(false)
+      }
+      return true
+    }
+    try {
+      await sdk.client.workflow.session.set({
+        id: params.id,
+        workflowSetInput: { kind: active ? "boss" : "none" },
+      })
+      if (active) await workbench.openPanel("boss", { reuseExisting: true })
+      return true
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: title ?? i18n._(PI.submitFailedEnableBoss),
+        description: err instanceof Error ? err.message : i18n._(PI.blueprintUnknownError),
+      })
+      return false
+    }
+  }
+
+  const selectBossFromMenu = (event?: Event) => {
+    const state = resolveBossWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      bossActive: bossActive(),
+      planActive: planActive(),
+      latticeActive: latticeActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+    if (state.action === "none") {
+      event?.preventDefault()
+      return
+    }
+    void setBoss(state.action === "enable")
+  }
+
+  const openLightLoopDialog = () => {
+    if (!capabilities.has("light-loop")) return
+    const workflow = activeWorkflow(),
+      owner = sessionKey(),
+      sessionID = params.id,
+      scopeID = sessionScopeID()
+    if (!sessionID || workflow?.kind !== "lightloop") return
+    const active = () => sessionKey() === owner && capabilities.has("light-loop") && backendLightLoopActive()
+    workflowDialog.show(() => (
+      <EditLightLoopDialog
+        instructions={workflow.instructions}
+        active={active}
+        working={working}
+        onSave={async (instructions) => {
+          if (!active()) throw new Error(i18n._(PI.lightLoopSessionUnavailable))
+          await sdk.client.workflow.session.updateLightloop(
+            {
+              id: sessionID,
+              scopeID,
+              lightloopUpdateInput: { instructions },
+            },
+            { throwOnError: true },
+          )
+        }}
+      />
+    ))
+  }
+
+  const sessionHasMessages = createMemo(() => {
+    if (!params.id) return false
+    return view().messagesFor(params.id).length > 0
+  })
+
+  const sessionMeta = useSessionMeta(info, sessionHasMessages)
+  const modelLocked = createMemo(() => sessionHasMessages() && local.agent.current()?.external?.adapter === "codex")
+
+  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
+    controller.activeLocale()
+    const agentSection: PromptAddMenuSection = {
+      id: "agent",
+      label: i18n._(PI.toolbarAgent),
+      items: local.agent
+        .list()
+        .filter((a) => !a.hidden)
+        .map((agent) => {
+          const visual = getAgentVisual(agent)
+          const disabled = sessionHasMessages() && !!agent.external
+          return {
+            id: `agent-${agent.name}`,
+            label: translateDescriptor(visual.label, i18n),
+            icon: getSemanticIcon("agents.main"),
+            selected: local.agent.current()?.name === agent.name,
+            disabled,
+            tooltip: disabled ? i18n._(PI.externalAgentBlocked) : undefined,
+            onSelect: () => {
+              if (!disabled) local.agent.set(agent.name)
+            },
+          }
+        }),
+    }
+    const latticeMenuState = resolveLatticeWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      latticeActive: latticeActive(),
+      planActive: planActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+    const bossMenuState = resolveBossWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      bossActive: bossActive(),
+      planActive: planActive(),
+      latticeActive: latticeActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+
+    return [
+      {
+        id: "context",
+        label: i18n._(PI.toolbarContext),
+        items: [
+          {
+            id: "files",
+            label: i18n._(PI.toolbarAddFiles),
+            description: i18n._(PI.toolbarAttachFiles),
+            icon: getSemanticIcon("prompt.attach"),
+            onSelect: () => fileInputRef.click(),
+          },
+        ],
+      },
+      ...(props.hideAgentSelector || layout.isDesktop() ? [] : [agentSection]),
+      {
+        id: "workflow",
+        label: i18n._(PI.toolbarWorkflow),
+        items: [
+          {
+            id: "light-loop",
+            label: i18n._(PI.workflowLightLoop),
+            description: lightLoopActive()
+              ? (lightLoopInstructions() ?? i18n._(PI.lightLoopNextMsg))
+              : i18n._(PI.workflowLightLoopDesc),
+            icon: getSemanticIcon("prompt.lightLoop"),
+            selected: lightLoopActive(),
+            ariaDisabled: blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive() || bossActive(),
+            title: blueprintModeLocked()
+              ? i18n._(PI.workflowUnavailableBlueprint)
+              : lightLoopActive()
+                ? i18n._(PI.workflowUnavailableAlready)
+                : planActive()
+                  ? i18n._(PI.workflowUnavailablePlan)
+                  : latticeActive()
+                    ? i18n._(PI.workflowUnavailableLattice)
+                    : undefined,
+            iconClass: lightLoopActive()
+              ? "text-icon-base"
+              : blueprintModeLocked()
+                ? "text-icon-weak-base"
+                : "text-icon-base",
+            classList: {
+              "bg-workbench-selected-bg": lightLoopActive(),
+              "text-text-base": lightLoopActive(),
+              "opacity-60": blueprintModeLocked() || planActive() || latticeActive() || bossActive(),
+            },
+            onSelect: selectLightLoopFromMenu,
+          },
+          {
+            id: "plan",
+            label: i18n._(PI.workflowPlan),
+            description: planActive() ? i18n._(PI.workflowPlanDesc) : i18n._(PI.workflowPlanDescAlt),
+            icon: getSemanticIcon("prompt.plan"),
+            selected: planActive(),
+            ariaDisabled: blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive() || bossActive(),
+            title: blueprintModeLocked()
+              ? i18n._(PI.workflowPlanUnavailableBp)
+              : planActive()
+                ? i18n._(PI.workflowPlanUnavailableAlready)
+                : lightLoopActive()
+                  ? i18n._(PI.workflowPlanUnavailableLl)
+                  : latticeActive()
+                    ? i18n._(PI.workflowPlanUnavailableLattice)
+                    : undefined,
+            tooltip: blueprintModeLocked() ? i18n._(PI.workflowPlanUnavailableBp) : undefined,
+            iconClass: planActive()
+              ? "text-icon-base"
+              : blueprintModeLocked()
+                ? "text-icon-weak-base"
+                : "text-icon-base",
+            labelClass:
+              blueprintModeLocked() || latticeActive() || lightLoopActive() || bossActive()
+                ? "text-text-weak"
+                : undefined,
+            classList: {
+              "bg-workbench-selected-bg": planActive(),
+              "text-text-base": planActive(),
+              "opacity-60": blueprintModeLocked() || latticeActive() || lightLoopActive() || bossActive(),
+            },
+            onSelect: selectPlanFromMenu,
+          },
+          {
+            id: "lattice-mode",
+            label: i18n._(PI.workflowLattice),
+            description: translateDescriptor(latticeMenuState.description, i18n),
+            icon: getSemanticIcon("prompt.lattice"),
+            selected: latticeActive(),
+            ariaDisabled: latticeMenuState.ariaDisabled,
+            title: latticeMenuState.title ? translateDescriptor(latticeMenuState.title, i18n) : undefined,
+            iconClass: latticeActive()
+              ? "text-icon-base"
+              : blueprintModeLocked()
+                ? "text-icon-weak-base"
+                : "text-icon-base",
+            classList: {
+              "bg-workbench-selected-bg": latticeActive(),
+              "text-text-base": latticeActive(),
+              "opacity-60": latticeMenuState.ariaDisabled,
+            },
+            onSelect: selectLatticeFromMenu,
+          },
+          {
+            id: "boss-mode",
+            label: i18n._(PI.workflowBoss),
+            description: translateDescriptor(bossMenuState.description, i18n),
+            icon: getSemanticIcon("prompt.boss"),
+            selected: bossActive(),
+            ariaDisabled: bossMenuState.ariaDisabled,
+            title: bossMenuState.title ? translateDescriptor(bossMenuState.title, i18n) : undefined,
+            iconClass: bossActive()
+              ? "text-icon-base"
+              : blueprintModeLocked()
+                ? "text-icon-weak-base"
+                : "text-icon-base",
+            classList: {
+              "bg-workbench-selected-bg": bossActive(),
+              "text-text-base": bossActive(),
+              "opacity-60": bossMenuState.ariaDisabled,
+            },
+            onSelect: selectBossFromMenu,
+          },
+        ],
+      },
+      ...(!layout.isDesktop() && capabilities.has("digital-twin")
+        ? [
+            {
+              id: "prediction",
+              label: i18n._(PI.toolbarAssist),
+              items: [
+                {
+                  id: "predict-next",
+                  label: i18n._(twinCopy.predict),
+                  icon: getSemanticIcon("action.predict"),
+                  disabled: !predictionApi() || predictionApi()!.disabled(),
+                  onSelect: () => predictionApi()?.predict(),
+                },
+              ],
+            },
+          ]
+        : []),
+    ]
+      .map((section) =>
+        section.id === "workflow"
+          ? {
+              ...section,
+              items: section.items.filter((item) => {
+                const feature = {
+                  "light-loop": "light-loop",
+                  plan: "blueprint",
+                  "lattice-mode": "lattice",
+                  "boss-mode": "boss",
+                }[item.id]
+                return !!feature && capabilities.has(feature)
+              }),
+            }
+          : section,
+      )
+      .filter((section) => section.items.length > 0)
+  })
+
+  const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
+    if (params.id) return []
+
+    const workspaceSelection = props.newSessionWorkspaceSelection ?? { mode: "current" as const }
+    const worktreeSelected = workspaceSelection.mode === "create"
+    const canCreateWorktree = props.newSessionCanCreateWorktree ?? (!sdk.isHome && !!sdk.directory)
+    const mainLabel = isHomeScope(sdk.scopeKey) ? i18n._(PI.wsLabelHome) : i18n._(PI.wsLabelMainCheckout)
+    const localDescription = isHomeScope(sdk.scopeKey) ? i18n._(PI.wsDescGlobal) : i18n._(PI.wsDescCurrent)
+
+    return [
+      {
+        id: "workspace",
+        label: i18n._(PI.wsLabelWorkspace),
+        options: [
+          {
+            id: "workspace.local",
+            label: mainLabel,
+            description: localDescription,
+            icon: getSemanticIcon("workspace.main"),
+            selected: workspaceSelection.mode === "current",
+            onSelect: () => props.onNewSessionWorkspaceSelectionChange?.({ mode: "current" }),
+          },
+          {
+            id: "workspace.directory",
+            label:
+              workspaceSelection.mode === "workspace"
+                ? (sync.data.workspaces.find((record) => record.id === workspaceSelection.workspaceID)?.binding.path ??
+                  i18n._(workspaceCopy.title))
+                : workspaceSelection.mode === "none"
+                  ? i18n._(workspaceCopy.none)
+                  : i18n._(workspaceCopy.title),
+            description: i18n._(workspaceCopy.description),
+            icon: getSemanticIcon("workspace.main"),
+            selected: workspaceSelection.mode === "workspace" || workspaceSelection.mode === "none",
+            disabled: !props.onNewSessionWorkspaceSelectionChange,
+            onSelect: () =>
+              workflowDialog.show(() => (
+                <DialogWorkspace
+                  environmentProfile={props.newSessionEnvironmentProfile}
+                  environmentID={props.newSessionEnvironmentID}
+                  mode="select"
+                  mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+                  target={{
+                    kind: "draft",
+                    selection: workspaceSelection,
+                    onSelect: props.onNewSessionWorkspaceSelectionChange!,
+                  }}
+                />
+              )),
+          },
+          {
+            id: "workspace.worktree",
+            label: i18n._(PI.toolbarWorktree),
+            description: i18n._(PI.toolbarWorktreeDesc),
+            icon: getSemanticIcon("workspace.worktree"),
+            selected: worktreeSelected,
+            disabled: !canCreateWorktree,
+            tooltip: canCreateWorktree ? i18n._(PI.wsWorktreeTooltipCan) : i18n._(PI.wsWorktreeTooltipCannot),
+            onSelect: () =>
+              workflowDialog.show(() => (
+                <DialogIndependentCopy
+                  deferred
+                  source={props.newSessionCanonicalDirectory ?? sdk.directory ?? ""}
+                  onConfirm={(name) => props.onNewSessionWorkspaceSelectionChange?.({ mode: "create", name })}
+                />
+              )),
+          },
+          {
+            id: "workspace.existing",
+            label: i18n._(locationCopy.continueCopy),
+            icon: getSemanticIcon("workspace.worktree"),
+            disabled: !props.onNewSessionWorkspaceSelectionChange,
+            selected:
+              workspaceSelection.mode === "existing" ||
+              (workspaceSelection.mode === "workspace" &&
+                sync.data.workspaces.some(
+                  (item) => item.id === workspaceSelection.workspaceID && item.type === "git_worktree",
+                )),
+            onSelect: () =>
+              workflowDialog.show(() => (
+                <DialogWorkspace
+                  environmentProfile={props.newSessionEnvironmentProfile}
+                  environmentID={props.newSessionEnvironmentID}
+                  mode="select"
+                  copiesOnly
+                  mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+                  target={{
+                    kind: "draft",
+                    selection: workspaceSelection,
+                    onSelect: props.onNewSessionWorkspaceSelectionChange!,
+                  }}
+                />
+              )),
+          },
+        ].filter((option) => option.id !== "workspace.worktree" || canCreateWorktree),
+      },
+    ]
+  })
+
+  createEffect(
+    on(
+      () => [blueprintModeLocked(), storedPlan()] as const,
+      ([locked, active]) => {
+        if (!locked || !active) return
+        void setPlan(false, i18n._(PI.attachExitPlanFailed))
+      },
+    ),
+  )
+
+  const planBlueprintOfferState = createMemo(() =>
+    params.id
+      ? (view().planBlueprintOfferFor(params.id) ?? emptyPlanBlueprintOfferState)
+      : emptyPlanBlueprintOfferState,
+  )
+
+  const visiblePlanBlueprintOffer = createMemo(() => {
+    if (!capabilities.has("blueprint")) return null
+    if (
+      !shouldDisplayPlanBlueprintOffer({
+        state: planBlueprintOfferState(),
+        workflowKind: info()?.workflow?.kind,
+        sessionStatus: status(),
+        slotOccupied: blueprintModeLocked(),
+        currentScopeID: info()?.scope.id,
+      })
+    ) {
+      return null
+    }
+    return planBlueprintOfferState().offer
+  })
+
+  createEffect(() => {
+    const offer = visiblePlanBlueprintOffer()
+    if (!offer) {
+      props.onPriorityControlChange?.(undefined)
+      return
+    }
+
+    props.onPriorityControlChange?.(
+      <PlanBlueprintOfferControl
+        offer={offer}
+        onEquip={equipPlanBlueprintOffer}
+        onDismiss={() => params.id && sync.planBlueprintOffer.dismiss(params.id, offer.key)}
+        onMute={() => params.id && sync.planBlueprintOffer.mute(params.id)}
+      />,
+    )
+  })
+  onCleanup(() => props.onPriorityControlChange?.(undefined))
+
+  const selectedControlProfile = createMemo<ControlProfileId>(() => {
+    const configured = params.id
+      ? (info()?.controlProfile ?? sync.data.config.controlProfile)
+      : (input.controlProfile() ?? sync.data.config.controlProfile)
+    return permissionModeVisual(configured).id
+  })
+  const activePermissionMode = createMemo(() => permissionModeVisual(selectedControlProfile()))
+
+  async function updateControlProfile(profile: ControlProfileId, close?: () => void) {
+    if (store.switchingProfile) return
+
+    if (!(await fullAccessAck.ensure(profile, selectedControlProfile()))) return
+
+    if (!params.id) {
+      input.setControlProfile(profile)
+      close?.()
+      return
+    }
+    setStore("switchingProfile", true)
+    try {
+      await sdk.client.session.update({
+        sessionID: params.id,
+        controlProfile: profile,
+        ...(profile === "full_access" ? { resolvePendingPermissions: true } : {}),
+      })
+      close?.()
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: i18n._(PI.permModeUnchanged),
+        description: err instanceof Error ? err.message : i18n._(PI.permModeUpdateFailed),
+      })
+    } finally {
+      setStore("switchingProfile", false)
+    }
+  }
+  const uploadedAttachments = createMemo(
+    () => prompt.current().filter((part) => part.type === "attachment") as UploadedAttachmentPart[],
+  )
+  let draftPreviewId: string | undefined
+  onCleanup(() => {
+    if (draftPreviewId) workflowDialog.close(draftPreviewId)
+  })
+  const openDraftAttachment = (
+    file: import("@ericsanchezok/synergy-ui/attachment-card").AttachmentFile,
+    id: string,
+  ) => {
+    const owner = sessionKey()
+    const serverUrl = sdk.url
+    if (draftPreviewId) workflowDialog.close(draftPreviewId)
+    draftPreviewId = workflowDialog.push(
+      () => (
+        <Suspense>
+          <DraftAttachmentPreview
+            file={file}
+            serverUrl={serverUrl}
+            isValid={() =>
+              sessionKey() === owner &&
+              sdk.url === serverUrl &&
+              uploadedAttachments().some((part) => part.id === id && part.url === file.url)
+            }
+            onInvalid={() => {
+              if (draftPreviewId) workflowDialog.close(draftPreviewId)
+            }}
+          />
+        </Suspense>
+      ),
+      () => {
+        draftPreviewId = undefined
+      },
+    )
+  }
+  const noteAttachments = createMemo(
+    () => prompt.current().filter((part) => part.type === "note") as NoteAttachmentPart[],
+  )
+  const sessionAttachments = createMemo(
+    () => prompt.current().filter((part) => part.type === "session") as SessionAttachmentPart[],
+  )
+  const quoteAttachments = createMemo(
+    () => prompt.current().filter((part) => part.type === "quote") as QuoteAttachmentPart[],
+  )
+  const hasAttachments = createMemo(
+    () =>
+      uploadedAttachments().length > 0 ||
+      noteAttachments().length > 0 ||
+      sessionAttachments().length > 0 ||
+      quoteAttachments().length > 0,
+  )
+
+  const viewActive = useViewActivity()
+  onCleanup(
+    registerQuoteTarget({
+      // Retained session views stay mounted while hidden, so availability also
+      // follows the active view rather than registration order.
+      available: () => viewActive() && !isReadOnly() && prompt.ready(),
+      accept(input) {
+        const existing = quoteAttachments()
+        if (existing.some((part) => part.text === input.text && part.role === input.role)) return
+        prompt.set(
+          [
+            ...prompt.current(),
+            {
+              type: "quote",
+              id: createPromptPartID(),
+              text: input.text,
+              ...(input.role ? { role: input.role } : {}),
+            },
+          ],
+          prompt.cursor(),
+        )
+        queueScroll()
+      },
+    }),
+  )
+
+  const MAX_HISTORY = 100
+  const [history, setHistory] = persisted(
+    { ...Persist.global("prompt-history", ["prompt-history.v1"]), migrate: sanitizePromptHistory },
+    createStore<{
+      entries: PromptHistoryEntry[]
+    }>({
+      entries: [],
+    }),
+  )
+  const [shellHistory, setShellHistory] = persisted(
+    { ...Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]), migrate: sanitizePromptHistory },
+    createStore<{
+      entries: PromptHistoryEntry[]
+    }>({
+      entries: [],
+    }),
+  )
+
+  const clonePromptParts = (prompt: Prompt): Prompt => sanitizePrompt(prompt)
+
+  const promptLength = (prompt: Prompt) => inlineLength(prompt)
+
+  const applyHistoryPrompt = (entry: PromptHistoryEntry, position: "start" | "end") => {
+    const length = position === "start" ? 0 : promptLength(entry.prompt)
+    setStore("applyingHistory", true)
+    prompt.set(entry.prompt, length)
+    prompt.setAssistance(entry.assistance)
+    requestAnimationFrame(() => {
+      editorRef?.focus()
+      setCursorPosition(editorRef, length)
+      setStore("applyingHistory", false)
+      queueScroll()
+    })
+  }
+
+  const getCaretState = () => {
+    const selection = window.getSelection()
+    const textLength = promptLength(prompt.current())
+    if (!selection || selection.rangeCount === 0) {
+      return { collapsed: false, cursorPosition: 0, textLength }
+    }
+    const anchorNode = selection.anchorNode
+    if (!anchorNode || !editorRef?.contains(anchorNode)) {
+      return { collapsed: false, cursorPosition: 0, textLength }
+    }
+    return {
+      collapsed: selection.isCollapsed,
+      cursorPosition: getCursorPosition(editorRef),
+      textLength,
+    }
+  }
+
+  const isFocused = createFocusSignal(() => editorRef)
+
+  createEffect(() => {
+    params.id
+    editorElement()?.focus()
+  })
+
+  const [composing, setComposing] = createSignal(false)
+  const isImeComposing = (event: KeyboardEvent) => event.isComposing || composing() || event.keyCode === 229
+
+  createEffect(() => {
+    if (!isFocused()) setStore("popover", null)
+  })
+
+  const handleAtSelect = (option: AtOption | undefined) => {
+    if (!option) return
+    addPart({
+      type: "file",
+      path: option.path,
+      workspace: option.workspace,
+      content: "@" + option.path,
+      start: 0,
+      end: 0,
+    })
+  }
+
+  const atKey = (x: AtOption | undefined) => {
+    if (!x) return ""
+    return `file:${x.path}`
+  }
+
+  const {
+    flat: atFlat,
+    active: atActive,
+    onInput: atOnInput,
+    onKeyDown: atOnKeyDown,
+  } = useFilteredList<AtOption>({
+    items: async (query) => {
+      const results = await projectFiles.search(query)
+      return results.map(({ path, workspace }): AtOption => {
+        const absolute = workspace.path ? `${workspace.path.replace(/[\\/]$/, "")}/${path}` : path
+        return {
+          type: "file",
+          path: absolute,
+          display: absolute,
+          workspace: { id: workspace.id, generation: workspace.generation, root: workspace.path },
+        }
+      })
+    },
+    deferInitialLoad: true,
+    key: atKey,
+    filterKeys: ["display"],
+    onSelect: handleAtSelect,
+  })
+
+  const slashCommands = createMemo<SlashCommand[]>(() => {
+    const builtin = command.options
+      .filter((opt) => !opt.disabled && !opt.id.startsWith("suggested.") && opt.slash)
+      .map((opt) => ({
+        id: opt.id,
+        trigger: opt.slash!,
+        title: opt.title,
+        description: opt.description,
+        keybind: opt.keybind,
+        type: "builtin" as const,
+      }))
+
+    const custom = sync.data.command.map((cmd) => ({
+      id: `custom.${cmd.name}`,
+      trigger: cmd.name,
+      title: cmd.name,
+      description: cmd.description,
+      type: "custom" as const,
+      kind: cmd.kind,
+    }))
+
+    return [...custom, ...builtin]
+  })
+
+  const handleSlashSelect = (cmd: SlashCommand | undefined) => {
+    if (!cmd) return
+    setStore("popover", null)
+
+    if (cmd.type === "custom") {
+      const text = `/${cmd.trigger} `
+      editorRef.innerHTML = ""
+      editorRef.textContent = text
+      prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
+      requestAnimationFrame(() => {
+        editorRef?.focus()
+        const range = document.createRange()
+        const sel = window.getSelection()
+        range.selectNodeContents(editorRef)
+        range.collapse(false)
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+      })
+      return
+    }
+
+    editorRef.innerHTML = ""
+    prompt.set([{ type: "text", content: "", start: 0, end: 0 }], 0)
+    command.trigger(cmd.id, "slash")
+  }
+
+  const {
+    flat: slashFlat,
+    active: slashActive,
+    onInput: slashOnInput,
+    onKeyDown: slashOnKeyDown,
+    refetch: slashRefetch,
+  } = useFilteredList<SlashCommand>({
+    items: slashCommands,
+    key: (x) => x?.id,
+    filterKeys: ["trigger", "title", "description"],
+    onSelect: handleSlashSelect,
+  })
+
+  createEffect(
+    on(
+      () => sync.data.command,
+      () => slashRefetch(),
+      { defer: true },
+    ),
+  )
+
+  // Auto-scroll active command into view when navigating with keyboard
+  createEffect(() => {
+    const activeId = slashActive()
+    if (!activeId || !slashPopoverRef) return
+
+    requestAnimationFrame(() => {
+      const element = slashPopoverRef.querySelector(`[data-slash-id="${activeId}"]`)
+      element?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    })
+  })
+
+  let composerDocument!: ComposerDocumentController
+  const editor = usePromptEditor({
+    editor: editorElement,
+    uploadedAttachments,
+    noteAttachments,
+    sessionAttachments,
+    quoteAttachments,
+    store,
+    setStore,
+    atOnInput,
+    slashOnInput,
+    queueScroll,
+    onDocumentChange: () => composerDocument?.changed(),
+  })
+  const { addPart, handleInput } = editor
+  composerDocument = new ComposerDocumentController({
+    editable: () => !isReadOnly() && prompt.ready(),
+    read: () => ({
+      text: editor.documentText(),
+      selection: editor.documentSelection(),
+      sessionId: params.id,
+      mode: store.mode,
+    }),
+    applyEdits: editor.applyDocumentEdits,
+    isEditableRange: editor.isEditableRange,
+    assistance: { read: prompt.assistance, write: prompt.setAssistance },
+  })
+  const [composerVersion, setComposerVersion] = createSignal(0)
+  const unsubscribeComposer = composerDocument.subscribe(() => setComposerVersion((value) => value + 1))
+  onCleanup(() => {
+    unsubscribeComposer()
+    composerDocument.dispose()
+  })
+
+  const insertDictationText = async (text: string) => {
+    const apply = async () => {
+      const snapshot = composerDocument.current()
+      // The controller reports the live caret in text coordinates (file pills
+      // are excluded), so inserting there matches typing even in drafts that
+      // mix attachments and text. When the caret left the editor during the
+      // transcription, append to the end of the draft instead.
+      const selection = window.getSelection()
+      const caretInEditor =
+        selection !== null &&
+        selection.rangeCount > 0 &&
+        !!selection.anchorNode &&
+        editorRef.contains(selection.anchorNode)
+      const range = caretInEditor ? snapshot.selection : { start: snapshot.text.length, end: snapshot.text.length }
+      try {
+        await composerDocument.applyEdits({ revision: snapshot.revision, edits: [{ range, text }] })
+        return true
+      } catch {
+        return false
+      }
+    }
+    if (!(await apply())) {
+      // The document moved while transcribing (stale revision) — retry once
+      // against the fresh snapshot so dictation text is never lost silently.
+      if (!(await apply())) {
+        showToast({
+          type: "error",
+          title: i18n._(PI.voiceInsertFailedTitle),
+          description: i18n._(PI.voiceInsertFailedDescription),
+        })
+      }
+    }
+  }
+  const activeCompletion = () => {
+    composerVersion()
+    return composerDocument.completion()
+  }
+  const composerSubmitting = () => {
+    composerVersion()
+    return composerDocument.submitting()
+  }
+  const highlightNames = {
+    info: "synergy-composer-info",
+    warning: "synergy-composer-warning",
+    error: "synergy-composer-error",
+  }
+  createEffect(() => {
+    composerVersion()
+    const registry = (CSS as typeof CSS & { highlights?: Map<string, unknown> }).highlights
+    const HighlightConstructor = globalThis.Highlight
+    if (!registry || !HighlightConstructor) return
+    const decorations = composerDocument.decorations()
+    for (const severity of ["info", "warning", "error"] as const) {
+      const ranges = decorations
+        .filter((item) => item.severity === severity)
+        .map((item) => editor.documentRange(item.range))
+        .filter((range): range is Range => !!range)
+      if (ranges.length > 0) registry.set(highlightNames[severity], new HighlightConstructor(...ranges))
+      else registry.delete(highlightNames[severity])
+    }
+    onCleanup(() => {
+      for (const name of Object.values(highlightNames)) registry.delete(name)
+    })
+  })
+
+  createEffect(
+    on(
+      sessionKey,
+      () => {
+        composerDocument.abortSubmit(new DOMException("Composer navigation changed", "AbortError"))
+        composerDocument.changed()
+        if (!newSessionSubmitPending()) presentation.collapse()
+      },
+      { defer: true },
+    ),
+  )
+  createEffect(
+    on(
+      () => store.mode,
+      () => {
+        composerDocument.changed()
+        if (store.mode === "shell") presentation.collapse()
+      },
+      { defer: true },
+    ),
+  )
+
+  onMount(() => {
+    const onSelectionChange = () => {
+      const selection = window.getSelection()
+      if (!selection?.anchorNode || !editorRef?.contains(selection.anchorNode)) return
+      composerDocument.selectionChanged()
+    }
+    document.addEventListener("selectionchange", onSelectionChange)
+    onCleanup(() => document.removeEventListener("selectionchange", onSelectionChange))
+  })
+
+  const {
+    addAttachments,
+    retryAttachment,
+    removeAttachment,
+    handlePaste,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = usePromptAttachments({
+    editor: editorElement,
+    isFocused,
+    addPart,
+    noteAttachments,
+    sessionAttachments,
+    localArmedLoop: availableLocalLoop,
+    activeLoopID: boundLoopID,
+    working,
+    workflowKind: armedWorkflowKind,
+    clearPendingWorkflows: () => {
+      setPendingPlan(false)
+      setPendingLightLoop(false)
+      setPendingBoss(false)
+    },
+    setLocalArmedLoop,
+    setStore,
+    pendingUploads,
+  })
+
+  const addToHistory = (parts: Prompt, mode: "normal" | "shell") => {
+    const text = inlineText(parts).trim()
+    const hasAttachment = parts.some(
+      (part) => part.type === "attachment" || part.type === "note" || part.type === "session" || part.type === "quote",
+    )
+    if (!text && !hasAttachment) return
+
+    const entry = { prompt: clonePromptParts(parts), assistance: prompt.assistance() }
+    const currentHistory = mode === "shell" ? shellHistory : history
+    const setCurrentHistory = mode === "shell" ? setShellHistory : setHistory
+    const lastEntry = currentHistory.entries[0]
+    if (
+      lastEntry &&
+      isPromptEqual(lastEntry.prompt, entry.prompt) &&
+      JSON.stringify(lastEntry.assistance) === JSON.stringify(entry.assistance)
+    )
+      return
+
+    setCurrentHistory("entries", (entries) => [entry, ...entries].slice(0, MAX_HISTORY))
+  }
+
+  const navigateHistory = (direction: "up" | "down") => {
+    const entries = store.mode === "shell" ? shellHistory.entries : history.entries
+    const current = store.historyIndex
+
+    if (direction === "up") {
+      if (entries.length === 0) return false
+      if (current === -1) {
+        setStore("savedPrompt", { prompt: clonePromptParts(prompt.current()), assistance: prompt.assistance() })
+        setStore("historyIndex", 0)
+        applyHistoryPrompt(entries[0], "start")
+        return true
+      }
+      if (current < entries.length - 1) {
+        const next = current + 1
+        setStore("historyIndex", next)
+        applyHistoryPrompt(entries[next], "start")
+        return true
+      }
+      return false
+    }
+
+    if (current > 0) {
+      const next = current - 1
+      setStore("historyIndex", next)
+      applyHistoryPrompt(entries[next], "end")
+      return true
+    }
+    if (current === 0) {
+      setStore("historyIndex", -1)
+      const saved = store.savedPrompt
+      if (saved) {
+        applyHistoryPrompt(saved, "end")
+        setStore("savedPrompt", null)
+        return true
+      }
+      applyHistoryPrompt({ prompt: DEFAULT_PROMPT }, "end")
+      return true
+    }
+
+    return false
+  }
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && composerSubmitting()) {
+      composerDocument.abortSubmit(new DOMException("Composer submit cancelled", "AbortError"))
+      event.preventDefault()
+      return
+    }
+    if (composerSubmitting()) return
+    const completion = activeCompletion()
+    if (event.key === "Tab" && completion && !store.popover) {
+      event.preventDefault()
+      void composerDocument.acceptCompletion()
+      return
+    }
+    if (event.key === "Escape" && completion) {
+      composerDocument.dismissCompletion()
+      event.preventDefault()
+      return
+    }
+    if (event.key === "Backspace") {
+      const selection = window.getSelection()
+      if (selection && selection.isCollapsed) {
+        const node = selection.anchorNode
+        const offset = selection.anchorOffset
+        if (node && node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent ?? ""
+          if (/^\u200B+$/.test(text) && offset > 0) {
+            const range = document.createRange()
+            range.setStart(node, 0)
+            range.collapse(true)
+            selection.removeAllRanges()
+            selection.addRange(range)
+          }
+        }
+      }
+    }
+
+    if (event.key === "!" && store.mode === "normal") {
+      const cursorPosition = getCursorPosition(editorRef)
+      if (cursorPosition === 0) {
+        setStore("mode", "shell")
+        setStore("popover", null)
+        event.preventDefault()
+        return
+      }
+    }
+    if (store.mode === "shell") {
+      const { collapsed, cursorPosition, textLength } = getCaretState()
+      if (event.key === "Escape") {
+        setStore("mode", "normal")
+        event.preventDefault()
+        return
+      }
+      if (event.key === "Backspace" && collapsed && cursorPosition === 0 && textLength === 0) {
+        setStore("mode", "normal")
+        event.preventDefault()
+        return
+      }
+    }
+
+    if (event.key === "Enter" && isImeComposing(event)) {
+      return
+    }
+
+    if (
+      store.popover &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Enter" || event.key === "Tab")
+    ) {
+      if (store.popover === "at") {
+        atOnKeyDown(event)
+      } else {
+        slashOnKeyDown(event)
+      }
+      event.preventDefault()
+      return
+    }
+
+    const ctrl = event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+
+    if (ctrl && event.code === "KeyG") {
+      if (store.popover) {
+        setStore("popover", null)
+        event.preventDefault()
+        return
+      }
+      if (working()) {
+        abort()
+        event.preventDefault()
+      }
+      return
+    }
+
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      if (presentation.expanded && store.mode === "normal") return
+      if (event.altKey || event.ctrlKey || event.metaKey) return
+      const { collapsed } = getCaretState()
+      if (!collapsed) return
+
+      const cursorPosition = getCursorPosition(editorRef)
+      const textLength = promptLength(prompt.current())
+      const textContent = inlineText(prompt.current())
+      const isEmpty = textContent.trim() === "" || textLength <= 1
+      const hasNewlines = textContent.includes("\n")
+      const inHistory = store.historyIndex >= 0
+      const atStart = cursorPosition <= (isEmpty ? 1 : 0)
+      const atEnd = cursorPosition >= (isEmpty ? textLength - 1 : textLength)
+      const allowUp = isEmpty || atStart || (!hasNewlines && !inHistory) || (inHistory && atEnd)
+      const allowDown = isEmpty || atEnd || (!hasNewlines && !inHistory) || (inHistory && atStart)
+
+      if (event.key === "ArrowUp") {
+        if (!allowUp) return
+        if (navigateHistory("up")) {
+          event.preventDefault()
+        }
+        return
+      }
+
+      if (!allowDown) return
+      if (navigateHistory("down")) {
+        event.preventDefault()
+      }
+      return
+    }
+
+    const modEnter = event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+    const plainEnter = event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+
+    if (event.key === "Escape" && store.popover) {
+      setStore("popover", null)
+      event.preventDefault()
+      return
+    }
+    if (presentation.expanded && store.mode === "normal") {
+      const action = expandedComposerKeyAction(event)
+      if (action === "send") handleSubmit(event)
+      if (action === "newline") {
+        addPart({ type: "text", content: "\n", start: 0, end: 0 })
+        event.preventDefault()
+      }
+      if (action === "collapse") {
+        presentation.collapse()
+        event.preventDefault()
+      }
+      return
+    }
+
+    if (sendShortcut() === "enter") {
+      if (plainEnter) {
+        handleSubmit(event)
+        return
+      }
+      if (event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        addPart({ type: "text", content: "\n", start: 0, end: 0 })
+        event.preventDefault()
+        return
+      }
+    } else {
+      if (modEnter) {
+        handleSubmit(event)
+        return
+      }
+      if (plainEnter) {
+        addPart({ type: "text", content: "\n", start: 0, end: 0 })
+        event.preventDefault()
+        return
+      }
+    }
+    if (event.key === "Escape") {
+      if (store.popover) {
+        setStore("popover", null)
+      } else if (working()) {
+        abort()
+      }
+    }
+  }
+
+  const submitPrompt = usePromptSubmit({
+    props,
+    uploadedAttachments,
+    noteAttachments,
+    sessionAttachments,
+    quoteAttachments,
+    attachmentsUploading,
+    attachmentsFailed,
+    selectedControlProfile,
+    pendingPlan: () => capabilities.has("blueprint") && pendingPlan(),
+    clearPendingPlan: () => setPendingPlan(false),
+    pendingLattice: () => (capabilities.has("lattice") ? pendingLattice() : null),
+    clearPendingLattice: () => setPendingLattice(null),
+    pendingLightLoop: () => capabilities.has("light-loop") && pendingLightLoop(),
+    clearPendingLightLoop: () => {
+      setPendingLightLoop(false)
+    },
+    pendingBoss: () => capabilities.has("boss") && pendingBoss(),
+    clearPendingBoss: () => {
+      setPendingBoss(false)
+    },
+    onBossEnabled: () => void workbench.openPanel("boss", { reuseExisting: true }),
+    localArmedLoop: availableLocalLoop,
+    setLocalArmedLoop,
+    setBlueprintLoading,
+    newSessionSubmitPending,
+    setNewSessionSubmitPending,
+    store,
+    setStore,
+    addToHistory,
+    frontendCommands: () => command.options,
+    working,
+    editor: editorElement,
+    queueScroll,
+    onWorkspaceUnavailable: (request) => {
+      const onSelect = props.onNewSessionWorkspaceSelectionChange
+      if (request.kind === "session") {
+        if (params.id && params.id !== request.sessionID) return
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace
+            mode="recover"
+            recovery={request}
+            target={{ kind: "session", sessionID: request.sessionID, onApplied: request.onRecovered }}
+          />
+        ))
+      } else if (onSelect) {
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace
+            mode="recover"
+            recovery={request}
+            environmentProfile={props.newSessionEnvironmentProfile}
+            environmentID={props.newSessionEnvironmentID}
+            mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
+            target={{
+              kind: "draft",
+              selection: props.newSessionWorkspaceSelection,
+              onSelect: async (selection) => {
+                onSelect(selection)
+                await request.onRecovered?.(selection)
+              },
+            }}
+          />
+        ))
+      } else {
+        workspaceRecoveryDialogID = workflowDialog.show(() => (
+          <DialogWorkspace mode="manage" initialID={request.workspaceID} />
+        ))
+      }
+    },
+    onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
+    beforeSubmit: async () => {
+      await props.onValidateLocation?.()
+      await composerDocument!.beforeSubmit()
+    },
+    onAccepted: (unchanged) => presentation.accepted(unchanged),
+  })
+  const handleSubmit = (event: Event) => {
+    if (props.locationPending || abandonPending() || (continuePending() && !working())) {
+      event.preventDefault()
+      return
+    }
+    return submitPrompt(event)
+  }
+
+  createEffect(() => {
+    if (params.id || !prompt.ready()) return
+    const recovery = sessionTransition.getRecovery(sdk.scopeKey)
+    if (!recovery) return
+    sessionTransition.clearRecovery(sdk.scopeKey)
+    const autoSubmit = restoreNewSessionRecovery({
+      recovery,
+      setDraft: (draft) => {
+        prompt.recoverDraft(draft, recovery.autoSubmit)
+      },
+      setMode(mode) {
+        requireEditable()
+        setStore("mode", mode)
+      },
+      setEnvironment: (id) => props.onNewSessionEnvironmentChange?.(id),
+      setEnvironmentProfile: (profile) => props.onNewSessionEnvironmentProfileChange?.(profile),
+      setWorkspaceSelection: (selection) => props.onNewSessionWorkspaceSelectionChange?.(selection),
+      setControlProfile: input.setControlProfile,
+      setPlan: setPendingPlan,
+      setLattice: setPendingLattice,
+      setLightLoop: setPendingLightLoop,
+      setBoss: setPendingBoss,
+      setBlueprintSlot: setLocalArmedLoop,
+      setAgent: local.agent.set,
+      setModel: (model) => local.model.set(model),
+      setVariant: (variant, model) => local.model.variant.set(variant, model),
+    })
+    if (!autoSubmit) {
+      requestAnimationFrame(() => editorRef?.focus())
+      return
+    }
+    requestAnimationFrame(() => void handleSubmit(new Event("submit", { cancelable: true })))
+  })
+
+  const permissionSelector = () => (
+    <PermissionModeSelector
+      switching={() => store.switchingProfile}
+      activeMode={activePermissionMode}
+      selectedProfile={selectedControlProfile}
+      updateProfile={updateControlProfile}
+    />
+  )
+  const workflowChips = () => (
+    <>
+      <Show when={planActive()}>
+        <WorkflowChip
+          label={i18n._(PI.exitPlanLabel)}
+          ariaLabel={i18n._(PI.exitPlan)}
+          tooltip={i18n._(PI.exitPlan)}
+          icon={getSemanticIcon("prompt.plan")}
+          working={working}
+          onCancel={togglePlan}
+        />
+      </Show>
+      <Show when={latticeActive()}>
+        <WorkflowChip
+          label={i18n._(PI.cancelLatticeLabel)}
+          ariaLabel={i18n._(PI.cancelLattice)}
+          tooltip={i18n._(PI.cancelLattice)}
+          icon={getSemanticIcon("prompt.lattice")}
+          working={working}
+          onCancel={cancelLattice}
+        />
+      </Show>
+      <Show when={bossRootActive()}>
+        <WorkflowChip
+          label={i18n._(PI.cancelBossLabel)}
+          ariaLabel={i18n._(PI.cancelBoss)}
+          tooltip={i18n._(PI.cancelBoss)}
+          icon={getSemanticIcon("prompt.boss")}
+          working={working}
+          onCancel={() => void setBoss(false)}
+        />
+      </Show>
+    </>
+  )
+  const predictionControl = () => (
+    <Show when={capabilities.has("digital-twin")}>
+      <Suspense>
+        <DigitalTwinComposer
+          controller={composerDocument}
+          focusEditor={() => editorRef?.focus()}
+          sessionID={params.id}
+          parentID={info()?.parentID}
+          messages={view().messagesFor(params.id ?? "")}
+          status={status()}
+          blocked={
+            isReadOnly() || hasAttachments() || attachmentsUploading() || view().inboxFor(params.id ?? "").length > 0
+          }
+          modelKey={JSON.stringify(info()?.modelSelection?.selected ?? info()?.modelOverride)}
+          bind={setPredictionApi}
+          showProgress={!layout.isDesktop()}
+        />
+      </Suspense>
+    </Show>
+  )
+  const mobileChips = () => (
+    <Show when={!layout.isDesktop()}>
+      <div class="mobile-composer-chips" role="group" aria-label={i18n._(PI.composerControls)}>
+        <Show when={!props.hideAgentSelector}>
+          <AgentSelector hasMessages={sessionHasMessages} />
+        </Show>
+        {permissionSelector()}
+        {workflowChips()}
+      </div>
+    </Show>
+  )
+  const views: Record<PluginInputViewPart, () => import("solid-js").JSX.Element> = {
+    leading: () => (
+      <>
+        <Show when={store.popover}>
+          <PromptPopover
+            mode={() => store.popover}
+            setSlashRef={(el) => (slashPopoverRef = el)}
+            atItems={atFlat}
+            atActive={atActive}
+            atKey={atKey}
+            onAtSelect={handleAtSelect}
+            slashItems={slashFlat}
+            slashActive={slashActive}
+            onSlashSelect={handleSlashSelect}
+            keybindFor={(id) => command.keybind(id)}
+          />
+        </Show>
+        <ComposerSlotOutlet slot="composer.above" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
+        <div class="composer-chips-row">
+          <SessionWorkContext
+            directories={props.projectDirectories}
+            directoryError={props.projectDirectoryError}
+            onRefresh={props.onProjectDirectoriesRefresh}
+            onSelect={props.onNewSessionWorkspaceSelectionChange}
+            uploading={attachmentsUploading()}
+            onWorkspaceTransition={props.onWorkspaceTransition}
+            running={working()}
+            environmentID={props.newSessionEnvironmentID}
+            environmentProfile={props.newSessionEnvironmentProfile}
+            onEnvironmentProfileChange={props.onNewSessionEnvironmentProfileChange}
+            workspaceSelection={props.newSessionWorkspaceSelection}
+            workspaceSelectionKey={props.newSessionWorkspaceSelectionKey}
+            onEnvironmentChange={props.onNewSessionEnvironmentChange}
+            startOptions={newSessionStartOptions()}
+            disabled={!!isReadOnly() || composerSubmitting() || !!props.sessionTransitionPending}
+          />
+          {mobileChips()}
+        </div>
+      </>
+    ),
+    context: () => (
+      <>
+        <Show when={store.dragging}>
+          <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
+            <div class="flex flex-col items-center gap-2 text-text-weak">
+              <Icon name={getSemanticIcon("prompt.attach")} class="size-8" />
+              <span class="text-14-regular">{i18n._(PI.dropZone)}</span>
+            </div>
+          </div>
+        </Show>
+        <Show
+          when={[...prompt.current(), ...prompt.context.items()].some(
+            (part) => part.type === "file" && part.originScopeID && part.originScopeID !== sdk.scopeID,
+          )}
+        >
+          <p role="alert" class="px-3 pt-3 text-small text-text-error">
+            {i18n._(projectFlowCopy.unavailableReference)}
+          </p>
+        </Show>
+        <Show when={prompt.context.items().length > 0}>
+          <div class="flex flex-wrap items-center gap-2 px-3 pt-3">
+            <For each={prompt.context.items()}>
+              {(item) => (
+                <div class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface-base border border-border-base max-w-full">
+                  <FileIcon node={{ path: item.path, type: "file" }} class="shrink-0 size-4" />
+                  <div class="flex items-center text-12-regular min-w-0">
+                    <span class="text-text-weak whitespace-nowrap truncate min-w-0">{getDirectory(item.path)}</span>
+                    <span class="text-text-strong whitespace-nowrap">{getFilename(item.path)}</span>
+                    <Show when={item.selection}>
+                      {(sel) => (
+                        <span class="text-text-weak whitespace-nowrap ml-1">
+                          {sel().startLine === sel().endLine
+                            ? `:${sel().startLine}`
+                            : `:${sel().startLine}-${sel().endLine}`}
+                        </span>
+                      )}
+                    </Show>
+                  </div>
+                  <IconButton
+                    type="button"
+                    icon={getSemanticIcon("action.close")}
+                    variant="ghost"
+                    class="h-6 w-6"
+                    onClick={() => prompt.context.remove(item.key)}
+                  />
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+        <Show when={hasAttachments() || attachmentsUploading()}>
+          <PromptAttachments
+            uploads={uploadedAttachments}
+            notes={noteAttachments}
+            sessions={sessionAttachments}
+            quotes={quoteAttachments}
+            pending={pendingUploads.pending}
+            pendingFile={pendingUploads.file}
+            retryAttachment={retryAttachment}
+            order={() => prompt.current().flatMap((part) => ("id" in part ? [part.id] : []))}
+            serverUrl={sdk.url}
+            removeAttachment={removeAttachment}
+            onOpen={openDraftAttachment}
+          />
+        </Show>
+      </>
+    ),
+    toolbar: () => (
+      <>
+        <div data-ui-part="toolbar" class="prompt-input-toolbar flex flex-wrap items-center justify-between gap-2">
+          <div class="prompt-input-toolbar-main min-w-0 flex flex-wrap items-center gap-1">
+            <ComposerSlotOutlet slot="composer.toolbar.left" sessionId={params.id} class="contents" />
+            <Switch>
+              <Match when={store.mode === "shell"}>
+                <div class="prompt-input-toolbar-chip flex items-center gap-2">
+                  <Icon name={getSemanticIcon("prompt.shell")} size="small" class="text-icon-base" />
+                  <span class="text-12-medium text-text-base">{i18n._(PI.shellLabel)}</span>
+                  <span class="text-11-regular text-text-subtle">{i18n._(PI.shellEscToExit)}</span>
+                </div>
+              </Match>
+              <Match when={store.mode === "normal"}>
+                <PromptAddMenu sections={addMenuSections()} />
+                <Show when={!props.hideAgentSelector && layout.isDesktop()}>
+                  <div class="min-w-0 shrink-0">
+                    <AgentSelector hasMessages={sessionHasMessages} />
+                  </div>
+                </Show>
+                <Show when={sessionMeta().canSelectModel}>
+                  <div class="prompt-input-mobile-model min-w-0 max-w-full md:hidden">
+                    <Show
+                      when={!modelLocked()}
+                      fallback={
+                        <Tooltip value={i18n._(topBar.modelLocked)}>
+                          <button type="button" class="prompt-input-toolbar-button max-w-full" aria-disabled="true">
+                            <span class="truncate text-12-medium text-text-base">
+                              {local.model.current()?.name ?? i18n._(topBar.modelLockedLabel)}
+                            </span>
+                          </button>
+                        </Tooltip>
+                      }
+                    >
+                      <ModelSelectorPopover
+                        triggerAs={(triggerProps) => (
+                          <button
+                            {...triggerProps}
+                            type="button"
+                            class="prompt-input-toolbar-button max-w-full flex items-center gap-1.5"
+                            aria-label={triggerProps["aria-label"] ?? i18n._(topBar.chooseModel)}
+                          >
+                            <Show
+                              when={triggerProps.children}
+                              fallback={
+                                <>
+                                  <span class="truncate text-12-medium text-text-base">
+                                    {local.model.current()?.name ?? i18n._(topBar.selectModel)}
+                                  </span>
+                                  <Show when={local.model.current()?.catalogState === "retained"}>
+                                    <Tooltip value={i18n._(topBar.retainedModel)}>
+                                      <Icon
+                                        name={getSemanticIcon("state.warning")}
+                                        size="small"
+                                        class="text-icon-warning-base"
+                                      />
+                                    </Tooltip>
+                                  </Show>
+                                  <Icon
+                                    name={getSemanticIcon("navigation.collapse")}
+                                    size="small"
+                                    class="text-icon-weak-base shrink-0"
+                                  />
+                                </>
+                              }
+                            >
+                              {triggerProps.children}
+                            </Show>
+                          </button>
+                        )}
+                      />
+                    </Show>
+                  </div>
+                </Show>
+                <Show when={layout.isDesktop()}>
+                  {permissionSelector()}
+                  {workflowChips()}
+                </Show>
+                <ComposerSlotOutlet slot="composer.add-menu" sessionId={params.id} class="contents" />
+                <ComposerSlotOutlet slot="composer.start-option" sessionId={params.id} class="contents" />
+              </Match>
+            </Switch>
+          </div>
+          <div class="prompt-input-toolbar-actions ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={FILE_INPUT_ACCEPT}
+              class="hidden"
+              onChange={(e) => {
+                const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []
+                e.currentTarget.value = ""
+                if (files.length > 0) void addAttachments(files)
+              }}
+            />
+            <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
+            <Show when={layout.isDesktop() && predictionApi()}>
+              {(api) => (
+                <Suspense>
+                  <DigitalTwinPredictionButton api={api()} />
+                </Suspense>
+              )}
+            </Show>
+            <Show when={capabilities.has("media")}>
+              <VoiceDictationButton
+                getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}
+                insertText={insertDictationText}
+                focusEditor={() => {
+                  // Restores the caret the applyEdits insert left behind.
+                  editorRef.focus()
+                }}
+              />
+            </Show>
+            <Show when={!sdk.connected()}>
+              <Tooltip placement="top" value={i18n._(PI.connectionLost)}>
+                <div class="flex items-center justify-center size-5">
+                  <Icon
+                    name={getSemanticIcon("prompt.signal")}
+                    size="small"
+                    class="text-icon-warning-base animate-pulse"
+                  />
+                </div>
+              </Tooltip>
+            </Show>
+            <div class="relative flex items-center gap-2">
+              <Show when={props.sessionTransitionError}>
+                <span id={recoveryHintID} class="max-w-40 text-12-regular text-text-weak" role="status">
+                  {i18n._(PI.recoveryRequired)}
+                </span>
+              </Show>
+              <Tooltip
+                placement="top"
+                inactive={!!props.sessionTransitionError}
+                open={abandonProgress() > 0 || abandonPending() ? false : undefined}
+                value={
+                  <div class="flex max-w-72 flex-col gap-1">
+                    <span>{controlTitle()}</span>
+                    <Show when={controlHint() && controlHint() !== controlTitle()}>
+                      <span class="text-10-regular text-text-weak">{controlHint()}</span>
+                    </Show>
+                    <Show when={canAbandon()}>
+                      <span class="text-10-regular text-text-weak">{i18n._(PI.abandonHint)}</span>
+                    </Show>
+                  </div>
+                }
+              >
+                <IconButton
+                  type="submit"
+                  aria-label={controlLabel()}
+                  aria-describedby={props.sessionTransitionError ? recoveryHintID : undefined}
+                  disabled={controlDisabled()}
+                  icon={controlIcon()}
+                  variant="primary"
+                  class="prompt-input-submit size-[34px] rounded-full!"
+                  onPointerDown={startAbandonPress}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") abandonGestureConsumed = false
+                  }}
+                  onPointerMove={canAbandon() ? trackAbandonPress : undefined}
+                  onPointerUp={cancelLongPress}
+                  onPointerCancel={() => {
+                    abandonGestureConsumed = true
+                    cancelLongPress()
+                  }}
+                  onPointerLeave={() => {
+                    if (abandonPress()) abandonGestureConsumed = true
+                    cancelLongPress()
+                  }}
+                  onClick={handleControlClick}
+                />
+              </Tooltip>
+              <Show when={abandonProgress() > 0 || abandonPending()}>
+                <svg class="prompt-abandon-ring" viewBox="0 0 40 40" aria-hidden="true">
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="18"
+                    pathLength="1"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-dasharray="1"
+                    stroke-dashoffset={1 - abandonProgress()}
+                    transform="rotate(-90 20 20)"
+                  />
+                </svg>
+                <span class="prompt-abandon-feedback" role="status">
+                  {i18n._(abandonPending() ? PI.abandoning : PI.abandonHolding)}
+                </span>
+              </Show>
+            </div>
+          </div>
+        </div>
+      </>
+    ),
+    trailing: () => (
+      <>
+        {predictionControl()}
+        <ComposerSlotOutlet slot="composer.below" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
+      </>
+    ),
+  }
+  const requireEditable = () => {
+    if (isReadOnly() || !prompt.ready()) throw new Error("Composer is read-only")
+  }
+  const composerInput: PluginInputService = {
+    editor: {
+      label: () => i18n._(PI.sendMessage),
+      mount(element, scroller) {
+        if (editorElement() && editorElement() !== element) throw new Error("The draft already has an editor")
+        editorRef = element
+        scrollRef = scroller
+        setEditorElement(element)
+        props.ref?.(element)
+        return () => {
+          if (editorElement() !== element) return
+          setComposing(false)
+          composerDocument.setComposing(false)
+          setEditorElement(undefined)
+          if (scrollRef === scroller) scrollRef = undefined
+        }
+      },
+      beforeInput(event) {
+        if (isReadOnly() || (composerSubmitting() && !editor.isApplyingDocumentEdits())) event.preventDefault()
+      },
+      input() {
+        requireEditable()
+        handleInput()
+      },
+      async paste(event) {
+        if (isReadOnly() || composerSubmitting()) {
+          event.preventDefault()
+          return
+        }
+        await handlePaste(event)
+      },
+      keyDown: handleKeyDown,
+      completion() {
+        const value = activeCompletion()
+        return value ? { prefix: editor.completionPrefix(), text: value.text } : undefined
+      },
+      placeholder() {
+        if (prompt.dirty()) return
+        if (store.mode === "shell") return i18n._(PI.placeholderShell)
+        if (planActive()) return i18n._(PI.placeholderPlan)
+        if (!layout.isDesktop()) return i18n._(PI.placeholderTaskCompact)
+        return i18n._({ id: "prompt.placeholder.task", message: "Describe a task, or type / for commands" })
+      },
+    },
+    readOnly: () => !!isReadOnly(),
+    composing,
+    primaryAction: () => (submitStopsSession() ? "stop" : "submit"),
+    current() {
+      composerVersion()
+      return composerDocument.current()
+    },
+    ready: prompt.ready,
+    canSubmit: () => canSubmit() && !composing() && !submitStopsSession(),
+    submitting: () => (submitPending() && !props.sessionTransitionError) || composerSubmitting(),
+    stopping: abortStopping,
+    dragging: () => store.dragging,
+    className: () => props.class,
+    applyEdits: (value) => composerDocument.applyEdits(value),
+    select(range) {
+      requireEditable()
+      editor.setSelection(range)
+      composerDocument.selectionChanged()
+    },
+    setComposing(value) {
+      requireEditable()
+      setComposing(value)
+      composerDocument.setComposing(value)
+    },
+    setMode(mode) {
+      requireEditable()
+      setStore("mode", mode)
+    },
+    async submit() {
+      requireEditable()
+      if (composing() || !canSubmit() || submitStopsSession()) return
+      await handleSubmit(new Event("submit", { cancelable: true }))
+    },
+    async stop() {
+      await abortController.run()
+    },
+    attachments: () => [
+      ...uploadedAttachments().map((part) => ({ id: part.id, kind: part.type, title: part.filename, mime: part.mime })),
+      ...noteAttachments().map((part) => ({ id: part.id, kind: part.type, title: part.title })),
+      ...sessionAttachments().map((part) => ({ id: part.id, kind: part.type, title: part.title })),
+    ],
+    async addAttachments(files) {
+      requireEditable()
+      await addAttachments(files)
+    },
+    removeAttachment(id) {
+      requireEditable()
+      removeAttachment(id)
+    },
+    agents: () =>
+      local.agent
+        .list()
+        .filter((agent) => !agent.hidden)
+        .map((agent) => ({
+          id: agent.name,
+          label: translateDescriptor(getAgentVisual(agent).label, i18n),
+          disabled: sessionHasMessages() && !!agent.external,
+        })),
+    agent: () => local.agent.current()?.name,
+    selectAgent(id) {
+      requireEditable()
+      const agent = composerInput.agents().find((item) => item.id === id)
+      if (!agent || agent.disabled) throw new Error("Agent is not available for this session")
+      local.agent.set(id)
+    },
+    models: () =>
+      local.model.all().map((model) => ({ providerId: model.provider.id, modelId: model.id, label: model.name })),
+    model() {
+      const model = local.model.current()
+      return model ? { providerId: model.provider.id, modelId: model.id } : undefined
+    },
+    selectModel(model) {
+      requireEditable()
+      if (
+        model &&
+        !composerInput.models().some((item) => item.providerId === model.providerId && item.modelId === model.modelId)
+      )
+        throw new Error("Model is not available")
+      local.model.set(model ? { providerID: model.providerId, modelID: model.modelId } : undefined, { recent: true })
+    },
+    variants: local.model.variant.list,
+    variant: local.model.variant.current,
+    selectVariant(value) {
+      requireEditable()
+      if (value !== undefined && !local.model.variant.list().includes(value))
+        throw new Error("Model variant is not available")
+      local.model.variant.set(value)
+    },
+    render: (part) => views[part](),
+    dragOver(event) {
+      if (!isReadOnly()) handleDragOver(event)
+    },
+    dragLeave: handleDragLeave,
+    async drop(event) {
+      if (isReadOnly() || composerSubmitting()) {
+        event.preventDefault()
+        return
+      }
+      await handleDrop(event)
+    },
+  }
+  onCleanup(
+    bindComposerPresentation(composerInput, {
+      state: presentation,
+      status: () => (
+        <>
+          <Show when={!loopDisplay() && availableLocalLoop()}>
+            {(slot) => <BlueprintDraftEntry value={slot()} onRemove={() => setLocalArmedLoop(null)} />}
+          </Show>
+          <Show when={loopDisplay()}>
+            {(value) => (
+              <LoopStatusEntry
+                value={value()}
+                pending={loopAction()?.owner === sessionKey()}
+                onOpen={openLoopStatus}
+                onEdit={openLightLoopDialog}
+                onNote={openLoopNote}
+                onRemove={() => void cancelDisplayedLoop()}
+                onRetry={loopStatus.retry}
+              />
+            )}
+          </Show>
+        </>
+      ),
+      hasAttachments: () => hasAttachments() || attachmentsUploading(),
+      preview() {
+        let offset = 0
+        const references: Array<{ start: number; end: number; path: string }> = []
+        for (const part of prompt.current()) {
+          if (part.type !== "text" && part.type !== "file") continue
+          if (part.type === "file")
+            references.push({ start: offset, end: offset + part.content.length, path: part.path })
+          offset += part.content.length
+        }
+        return { text: inlineText(prompt.current()), references }
+      },
+    }),
+  )
+  return {
+    input: composerInput,
+    pickFiles() {
+      requireEditable()
+      fileInputRef.click()
+    },
+    extensions: () => <ComposerExtensionOutlet controller={composerDocument} sessionId={params.id} />,
+  }
+}

@@ -81,7 +81,6 @@
     }
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 2px var(--border-focus);
     }
     &:has([data-hidden]) {
       [data-slot="tabs-trigger-close-button"] {

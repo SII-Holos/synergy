@@ -1,0 +1,211 @@
+{
+  "artifactTitle": "Support capacity planner",
+  "ui": {
+    "state": {
+      "incoming": 600,
+      "specialists": 6,
+      "dailyResolved": 18
+    },
+    "computed": [
+      {
+        "id": "weeklyPerSpecialist",
+        "op": "multiply",
+        "inputs": [
+          {
+            "ref": "dailyResolved"
+          },
+          5
+        ]
+      },
+      {
+        "id": "capacity",
+        "op": "multiply",
+        "inputs": [
+          {
+            "ref": "specialists"
+          },
+          {
+            "ref": "weeklyPerSpecialist"
+          }
+        ]
+      },
+      {
+        "id": "balance",
+        "op": "subtract",
+        "inputs": [
+          {
+            "ref": "capacity"
+          },
+          {
+            "ref": "incoming"
+          }
+        ]
+      },
+      {
+        "id": "spare",
+        "op": "max",
+        "inputs": [
+          {
+            "ref": "balance"
+          },
+          0
+        ]
+      },
+      {
+        "id": "shortfall",
+        "op": "subtract",
+        "inputs": [
+          {
+            "ref": "incoming"
+          },
+          {
+            "ref": "capacity"
+          }
+        ]
+      },
+      {
+        "id": "backlog",
+        "op": "max",
+        "inputs": [
+          {
+            "ref": "shortfall"
+          },
+          0
+        ]
+      },
+      {
+        "id": "utilizationRatio",
+        "op": "divide",
+        "inputs": [
+          {
+            "ref": "incoming"
+          },
+          {
+            "ref": "capacity"
+          }
+        ]
+      },
+      {
+        "id": "utilizationPercent",
+        "op": "multiply",
+        "inputs": [
+          {
+            "ref": "utilizationRatio"
+          },
+          100
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Support capacity planner",
+        "level": "2"
+      },
+      {
+        "id": "controls",
+        "type": "card"
+      },
+      {
+        "id": "incoming-control",
+        "parent": "controls",
+        "type": "slider",
+        "label": "Weekly incoming tickets",
+        "state": "incoming",
+        "min": 200,
+        "max": 1000,
+        "step": 10
+      },
+      {
+        "id": "specialists-control",
+        "parent": "controls",
+        "type": "slider",
+        "label": "Support specialists",
+        "state": "specialists",
+        "min": 2,
+        "max": 12,
+        "step": 1
+      },
+      {
+        "id": "daily-control",
+        "parent": "controls",
+        "type": "slider",
+        "label": "Tickets resolved per specialist per day",
+        "state": "dailyResolved",
+        "min": 10,
+        "max": 30,
+        "step": 1
+      },
+      {
+        "id": "results",
+        "type": "row",
+        "columns": 4
+      },
+      {
+        "id": "capacity-metric",
+        "parent": "results",
+        "type": "metric",
+        "label": "Weekly capacity",
+        "value": {
+          "ref": "capacity"
+        },
+        "suffix": " tickets"
+      },
+      {
+        "id": "spare-metric",
+        "parent": "results",
+        "type": "metric",
+        "label": "Spare capacity",
+        "value": {
+          "ref": "spare"
+        },
+        "suffix": " tickets/week"
+      },
+      {
+        "id": "backlog-metric",
+        "parent": "results",
+        "type": "metric",
+        "label": "New backlog",
+        "value": {
+          "ref": "backlog"
+        },
+        "suffix": " tickets/week"
+      },
+      {
+        "id": "utilization-metric",
+        "parent": "results",
+        "type": "metric",
+        "label": "Utilization",
+        "value": {
+          "ref": "utilizationPercent"
+        },
+        "suffix": "%"
+      },
+      {
+        "id": "comparison",
+        "type": "bar",
+        "label": "Weekly incoming work vs. capacity (tickets)",
+        "items": [
+          {
+            "label": "Incoming",
+            "value": {
+              "ref": "incoming"
+            }
+          },
+          {
+            "label": "Capacity",
+            "value": {
+              "ref": "capacity"
+            }
+          }
+        ]
+      },
+      {
+        "id": "assumptions",
+        "type": "text",
+        "text": "Assumptions: Five working days per week and constant resolution rates. Utilization = incoming ÷ capacity; above 100% adds backlog. Simplified model using synthetic data, not measured team performance."
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+# harness
+
+This package owns Synergy's generic execution runtime. Application hosts use the [public entry points](../../docs/architecture/README.md#harness-public-entry-points); individual host contracts are declared explicitly in `package.json`. Test-only exports are excluded from published packages.
+
+Run `bun run typecheck`, `bun run test`, and `bun run build` from this package.
+
+Model SDK implementations belong to `local-runtime`. Research hosts register `ProviderSdkSource` with synchronous and asynchronous factory loaders; SDK access before registration fails explicitly. The `ai` engine remains a harness dependency and itself includes the Gateway adapter transitively.
+
+Custom SDK factories belong to each Runtime instance. Research hosts using agent workers register a bootstrap entry with `registerAgentWorkerEntrypoint()` that creates its explicit Runtime context and installs the same SDK source before starting the harness runner; in-process experiments register their source in the current process.
+
+The harness owns permission policy and the `SandboxHost` execution contract. OS sandbox implementations, native PTYs and filesystem watchers belong to `local-runtime`. Sandboxed tool execution without a registered host fails explicitly; a bare research harness starts no native file watcher.
+
+Embedded tool admission uses `tool/policy-source`: a host can narrow visible and deferred identities and authorize exact calls before execution resources are acquired. The source cannot widen the registry or replace permission and sandbox decisions. The public `cortex/tools` entry exposes the complete suite for explicit registration.
+
+Initialized tools may declare `resourceNeeds(args)` for input-dependent Workspace or execution requirements. Those requirements augment static declarations and use the same resource admission, capability gate and release path. Directory-independent actions remain usable without allocating a Workspace; precise file operations retain their resolved-path permission requests.
+
+The `environment` host entries own durable allocation and operation identities. Register providers before opening a Runtime; missing providers fail explicitly. See [Environments](../../docs/architecture/environments.md) for execution, checkpoint and recovery semantics.
+
+Hosts supply immutable environment and paths, composition, and storage ownership to `RuntimeHandle.open()`. Imports have no registration side effects. Enter work with `handle.run()` or capture callbacks with `handle.bind()`; await `close()` or use `await using`. Multiple handles can coexist in one process. See [Runtime and Scope](../../docs/architecture/runtime-and-scope.md) for lifecycle and workspace semantics.
+
+Optional configuration owners register their public `shape` through `ConfigExtensions`. Aggregate fields can also provide a tolerant `storedShape` and a `project` callback that hides unavailable child records. Global and project edits retain hidden stored fields, including replacement writes; clients and execution only receive selected owners. Reinstalling an owner restores its configuration from the retained domain files.
+
+Hosts with a different file delivery mechanism register `AttachmentDelivery` guidance during composition. The selected response instructions and execution-tool instructions replace the default immutable-attachment guidance together, and remain isolated to that Runtime. This changes model instructions only: the host must also supply the matching delivery tools and authorization. Without a registration, the existing attachment behavior and guidance remain unchanged.
+
+The public `/usage` entry exposes retained accounting, typed queries, clear/rebuild operations, and explicit host lifecycle/transfer integration. Its [accounting contract](../../docs/architecture/usage-accounting.md) is independent of transcript and archive retention.
+
+The public `/rollout` entry provides `RolloutSnapshot.modelCalls()` for current run and model-call metadata without journal replay, tool evidence or artifact bodies. `current()` maintains a reusable validated journal prefix during concurrent appends; `read()` retains strict historical replay for integrity checks and archives.
+
+Selective tool catalogs use `cortexTools()` and register `registerCortexToolInputHistory()` from `./cortex/tools` before sealing the Runtime. The history registration keeps owned session migrations independent of product tool registration.
+
+Harness owns manual paused Session migration through `session/transfer` and the explicit `session/transfer-workspace` Host contract. The protocol does not execute historical calls; see [Session transfer](../../docs/architecture/session-transfer.md).

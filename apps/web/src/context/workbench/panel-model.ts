@@ -1,0 +1,341 @@
+import type {
+  WorkbenchPanelCardinality,
+  WorkbenchPanelEntry,
+  WorkbenchPanelTab,
+  WorkbenchPanelTabInit,
+} from "@/plugin/registries/workbench-panel-registry"
+import type { WorkspaceRevealState } from "./reveal-policy"
+
+export interface WorkbenchSurfaceState {
+  opened?: boolean
+  active?: string
+  tabs?: WorkbenchPanelTab[]
+  size?: number
+  resized?: boolean
+  fullscreen?: boolean
+  reveal?: WorkspaceRevealState
+}
+
+export function mergeVisibleWorkbenchTabs(
+  saved: WorkbenchPanelTab[],
+  visible: WorkbenchPanelTab[],
+  available: (tab: WorkbenchPanelTab) => boolean,
+): WorkbenchPanelTab[] {
+  const ids = new Set(visible.map((tab) => tab.id))
+  return [...saved.filter((tab) => !ids.has(tab.id) && !available(tab)), ...visible]
+}
+
+export function workbenchForNewSession(source: { side?: WorkbenchSurfaceState; bottom?: WorkbenchSurfaceState }) {
+  return {
+    ...(source.side ? { side: { ...source.side, opened: false } } : {}),
+    ...(source.bottom ? { bottom: { ...source.bottom, opened: false } } : {}),
+  }
+}
+
+export interface OpenWorkbenchPanelInput {
+  panelId: string
+  cardinality: WorkbenchPanelCardinality
+  tabs: WorkbenchPanelTab[]
+  init?: WorkbenchPanelTabInit
+  createId: () => string
+  reuseExisting?: boolean
+  replaceEmpty?: boolean
+  replaceCurrent?: boolean
+  replaceTab?: string
+  active?: string
+}
+
+export function sameWorkbenchResource(tab: WorkbenchPanelTab, panelId: string, init?: WorkbenchPanelTabInit) {
+  return (
+    tab.panelId === panelId &&
+    tab.resourceId === init?.resourceId &&
+    (!(panelId === "notes" || panelId === "browser") || tab.source === init?.source)
+  )
+}
+
+export function workbenchReplacementTab(
+  input: Pick<
+    OpenWorkbenchPanelInput,
+    "tabs" | "panelId" | "init" | "active" | "replaceCurrent" | "replaceEmpty" | "replaceTab"
+  >,
+) {
+  if (
+    input.init?.resourceId !== undefined &&
+    input.tabs.some((tab) => sameWorkbenchResource(tab, input.panelId, input.init))
+  )
+    return
+  if (input.replaceTab) return input.tabs.find((tab) => tab.id === input.replaceTab && tab.panelId === "resource-home")
+  if (input.replaceCurrent)
+    return (
+      input.tabs.find((tab) => tab.id === input.active && tab.panelId === input.panelId) ??
+      input.tabs.findLast((tab) => tab.panelId === input.panelId)
+    )
+  if (input.replaceEmpty) return input.tabs.find((tab) => tab.panelId === input.panelId && tab.resourceId === undefined)
+}
+
+export function isWorkbenchPanelAvailable(entry: WorkbenchPanelEntry, hasSession: boolean) {
+  return !entry.requiresSession || hasSession || entry.supportsDraftSession === true
+}
+
+export function isWorkbenchPanelLaunchable(entry: WorkbenchPanelEntry) {
+  return entry.launchable !== false
+}
+
+export function workbenchAddablePanels(panels: WorkbenchPanelEntry[], tabs: WorkbenchPanelTab[]) {
+  const openPanelIds = new Set(tabs.map((tab) => tab.panelId))
+  return panels.filter(
+    (panel) => isWorkbenchPanelLaunchable(panel) && (panel.cardinality === "multi" || !openPanelIds.has(panel.id)),
+  )
+}
+
+export type WorkbenchEscapeAction = "none" | "close-surface"
+
+export function resolveWorkbenchEscapeAction(input: {
+  key: string
+  opened: boolean
+  menuOpen: boolean
+  dialogActive: boolean
+  editableFocus?: boolean
+  focusWithin?: boolean
+}): WorkbenchEscapeAction {
+  if (input.key !== "Escape" || !input.opened || input.dialogActive) return "none"
+  if (input.editableFocus || input.menuOpen || !input.focusWithin) return "none"
+  return "close-surface"
+}
+
+interface WorkbenchEscapeTarget {
+  tagName?: string
+  isContentEditable?: boolean
+  closest?: (selector: string) => Element | null
+}
+
+/**
+ * Whether an Escape keydown target should receive the key itself instead of
+ * the workbench surface closing. Matches the session page's protected-focus
+ * predicate: form controls, contentEditable regions, and elements inside a
+ * `[data-prevent-autofocus]` region (terminal and browser surfaces).
+ */
+export function isEditableEscapeTarget(target: unknown): boolean {
+  if (!target || typeof target !== "object") return false
+  const node = target as WorkbenchEscapeTarget
+  const tagName = typeof node.tagName === "string" ? node.tagName.toUpperCase() : ""
+  if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return true
+  if (node.isContentEditable === true) return true
+  if (typeof node.closest === "function") {
+    try {
+      return Boolean(node.closest("[data-prevent-autofocus]"))
+    } catch {
+      return false
+    }
+  }
+  return false
+}
+
+export function createWorkbenchTab(input: {
+  panelId: string
+  init?: WorkbenchPanelTabInit
+  createId: () => string
+}): WorkbenchPanelTab {
+  return {
+    id: input.init?.id ?? input.createId(),
+    panelId: input.panelId,
+    resourceId: input.init?.resourceId,
+    title: input.init?.title,
+    source: input.init?.source,
+    state: input.init?.state,
+    dirty: input.init?.dirty,
+  }
+}
+
+function updateWorkbenchTab(tab: WorkbenchPanelTab, init?: WorkbenchPanelTabInit): WorkbenchPanelTab {
+  if (!init) return tab
+
+  const next: WorkbenchPanelTab = { ...tab }
+  let changed = false
+
+  if (init.resourceId !== undefined && init.resourceId !== tab.resourceId) {
+    next.resourceId = init.resourceId
+    changed = true
+  }
+  if (init.title !== undefined && init.title !== tab.title) {
+    next.title = init.title
+    changed = true
+  }
+  if (init.source !== undefined && init.source !== tab.source) {
+    next.source = init.source
+    changed = true
+  }
+  if (init.dirty !== undefined && init.dirty !== tab.dirty) {
+    next.dirty = init.dirty
+    changed = true
+  }
+  if (init.state !== undefined && init.state !== tab.state) {
+    next.state = init.state
+    changed = true
+  }
+
+  return changed ? next : tab
+}
+
+export function openWorkbenchPanelTab(input: OpenWorkbenchPanelInput): {
+  tabs: WorkbenchPanelTab[]
+  active: string
+  created?: WorkbenchPanelTab
+} {
+  const resource = input.init?.resourceId
+  const resourceMatch =
+    resource === undefined ? undefined : input.tabs.find((tab) => sameWorkbenchResource(tab, input.panelId, input.init))
+  const emptyMatch = workbenchReplacementTab(input)
+  const panelMatch = input.tabs.find((tab) => tab.panelId === input.panelId)
+  const existing = resourceMatch ?? emptyMatch ?? panelMatch
+
+  if (!resourceMatch && emptyMatch?.panelId === "resource-home") {
+    const tab = createWorkbenchTab({
+      panelId: input.panelId,
+      init: { ...input.init, id: emptyMatch.id },
+      createId: input.createId,
+    })
+    return { tabs: input.tabs.map((item) => (item.id === emptyMatch.id ? tab : item)), active: tab.id, created: tab }
+  }
+
+  if (input.cardinality === "exclusive") {
+    const tab = createWorkbenchTab({ panelId: input.panelId, init: input.init ?? existing, createId: input.createId })
+    return { tabs: [tab], active: tab.id, created: existing ? undefined : tab }
+  }
+
+  if (resourceMatch || emptyMatch || input.cardinality === "singleton" || input.reuseExisting) {
+    if (existing) {
+      const updated = updateWorkbenchTab(existing, input.init)
+      if (updated === existing) return { tabs: input.tabs, active: existing.id }
+      return {
+        tabs: input.tabs.map((tab) => (tab.id === existing.id ? updated : tab)),
+        active: updated.id,
+      }
+    }
+    const tab = createWorkbenchTab({ panelId: input.panelId, init: input.init, createId: input.createId })
+    return { tabs: [...input.tabs, tab], active: tab.id, created: tab }
+  }
+
+  const tab = createWorkbenchTab({ panelId: input.panelId, init: input.init, createId: input.createId })
+  return { tabs: [...input.tabs, tab], active: tab.id, created: tab }
+}
+
+export function updateWorkbenchPanelTab(
+  tabs: WorkbenchPanelTab[],
+  tabId: string,
+  patch: Omit<WorkbenchPanelTabInit, "id">,
+): WorkbenchPanelTab[] {
+  const index = tabs.findIndex((tab) => tab.id === tabId)
+  if (index === -1) return tabs
+  const updated = updateWorkbenchTab(tabs[index]!, patch)
+  if (updated === tabs[index]) return tabs
+  return tabs.map((tab) => (tab.id === tabId ? updated : tab))
+}
+
+export function moveWorkbenchPanelTab(tabs: WorkbenchPanelTab[], tabId: string, toIndex: number): WorkbenchPanelTab[] {
+  const fromIndex = tabs.findIndex((tab) => tab.id === tabId)
+  if (fromIndex === -1) return tabs
+  const target = Math.max(0, Math.min(toIndex, tabs.length - 1))
+  if (fromIndex === target) return tabs
+  const next = tabs.slice()
+  const [tab] = next.splice(fromIndex, 1)
+  next.splice(target, 0, tab!)
+  return next
+}
+
+export function closeWorkbenchPanelTab(
+  tabs: WorkbenchPanelTab[],
+  active: string | undefined,
+  tabId: string,
+): { tabs: WorkbenchPanelTab[]; active: string | undefined } {
+  const index = tabs.findIndex((tab) => tab.id === tabId)
+  if (index === -1) return { tabs, active }
+
+  const next = tabs.filter((tab) => tab.id !== tabId)
+  if (active !== tabId) return { tabs: next, active }
+
+  return {
+    tabs: next,
+    active: next[index - 1]?.id ?? next[index]?.id,
+  }
+}
+
+/**
+ * Compute the tab list and active tab after a "close other tabs" batch.
+ *
+ * Without `closingIds` the batch removes every tab but `keepTabId` and
+ * activates the kept tab. When `closingIds` is supplied the removal is
+ * bounded to that snapshot set instead: async close-others awaits each
+ * panel's onCloseTab hook, and during that window the store may legitimately
+ * gain new tabs (the user opens another file) that this batch must not
+ * sweep, or lose the kept tab (its own panel reports the resource gone and
+ * routes through closeTab). The kept tab is never removed even if listed.
+ *
+ * Active-tab fallback mirrors closeWorkbenchPanelTab: the kept tab wins when
+ * it survives; otherwise an active tab that survives keeps focus, and an
+ * active tab that was removed falls back to its nearest surviving neighbor.
+ */
+export function closeOtherWorkbenchPanelTabs(
+  tabs: WorkbenchPanelTab[],
+  active: string | undefined,
+  keepTabId: string,
+  closingIds?: ReadonlySet<string>,
+): { tabs: WorkbenchPanelTab[]; active: string | undefined } {
+  const keepExists = tabs.some((tab) => tab.id === keepTabId)
+  if (!keepExists && !closingIds) return { tabs, active }
+
+  const closing = new Set(closingIds ?? tabs.map((tab) => tab.id).filter((id) => id !== keepTabId))
+  closing.delete(keepTabId)
+  const removed = tabs.filter((tab) => closing.has(tab.id))
+  if (removed.length === 0) return { tabs, active }
+
+  const next = tabs.filter((tab) => !closing.has(tab.id))
+  if (next.some((tab) => tab.id === keepTabId)) return { tabs: next, active: keepTabId }
+  if (active && next.some((tab) => tab.id === active)) return { tabs: next, active }
+
+  const anchor = tabs.findIndex((tab) => tab.id === (active ?? keepTabId))
+  return { tabs: next, active: next[anchor - 1]?.id ?? next[anchor]?.id ?? next[0]?.id }
+}
+
+export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {
+  if (!tab) return undefined
+  const state = tab.state && typeof tab.state === "object" ? tab.state : undefined
+  const workspace =
+    state && "workspace" in state && state.workspace && typeof state.workspace === "object"
+      ? (state.workspace as { id?: unknown; generation?: unknown })
+      : undefined
+  return JSON.stringify([
+    tab.id,
+    tab.panelId,
+    tab.resourceId,
+    tab.panelId === "notes" ? tab.source : undefined,
+    workspace?.id,
+    workspace?.generation,
+  ])
+}
+
+/**
+ * Re-entrancy guard for async tab closing. closeTab awaits the panel's
+ * onCloseTab (e.g. terminal pty.remove network round-trip), and during that
+ * window the panel itself may report the resource gone (ws close -> reconnect
+ * -> validate 404 -> onGone -> onRequestClose -> closeTab again). Two
+ * interleaved closeTab calls flush the same <Show keyed> panel tree twice,
+ * double-cleaning Solid computations (cleanNode on null.owned) and leaving
+ * the panel stuck on "Reconnecting".
+ */
+export function createTabCloseGuard() {
+  const closingTabs = new Set<string>()
+  return {
+    isClosing(tabId: string) {
+      return closingTabs.has(tabId)
+    },
+    begin(tabId: string) {
+      if (closingTabs.has(tabId)) return false
+      closingTabs.add(tabId)
+      return true
+    },
+    end(tabId: string) {
+      closingTabs.delete(tabId)
+    },
+  }
+}

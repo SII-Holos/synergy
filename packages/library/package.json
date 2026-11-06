@@ -1,0 +1,112 @@
+{
+  "name": "@ericsanchezok/synergy-library",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./vector/embedding-runtime": "./src/vector/embedding-runtime.ts",
+    "./experience-recall": "./src/experience-recall.ts",
+    "./database": "./src/database.ts",
+    "./vector/embedding": "./src/vector/embedding.ts",
+    "./cli/library": "./src/cli/library.ts",
+    "./cli/embed": "./src/cli/embed.ts",
+    "./experience-encoder": "./src/experience-encoder.ts",
+    "./migration": "./src/migration.ts",
+    "./chronicler": "./src/chronicler.ts",
+    "./tools": "./src/tools.ts",
+    "./session-recall": "./src/session-recall.ts",
+    "./scope-migration-store": "./src/scope-migration-store.ts",
+    "./routes/library": "./src/routes/library.ts",
+    "./experience-reencode": "./src/experience-reencode.ts",
+    "./memory-recall": "./src/memory-recall.ts",
+    ".": "./src/index.ts",
+    "./recall": "./src/recall.ts",
+    "./library-recall": "./src/library-recall.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./agents": "./src/agents.ts",
+    "./register": "./src/register.ts",
+    "./script/embedding-runtime-assets": "./script/embedding-runtime-assets.ts",
+    "./script/embedding-onnxruntime-web": "./script/embedding-onnxruntime-web.ts",
+    "./cli/data": "./src/cli/data.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/library",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.71",
+    "@clack/prompts": "1.8.1",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "0.4.0",
+    "@huggingface/transformers": "4.3.1",
+    "ai": "catalog:",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "onnxruntime-web": "1.30.0",
+    "sqlite-vec": "0.1.9",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "sqlite-vec-darwin-arm64": "0.1.9",
+    "sqlite-vec-darwin-x64": "0.1.9",
+    "sqlite-vec-linux-arm64": "0.1.9",
+    "sqlite-vec-linux-x64": "0.1.9",
+    "sqlite-vec-windows-x64": "0.1.9",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "library",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "library",
+    "requires": {
+      "local-runtime": "1.1.26"
+    },
+    "runners": {
+      "embedding-runtime-check": {
+        "entry": "./dist/vector/runtime-check.js",
+        "export": "main"
+      }
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "library",
+          "owner": "library",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Library",
+          "description": "Provide library capabilities.",
+          "component": "library"
+        }
+      ]
+    }
+  }
+}

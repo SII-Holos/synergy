@@ -10,21 +10,14 @@ import { bunInstall } from "./nodes/bun-install"
 import { buildApp } from "./nodes/build-app"
 import { generateSchema } from "./nodes/generate-schema"
 import { generateSdk } from "./nodes/generate-sdk"
-import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
 import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
-import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
-import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-link-protocol-candidate"
-import { publishUtilCandidate } from "./nodes/publish-util-candidate"
-import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
-import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
-import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
-// synergy-link npm publish removed — package too large for npm registry
-// import { publishSynergyLinkCandidate } from "./nodes/publish-synergy-link-candidate"
+import { publishModuleCandidates } from "./shared/publish-modules"
+import { prepareSynergyCandidate, publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
@@ -48,22 +41,17 @@ try {
   await rewriteVersions(version)
   await configureNpmAuth()
   await bunInstall()
-  await Promise.all([generateSchema(), generateSdk(), buildSynergyLinkProtocol(), buildUtil()])
+  await Promise.all([generateSchema(), generateSdk(), buildUtil()])
   await buildPlugin()
   await buildPluginKit()
   await buildApp()
   const platformNames = await buildSynergyBinaries(version, channel)
   await prepareSynergyPackages(version, platformNames)
   await validateLocalArtifacts(platformNames)
-  await publishSdkCandidate(version, channel)
-  await publishSynergyLinkProtocolCandidate(version, channel)
-  await publishUtilCandidate(version, channel)
-  await publishPluginCandidate(version, channel)
-  await publishPluginKitCandidate(version, channel)
-  const synergy = await publishSynergyCandidate(version, channel)
-  // synergy-link npm publish removed — package too large for npm registry
-  // await publishSynergyLinkCandidate(version, channel)
-  state.registryPackages.push(...synergy.platformPackages)
+  const candidate = await prepareSynergyCandidate(version)
+  const modules = await publishModuleCandidates(version, channel)
+  const synergy = await publishSynergyCandidate(candidate, channel)
+  state.registryPackages = [...new Set([...state.registryPackages, ...modules, ...synergy.platformPackages])]
   console.log("dev release", JSON.stringify(summarizeState(state), null, 2))
 } finally {
   await restoreFiles(snapshot)

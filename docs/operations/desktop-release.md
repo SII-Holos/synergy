@@ -1,6 +1,6 @@
 # Synergy Desktop Release Runbook
 
-`packages/desktop` is the production Electron application for Synergy. This runbook covers its `electron-builder` packaging, app id `io.holosai.synergy`, product name `Synergy`, desktop shell executable `synergy-desktop`, public runtime CLI `synergy`, and `synergy://` protocol.
+`apps/desktop` is the production Electron application for Synergy. This runbook covers its `electron-builder` packaging, app id `io.holosai.synergy`, product name `Synergy`, desktop shell executable `synergy-desktop`, public runtime CLI `synergy`, and `synergy://` protocol.
 
 ## Channels
 
@@ -9,12 +9,17 @@
 
 Stable desktop updates use `electron-updater` against the GitHub Release metadata files below. The app stores its desktop update preference under Electron `userData`; `auto` downloads in the background, `notify` reports availability, `manual` waits for an explicit check, and `none` disables checks. Settings and the bottom sidebar update prompt show availability, download progress, install readiness, and errors. Installing an already downloaded update stops the managed local server before calling Electron's updater install action.
 
+On first launch after an upgrade, Desktop displays saved-data migration progress and waits for advancing work before opening the application. Optional database rewrites require an explicit maintenance action in Settings → Storage or the recovery page. Managed Desktop refuses maintenance while work is active, stops only its own server, uses the matching bundled CLI, and restarts after the format commits. Return to Synergy cancels at a durable boundary and opens the committed data. External-server mode provides host-side instructions. Failed launches offer Retry, Continue maintenance and Export diagnostics; diagnostic export does not open storage. Verify both a fresh install and an upgrade that exceeds the ordinary startup deadline; see [startup waiting limits](../reference/development.md#development-modes).
+
+Managed launcher module verification and offline upgrades report an installation stage before Runtime initialization. This stage uses the existing five-minute inactivity budget; the ordinary thirty-second health deadline must not terminate a working module upgrade before it can announce Runtime readiness.
+
 Runtime environment:
 
 - `SYNERGY_DESKTOP_CHANNEL=dev|stable`
 - `SYNERGY_DESKTOP_SERVER_MODE=managed|external`
-- `SYNERGY_DESKTOP_APP_URL` only applies to dev/external mode
-- `SYNERGY_DESKTOP_LOG_DIR` overrides desktop/server logs
+  - `SYNERGY_DESKTOP_APP_URL` only applies to dev/external mode
+  - `SYNERGY_DESKTOP_SERVER_PORT` pins the managed server port; unset, Desktop reuses the port it remembers for the channel, then scans `4096`-`4099`
+  - `SYNERGY_DESKTOP_LOG_DIR` overrides desktop/server logs
 
 ## Local Commands
 
@@ -25,13 +30,15 @@ bun run desktop:pack
 bun run desktop:dist
 ```
 
-`desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform Synergy runtime with the Web application, schema, and native runtime assets, and run `electron-builder`. Release workflows build the exact runtime targets with `SYNERGY_BUILD_TARGETS`, run the same runtime preparation step, and inject each complete runtime with `packages/desktop/script/after-pack.cjs`. Packaging fails before copying when the runtime lacks its executable, `app/index.html`, schema, required sandbox helper, or a valid `runtime-manifest.sha256`.
+`desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform launcher with a sealed Web preset module graph, and run `electron-builder`. Release workflows build the exact runtime targets with `SYNERGY_BUILD_TARGETS`, run the same runtime preparation step, and inject each complete runtime with `apps/desktop/script/after-pack.cjs`. Packaging fails before copying when the runtime lacks its executable, sealed generation, module-owned Web/native resources, or a valid `runtime-manifest.sha256`.
 
 The product icon is generated from `packages/ui/src/assets/brand/synergy-product-icon-source.png` with `bun run brand:gen`. Desktop packaging consumes only `build/icon.png`; electron-builder converts that PNG into the platform-specific macOS, Windows, and Linux formats. Run `bun run brand:gen:check` to reject stale Web, UI, social, notification, or Desktop derivatives.
 
 Native unread indicators use `build/unread-overlay.png` for the Windows taskbar overlay and generated `build/icon-unread.png` for the Linux tray fallback. `electron-builder.json` copies both fixed assets into `resources/icons`; keep the source assets and packaging assertions together when changing their runtime paths.
 
 ## Release Artifacts
+
+macOS Desktop requires macOS 13 or later. Installer and updater metadata must retain that minimum alongside the bundled Electron version.
 
 Recommended Desktop installer artifacts:
 
@@ -41,9 +48,9 @@ Recommended Desktop installer artifacts:
 - `Synergy-linux-amd64-${version}.deb`
 - `Synergy-linux-arm64-${version}.deb`
 - `Synergy-${version}-checksums.txt`
-- `Synergy-${version}-cli-checksums.txt` — SHA-256 of every CLI runtime archive (`synergy-*` and `synergy-link-*`), generated and uploaded by `stable_candidate`
+- `Synergy-${version}-cli-checksums.txt` — SHA-256 of every Synergy CLI runtime archive (`synergy-*`), generated and uploaded by `stable_candidate`
 
-Windows ARM64 Browser Host artifacts remain published, but the full Windows ARM64 Desktop/runtime is not a Stable target until all native runtime dependencies are available for that architecture.
+Windows ARM64 Desktop/runtime is not a Stable target until all native runtime dependencies are available for that architecture.
 
 Portable and updater artifacts are still published but are not the full Desktop + CLI install entry:
 
@@ -55,28 +62,25 @@ Linux x64 artifact names follow each format's native architecture label: `amd64`
 
 The Linux `.deb` depends on the system `bubblewrap` package. Linux portable artifacts require users to install Bubblewrap separately.
 
-The product release also publishes the minimal remote Browser Host for every supported OS/architecture:
+Desktop Browser uses the application's bundled Electron engine. The full sealed module seed includes `synergy-browser-runtime` for Desktop selection, while CLI/Web leave that capability inactive. Browser pages, native broker and sandboxed page-prompt preload ship in Desktop. No independent Browser Host archives, Chromium manifests, trust keys or browser installer are release inputs.
 
-- `synergy-browser-host-{darwin|win32|linux}-{x64|arm64}-${version}.zip`
-- the matching `.manifest.json`
-- the matching `.manifest.json.sig`
+Compiled core and full artifacts share the thin CLI launcher. The complete dependency tree lives in `runtime/`, with a sealed `generation.json` and exactly one Harness module. The `core` artifact selects the `core` preset; the Web product selects the Web preset. Desktop adds its Browser component before Runtime registration. Desktop never recursively embeds its own application installer.
 
-Each manifest is Ed25519-signed and contains the exact Synergy version, Browser protocol version, SHA-256, byte size, release URL, and executable path. The standalone server downloads a Host only when WebRTC presentation is first required, verifies the embedded public key, signature, digest, version, and protocol, and atomically extracts it below `Global.Path.data/browser/host`. Desktop installations use their built-in broker and do not download this artifact for local native presentation. Manifest generation opens the completed ZIP before hashing or signing and fails unless the declared executable entry exists. The exact paths are `Synergy Browser Host.app/Contents/MacOS/Synergy Browser Host` on macOS, `Synergy Browser Host.exe` on Windows, and `synergy-browser-host` on Linux. Electron Builder executable names and manifest paths must continue to derive from this shared release contract.
+Resources belong to installed packages inside `runtime/node_modules`: Library carries its bundled embedding module and ONNX Web WASM in `dist/lib/onnxruntime-web`; Connections carries SVG WASM, Noto Sans SC fonts and license notices in `dist/lib/resvg-wasm`. The target-specific `synergy-native-*` package owns PTY, watcher, sandbox and macOS SQLite binaries. Web assets belong to `synergy-web-app/app`. No optional module resolves resources from the release runner checkout or requires executable-adjacent copies.
 
-The same release also publishes signed Chromium installation metadata for `darwin-x64`, `darwin-arm64`, `win32-x64`, `linux-x64`, and `linux-arm64`:
+Full runtime seeds retain Library's bundled embedding module and its selected WASM backend. Before sealing, assembly removes unused ONNX dependency binaries, incompatible Linux libc packages, dependency JavaScript/TypeScript source maps, npm ignore metadata and the duplicate ast-grep `sg` executable when its canonical executable exists. Module npm archives retain their complete published contents. Platform npm archives are packed and checked against a 190 MiB compressed-size budget before any candidate publication. Each packed platform archive is extracted and verified against its runtime inventory; the same archives are then uploaded. See the [payload decision](../decisions/implemented/bug-fix/2026-11-04-bound-platform-publication-payloads.md).
 
-- `synergy-chromium-{platform}-{arch}-${version}.manifest.json`
-- the matching `.manifest.json.sig`
+`script/release/shared/runtime-layout.cjs` defines required paths for release and Desktop packaging. `runtime-assets.txt` carries that contract to the shell installer. `runtime-manifest.sha256` seals every payload file, including module resources whose filenames contain spaces. The root npm `package.json` is outside that inventory because publication adds registry metadata; every module manifest remains sealed. Release and Desktop validation reject unlisted files, links, unsafe paths, missing resources and checksum mismatches. CLI upgrade verification checks the same inventory and rejects unlisted module files. Historical archives retain a named legacy required-file contract.
 
-Each Chromium manifest binds the Synergy version and target to the exact Playwright-pinned browser version, revision, upstream archive URL, executable path, SHA-256, and byte size. Release runners download and hash only their own platform archives; the Chromium archives remain on the Playwright CDN. `synergy browser install` verifies the signed manifest and archive before an atomic managed install.
-
-Every packaged runtime also includes the matching Playwright Core package under `browser-runtime/playwright-core`, the platform-independent ONNX Web module and WASM binary under `lib/onnxruntime-web`, and the SVG raster WASM binary plus bundled Noto Sans SC fallback fonts under `lib/resvg-wasm`. The SVG raster sidecar carries its MPL-2.0 license text and exact-version Source Code Form pointer; the fallback fonts carry their OFL-1.1 license. Artifact validation requires all three sidecars, both font subsets, and their notice files. The curl installer and Desktop packaging must preserve these directories so Browser startup, local embedding, and SVG preview rendering never resolve runtime dependencies or fonts from the release runner's checkout.
-
-Every runtime archive and Desktop runtime carries `runtime-manifest.sha256` with one `<sha256>  <relative-path>` entry per line covering the executable, the native helpers (`bin/ast-grep` or `bin/ast-grep.exe`, `vec0.so`, `vec0.dylib`, or `vec0.dll`, and `watcher.node`), `app/index.html`, `schema/config.schema.json`, the Playwright Core and ONNX Web sidecars, the Holos CLI files, and the platform sandbox helper. Release packaging verifies the manifest against the runtime directory before archiving and re-verifies every checksum against the extracted archive contents; Desktop packaging refuses to copy a runtime whose manifest is missing, incomplete, or fails checksum validation. The curl installer verifies each manifest entry (rejecting absolute or `..` paths) on the extracted bundle before replacing the installed runtime, and `synergy upgrade` verifies the installed manifest when present. An archive without a manifest is treated as legacy: the installer accepts it with a warning, and both the installer and upgrade verification fall back to required-file checks.
+On macOS, `mac.sign` delegates to the upstream signer with the configured identity, entitlements and hardened-runtime policy. After all child signatures, but before the top-level app signature, it refreshes `runtime/generation.json` and then `runtime-manifest.sha256` from the signed bytes. Only files actually selected by the signer may change; inventory membership, generation identity, unsigned resources and metadata remain strict. `desktop-package.json` is included in the outer inventory. Final app signing and notarization follow sealing; no `afterSign` rewrite or recursive re-signing is permitted. See the [signing decision](../decisions/implemented/bug-fix/2026-10-25-seal-runtime-between-child-and-app-signatures.md).
 
 The curl installer downloads the CLI checksum asset beside the selected archive and verifies that archive before extraction. Manifest-backed releases fail closed when the published checksum is unavailable, malformed, duplicated, or mismatched; historical archives without a runtime manifest remain installable through the legacy required-file contract. The installer uses a private temporary directory, rejects absolute paths, drive-letter paths, parent-directory traversal, backslash paths, and archive symbolic or hard links before extraction, then rejects any extracted symbolic link. It validates the runtime manifest and required-file contract before touching the current installation, backs up the complete managed runtime, verifies the installed copy, and restores the backup if any apply or post-install verification step fails. A successful restore removes the backup; if restoration itself fails, the recovery backup is preserved and its path is reported for manual recovery.
 
-musl Linux archives (`synergy-linux-*-musl`) intentionally exclude `bin/ast-grep` and the `vec0` SQLite vector extension because no musl-compatible release assets exist for them; their manifests omit those entries and runtime preparation removes any residual copies. `watcher.node` is different: @parcel/watcher publishes musl packages, so every Linux target — glibc and musl — ships the watcher binding. glibc Linux, macOS, and Windows archives require all native helpers and fail packaging when any of them is missing.
+musl Linux archives (`synergy-linux-*-musl`) intentionally exclude the glibc-only ast-grep and sqlite-vec platform packages because no musl-compatible release assets exist for them; their module seeds omit those packages. Every Linux target, glibc or musl, ships its matching watcher binding through a distinct native package. glibc Linux, macOS, and Windows archives require all native helpers and fail packaging when any of them is missing.
+
+Linux watcher assets are built from pinned Parcel 2.6.0 source with the EINTR patch and checked for the `parcel-2.6.0-eintr-1` marker at load time. Upgrade the executable and its matching assets together: a new executable with an old unpatched binding refuses file watching. Reinstall the matching runtime distribution to repair an incomplete installed upgrade; source checkouts use `bun dev prepare` with Docker available.
+
+All Linux watcher targets require the system C++ runtime libraries listed in the [watcher build reference](../../packages/local-runtime/script/watcher/README.md). Keep the glibc x64/arm64 Bun coexistence and signal-recovery checks passing before publishing the built bindings.
 
 Updater metadata expected on stable releases:
 
@@ -84,6 +88,18 @@ Updater metadata expected on stable releases:
 - `latest.yml`
 - `latest-linux.yml`
 - `latest-linux-arm64.yml`
+
+## Installable module and application packages
+
+The candidate publishes generic workspace modules and all eight target-specific native packages before their consumers. `core`/`full`/Web/Desktop presets are declarative selections; the existing product wrapper remains the complete Web distribution. Both compiled profiles use `packages/cli/src/launcher.ts`. Native CI builds PTY libraries on matching hosts (including Windows ARM64 for the core), Linux watcher bindings and sandbox helpers, and universal macOS SQLite. Release jobs download the verified assets; static package validation consumes the same JavaScript archives as publication.
+
+Each native Desktop packaging job writes a `synergy-desktop-app-<platform>.json` receipt binding its portable archive checksum and executable to the actual signing identity. macOS requires the configured team and notarization. Windows records a valid Authenticode publisher when signed; the existing unsigned-distribution policy records checksum-only verification, and signing continuity still prevents a signed release from becoming unsigned. The upload job verifies the receipts against the uploaded files and publishes `@ericsanchezok/synergy-desktop-app`. Finalization verifies and promotes every declared module and the Desktop application package before completing the release.
+
+The Desktop application npm archive contains only `package.json`, which declares the five portable application targets. Its explicit file selection is exercised through the real Bun packer before release; staging files and native application archives stay outside this metadata package.
+
+Windows receipt generation shares the installation signature inspector. It removes inherited `PSModulePath` only from the Windows PowerShell child environment and treats inspection errors as failures, preserving their diagnostics. Only an explicit `NotSigned` result can use the unsigned-distribution policy. Windows CI exercises real signature inspection from a Bun child carrying PowerShell 7 module paths before publication.
+
+`synergy install desktop` can therefore add the native application to a core installation. It installs a portable application into a new generation; the embedded application uses the Web preset and does not include another Desktop application package.
 
 ## CLI Exposure
 
@@ -120,46 +136,63 @@ GitHub upload/update feed:
 
 - `GITHUB_TOKEN` or `GH_TOKEN`
 
-Browser artifact trust:
-
-- `BROWSER_HOST_MANIFEST_SIGNING_KEY` — base64 PKCS#8 Ed25519 private key used only by the release matrix to sign Browser Host and Chromium manifests; the workflow passes it to the Chromium generator as `SYNERGY_BROWSER_MANIFEST_SIGNING_KEY`
 - `BROWSER_HOST_MANIFEST_PUBLIC_KEY` — base64 raw Ed25519 public key passed to runtime builds as `SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY` and embedded in product binaries
 
-PR/package validation works without signing secrets. A product Release validates every required macOS signing secret before publishing a candidate, verifies the one private/public key pair shared by Browser Host and Chromium manifest signing, and additionally validates Windows signing material when configured.
+PR/package validation works without signing secrets. A product Release validates every required macOS signing secret before publishing a candidate, validates Windows signing material when configured.
 
 ## GitHub Actions Flow
 
 Product release keeps the existing candidate/finalize model:
 
-1. `stable_sandbox_assets` builds Linux x64/arm64 helpers for glibc and musl plus the Windows x64 helper, then uploads target-keyed assets. It never commits generated hashes.
+1. `stable_native_assets` builds the target-keyed sandbox, PTY, watcher and SQLite assets through the reusable helper workflow. It never commits generated hashes.
 2. `stable_candidate` validates signing material, downloads the helper assets, selects the requested bump after the highest stable version already published by any release-managed npm package, runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, packages the CLI archives (validating each against its `runtime-manifest.sha256` after extraction), generates and uploads `Synergy-${version}-cli-checksums.txt`, creates the draft GitHub Release, verifies the draft asset names, downloads each published CLI archive and the checksum asset, rejects any missing, extra, malformed, or mismatched checksum entry, and repeats the archive path/link and extracted runtime-manifest validation against the downloaded bytes.
-3. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. macOS and Linux build x64/arm64 Desktop artifacts; Windows builds x64 Desktop artifacts. Every platform still builds x64/arm64 minimal Browser Host zips.
-4. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key and helper hash embedded, assembles their Web application, schema, and native runtime assets, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle. When Windows signing material is configured, Windows packaging forces Authenticode code signing and verifies that the resulting executable has a valid signature before upload; without it, and only when no previous release was signed, Windows artifacts are built unsigned.
+3. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. macOS and Linux build x64/arm64 Desktop artifacts; Windows builds x64 Desktop artifacts. The macOS host image follows [CI platform execution](ci.md#任务和报告).
+4. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the helper hash embedded, assembles their Web application, schema, and native runtime assets, and packages Desktop. The macOS arm64 runner verifies the final portable archive's released upgrade before uploading the platform bundle. When Windows signing material is configured, Windows packaging forces Authenticode code signing and verifies that the resulting executable has a valid signature before upload; without it, and only when no previous release was signed, Windows artifacts are built unsigned.
 5. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt` for the Desktop artifacts, and uploads them to the draft GitHub Release. The CLI checksum asset is separate and was already uploaded by `stable_candidate`.
 6. `stable_finalize` verifies npm candidates, downloads every CLI runtime archive, recomputes its SHA-256 against the published CLI checksum asset, rejects unsafe archive paths or links, extracts it into a private temporary directory, and re-validates its `runtime-manifest.sha256` and required target contract. It then verifies recommended Desktop installer artifacts, portable artifacts, Desktop checksum, and updater metadata from the draft GitHub Release before promoting npm tags and publishing the GitHub Release.
 
-Within that flow, each platform matrix job also generates and signs Chromium manifests for its supported target archives. `stable_desktop_publish` uploads the Browser Host and Chromium manifests, and `stable_finalize` verifies those Browser assets before publication.
+Registry read-after-write checks use cache-busted, no-store requests and a twenty-minute visibility budget for npm publish-time scanning. An accepted upload is not installable until the registry exposes its version and requested dist-tag. Expiry still fails publication.
 
-Registry read-after-write checks use cache-busted, no-store requests. A successful npm write is not verified through a previously cached version or dist-tag response.
+The `version` and `native_run_id` dispatch inputs resume an unfinished stable candidate. They retain the highest already published managed-package version and reuse the original run's successful native artifacts. Recovery requires an ancestor Release run from `dev` and unchanged published-package sources and native build inputs. Only explicitly allowed release publication and seed-assembly tooling, the separately built Execution Host Docker recipe, development Skills, tests and documentation may differ. Workspace module compilation, manifests, dependency locks and native compilation stay protected. The Docker recipe is not included in published npm modules or CLI/Desktop runtime assembly. A completed public GitHub Release cannot be resumed.
 
 ## Failure Recovery
 
+- If candidate publication fails after npm accepts packages, use the original candidate version and native run through the [release recovery procedure](../../.synergy/skill/git-guide/references/automation-ci.md). A fresh bump computes a different version; it does not complete the partial candidate.
 - If desktop packaging fails before upload, rerun the failed `stable_desktop_package` matrix job.
 - If desktop upload fails, rerun `stable_desktop_publish`; it uses `gh release upload --clobber`.
 - If Desktop checksum generation is wrong, delete `Synergy-${version}-checksums.txt` from the draft release, rerun `stable_desktop_publish`, then rerun finalize.
 - If the CLI checksum asset is missing or wrong, replace `Synergy-${version}-cli-checksums.txt` in the draft release (regenerate it from the packaged CLI archives and upload with `gh release upload --clobber`), then rerun `stable_finalize`. Do not rerun `stable_candidate` to fix it: the candidate version is already published, so a rerun computes the next version instead of repairing this draft.
 - If notarization or code signing fails, verify the affected platform's signing secrets and rerun only that platform matrix job before finalize. For Windows, confirm that `WINDOWS_CERTIFICATE` is a base64-encoded PKCS#12 certificate, its password matches, and the packaged executable reports a valid Authenticode signature.
-- If Browser manifest signing fails, verify that the private/public key pair matches, rerun every affected platform matrix job, and replace the corresponding Host or Chromium manifest/signature assets together. Never reuse a manifest for a rebuilt archive.
 - If finalize fails because desktop assets are missing, do not publish the draft release manually; restore the missing assets first, then rerun `stable_finalize`.
+
+## Released-upgrade acceptance
+
+The macOS packaging job runs `script/release/verify-desktop-upgrade.ts` on the final arm64 ZIP. It extracts the actual archive into a temporary directory, verifies its code signature, configured Apple team and notarization, then runs the retained upgrade scenario against its bundled runtime. It repeats signature verification after the scenario and rejects archive changes. Only success writes `synergy-desktop-upgrade.json`, binding the release version, pinned previous version, target, archive name and SHA256. Desktop package publication and stable finalization verify that receipt against the actual archive bytes before promotion. A missing, stale or mismatched receipt blocks publication; rerun the owning packaging job instead of creating evidence manually. JUnit diagnostics are retained separately, and temporary extracted apps and test Homes are removed.
+
+`script/release/verify-released-upgrade.ts` verifies the pinned 3.0.22 archive digest before extraction and runs its actual executable against a built candidate outside the checkout. It fails when the candidate version differs, the scenario is missing or skipped, or its behavioral assertions fail. The supported acceptance hosts are Linux x64 and macOS arm64; other release platforms retain their native packaging and installation checks.
+
+```bash
+SYNERGY_VERSION=3.1.0 bun packages/presets/script/build.ts --single
+bun script/release/verify-released-upgrade.ts \
+  --candidate packages/presets/dist/synergy-darwin-arm64 \
+  --version 3.1.0
+```
+
+Use `synergy-linux-x64` on Linux. `--archive` accepts a local copy of the pinned release archive and still verifies its digest. `--evidence` retains private fixture data and logs; never publish a real user's Home or credentials. For Desktop acceptance, supply the final signed app's `Contents/Resources/synergy` directory instead of the pre-sign build. Do not modify that app between verification and distribution.
+
+The scenario creates history and a completed tool effect with 3.0.22, approves a process plugin through the real review API, uploads an image and saves locale configuration. The candidate must retain message identities, text, completed tool records, image bytes, configuration and executable plugin behavior; continue the old task exactly once; survive restart; and execute new work. Recovery boots 3.0.22 against the restored pre-upgrade Home and continues the old task without replaying completed work. Model responses are deterministic fixtures, not live-provider acceptance. This does not replace UI, native OS permissions, Developer ID signing, notarization or the complete platform matrix.
+
+User-facing backup and rollback requirements are in [Upgrading from 3.0.22 to 3.1](../migrations/upgrading-to-3.1.md). Product release workflows publish candidates and are not a no-publication preflight entry point.
 
 ## Validation Checklist
 
 - `bun run release:test`
-- `bun run --cwd packages/desktop desktop:test`
-- `bun run --cwd packages/desktop desktop:build`
-- `bun run --cwd packages/desktop test:runtime`
-- `bun run --cwd packages/desktop browser-host:dist`
-- `cd packages/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
+- `bun run --cwd apps/desktop desktop:test`
+- `bun run --cwd apps/desktop desktop:build`
+- `bun run --cwd apps/desktop test:runtime`
+- Run `bun test test/mac-signing.test.ts test/runtime-seal.test.ts test/packaging.test.ts` from `apps/desktop` on macOS; non-macOS skips do not establish native signing acceptance.
+- Run released-upgrade acceptance with the expected candidate version, then repeat against the final macOS app runtime; verify `codesign --verify --deep --strict`, the installation seed and the outer runtime inventory without modifying signed bytes.
+- `cd apps/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
 - Install `.pkg`, `.exe`, and `.deb` in platform runners or VMs and check `synergy --version` plus `synergy doctor`
 - Confirm every packaged Desktop runtime contains `app/index.html`, `schema/config.schema.json`, and a valid `runtime-manifest.sha256`, and that its managed server returns HTML from `/` after `/global/health` becomes healthy.
 - Confirm every Linux/Windows runtime archive contains `sandbox/synergy-sandbox-*` and `synergy doctor` reports a verified helper
@@ -171,5 +204,9 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 - Confirm a downloaded Desktop update installs only through the explicit install-and-restart action and does not install automatically when the user quits
 - Confirm Linux provides both `/usr/bin/synergy-desktop` for the desktop shell and `/usr/bin/synergy` for the runtime CLI
 - Draft GitHub Release contains all expected recommended installer artifacts, portable artifacts, both checksum assets (`Synergy-${version}-checksums.txt` and `Synergy-${version}-cli-checksums.txt`), and all four updater metadata files before finalize
-- Draft GitHub Release contains six Browser Host zips, six exact-version manifests, and six signatures; every manifest executable exists at its exact platform path inside the matching zip, and tampered zip/signature tests pass before finalize
-- Draft GitHub Release contains five exact-version Chromium manifests and five signatures for the supported standalone install targets; signature, target-substitution, and archive-tampering tests pass before finalize.
+
+## Native Computer Driver
+
+macOS Desktop builds run `desktop:prepare-computer` to prepare the Cua release pinned in `apps/desktop/src/computer/release.ts`. Both archive and executable digests must match before packaging. The `mac.extraResources` entry includes the executable and MIT notices from `build/computer`, and `mac.binaries` includes the executable for nested signing. Keep the notices with every distributed copy; the driver runs as a private child of Desktop for host-attributed macOS permissions. Other platforms do not bundle this driver.
+
+The complete Cua and UniFFI SDK packages must resolve under `app.asar.unpacked`; native extension unpacking alone does not give Rust a physical library path. Exercise the copied application outside the checkout through its own managed server and verify the loaded SDK and worker paths. The [Computer development workflow](../../.synergy/skill/change-computer-runtime/SKILL.md) defines native and real-model acceptance; local ad-hoc signing does not satisfy distribution signing or notarization.

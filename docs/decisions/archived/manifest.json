@@ -1,5 +1,25 @@
 {
   "files": {
-    "archived/bug-fix/2026-08-22-tool-attachments-collapsible-card.md": "f749b6376aae3f2abb13bd276800d08033833f728107d52a48f2eecb8ba77a4a"
+    "archived/bug-fix/2026-09-06-builtin-mcp-search-expand-by-default.md": "3cf4c7bab470cf03fdce8d545d06d019ca2aee426aee50ab1c732cc0dc0c89fa",
+    "archived/bug-fix/2026-10-09-reconnect-lease-renewal-after-projection-loss.md": "9f2d3d292bcf82508cd0e938f9d9946500e05eea8a3898bcdc721a443ed66acc",
+    "archived/bug-fix/2026-08-22-tool-attachments-collapsible-card.md": "f749b6376aae3f2abb13bd276800d08033833f728107d52a48f2eecb8ba77a4a",
+    "archived/bug-fix/2026-09-08-await-completion-context-contributions.md": "2c28dc7acd291e2311bf6c6d70e54aa8b59e36c271b47d907ac5285c2222b570",
+    "archived/bug-fix/2026-08-28-blueprint-sidebar-audit-state.md": "80d776d7e547e704a496dc2762aadc37416c234f9f7d803ff4a7df33616a5a8e",
+    "archived/feature/2026-08-18-mcp-group-catalog-in-expand-tools.md": "aca5308bb0ccc9008e6612ff1920c84323084e9589a927e3e869c7e0c1c53e2f",
+    "archived/architecture/2026-09-21-benchmark-research-deadline-policy.md": "823fde2d71034708f3e8c11bae06df97c54d35c03186a1ff16315b720ced26a7",
+    "archived/architecture/2026-09-22-benchmark-serial-admission.md": "b56034af982232dfc94080550fea3b59f2658dd82cdfe21d5bca21c3e08ceb61",
+    "archived/bug-fix/2026-09-29-computer-background-focus.md": "a1033cdb0f733f9221d1d9d23e95a8f3c96275c7fd4d47583b6a92b78a1d5f7d",
+    "archived/bug-fix/2026-09-29-computer-observation-admission.md": "80df119b85766f5f0d4cb30db46c72236e34e21ca8f12e0559bb4968724d5424",
+    "archived/bug-fix/2026-09-02-synergy-link-pid-start-time-reference-frame.md": "37274e9ab68930da510c34950a5e9f3612398cdc655d680dbb3169ccd03c86af",
+    "archived/bug-fix/2026-09-07-remote-poll-wait-response-margin.md": "2fc6dfa52d7233dfd3b29222949c7a230f5b507787be1ce076b8deae1a44a031",
+    "archived/architecture/2026-10-03-durable-root-search-guards.md": "6951330982a9b48b64bb84057cf3153915728bda58b7448e470f7d080a08be59",
+    "archived/feature/2026-09-08-kanban-pane-status-tint.md": "f7a9389659c2dd93a2f3dd61c8fab9adbd046b30974a09a4a0790c4ae2ca8206",
+    "archived/feature/2026-10-23-mobile-drawer-as-navigation-root.md": "bbec1dfc53c54ba8591642f446d7d378becd199f0864eb372f399fa27943dfe4",
+    "archived/bug-fix/2026-10-22-complete-session-model-selection.md": "4cd32cd54a91850abdb6cd74723c081e771d73a20f2de6c67a7921c9bbea5315",
+    "archived/bug-fix/2026-10-22-keep-welcome-playfield-at-resting-size-under-covering-composer.md": "fecc34aba831f722d8085de651560ca491710b9f175de751ab2fc2b8bd297f98",
+    "archived/bug-fix/2026-10-17-steer-active-subagent-followups.md": "87d1b64452902c9f6072a899d37354c4d4604bd1471254b687681d2b4f193791",
+    "archived/feature/2026-10-16-lightweight-primary-default.md": "cd1acbc2609665fe88fcfb88120560a3c2dca1ce90ce2eb18199e06501bd33de",
+    "archived/architecture/2026-10-15-independent-file-tool-groups.md": "a335456c37ce670fb4555650e3f0002a098cd729d6642bfae0190125f606260b",
+    "archived/bug-fix/2026-11-02-history-cap-keeps-newer-tail.md": "1a09f7f851a2c0ea033ddae80555258a9c4b79f8d176c3dcbe22aa926ae90928"
   }
 }

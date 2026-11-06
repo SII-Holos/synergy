@@ -25,6 +25,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   create_file: d("tool.title.create-file", "Create File"),
   multiedit: d("tool.title.multi-edit", "Edit file in multiple places"),
   patch: d("tool.title.patch", "Apply patch"),
+  apply_patch: d("tool.title.apply-patch", "Apply patch"),
   look_at: d("tool.title.look-at", "Analyze file"),
   scan_document: d("tool.title.read-document", "Read Document"),
 
@@ -34,9 +35,6 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
 
   // Search / web
   webfetch: d("tool.title.webfetch", "Read web page"),
-  websearch: d("tool.title.web-search", "Search web"),
-  arxiv_search: d("tool.title.arxiv-search", "Search arXiv"),
-  arxiv_download: d("tool.title.arxiv-download", "Download arXiv paper"),
   context7_resolve_library: d("tool.title.resolve-library", "Resolve Library"),
   context7_query_docs: d("tool.title.query-docs", "Query Docs"),
 
@@ -53,7 +51,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   question: d("tool.title.questions", "Ask questions"),
   question_timed_out: d("tool.title.question-timed-out", "Question Timed Out"),
   question_no_response: d("tool.title.question-no-response", "No response received"),
-  loop_stop: d("tool.title.request-review", "Request Review"),
+  loop_stop: d("tool.title.complete-light-loop", "Complete Light Loop"),
   light_loop_approve: d("tool.title.approve-light-loop", "Approve Light Loop"),
   light_loop_reject: d("tool.title.reject-light-loop", "Reject Light Loop"),
   blueprint_loop_stop: d("tool.title.request-blueprint-review", "Request Blueprint Review"),
@@ -69,6 +67,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   session_control: d("tool.title.control-session", "Manage session"),
   session_status: d("tool.title.session-status", "View session status"),
   session_compact: d("tool.title.compact-session", "Compact Session"),
+  session_pause: d("tool.title.pause-session", "Pause session"),
   session_abort: d("tool.title.abort-session", "Abort Session"),
   session_answer_question: d("tool.title.answer-question", "Answer Question"),
   session_dismiss_question: d("tool.title.dismiss-question", "Dismiss Question"),
@@ -119,16 +118,15 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   // Communication
   email_send: d("tool.title.send-email", "Send Email"),
   email_read: d("tool.title.read-email", "Read Email"),
-  clarus_submit_task_result: d("tool.title.clarus-submit-task-result", "Submit Clarus Result"),
-  clarus_extend_task: d("tool.title.clarus-extend-task", "Extend Clarus Task"),
   github_deliver_fix: d("tool.title.github-deliver-fix", "Deliver GitHub Fix as PR"),
   email_search: d("tool.title.search-email", "Search Email"),
   email_mark_read: d("tool.title.mark-read", "Mark Read"),
   email_inbox: d("tool.title.email-inbox", "View inbox"),
   generate_image: d("tool.title.generate-image", "Generate Image"),
   edit_image: d("tool.title.edit-image", "Edit Image"),
-  attach: d("tool.title.attach", "Add attachment"),
   response_card: d("tool.title.response-card", "Prepare response card"),
+  channel_reaction_only: d("tool.title.channel-reaction-only", "Reply with reaction only"),
+  speak: d("tool.title.speak", "Speak"),
 
   // Platform
   runtime_reload: d("tool.title.runtime-reload", "Reload runtime"),
@@ -136,17 +134,12 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   search_tools: d("tool.title.search-tools", "Search Tools"),
   expand_tools: d("tool.title.expand-tools", "Load tools"),
   lsp: d("tool.title.lsp", "Query code intelligence"),
-  connect: d("tool.title.connect", "Connect"),
-  connect_opening: d("tool.title.connect-opening", "Opening"),
-  connect_closing: d("tool.title.connect-closing", "Closing"),
-  connect_status: d("tool.title.connect-status", "View connection status"),
-  connect_list: d("tool.title.connect-list", "View connections"),
-  connect_list_targets: d("tool.title.connect-list-targets", "View Link targets"),
-  connect_connected: d("tool.title.connected", "Connected"),
-  connect_disconnected: d("tool.title.disconnected", "Disconnected"),
   worktree_enter: d("tool.title.enter-worktree", "Enter isolated workspace"),
   worktree_leave: d("tool.title.leave-worktree", "Leave isolated workspace"),
+  worktree_archive: d("tool.title.archive-worktree", "Archive isolated workspace"),
   worktree_list: d("tool.title.worktrees", "View isolated workspaces"),
+  agent_config: d("tool.title.agent-config", "Manage agents"),
+  workbench_view: d("tool.title.workbench-view", "Manage resource views"),
 
   // Render
   render: d("tool.title.render", "Render content"),
@@ -167,6 +160,9 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   // Browser
   browser_navigation: d("browser.title.navigation", "Navigate web"),
   browser_snapshot: d("browser.title.snapshot", "Capture page snapshot"),
+  computer_apps: d("computer.title.apps", "Find application windows"),
+  computer_observe: d("computer.title.observe", "Observe application"),
+  computer_action: d("computer.title.action", "Act in application"),
   browser_action: d("browser.title.action", "Operate page"),
   browser_wait: d("browser.title.wait", "Wait for page"),
   browser_read: d("browser.title.read", "Read page"),
@@ -282,6 +278,12 @@ export const SPECIAL_USER_LABEL_DESC: Record<string, MessageDescriptor> = {
 
 // ── Session review chrome ───────────────────────────────────────────
 export const SESSION_REVIEW_DESC = {
+  operation: d("session-review.operation", "Change {number}"),
+  viewFile: d("session-review.view-file", "Open file"),
+  historicalBinding: d(
+    "session-review.historical-binding",
+    "This change belongs to a different or unavailable Workspace binding.",
+  ),
   title: d("session-review.title", "Session changes"),
   unified: d("session-review.unified", "Unified"),
   split: d("session-review.split", "Split"),
@@ -309,7 +311,10 @@ export const DAG_CHROME_DESC = {
   focus: d("dag.chrome.focus", "Focus"),
   nodeMetadata: d("dag.chrome.node-metadata", "Node metadata"),
   fit: d("dag.chrome.fit", "Fit"),
+  zoomIn: d("dag.chrome.zoomIn", "Zoom in"),
+  zoomOut: d("dag.chrome.zoomOut", "Zoom out"),
   openSession: d("dag.chrome.open-session", "Open session"),
+  nodeDetails: d("dag.chrome.nodeDetails", "Task details"),
   closeDetails: d("dag.chrome.close-details", "Close node details"),
   hint: d("dag.chrome.hint", "Drag to pan · Ctrl/\u2318 + wheel to zoom · Double-click to focus"),
   worktree: d("dag.chrome.worktree", "Worktree"),
@@ -333,8 +338,6 @@ export const BODY_PRIMITIVES_DESC = {
 export const TURN_CHANGE_DESC = {
   reviewChanges: d("turn-change.review-changes", "Review changes"),
   binary: d("turn-change.binary", "Binary"),
-  calculating: d("turn-change.calculating", "Calculating file changes…"),
-  calculationFailed: d("turn-change.calculation-failed", "Couldn’t calculate file changes"),
 } as const
 
 // ── Session turn chrome ─────────────────────────────────────────────
@@ -377,7 +380,6 @@ export const TOOL_MISC_DESC = {
   liveApplied: d("tool.misc.live-applied", "Live Applied"),
   restartRequired: d("tool.misc.restart-required", "Restart Required"),
   warnings: d("tool.misc.warnings", "Warnings"),
-  executedViaSynergyLink: d("tool.misc.executed-via-synergy-link", "Executed via Synergy Link"),
 } as const
 
 // ── Task subagent detail ────────────────────────────────────────────
@@ -407,8 +409,16 @@ export const LOGO_DESC = {
 } as const
 
 // ── Countdown ───────────────────────────────────────────────────────
+// Labels describe what the window actually is. `auto_background` means the
+// command keeps running in the background when the window closes, so calling
+// it a timeout would misstate what happens; only `tool_timeout` aborts.
 export const COUNTDOWN_DESC = {
-  timeoutLabel: d("countdown.timeout-label", "{remaining}s timeout"),
+  toBackground: d("countdown.to-background", "{remaining}s to background"),
+  toTimeout: d("countdown.to-timeout", "{remaining}s to timeout"),
+  remaining: d("countdown.remaining", "{remaining}s remaining"),
+  backgrounded: d("countdown.backgrounded", "backgrounded"),
+  timedOut: d("countdown.timed-out", "timed out"),
+  pastLimit: d("countdown.past-limit", "past limit"),
 } as const
 
 // ── Anchored tool card ──────────────────────────────────────────────
@@ -437,6 +447,7 @@ export const MESSAGE_PART_DESC = {
   copyFailure: d("message-part.copy-failure", "Unable to copy the message."),
   noteLabel: d("message-part.note-label", "Note"),
   sessionLabel: d("message-part.session-label", "Session"),
+  quoteLabel: d("message-part.quote-label", "Quote"),
   untitled: d("message-part.untitled", "Untitled"),
 } as const
 
@@ -489,6 +500,7 @@ export const TOOL_LABEL_DESC = {
   blueprints: d("tool.label.blueprints", "{count, plural, one {# blueprint} other {# blueprints}}"),
   targets: d("tool.label.targets", "{count, plural, one {# target} other {# targets}}"),
   memories: d("tool.label.memories", "{count, plural, one {# memory} other {# memories}}"),
+  agents: d("tool.label.agents", "{count, plural, one {# agent} other {# agents}}"),
   found: d("tool.label.found", "{count} found"),
   browserSettled: d("browser.label.settled", "settled"),
   browserUnsettled: d("browser.label.unsettled", "unsettled"),
@@ -523,4 +535,17 @@ export const BROWSER_TOOL_DESC = {
   timeout: d("browser.summary.timeout", "Timeout"),
   elapsed: d("browser.summary.elapsed", "Elapsed"),
   milliseconds: d("browser.summary.milliseconds", "{count} ms"),
+} as const
+
+// ── Search tool summaries (anysearch / scholight cards) ────────────
+export const SEARCH_TOOL_DESC = {
+  domains: d("search.summary.domains", "Domains"),
+  results: d("search.summary.results", "Results"),
+  elapsed: d("search.summary.elapsed", "Elapsed"),
+  host: d("search.summary.host", "Host"),
+  format: d("search.summary.format", "Format"),
+  papers: d("search.summary.papers", "Papers"),
+  strength: d("search.summary.strength", "Strength"),
+  total: d("search.summary.total", "Total"),
+  searching: d("search.summary.searching", "Searching…"),
 } as const

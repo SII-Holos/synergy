@@ -1,0 +1,1 @@
+Return the bound BlueprintLoop for corrections. State unmet requirements, reproduction evidence and actionable fixes concisely; reference detailed reports. Optional improvements alone do not block acceptance. Only its recorded reviewer can reject; the host infers the loop.

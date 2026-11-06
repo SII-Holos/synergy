@@ -1,0 +1,39 @@
+# Desktop Package Rules
+
+Root `AGENTS.md` and Web/runtime rules also apply to code reached through this Electron shell.
+
+Load `change-browser-runtime` for native Browser pages, profiles or popup work and `develop-synergy` for manual Desktop verification. Read [Desktop release](../../docs/operations/desktop-release.md) before packaging, signing, updating, or changing release assets.
+
+## Keep Desktop a Host
+
+- Desktop owns Electron lifecycle, the managed/local server process, preload IPC, native dialogs/clipboard/shell, window state/chrome, updates, native Browser presentation, and the private native Computer driver. It does not own a parallel session, permission, or Browser page model.
+- Keep `contextIsolation: true`, `nodeIntegration: false`, and renderer sandboxing. Expose narrow typed preload methods; validate every IPC payload in the main process and keep privileged Electron objects out of the renderer.
+- Preserve production URL/navigation, permission, external-link, download, and window-creation policy. Do not replace blocked navigation with a permissive fallback.
+- HTML fullscreen requires the current trusted App main-frame document.
+- Keep external-server development mode and packaged managed-server mode distinct. Never stop or reuse the runtime carrying the current task.
+- Native Browser creates one real `WebContentsView` per page and adopts native popups with their opener. Profile resources are shared by reference count; page commands never change human tab selection. The broker requires a local server.
+- Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
+- Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
+- Desktop owns the operating-system keep-awake assertion while Synergy is working. `src/power-save.ts` holds the only `powerSaveBlocker` assertion and the endpoint watcher; whether work is running is decided by the server's `/global/activity`, never by the renderer. The renderer may only ask the shell to re-check. Release the assertion on every quit path and keep the setting opt-in.
+
+## Verify
+
+Run `bun run typecheck` and the focused test under `test/`, then `bun run desktop:test`. For Browser changes, run `test:runtime` and the relevant core/Web tests. Exercise the affected external or managed mode through an isolated home, and finish with root `bun run quality:quick`.
+
+For background-only Browser checks use `SYNERGY_DESKTOP_RUNTIME_TEST=1 SYNERGY_DESKTOP_BACKGROUND_TEST=1 bun test test/browser-runtime-smoke.test.ts`; visible-window and focus-dependent fixtures are explicitly skipped and remain unverified.
+
+For startup progress changes, also run `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/startup-progress-runtime.test.ts` and verify an isolated managed upgrade longer than the ordinary health deadline. Add `SYNERGY_DESKTOP_BACKGROUND_TEST=1` to keep this fixture hidden and disable native focus requests.
+
+Update the Browser architecture, Web product contract, or Desktop release runbook when their durable behavior changes.
+
+For native Computer changes, load `change-computer-runtime` and read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts`, `test:computer-native` and `test:computer-acceptance` in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.
+
+For keep-awake changes, run `bun test test/power-save.test.ts` and verify in an isolated Desktop that the assertion appears while a task runs, survives closing the window, and leaves nothing behind after quitting (macOS: `pmset -g assertions`).
+
+Packaging consumes the shared release `runtime-layout.cjs` contract and copies the sealed module seed as a unit. Preserve its complete inventory and reject unlisted payloads before copying.
+
+Sign children, reseal both inventories, then sign the app; never mutate afterward. Preserve notarization. Run `bun test test/mac-signing.test.ts test/runtime-seal.test.ts test/packaging.test.ts` on macOS. See the [decision](../../docs/decisions/implemented/bug-fix/2026-10-25-seal-runtime-between-child-and-app-signatures.md).
+
+Keep `test/fixture/branding.js.txt` unchanged. Reassess the detector override when osx-sign upgrades.
+
+Portable application receipts bind release version, artifact hash, executable and actual native signing identity. Publish the application package only after all supported targets have receipts and their uploaded bytes match.

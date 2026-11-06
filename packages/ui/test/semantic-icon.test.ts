@@ -16,24 +16,27 @@ const rawIconPatterns = [
 ]
 
 const rawIconExceptionReasons: Record<string, string> = {
-  "packages/app/src/components/agenda/form.tsx":
+  "apps/web/src/components/agenda/form.tsx":
     "Kobalte select controls use structural chevrons and selected-option checks.",
-  "packages/app/src/components/prompt-input/permission-selector.tsx":
+  "apps/web/src/components/prompt-input/permission-selector.tsx":
     "Toolbar selector trigger uses a structural disclosure chevron.",
-  "packages/app/src/components/prompt-input/start-options.tsx":
+  "apps/web/src/components/prompt-input/start-options.tsx":
     "Toolbar selector trigger uses a structural disclosure chevron.",
-  "packages/app/src/components/settings/components/AccountToggleCard.tsx":
+  "apps/web/src/components/settings/components/AccountToggleCard.tsx":
     "Settings select trigger uses a structural disclosure chevron.",
-  "packages/app/src/components/settings/components/ModelRoleRow.tsx":
+  "apps/web/src/components/settings/components/ModelRoleRow.tsx":
     "Settings model selectors use structural disclosure chevrons.",
-  "packages/app/src/components/settings/components/ModelVariantPicker.tsx":
+  "apps/web/src/components/settings/components/ModelVariantPicker.tsx":
     "Settings variant selectors use a structural disclosure chevron.",
   "packages/ui/src/components/collapsible.tsx": "Shared primitive drag/disclosure affordance.",
   "packages/ui/src/components/dialog.tsx": "Shared dialog primitive close affordance.",
   "packages/ui/src/components/dag-graph.tsx": "Graph node detail uses a structural drag/grip affordance.",
   "packages/ui/src/components/image-preview.tsx": "Shared image viewer controls are base media-control affordances.",
   "packages/ui/src/components/list.tsx": "Shared list primitive search, selected, and clear affordances.",
+  "packages/ui/src/components/menu-field.tsx": "Shared choice primitive selected-option check affordance.",
   "packages/ui/src/components/popover.tsx": "Shared popover primitive close affordance.",
+  "packages/ui/src/components/render-tool.tsx":
+    "Render tool lifecycle fallback retains its registered code tool glyph.",
   "packages/ui/src/components/session-review.tsx":
     "Review outline uses structural grip controls for expand/collapse affordances.",
   "packages/ui/src/components/session-turn.tsx": "Diff accordion uses a structural grip affordance.",
@@ -49,7 +52,7 @@ const excludedRawIconPaths = new Set([
 const excludedRawIconPathFragments = [
   "/packages/ui/src/components/tool/renders/",
   "/packages/ui/src/components/file-icon",
-  "/packages/app/src/plugin/registries/",
+  "/apps/web/src/plugin/registries/",
 ]
 
 function collectFiles(dir: string, result: string[] = []): string[] {
@@ -90,6 +93,14 @@ function componentIconNames(): Set<string> {
 }
 
 describe("semantic icons", () => {
+  test("surface sizing uses one pair of diagonal expansion and contraction arrows", () => {
+    expect(getSemanticIcon("action.expand")).toBe("maximize-2")
+    expect(getSemanticIcon("action.collapse")).toBe("minimize-2")
+    expect(getSemanticIcon("composer.expand")).toBe("maximize-2")
+    expect(getSemanticIcon("composer.collapse")).toBe("minimize-2")
+    expect(getSemanticIcon("window.restore")).toBe("minimize-2")
+    expect(getSemanticIcon("window.maximize")).toBe("square")
+  })
   test("every token resolves to its configured icon key", () => {
     for (const token of Object.keys(SemanticIconToken) as Array<keyof typeof SemanticIconToken>) {
       expect(getSemanticIcon(token)).toBe(SemanticIconToken[token])
@@ -99,6 +110,23 @@ describe("semantic icons", () => {
   test("blueprint uses a plan icon distinct from approval stamping", () => {
     expect(getSemanticIcon("blueprint.main")).toBe("clipboard-list")
     expect(getSemanticIcon("blueprint.main")).not.toBe("stamp")
+  })
+
+  test("cancelled status has a meaning distinct from dismissing a control", () => {
+    expect(getSemanticIcon("state.cancelled")).toBe("circle-minus")
+    expect(getSemanticIcon("state.cancelled")).not.toBe(getSemanticIcon("action.close"))
+  })
+
+  test("fullscreen and restore use opposite diagonal arrow glyphs", () => {
+    expect(getSemanticIcon("workspace.fullscreen")).toBe("maximize-2")
+    expect(getSemanticIcon("window.restore")).toBe("minimize-2")
+  })
+
+  test("execution trajectory, execution details and task details stay visually distinct", () => {
+    const glyphs = ["execution.trajectory", "execution.details", "session.context"].map((token) =>
+      getSemanticIcon(token as Parameters<typeof getSemanticIcon>[0]),
+    )
+    expect(new Set(glyphs).size).toBe(glyphs.length)
   })
 
   test("semantic tokens do not reuse Lucide glyphs for different meanings", () => {
@@ -111,7 +139,10 @@ describe("semantic icons", () => {
       .filter(([, tokens]) => tokens.length > 1)
       .map(([icon, tokens]) => `${icon}: ${tokens.sort().join(", ")}`)
 
-    expect(duplicates).toEqual([])
+    expect(duplicates).toEqual([
+      "maximize-2: action.expand, composer.expand, workspace.fullscreen",
+      "minimize-2: action.collapse, composer.collapse, window.restore",
+    ])
   })
 
   test("semantic token glyphs are registered and renderable built-in icons", () => {
@@ -128,7 +159,7 @@ describe("semantic icons", () => {
   })
 
   test("product UI does not use raw Lucide literals outside documented exceptions", () => {
-    const roots = [path.join(repoRoot, "packages/app/src"), path.join(repoRoot, "packages/ui/src/components")]
+    const roots = [path.join(repoRoot, "apps/web/src"), path.join(repoRoot, "packages/ui/src/components")]
     const violations: string[] = []
 
     for (const root of roots) {

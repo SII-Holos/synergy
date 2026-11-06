@@ -1,0 +1,382 @@
+import { describe, expect, test } from "bun:test"
+import { createStore, reconcile } from "solid-js/store"
+import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
+import { createBoardLoader, type BoardLoaderDeps } from "../../../../src/components/kanban/model/board-loader"
+import { SyncResourceFreshness, readSyncVersion } from "../../../../src/context/sync-resource-freshness"
+import type { SessionPartSnapshotRequest } from "../../../../src/context/session-part-snapshot-freshness"
+import { createScopeRetention } from "../../../../src/context/scope-retention"
+import { planMessagePageApply } from "../../../../src/context/session-message-page"
+import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "../../../../src/context/session-message-window"
+
+function message(id: string, created: number) {
+  return { id, time: { created }, role: "assistant", rootID: id } as any
+}
+
+type FakeStore = {
+  message: Record<string, Message[]>
+  messageWindow: Record<string, MessageWindowMetadata>
+  part: Record<string, Part[]>
+}
+
+function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
+  touches: string[]
+  messagePages: { sessionID: string; limit: number }[]
+  scopeVersions: Record<string, number>
+  dropSnapshot: (scopeKey: string, sessionID: string) => void
+  partActions: Record<string, "apply" | "preserve" | "retry">
+  freshness: SyncResourceFreshness
+} {
+  const freshness = new SyncResourceFreshness()
+  const touches: string[] = []
+  const messagePages: { sessionID: string; limit: number }[] = []
+  const scopeVersions: Record<string, number> = {}
+  const partActions: Record<string, "apply" | "preserve" | "retry"> = {}
+  const stores = new Map<string, ReturnType<typeof createStore<FakeStore>>>()
+  const ensureScopeState = (scopeKey: string) => {
+    let store = stores.get(scopeKey)
+    if (!store) {
+      store = createStore<FakeStore>({ message: {}, messageWindow: {}, part: {} })
+      stores.set(scopeKey, store)
+    }
+    return store
+  }
+  return {
+    freshness,
+    touches,
+    messagePages,
+    scopeVersions,
+    dropSnapshot: (scopeKey, sessionID) => {
+      const [, setStore] = ensureScopeState(scopeKey)
+      setStore("message", sessionID, undefined!)
+      setStore("messageWindow", sessionID, undefined!)
+    },
+    partActions,
+    ensureScopeState,
+    retainScopeState: () => ({ release() {} }),
+    captureResourceRequest: (scopeKey, sessionID, resource) => freshness.capture({ scopeKey, sessionID, resource }),
+    capturePartSnapshotRequest: (_s, _sid) => ({ generation: 1, revisions: new Map() }) as SessionPartSnapshotRequest,
+    partSnapshotAction: (_s, _sid, messageID) => partActions[messageID] ?? "apply",
+    beginContextProjection: () => 1,
+    validateResourceResponse: (scopeKey, sessionID, resource, request, headers) =>
+      freshness.canAcceptResponse({ scopeKey, sessionID, resource }, request, readSyncVersion(headers)),
+    applyResourceResponse: (scopeKey, sessionID, resource, request, headers, apply) => {
+      if (!freshness.acceptResponse({ scopeKey, sessionID, resource }, request, readSyncVersion(headers))) return false
+      apply()
+      return true
+    },
+    setLatestContextMessage: () => {},
+    touchMessageBucket: (_s, sessionID) => touches.push(sessionID),
+    scopeReconnectVersion: (scopeKey) => scopeVersions[scopeKey] ?? 0,
+    hasBucketSnapshot: (scopeKey, sessionID) => {
+      const [store] = ensureScopeState(scopeKey)
+      return hasMessageWindowSnapshot(store.message[sessionID], store.messageWindow[sessionID])
+    },
+    messagePage: async (input) => {
+      messagePages.push({ sessionID: input.sessionID, limit: input.limit })
+      return {
+        data: {
+          items: [{ info: message(input.sessionID + "-m1", 100), parts: [] }],
+          referencedRoots: [],
+          nextCursor: null,
+          hasMore: false,
+          total: 1,
+        },
+      }
+    },
+    scopeRequest: (scopeKey) => ({ directory: scopeKey }),
+    plan: planMessagePageApply,
+    reconcile: (value, options) => reconcile(value as object, options),
+    ...overrides,
+  }
+}
+
+describe("createBoardLoader", () => {
+  test.each([0, 1])("publishes a complete displayable snapshot for a page with %i messages", async (count) => {
+    const ready = Promise.withResolvers<void>()
+    const deps = makeDeps({
+      messagePage: async () => ({
+        data: {
+          items: count ? [{ info: message("m1", 100), parts: [] }] : [],
+          referencedRoots: [],
+          nextCursor: null,
+          hasMore: false,
+          total: count,
+        },
+      }),
+      onStateChange: (_key, state) => {
+        if (state.phase === "ready") ready.resolve()
+        if (state.phase === "error") ready.reject(new Error(state.error))
+      },
+    })
+    const loader = createBoardLoader(deps)
+    try {
+      loader.load("/a", "s1")
+      await ready.promise
+      const store = deps.ensureScopeState("/a")[0] as FakeStore
+      expect(store.message.s1).toHaveLength(count)
+      expect(store.messageWindow.s1).toMatchObject({
+        mode: "latest",
+        total: count,
+        nextCursor: null,
+        hasMore: false,
+      })
+      expect(deps.hasBucketSnapshot("/a", "s1")).toBe(true)
+      expect(loader.state("/a", "s1")).toMatchObject({ phase: "ready", hasSnapshot: true })
+    } finally {
+      loader.dispose()
+    }
+  })
+
+  test("load issues a 200-limit message page", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.load("/a", "s1")
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages).toEqual([{ sessionID: "s1", limit: 200 }])
+  })
+
+  test("syncPanes loads and deduplicates repeated panes", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.syncPanes([
+      { scopeKey: "/a", sessionID: "s1" },
+      { scopeKey: "/a", sessionID: "s2" },
+      { scopeKey: "/a", sessionID: "s1" },
+    ])
+    await new Promise((r) => setTimeout(r, 10))
+    // s1 deduplicated: only one messagePage per session
+    expect(deps.messagePages.map((p) => p.sessionID).sort()).toEqual(["s1", "s2"])
+  })
+
+  test("syncPanes skips already-loaded panes on navigation updates", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    const first = deps.messagePages.length
+
+    // Same pane set again: phase is now ready and the bucket exists, so no refetch.
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.length).toBe(first)
+  })
+
+  test("syncPanes forces a reload when the scope reconnect version bumps", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    deps.scopeVersions["/a"] = 1
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    const first = deps.messagePages.length
+
+    // Reconnect bumps the version for the same scope → force reload of s1.
+    deps.scopeVersions["/a"] = 2
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.length).toBeGreaterThan(first)
+    expect(deps.messagePages.at(-1)?.sessionID).toBe("s1")
+  })
+
+  test("syncPanes reloads a pane that left the board and rejoined", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.syncPanes([
+      { scopeKey: "/a", sessionID: "s1" },
+      { scopeKey: "/a", sessionID: "s2" },
+    ])
+    await new Promise((r) => setTimeout(r, 10))
+    const s2Pages = deps.messagePages.filter((p) => p.sessionID === "s2").length
+    expect(s2Pages).toBe(1)
+
+    // s2 leaves the board; when it rejoins it must be refetched because its
+    // bucket may have been LRU-evicted while away (no protection set).
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    loader.syncPanes([
+      { scopeKey: "/a", sessionID: "s1" },
+      { scopeKey: "/a", sessionID: "s2" },
+    ])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.filter((p) => p.sessionID === "s2").length).toBe(2)
+  })
+
+  test("syncPanes refetches a ready pane whose bucket was LRU-evicted", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    const first = deps.messagePages.length
+
+    // The loader still reports "ready", but the global-sync LRU evicted the
+    // snapshot while the pane was away; syncPanes must refetch instead of
+    // leaving the pane on a stale ready state.
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.length).toBe(first)
+
+    // Now the bucket is gone: refetch must happen even though phase is ready.
+    deps.dropSnapshot("/a", "s1")
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.length).toBe(first + 1)
+    expect(deps.messagePages.at(-1)?.sessionID).toBe("s1")
+  })
+
+  test("a latest page does not replace a session already in history mode", async () => {
+    const ready = Promise.withResolvers<void>()
+    const contexts: Array<{ id?: string } | null | undefined> = []
+    const latest = message("latest", 500)
+    latest.contextUsage = { total: 3 }
+    const deps = makeDeps({
+      setLatestContextMessage: (_scope, _session, value) => {
+        contexts.push(value)
+      },
+      messagePage: async () => ({
+        response: { headers: new Headers({ "x-synergy-epoch": "epoch", "x-synergy-seq": "12" }) },
+        data: {
+          items: [{ info: latest, parts: [{ id: "p-latest" } as Part] }],
+          referencedRoots: [],
+          nextCursor: null,
+          hasMore: false,
+          total: 20,
+        },
+      }),
+      onStateChange: (_key, state) => {
+        if (state.phase === "ready") ready.resolve()
+        if (state.phase === "error") ready.reject(new Error(state.error))
+      },
+    })
+    const [store, setStore] = deps.ensureScopeState("/a") as ReturnType<typeof createStore<FakeStore>>
+    const resource = { scopeKey: "/a", sessionID: "s1", resource: "message" as const }
+    deps.freshness.acceptSnapshot(resource, { epoch: "epoch", seq: 10 })
+    setStore("message", "s1", [message("older", 1)])
+    setStore("part", "older", [{ id: "p-older" } as Part])
+    setStore("messageWindow", "s1", {
+      mode: "history",
+      nextCursor: "cursor-older",
+      hasMore: true,
+      total: 8,
+      pendingLatest: true,
+      pendingLatestIds: ["unseen"],
+      tailMissingLatest: true,
+    })
+    const loader = createBoardLoader(deps)
+    try {
+      loader.load("/a", "s1")
+      await ready.promise
+      expect(store.message.s1?.map((item) => item.id)).toEqual(["older"])
+      expect(store.messageWindow.s1).toMatchObject({
+        mode: "history",
+        nextCursor: "cursor-older",
+        hasMore: true,
+        total: 8,
+        pendingLatest: true,
+        pendingLatestIds: ["unseen"],
+        tailMissingLatest: true,
+      })
+      expect(store.part.older?.map((part) => part.id)).toEqual(["p-older"])
+      expect(store.part.latest).toBeUndefined()
+      expect(contexts.at(-1)).toMatchObject({ id: "latest" })
+      expect(deps.freshness.acceptEvent(resource, { epoch: "epoch", seq: 11 })).toBe(true)
+    } finally {
+      loader.dispose()
+    }
+  })
+
+  test("a latest page still replaces a latest-mode window", async () => {
+    const ready = Promise.withResolvers<void>()
+    const deps = makeDeps({
+      onStateChange: (_key, state) => {
+        if (state.phase === "ready") ready.resolve()
+        if (state.phase === "error") ready.reject(new Error(state.error))
+      },
+    })
+    const [store, setStore] = deps.ensureScopeState("/a") as ReturnType<typeof createStore<FakeStore>>
+    setStore("message", "s1", [message("old", 1)])
+    setStore("part", "old", [{ id: "p-old" } as Part])
+    setStore("messageWindow", "s1", {
+      mode: "latest",
+      nextCursor: "stale",
+      hasMore: true,
+      total: 4,
+      pendingLatest: false,
+      pendingLatestIds: [],
+      tailMissingLatest: false,
+    })
+    const loader = createBoardLoader(deps)
+    try {
+      loader.load("/a", "s1")
+      await ready.promise
+      expect(store.message.s1?.map((item) => item.id)).toEqual(["s1-m1"])
+      expect(store.messageWindow.s1).toMatchObject({ mode: "latest", nextCursor: null, total: 1 })
+      expect(store.part.old).toBeUndefined()
+    } finally {
+      loader.dispose()
+    }
+  })
+
+  test("dispose stops further loads", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.dispose()
+    loader.load("/a", "s1")
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages).toEqual([])
+  })
+})
+
+test("visible board Scopes survive the inactive budget and become bounded cache entries after their final pane", async () => {
+  const resident = new Set<string>()
+  const retention = createScopeRetention((key) => resident.delete(key))
+  const held: { resolve: (value: {}) => void; promise: Promise<{}> }[] = []
+  const signals = new Map<string, AbortSignal>()
+  const deps = makeDeps({
+    ensureScopeState: (key) => {
+      resident.add(key)
+      retention.touch(key)
+      return [{}, () => {}]
+    },
+    retainScopeState: (key) => {
+      const release = retention.retain(key)
+      resident.add(key)
+      return { release }
+    },
+    messagePage: (input, options) => {
+      signals.set(input.sessionID, options.signal)
+      let resolve!: (value: {}) => void
+      const promise = new Promise<{}>((done) => (resolve = done))
+      held.push({ promise, resolve })
+      return promise
+    },
+  })
+  const loader = createBoardLoader(deps)
+  const panes = Array.from({ length: 12 }, (_, i) => ({ scopeKey: "/scope-" + i, sessionID: "session-" + i }))
+  const other = retention.retain(panes[0]!.scopeKey)
+  try {
+    loader.syncPanes([...panes, { scopeKey: panes[0]!.scopeKey, sessionID: "second-pane" }])
+    expect(panes.every((pane) => resident.has(pane.scopeKey))).toBe(true)
+    for (let i = 0; i < 20; i++) deps.ensureScopeState("/background-" + i)
+    expect(panes.every((pane) => resident.has(pane.scopeKey))).toBe(true)
+    loader.syncPanes([{ scopeKey: panes[0]!.scopeKey, sessionID: "second-pane" }])
+    expect(resident.has(panes[0]!.scopeKey)).toBe(true)
+    expect(panes.slice(1).filter((pane) => resident.has(pane.scopeKey))).toHaveLength(8)
+    expect(panes.every((pane) => signals.get(pane.sessionID)?.aborted)).toBe(true)
+    expect(signals.get("second-pane")?.aborted).toBe(false)
+    expect(loader.state(panes[1]!.scopeKey, panes[1]!.sessionID).phase).toBe("idle")
+    loader.syncPanes([])
+    expect(signals.get("second-pane")?.aborted).toBe(true)
+    expect(resident.has(panes[0]!.scopeKey)).toBe(true)
+    other()
+    expect(resident.has(panes[0]!.scopeKey)).toBe(true)
+    loader.syncPanes(panes)
+    loader.dispose()
+    expect(panes.filter((pane) => resident.has(pane.scopeKey))).toHaveLength(8)
+    for (let i = 0; i < 9; i++) deps.ensureScopeState(`/eviction-${i}`)
+    expect(panes.every((pane) => !resident.has(pane.scopeKey))).toBe(true)
+    expect(panes.every((pane) => signals.get(pane.sessionID)?.aborted)).toBe(true)
+  } finally {
+    loader.dispose()
+    other()
+    for (const request of held.values()) request.resolve({})
+    await Promise.all(Array.from(held.values(), (request) => request.promise))
+  }
+})

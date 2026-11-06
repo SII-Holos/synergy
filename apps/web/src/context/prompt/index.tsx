@@ -1,0 +1,499 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { createStore } from "solid-js/store"
+import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import { batch, createEffect, createMemo, createRoot, onCleanup } from "solid-js"
+import { useParams } from "@/context/session-route"
+import type { FileSelection } from "@/context/file"
+import { Persist, persisted } from "@/utils/persist"
+import type { createDraftSessionIndex } from "./draft-index"
+import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { DEFAULT_PROMPT, isPromptEqual } from "./equality"
+import { mergeProjectDrafts, qualifyProjectDraft } from "./project-draft"
+import { draftAdmission, type DraftAdmission } from "./draft-admission"
+import {
+  sanitizeContextItemsValue,
+  sanitizePromptContextValue,
+  sanitizePromptStateValue,
+  sanitizePromptValue,
+} from "./sanitize"
+
+interface PartBase {
+  content: string
+  start: number
+  end: number
+}
+
+export interface TextPart extends PartBase {
+  type: "text"
+}
+
+export interface FileAttachmentPart extends PartBase {
+  type: "file"
+  path: string
+  workspace?: ResourceReference.Workspace
+  originScopeID?: string
+  selection?: FileSelection
+}
+
+export interface UploadedAttachmentPart {
+  type: "attachment"
+  id: string
+  filename: string
+  mime: string
+  url: string
+  size?: number
+  metadata?: Record<string, unknown>
+  presentation?: {
+    hidden?: boolean
+    renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
+    size?: "original" | "small" | "medium" | "large"
+    crop?: boolean
+  }
+}
+
+export interface NoteAttachmentPart {
+  type: "note"
+  id: string
+  noteId: string
+  title: string
+  content: string
+}
+
+export interface SessionAttachmentPart {
+  type: "session"
+  id: string
+  sessionId: string
+  scopeID: string | null
+  legacyDirectory?: string
+  title: string
+  updatedAt?: number
+}
+
+export interface QuoteAttachmentPart {
+  type: "quote"
+  id: string
+  text: string
+  role?: "user" | "assistant"
+}
+
+export type ContentPart =
+  | TextPart
+  | FileAttachmentPart
+  | UploadedAttachmentPart
+  | NoteAttachmentPart
+  | SessionAttachmentPart
+  | QuoteAttachmentPart
+export type Prompt = ContentPart[]
+
+export type FileContextItem = {
+  type: "file"
+  path: string
+  workspace?: ResourceReference.Workspace
+  originScopeID?: string
+  selection?: FileSelection
+}
+
+export type ContextItem = FileContextItem
+
+export { DEFAULT_PROMPT, isPromptEqual } from "./equality"
+
+function cloneSelection(selection?: FileSelection) {
+  if (!selection) return undefined
+  return { ...selection }
+}
+
+function clonePart(part: ContentPart): ContentPart {
+  if (part.type === "text") return { ...part }
+  if (part.type === "attachment") return { ...part }
+  if (part.type === "note") return { ...part }
+  if (part.type === "session") return { ...part }
+  if (part.type === "quote") return { ...part }
+  return {
+    ...part,
+    selection: cloneSelection(part.selection),
+  }
+}
+
+function clonePrompt(prompt: Prompt): Prompt {
+  return prompt.map(clonePart)
+}
+
+export function sanitizePrompt(value: unknown): Prompt {
+  return sanitizePromptValue(value) as unknown as Prompt
+}
+
+export type DraftSnapshot = {
+  prompt: Prompt
+  context: PromptContextSnapshot
+  cursor?: number
+  assistance?: InputAssistance.Info
+}
+
+export type PromptContextSnapshot = {
+  items: ContextItem[]
+}
+
+export function keyForContextItem(item: ContextItem) {
+  if (item.type !== "file") return item.type
+  const startLine = item.selection?.startLine
+  const startChar = item.selection?.startChar
+  const endLine = item.selection?.endLine
+  const endChar = item.selection?.endChar
+  return `${item.type}:${item.originScopeID ?? ""}:${item.path}:${startLine}:${startChar}:${endLine}:${endChar}`
+}
+
+export function sanitizeContextItems(value: unknown): ContextItem[] {
+  const items = sanitizeContextItemsValue(value) as unknown as ContextItem[]
+  const seen = new Set<string>()
+  const result: ContextItem[] = []
+  for (const item of items) {
+    const key = keyForContextItem(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push({ ...item, selection: cloneSelection(item.selection) })
+  }
+  return result
+}
+
+export function sanitizePromptContext(value: unknown): PromptContextSnapshot {
+  const context = sanitizePromptContextValue(value)
+  return {
+    items: sanitizeContextItems(context.items),
+  }
+}
+
+const WORKSPACE_KEY = "__workspace__"
+const MAX_PROMPT_SESSIONS = 20
+
+type PromptSession = ReturnType<typeof createPromptSession>
+
+type PromptCacheEntry = {
+  value: PromptSession
+  dispose: VoidFunction
+}
+
+function createPromptSession(dir: string, id: string | undefined, drafts: ReturnType<typeof createDraftSessionIndex>) {
+  const [store, setStore, _, ready] = persisted(
+    { ...Persist.scoped(dir, id, "prompt"), migrate: sanitizePromptStateValue },
+    createStore<{
+      prompt: Prompt
+      cursor?: number
+      assistance?: InputAssistance.Info
+      admission?: DraftAdmission
+      context: {
+        items: (ContextItem & { key: string })[]
+      }
+    }>({
+      prompt: clonePrompt(DEFAULT_PROMPT),
+      cursor: undefined,
+      context: {
+        items: [],
+      },
+    }),
+  )
+
+  const current = createMemo(() => sanitizePrompt(store.prompt))
+  const dirty = createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT))
+  let revision = 0
+  let generation = 0
+  let pendingDraft: DraftSnapshot | undefined
+
+  const restoreDraft = (snapshot: DraftSnapshot) => {
+    const next = sanitizePromptContext(snapshot.context)
+    revision++
+    batch(() => {
+      setStore("prompt", sanitizePrompt(snapshot.prompt).map(clonePart))
+      setStore("assistance", snapshot.assistance)
+      setStore("context", { items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })) })
+      setStore(
+        "cursor",
+        snapshot.cursor ??
+          snapshot.prompt.reduce((length, part) => length + ("content" in part ? part.content.length : 0), 0),
+      )
+    })
+  }
+  const resetDraft = () => {
+    revision++
+    generation++
+    batch(() => {
+      setStore("prompt", clonePrompt(DEFAULT_PROMPT))
+      setStore("assistance", undefined)
+      setStore("cursor", 0)
+      setStore("context", { items: [] })
+      setStore("admission", undefined)
+    })
+  }
+
+  createEffect(() => drafts.markDraftSession(id, dirty()))
+  onCleanup(() => drafts.clearLocalDraftMark(id))
+
+  return {
+    ready,
+    current,
+    cursor: createMemo(() => store.cursor),
+    dirty,
+    assistance: () => store.assistance,
+    setAssistance: (value: InputAssistance.Info | undefined) => setStore("assistance", value),
+    revision: () => revision,
+    admissionIdentity(fingerprint: string, createID: () => string) {
+      const value = draftAdmission(store.admission, fingerprint, createID)
+      setStore("admission", value)
+      return value.messageID
+    },
+
+    generation: () => generation,
+    restoreIfUnchanged(expectedRevision: number, snapshot: DraftSnapshot) {
+      if (revision !== expectedRevision) return false
+      restoreDraft(snapshot)
+      return true
+    },
+    recoverDraft(snapshot: DraftSnapshot, submit: boolean) {
+      const currentDraft = {
+        prompt: clonePrompt(current()),
+        context: sanitizePromptContext(store.context),
+        cursor: store.cursor,
+        assistance: store.assistance,
+      }
+      if (!submit) {
+        const restored = pendingDraft ? mergeProjectDrafts(currentDraft, pendingDraft) : currentDraft
+        pendingDraft = undefined
+        restoreDraft(mergeProjectDrafts(snapshot, restored))
+        return
+      }
+      if (
+        !isPromptEqual(currentDraft.prompt, snapshot.prompt) ||
+        JSON.stringify(currentDraft.context) !== JSON.stringify(snapshot.context)
+      ) {
+        if (dirty() || currentDraft.context.items.length)
+          pendingDraft = pendingDraft
+            ? { ...mergeProjectDrafts(pendingDraft, currentDraft), cursor: currentDraft.cursor }
+            : currentDraft
+      }
+      restoreDraft(snapshot)
+    },
+    clearForSubmission() {
+      const next = pendingDraft
+      pendingDraft = undefined
+      resetDraft()
+      const clearedRevision = revision
+      if (next) restoreDraft(next)
+      return clearedRevision
+    },
+    context: {
+      items: createMemo(() => store.context.items),
+      add(item: ContextItem) {
+        const sanitized = sanitizeContextItems([item])[0]
+        if (!sanitized) return
+        const key = keyForContextItem(sanitized)
+        if (store.context.items.find((x) => x.key === key)) return
+        revision++
+        setStore("context", "items", (items) => [...items, { key, ...sanitized }])
+      },
+      set(context: PromptContextSnapshot) {
+        revision++
+        const next = sanitizePromptContext(context)
+        setStore("context", {
+          items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })),
+        })
+      },
+      reset() {
+        revision++
+        setStore("context", { items: [] })
+      },
+      remove(key: string) {
+        revision++
+        setStore("context", "items", (items) => items.filter((x) => x.key !== key))
+      },
+    },
+    set(prompt: Prompt, cursorPosition?: number) {
+      revision++
+      const next = sanitizePrompt(prompt).map(clonePart)
+      batch(() => {
+        setStore("prompt", next)
+        if (next.every((part) => part.type === "text" && !part.content)) setStore("assistance", undefined)
+        if (cursorPosition !== undefined) setStore("cursor", cursorPosition)
+      })
+    },
+    reset() {
+      revision++
+      generation++
+      batch(() => {
+        setStore("prompt", clonePrompt(DEFAULT_PROMPT))
+        setStore("assistance", undefined)
+        setStore("cursor", 0)
+      })
+    },
+    resetDraft() {
+      pendingDraft = undefined
+      resetDraft()
+    },
+  }
+}
+
+export const { use: usePrompt, provider: PromptProvider } = createSimpleContext({
+  name: "Prompt",
+  gate: false,
+  init: (props: { connection: string; drafts: ReturnType<typeof createDraftSessionIndex> }) => {
+    const params = useParams()
+    const cache = new Map<string, PromptCacheEntry>()
+    const retained = new Map<PromptSession, number>()
+
+    const disposeAll = () => {
+      for (const entry of cache.values()) {
+        entry.dispose()
+      }
+      cache.clear()
+    }
+
+    onCleanup(disposeAll)
+
+    const prune = (protectedDraft?: PromptSession) => {
+      while (cache.size > MAX_PROMPT_SESSIONS) {
+        const first = [...cache.keys()].find(
+          (key) => !retained.has(cache.get(key)!.value) && cache.get(key)!.value !== protectedDraft,
+        )
+        if (!first) return
+        const entry = cache.get(first)
+        entry?.dispose()
+        cache.delete(first)
+      }
+    }
+
+    const load = (dir: string, id: string | undefined) => {
+      const key = `${dir}:${id ?? WORKSPACE_KEY}`
+      const existing = cache.get(key)
+      if (existing) {
+        cache.delete(key)
+        cache.set(key, existing)
+        return existing.value
+      }
+
+      const entry = createRoot((dispose) => ({
+        value: createPromptSession(Persist.scopeKey(props.connection, base64Decode(dir)), id, props.drafts),
+        dispose,
+      }))
+
+      cache.set(key, entry)
+      prune(entry.value)
+      return entry.value
+    }
+
+    const session = createMemo(() => load(params.dir!, params.id))
+
+    return {
+      prepareProjectTransfer(targetDir: string, sourceScopeID: string, sourceDirectory?: string) {
+        const source = session()
+        const target = load(targetDir, undefined)
+        if (!source.ready() || !target.ready()) throw new Error("Draft is still loading")
+        const sourceRevision = source.revision()
+        const targetRevision = target.revision()
+        const sourceSnapshot = qualifyProjectDraft(
+          { prompt: source.current(), context: { items: source.context.items() }, assistance: source.assistance() },
+          sourceScopeID,
+          sourceDirectory,
+        )
+        const sourceCursor = source.cursor()
+        const targetCursor = target.cursor()
+        const targetSnapshot = {
+          prompt: target.current(),
+          context: { items: target.context.items() },
+          assistance: target.assistance(),
+        }
+        const held = new Set([source, target])
+        for (const draft of held) retained.set(draft, (retained.get(draft) ?? 0) + 1)
+        let released = false
+        return {
+          conflict: target !== source && (target.dirty() || target.context.items().length > 0),
+          release() {
+            if (released) return
+            released = true
+            for (const draft of held) {
+              const remaining = (retained.get(draft) ?? 1) - 1
+              if (remaining) retained.set(draft, remaining)
+              else retained.delete(draft)
+            }
+            prune(session())
+          },
+          commit() {
+            if (session() !== source || source.revision() !== sourceRevision || target.revision() !== targetRevision)
+              return false
+            if (source === target) return true
+            const merged = mergeProjectDrafts(targetSnapshot, sourceSnapshot)
+            const length = (prompt: Prompt) =>
+              prompt.reduce((total, part) => total + ("content" in part ? part.content.length : 0), 0)
+            const sourceLength = length(sourceSnapshot.prompt)
+            const cursor = sourceLength
+              ? length(merged.prompt) - sourceLength + (sourceCursor ?? sourceLength)
+              : targetCursor
+            if (!target.restoreIfUnchanged(targetRevision, { ...merged, cursor })) return false
+            source.resetDraft()
+            return true
+          },
+        }
+      },
+      capture() {
+        const draft = session()
+        let generation = draft.generation()
+        retained.set(draft, (retained.get(draft) ?? 0) + 1)
+        let released = false
+        return {
+          draft,
+          isCurrent: () => session() === draft && draft.generation() === generation,
+          clearIfUnchanged(expectedRevision: number) {
+            if (session() !== draft || draft.generation() !== generation || draft.revision() !== expectedRevision)
+              return undefined
+            const clearedRevision = draft.clearForSubmission()
+            generation = draft.generation()
+            return clearedRevision
+          },
+          transferToSession(sessionID: string | undefined) {
+            if (session() !== draft || draft.generation() !== generation) return false
+            const target = load(params.dir!, sessionID)
+            if (!target.ready()) return false
+            if (target === draft) return true
+            const sourceRevision = draft.revision()
+            const targetRevision = target.revision()
+            const merged = mergeProjectDrafts(
+              { prompt: target.current(), context: { items: target.context.items() }, assistance: target.assistance() },
+              { prompt: draft.current(), context: { items: draft.context.items() }, assistance: draft.assistance() },
+            )
+            return batch(() => {
+              if (!target.restoreIfUnchanged(targetRevision, { ...merged, cursor: draft.cursor() })) return false
+              if (draft.revision() === sourceRevision) {
+                draft.resetDraft()
+                generation = draft.generation()
+              }
+              return true
+            })
+          },
+          release() {
+            if (released) return
+            released = true
+            const remaining = (retained.get(draft) ?? 1) - 1
+            if (remaining) retained.set(draft, remaining)
+            else retained.delete(draft)
+            prune(session())
+          },
+        }
+      },
+      ready: () => session().ready(),
+      current: () => session().current(),
+      cursor: () => session().cursor(),
+      dirty: () => session().dirty(),
+      assistance: () => session().assistance(),
+      setAssistance: (value: InputAssistance.Info | undefined) => session().setAssistance(value),
+      context: {
+        items: () => session().context.items(),
+        add: (item: ContextItem) => session().context.add(item),
+        set: (context: PromptContextSnapshot) => session().context.set(context),
+        reset: () => session().context.reset(),
+        remove: (key: string) => session().context.remove(key),
+      },
+      set: (prompt: Prompt, cursorPosition?: number) => session().set(prompt, cursorPosition),
+      reset: () => session().reset(),
+      resetDraft: () => session().resetDraft(),
+      recoverDraft: (snapshot: DraftSnapshot, submit: boolean) => session().recoverDraft(snapshot, submit),
+    }
+  },
+})

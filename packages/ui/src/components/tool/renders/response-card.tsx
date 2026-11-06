@@ -1,3 +1,4 @@
+import { getToolIcon } from "../icons"
 import { useLingui } from "@lingui/solid"
 import { Show } from "solid-js"
 import { BasicTool } from "../../basic-tool"
@@ -14,7 +15,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "message-square-more",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC.response_card,
           subtitle: props.input.title as string | undefined,
           tags: elements().length

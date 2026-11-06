@@ -1,0 +1,415 @@
+import { randomUUID } from "node:crypto"
+import fs from "fs/promises"
+import fsSync from "fs"
+import path from "path"
+import os from "os"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { FileRename } from "@ericsanchezok/synergy-local-runtime/file/rename"
+import { FileMutation } from "@ericsanchezok/synergy-local-runtime/file/mutation"
+import { FileLink } from "@ericsanchezok/synergy-local-runtime/file/link"
+
+export interface Category {
+  key: string
+  label: string
+  subdirs: string[]
+  required: boolean
+  defaultValue: boolean
+}
+
+export const CATEGORIES: Category[] = [
+  {
+    key: "core",
+    label: "Core data (sessions, notes, agenda, library, auth)",
+    subdirs: ["data"],
+    required: true,
+    defaultValue: true,
+  },
+  {
+    key: "config",
+    label: "Config (global config, agents, skills)",
+    subdirs: ["config"],
+    required: true,
+    defaultValue: true,
+  },
+  {
+    key: "media",
+    label: "Media & assets",
+    subdirs: ["media", "assets"],
+    required: false,
+    defaultValue: true,
+  },
+  {
+    key: "bin",
+    label: "Binaries (LSP servers)",
+    subdirs: ["bin"],
+    required: false,
+    defaultValue: false,
+  },
+  {
+    key: "schema",
+    label: "Schema",
+    subdirs: ["schema"],
+    required: false,
+    defaultValue: false,
+  },
+  {
+    key: "cache",
+    label: "Cache (rebuildable)",
+    subdirs: ["cache"],
+    required: false,
+    defaultValue: false,
+  },
+  {
+    key: "logs",
+    label: "Logs",
+    subdirs: ["log"],
+    required: false,
+    defaultValue: false,
+  },
+  {
+    key: "state",
+    label: "State (regenerated on restart)",
+    subdirs: ["state"],
+    required: false,
+    defaultValue: false,
+  },
+]
+
+export interface DirStats {
+  size: number
+  fileCount: number
+}
+
+export async function scanDir(dir: string): Promise<DirStats> {
+  let size = 0
+  let fileCount = 0
+
+  async function walk(current: string) {
+    const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        await walk(full)
+      } else if (entry.isFile()) {
+        const stat = await fs.stat(full).catch(() => null)
+        if (stat) {
+          size += stat.size
+          fileCount++
+        }
+      }
+    }
+  }
+
+  await walk(dir)
+  return { size, fileCount }
+}
+
+export async function scanCategories(root: string): Promise<Map<string, DirStats>> {
+  const result = new Map<string, DirStats>()
+  for (const cat of CATEGORIES) {
+    let size = 0
+    let fileCount = 0
+    for (const subdir of cat.subdirs) {
+      const stats = await scanDir(path.join(root, subdir)).catch(() => ({ size: 0, fileCount: 0 }))
+      size += stats.size
+      fileCount += stats.fileCount
+    }
+    result.set(cat.key, { size, fileCount })
+  }
+  return result
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+export function shortenPath(p: string): string {
+  const home = os.homedir()
+  if (p.startsWith(home)) return p.replace(home, "~")
+  return p
+}
+
+export async function dirExists(p: string): Promise<boolean> {
+  return fs
+    .access(p)
+    .then(() => true)
+    .catch(() => false)
+}
+
+export async function checkDiskSpace(
+  target: string,
+  needed: number,
+): Promise<{ ok: boolean; available: number | null }> {
+  try {
+    const targetParent = path.dirname(target)
+    await fs.mkdir(targetParent, { recursive: true })
+
+    if (process.platform === "darwin" || process.platform === "linux") {
+      const stat = await fsSync.promises.statfs(targetParent)
+      const available = Number(stat.bavail) * Number(stat.bsize)
+      return { ok: available > needed * 1.1, available }
+    }
+    return { ok: true, available: null }
+  } catch {
+    return { ok: true, available: null }
+  }
+}
+
+export async function isDirEmpty(dir: string): Promise<boolean> {
+  const entries = await fs.readdir(dir).catch(() => [])
+  return entries.length === 0
+}
+
+export function archiveExclusions(directory: string): string[] {
+  if (directory === "data") return ["snapshot", "snapshot-v2", "storage", "agent-records.ndjson"]
+  if (directory === "config") return [path.join("synergy.d", "130-storage.jsonc")]
+  if (directory === "cache") return ["snapshot-index"]
+  if (directory === "state") return [path.join("daemon", "runtime-lock.json")]
+  return []
+}
+
+export interface CopyProgress {
+  copied: number
+  skipped: number
+  total: number
+  currentFile: string
+}
+
+/** Copy src into dst. Skips files that already exist in dst. */
+export async function copyDirSkipExisting(
+  src: string,
+  dst: string,
+  onProgress?: (progress: CopyProgress) => void,
+  rootSrc?: string,
+  totalFiles?: number,
+  exclude: string[] | ((relative: string) => boolean) = [],
+): Promise<{ copied: number; skipped: number }> {
+  if (!rootSrc) {
+    rootSrc = src
+  }
+  // Skip expensive file count if caller doesn't need progress
+  if (onProgress && !totalFiles) {
+    totalFiles = await countFiles(src)
+  }
+
+  // Shared mutable counters so recursive calls accumulate correctly
+  const acc = { copied: 0, skipped: 0 }
+
+  async function exists(filename: string) {
+    return fs.lstat(filename).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return false
+        throw error
+      },
+    )
+  }
+
+  async function walk(currentSrc: string, currentDst: string) {
+    if (await exists(currentDst)) {
+      if ((await fs.lstat(currentDst)).isSymbolicLink())
+        throw new Error("Data copy cannot traverse a destination symbolic link")
+    }
+    await fs.mkdir(currentDst, { recursive: true })
+    const entries = await fs.readdir(currentSrc, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (entry.name.startsWith(".synergy-copy-")) continue
+      const srcPath = path.join(currentSrc, entry.name)
+      const dstPath = path.join(currentDst, entry.name)
+      const relative = path.relative(src, srcPath)
+      if (typeof exclude === "function" ? exclude(relative) : exclude.includes(relative)) continue
+
+      if (entry.isDirectory()) {
+        await walk(srcPath, dstPath)
+      } else if (entry.isFile()) {
+        if (await exists(dstPath)) {
+          acc.skipped++
+        } else {
+          const temporary = path.join(currentDst, `.synergy-copy-${randomUUID()}`)
+          try {
+            await fs.copyFile(srcPath, temporary, fsSync.constants.COPYFILE_EXCL)
+            const mode = (await fs.stat(temporary)).mode
+            if (process.platform === "win32") await fs.chmod(temporary, mode | 0o200)
+            // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers
+            // Windows flushing requires a writable handle, including read-only copies.
+            const handle = await fs.open(temporary, process.platform === "win32" ? "r+" : "r")
+            try {
+              if (process.platform === "win32") await handle.chmod(mode)
+              await handle.sync()
+            } finally {
+              await handle.close()
+            }
+            // Publish a complete file without replacing a concurrent destination.
+            try {
+              FileRename.exclusive(temporary, dstPath)
+              acc.copied++
+            } catch (error) {
+              if (error instanceof FileMutation.ConflictError) acc.skipped++
+              else throw error
+            }
+          } finally {
+            await fs.rm(temporary, { force: true })
+          }
+        }
+        if (onProgress && totalFiles) {
+          onProgress({
+            copied: acc.copied,
+            skipped: acc.skipped,
+            total: totalFiles,
+            currentFile: path.relative(rootSrc!, srcPath),
+          })
+        }
+      } else if (entry.isSymbolicLink()) {
+        if (await exists(dstPath)) {
+          acc.skipped++
+        } else {
+          const linkTarget = await fs.readlink(srcPath)
+          try {
+            await FileLink.copy(srcPath, dstPath, linkTarget)
+            acc.copied++
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "EEXIST") acc.skipped++
+            else throw error
+          }
+        }
+        if (onProgress && totalFiles) {
+          onProgress({
+            copied: acc.copied,
+            skipped: acc.skipped,
+            total: totalFiles,
+            currentFile: path.relative(rootSrc!, srcPath),
+          })
+        }
+      }
+    }
+    if (process.platform !== "win32") {
+      const directory = await fs.open(currentDst, "r")
+      try {
+        await directory.sync()
+      } finally {
+        await directory.close()
+      }
+    }
+  }
+
+  await walk(src, dst)
+  return { copied: acc.copied, skipped: acc.skipped }
+}
+
+async function countFiles(dir: string): Promise<number> {
+  let count = 0
+  async function walk(current: string) {
+    const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        await walk(path.join(current, entry.name))
+      } else {
+        count++
+      }
+    }
+  }
+  await walk(dir)
+  return count
+}
+
+export async function updateShellProfile(targetPath: string): Promise<{ updated: boolean; file: string | null }> {
+  const shell = path.basename(process.env.SHELL || "bash")
+  const home = os.homedir()
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config")
+
+  const candidates: Record<string, string[]> = {
+    fish: [path.join(xdgConfig, "fish", "config.fish")],
+    zsh: [path.join(home, ".zshenv"), path.join(home, ".zshrc"), path.join(xdgConfig, "zsh", ".zshenv")],
+    bash: [path.join(home, ".bashrc"), path.join(home, ".bash_profile"), path.join(home, ".profile")],
+  }
+
+  const files = candidates[shell] ?? candidates.bash
+
+  const exportLine = `export SYNERGY_HOME="${targetPath}"`
+  const fishLine = `set -gx SYNERGY_HOME "${targetPath}"`
+
+  for (const file of files) {
+    const exists = await Bun.file(file)
+      .exists()
+      .catch(() => false)
+    if (!exists) continue
+
+    const content = await Bun.file(file)
+      .text()
+      .catch(() => "")
+
+    if (content.includes("SYNERGY_HOME")) {
+      return { updated: false, file }
+    }
+
+    const line = shell === "fish" ? fishLine : exportLine
+    const marker = "# synergy"
+    const newContent = content.trimEnd() + `\n\n${marker}\n${line}\n`
+
+    await Bun.write(file, newContent)
+    return { updated: true, file }
+  }
+
+  return { updated: false, file: null }
+}
+
+export async function removeShellProfile(): Promise<{ removed: boolean; file: string | null }> {
+  const shell = path.basename(process.env.SHELL || "bash")
+  const home = os.homedir()
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config")
+
+  const candidates: Record<string, string[]> = {
+    fish: [path.join(xdgConfig, "fish", "config.fish")],
+    zsh: [path.join(home, ".zshenv"), path.join(home, ".zshrc"), path.join(xdgConfig, "zsh", ".zshenv")],
+    bash: [path.join(home, ".bashrc"), path.join(home, ".bash_profile"), path.join(home, ".profile")],
+  }
+
+  const files = candidates[shell] ?? candidates.bash
+
+  for (const file of files) {
+    const content = await Bun.file(file)
+      .text()
+      .catch(() => "")
+    if (!content.includes("SYNERGY_HOME")) continue
+
+    const lines = content.split("\n")
+    const filtered: string[] = []
+    let skip = false
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+
+      if (trimmed === "# synergy") {
+        skip = true
+        continue
+      }
+
+      if (skip) {
+        skip = false
+        if (trimmed.includes("SYNERGY_HOME")) continue
+      }
+
+      if (trimmed.includes("SYNERGY_HOME")) continue
+
+      filtered.push(line)
+    }
+
+    while (filtered.length > 0 && filtered[filtered.length - 1].trim() === "") {
+      filtered.pop()
+    }
+
+    await Bun.write(file, filtered.join("\n") + "\n")
+    return { removed: true, file }
+  }
+
+  return { removed: false, file: null }
+}
+
+export function dataRoot(): string {
+  return Global.Path.root
+}

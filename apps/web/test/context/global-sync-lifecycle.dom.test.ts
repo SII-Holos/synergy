@@ -1,0 +1,545 @@
+import { expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
+import { build } from "vite"
+import solidPlugin from "vite-plugin-solid"
+import type { SessionViewportContent } from "../../src/context/session-viewport-content"
+
+test("Scope leases protect overlapping pages and reject evicted bootstrap results", async () => {
+  const directory = await mkdtemp(path.join(import.meta.dir, ".scope-lifecycle-"))
+  const entry = path.join(directory, "main.tsx")
+  const stub = path.join(directory, "services.tsx")
+  const globalSync = path.resolve(import.meta.dir, "../../src/context/global-sync.tsx")
+  const root = document.createElement("div")
+  document.body.append(root)
+  await Bun.write(
+    stub,
+    `
+    import { createSignal } from "solid-js"
+    const [connected, setConnected] = createSignal(false)
+    export const connect = () => setConnected(true)
+    const [dir, setDir] = createSignal(undefined)
+    export const useParams = () => ({get dir(){return dir()}})
+    export const selectHome = () => setDir("aG9tZQ")
+    export const optionalRequests = []
+    export const requests = []
+    export const modelRequests = []
+    export const replays = []
+    export const lists = []
+    export const inboxRequests = []
+    let catalogVersion = "home-one"
+    export const setCatalogVersion = value => {catalogVersion=value}
+    let preferWorkBrief = false
+    export const setPreference = value => { preferWorkBrief = value }
+    let inboxReady
+    export const inboxArrived = new Promise(resolve=>inboxReady=resolve)
+    let listener
+    export const emit = (key,seq,details={type:"session.status",properties:{sessionID:"fixture-session",status:{type:"idle"}}})=>listener({name:key,details:{epoch:"test-epoch",seq,...details}})
+    const ok = data => Promise.resolve({data})
+    export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-paused":{type:"paused",reason:"aborted",since:1}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
+    export function createSynergyClient(options) {
+      return {
+        scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[{id:"test",models:{}}],connected:["test"],...(options.scopeID==="home"?{version:catalogVersion,complete:false}:{})},agent:[],config:{preferWorkBrief}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve})) },
+        command: {list:()=>ok([])},
+        provider:{modelsById:()=>new Promise(resolve=>modelRequests.push(resolve)),catalogPage:()=>new Promise(resolve=>modelRequests.push(resolve))},
+        permission: {list:()=>ok([])}, question: {list:()=>ok([])},
+        event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
+        session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.scopeID);inboxReady();return ok([])}},
+      }
+    }
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false,current:()=>undefined},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+      config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>{optionalRequests.push("agenda");return ok([])}}},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},cortex:{list:()=>ok([])},
+    }})
+    export const LocaleConfigReconciler=()=>null
+    export const FatalErrorPage=()=> <div>failure</div>
+    export const DialogSelectServer=()=>null
+    export const useDialog=()=>({show(){}})
+    export const showToast=()=>{}
+    export const browserPerformanceEnabled=()=>false
+    export const startBrowserPerformanceMetrics=()=>{}
+    export const stopBrowserPerformanceMetrics=()=>{}
+    export const browserTokenDurationSampleRate=()=>0.1
+    export const recordTokenApply=()=>{}
+  `,
+  )
+  await Bun.write(
+    entry,
+    `
+    import { render } from "solid-js/web"
+    import { createRoot, createComputed } from "solid-js"
+    import { I18nProvider } from "@lingui/solid"
+    import { setupI18n } from "@lingui/core"
+    import { createPartMaterializer } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/context/part-materializer.ts"))}
+    import { useProviders } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/hooks/use-providers.ts"))}
+    import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
+    import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests, connect, setPreference, selectHome, setCatalogVersion } from ${JSON.stringify(stub)}
+    const bodyLifetimes=[]
+    export function mount(root) {
+      let api, ready, providers
+      const started = new Promise(resolve=>ready=resolve)
+      function Child(){api=useGlobalSync();providers=useProviders();ready();return <output>{String(api.data.config.preferWorkBrief)}</output>}
+      const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
+      return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,connect,setPreference,selectHome,setCatalogVersion,resolved:()=>providers.resolved({providerID:"test",modelID:"missing"}),models:()=>providers.all().flatMap(p=>Object.keys(p.models)),api:()=>api,
+        seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
+        seedWindow(key) {api.ensureScopeState(key)[1]("message","session",[{id:"message",sessionID:"session",role:"user",time:{created:1}}])},
+        bodyLifetimes,
+        retainBody(key,summary) {return api.retainContentCache(key,(signal)=>{
+          bodyLifetimes.push(signal);
+          return createPartMaterializer({
+            memory:api.contentBudget,memoryKey:item=>key+"\\0"+item.messageID+"\\0"+item.id,
+            read:async item=>({part:api.peekScopeState(key)[0].part[item.messageID].find(part=>part.id===item.id),version:item.content.version}),
+            apply(){},evict:item=>api.peekScopeState(key)?.[1]("part",item.messageID,parts=>parts.filter(part=>part.id!==item.id))
+          })
+        })},
+        complete(index,version) {const request=requests[index];request.resolve({data:{scopeID:request.key,provider:{all:[]},agent:[],config:{version}}})},
+        waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
+      }
+    }
+  `,
+  )
+  try {
+    const stubbed = [
+      "./global-sdk",
+      "./locale-config-reconciler",
+      "../pages/fatal-error",
+      "@/components/dialog/dialog-select-server",
+      "@/components/performance/browser-metrics",
+      "@ericsanchezok/synergy-sdk/client",
+      "@ericsanchezok/synergy-ui/toast",
+      "@ericsanchezok/synergy-ui/context/dialog",
+    ]
+    await build({
+      configFile: false,
+      logLevel: "silent",
+      resolve: { alias: [{ find: "@", replacement: path.resolve(import.meta.dir, "../../src") }] },
+      plugins: [
+        {
+          name: "scope-services",
+          enforce: "pre",
+          resolveId(source, importer) {
+            if (
+              importer?.endsWith("/hooks/use-providers.ts") &&
+              (source === "@/context/session-route" || source.endsWith("/context/session-route"))
+            )
+              return stub
+            if (
+              importer === globalSync &&
+              (stubbed.includes(source) ||
+                stubbed.some(
+                  (item) =>
+                    item.startsWith("@/") && source === path.resolve(import.meta.dir, "../../src", item.slice(2)),
+                ))
+            )
+              return stub
+          },
+        },
+        solidPlugin(),
+      ],
+      build: {
+        outDir: path.join(directory, "dist"),
+        minify: false,
+        lib: { entry, formats: ["es"], fileName: "fixture" },
+        rollupOptions: { output: { inlineDynamicImports: true } },
+      },
+    })
+    type State = [
+      {
+        status: string
+        config: { version?: string; preferWorkBrief?: boolean }
+        session: unknown[]
+        latestContextMessage: Record<string, unknown>
+        part: Record<string, SessionViewportContent["bodies"][number]["part"][]>
+        partSummary: Record<string, SessionViewportContent["pages"][string]["items"]>
+        partPage: Record<string, unknown>
+      },
+      unknown,
+    ]
+    type API = {
+      data: { config: { preferWorkBrief?: boolean } }
+      refreshTargeted(targets: string[]): Promise<void>
+      retainScopeState(key: string): { state: State; release(): void }
+      peekScopeState(key: string): State | undefined
+      ensureScopeState(key: string): State
+      ensureModels(key: string, models: { providerID: string; modelID: string }[]): Promise<void>
+      loadModelCatalog(key: string): Promise<void>
+      beginContextProjection(key: string, sessionID: string): number
+      setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
+      seedSessionViewportContent(key: string, content: SessionViewportContent): void
+      contentBudget: { readonly bytes: number }
+      failure: unknown
+      reconnectVersion(): number
+      scopeReconnectVersion(key: string): number
+      scopeRecoveryPending(key: string): boolean
+      sessionStatus: Record<string, { type?: string; reason?: string; since?: number }>
+      permissions: Record<string, { id: string }[]>
+      questions: Record<string, { id: string }[]>
+      cortex: { id: string; status: string }[]
+      scope: { loadSessions(key: string): Promise<void>; loadAgenda(key: string): Promise<void> }
+    }
+    const fixture = (await import(pathToFileURL(path.join(directory, "dist/fixture.js")).href)) as {
+      mount(root: Element): {
+        started: Promise<void>
+        dispose(): void
+        api(): API
+        complete(index: number, version: string): void
+        optionalRequests: string[]
+        requests: unknown[]
+        modelRequests: Array<(value: unknown) => void>
+        emit(key: string, seq: number, details?: { type: string; properties: unknown }): void
+        connect(): void
+        setPreference(value: boolean): void
+        selectHome(): void
+        setCatalogVersion(value: string): void
+        resolved(): boolean
+        models(): string[]
+        seedInbox(key: string): void
+        seedWindow(key: string): void
+        bodyLifetimes: AbortSignal[]
+        retainBody(
+          key: string,
+          summary: SessionViewportContent["pages"][string]["items"][number],
+        ): {
+          cache: ReturnType<typeof import("../../src/context/part-materializer").createPartMaterializer>
+          release(): void
+        }
+        inboxRequests: string[]
+        inboxArrived: Promise<void>
+        replays: Array<(value: unknown) => void>
+        lists: Array<(value: unknown) => void>
+        waitComplete(state: State): Promise<void>
+      }
+    }
+    const h = fixture.mount(root)
+    try {
+      await h.started
+      const api = h.api()
+      // The cross-Scope snapshot is the only source for a session that was
+      // already running before this client connected, in a project it has not
+      // leased — no status event of its own ever arrives — and the only path by
+      // which a paused latch reaches a client at all. Bootstrap must fetch it
+      // instead of waiting for a lease.
+      const waitForIndex = async (sessionID: string) => {
+        const deadline = Date.now() + 5000
+        while (api.sessionStatus[sessionID] === undefined) {
+          if (Date.now() > deadline) throw new Error(`cross-Scope status for ${sessionID} was never seeded`)
+          await new Promise((resolve) => setTimeout(resolve, 5))
+        }
+      }
+      await waitForIndex("remote-runner")
+      expect(api.sessionStatus["remote-runner"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["remote-paused"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
+      const cold = "unviewed-project"
+      h.emit(cold, 1, { type: "session.status", properties: { sessionID: "cold-session", status: { type: "busy" } } })
+      h.emit(cold, 2, { type: "permission.asked", properties: { id: "cold-permission", sessionID: "cold-session" } })
+      h.emit(cold, 3, { type: "question.asked", properties: { id: "cold-question", sessionID: "cold-session" } })
+      h.emit(cold, 4, {
+        type: "cortex.task.created",
+        properties: { task: { id: "cold-task", sessionID: "cold-session", status: "running" } },
+      })
+      h.emit(cold, 5, {
+        type: "session.updated",
+        properties: {
+          info: {
+            id: "cold-session",
+            scope: { id: cold },
+            time: { updated: 1 },
+            cortex: { taskID: "cold-task", status: "completed" },
+          },
+        },
+      })
+      h.emit(cold, 6, { type: "note.updated", properties: {} })
+      expect(api.peekScopeState(cold)).toBeUndefined()
+      expect(api.sessionStatus["cold-session"]).toEqual({ type: "busy" })
+      expect(api.permissions["cold-session"].map((item) => item.id)).toEqual(["cold-permission"])
+      expect(api.questions["cold-session"].map((item) => item.id)).toEqual(["cold-question"])
+      expect(api.cortex.find((item) => item.id === "cold-task")?.status).toBe("completed")
+      h.emit(cold, 7, {
+        type: "permission.replied",
+        properties: { requestID: "cold-permission", sessionID: "cold-session" },
+      })
+      h.emit(cold, 8, {
+        type: "question.replied",
+        properties: { requestID: "cold-question", sessionID: "cold-session" },
+      })
+      h.emit(cold, 9, { type: "session.status", properties: { sessionID: "cold-session", status: { type: "idle" } } })
+      expect(api.sessionStatus["cold-session"]).toBeUndefined()
+      expect(api.permissions["cold-session"] ?? []).toEqual([])
+      expect(api.questions["cold-session"] ?? []).toEqual([])
+      expect(api.peekScopeState(cold)).toBeUndefined()
+      expect(api.peekScopeState("home")).toBeUndefined()
+      expect(api.data.config.preferWorkBrief).toBe(false)
+      h.setPreference(true)
+      await api.refreshTargeted(["config"])
+      expect(api.data.config.preferWorkBrief).toBe(true)
+      expect(root.querySelector("output")?.textContent).toBe("true")
+      const preferences = api.retainScopeState("home")
+      await h.waitComplete(preferences.state)
+      expect(preferences.state[0].config.preferWorkBrief).toBe(true)
+      h.setPreference(false)
+      await api.refreshTargeted(["config"])
+      expect(api.data.config.preferWorkBrief).toBe(false)
+      expect(preferences.state[0].config.preferWorkBrief).toBe(false)
+      expect(root.querySelector("output")?.textContent).toBe("false")
+      h.selectHome()
+      const catalog = api.loadModelCatalog("home")
+      h.modelRequests.at(-1)!({
+        data: { version: "home-one", models: [{ providerID: "test", model: { id: "catalog-model" } }], total: 1 },
+      })
+      await catalog
+      expect(h.models()).toContain("catalog-model")
+      await api.refreshTargeted(["provider"])
+      expect(h.models()).toContain("catalog-model")
+      const missingModel = api.ensureModels("home", [{ providerID: "test", modelID: "missing" }])
+      h.modelRequests.at(-1)!({ data: { version: "home-one", models: [], total: 0 } })
+      await missingModel
+      expect(h.resolved()).toBe(true)
+      h.setCatalogVersion("home-two")
+      await api.refreshTargeted(["provider"])
+      expect(h.models()).toEqual([])
+      expect(h.resolved()).toBe(false)
+      preferences.release()
+      let eviction = 0
+      const evictInactive = async () => {
+        for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${eviction++}`)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      const old = api.retainScopeState("shared")
+      const next = api.retainScopeState("shared")
+      expect(next.state).toBe(old.state)
+      await api.scope.loadAgenda("shared")
+      expect(h.optionalRequests).toEqual([])
+      old.release()
+      expect(api.peekScopeState("shared")).toBe(next.state)
+      next.release()
+      expect(api.peekScopeState("shared")).toBe(old.state)
+      const warm = api.retainScopeState("shared")
+      expect(warm.state).toBe(old.state)
+      expect(h.requests).toHaveLength(1)
+      warm.release()
+      await evictInactive()
+      expect(api.peekScopeState("shared")).toBeUndefined()
+      const reopened = api.retainScopeState("shared")
+      expect(reopened.state).not.toBe(old.state)
+      expect(h.requests.length).toBe(2)
+      h.complete(1, "new")
+      await h.waitComplete(reopened.state)
+      h.complete(0, "obsolete")
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(reopened.state[0].config.version).toBe("new")
+      expect(old.state[0].config.version).toBeUndefined()
+      expect(api.failure).toBeUndefined()
+      old.release()
+      expect(api.peekScopeState("shared")).toBe(reopened.state)
+      h.emit("shared", 1)
+      h.emit("shared", 3)
+      h.emit("shared", 5)
+      expect(h.replays.length).toBe(1)
+      const oldList = api.scope.loadSessions("shared")
+      reopened.release()
+      await evictInactive()
+      const current = api.retainScopeState("shared")
+      h.complete(2, "current")
+      await h.waitComplete(current.state)
+      h.emit("shared", 1)
+      h.emit("shared", 3)
+      expect(h.replays.length).toBe(2)
+      h.replays[0]!({
+        data: {
+          status: "ok",
+          epoch: "test-epoch",
+          seq: 5,
+          events: [{ type: "session.status", properties: { sessionID: "obsolete-session", status: { type: "busy" } } }],
+        },
+      })
+      h.lists[0]!({ data: { total: 1, data: [{ id: "obsolete-session" }] } })
+      await oldList
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(current.state[0].session).toEqual([])
+      expect(api.sessionStatus["obsolete-session"]).toBeUndefined()
+      expect(h.replays.length).toBe(2)
+      h.replays[1]!({ data: { status: "ok", epoch: "test-epoch", seq: 3, events: [] } })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      for (let i = 0; i < 12; i++) api.ensureScopeState("background." + i)
+      expect(api.peekScopeState("background.0")).toBeUndefined()
+      expect(api.peekScopeState("background.11")).toBeDefined()
+      expect(api.peekScopeState("shared")).toBe(current.state)
+      const pendingRevision = api.beginContextProjection("shared", "never-loaded")
+      current.release()
+      await evictInactive()
+      expect(api.peekScopeState("shared")).toBeUndefined()
+      const latest = api.retainScopeState("shared")
+      api.setLatestContextMessage("shared", "never-loaded", null, pendingRevision)
+      expect(latest.state[0].latestContextMessage["never-loaded"]).toBeUndefined()
+      latest.release()
+      const preparedContent = (text: string): SessionViewportContent => ({
+        pages: {
+          message: {
+            items: [
+              {
+                id: "part",
+                sessionID: "session",
+                messageID: "message",
+                type: "text",
+                preview: text,
+                content: { version: "one", bytes: text.length },
+              },
+            ],
+            hasMore: false,
+            hasEarlier: false,
+            nextCursor: null,
+            previousCursor: null,
+          },
+        },
+        bodies: [
+          {
+            part: { id: "part", sessionID: "session", messageID: "message", type: "text", text },
+            version: "one",
+          },
+        ],
+      })
+      const contentScope = api.retainScopeState("background.content")
+      const contentNeighbor = api.retainScopeState("background.content.neighbor")
+      const firstContent = preparedContent("released Scope body")
+      const neighborContent = preparedContent("retained Scope body")
+      const firstBytes = firstContent.pages.message.items[0].content.bytes * 2
+      const neighborBytes = neighborContent.pages.message.items[0].content.bytes * 2
+      api.seedSessionViewportContent("background.content", firstContent)
+      api.seedSessionViewportContent("background.content.neighbor", neighborContent)
+      expect(api.contentBudget.bytes).toBe(firstBytes + neighborBytes)
+      contentScope.release()
+      await evictInactive()
+      expect(api.peekScopeState("background.content")).toBeUndefined()
+      expect(api.peekScopeState("background.content.neighbor")).toBe(contentNeighbor.state)
+      expect(api.contentBudget.bytes).toBe(neighborBytes)
+      contentNeighbor.release()
+      await evictInactive()
+      expect(api.peekScopeState("background.content.neighbor")).toBeUndefined()
+      expect(api.contentBudget.bytes).toBe(0)
+      for (const operation of ["ensureModels", "loadModelCatalog"] as const) {
+        const key = `background.models.${operation}`
+        const lease = api.retainScopeState(key)
+        await h.waitComplete(lease.state)
+        const pending =
+          operation === "ensureModels"
+            ? api.ensureModels(key, [{ providerID: "test", modelID: "test" }])
+            : api.loadModelCatalog(key)
+        const settled = pending.catch(() => {})
+        lease.release()
+        await evictInactive()
+        expect(api.peekScopeState(key)).toBeUndefined()
+        h.modelRequests.at(-1)!({ data: { models: [], total: 0 } })
+        await settled
+        expect(api.peekScopeState(key)).toBeUndefined()
+      }
+      const first = api.retainScopeState("/repo")
+      const neighbor = api.retainScopeState("/repo:variant")
+      h.seedInbox("/repo")
+      h.seedInbox("/repo:variant")
+      h.emit("/repo", 1)
+      h.emit("/repo:variant", 1)
+      first.release()
+      await evictInactive()
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          h.inboxArrived,
+          new Promise(
+            (_, reject) =>
+              (timeout = setTimeout(() => reject(new Error("Neighbor Scope inbox timer was cancelled")), 5000)),
+          ),
+        ])
+        expect(h.inboxRequests).toEqual(["/repo:variant"])
+      } finally {
+        clearTimeout(timeout)
+        neighbor.release()
+      }
+      const home = api.retainScopeState("home")
+      h.seedWindow("home")
+      const visibleContent = preparedContent("Accepted content stays visible during reconnect")
+      api.seedSessionViewportContent("home", visibleContent)
+      const summary = home.state[0].partSummary.message[0]
+      const body = home.state[0].part.message[0]
+      const cache = h.retainBody("home", summary)
+      const peerCache = h.retainBody("home", summary)
+      expect(peerCache.cache).toBe(cache.cache)
+      expect(h.bodyLifetimes).toHaveLength(1)
+      expect(h.bodyLifetimes[0]?.aborted).toBe(false)
+      const reader = cache.cache.retain(summary)
+      await reader.ready
+      const retainedBytes = api.contentBudget.bytes
+      const unrelatedPreparation = preparedContent("Default warming must not replace an accepted history window")
+      unrelatedPreparation.pages.message.items[0].id = "unrelated-part"
+      unrelatedPreparation.bodies[0].part.id = "unrelated-part"
+      api.seedSessionViewportContent("home", unrelatedPreparation)
+      expect(home.state[0].partSummary.message[0]).toBe(summary)
+      expect(home.state[0].part.message[0]).toBe(body)
+      expect(home.state[0].partSummary.message).toHaveLength(1)
+      expect(api.contentBudget.bytes).toBe(retainedBytes)
+      h.emit("home", 1)
+      const before = h.replays.length
+      h.connect()
+      const deadline = Date.now() + 5000
+      while (h.replays.length === before) {
+        if (Date.now() > deadline) throw new Error("Initial Scope recovery did not start")
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      expect(api.scopeRecoveryPending("home")).toBe(true)
+      expect(api.scopeRecoveryPending("untracked")).toBe(false)
+      h.replays.at(-1)!({ data: { status: "ok", epoch: "test-epoch", seq: 1, events: [] } })
+      while (api.scopeRecoveryPending("home")) {
+        if (Date.now() > deadline) throw new Error("Completed Scope recovery stayed pending")
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      expect(api.scopeReconnectVersion("home")).toBe(api.reconnectVersion())
+      expect(home.state[0].partSummary.message[0]).toBe(summary)
+      expect(home.state[0].part.message[0]).toBe(body)
+      expect(home.state[0].partPage.message).toMatchObject({ stale: false, hasMore: false, hasEarlier: false })
+      expect(api.contentBudget.bytes).toBe(retainedBytes)
+      reader.release()
+      cache.release()
+      expect(h.bodyLifetimes[0].aborted).toBe(false)
+      peerCache.release()
+      expect(h.bodyLifetimes[0].aborted).toBe(true)
+      home.release()
+      const gapScope = "background.cold-gap"
+      h.emit(gapScope, 1, { type: "permission.asked", properties: { id: "gap-permission", sessionID: "gap-session" } })
+      expect(api.peekScopeState(gapScope)).toBeUndefined()
+      const replayCount = h.replays.length
+      h.emit(gapScope, 3, {
+        type: "permission.replied",
+        properties: { requestID: "gap-permission", sessionID: "gap-session" },
+      })
+      expect(api.peekScopeState(gapScope)).toBeDefined()
+      expect(h.replays).toHaveLength(replayCount + 1)
+      h.replays.at(-1)!({
+        data: {
+          status: "ok",
+          epoch: "test-epoch",
+          seq: 3,
+          events: [
+            { epoch: "test-epoch", seq: 2, type: "note.updated", properties: {} },
+            {
+              epoch: "test-epoch",
+              seq: 3,
+              type: "permission.replied",
+              properties: { requestID: "gap-permission", sessionID: "gap-session" },
+            },
+          ],
+        },
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.permissions["gap-session"] ?? []).toEqual([])
+      const resetScope = "background.cold-reset"
+      h.emit(resetScope, 1, { type: "server.projection.reset", properties: {} })
+      expect(api.peekScopeState(resetScope)).toBeDefined()
+      await h.waitComplete(api.peekScopeState(resetScope)!)
+    } finally {
+      h.dispose()
+    }
+  } finally {
+    root.remove()
+    await rm(directory, { recursive: true, force: true })
+  }
+}, 60000)

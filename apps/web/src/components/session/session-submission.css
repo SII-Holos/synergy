@@ -1,0 +1,9 @@
+.session-submission-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.5;
+}

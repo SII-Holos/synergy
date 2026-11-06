@@ -1,0 +1,489 @@
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { createResizeObserver } from "@solid-primitives/resize-observer"
+import type { DirectoryPage, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useGlobalSync } from "@/context/global-sync"
+import { serverDisplayName } from "@/context/server"
+import { directoryCopy as copy } from "./directory-navigation-copy"
+import "./project-flow.css"
+import "./dialog-select-directory.css"
+
+export interface DialogSelectDirectoryResult {
+  directory: string | string[]
+}
+interface DialogSelectDirectoryProps {
+  client?: SynergyClient
+  serverUrl?: string
+  title?: string
+  multiple?: boolean
+  onSelect: (result: DialogSelectDirectoryResult | null) => void
+}
+
+export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
+  const sdk = useGlobalSDK()
+  const sync = useGlobalSync()
+  const dialog = useDialog()
+  const { _ } = useLingui()
+  const client = props.client ?? sdk.client
+  const [home, setHome] = createSignal(
+    props.serverUrl && props.serverUrl !== sdk.url ? "/" : sync.data.paths.home || "/",
+  )
+  const [path, setPath] = createSignal(home())
+  const [draft, setDraft] = createSignal(home())
+  const [editingPath, setEditingPath] = createSignal(false)
+  const [query, setQuery] = createSignal("")
+  const [hidden, setHidden] = createSignal(false)
+  const [listing, setListing] = createSignal<DirectoryPage>()
+  const [selected, setSelected] = createSignal<string[]>([])
+  const [loading, setLoading] = createSignal(false)
+  const [error, setError] = createSignal("")
+  const [searched, setSearched] = createSignal(false)
+  let pathInput: HTMLInputElement | undefined
+  let pathEditButton: HTMLButtonElement | undefined
+  const [pathNavigation, setPathNavigation] = createSignal<HTMLElement>()
+  let currentFolderButton: HTMLButtonElement | undefined
+  let selectionList: HTMLUListElement | undefined
+  let request: AbortController | undefined
+  onCleanup(() => request?.abort())
+  createEffect(() => {
+    if (!props.client && sdk.client !== client) dialog.close()
+  })
+  createEffect(() => {
+    path()
+    editingPath()
+    const navigation = pathNavigation()
+    queueMicrotask(() => {
+      if (navigation?.isConnected) navigation.scrollLeft = navigation.scrollWidth
+    })
+  })
+  createResizeObserver(
+    () => (editingPath() ? undefined : pathNavigation()),
+    (_, navigation) => {
+      navigation.scrollLeft = navigation.scrollWidth
+    },
+  )
+  const crumbs = createMemo(() => {
+    const current = path()
+    const separator = current.includes("\\") ? "\\" : "/"
+    const root = current.match(/^(?:[a-z]:[\\/]|\/)/i)?.[0] ?? separator
+    const parts = current.slice(root.length).split(/[\\/]/).filter(Boolean)
+    return [
+      { name: root, path: root },
+      ...parts.map((name, index) => ({ name, path: root + parts.slice(0, index + 1).join(separator) })),
+    ]
+  })
+  async function load(target = path(), cursor?: string, search = false) {
+    request?.abort()
+    const controller = new AbortController()
+    request = controller
+    setLoading(true)
+    setError("")
+    setPath(target)
+    setSearched(search && !!query().trim())
+    setDraft(target)
+    try {
+      const options = { signal: controller.signal, throwOnError: true as const }
+      const result =
+        search && query().trim()
+          ? {
+              path: target,
+              parent: listing()?.parent ?? null,
+              entries: (
+                await client.global.filesystem.browse({ path: target, query: query().trim(), limit: 200 }, options)
+              ).data
+                .filter(
+                  (item) =>
+                    hidden() ||
+                    !item
+                      .slice(target.length)
+                      .split(/[\\/]/)
+                      .some((part) => part.startsWith(".")),
+                )
+                .map((item) => ({ path: item, name: getFilename(item) })),
+            }
+          : (
+              await client.global.filesystem.directories(
+                { path: target, hidden: hidden(), cursor, limit: 100 },
+                options,
+              )
+            ).data
+      if (controller.signal.aborted) return false
+      setSearched(search && !!query().trim())
+      setPath(result.path)
+      if (draft() === target) setDraft(result.path)
+      setListing(cursor ? { ...result, entries: [...(listing()?.entries ?? []), ...result.entries] } : result)
+      return true
+    } catch (failure) {
+      if (controller.signal.aborted) return false
+      const code =
+        failure &&
+        typeof failure === "object" &&
+        "data" in failure &&
+        failure.data &&
+        typeof failure.data === "object" &&
+        "code" in failure.data
+          ? failure.data.code
+          : undefined
+      setError(
+        _(
+          code === "permission_denied"
+            ? copy.denied
+            : code === "not_found"
+              ? copy.missing
+              : code === "not_directory"
+                ? copy.notFolder
+                : copy.failed,
+        ),
+      )
+      return false
+    } finally {
+      if (!controller.signal.aborted) setLoading(false)
+    }
+  }
+  function enter(target: string) {
+    setEditingPath(false)
+    setQuery("")
+    if (!props.multiple) setSelected([])
+    void load(target)
+  }
+  function closePath() {
+    setDraft(path())
+    setEditingPath(false)
+    queueMicrotask(() => {
+      if (pathEditButton?.isConnected) pathEditButton.focus()
+    })
+  }
+  async function submitPath() {
+    if (loading() || !draft().trim()) return
+    setQuery("")
+    if (!props.multiple) setSelected([])
+    if ((await load(draft())) && draft() === path()) closePath()
+  }
+  function select(target: string) {
+    setSelected((previous) =>
+      props.multiple
+        ? previous.includes(target)
+          ? previous.filter((item) => item !== target)
+          : [...previous, target]
+        : [target],
+    )
+  }
+  function focusSelection(index: number) {
+    queueMicrotask(() => {
+      const buttons = selectionList?.querySelectorAll<HTMLButtonElement>("button")
+      const next = buttons?.[Math.min(index, buttons.length - 1)]
+      if (next?.isConnected) next.focus()
+      else if (currentFolderButton?.isConnected) currentFolderButton.focus()
+      else pathInput?.focus()
+    })
+  }
+  function deselect(target: string) {
+    const index = selected().indexOf(target)
+    setSelected((previous) => previous.filter((item) => item !== target))
+    focusSelection(index)
+  }
+  function clearSelection() {
+    setSelected([])
+    focusSelection(0)
+  }
+  function choose() {
+    if (loading() || error()) return
+    const paths = selected().length ? selected() : [listing()!.path]
+    props.onSelect({ directory: props.multiple ? paths : paths[0] })
+    dialog.close()
+  }
+  onMount(() => {
+    void (async () => {
+      if (props.serverUrl && props.serverUrl !== sdk.url) {
+        const paths = await client.global.paths.get().catch(() => undefined)
+        if (paths?.data?.home) setHome(paths.data.home)
+      }
+      await load(home())
+    })()
+  })
+  return (
+    <Dialog
+      title={props.title ?? _(copy.title)}
+      description={_({ ...copy.service, values: { service: serverDisplayName(props.serverUrl ?? sdk.url) } })}
+      footer={
+        <div class="directory-navigation-footer">
+          <Show when={props.multiple}>
+            <div class="directory-navigation-selection">
+              <span role="status">{_({ ...copy.selected, values: { count: selected().length } })}</span>
+              <Show when={selected().length}>
+                <Button variant="ghost" size="small" onClick={clearSelection}>
+                  {_(copy.clear)}
+                </Button>
+              </Show>
+            </div>
+            <Show when={selected().length}>
+              <ul ref={selectionList} class="directory-navigation-selected" aria-label={_(copy.selection)}>
+                <For each={selected()}>
+                  {(folder) => (
+                    <li>
+                      <Tooltip value={folder} class="directory-navigation-selected-name">
+                        <span tabindex="0">{getFilename(folder) || folder}</span>
+                      </Tooltip>
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        class="directory-navigation-control directory-navigation-deselect"
+                        icon={getSemanticIcon("action.close")}
+                        aria-label={_({ ...copy.deselectFolder, values: { name: folder } })}
+                        onClick={() => deselect(folder)}
+                      />
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </Show>
+          <div data-slot="dialog-actions">
+            <Button variant="ghost" onClick={() => dialog.close()}>
+              {_(copy.cancel)}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={loading() || !!error() || !listing() || (props.multiple && !selected().length)}
+              onClick={choose}
+            >
+              {_(props.multiple ? copy.useMany : copy.use)}
+            </Button>
+          </div>
+        </div>
+      }
+      size="wide"
+      class="directory-navigation"
+    >
+      <div data-slot="dialog-form" class="project-flow">
+        <div class="directory-navigation-toolbar">
+          <IconButton
+            type="button"
+            variant="ghost"
+            iconSize="normal"
+            class="directory-navigation-control"
+            icon={getSemanticIcon("navigation.home")}
+            aria-label={_(copy.home)}
+            onClick={() => enter(home())}
+          />
+          <IconButton
+            type="button"
+            variant="ghost"
+            iconSize="normal"
+            class="directory-navigation-control"
+            icon={getSemanticIcon("navigation.back")}
+            aria-label={_(copy.up)}
+            disabled={!listing()?.parent || loading()}
+            onClick={() => enter(listing()!.parent!)}
+          />
+          <Show
+            when={editingPath()}
+            fallback={
+              <>
+                <nav
+                  ref={setPathNavigation}
+                  class="directory-navigation-crumbs"
+                  aria-label={_(copy.current)}
+                  title={path()}
+                >
+                  <For each={crumbs()}>
+                    {(crumb, index) => (
+                      <>
+                        <Show when={index() > 0}>
+                          <span aria-hidden="true">›</span>
+                        </Show>
+                        <button
+                          type="button"
+                          title={crumb.path}
+                          aria-current={index() === crumbs().length - 1 ? "page" : undefined}
+                          onClick={() => enter(crumb.path)}
+                        >
+                          {crumb.name}
+                        </button>
+                      </>
+                    )}
+                  </For>
+                </nav>
+                <Button
+                  ref={pathEditButton}
+                  variant="ghost"
+                  class="directory-navigation-edit"
+                  onClick={() => {
+                    setDraft(path())
+                    setEditingPath(true)
+                    queueMicrotask(() => {
+                      if (!pathInput?.isConnected) return
+                      pathInput.focus()
+                      pathInput.select()
+                    })
+                  }}
+                >
+                  {_(copy.editPath)}
+                </Button>
+              </>
+            }
+          >
+            <form
+              class="directory-navigation-path"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void submitPath()
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return
+                event.preventDefault()
+                event.stopPropagation()
+                closePath()
+              }}
+            >
+              <TextField
+                ref={pathInput}
+                label={_(copy.path)}
+                hideLabel
+                value={draft()}
+                onChange={setDraft}
+                spellcheck={false}
+              />
+              <Button type="submit" variant="ghost" disabled={loading() || !draft().trim()}>
+                {_(copy.go)}
+              </Button>
+              <IconButton
+                type="button"
+                variant="ghost"
+                size="large"
+                icon={getSemanticIcon("action.close")}
+                aria-label={_(copy.cancel)}
+                onClick={closePath}
+              />
+            </form>
+          </Show>
+        </div>
+        <form
+          class="directory-navigation-search"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void load(path(), undefined, true)
+          }}
+        >
+          <TextField
+            label={_(copy.search)}
+            hideLabel
+            placeholder={_(copy.search)}
+            value={query()}
+            onChange={setQuery}
+          />
+          <IconButton
+            type="submit"
+            variant="ghost"
+            iconSize="normal"
+            class="directory-navigation-control"
+            icon={getSemanticIcon("action.search")}
+            aria-label={_(copy.search)}
+          />
+        </form>
+        <Checkbox
+          checked={hidden()}
+          onChange={(value) => {
+            setHidden(value)
+            void load(path(), undefined, searched())
+          }}
+        >
+          {_(copy.hidden)}
+        </Checkbox>
+        <Show when={loading()}>
+          <p role="status">{_(copy.loading)}</p>
+        </Show>
+        <Show when={error()}>
+          <div role="alert">
+            <p>{error()}</p>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                pathInput?.focus()
+                void load(path(), undefined, searched())
+              }}
+            >
+              {_(copy.retry)}
+            </Button>
+          </div>
+        </Show>
+        <Show when={!error()}>
+          <div class="project-flow-list directory-navigation-list" aria-label={_(copy.title)}>
+            <For each={listing()?.entries}>
+              {(entry) => (
+                <div class="directory-navigation-entry">
+                  <Show when={props.multiple}>
+                    <Checkbox
+                      hideLabel
+                      checked={selected().includes(entry.path)}
+                      disabled={loading()}
+                      onChange={() => select(entry.path)}
+                    >
+                      {_({ ...copy.selectFolder, values: { name: entry.name } })}
+                    </Checkbox>
+                  </Show>
+                  <button
+                    type="button"
+                    class="project-flow-row"
+                    title={_(copy.enter)}
+                    disabled={loading()}
+                    onClick={() => enter(entry.path)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowRight") {
+                        event.preventDefault()
+                        enter(entry.path)
+                      }
+                    }}
+                  >
+                    <Icon name={getSemanticIcon("workspace.main")} size="small" />
+                    <span class="project-flow-row-copy">
+                      <strong>{entry.name}</strong>
+                      <Show when={searched()}>
+                        <small>{entry.path}</small>
+                      </Show>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </For>
+            <Show when={!loading() && !listing()?.entries.length}>
+              <p class="directory-navigation-empty">{_(searched() ? copy.noResults : copy.empty)}</p>
+            </Show>
+            <Show when={listing()?.nextCursor && !searched()}>
+              <Button variant="ghost" disabled={loading()} onClick={() => void load(path(), listing()?.nextCursor)}>
+                {_(copy.more)}
+              </Button>
+            </Show>
+            <Show when={searched() && listing()?.entries.length === 200}>
+              <p>{_(copy.searchLimit)}</p>
+            </Show>
+          </div>
+        </Show>
+        <Show when={props.multiple && listing() && !loading() && !error()}>
+          <Button
+            ref={currentFolderButton}
+            variant="secondary"
+            aria-pressed={selected().includes(path())}
+            onClick={() => select(path())}
+          >
+            {_(copy.selectCurrent)}
+          </Button>
+        </Show>
+        <Show when={!props.multiple}>
+          <p class="directory-navigation-selection">{path()}</p>
+        </Show>
+      </div>
+    </Dialog>
+  )
+}

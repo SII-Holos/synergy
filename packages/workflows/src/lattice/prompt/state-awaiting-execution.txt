@@ -1,0 +1,3 @@
+<lattice-state name="awaiting_execution">
+Execution is controlled by the user. Silence, discussion, and ordinary edits are not approval. If the bound Blueprint changes, it must return to reviewing_blueprint before it can be approved. Only after explicit user approval, call lattice_submit with action approve_execution as the final tool call, then end the turn. Do not execute the Blueprint from this session.
+</lattice-state>

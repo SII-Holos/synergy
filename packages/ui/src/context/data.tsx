@@ -1,33 +1,17 @@
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
-import type {
-  CortexTask,
-  DagNode,
-  Message,
-  Part,
-  PermissionRequest,
-  QuestionRequest,
-  Session,
-  SessionStatus,
-  FileDiff,
-  Todo,
-} from "@ericsanchezok/synergy-sdk"
+import type { DagNode, Message, Part, Session, FileDiff, Todo } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "./helper"
-import { createSessionDataView } from "./session-data-view"
+import { createSessionDataView, type SessionDataRuntime, type SessionDataView } from "./session-data-view"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import type { SessionRecoveryAction } from "../components/session-recovery"
 
 export type Data = {
   session: Session[]
-  session_status: {
-    [sessionID: string]: SessionStatus
-  }
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
   session_diff_preload?: {
-    [sessionID: string]: PreloadMultiFileDiffResult<any>[]
-  }
-  permission?: {
-    [sessionID: string]: PermissionRequest[]
+    [sessionID: string]: PreloadMultiFileDiffResult<unknown, undefined>[]
   }
   message: {
     [sessionID: string]: Message[]
@@ -44,10 +28,6 @@ export type Data = {
   dag?: {
     [sessionID: string]: DagNode[]
   }
-  question?: {
-    [sessionID: string]: QuestionRequest[]
-  }
-  cortex?: CortexTask[]
 }
 
 export type PermissionRespondFn = (input: {
@@ -62,17 +42,28 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
     data: Data
-    directory: string
+    directory: string | null
     serverUrl: string
+    /**
+     * Session runtime state (status, pending permissions, pending questions,
+     * and the global Cortex task list). All of it is keyed by session id or
+     * process-wide and lives outside the Scope store, which is evicted as soon
+     * as the user switches project, so the host resolves it from its own global
+     * index instead of from `data`.
+     */
+    runtime?: SessionDataRuntime
+    view?: SessionDataView
+    hasFeature?: (id: string) => boolean
     onPermissionRespond?: PermissionRespondFn
     onNavigateToSession?: NavigateToSessionFn
+    onSessionRecovery?: (action: SessionRecoveryAction) => Promise<void>
   }) => {
     return {
       get store() {
         return props.data
       },
       get view() {
-        return createSessionDataView(props.data)
+        return props.view ?? createSessionDataView(props.data, props.runtime)
       },
       get directory() {
         return props.directory
@@ -80,8 +71,10 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       get serverUrl() {
         return props.serverUrl
       },
+      hasFeature: (id: string) => props.hasFeature?.(id) ?? false,
       respondToPermission: props.onPermissionRespond,
       navigateToSession: props.onNavigateToSession,
+      recoverSession: props.onSessionRecovery,
     }
   },
 })

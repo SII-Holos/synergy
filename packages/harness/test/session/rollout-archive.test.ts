@@ -1,0 +1,404 @@
+import { Storage } from "../../src/storage/storage"
+import { expect, test } from "bun:test"
+import { Uint8ArrayWriter, Uint8ArrayReader, ZipWriter, ZipReader } from "@zip.js/zip.js"
+import { fixture, complete, contextDraft } from "@ericsanchezok/synergy-harness/test/support/rollout"
+import { RolloutArchive } from "../../src/session/rollout/archive"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
+import { RolloutArtifact } from "../../src/session/rollout/artifact"
+import { RolloutAccounting } from "../../src/session/rollout/accounting"
+import { RolloutExecution } from "../../src/session/rollout/execution"
+import { SessionImport } from "../../src/session/session-import"
+import { Session } from "../../src/session"
+import { reconcileContextUsage } from "../../src/session/context-usage-attribution"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+test("rollout import preserves confirmed execution time and cannot revive an exported open interval", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      const contextEstimate = { ...contextDraft(), version: 1 as const, capturedAt: Date.now() }
+      await RolloutLedger.updateContextEstimate(call.owner, rootID, call.id, contextEstimate)
+      const assistant = (await Session.messages({ sessionID: session.id, raw: true })).find(
+        (message) => message.info.role === "assistant",
+      )!.info
+      if (assistant.role !== "assistant") throw new Error("missing assistant")
+      await Session.updateMessage({
+        ...assistant,
+        accounting: { kind: "rollout", callIDs: [call.id] },
+        contextUsage: { ...reconcileContextUsage(contextEstimate, 1000), callID: call.id },
+      })
+      const segment = await RolloutLedger.beginSegment({ owner: call.owner, runID: rootID, input: {} })
+      const clockID = RolloutExecution.clock().clockID
+      for (const ended of [10000, undefined])
+        await RolloutExecution.write({
+          version: 1,
+          id: crypto.randomUUID(),
+          owner: call.owner,
+          runID: rootID,
+          segmentID: segment.id,
+          branchID: "main",
+          clockID,
+          started: ended === undefined ? 12000 : 0,
+          ended,
+          status: ended === undefined ? "active" : "closed",
+          coverage: "complete",
+        })
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const imported = await SessionImport.fromBuffer(await writer.getData())
+      try {
+        const owner = { ...call.owner, kind: "session" as const, sessionID: imported.rootSessionID }
+        const snapshot = await RolloutSnapshot.read(owner)
+        expect(snapshot.calls[0].contextEstimate).toEqual(contextEstimate)
+        const messages = await Session.messages({ sessionID: imported.rootSessionID, raw: true })
+        const restored = messages.find((message) => message.info.role === "assistant")!.info
+        expect(restored.role === "assistant" && restored.contextUsage?.callID).toBe(snapshot.calls[0].id)
+        expect(snapshot.calls[0].id).not.toBe(call.id)
+        expect(snapshot.intervals).toHaveLength(2)
+        expect(RolloutExecution.measure(snapshot.intervals)).toMatchObject({
+          elapsedMs: 10000,
+          elapsedActive: false,
+          elapsedLowerBound: true,
+        })
+        const interrupted = snapshot.intervals.find((value) => value.status === "interrupted")!
+        expect(interrupted.ended).toBeUndefined()
+        expect(interrupted.detectedAt).toBeNumber()
+        expect(snapshot.segments[0].ended).toBeUndefined()
+        expect(snapshot.segments[0].detectedAt).toBeNumber()
+        expect(snapshot.runs[0].ended).toBeUndefined()
+        expect(snapshot.intervals.every((value) => value.runID === snapshot.runs[0].id)).toBe(true)
+      } finally {
+        await Session.remove(imported.rootSessionID)
+      }
+    }),
+  ))
+
+test("large rollout inspection keeps timers responsive while validating every chunk", () =>
+  runtime.run(async () => {
+    await fixture(async ({ session, rootID, call }) => {
+      const artifact = await RolloutArtifact.open(call.owner, "application/octet-stream")
+      for (let index = 0; index < 384; index++) {
+        await artifact.append(new Uint8Array([index % 256]))
+        await artifact.checkpoint()
+      }
+      const response = await artifact.finish()
+      await RolloutLedger.finishCall(call.owner, rootID, call.id, { status: "completed", response })
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      const output = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, output)
+      let ticks = 0
+      const timer = setInterval(() => ticks++, 0)
+      try {
+        const { manifest } = await RolloutArchive.inspect(new Blob([await output.getData()]))
+        expect(manifest.artifacts.some((entry) => entry.ref.chunks === 384)).toBe(true)
+        expect(manifest.integrity.missing).toEqual([])
+        expect(ticks).toBeGreaterThan(0)
+      } finally {
+        clearInterval(timer)
+      }
+    })
+  }))
+
+test("rollout ZIP restores original evidence with new identities and no new spend", () =>
+  runtime.run(async () => {
+    await fixture(async ({ session, rootID, call }) => {
+      await complete(call)
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const bytes = await writer.getData()
+      const imported = await SessionImport.fromBuffer(bytes)
+      try {
+        expect(imported.rootSessionID).not.toBe(session.id)
+        const owner = { kind: "session" as const, scopeID: session.scope.id, sessionID: imported.rootSessionID }
+        const snapshot = await RolloutSnapshot.read(owner)
+        expect(snapshot.calls).toHaveLength(1)
+        expect(snapshot.calls[0].id).not.toBe(call.id)
+        expect(snapshot.calls[0].source?.callID).toBe(call.id)
+        expect(snapshot.runs[0].id).not.toBe(rootID)
+        expect(RolloutAccounting.summarize(snapshot).apiEstimate.total).toBe(0)
+        const chunks = []
+        for await (const chunk of RolloutArtifact.read(owner, snapshot.attempts[0].response!)) chunks.push(chunk)
+        expect(JSON.parse(Buffer.concat(chunks).toString()).usage.output_tokens).toBe(500)
+      } finally {
+        await Session.remove(imported.rootSessionID)
+      }
+    })
+  }))
+
+test("rollout export marks active runs as partial and validates every packaged byte", () =>
+  runtime.run(async () => {
+    await fixture(async ({ session, rootID }) => {
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const bytes = await writer.getData()
+      const bundle = await RolloutArchive.inspect(new Blob([bytes]))
+      expect(bundle.manifest.integrity.complete).toBe(false)
+      expect(bundle.manifest.snapshots[0].revision).toBeGreaterThan(0)
+      const reader = new ZipReader(new Uint8ArrayReader(bytes))
+      const modified = new Uint8ArrayWriter()
+      const zip = new ZipWriter(modified)
+      for (const entry of await reader.getEntries()) {
+        if (entry.directory) continue
+        const data =
+          entry.filename === "transcript.json"
+            ? new TextEncoder().encode("{}")
+            : await entry.getData(new Uint8ArrayWriter())
+        await zip.add(entry.filename, new Uint8ArrayReader(data))
+      }
+      await zip.close()
+      await reader.close()
+      await expect(RolloutArchive.inspect(new Blob([await modified.getData()]))).rejects.toThrow("integrity")
+    })
+  }))
+
+test("ZIP import rejects unsafe paths before creating sessions", () =>
+  runtime.run(async () => {
+    const writer = new Uint8ArrayWriter()
+    const zip = new ZipWriter(writer)
+    await zip.add("../escape", new Uint8ArrayReader(new Uint8Array([1])))
+    await zip.close()
+    await expect(SessionImport.fromBuffer(await writer.getData())).rejects.toThrow("path")
+  }))
+
+test("ZIP validation rejects a record whose reference disagrees with packaged artifact bounds", () =>
+  runtime.run(async () => {
+    await fixture(async ({ session, rootID }) => {
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const reader = new ZipReader(new Uint8ArrayReader(await writer.getData()))
+      const modified = new Uint8ArrayWriter()
+      const zip = new ZipWriter(modified)
+      for (const entry of await reader.getEntries()) {
+        if (entry.directory) continue
+        let data = await entry.getData(new Uint8ArrayWriter())
+        if (entry.filename === "manifest.json") {
+          const manifest = JSON.parse(new TextDecoder().decode(data))
+          manifest.snapshots[0].calls[0].request.bytes++
+          data = new TextEncoder().encode(JSON.stringify(manifest))
+        }
+        await zip.add(entry.filename, new Uint8ArrayReader(data))
+      }
+      await zip.close()
+      await reader.close()
+      await expect(RolloutArchive.inspect(new Blob([await modified.getData()]))).rejects.toThrow("reference")
+    })
+  }))
+
+test("attachments survive source asset removal and rollout import", () =>
+  runtime.run(async () => {
+    const { Asset } = await import("../../src/asset/asset")
+    const { Identifier } = await import("../../src/id/id")
+    const { unlink } = await import("node:fs/promises")
+    await fixture(async ({ session, rootID }) => {
+      const asset = await Asset.write(Buffer.from("original attachment"), "text/plain")
+      await Session.updatePart({
+        type: "attachment",
+        id: Identifier.ascending("part"),
+        sessionID: session.id,
+        messageID: rootID,
+        url: `asset://${asset}`,
+        mime: "text/plain",
+      })
+      await unlink(Asset.filePath(asset))
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const result = await SessionImport.fromBuffer(await writer.getData())
+      try {
+        const messages = await Session.messages({ sessionID: result.rootSessionID, raw: true })
+        const part = messages.flatMap((message) => message.parts).find((part) => part.type === "attachment")!
+        expect(part.type).toBe("attachment")
+        if (part.type !== "attachment") throw new Error("missing attachment")
+        expect(part.artifact?.status).toBe("complete")
+        expect(await Bun.file(Asset.filePath(part.url.slice("asset://".length))).text()).toBe("original attachment")
+      } finally {
+        await Session.remove(result.rootSessionID)
+      }
+    })
+  }))
+
+test("partial ZIP imports missing attachment evidence without accessing its old URL", () =>
+  runtime.run(async () => {
+    const { Identifier } = await import("../../src/id/id")
+    const { Storage } = await import("../../src/storage/storage")
+    await fixture(async ({ session, rootID, call }) => {
+      const part = await Session.updatePart({
+        type: "attachment",
+        id: Identifier.ascending("part"),
+        sessionID: session.id,
+        messageID: rootID,
+        url: "data:text/plain;base64,b3JpZ2luYWw=",
+        mime: "text/plain",
+      })
+      if (part.type !== "attachment" || !part.artifact) throw new Error("missing fixture artifact")
+      await Storage.removeTree([...RolloutArtifact.root(call.owner), "artifacts", part.artifact.id])
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const result = await SessionImport.fromBuffer(await writer.getData())
+      try {
+        expect(result.warnings.some((warning) => warning.includes("partial"))).toBe(true)
+        const messages = await Session.messages({ sessionID: result.rootSessionID, raw: true })
+        const attachment = messages.flatMap((message) => message.parts).find((part) => part.type === "attachment")
+        expect(attachment?.type === "attachment" && attachment.artifact?.status).toBe("partial")
+      } finally {
+        await Session.remove(result.rootSessionID)
+      }
+    })
+  }))
+
+test("ZIP import preserves committed prefixes and re-exported source evidence", () =>
+  runtime.run(async () => {
+    const { RolloutJournal } = await import("../../src/session/rollout/journal")
+    await fixture(async ({ session, rootID, call }) => {
+      await complete(call)
+      const artifact = await RolloutArtifact.open(call.owner, "text/plain")
+      await artifact.append(new TextEncoder().encode("first"))
+      const prefix = await artifact.checkpoint()
+      await artifact.append(new TextEncoder().encode("second"))
+      const full = await artifact.finish()
+      const snapshot = await RolloutSnapshot.read(call.owner)
+      await RolloutJournal.write(call.owner, [...RolloutArtifact.root(call.owner), "runs", rootID, "calls", call.id], {
+        ...snapshot.calls[0],
+        request: prefix,
+        response: full,
+      })
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const result = await SessionImport.fromBuffer(await writer.getData())
+      try {
+        const owner = { ...call.owner, sessionID: result.rootSessionID }
+        const imported = await RolloutSnapshot.read(owner)
+        const chunks = []
+        for await (const chunk of RolloutArtifact.read(owner, imported.calls[0].request)) chunks.push(chunk)
+        expect(Buffer.concat(chunks).toString()).toBe("first")
+        const reexport = new Uint8ArrayWriter()
+        await RolloutArchive.write({ sessionID: result.rootSessionID }, reexport)
+        const inspected = await RolloutArchive.inspect(new Blob([await reexport.getData()]))
+        expect(inspected.manifest.integrity.missing).toEqual([])
+      } finally {
+        await Session.remove(result.rootSessionID)
+      }
+    })
+  }))
+
+test("rollout ZIP retains file snapshot objects after the source store is removed", () =>
+  runtime.run(async () => {
+    const { Snapshot } = await import("../../src/session/snapshot")
+    const { SnapshotStore } = await import("../../src/session/snapshot-store")
+    const { Identifier } = await import("../../src/id/id")
+    const { ScopeContext } = await import("../../src/scope/context")
+    const fs = await import("node:fs/promises")
+    await fixture(async ({ session, rootID }) => {
+      await Bun.write(`${ScopeContext.current.directory}/evidence.txt`, "snapshot evidence")
+      const hash = await Snapshot.track(session.id)
+      if (!hash) throw new Error("missing snapshot fixture")
+      await Session.updatePart({
+        type: "step-start",
+        id: Identifier.ascending("part"),
+        sessionID: session.id,
+        messageID: rootID,
+        snapshot: hash,
+      })
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      await Session.remove(session.id)
+      await fs.rm(SnapshotStore.root(session.scope.id), { recursive: true, force: true })
+      await Storage.removeTree(["snapshot-v2", session.scope.id])
+      const restored = await SessionImport.fromBuffer(await writer.getData())
+      try {
+        expect(await SnapshotStore.owns(session.scope.id, restored.rootSessionID, hash)).toBe(true)
+        expect(
+          await SnapshotStore.command(SnapshotStore.repository(session.scope.id), ["show", `${hash}:evidence.txt`]),
+        ).toBe("snapshot evidence")
+      } finally {
+        await Session.remove(restored.rootSessionID)
+      }
+    })
+  }))
+
+test("a partial manifest cannot hide an undeclared missing artifact reference", () =>
+  runtime.run(async () => {
+    await fixture(async ({ session, rootID }) => {
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const reader = new ZipReader(new Uint8ArrayReader(await writer.getData()))
+      const output = new Uint8ArrayWriter()
+      const zip = new ZipWriter(output)
+      for (const entry of await reader.getEntries()) {
+        if (entry.directory) continue
+        let data = await entry.getData(new Uint8ArrayWriter())
+        if (entry.filename === "manifest.json") {
+          const manifest = JSON.parse(new TextDecoder().decode(data))
+          manifest.integrity = { complete: false, missing: [] }
+          manifest.artifacts = []
+          data = new TextEncoder().encode(JSON.stringify(manifest))
+        }
+        await zip.add(entry.filename, new Uint8ArrayReader(data))
+      }
+      await zip.close()
+      await reader.close()
+      await expect(RolloutArchive.inspect(new Blob([await output.getData()]))).rejects.toThrow(
+        "missing referenced artifact",
+      )
+    })
+  }))
+
+test.each([
+  "version",
+  "duplicate-entry",
+  "duplicate-declaration",
+  "unlisted",
+  "file-size",
+  "chunk-count",
+  "artifact-hash",
+])(
+  "ZIP validation rejects %s corruption without importing evidence",
+  runtime.bind(async (fault) => {
+    await fixture(async ({ session, rootID, call }) => {
+      await complete(call)
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      const original = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, original)
+      const source = await original.getData()
+      await RolloutArchive.inspect(new Blob([source]))
+      const reader = new ZipReader(new Uint8ArrayReader(source))
+      const output = new Uint8ArrayWriter()
+      const zip = new ZipWriter(output)
+      for (const entry of await reader.getEntries()) {
+        if (entry.directory) continue
+        let data = await entry.getData(new Uint8ArrayWriter())
+        if (entry.filename === "manifest.json") {
+          const manifest = RolloutArchive.Manifest.parse(JSON.parse(new TextDecoder().decode(data)))
+          if (fault === "duplicate-declaration") manifest.files.push(manifest.files[0])
+          if (fault === "file-size") manifest.files[0].bytes++
+          if (fault === "chunk-count") manifest.artifacts[0].ref.chunks++
+          if (fault === "artifact-hash")
+            manifest.artifacts.find((artifact) => artifact.ref.status === "complete")!.ref.sha256 = "0".repeat(64)
+          data = new TextEncoder().encode(JSON.stringify({ ...manifest, version: fault === "version" ? 99 : 1 }))
+        }
+        await zip.add(entry.filename, new Uint8ArrayReader(data))
+      }
+      if (fault === "unlisted") await zip.add("unlisted.bin", new Uint8ArrayReader(new Uint8Array([1])))
+      if (fault === "duplicate-entry") {
+        for (const name of ["duplicate-a", "duplicate-b"])
+          await zip.add(name, new Uint8ArrayReader(new Uint8Array([1])))
+      }
+      await zip.close()
+      await reader.close()
+      const bytes = Buffer.from(await output.getData())
+      if (fault === "duplicate-entry") {
+        let offset = bytes.indexOf("duplicate-b")
+        while (offset !== -1) {
+          bytes.write("duplicate-a", offset)
+          offset = bytes.indexOf("duplicate-b", offset + 1)
+        }
+      }
+      await expect(RolloutArchive.inspect(new Blob([bytes]))).rejects.toThrow()
+    })
+  }),
+)
+
+afterRuntimeTests(() => runtime.close())

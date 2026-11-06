@@ -84,7 +84,9 @@ export async function npmVersionExists(name: string, version: string) {
   return response.ok
 }
 
-export const NPM_REGISTRY_WAIT_ATTEMPTS = 60
+// Provenance: https://github.blog/changelog/2026-07-28-npm-publish-time-malware-scanning-and-dual-use-metadata/
+// Local adaptation: allow twenty minutes for scan-delayed visibility while retaining a finite failure budget.
+export const NPM_REGISTRY_WAIT_ATTEMPTS = 240
 export const NPM_REGISTRY_WAIT_DELAY_MS = 5_000
 
 export async function waitForNpmVersion(
@@ -184,7 +186,7 @@ function compareStableVersions(left: [number, number, number], right: [number, n
   return left[0] - right[0] || left[1] - right[1] || left[2] - right[2]
 }
 
-export function bumpHighestStableVersion(versions: Iterable<string>, bump: string) {
+function highestStableVersion(versions: Iterable<string>) {
   let highest: [number, number, number] = [0, 1, 0]
   for (const version of versions) {
     const parsed = parseStableVersion(version)
@@ -192,16 +194,26 @@ export function bumpHighestStableVersion(versions: Iterable<string>, bump: strin
       highest = parsed
     }
   }
-  const [major, minor, patch] = highest
+  return highest
+}
+
+export function bumpHighestStableVersion(versions: Iterable<string>, bump: string) {
+  const [major, minor, patch] = highestStableVersion(versions)
   const normalized = bump.toLowerCase()
   if (normalized === "major") return `${major + 1}.0.0`
   if (normalized === "minor") return `${major}.${minor + 1}.0`
   return `${major}.${minor}.${patch + 1}`
 }
 
-export async function computeStableVersion(bump: string) {
+export async function computeStableVersion(bump: string, resumeVersion?: string) {
+  if (resumeVersion && !parseStableVersion(resumeVersion)) throw new Error("Resume requires a stable version")
   const publishedVersions = await Promise.all(FIXED_REGISTRY_PACKAGES.map((name) => npmPackageVersions(name)))
-  return bumpHighestStableVersion(publishedVersions.flat(), bump)
+  const versions = publishedVersions.flat()
+  if (!resumeVersion) return bumpHighestStableVersion(versions, bump)
+  if (!versions.includes(resumeVersion)) throw new Error(`Resume version is not published: ${resumeVersion}`)
+  if (highestStableVersion(versions).join(".") !== resumeVersion)
+    throw new Error("Resume requires the highest published stable version")
+  return resumeVersion
 }
 
 export function computeDevVersion(channel: string) {

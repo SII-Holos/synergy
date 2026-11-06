@@ -1,0 +1,218 @@
+import { afterEach, expect, spyOn, test } from "bun:test"
+import { runMigrations, resetMigrations } from "../../src/migration"
+import { MigrationRegistry } from "../../src/migration/registry"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
+import { progressBar } from "../../src/migration/format"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { migrationFixture as testRuntime } from "./fixture"
+const runtime = await testRuntime({ env: { TERM: "xterm-256color", NO_COLOR: undefined } })
+
+const domain = "test-terminal-progress"
+const originalTTY = Object.getOwnPropertyDescriptor(process.stderr, "isTTY")
+const originalTerm = process.env.TERM
+const originalNoColor = process.env.NO_COLOR
+const writes: string[] = []
+
+test("a new scan phase resets progress admission without replaying stale phase counts", () =>
+  runtime.run(async () => {
+    using clock = spyOn(Date, "now").mockReturnValue(1000)
+    const events: string[] = []
+    MigrationRegistry.register(domain, [
+      {
+        id: "phase-progress",
+        description: "Scan",
+        async up(progress) {
+          progress(4000, 4000)
+          progress(0, 0, 1)
+          progress(1, 2, 1)
+          progress(9999, 9999, 0)
+          progress(2, 2, 1)
+        },
+      },
+    ])
+    await runMigrations({
+      targetDomain: domain,
+      output: "silent",
+      reporter: {
+        summary() {},
+        started() {
+          events.push("start")
+        },
+        progress({ current, total }) {
+          events.push(`${current}/${total}`)
+        },
+      },
+    })
+    expect(events).toEqual(["start", "4000/4000", "start", "0/0", "2/2"])
+  }))
+
+test("unknown and repeated terminal counts are bounded and the last count is flushed", () =>
+  runtime.run(async () => {
+    using clock = spyOn(Date, "now").mockReturnValue(1000)
+    const points: Array<[number, number]> = []
+    MigrationRegistry.register(domain, [
+      {
+        id: "bounded-progress",
+        description: "Scan",
+        async up(progress) {
+          for (let current = 1; current <= 1000; current++) progress(current, 0)
+          progress(1000, 1000)
+          for (let current = 1001; current <= 2000; current++) progress(current, current)
+        },
+      },
+    ])
+    await runMigrations({
+      targetDomain: domain,
+      output: "silent",
+      reporter: {
+        summary() {},
+        progress: ({ current, total }) => points.push([current, total]),
+      },
+    })
+    expect(points.length).toBeLessThanOrEqual(3)
+    expect(points.at(-1)).toEqual([2000, 2000])
+  }))
+let stderr: ReturnType<typeof spyOn<typeof process.stderr, "write">> | undefined
+let stdout: ReturnType<typeof spyOn<typeof process.stdout, "write">> | undefined
+
+function capture(tty: boolean) {
+  Object.defineProperty(process.stderr, "isTTY", { value: tty, configurable: true })
+  process.env.TERM = "xterm-256color"
+  delete process.env.NO_COLOR
+  stderr = spyOn(process.stderr, "write").mockImplementation((chunk) => {
+    writes.push(String(chunk))
+    return true
+  })
+  stdout = spyOn(process.stdout, "write").mockImplementation(() => true)
+}
+
+afterEach(() =>
+  runtime.run(async () => {
+    stderr?.mockRestore()
+    stdout?.mockRestore()
+    writes.length = 0
+    if (originalTTY) Object.defineProperty(process.stderr, "isTTY", originalTTY)
+    else Reflect.deleteProperty(process.stderr, "isTTY")
+    if (originalTerm === undefined) delete process.env.TERM
+    else process.env.TERM = originalTerm
+    if (originalNoColor === undefined) delete process.env.NO_COLOR
+    else process.env.NO_COLOR = originalNoColor
+    MigrationRegistry.unregister(domain)
+    await Storage.remove(StoragePath.metaMigrationLogDomain(domain))
+    resetMigrations()
+  }),
+)
+
+for (const tty of [true, false]) {
+  test(`migration is visible before work starts, with counts and completion on ${tty ? "a terminal" : "redirected stderr"}`, () =>
+    runtime.run(async () => {
+      capture(tty)
+      MigrationRegistry.register(domain, [
+        {
+          id: "terminal-progress",
+          description: "Upgrade historical records",
+          async up(progress) {
+            expect(writes.join("")).toContain("Upgrade historical records")
+            progress(1, 4)
+            expect(writes.join("")).toContain("25% (1/4)")
+            progress(4, 4)
+          },
+        },
+      ])
+      await runMigrations({ targetDomain: domain, output: "interactive" })
+      const text = writes.join("")
+      expect(text).toContain("100% (4/4)")
+      expect(text).toContain("✓")
+      expect(stdout).not.toHaveBeenCalled()
+      if (tty) {
+        expect(text).toContain("\x1b[2K\r")
+        expect(text.endsWith("\x1b[?7h")).toBe(true)
+      } else {
+        expect(text).not.toContain("\x1b")
+        expect(text).not.toContain("\r")
+      }
+    }))
+}
+
+test("unknown totals show preparation without a fabricated percentage", () =>
+  runtime.run(async () => {
+    capture(false)
+    MigrationRegistry.register(domain, [
+      {
+        id: "terminal-unknown-total",
+        description: "Discover historical records",
+        async up(progress) {
+          progress(0, 0)
+          expect(writes.join("")).toContain("Preparing")
+          expect(writes.join("")).not.toContain("%")
+          progress(1, 1)
+        },
+      },
+    ])
+    await runMigrations({ targetDomain: domain, output: "interactive" })
+    expect(writes.join("")).toContain("100% (1/1)")
+  }))
+
+test("failed work restores terminal wrapping and can be retried", () =>
+  runtime.run(async () => {
+    capture(true)
+    let fail = true
+    MigrationRegistry.register(domain, [
+      {
+        id: "terminal-retry",
+        description: "Retry historical records",
+        async up() {
+          if (fail) throw new Error("fixture failure")
+        },
+      },
+    ])
+    await expect(runMigrations({ targetDomain: domain, output: "interactive" })).rejects.toThrow("fixture failure")
+    expect(writes.join("")).toContain("✗")
+    expect(writes.join("")).not.toContain("✓")
+    expect(writes.at(-1)).toBe("\x1b[?7h")
+    fail = false
+    expect((await runMigrations({ targetDomain: domain, output: "interactive" })).completed).toBe(1)
+    expect(writes.join("")).toContain("✓")
+  }))
+
+test("explicit silent mode preserves machine transport output", () =>
+  runtime.run(async () => {
+    capture(true)
+    MigrationRegistry.register(domain, [
+      {
+        id: "terminal-silent",
+        description: "Silent fixture",
+        async up(progress) {
+          progress(1, 1)
+        },
+      },
+    ])
+    await runMigrations({ targetDomain: domain, output: "silent" })
+    expect(writes).toEqual([])
+    expect(stdout).not.toHaveBeenCalled()
+  }))
+
+test("NO_COLOR and dumb terminals suppress color; dumb terminals also suppress cursor control", () =>
+  runtime.run(async () => {
+    capture(true)
+    await using monochrome = await testRuntime({ env: { TERM: "xterm-256color", NO_COLOR: "1" } })
+    monochrome.run(() => expect(progressBar(0.5)).not.toContain("\x1b"))
+    await using dumb = await testRuntime({ env: { TERM: "dumb", NO_COLOR: undefined } })
+    await dumb.run(async () => {
+      MigrationRegistry.register(domain, [
+        {
+          id: "terminal-dumb",
+          description: "Plain fixture",
+          async up(progress) {
+            progress(1, 1)
+          },
+        },
+      ])
+      await runMigrations({ targetDomain: domain, output: "interactive" })
+      expect(writes.join("")).not.toContain("\x1b")
+      expect(writes.join("")).not.toContain("\r")
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

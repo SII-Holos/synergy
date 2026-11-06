@@ -4,6 +4,8 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import {
   PluginBuildCommand,
+  PluginPreviewCommand,
+  PluginTypegenCommand,
   PluginCreateCommand,
   PluginDevCommand,
   PluginEntryCommand,
@@ -28,6 +30,8 @@ await yargs(hideBin(process.argv))
   .command(PluginValidateCommand)
   .command(PluginDevCommand)
   .command(PluginBuildCommand)
+  .command(PluginPreviewCommand)
+  .command(PluginTypegenCommand)
   .command(PluginPackCommand)
   .command(PluginSignCommand)
   .command(PluginTestCommand)

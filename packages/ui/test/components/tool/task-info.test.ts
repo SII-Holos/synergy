@@ -6,7 +6,7 @@ describe("task tool card title", () => {
   test("presents delegation as an action and keeps the agent type as metadata", () => {
     const info = getTaskToolInfo({
       subagent_type: "explore",
-      description: "Inspect the tool registry",
+      taskTitle: "Inspect the tool registry",
     })
 
     expect(info.title).toBe(TOOL_TITLE_DESC.task)
@@ -18,16 +18,22 @@ describe("task tool card title", () => {
     const trigger = getTaskToolTrigger(
       {
         subagent_type: "explore",
-        description: "Inspect the tool registry",
+        taskTitle: "Inspect the tool registry",
       },
       { backgroundLabel: "Background" },
     )
 
     expect(trigger).toEqual({
-      icon: "list-todo",
+      icon: "workflow",
       title: TOOL_TITLE_DESC.task,
       subtitle: "Inspect the tool registry",
       tags: [{ label: "explore" }, { label: "Background" }],
     })
+  })
+
+  test("keeps declared task icons aligned between activity and detail triggers", () => {
+    const metadata = { display: { icon: "bot" } }
+    expect(getTaskToolInfo({}, metadata).icon).toBe("bot")
+    expect(getTaskToolTrigger({}, { metadata }).icon).toBe("bot")
   })
 })

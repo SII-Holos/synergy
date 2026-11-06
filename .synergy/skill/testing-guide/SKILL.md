@@ -5,108 +5,78 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 # Test Synergy Behavior
 
+## Development Feedback Loop
+
+For Session recovery changes, cover ordinary tasks and selected workflow owners through the real Inbox and invocation path. Exercise duplicate and lost-response Continue requests, a newer pause racing an old request, transactional admission failure, event/snapshot parity, and restart before enqueue, after enqueue and after materialization. Retain terminal failure and completed-tool evidence. Use an isolated Home and deterministic provider transport; verify the built Web controls across refresh and an owned server restart without touching live Sessions.
+
+Start with `bun run verify plan` to inspect the working-tree impact, including uncommitted new files. Iterate with the narrow behavior test. Before publication, run `bun run verify local --test <repository-relative-test>` with every relevant test selected explicitly. The owning executor validates the selection, passes static gates, then runs selected tests with fresh coverage and checks new measurable source. Complete package coverage and platform matrices remain pending CI evidence.
+
+Use `bun run verify coverage --package <workspace>` when changing coverage policy, removing substantial test coverage or changing instrumentation. A focused LCOV report cannot establish package thresholds. Finish generation and self-review before this checkpoint. Collect all causal failures from one CI attempt before making the next focused correction; infrastructure retries retain the same SHA.
+
+## Diagnose instability before expanding CI
+
+Use the [stability workflow](references/stability.md) when a test passes alone, fails under load, leaks state, or requires repeated CI repairs. Select the lowest useful behavioral layer, reproduce the original batch, control the causal event, and measure cold/warm cost before adding scenarios. A green rerun is evidence of intermittency, not a fix.
+
+## Avoid concurrent artifact mutation
+
+Finish or cancel concurrent file writers before final verification. Never run static gates alongside browser suites or builds in one worktree. Reuse passing evidence unless changed inputs invalidate it; preserve isolated Homes, fresh reports and real Scope fixtures. Raw Harness coverage/parallel commands are unsafe; use the canonical executor.
+
+Read [the domain guidance](references/isolation.md#avoid-concurrent-artifact-mutation) when this area is affected.
+
+## Workbench Presentation Acceptance
+
+Read [the domain guidance](references/browser-acceptance.md#workbench-presentation-acceptance) when this area is affected.
+
+## Local Joint Acceptance
+
+Read [the domain guidance](references/browser-acceptance.md#local-joint-acceptance) when this area is affected.
+
+## Review Test Value and CI Cost
+
+1. Before adding a scenario, inspect nearby coverage and name the observable behavior, the real failure it prevents, and what existing tests leave uncovered. Extend a suitable existing test when it already owns that behavior. File size, assertion count and coverage percentage alone do not establish value.
+2. Review the affected old tests in the same change. Delete obsolete behavior, consolidate duplicate coverage, and replace assertions about source strings, callback names, incidental structure or fixed style values with observable results where needed. Record what was retained, combined or removed and why; there is no quota for adding or deleting tests.
+3. Put shared behavior at its lowest useful level. Keep adapter-specific integration at each adapter; add model, protocol, platform or outcome combinations only when they protect a distinct failure. Reuse immutable preparation while retaining separate mutable Homes, processes and DOMs.
+4. When replacing expensive acceptance, demonstrate that the retained test rejects a relevant fault such as a missing file edit, lost recording or failed continuation. Preserve public lifecycle, installation, migration, cancellation and recovery checks and coverage floors. Repetition and long sessions need an identified size, duration or accumulation failure; duplicate historical stress belongs in an explicit diagnostic.
+5. Measure preparation, execution, cleanup, upload and queues for changes to expensive fixtures, matrices or CI. Compare equivalent cold and warm runs, report the incremental cost and its useful coverage, and update task weights from observed time. Diagnose flakes at their observed stage; blanket retries, longer sleeps and hidden skips cannot justify growth. Use [CI cost policy](../../../docs/operations/ci.md#维护验证成本) when reviewing a longer critical path.
+
+Use stable primary responsibilities for built-in behavior tests. Keep concrete primary names in the single identity contract and historical upgrade fixtures. Renames do not need per-name acceptance or rejection tests when ordinary agent lookup handles them. Unrelated message, protocol and UI fixtures use shared synthetic agent names; tests resolving an agent explicitly register that fixture. Consolidate duplicate coverage without removing distinct permission, lifecycle, migration or rendered-prompt budget checks.
+
 ## Define the Invariant First
 
-1. State the observable contract and the failure that would violate it.
-2. For a bug or new behavior, write the smallest failing test before the implementation. Skip a new test only for a pure refactor whose existing tests already cover unchanged behavior.
-3. Assert public results, state transitions, emitted contracts, permissions, or recovery behavior. Avoid source-text assertions, private call counts, and snapshots of irrelevant structure.
+Read [the domain guidance](references/test-design.md#define-the-invariant-first) when this area is affected.
+
+Optional components require behavioral absence, reinstall and interleaved-Runtime tests. Select minimal requirements, import unselected factories, and inspect actual tools, agents, prepared prompts, public schemas, events, service activity and HTTP requests. Write data with the owner installed, remove it and update unrelated configuration, then reinstall and verify retained data and drafts. Exercise delayed installation, interrupted owner migrations, repeated execution and failed startup. Web composition changes include mobile paths and a real same-URL backend restart; packed dependency closures, native workers and managed Node SDK acceptance cover resolution outside the workspace. Source-string assertions cannot prove capability absence. Browser fixtures declare their confirmed features through the host capability context; generic fixtures must not silently grant every optional owner. When moving suites to leaf packages, move their process-isolation rules to the new paths as well.
+
+When migration ownership moves, update historical fixtures to execute the migrations registered by the current composition. Retire unused aggregate migration implementations instead of keeping a parallel upgrade path solely to satisfy old tests. Preserve historical receipt compatibility and assert retained data and repeated execution through the real owners.
 
 ## Choose the Lowest Useful Level
 
-- pure function/schema: inline data and direct calls
-- tool/domain behavior: real implementation plus isolated temp directory and Scope context
-- persistence/migration: real storage, fresh-install and upgrade fixtures, restart/readback where relevant
-- route/SDK: call the route or generated client contract
-- session/LLM loop: real session state with deterministic provider/model fixtures
-- Web/UI: component/context behavior plus the smallest browser or integration check needed
-- package/release: build, pack, and validate the published artifact rather than source layout alone
+Read [the domain guidance](references/test-design.md#choose-the-lowest-useful-level) when this area is affected.
 
-Inspect two nearby tests and `packages/synergy/test/preload.ts` before introducing a new harness pattern.
-
-Place every test under the owning package's `test/` directory, mirroring the relevant source domain when that helps navigation. Place repository-level script and policy tests under the root `test/` directory. Never cascade `*.test.*` or `*.spec.*` files beside implementation files in `src/`, `script/`, or another source directory. Run `bun run test-layout:check` when adding or moving tests.
-
-For localized UI behavior, use a real Lingui `I18nProvider` with minimal English and Simplified Chinese messages. Assert visible text and accessibility labels after a reactive locale change; do not mock translation calls to return IDs because that hides missing catalogs and stale module-load translations. Keep plugin-author, user, LLM, path, identifier, and raw-error pass-through in the same boundary test as translated host chrome.
+For published declaration failures, emit the owning module and compile a separate consumer against that output. Verify both successful and failed narrowing plus preserved payload or serialization types; importing source directly cannot establish declaration correctness. See the [error declaration regression](../../../packages/util/test/error-declarations.test.ts).
 
 ## Use Real Isolation
 
-Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. The preload-managed `SYNERGY_TEST_ROOT` contains temporary fixtures for process-level cleanup, so do not move fixtures back to unmanaged operating-system temp paths or delete them while Scope-owned asynchronous work may still reference them. Restore environment variables and singleton state in cleanup hooks. A module-level replacement of a process global — `globalThis.fetch` above all — is visible to every sibling file in the same shard process: capture the original before installing the replacement and restore it in `afterAll`, because a per-test `finally` that re-reads `globalThis.fetch` restores the replacement, not the original. Honor abort signals and dispose processes, Browser pages, servers, and timers.
+Read [the domain guidance](references/isolation.md#use-real-isolation) when this area is affected.
 
-Provider/model tests rely on `test/preload.ts` to seed the model catalog. The preload writes the pinned `test/tool/fixtures/models-api.json` fixture to `cache/models.json` under `SYNERGY_TEST_HOME` so the runtime disk-cache path resolves deterministically, sets `MODELS_DEV_API_JSON` to that cached path so the build-time macro and direct macro tests resolve the same fixture, and sets `SYNERGY_DISABLE_MODELS_FETCH=true` to suppress background network refresh. Update the fixture deliberately; never make deterministic tests depend on the live model catalog or real API keys.
+## Local Performance Experiments
 
-Core binary builds also default to that pinned fixture. Test build behavior through `script/models-catalog.ts`: the selected catalog must satisfy the runtime schema and contain non-empty OpenAI, Anthropic, and Google providers before compilation. Ordinary local builds may use `MODELS_DEV_API_JSON` as an explicit override; release builds must force the repository-pinned snapshot so network and build-machine cache state cannot alter the artifact.
+Read [the domain guidance](references/local-verification.md#local-performance-experiments) when this area is affected.
 
-Tests that exercise the cold-cache path — where no disk or memory cache exists — must spawn a fresh Bun subprocess with a clean isolated home directory. The Bun preloader populates process-global state for the test harness, so the existing process always has a warm cache. A cold-cache test strips `SYNERGY_TEST_HOME` and `MODELS_DEV_API_JSON` from the child environment, sets `SYNERGY_HOME` to a fresh temp directory, and asserts against the child process output.
+## Run Harness Suites Through the Orchestrators
 
-Use a fake or local boundary only where the external system is not the subject of the test. Do not add Jest/Vitest mocks to the Bun suite without an established package-specific reason.
-
-Playwright DOM-test fixtures that boot a Vite dev server must be hermetic against a no-build checkout (the `ci-coverage` gate runs no build step): alias workspace-package entries whose `import` condition points at gitignored `dist/` output to their source entry; resolve runtime packages that break under dependency pre-bundling (Lingui's `@messageformat/parser` chain) to minimal fixture-local stubs when the suite asserts behavior unrelated to i18n rendering, or add them to `optimizeDeps.include` when the real runtime is the subject; set `optimizeDeps.include` for the Solid runtime/JSX runtime/zod with `noDiscovery: true` so the optimizer never re-runs mid-load and reloads the page; scope `cacheDir` to the fixture temp directory so sibling Playwright servers sharing `node_modules/.vite` cannot invalidate each other; `warmupRequest` the fixture entry before launching the browser and surface page/console/HTTP errors in the failure message instead of a bare 30s selector timeout; and register the suite in the package's `playwrightIsolated` list so bun's worker reaping cannot kill its Chromium process mid-suite. See the [hermetic Vite fixtures decision](../../../docs/decisions/implemented/testing/2026-08-31-hermetic-vite-fixtures-for-playwright-dom-tests.md).
-
-## Run Core Suites Through the Orchestrators
-
-Run `packages/synergy` tests through the package scripts, never a raw `bun test --coverage --parallel`:
-
-```bash
-cd packages/synergy
-bun test test/<domain>/<file>.test.ts
-bun run test:ci
-bun run test:coverage
-```
-
-`test:ci` and `test:coverage` spawn every Bun child with an injected `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` and no `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw parallel/coverage run falls through to the real user home and writes fixtures into `~/.synergy/data`.
-
-`src/global/index.ts` enforces this at module load: a test-entry process (`Bun.main`/argv matching `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) must carry the positive `SYNERGY_TEST_HOME` isolation marker, and is additionally blocked when the root is `os.homedir()/.synergy` or inside it (Windows paths normalized case-insensitively). If you see `TestHomeGuardError`, the run bypassed isolation: re-run through the package scripts or set `SYNERGY_TEST_HOME` to a dedicated test home. `SYNERGY_ALLOW_REAL_HOME=1` is the only escape hatch for a deliberate real-home run.
+Read [the domain guidance](references/local-verification.md#run-harness-suites-through-the-orchestrators) when this area is affected.
 
 ## Run Narrow to Broad
 
-Core runtime commands run from `packages/synergy`:
-
-```bash
-bun test test/<domain>/<file>.test.ts
-bun run test:changed
-bun test
-bun run test:ci
-bun run test:coverage
-```
-
-Repository gates run from the root:
-
-```bash
-bun run typecheck
-bun run quality:quick
-bun turbo test
-bun run quality
-```
-
-Localized frontend changes also run:
-
-```bash
-bun run --cwd packages/app i18n:extract
-bun run localization:check
-bun run --cwd packages/app build
-```
-
-Extraction must leave tracked PO catalogs unchanged, strict compilation must reject missing Simplified Chinese or invalid ICU messages, and the production build must keep non-English catalogs lazy while excluding development-only pseudo-localization. Exercise a Chinese cold start, rapid switching, catalog-load failure, `html.lang`, keyboard labels, and 375 px layout through an isolated Web/Desktop runtime.
-
-Run the narrow failing test during iteration, then the affected package/domain suite, then `quality:quick`. Run the full suite when the change crosses shared abstractions, persistence, generated contracts, package publication, or release boundaries, or when the user requests it.
-
-`bun run test:ci` is the CI-equivalent core suite. It runs four shards sequentially in fresh Bun processes to bound process-global state and fixture accumulation without introducing cross-shard port or environment races. Set `SYNERGY_TEST_JUNIT_DIR` to emit one JUnit report per shard.
-
-Coverage has a floor. `bun run coverage:check` enforces per-package line/function thresholds (the only metrics Bun 1.3.14 exposes in lcov) with an auditable exemption list in `script/coverage-exempt.json`. The rules:
-
-- Cover product logic with real behavioral tests before exempting anything.
-- Every exemption entry carries a `reason`; entries that match nothing, overlap, or cover more than 25% of a package fail validation.
-- Bun 1.3.14 supports no ignore comments (`istanbul ignore`, `v8 ignore`, and `c8 ignore` are all inert), so whole-file exemption is the only exclusion mechanism. Do not add ignore comments expecting them to work.
-- A source file never loaded by any test counts as 0% and fails the package — add a real test that loads it rather than exempting blindly.
-
-Use [Development reference](../../../docs/reference/development.md) and [Open-source quality](../../../docs/operations/open-source-quality.md) for current command ownership. Do not invent a root `bun test`; the root script intentionally rejects that ambiguous command.
+Read [the domain guidance](references/local-verification.md#run-narrow-to-broad) when this area is affected.
 
 ## Diagnose Failures
 
-1. Re-run the narrow test alone and capture the first causal failure.
-2. Check isolation leaks, stale generated files, timeouts, open handles, environment restoration, ordering, and platform assumptions.
-3. Distinguish a product regression from a brittle expectation. Change the test only when the intended public contract is wrong or was asserted at the wrong level.
-4. Do not skip, weaken, or quarantine a relevant test merely to make the gate green.
+Read [the domain guidance](references/local-verification.md#diagnose-failures) when this area is affected.
 
 ## Handoff
+
+For a specific regression, search [domain regression patterns](references/regression-patterns.md#handoff) for the affected subsystem; read the matching paragraphs only. This includes CI evidence, native coverage, browser providers, streams and cancellation.
 
 Report the invariant, test location, red/green evidence, commands run, pass/fail counts, unrun gates, platform limitations, and any remaining nondeterminism.

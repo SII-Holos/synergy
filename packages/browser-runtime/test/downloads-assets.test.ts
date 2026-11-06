@@ -1,0 +1,124 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { BrowserDownloads } from "../src/downloads.js"
+import { BrowserAssets } from "../src/assets.js"
+import fs from "node:fs/promises"
+import { BrowserDownloadsTool } from "../src/tools/browser-downloads.js"
+import type { BrowserOwner } from "../src/owner.js"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "./support/runtime"
+const runtime = await testRuntime()
+
+const ownerA: BrowserOwner.Info = { mode: "session", scopeID: "scope-a", sessionID: "session-a", directory: "/tmp/a" }
+const ownerB: BrowserOwner.Info = { mode: "session", scopeID: "scope-b", sessionID: "session-b", directory: "/tmp/b" }
+
+function record(
+  id: string,
+  state: BrowserDownloads.DownloadRecord["state"] = "pending",
+): BrowserDownloads.DownloadRecord {
+  return {
+    id,
+    pageID: "page-1",
+    url: "https://example.com/file.zip",
+    suggestedFilename: "file.zip",
+    mimeType: "application/zip",
+    state,
+    createdAt: Date.now(),
+  }
+}
+
+describe("BrowserDownloads owner isolation", () => {
+  beforeEach(() => runtime.run(() => BrowserDownloads.clearForTest()))
+  afterEach(() => runtime.run(() => BrowserDownloads.clearForTest()))
+
+  test("only accepted owner downloads can become attachments after their page closes", () =>
+    runtime.run(async () => {
+      const file = await BrowserDownloads.managedPath(ownerA, "artifact", "fixture.txt")
+      await fs.writeFile(file, "fixture download")
+      BrowserDownloads.add(ownerA, { ...record("artifact", "awaiting_approval"), path: file })
+      await expect(BrowserDownloads.artifact(ownerA, "artifact")).rejects.toThrow()
+      BrowserDownloads.update(ownerA, "artifact", { state: "completed" })
+      await expect(BrowserDownloads.artifact(ownerB, "artifact")).rejects.toThrow()
+      expect(await BrowserDownloads.artifact(ownerA, "artifact")).toMatchObject({ size: 16, filename: "file.zip" })
+      const outside = file + ".outside"
+      await fs.writeFile(outside, "outside")
+      await fs.unlink(file)
+      await fs.symlink(outside, file)
+      await expect(BrowserDownloads.artifact(ownerA, "artifact")).rejects.toThrow()
+    }))
+
+  test("never exposes records across owners", () =>
+    runtime.run(() => {
+      BrowserDownloads.add(ownerA, record("a"))
+      BrowserDownloads.add(ownerB, record("b"))
+      expect(BrowserDownloads.list(ownerA).map((item) => item.id)).toEqual(["a"])
+      expect(BrowserDownloads.get(ownerA, "b")).toBeUndefined()
+    }))
+
+  test("wait observes terminal state and cancel updates the owner record", () =>
+    runtime.run(async () => {
+      BrowserDownloads.add(ownerA, record("wait"))
+      BrowserDownloads.add(ownerA, record("cancel"))
+      setTimeout(() => BrowserDownloads.update(ownerA, "wait", { state: "completed", size: 42 }), 20)
+      expect(await BrowserDownloads.wait(ownerA, "wait", 500)).toMatchObject({ state: "completed", size: 42 })
+      expect(await BrowserDownloads.cancel(ownerA, "cancel")).toMatchObject({ state: "cancelled" })
+      await expect(BrowserDownloads.cancel(ownerA, "wait")).rejects.toThrow("completed state")
+    }))
+
+  test("bounds retained download metadata per owner", () =>
+    runtime.run(() => {
+      let accepted = 0
+      for (let index = 0; index < 10_000; index++) {
+        if (
+          BrowserDownloads.add(ownerA, {
+            id: `download-${index}`,
+            pageID: "page-a",
+            url: "https://example.com/file",
+            suggestedFilename: "file.txt",
+            state: "completed",
+            createdAt: index,
+          })
+        )
+          accepted++
+      }
+      expect(accepted).toBe(10_000)
+      expect(
+        BrowserDownloads.add(ownerA, {
+          id: "download-over-limit",
+          pageID: "page-a",
+          url: "https://example.com/file",
+          suggestedFilename: "file.txt",
+          state: "completed",
+          createdAt: 10_001,
+        }),
+      ).toBe(false)
+      expect(BrowserDownloads.list(ownerA)).toHaveLength(10_000)
+    }))
+
+  test("tool schema requires ids and export paths", () =>
+    runtime.run(async () => {
+      const schema = (await BrowserDownloadsTool.init()).parameters
+      expect(schema.safeParse({ action: "list" }).success).toBe(true)
+      expect(schema.safeParse({ action: "wait" }).success).toBe(false)
+      expect(schema.safeParse({ action: "cancel", downloadId: "x" }).success).toBe(true)
+      expect(schema.safeParse({ action: "export", downloadId: "x" }).success).toBe(false)
+      expect(schema.safeParse({ action: "export", downloadId: "x", filePath: "out/file.zip" }).success).toBe(true)
+    }))
+})
+
+describe("BrowserAssets", () => {
+  test("classifies known MIME families and filters deterministically", () =>
+    runtime.run(() => {
+      expect(BrowserAssets.classifyByMime("image/png")).toBe("image")
+      expect(BrowserAssets.classifyByMime("application/javascript")).toBe("script")
+      expect(BrowserAssets.classifyByMime("text/css")).toBe("stylesheet")
+      expect(BrowserAssets.classifyByMime("font/woff2")).toBe("font")
+      expect(BrowserAssets.classifyByMime("application/octet-stream")).toBe("other")
+      const assets: BrowserAssets.PageAsset[] = [
+        { id: "1", pageID: "page", url: "https://x/a.png", type: "image" },
+        { id: "2", pageID: "page", url: "https://x/a.js", type: "script" },
+      ]
+      expect(BrowserAssets.filterByType(assets, ["script"])).toEqual([assets[1]])
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

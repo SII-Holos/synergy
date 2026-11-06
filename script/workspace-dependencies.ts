@@ -1,0 +1,103 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs"
+import path from "node:path"
+import { analyzeSource } from "./source-analysis"
+import { workspaces, workspaceGraph } from "./workspace-manifest"
+export { workspaces, workspaceGraph, type Workspace } from "./workspace-manifest"
+
+export function sourceFiles(directory: string): string[] {
+  if (!existsSync(directory)) return []
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (["node_modules", "dist", "target", ".git", ".turbo"].includes(entry.name)) return []
+    const file = path.join(directory, entry.name)
+    return entry.isDirectory() ? sourceFiles(file) : /\.[cm]?[jt]sx?$/.test(file) ? [file] : []
+  })
+}
+
+export function imports(file: string, source: string): string[] {
+  return analyzeSource(file, source).specifiers
+}
+
+export function cycles(edges: Record<string, string[]>): string[][] {
+  const active = new Set<string>()
+  const completed = new Set<string>()
+  const stack: string[] = []
+  const found = new Map<string, string[]>()
+  function visit(node: string) {
+    if (active.has(node)) {
+      const cycle = stack.slice(stack.indexOf(node))
+      const key = [...cycle].sort().join("\0")
+      found.set(key, [...cycle, node])
+      return
+    }
+    if (completed.has(node)) return
+    active.add(node)
+    stack.push(node)
+    for (const next of edges[node] ?? []) visit(next)
+    stack.pop()
+    active.delete(node)
+    completed.add(node)
+  }
+  for (const node of Object.keys(edges)) visit(node)
+  return [...found.values()]
+}
+
+export function validateWorkspaces(root: string) {
+  const packages = workspaces(root)
+  const byName = new Map(packages.map((pkg) => [pkg.name, pkg]))
+  const owner = (file: string) => packages.find((pkg) => file.startsWith(path.resolve(root, pkg.directory) + path.sep))
+  const failures: string[] = []
+  const graph = workspaceGraph(packages)
+  const rules: Record<string, string[]> = JSON.parse(
+    readFileSync(path.join(root, "script/dependency-rules.json"), "utf8"),
+  )
+  for (const pkg of packages) {
+    const allowed = rules[pkg.directory]
+    const dependencies = graph[pkg.name]!
+    if (allowed)
+      for (const target of dependencies) {
+        if (!allowed.includes(byName.get(target)!.directory))
+          failures.push(`${pkg.directory}: forbidden dependency ${target}`)
+      }
+    if (pkg.directory.startsWith("packages/"))
+      for (const target of dependencies) {
+        if (byName.get(target)!.directory.startsWith("apps/"))
+          failures.push(`${pkg.directory}: library imports application ${target}`)
+      }
+    if (pkg.dependencies?.["@ericsanchezok/synergy-testing"])
+      failures.push(`${pkg.directory}: testing must be a development dependency`)
+    for (const file of sourceFiles(path.join(root, pkg.directory, "src"))) {
+      for (const spec of imports(file, readFileSync(file, "utf8"))) {
+        if (spec.startsWith(".")) {
+          const target = owner(path.resolve(path.dirname(file), spec))
+          if (target && target !== pkg)
+            failures.push(`${path.relative(root, file)}: private cross-package import ${spec}`)
+          continue
+        }
+        const name = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]!
+        const target = byName.get(name)
+        if (!target) continue
+        if (target !== pkg && !dependencies.includes(name))
+          failures.push(`${path.relative(root, file)}: undeclared production dependency ${name}`)
+        const subpath = spec === name ? "." : `.${spec.slice(name.length)}`
+        if (subpath.startsWith("./test/"))
+          failures.push(`${path.relative(root, file)}: production source imports testing-only export ${spec}`)
+        const entries = Object.keys(target.exports ?? {})
+        const declared = entries.some(
+          (entry) =>
+            entry === subpath ||
+            (entry.includes("*") && subpath.startsWith(entry.split("*")[0]!) && subpath.endsWith(entry.split("*")[1]!)),
+        )
+        if (!declared) failures.push(`${path.relative(root, file)}: undeclared export ${spec}`)
+      }
+    }
+  }
+  for (const cycle of cycles(graph)) failures.push(`Production dependency cycle: ${cycle.join(" -> ")}`)
+  return { packages, graph, failures }
+}
+
+if (import.meta.main) {
+  const result = validateWorkspaces(path.resolve(import.meta.dir, ".."))
+  for (const failure of result.failures) console.error(failure)
+  console.log(`${result.packages.length} workspaces; ${result.failures.length} dependency violations`)
+  if (result.failures.length) process.exitCode = 1
+}

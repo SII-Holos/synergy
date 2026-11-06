@@ -1,0 +1,337 @@
+import { afterEach, describe, expect, mock, test } from "bun:test"
+import { Hono } from "hono"
+import path from "path"
+import fs from "fs/promises"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { RuntimeReload } from "@ericsanchezok/synergy-local-runtime/reload"
+import { ConfigRoute } from "@ericsanchezok/synergy-server/server/config-route"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+const originalRuntimeReload = RuntimeReload.reload
+let originalGeneralConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
+let originalModelsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
+let originalChannelsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
+let originalVoiceConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
+
+function app() {
+  return new Hono().route("/config", ConfigRoute())
+}
+
+function patchGeneral(config: unknown) {
+  return app().request("/config/domains/general", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ config }),
+  })
+}
+
+function patchModels(config: unknown, mode?: "merge" | "replace-domain" | "append") {
+  return app().request("/config/domains/models", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ config, mode }),
+  })
+}
+
+function patchChannels(config: unknown) {
+  return app().request("/config/domains/channels", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ config }),
+  })
+}
+
+afterEach(() =>
+  runtime.run(async () => {
+    RuntimeReload.reload = originalRuntimeReload
+    if (originalGeneralConfig) {
+      await Config.domainUpdate("general", originalGeneralConfig, { mode: "replace-domain" })
+      originalGeneralConfig = undefined
+    }
+    if (originalModelsConfig) {
+      await Config.domainUpdate("models", originalModelsConfig, { mode: "replace-domain" })
+      originalModelsConfig = undefined
+    }
+    if (originalChannelsConfig) {
+      await Config.domainUpdate("channels", originalChannelsConfig, { mode: "replace-domain" })
+      originalChannelsConfig = undefined
+    }
+    if (originalVoiceConfig) {
+      await Config.domainUpdate("voice", originalVoiceConfig, { mode: "replace-domain" })
+      originalVoiceConfig = undefined
+    }
+  }),
+)
+
+test("voice HTTP configuration redacts credentials and preserves replacement, retention and removal intent", () =>
+  runtime.run(async () => {
+    originalVoiceConfig = await Config.domainGet("voice")
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const update = (voice: Config.Info["voice"]) =>
+          app().request("/config/domains/voice", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ config: { voice } }),
+          })
+        let response = await update({
+          stt: { model: "fixture-stt", apiKey: "fixture-secret", language: "zh" },
+          tts: { model: "fixture-tts", apiKey: "fixture-tts-secret", voice: "fixture-voice" },
+        })
+        expect(response.status).toBe(200)
+        const first = (await response.json()) as { config: Config.Info }
+        const sentinel = first.config.voice?.stt?.apiKey
+        expect(sentinel).toBeTruthy()
+        expect(JSON.stringify(first)).not.toContain("fixture-secret")
+        expect(JSON.stringify(first)).not.toContain("fixture-tts-secret")
+
+        response = await update({ stt: { enabled: false }, tts: { apiKey: sentinel } })
+        expect(response.status).toBe(200)
+        let stored = await Config.domainGet("voice")
+        expect(stored.voice?.stt).toMatchObject({ enabled: false, model: "fixture-stt", apiKey: "fixture-secret" })
+        expect(stored.voice?.tts?.apiKey).toBe("fixture-tts-secret")
+
+        response = await update({
+          stt: { enabled: true, apiKey: "fixture-replacement", language: null },
+          tts: { apiKey: null, voice: null },
+        })
+        expect(response.status).toBe(200)
+        stored = await Config.domainGet("voice")
+        expect(stored.voice?.stt).toMatchObject({
+          enabled: true,
+          model: "fixture-stt",
+          apiKey: "fixture-replacement",
+          language: null,
+        })
+        expect(stored.voice?.tts).toMatchObject({ model: "fixture-tts", apiKey: null, voice: null })
+        const reread = await app().request("/config/domains/voice")
+        expect(reread.status).toBe(200)
+        expect(await reread.text()).not.toContain("fixture-replacement")
+      },
+    })
+  }))
+
+describe.serial("global General config route locale", () => {
+  test("accepts every supported locale preference", () =>
+    runtime.run(async () => {
+      originalGeneralConfig = await Config.domainGet("general")
+
+      for (const locale of ["system", "en", "zh-CN"] as const) {
+        const response = await patchGeneral({ locale })
+        expect(response.status).toBe(200)
+        const body = (await response.json()) as { config: Config.Info; changedFields: string[] }
+        expect(body.config).toMatchObject({ locale })
+        expect(body.changedFields).toContain("locale")
+        expect(await Config.domainGet("general")).toMatchObject({ locale })
+      }
+    }))
+
+  test("rejects unsupported locale preferences without updating config", () =>
+    runtime.run(async () => {
+      originalGeneralConfig = await Config.domainGet("general")
+      await Config.domainUpdate("general", { ...originalGeneralConfig, locale: "en" }, { mode: "replace-domain" })
+
+      for (const locale of ["", "fr", "de-DE"]) {
+        const response = await patchGeneral({ locale })
+        expect(response.status).toBe(400)
+        expect(await Config.domainGet("general")).toMatchObject({ locale: "en" })
+      }
+    }))
+})
+
+describe.serial("global Models config route model roles", () => {
+  test("reloads role-backed agents after updating a model role", () =>
+    runtime.run(async () => {
+      originalModelsConfig = await Config.domainGet("models")
+      const previousModel = "kimi-for-coding/k3"
+      const nextModel = "deepseek/deepseek-v4-pro"
+      await Config.domainUpdate(
+        "models",
+        { ...originalModelsConfig, thinking_model: previousModel },
+        { mode: "replace-domain" },
+      )
+      const reload = mock(async () => ({
+        success: true,
+        requested: ["config"] as RuntimeReload.Target[],
+        executed: ["config"] as RuntimeReload.Target[],
+        cascaded: [] as RuntimeReload.Target[],
+        changedFields: ["thinking_model"],
+        restartRequired: [],
+        liveApplied: ["thinking_model"],
+        warnings: [],
+        failed: [] as RuntimeReload.Target[],
+        failures: [],
+        diagnostics: [],
+      }))
+      RuntimeReload.reload = reload as typeof RuntimeReload.reload
+
+      const response = await patchModels({ thinking_model: nextModel })
+
+      expect(response.status).toBe(200)
+      expect(reload).toHaveBeenCalledWith(
+        {
+          targets: ["config"],
+          scope: "global",
+          reason: "config.domain.update:models",
+        },
+        {
+          configChange: expect.objectContaining({
+            changedFields: ["thinking_model"],
+            oldConfig: expect.objectContaining({ thinking_model: previousModel }),
+            config: expect.objectContaining({ thinking_model: nextModel }),
+          }),
+        },
+      )
+    }))
+
+  test("does not reload runtime state for a no-op model update", () =>
+    runtime.run(async () => {
+      originalModelsConfig = await Config.domainGet("models")
+      const model = "deepseek/deepseek-v4-pro"
+      await Config.domainUpdate(
+        "models",
+        { ...originalModelsConfig, thinking_model: model },
+        { mode: "replace-domain" },
+      )
+      const reload = mock(async () => {
+        throw new Error("runtime reload should not run")
+      })
+      RuntimeReload.reload = reload as unknown as typeof RuntimeReload.reload
+
+      const response = await patchModels({ thinking_model: model })
+
+      expect(response.status).toBe(200)
+      expect(reload).not.toHaveBeenCalled()
+    }))
+
+  test("reloads agents when replace-domain removes a model role", () =>
+    runtime.run(async () => {
+      originalModelsConfig = await Config.domainGet("models")
+      const previousModel = "deepseek/deepseek-v4-pro"
+      await Config.domainUpdate(
+        "models",
+        { ...originalModelsConfig, thinking_model: previousModel },
+        { mode: "replace-domain" },
+      )
+      let capturedChange: Config.Change | undefined
+      const reload = mock(async (_input: RuntimeReload.Input, options?: { configChange?: Config.Change }) => {
+        capturedChange = options?.configChange
+        return {
+          success: true,
+          requested: ["config"] as RuntimeReload.Target[],
+          executed: ["config"] as RuntimeReload.Target[],
+          cascaded: ["agent"] as RuntimeReload.Target[],
+          changedFields: ["thinking_model"],
+          restartRequired: [],
+          liveApplied: ["thinking_model"],
+          warnings: [],
+          failed: [] as RuntimeReload.Target[],
+          failures: [],
+          diagnostics: [],
+        }
+      })
+      RuntimeReload.reload = reload as typeof RuntimeReload.reload
+
+      const response = await patchModels({}, "replace-domain")
+
+      expect(response.status).toBe(200)
+      expect(reload).toHaveBeenCalledWith(expect.anything(), {
+        configChange: expect.objectContaining({
+          changedFields: expect.arrayContaining(["thinking_model"]),
+          oldConfig: expect.objectContaining({ thinking_model: previousModel }),
+        }),
+      })
+      expect(capturedChange?.config.thinking_model).toBeUndefined()
+    }))
+})
+
+describe.serial("global Channels config route runtime reload", () => {
+  test("preserves the Channel change after persisting a Channels domain update", () =>
+    runtime.run(async () => {
+      originalChannelsConfig = await Config.domainGet("channels")
+      const reload = mock(async () => ({
+        success: true,
+        requested: ["config"] as RuntimeReload.Target[],
+        executed: ["config", "channel"] as RuntimeReload.Target[],
+        cascaded: ["channel"] as RuntimeReload.Target[],
+        changedFields: ["channel"],
+        restartRequired: [],
+        liveApplied: [],
+        warnings: [],
+        failed: [] as RuntimeReload.Target[],
+        failures: [],
+        diagnostics: [],
+      }))
+      RuntimeReload.reload = reload as typeof RuntimeReload.reload
+
+      const response = await patchChannels({
+        channel: {
+          github: {
+            type: "github",
+            accounts: { agent: { enabled: true, workspaceDir: "/tmp/channel-fixture" } },
+          },
+        },
+      })
+
+      expect(response.status).toBe(200)
+      expect(reload).toHaveBeenCalledWith(
+        {
+          targets: ["config"],
+          scope: "global",
+          reason: "config.domain.update:channels",
+        },
+        {
+          configChange: expect.objectContaining({
+            changedFields: ["channel"],
+            config: expect.objectContaining({
+              channel: expect.objectContaining({
+                github: expect.objectContaining({ type: "github" }),
+              }),
+            }),
+          }),
+        },
+      )
+    }))
+})
+
+describe.serial("config diagnostics route", () => {
+  test("returns empty issues when config loads cleanly", () =>
+    runtime.run(async () => {
+      Config.resetDiagnostics()
+      const response = await app().request("/config/diagnostics")
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ issues: [] })
+    }))
+
+  test("returns recorded issues after a broken fragment is quarantined", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          // Plant a syntax-broken email fragment in the global domain dir.
+          const domainDir = ConfigDomain.directory(Global.Path.config)
+          await fs.mkdir(domainDir, { recursive: true })
+          await Bun.write(path.join(domainDir, "110-email.jsonc"), "{ broken")
+          await Config.reload("global")
+
+          const response = await app().request("/config/diagnostics")
+          expect(response.status).toBe(200)
+          const body = (await response.json()) as { issues: Config.Issue[] }
+          expect(body.issues.length).toBeGreaterThanOrEqual(1)
+          expect(body.issues.some((issue) => issue.path.endsWith("110-email.jsonc"))).toBe(true)
+          expect(body.issues.some((issue) => issue.quarantined)).toBe(true)
+        },
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

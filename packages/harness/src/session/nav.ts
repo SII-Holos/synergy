@@ -1,0 +1,598 @@
+import { SessionSchemaRegistry } from "./schema-registry"
+import { ChannelTarget } from "./channel-endpoint"
+
+import z from "zod"
+import { Identifier } from "../id/id"
+import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import { Log } from "../util/log"
+import { Info as SessionInfo, normalizeSessionTag } from "./types"
+import { SessionManagedProjects } from "./managed-projects"
+import { SessionCompat } from "./compat-import"
+import { SessionRecords } from "./records"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
+import { upgradeSessionRecords } from "../migration"
+import { upgradeAccessRecord } from "../migration/import"
+
+export type NavCategory = "project" | "home" | "channel" | "background" | "github"
+
+function normalizeTagFilter(value: string): string | undefined {
+  return normalizeSessionTag(value)
+}
+
+export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
+const NavBlueprintIdentity = z.object({
+  loopID: z.string().optional(),
+  loopRole: z.enum(["execution", "audit"]).optional(),
+  phase: z.enum(["running", "auditing"]).optional(),
+})
+const NavWorkflowIdentity = z.object({ kind: z.string(), active: z.boolean() })
+export const SessionNavEntry = z
+  .object({
+    id: z.string(),
+    scopeID: z.string(),
+    scopeType: z.enum(["home", "project"]),
+    title: z.string(),
+    tags: z.string().array().optional(),
+    category: NavCategory,
+    lastActivityAt: z.number(),
+    createdAt: z.number().optional(),
+    updatedAt: z.number().optional(),
+    pinned: z.number(),
+    archived: z.boolean(),
+    archivedAt: z.number().optional(),
+    parentID: z.string().optional(),
+    endpointKind: z.literal("channel").optional(),
+    chatId: z.string().optional(),
+    chatName: z.string().optional(),
+    chatType: z.enum(["dm", "group"]).optional(),
+    channelType: z.string().optional(),
+    channelAccountId: z.string().optional(),
+    channelTarget: ChannelTarget.optional(),
+    blueprint: NavBlueprintIdentity.optional(),
+    workspaceType: z.string().optional(),
+    workflow: NavWorkflowIdentity.optional(),
+    completionNotice: z.object({
+      unread: z.boolean(),
+      unreadCount: z.number().int().nonnegative(),
+    }),
+  })
+  .meta({ ref: "SessionNavEntry" })
+
+export const NavCursor = z
+  .object({
+    lastActivityAt: z.number(),
+    id: z.string(),
+  })
+  .meta({ ref: "NavCursor" })
+
+export const SessionNavResponse = z
+  .object({
+    items: SessionNavEntry.array(),
+    nextCursor: NavCursor.nullable(),
+    total: z.number(),
+  })
+  .meta({ ref: "SessionNavResponse" })
+
+export const ScopeNavEntry = z
+  .object({
+    scopeID: z.string(),
+    scopeType: z.enum(["home", "project"]),
+    name: z.string().optional(),
+    directory: z.string().nullable(),
+    latestActivityAt: z.number(),
+    sessionCount: z.number(),
+    icon: z
+      .object({
+        url: z.string().optional(),
+        color: z.string().optional(),
+      })
+      .optional(),
+    managedProject: z
+      .object({
+        channelType: z.string(),
+        accountId: z.string(),
+        externalProjectId: z.string(),
+        remoteState: z.enum(["active", "paused", "stale", "archived"]),
+      })
+      .optional(),
+  })
+  .meta({ ref: "ScopeNavEntry" })
+
+export interface DeriveCategoryInput {
+  scopeType: "home" | "project"
+  endpointKind?: "channel"
+  provenance?: "github"
+  parentID?: string
+  cortex?: {
+    parentSessionID: string
+    parentMessageID: string
+    description: string
+    agent: string
+    startedAt: number
+    status: string
+    completedAt?: number
+    model?: { providerID: string; modelID: string }
+    result?: string
+    error?: string
+  }
+  background?: boolean
+}
+
+export interface SessionNavEntry {
+  id: string
+  scopeID: string
+  scopeType: "home" | "project"
+  title: string
+  tags?: string[]
+  category: NavCategory
+  lastActivityAt: number
+  createdAt?: number
+  updatedAt?: number
+  pinned: number
+  archived: boolean
+  archivedAt?: number
+  parentID?: string
+  endpointKind?: "channel"
+  chatId?: string
+  chatName?: string
+  chatType?: "dm" | "group"
+  channelType?: string
+  channelAccountId?: string
+  channelTarget?: ChannelTarget
+  blueprint?: z.infer<typeof NavBlueprintIdentity>
+  workspaceType?: string
+  workflow?: z.infer<typeof NavWorkflowIdentity>
+  completionNotice: {
+    unread: boolean
+    unreadCount: number
+  }
+}
+export interface ScopeNavEntry {
+  scopeID: string
+  scopeType: "home" | "project"
+  name?: string
+  directory: string | null
+  latestActivityAt: number
+  sessionCount: number
+  icon?: { url?: string; color?: string }
+  managedProject?: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+    remoteState: "active" | "paused" | "stale" | "archived"
+  }
+}
+export interface ScopeNavIndex {
+  version: 1 | 2
+  composition?: string
+  scopeID: string
+  updatedAt: number
+  entries: SessionNavEntry[]
+}
+export interface NavCursor {
+  lastActivityAt: number
+  id: string
+}
+
+export namespace SessionNav {
+  const log = Log.create({ service: "session.nav" })
+
+  function mutationKey(scopeID: string) {
+    return `session-nav-index:${scopeID}`
+  }
+
+  export function deriveCategory(input: DeriveCategoryInput): NavCategory {
+    if (input.endpointKind === "channel") return "channel"
+    if (input.provenance === "github") return "github"
+    if (input.parentID || input.cortex || input.background) return "background"
+    if (input.scopeType === "home") return "home"
+    return "project"
+  }
+
+  function toNavBlueprint(input: unknown): SessionNavEntry["blueprint"] {
+    const parsed = NavBlueprintIdentity.safeParse(input)
+    if (!parsed.success) return undefined
+    const blueprint: NonNullable<SessionNavEntry["blueprint"]> = {}
+    if (parsed.data.loopID !== undefined) blueprint.loopID = parsed.data.loopID
+    if (parsed.data.loopRole !== undefined) blueprint.loopRole = parsed.data.loopRole
+    if (parsed.data.phase !== undefined) blueprint.phase = parsed.data.phase
+    return Object.keys(blueprint).length > 0 ? blueprint : undefined
+  }
+
+  /** Identity fields a sidebar row must render without reading any per-Scope
+   * store. Every producer of `SessionNavEntry` projects through this function
+   * so an entry's shape cannot depend on which path wrote it. */
+  export function deriveSessionIdentity(
+    session: SessionInfo,
+  ): Pick<SessionNavEntry, "blueprint" | "workspaceType" | "workflow"> {
+    const blueprint = toNavBlueprint(SessionSchemaRegistry.navIdentity(session).blueprint)
+    const kind = WorkflowKindRegistry.effectiveKind(session.workflow)
+    const workspaceType = session.workspace?.type
+    return {
+      ...(blueprint ? { blueprint } : {}),
+      ...(workspaceType ? { workspaceType } : {}),
+      ...(kind && WorkflowKindRegistry.get(kind)
+        ? {
+            workflow: {
+              kind,
+              active: WorkflowKindRegistry.get(kind)?.activeForPresentation?.(session) === true,
+            },
+          }
+        : {}),
+    }
+  }
+
+  export function paginateWithCursor(
+    entries: SessionNavEntry[],
+    opts: { cursor?: NavCursor | null; limit?: number },
+  ): { items: SessionNavEntry[]; nextCursor: NavCursor | null; total: number } {
+    const limit = opts.limit ?? 20
+    const total = entries.length
+    let startIdx = 0
+    if (opts.cursor) {
+      const c = opts.cursor
+      startIdx = entries.findIndex(
+        (e) => e.lastActivityAt < c.lastActivityAt || (e.lastActivityAt === c.lastActivityAt && e.id < c.id),
+      )
+      if (startIdx === -1) startIdx = entries.length
+    }
+    const slice = entries.slice(startIdx, startIdx + limit)
+    const hasMore = startIdx + slice.length < total
+    const last = slice.at(-1)
+    const nextCursor: NavCursor | null = hasMore && last ? { lastActivityAt: last.lastActivityAt, id: last.id } : null
+    return { items: slice, nextCursor, total }
+  }
+
+  async function buildNavIndexUnlocked(scopeID: string, previous?: ScopeNavIndex): Promise<ScopeNavIndex> {
+    const { Session } = await import(".")
+    const sid = Identifier.asScopeID(scopeID)
+    const keys = await sessionInfoKeys(scopeID)
+    const activity = new Map(previous?.entries.map((entry) => [entry.id, entry.lastActivityAt]))
+    const entries: SessionNavEntry[] = []
+    if (keys.length > 0) {
+      const storedSessions = await SessionRecords.readMany(keys)
+      for (const storedSession of storedSessions) {
+        let projected = storedSession
+        try {
+          if (storedSession)
+            projected = {
+              ...storedSession,
+              endpoint: Session.indexEndpoint(storedSession.endpoint, storedSession.time?.archived),
+            }
+        } catch (error) {
+          log.warn("skipping malformed session endpoint", {
+            scopeID,
+            sessionID: storedSession?.id,
+            error: String(error),
+          })
+          continue
+        }
+        const parsed = SessionInfo.safeParse(projected)
+        if (!parsed.success) {
+          log.warn("skipping malformed session info", {
+            scopeID,
+            issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), code: issue.code })),
+          })
+          continue
+        }
+        const session = parsed.data
+        const scopeType: "home" | "project" = scopeID === "home" ? "home" : "project"
+        const category = deriveCategory({
+          scopeType,
+          endpointKind: session.endpoint?.kind,
+          provenance: session.provenance,
+          parentID: session.parentID,
+          cortex: session.cortex,
+          background: SessionSchemaRegistry.isBackground(session),
+        })
+        if (!session.category) {
+          // The nav lock is already held. This idempotent file update avoids the inverse nav-to-session lock order.
+          await SessionRecords.update(StoragePath.sessionInfo(sid, Identifier.asSessionID(session.id)), (draft) => {
+            draft.category ??= category
+          })
+        }
+        const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
+        entries.push({
+          id: session.id,
+          scopeID,
+          scopeType,
+          title: session.title,
+          tags: session.tags,
+          category,
+          lastActivityAt: activity.get(session.id) ?? session.time.updated,
+          createdAt: session.time.created,
+          updatedAt: session.time.updated,
+          pinned: session.pinned ?? 0,
+          archived: !!session.time.archived,
+          archivedAt: session.time.archived || undefined,
+          parentID: session.parentID,
+          ...deriveSessionIdentity(session),
+          endpointKind: channelEndpoint ? "channel" : undefined,
+          chatId: channelEndpoint?.chatId,
+          chatName: channelEndpoint?.chatName,
+          chatType: channelEndpoint?.chatType,
+          channelType: channelEndpoint?.type,
+          channelAccountId: channelEndpoint?.accountId,
+          channelTarget: channelEndpoint?.target,
+          completionNotice: {
+            unread: session.completionNotice.unread,
+            unreadCount: session.completionNotice.unreadCount ?? (session.completionNotice.unread ? 1 : 0),
+          },
+        })
+      }
+    }
+    entries.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
+    const index: ScopeNavIndex = {
+      version: 2,
+      composition: SessionSchemaRegistry.projectionKey(),
+      scopeID,
+      updatedAt: Date.now(),
+      entries,
+    }
+    const key = StoragePath.sessionNavIndex(sid)
+    // An empty namespace has no navigation to materialize. Existing indexes
+    // must still be replaced when their last Session disappeared.
+    if (entries.length || (await Storage.readMany([key]))[0] !== undefined) await Storage.write(key, index)
+    return index
+  }
+
+  export async function buildNavIndex(scopeID: string): Promise<ScopeNavIndex> {
+    if (!Storage.inTransaction()) await prepareNavIndex(scopeID)
+    return Storage.transaction(async () => {
+      return buildNavIndexUnlocked(scopeID)
+    })
+  }
+
+  async function prepareNavIndex(scopeID: string) {
+    const keys = await sessionInfoKeys(scopeID)
+    await upgradeSessionRecords(keys.map((key) => ({ scopeID, sessionID: key[2] })))
+  }
+
+  async function sessionInfoKeys(scopeID: string) {
+    const keys: string[][] = []
+    for (;;) {
+      const page = await Storage.queryKeys({ kind: "session", scopeID, after: keys.at(-1), limit: 1_000 })
+      keys.push(...page)
+      if (page.length < 1_000) return keys
+    }
+  }
+
+  async function readNavIndexUnlocked(scopeID: string): Promise<ScopeNavIndex> {
+    const sid = Identifier.asScopeID(scopeID)
+    const key = StoragePath.sessionNavIndex(sid)
+    let [existing] = await Storage.readMany<ScopeNavIndex>([key])
+    if (existing?.version === 1) existing = upgradeAccessRecord(key, existing)
+    if (existing?.composition === SessionSchemaRegistry.projectionKey()) return existing
+    return buildNavIndexUnlocked(scopeID, existing)
+  }
+
+  export async function readNavIndex(scopeID: string): Promise<ScopeNavIndex> {
+    const existing = await Storage.snapshot(async () => {
+      const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))
+      let [index] = await Storage.readMany<ScopeNavIndex>([key])
+      if (index?.version === 1) index = upgradeAccessRecord(key, index)
+      if (index?.composition === SessionSchemaRegistry.projectionKey())
+        return SessionCompat.mergeNavIndex(scopeID, index)
+    })
+    if (existing) return existing
+    if (!Storage.inTransaction()) await prepareNavIndex(scopeID)
+    return Storage.transaction(async () => {
+      const index = await readNavIndexUnlocked(scopeID)
+      return (await SessionCompat.mergeNavIndex(scopeID, index)) as ScopeNavIndex
+    })
+  }
+
+  export async function rebuildAllNavIndexes(progress?: (done: number, total: number) => void): Promise<void> {
+    const sessionScopeIDs = await Storage.scan(["sessions"])
+    const allScopeIDs = [...sessionScopeIDs]
+    if (!allScopeIDs.includes("home")) allScopeIDs.push("home")
+    const total = allScopeIDs.length
+    let done = 0
+    for (const scopeID of allScopeIDs) {
+      await buildNavIndex(scopeID)
+      done++
+      progress?.(done, total)
+    }
+  }
+
+  export async function getAllScopeIDs(): Promise<string[]> {
+    const { Scope } = await import("../scope")
+    const projects = await Scope.list()
+    return ["home", ...projects.map((project) => project.id)]
+  }
+
+  export async function listUnreadCompletionEntries(): Promise<SessionNavEntry[]> {
+    const unreadEntries: SessionNavEntry[] = []
+    for (const scopeID of await getAllScopeIDs()) {
+      const index = await readNavIndex(scopeID)
+      for (const entry of index.entries) {
+        if (entry.parentID || entry.archived || entry.completionNotice.unreadCount === 0) continue
+        unreadEntries.push(entry)
+      }
+    }
+    return unreadEntries
+  }
+
+  export async function queryScope(
+    scopeID: string,
+    opts?: {
+      parentOnly?: boolean
+      category?: NavCategory
+      tag?: string
+      includeArchived?: boolean
+      cursor?: NavCursor
+      limit?: number
+    },
+  ): Promise<{ items: SessionNavEntry[]; nextCursor: NavCursor | null; total: number }> {
+    const index = await readNavIndex(scopeID)
+    let entries = index.entries
+    if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
+    if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
+    if (opts?.tag !== undefined) {
+      const tag = normalizeTagFilter(opts.tag)
+      entries = tag ? entries.filter((e) => e.tags?.includes(tag)) : []
+    }
+    if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
+    return paginateWithCursor(entries, { cursor: opts?.cursor ?? null, limit: opts?.limit })
+  }
+
+  export async function queryGlobal(opts?: {
+    parentOnly?: boolean
+    category?: NavCategory
+    channelType?: string
+    tag?: string
+    includeArchived?: boolean
+    search?: string
+    cursor?: NavCursor
+    limit?: number
+  }): Promise<{
+    items: SessionNavEntry[]
+    nextCursor: NavCursor | null
+    total: number
+    unreadCompletionCount: number
+  }> {
+    // Includes Home sessions alongside project scopes for a cross-scope overview.
+    const scopeIDs = await getAllScopeIDs()
+    const allEntries: SessionNavEntry[] = []
+    for (const sid of scopeIDs) {
+      const index = await readNavIndex(sid)
+      allEntries.push(...index.entries)
+    }
+    allEntries.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
+    let entries = allEntries
+    if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
+    if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
+    if (opts?.channelType) entries = entries.filter((e) => e.channelType === opts.channelType)
+    if (opts?.tag !== undefined) {
+      const tag = normalizeTagFilter(opts.tag)
+      entries = tag ? entries.filter((e) => e.tags?.includes(tag)) : []
+    }
+    if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
+    if (opts?.search) {
+      const term = opts.search.toLowerCase()
+      entries = entries.filter((e) => e.title.toLowerCase().includes(term))
+    }
+    const unreadCompletionCount = entries.reduce(
+      (total, entry) => total + (entry.completionNotice.unreadCount ?? (entry.completionNotice.unread ? 1 : 0)),
+      0,
+    )
+    return {
+      ...paginateWithCursor(entries, { cursor: opts?.cursor ?? null, limit: opts?.limit }),
+      unreadCompletionCount,
+    }
+  }
+
+  export async function queryPinned(opts?: { limit?: number }): Promise<{ items: SessionNavEntry[]; total: number }> {
+    const scopeIDs = await getAllScopeIDs()
+    const allEntries: SessionNavEntry[] = []
+    for (const sid of scopeIDs) {
+      const index = await readNavIndex(sid)
+      allEntries.push(...index.entries)
+    }
+    const pinned = allEntries.filter((e) => e.pinned > 0 && !e.archived)
+    pinned.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
+    const limit = opts?.limit ?? pinned.length
+    return { items: pinned.slice(0, limit), total: pinned.length }
+  }
+
+  export async function buildScopeIndex(): Promise<ScopeNavEntry[]> {
+    const scopeIDs = await getAllScopeIDs()
+    const ownershipRecords = await SessionManagedProjects.listOwnership()
+    const ownershipByScopeID = new Map(ownershipRecords.map((r) => [r.scopeID, r]))
+    const results: ScopeNavEntry[] = []
+    const { Scope } = await import("../scope")
+    const home = Scope.home()
+    for (const sid of scopeIDs) {
+      const index = await readNavIndex(sid)
+      const activeEntries = index.entries.filter((e) => !e.archived)
+      let scopeInfo:
+        | {
+            name?: string
+            icon?: { url?: string; color?: string }
+            local?: import("../scope/types").Local | null
+            time?: { created?: number; archived?: number }
+          }
+        | undefined
+      if (sid !== "home") {
+        scopeInfo = await Storage.read<any>(StoragePath.scope(Identifier.asScopeID(sid))).catch(() => undefined)
+      }
+      if (scopeInfo?.time?.archived) continue
+      const latestActivityAt =
+        activeEntries.length > 0
+          ? Math.max(...activeEntries.map((e) => e.lastActivityAt))
+          : (scopeInfo?.time?.created ?? 0)
+      const ownership = ownershipByScopeID.get(sid)
+      results.push({
+        scopeID: sid,
+        scopeType: sid === "home" ? "home" : "project",
+        name: scopeInfo?.name,
+        directory: scopeInfo?.local?.directory ?? null,
+        latestActivityAt,
+        sessionCount: activeEntries.length,
+        icon: scopeInfo?.icon,
+        ...(ownership
+          ? {
+              managedProject: {
+                channelType: ownership.channelType,
+                accountId: ownership.accountId,
+                externalProjectId: ownership.externalProjectId,
+                remoteState: ownership.remoteState,
+              },
+            }
+          : {}),
+      })
+    }
+    results.sort((a, b) => b.latestActivityAt - a.latestActivityAt || a.scopeID.localeCompare(b.scopeID))
+    return results
+  }
+
+  export async function upsertNavEntry(
+    entry: SessionNavEntry,
+    options?: { preserveActivityAt?: boolean },
+  ): Promise<SessionNavEntry> {
+    return Storage.transaction(async () => {
+      const key = StoragePath.sessionNavIndex(Identifier.asScopeID(entry.scopeID))
+      let [index] = await Storage.readMany<ScopeNavIndex>([key])
+      if (!index) {
+        const sessions = await Storage.queryKeys({ kind: "session", scopeID: entry.scopeID, limit: 2 })
+        // A missing historical index must remain missing until a complete read rebuilds it.
+        if (sessions.some((session) => session[2] !== entry.id)) return entry
+        index = {
+          version: 2,
+          composition: SessionSchemaRegistry.projectionKey(),
+          scopeID: entry.scopeID,
+          updatedAt: 0,
+          entries: [],
+        }
+      }
+      const existing = index.entries.findIndex((e) => e.id === entry.id)
+      const nextEntry =
+        options?.preserveActivityAt && existing >= 0
+          ? { ...entry, lastActivityAt: index.entries[existing].lastActivityAt }
+          : entry
+      if (existing >= 0) index.entries.splice(existing, 1)
+      const insertAt = index.entries.findIndex(
+        (e) =>
+          e.lastActivityAt < nextEntry.lastActivityAt ||
+          (e.lastActivityAt === nextEntry.lastActivityAt && e.id < nextEntry.id),
+      )
+      if (insertAt === -1) index.entries.push(nextEntry)
+      else index.entries.splice(insertAt, 0, nextEntry)
+      index.updatedAt = Date.now()
+      await Storage.write(key, index)
+      return nextEntry
+    })
+  }
+
+  export async function removeNavEntry(scopeID: string, sessionID: string): Promise<void> {
+    return Storage.transaction(async () => {
+      const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))
+      const [index] = await Storage.readMany<ScopeNavIndex>([key])
+      if (!index) return
+      index.entries = index.entries.filter((e) => e.id !== sessionID)
+      index.updatedAt = Date.now()
+      await Storage.write(key, index)
+    })
+  }
+}

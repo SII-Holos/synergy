@@ -1,13 +1,23 @@
+import { toolFeatureAvailable, toolHistoricalText } from "./tool-result-presentation"
 import type { MessageDescriptor } from "@lingui/core"
+import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
+import { AttachmentGallery } from "./attachment-card"
 import { useLingui } from "@lingui/solid"
-import { createEffect, createMemo, createSignal, For, lazy, on, onCleanup, Show } from "solid-js"
+import { useResourceOpen } from "../context/resource-open"
+import { useData } from "../context/data"
+import { createEffect, createMemo, createSignal, For, lazy, on, onCleanup, Show, type JSX } from "solid-js"
+import { createDisclosureMotionRef } from "../utils/disclosure-motion"
+import { useConversationMotion } from "./conversation-motion"
 import {
   finishActivityCountTransition,
   reduceActivityCountTransition,
   type ActivityCountTransition,
 } from "./activity-count-transition"
+import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
+import { Dialog } from "./dialog"
 import { Collapsible } from "./collapsible"
 import { specializedActivityDetail } from "./activity-specialized-detail-model"
+import { DiffChanges } from "./diff-changes"
 import { Icon, type IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
@@ -25,7 +35,7 @@ import type {
 } from "./session-turn-activity"
 import "./activity-trace.css"
 
-const TRANSITION_MS = 160
+const TRANSITION_MS = 180
 const ActivitySpecializedDetail = lazy(() =>
   import("./activity-specialized-detail").then((module) => ({ default: module.ActivitySpecializedDetail })),
 )
@@ -47,7 +57,7 @@ export const ACTIVITY_TRACE_DESC = {
     "inspect-local": d("activity.trace.family.inspect-local", "Inspected"),
     "research-web": d("activity.trace.family.research-web", "Researched"),
     "modify-files": d("activity.trace.family.modify-files", "Changed"),
-    execute: d("activity.trace.family.execute", "Ran"),
+    execute: d("activity.trace.family.execute", "Run command"),
     browser: d("activity.trace.family.browser", "Browsed"),
     delegate: d("activity.trace.family.delegate", "Delegated"),
     produce: d("activity.trace.family.produce", "Produced"),
@@ -62,9 +72,17 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
 
-export function AnimatedActivityCount(props: { value: number; identity: string }) {
+export function AnimatedActivityCount(props: { value: number; identity: string; animate?: boolean }) {
+  const { i18n } = useLingui()
+  const format = (value: number) => i18n().number(value)
+  const reduced = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined
   const [state, setState] = createSignal<ActivityCountTransition>()
   let timer: ReturnType<typeof setTimeout> | undefined
+  let element: HTMLSpanElement | undefined
+  let widthMotion: Animation | undefined
+  const identity = createMemo(() => `${props.identity}:${i18n().locale}`)
+  const value = createMemo(() => props.value)
+  const animate = createMemo(() => props.animate !== false)
 
   const cancelTimer = () => {
     if (timer === undefined) return
@@ -73,39 +91,57 @@ export function AnimatedActivityCount(props: { value: number; identity: string }
   }
 
   createEffect(
-    on(
-      () => [props.identity, props.value] as const,
-      ([identity, value]) => {
-        cancelTimer()
-        const next = reduceActivityCountTransition(state(), {
-          identity,
-          value,
-          reducedMotion: prefersReducedMotion(),
+    on([identity, value, animate], ([identity, value]) => {
+      const width = element?.getBoundingClientRect().width
+      widthMotion?.cancel()
+      cancelTimer()
+      const next = reduceActivityCountTransition(state(), {
+        identity,
+        value,
+        reducedMotion: props.animate === false || prefersReducedMotion(),
+      })
+      setState(next)
+      if (!next.animating) return
+      const targetWidth = element?.getBoundingClientRect().width
+      if (width && targetWidth && width !== targetWidth && element?.animate) {
+        widthMotion = element.animate([{ width: `${width}px` }, { width: `${targetWidth}px` }], {
+          duration: TRANSITION_MS,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
         })
-        setState(next)
-        if (!next.animating) return
-        const revision = next.revision
-        timer = setTimeout(() => {
-          setState((current) => (current ? finishActivityCountTransition(current, revision) : current))
-          timer = undefined
-        }, TRANSITION_MS)
-      },
-    ),
+      }
+      const revision = next.revision
+      timer = setTimeout(() => {
+        setState((current) => (current ? finishActivityCountTransition(current, revision) : current))
+        timer = undefined
+      }, TRANSITION_MS)
+    }),
   )
 
-  onCleanup(cancelTimer)
+  const settle = () => {
+    if (!reduced?.matches) return
+    cancelTimer()
+    widthMotion?.cancel()
+    setState((current) => (current ? finishActivityCountTransition(current, current.revision) : current))
+  }
+  reduced?.addEventListener?.("change", settle)
+  onCleanup(() => {
+    cancelTimer()
+    widthMotion?.cancel()
+    reduced?.removeEventListener?.("change", settle)
+  })
 
   return (
     <span
+      ref={element}
       data-component="animated-activity-count"
       data-animating={state()?.animating ? "" : undefined}
-      aria-label={String(props.value)}
+      aria-label={format(props.value)}
     >
       <span data-slot="activity-count-grid" aria-hidden="true">
         <Show when={state()?.animating && state()?.previous !== undefined}>
-          <span data-slot="activity-count-old">{state()?.previous}</span>
+          <span data-slot="activity-count-old">{format(state()!.previous!)}</span>
         </Show>
-        <span data-slot="activity-count-new">{state()?.current ?? props.value}</span>
+        <span data-slot="activity-count-new">{format(state()?.current ?? props.value)}</span>
       </span>
     </span>
   )
@@ -148,7 +184,7 @@ function familyDescriptor(family: ActivityFamily): MessageDescriptor {
 function familyIcon(family: ActivityFamily) {
   switch (family) {
     case "inspect-local":
-      return "glasses" as const
+      return "file-text" as const
     case "research-web":
       return "globe" as const
     case "modify-files":
@@ -176,10 +212,18 @@ function stateIcon(state: ActivityGroupState) {
   return getSemanticIcon("state.success")
 }
 
-function ActivityState(props: { state: ActivityGroupState; label: string }) {
+function ActivityState(props: { state: ActivityGroupState | "paused"; label: string }) {
   return (
     <span data-slot="activity-state" data-state={props.state}>
-      <Show when={props.state === "running"} fallback={<Icon name={stateIcon(props.state)} size="small" />}>
+      <Show
+        when={props.state === "running"}
+        fallback={
+          <Icon
+            name={props.state === "paused" ? getSemanticIcon("session.pause") : stateIcon(props.state)}
+            size="small"
+          />
+        }
+      >
         <Spinner />
       </Show>
       <span>{props.label}</span>
@@ -187,80 +231,238 @@ function ActivityState(props: { state: ActivityGroupState; label: string }) {
   )
 }
 
-function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }) {
+function ActivityStep(props: {
+  step: ActivityStepProjection
+  serverUrl: string
+  preferWorkBrief?: boolean
+  hidden?: boolean
+  current?: boolean
+  quiet?: boolean
+  motion?: boolean
+  onFocus?: (partID: string | undefined) => void
+}) {
   const { i18n, _ } = useLingui()
   const [open, setOpen] = createSignal(false)
-  const familyLabel = createMemo(() => localize(familyDescriptor(props.step.family), _))
+  const resources = useResourceOpen()
+  const data = useData()
+  const available = () => toolFeatureAvailable(props.step.part, data.hasFeature)
+  createEffect(() => {
+    if (!available()) setOpen(false)
+  })
+  const [responding, setResponding] = createSignal(false)
+  const [responseError, setResponseError] = createSignal<string>()
+  const request = () =>
+    data.view
+      .permissionsFor(props.step.part.sessionID)
+      .find(
+        (request) =>
+          request.tool?.messageID === props.step.part.messageID && request.tool.callID === props.step.part.callID,
+      )
+  createEffect(
+    on(
+      () => request()?.id,
+      () => {
+        setResponding(false)
+        setResponseError(undefined)
+      },
+    ),
+  )
+  const respond = async (response: "once" | "reject") => {
+    const selected = request()
+    if (!available() || !selected || responding() || !data.respondToPermission) return
+    setResponding(true)
+    try {
+      await data.respondToPermission({ sessionID: props.step.part.sessionID, permissionID: selected.id, response })
+    } catch (error) {
+      setResponseError(error instanceof Error ? error.message : String(error))
+      setResponding(false)
+    }
+  }
   const title = createMemo(() => localize(props.step.title, _))
-  const stateLabel = createMemo(() => _(stateDescriptor(props.step.state)))
+  const evidence = createMemo(() => {
+    const state = props.step.part.state
+    return state.status === "completed"
+      ? (state.attachments ?? []).filter((file) => !file.presentation?.hidden && attachmentPurpose(file) === "evidence")
+      : []
+  })
+  // Provenance: docs/decisions/implemented/feature/2026-10-04-semantic-process-disclosure.md
+  // Local adaptation: registered targets lead; invocation identity still opens the existing result owner.
+  const target = () => props.step.subtitle?.trim()
+  const preferredBrief = () => (props.preferWorkBrief ? props.step.part.workBrief?.trim() : undefined)
+  const object = () => (!preferredBrief() && target() && !title().includes(target()!) ? target() : undefined)
+  const label = () =>
+    preferredBrief() ||
+    (object() ? `${title()} · ${object()}` : target() ? title() : props.step.part.workBrief?.trim() || title())
+  const pathParts = () => {
+    const value = object() ?? ""
+    const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1
+    return [value.slice(0, index), value.slice(index)]
+  }
+  const paused = () =>
+    props.step.state === "running" && data.view.statusFor(props.step.part.sessionID)?.type === "paused"
+  const stateLabel = createMemo(() =>
+    paused() ? _({ id: "session.process.paused", message: "Paused" }) : _(stateDescriptor(props.step.state)),
+  )
   const approval = createMemo(() => {
     const metadata = props.step.part.state.metadata
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined
     return (metadata as Record<string, unknown>).approval as Record<string, unknown> | undefined
   })
   const audit = createMemo(() => getApprovalAudit(approval(), i18n()))
+  const takeArrival = useConversationMotion()
+  const motionRef = createDisclosureMotionRef({
+    visible: () => props.hidden !== true,
+    animate: () => props.motion !== false,
+    content: true,
+    appear: () => props.hidden !== true && takeArrival(props.step.part.id),
+  })
   return (
-    <li data-slot="activity-step" data-family={props.step.family} data-state={props.step.state}>
-      <Show when={audit().icon}>
-        <Tooltip
-          placement="right"
-          class="activity-step-audit-trigger"
-          value={
-            <div class="max-w-72">
-              <div class="text-12-medium text-text-base">{audit().tooltip.split("\n")[0]}</div>
-              <Show when={audit().tooltip.includes("\n")}>
-                <div class="mt-1 text-11-regular text-text-weak">{audit().tooltip.split("\n").slice(1).join("\n")}</div>
-              </Show>
-            </div>
+    <Show
+      when={available()}
+      fallback={
+        <Show
+          when={
+            toolHistoricalText(props.step.part) ||
+            (props.step.part.state.status === "completed" && props.step.part.state.attachments?.length)
           }
         >
-          <span
-            data-component="tool-audit-icon"
-            data-slot="activity-step-audit-icon"
-            tabindex="0"
-            role="img"
-            aria-label={audit().tooltip}
+          <li data-slot="activity-retained-output">
+            <ToolResultBody part={props.step.part} hasFeature={data.hasFeature} serverUrl={props.serverUrl} />
+          </li>
+        </Show>
+      }
+    >
+      <li
+        data-slot="activity-step"
+        data-part-id={props.step.part.id}
+        data-family={props.step.family}
+        data-state={paused() ? "paused" : props.step.state}
+        data-current={props.current ? "" : undefined}
+        data-working={!paused() && props.current && props.step.state === "running" ? "" : undefined}
+        ref={motionRef}
+        onFocusIn={() => props.onFocus?.(props.step.part.id)}
+        onFocusOut={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) props.onFocus?.(undefined)
+        }}
+      >
+        <Show when={props.step.state === "error" && audit().icon}>
+          <Tooltip
+            placement="right"
+            class="activity-step-audit-trigger"
+            value={
+              <div class="max-w-72">
+                <div class="text-12-medium text-text-base">{audit().tooltip.split("\n")[0]}</div>
+                <Show when={audit().tooltip.includes("\n")}>
+                  <div class="mt-1 text-11-regular text-text-weak">
+                    {audit().tooltip.split("\n").slice(1).join("\n")}
+                  </div>
+                </Show>
+              </div>
+            }
           >
-            <Icon name={audit().icon as IconName} size="small" class={audit().iconClass} />
-          </span>
-        </Tooltip>
-      </Show>
-      <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
-        <Collapsible.Trigger data-slot="activity-step-trigger" type="button">
+            <span
+              data-component="tool-audit-icon"
+              data-slot="activity-step-audit-icon"
+              tabindex="0"
+              role="img"
+              aria-label={audit().tooltip}
+            >
+              <Icon name={audit().icon as IconName} size="small" class={audit().iconClass} />
+            </span>
+          </Tooltip>
+        </Show>
+        <button
+          data-slot="activity-step-trigger"
+          type="button"
+          aria-label={`${label()} · ${stateLabel()}`}
+          aria-pressed={
+            resources?.isToolActivitySelected?.(
+              {
+                sessionID: props.step.part.sessionID,
+                messageID: props.step.part.messageID,
+                partID: props.step.part.id,
+                callID: props.step.part.callID,
+              },
+              props.step.part,
+            ) ?? open()
+          }
+          onClick={() => {
+            if (
+              !toolFeatureAvailable(props.step.part, data.hasFeature) ||
+              !resources?.openToolActivity?.(
+                {
+                  sessionID: props.step.part.sessionID,
+                  messageID: props.step.part.messageID,
+                  partID: props.step.part.id,
+                  callID: props.step.part.callID,
+                },
+                props.step.part,
+              )
+            )
+              setOpen(true)
+          }}
+        >
           <span data-slot="activity-step-icon" aria-hidden="true">
             <Icon name={props.step.icon} size="small" />
           </span>
-          <div data-slot="activity-step-copy">
-            <span data-slot="activity-step-family">{familyLabel()}</span>
-            <span data-slot="activity-step-title" title={title()}>
-              {title()}
-            </span>
-            <Show when={props.step.subtitle}>
-              {(subtitle) => (
-                <span data-slot="activity-step-subtitle" title={subtitle()}>
-                  {subtitle()}
+          <span data-slot="activity-step-copy">
+            <span data-slot="activity-step-title" data-object={object() ? "" : undefined} title={label()}>
+              <Show when={object()} fallback={label()}>
+                <span data-slot="activity-step-action">{title()}</span>
+                <span data-slot="activity-step-object" data-kind={props.step.objectKind}>
+                  <Show when={props.step.objectKind === "path"} fallback={object()}>
+                    <span data-slot="activity-step-directory">{pathParts()[0]}</span>
+                    <span data-slot="activity-step-filename">{pathParts()[1]}</span>
+                  </Show>
                 </span>
-              )}
-            </Show>
+              </Show>
+            </span>
+          </span>
+          <Show when={props.step.changes}>{(changes) => <DiffChanges changes={changes()} />}</Show>
+          <Show when={props.step.state === "error" && !audit().icon}>
+            <span data-slot="activity-step-error" aria-hidden="true">
+              <Icon name={getSemanticIcon("state.error")} size="small" />
+            </span>
+          </Show>
+          <Show when={(!props.quiet && props.step.state === "running") || props.step.state === "waiting-approval"}>
+            <ActivityState state={paused() ? "paused" : props.step.state} label={stateLabel()} />
+          </Show>
+        </button>
+        <Show when={evidence().length > 0}>
+          <div data-slot="activity-evidence">
+            <AttachmentGallery files={evidence()} serverUrl={props.serverUrl} compact="process" layout="rows" />
           </div>
-          <ActivityState state={props.step.state} label={stateLabel()} />
-          <Icon
-            name={open() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand")}
-            size="small"
-          />
-        </Collapsible.Trigger>
-        <Collapsible.Content>
-          <ToolResultBody
-            part={props.step.part}
-            serverUrl={props.serverUrl}
-            sessionId={props.step.part.sessionID}
-            messageId={props.step.part.messageID}
-            resultOnly
-            defaultOpen
-          />
-        </Collapsible.Content>
-      </Collapsible>
-    </li>
+        </Show>
+        <Show when={request() && data.respondToPermission}>
+          <div data-slot="activity-approval-actions">
+            <button type="button" disabled={responding()} onClick={() => void respond("once")}>
+              {_({ id: "activity.approval.allowOnce", message: "Allow once" })}
+            </button>
+            <button type="button" disabled={responding()} onClick={() => void respond("reject")}>
+              {_({ id: "activity.approval.reject", message: "Decline" })}
+            </button>
+            <Show when={responseError()}>{(error) => <span role="alert">{error()}</span>}</Show>
+          </div>
+        </Show>
+        <KobalteDialog open={open()} onOpenChange={setOpen}>
+          <Show when={open()}>
+            <KobalteDialog.Portal>
+              <Dialog title={label()} size="wide">
+                <ToolResultBody
+                  hasFeature={data.hasFeature}
+                  part={props.step.part}
+                  serverUrl={props.serverUrl}
+                  sessionId={props.step.part.sessionID}
+                  messageId={props.step.part.messageID}
+                  resultOnly
+                  defaultOpen
+                />
+              </Dialog>
+            </KobalteDialog.Portal>
+          </Show>
+        </KobalteDialog>
+      </li>
+    </Show>
   )
 }
 
@@ -286,7 +488,7 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
       <span data-slot="reasoning-summary-leading" aria-hidden="true">
         <Show
           when={props.item.state === "pending"}
-          fallback={<Icon name={getSemanticIcon("performance.trace")} size="small" />}
+          fallback={<Icon name={getSemanticIcon("session.reasoning")} size="small" />}
         >
           <Spinner />
         </Show>
@@ -296,7 +498,18 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
   )
 }
 
-export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: string }) {
+export function ActivityTrace(props: {
+  group: ActivityGroupItem
+  serverUrl: string
+  preferWorkBrief?: boolean
+  id?: string
+  visibleSteps?: ReadonlySet<string>
+  currentSteps?: ReadonlySet<string>
+  quiet?: boolean
+  onStepFocus?: (partID: string | undefined) => void
+  motion?: boolean
+  afterStep?: (partID: string) => JSX.Element
+}) {
   const emptyStepSnapshot = {
     keys: [] as string[],
     map: new Map<string, ActivityStepProjection>(),
@@ -313,12 +526,28 @@ export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: stri
 
   return (
     <div data-component="activity-trace">
-      <ol data-slot="activity-step-list">
+      <ol id={props.id} data-slot="activity-step-list">
         <For each={stepSnapshot().keys}>
           {(key) => {
             const step = () => stepSnapshot().map.get(key)
             return (
-              <Show when={step()}>{(current) => <ActivityStep step={current()} serverUrl={props.serverUrl} />}</Show>
+              <>
+                <Show when={step()}>
+                  {(current) => (
+                    <ActivityStep
+                      step={current()}
+                      serverUrl={props.serverUrl}
+                      preferWorkBrief={props.preferWorkBrief}
+                      hidden={props.visibleSteps !== undefined && !props.visibleSteps.has(key)}
+                      current={props.currentSteps?.has(key)}
+                      quiet={props.quiet}
+                      onFocus={props.onStepFocus}
+                      motion={props.motion}
+                    />
+                  )}
+                </Show>
+                {props.afterStep?.(key)}
+              </>
             )
           }}
         </For>
@@ -422,7 +651,7 @@ export function MinimalActivitySummary(props: { item: ActivitySummaryItem }) {
       aria-label={finalLabel()}
     >
       <span data-slot="minimal-activity-leading" aria-hidden="true">
-        <Icon name={getSemanticIcon("performance.trace")} size="small" />
+        <Icon name={getSemanticIcon("session.reasoning")} size="small" />
       </span>
       <span data-slot="minimal-activity-fact" aria-hidden="true">
         <AnimatedActivityCount value={props.item.total} identity={props.item.key} />
@@ -441,13 +670,6 @@ export function MinimalActivitySummary(props: { item: ActivitySummaryItem }) {
           </>
         )}
       </For>
-      <Show when={props.item.now?.text}>
-        {(now) => (
-          <span data-slot="minimal-activity-now" aria-hidden="true">
-            {now()}
-          </span>
-        )}
-      </Show>
     </div>
   )
 }

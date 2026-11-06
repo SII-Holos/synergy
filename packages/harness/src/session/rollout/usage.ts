@@ -1,0 +1,277 @@
+import { JsonValue } from "../../util/json-value"
+import z from "zod"
+
+export namespace RolloutUsage {
+  const Count = z.number().finite().int().nonnegative().safe().nullable()
+  export const Info = z
+    .object({
+      version: z.literal(1),
+      protocol: z.enum(["openai", "anthropic", "google", "unknown"]),
+      raw: JsonValue.nullable(),
+      input: z.object({ total: Count, uncached: Count, cacheRead: Count, cacheWrite: Count }),
+      output: z.object({ total: Count, reasoning: Count }),
+      cacheWrites: z.record(z.string(), Count),
+      units: z.array(
+        z
+          .object({
+            unit: z.enum(["audio_input_tokens", "audio_output_tokens", "audio_seconds", "characters"]),
+            quantity: z.number().finite().nonnegative().nullable(),
+          })
+          .strict(),
+      ),
+      billing: z.enum(["tokens", "units", "unknown"]),
+      serviceTier: z.string().optional(),
+      reported: z
+        .object({
+          amount: z.number().finite().nonnegative(),
+          currency: z.string().regex(/^[A-Z]{3}$/),
+          source: z.string(),
+        })
+        .strict()
+        .nullable(),
+      complete: z.boolean(),
+      issues: z.array(z.enum(["input_breakdown_mismatch", "reasoning_subset_mismatch", "total_mismatch"])).optional(),
+    })
+    .strict()
+  export type Info = z.infer<typeof Info>
+
+  function count(value: unknown): number | null {
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null
+  }
+  function object(value: unknown): Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
+  }
+  function sum(...values: Array<number | null>) {
+    return values.some((value) => value === null)
+      ? null
+      : count(values.reduce<number>((total, value) => total + value!, 0))
+  }
+  function difference(total: number | null, ...parts: Array<number | null>) {
+    const subtotal = sum(...parts)
+    return total === null || subtotal === null ? null : count(total - subtotal)
+  }
+
+  export function normalize(
+    protocol: Info["protocol"],
+    raw: z.infer<ReturnType<typeof z.json>> | null,
+    kind?: "chat" | "embedding" | "rerank" | "transcription" | "speech",
+    providerID?: string,
+  ): Info {
+    const usage = object(raw)
+    const result: Info = {
+      version: 1,
+      protocol,
+      raw,
+      input: { total: null, uncached: null, cacheRead: null, cacheWrite: null },
+      output: { total: null, reasoning: null },
+      cacheWrites: {},
+      units: [],
+      billing: protocol === "unknown" ? "unknown" : "tokens",
+      reported: null,
+      complete: false,
+    }
+    if (protocol === "openai") {
+      result.input.total = count(usage.input_tokens ?? usage.prompt_tokens)
+      result.input.cacheRead = count(
+        object(usage.input_tokens_details ?? usage.prompt_tokens_details).cached_tokens ??
+          usage.prompt_cache_hit_tokens,
+      )
+      result.input.cacheWrite = count(object(usage.prompt_tokens_details).cache_write_tokens) ?? 0
+      result.input.uncached =
+        count(usage.prompt_cache_miss_tokens) ??
+        difference(result.input.total, result.input.cacheRead, result.input.cacheWrite)
+      result.output.total = count(usage.output_tokens ?? usage.completion_tokens)
+      result.output.reasoning = count(
+        object(usage.output_tokens_details ?? usage.completion_tokens_details).reasoning_tokens,
+      )
+      // Provider contracts: https://developers.openai.com/api/reference/resources/embeddings
+      // https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create
+      if (kind === "embedding" || kind === "rerank") {
+        if (result.input.total !== null && count(usage.total_tokens) === result.input.total) {
+          result.input.uncached = result.input.total
+          result.input.cacheRead = 0
+          result.output = { total: 0, reasoning: 0 }
+        }
+      }
+      const audioInput = object(usage.input_token_details ?? usage.input_tokens_details ?? usage.prompt_tokens_details)
+      const audioOutput = object(usage.output_tokens_details ?? usage.completion_tokens_details)
+      if ("audio_tokens" in audioInput)
+        result.units.push({ unit: "audio_input_tokens", quantity: count(audioInput.audio_tokens) })
+      if ("audio_tokens" in audioOutput)
+        result.units.push({ unit: "audio_output_tokens", quantity: count(audioOutput.audio_tokens) })
+      if (kind === "transcription" && usage.type === "tokens") {
+        result.input.uncached = result.input.total
+        result.input.cacheRead = 0
+      }
+      if (usage.type === "duration") {
+        result.billing = "units"
+        result.units.push({
+          unit: "audio_seconds",
+          quantity:
+            typeof usage.seconds === "number" && Number.isFinite(usage.seconds) && usage.seconds >= 0
+              ? usage.seconds
+              : null,
+        })
+      }
+    }
+    // The account charge excludes the separately reported upstream cost; credits are USD-denominated.
+    // https://openrouter.ai/docs/cookbook/administration/usage-accounting
+    // https://openrouter.ai/docs/faq
+    if (providerID === "openrouter" && typeof usage.cost === "number" && Number.isFinite(usage.cost) && usage.cost >= 0)
+      result.reported = { amount: usage.cost, currency: "USD", source: "openrouter.usage.cost" }
+    if (protocol === "anthropic") {
+      result.input.uncached = count(usage.input_tokens)
+      result.input.cacheRead = count(usage.cache_read_input_tokens)
+      result.input.cacheWrite = count(usage.cache_creation_input_tokens)
+      result.input.total = sum(result.input.uncached, result.input.cacheRead, result.input.cacheWrite)
+      result.output.total = count(usage.output_tokens)
+      // Cache durations are different billing categories, not additive token usage.
+      // https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+      const creation = object(usage.cache_creation)
+      for (const category of ["ephemeral_5m", "ephemeral_1h"] as const) {
+        if (`${category}_input_tokens` in creation)
+          result.cacheWrites[category] = count(creation[`${category}_input_tokens`])
+      }
+    }
+    if (protocol === "google") {
+      result.input.total = count(usage.promptTokenCount)
+      result.input.cacheRead = count(usage.cachedContentTokenCount)
+      result.input.cacheWrite = 0
+      result.input.uncached = difference(result.input.total, result.input.cacheRead)
+      result.output.reasoning = count(usage.thoughtsTokenCount)
+      // The reported aggregate includes prompt, candidate output and thinking.
+      // https://ai.google.dev/api/generate-content#UsageMetadata
+      result.output.total =
+        sum(count(usage.candidatesTokenCount), result.output.reasoning) ??
+        difference(count(usage.totalTokenCount), result.input.total)
+    }
+    return validate(result, count(usage.total_tokens ?? usage.totalTokenCount))
+  }
+
+  // Provenance: https://github.com/deepseek-ai/deepseek-harness/blob/21638c56315ae6a2b552d6091945d3144c9af32e/packages/llm/token-meter/src/turn-usage.ts
+  // Local adaptation: retain independent provider totals and mark contradictory meters unknown; no upstream code is copied.
+  function validate(result: Info, reportedTotal: number | null): Info {
+    const issues: NonNullable<Info["issues"]> = []
+    const parts = [result.input.uncached, result.input.cacheRead, result.input.cacheWrite]
+    const totalInput = sum(...parts)
+    if (
+      result.input.total !== null &&
+      ((totalInput !== null && totalInput !== result.input.total) ||
+        parts.some((part) => part !== null && part > result.input.total!))
+    ) {
+      issues.push("input_breakdown_mismatch")
+      result.input.uncached = null
+      result.input.cacheRead = null
+      result.input.cacheWrite = null
+    }
+    if (
+      result.output.total !== null &&
+      result.output.reasoning !== null &&
+      result.output.reasoning > result.output.total
+    ) {
+      result.output.reasoning = null
+      issues.push("reasoning_subset_mismatch")
+    }
+    if (
+      reportedTotal !== null &&
+      result.input.total !== null &&
+      result.output.total !== null &&
+      reportedTotal !== result.input.total + result.output.total
+    ) {
+      result.input = { total: null, uncached: null, cacheRead: null, cacheWrite: null }
+      result.output = { total: null, reasoning: null }
+      issues.push("total_mismatch")
+    }
+    if (issues.length) result.issues = issues
+    result.complete =
+      result.billing === "units"
+        ? result.units.every((unit) => unit.quantity !== null)
+        : result.input.total !== null &&
+          result.input.uncached !== null &&
+          result.input.cacheRead !== null &&
+          result.input.cacheWrite !== null &&
+          result.output.total !== null
+    return result
+  }
+
+  /**
+   * Normalize an AI SDK `LanguageModelUsage` payload.
+   *
+   * Transport recording is best-effort: a request can reach the provider
+   * through a path that bypasses the recording fetch while the SDK result still
+   * carries usage, which `finishCall` persists on the call record. Those field
+   * names are camelCase, unlike the provider wire format `normalize` parses, so
+   * they need their own mapping.
+   */
+  export function normalizeSdk(
+    raw: unknown,
+    sdk = "@ai-sdk/openai",
+    kind?: "chat" | "embedding" | "rerank" | "transcription" | "speech",
+  ): Info | null {
+    const usage = object(raw)
+    if (kind === "embedding" && count(usage.tokens) !== null)
+      return normalize("openai", { prompt_tokens: count(usage.tokens), total_tokens: count(usage.tokens) }, kind)
+    const input = count(usage.inputTokens)
+    const google = sdk === "@ai-sdk/google" || sdk === "@ai-sdk/google-vertex"
+    if ("inputTokenDetails" in usage || "outputTokenDetails" in usage) {
+      const inputDetails = object(usage.inputTokenDetails)
+      const outputDetails = object(usage.outputTokenDetails)
+      const output = count(usage.outputTokens)
+      if (input === null && output === null) return null
+      const cacheRead = count(inputDetails.cacheReadTokens)
+      const cacheWrite = count(inputDetails.cacheWriteTokens)
+      return validate(
+        {
+          version: 1,
+          protocol: google ? "google" : sdk.includes("anthropic") ? "anthropic" : "openai",
+          raw: (raw ?? null) as Info["raw"],
+          input: {
+            total: input,
+            uncached: count(inputDetails.noCacheTokens) ?? difference(input, cacheRead, cacheWrite),
+            cacheRead,
+            cacheWrite,
+          },
+          output: { total: output, reasoning: count(outputDetails.reasoningTokens) },
+          cacheWrites: {},
+          units: [],
+          billing: "tokens",
+          reported: null,
+          complete: false,
+        },
+        count(usage.totalTokens),
+      )
+    }
+    const reasoning = count(usage.reasoningTokens)
+    // The locked Google SDK maps candidatesTokenCount and thoughtsTokenCount separately.
+    const output = google
+      ? (sum(count(usage.outputTokens), reasoning) ?? difference(count(usage.totalTokens), input))
+      : count(usage.outputTokens)
+    if (input === null && output === null) return null
+    const exclusiveInput =
+      sdk === "@ai-sdk/anthropic" || sdk === "@ai-sdk/google-vertex/anthropic" || sdk === "@ai-sdk/amazon-bedrock"
+    // Anthropic and Bedrock SDK input excludes cache reads and writes; LanguageModelUsage omits writes.
+    const cacheRead = count(usage.cachedInputTokens)
+    const result: Info = {
+      version: 1,
+      protocol: google
+        ? "google"
+        : exclusiveInput
+          ? sdk === "@ai-sdk/amazon-bedrock"
+            ? "unknown"
+            : "anthropic"
+          : "openai",
+      raw: (raw ?? null) as Info["raw"],
+      input: { total: exclusiveInput ? null : input, uncached: null, cacheRead, cacheWrite: exclusiveInput ? null : 0 },
+      output: { total: output, reasoning },
+      cacheWrites: {},
+      units: [],
+      billing: "tokens",
+      reported: null,
+      complete: false,
+    }
+    result.input.uncached = exclusiveInput ? input : difference(input, cacheRead, 0)
+    return validate(result, count(usage.totalTokens))
+  }
+}

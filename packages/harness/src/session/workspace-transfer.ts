@@ -1,0 +1,199 @@
+import type { MessageV2 } from "./message-v2"
+import type { SessionExport } from "./session-export"
+import type { SnapshotSchema } from "./snapshot-schema"
+import { Workspace } from "./workspace-schema"
+import { ScopeTransfer } from "../scope/transfer"
+
+export namespace WorkspaceTransfer {
+  export type Reference = { id: string; scopeID: string; legacy?: Workspace }
+  export type Resolve = (reference: Reference) => string
+
+  function object(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+  }
+
+  export function selection(
+    value: Record<string, unknown>,
+    scopeID: string,
+    resolve: Resolve,
+    relocate?: ScopeTransfer.Relocate,
+  ) {
+    const sourceScope = object(value.scope)?.id
+    if (typeof sourceScope === "string" && sourceScope !== scopeID)
+      throw new Error("Imported Workspace owner belongs to another Scope")
+    const { workspace, ...result } = value
+    if (relocate && result.scope) result.scope = ScopeTransfer.paths(result.scope, relocate)
+    if (typeof result.workspaceID === "string")
+      return { ...result, workspaceID: resolve({ id: result.workspaceID, scopeID }) }
+    if (result.workspaceID === null || workspace === null) return { ...result, workspaceID: null }
+    const directory = object(object(value.scope)?.local)?.directory
+    const legacy =
+      workspace !== undefined
+        ? Workspace.parse(workspace)
+        : typeof directory === "string"
+          ? { type: "main", path: directory, scopeID }
+          : undefined
+    if (!legacy) return { ...result, workspaceID: null }
+    if (legacy.scopeID !== scopeID) throw new Error("Imported Workspace belongs to another Scope")
+    return {
+      ...result,
+      workspaceID: resolve({ id: legacy.id ?? `legacy:${JSON.stringify([scopeID, legacy.path])}`, scopeID, legacy }),
+    }
+  }
+
+  export function record(key: string[], value: unknown, resolve: Resolve, relocate?: ScopeTransfer.Relocate): unknown {
+    if (key[0] !== "sessions") return value
+    const scopeID = key[1]!
+    const source = (value: unknown) => {
+      const record = object(value)
+      const workspace = object(record?.workspace)
+      return record && typeof workspace?.id === "string"
+        ? { ...record, workspace: { ...workspace, id: resolve({ id: workspace.id, scopeID }) } }
+        : value
+    }
+    const summary = (value: Record<string, unknown>) => {
+      const summary = object(value.summary)
+      return summary
+        ? {
+            ...value,
+            summary: {
+              ...summary,
+              ...(Array.isArray(summary.diffs) ? { diffs: summary.diffs.map(source) } : {}),
+              ...(Array.isArray(summary.diffIssues) ? { diffIssues: summary.diffIssues.map(source) } : {}),
+            },
+          }
+        : value
+    }
+    let record = object(value)
+    if (key.length === 4 && key[3] === "info" && record) return summary(selection(record, scopeID, resolve, relocate))
+    if (key.length === 4 && key[3] === "summary" && Array.isArray(value)) return value.map(source)
+    if (key.length === 4 && key[3] === "summary_cursor" && record && Array.isArray(record.ranges))
+      return { ...record, ranges: record.ranges.map(source) }
+    if (key[3] !== "messages" || !record) return value
+    const context = object(record.referenceContext)
+    const contextWorkspace = object(context?.workspace)
+    if (context?.state === "bound" && typeof contextWorkspace?.id === "string")
+      record = {
+        ...record,
+        referenceContext: {
+          ...context,
+          workspace: { ...contextWorkspace, id: resolve({ id: contextWorkspace.id, scopeID }) },
+        },
+      }
+    if (key.length === 6 && key[5] === "info" && record.role === "user") return summary(record)
+    const attachment = (value: unknown) => {
+      const item = object(value)
+      return item?.source ? { ...item, source: source(item.source) } : value
+    }
+    if (key.length === 7 && key[5] === "parts" && record.type === "attachment") return attachment(record)
+    const state = object(record.state)
+    if (record.type === "tool" && Array.isArray(state?.attachments))
+      return { ...record, state: { ...state, attachments: state.attachments.map(attachment) } }
+    if (
+      key.length === 7 &&
+      key[5] === "parts" &&
+      ["patch", "snapshot", "step-start", "step-finish"].includes(String(record.type))
+    )
+      return source(record)
+    return record
+  }
+
+  function contextSource(info: MessageV2.Info) {
+    return info.referenceContext?.state === "bound" ? info.referenceContext.workspace : undefined
+  }
+
+  function partSource(part: MessageV2.Part) {
+    if (part.type === "patch" || part.type === "snapshot" || part.type === "step-start" || part.type === "step-finish")
+      return part.workspace
+  }
+
+  function attachments(part: MessageV2.Part) {
+    return part.type === "attachment"
+      ? [part]
+      : part.type === "tool" && part.state.status === "completed"
+        ? (part.state.attachments ?? [])
+        : []
+  }
+
+  export function sources(data: SessionExport.SessionData[]): SnapshotSchema.Workspace[] {
+    return data.flatMap((session) => [
+      ...session.diffs.flatMap((diff) => (diff.workspace ? [diff.workspace] : [])),
+      ...session.messages.flatMap((message) => [
+        ...(contextSource(message.info) ? [contextSource(message.info)!] : []),
+        ...message.parts
+          .flatMap(attachments)
+          .flatMap((part) =>
+            part.source && "workspace" in part.source && part.source.workspace ? [part.source.workspace] : [],
+          ),
+        ...message.parts.flatMap((part) => {
+          const source = partSource(part)
+          return source ? [source] : []
+        }),
+        ...(message.info.role === "user"
+          ? (message.info.summary?.diffs.flatMap((diff) => (diff.workspace ? [diff.workspace] : [])) ?? [])
+          : []),
+      ]),
+    ])
+  }
+
+  export function references(data: SessionExport.SessionData[]) {
+    return new Set([
+      ...data.flatMap((session) => (session.info.workspaceID ? [session.info.workspaceID] : [])),
+      ...sources(data).map((source) => source.id),
+    ])
+  }
+
+  function remap(source: SnapshotSchema.Workspace, ids: ReadonlyMap<string, string>) {
+    const id = ids.get(source.id)
+    if (!id) throw new Error("Historical Workspace was not imported")
+    return { ...source, id }
+  }
+
+  export function diff(diff: SnapshotSchema.FileDiff, ids: ReadonlyMap<string, string>): SnapshotSchema.FileDiff {
+    return diff.workspace ? { ...diff, workspace: remap(diff.workspace, ids) } : diff
+  }
+
+  export function message(message: MessageV2.WithParts, ids: ReadonlyMap<string, string>): MessageV2.WithParts {
+    const info: MessageV2.Info = { ...message.info }
+    if (info.referenceContext?.state === "bound")
+      info.referenceContext = { ...info.referenceContext, workspace: remap(info.referenceContext.workspace, ids) }
+    if (info.role === "user" && info.summary)
+      info.summary = {
+        ...info.summary,
+        diffs: info.summary.diffs.map((value) => diff(value, ids)),
+        diffIssues: info.summary.diffIssues?.map((issue) =>
+          issue.workspace ? { ...issue, workspace: remap(issue.workspace, ids) } : issue,
+        ),
+      }
+    return {
+      info,
+      parts: message.parts.map((part) => {
+        if (part.type === "tool" && part.state.status === "completed" && part.state.attachments)
+          return {
+            ...part,
+            state: {
+              ...part.state,
+              attachments: part.state.attachments.map((attachment) =>
+                attachment.source && "workspace" in attachment.source && attachment.source.workspace
+                  ? {
+                      ...attachment,
+                      source: { ...attachment.source, workspace: remap(attachment.source.workspace, ids) },
+                    }
+                  : attachment,
+              ),
+            },
+          }
+        if (part.type === "attachment" && part.source && "workspace" in part.source && part.source.workspace)
+          return { ...part, source: { ...part.source, workspace: remap(part.source.workspace, ids) } }
+        if (
+          part.type !== "patch" &&
+          part.type !== "snapshot" &&
+          part.type !== "step-start" &&
+          part.type !== "step-finish"
+        )
+          return part
+        return part.workspace ? { ...part, workspace: remap(part.workspace, ids) } : part
+      }),
+    }
+  }
+}

@@ -4,13 +4,13 @@ Synergy has one frontend color contract shared by the Web app, reusable UI compo
 
 ## Canonical Ownership
 
-| Concern                                                        | Canonical source                                                                            |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Public token names, seed contract, resolver, schema, and types | `packages/plugin/src/theme/` and `@ericsanchezok/synergy-plugin/theme`                      |
-| Built-in Synergy seed and override values                      | `packages/ui/src/theme/themes/synergy.json`                                                 |
-| Runtime selection and application                              | `packages/ui/src/theme/context.tsx` and `application.ts`                                    |
-| Plugin theme registration                                      | `packages/ui/src/theme/plugin-theme-registry.ts` and `packages/app/src/plugin/ui-assets.ts` |
-| Web/Desktop shell snapshot                                     | `packages/ui/src/theme/shell-skin.ts` and `packages/desktop/src/theme.ts`                   |
+| Concern                                                        | Canonical source                                                                        |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Public token names, seed contract, resolver, schema, and types | `packages/plugin/src/theme/` and `@ericsanchezok/synergy-plugin/theme`                  |
+| Built-in Synergy seed and override values                      | `packages/ui/src/theme/themes/synergy.json`                                             |
+| Runtime selection and application                              | `packages/ui/src/theme/context.tsx` and `application.ts`                                |
+| Plugin theme registration                                      | `packages/ui/src/theme/plugin-theme-registry.ts` and `apps/web/src/plugin/ui-assets.ts` |
+| Web/Desktop shell snapshot                                     | `packages/ui/src/theme/shell-skin.ts` and `apps/desktop/src/theme.ts`                   |
 
 The UI package keeps compatibility re-exports for the public contract. The generated static CSS, Tailwind mappings, JSON Schema, Web boot fallback, and Desktop fallback skin are outputs. Never edit them by hand. Regenerate them with:
 
@@ -33,6 +33,22 @@ Use the semantic meaning of a color, not its hue. Product code should use classe
 - Text/background and status foreground/surface pairs must meet WCAG AA contrast in both modes.
 
 Literal colors belong only at the theme-authoring boundary, in color-generation math, or in genuinely user/external-authored content. A new product color outside those boundaries is a theme-contract change and needs a semantic token.
+
+### Default workbench surfaces
+
+The default neutral recipe belongs to `themes/synergy.json`, including navigation (`background-weak`), canvas (`background-stronger`), input (`input-base`) and popup (`surface-raised-stronger-non-alpha`). Input and raised content may share a color; do not add a nested surface step merely to make them different. Necessary captions use a readable text role without reducing the enclosing opacity. Verify actual text/surface pairs after workbench and portal overrides; changing a theme token alone does not prove the rendered result. The shared-column, input-anchor and interaction rules live in the [Web product contract](../../apps/web/PRODUCT.md).
+
+### Full Access selector foreground
+
+`text-permission-full-access` is the public foreground role for the Full Access permission selector. Its consumer class is `text-text-permission-full-access`, shared by the trigger icon, trigger short label and menu icons. The default Synergy skin overrides it in `packages/ui/src/theme/themes/synergy.json` with light `#C4481C` and dark `#FF8A50`; it does not recolor general warning roles.
+
+Without an override, every theme resolves this role to `var(--text-on-warning-base)`, including existing input themes and seed-only skins. Existing Theme JSON needs no migration. An explicit override of the new role requires a host and Plugin Kit version that recognizes the token: versions whose canonical token set omits it reject that override as unknown. The role adds no stricter global contrast gates; existing required-pair validation remains unchanged, and actual selector contrast still needs rendered verification. See the [decision record](../decisions/implemented/architecture/2026-10-04-full-access-foreground.md) for the alternatives and trade-offs.
+
+The TypeScript output contract is additive but exhaustive consumers need a source update: `ResolvedTheme` and `Record<ThemeTokenName, …>` now require this key, and exhaustive switches must handle the new union member. Prefer constructing complete output with `resolveTheme()` or `resolveThemeVariant()`. Handwritten resolved maps can add `"text-permission-full-access": "var(--text-on-warning-base)"` to preserve their previous behavior.
+
+### Decorative ribbon colors
+
+The decorative SII ribbon roles are `brand-ribbon-start`, `brand-ribbon-middle` and `brand-ribbon-end`. Synergy overrides them with its green, cyan and violet brand colors; seed-only themes resolve them from adjacent primary tones. They are not success or activity status colors. The [ribbon decision](../decisions/implemented/feature/2026-10-23-sii-ribbon-signature.md) limits their product uses to completion signatures and welcome motifs. Existing serialized themes need no migration, while exhaustive resolved-token maps must include the three added keys.
 
 ### Imperative renderers
 
@@ -92,7 +108,7 @@ Plugin Kit `build`, `validate`, and `dev` use this exact parser for both source 
 
 Color scheme and skin identity are separate. `system`, `light`, and `dark` choose the effective variant; the selected namespaced theme ID chooses the resolved colors. The validated `synergy-skin-cache-v1` Web snapshot stores the raw Theme JSON plus flattened light/dark shell colors. The preloader reads only named shell fields after hex validation, while `ThemeProvider` reparses the raw theme before using it.
 
-Desktop persists `DesktopSkinStateV2` with the source, theme ID, and both shell variants. BrowserWindow background, startup overlay, diagnostic page, and temporary window controls use the persisted effective variant before the Web renderer loads. Source-only legacy state migrates to V2 with the generated Synergy fallback. Theme application sends a strict full-skin IPC update; OS appearance changes select a variant without replacing the skin.
+Desktop persists `DesktopSkinStateV2` with the source, theme ID, and both shell variants. Saves serialize per destination in invocation order and replace the validated file atomically; a failed save rejects its caller without blocking later updates. BrowserWindow background, startup overlay, diagnostic page, and temporary window controls use the persisted effective variant before the Web renderer loads. Source-only legacy state migrates to V2 with the generated Synergy fallback. Theme application sends a strict full-skin IPC update; OS appearance changes select a variant without replacing the skin.
 
 ## Creating a New Selectable Theme
 
@@ -123,7 +139,7 @@ synergy-plugin validate
 synergy-plugin pack
 ```
 
-Install or refresh the local project with `synergy plugin add file:///absolute/path/to/ocean-theme`, then switch to it in Appearance. See [Plugin UI contributions](../plugins/ui-contributions.md#themes-and-icons) for the current contribution contract.
+Install or refresh the local project with `synergy plugin add file:///absolute/path/to/ocean-theme`, then switch to it in Appearance. See [Plugin UI contributions](../plugins/ui-contributions.md#themes-skins-and-styles) for the current contribution contract.
 
 ### Modifying a built-in theme
 
@@ -147,19 +163,19 @@ Run the focused contract checks first:
 
 ```bash
 bun test --cwd packages/ui test/theme.test.ts test/theme-application.test.ts test/theme-generation.test.ts
-bun test --cwd packages/app test/testing/color-token-contract.test.ts
-bun test --cwd packages/app test/components/note/theme-adapters.test.ts test/components/visualization/use-chart-theme.test.ts
-bun test --cwd packages/desktop test/theme.test.ts test/startup-page.test.ts
+bun test --cwd apps/web test/testing/color-token-contract.test.ts
+bun test --cwd apps/web test/components/note/theme-adapters.test.ts test/components/visualization/use-chart-theme.test.ts
+bun test --cwd apps/desktop test/theme.test.ts test/startup-page.test.ts
 bun test --cwd packages/plugin-kit test/create.test.ts test/build.test.ts
 bun run --cwd packages/ui typecheck
-bun run --cwd packages/app typecheck
+bun run --cwd apps/web typecheck
 ```
 
 For a platform change, also run:
 
 ```bash
 bun run --cwd packages/ui test
-bun run --cwd packages/app test
+bun run --cwd apps/web test
 bun dev build app
 bun run deadcode
 bun run quality:quick

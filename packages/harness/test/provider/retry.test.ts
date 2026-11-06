@@ -1,0 +1,378 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+import { afterEach, expect, spyOn, test } from "bun:test"
+import type { LanguageModelV2, LanguageModelV2StreamPart } from "@ai-sdk/provider"
+import { APICallError, RetryError } from "ai"
+import { Provider } from "../../src/provider/provider"
+import { normalizeProviderError, providerRetryable } from "../../src/provider/retry"
+import { LLM } from "../../src/session/llm"
+import { RolloutRecordingError } from "../../src/session/rollout/error"
+import { SessionProcessor } from "../../src/session/processor"
+import { MessageV2 } from "../../src/session/message-v2"
+import { SessionRetry } from "../../src/session/retry"
+import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
+import { InvalidResponseDataError } from "@ai-sdk/provider"
+
+const model: Provider.Model = {
+  id: "test",
+  providerID: "test",
+  name: "Test",
+  family: "test",
+  api: { id: "test", url: "https://provider.invalid", npm: "@ai-sdk/openai-compatible" },
+  capabilities: {
+    temperature: false,
+    reasoning: false,
+    attachment: false,
+    toolcall: true,
+    input: { text: true, audio: false, image: false, video: false, pdf: false },
+    output: { text: true, audio: false, image: false, video: false, pdf: false },
+    interleaved: false,
+  },
+  cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+  limit: { context: 32000, output: 4096 },
+  status: "active",
+  options: {},
+  headers: {},
+  release_date: "2026-01-01",
+}
+const originalLanguage = Provider.getLanguage
+
+test("a truncated SDK stream remains retryable through worker serialization", () => {
+  const source = new InvalidResponseDataError({
+    data: undefined,
+    message: "Response stream ended without a finish reason.",
+  })
+  for (const error of [source, AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(source))]) {
+    expect(providerRetryable(error)).toBe(true)
+    const projected = MessageV2.fromError(error, { providerID: "fixture" })
+    expect(projected).toMatchObject({ name: "APIError", data: { isRetryable: true } })
+    expect(SessionRetry.retryable(projected)?.maxAttempts).toBe(10)
+  }
+  expect(
+    providerRetryable(new InvalidResponseDataError({ data: undefined, message: "Invalid content" })),
+  ).toBeUndefined()
+  expect(providerRetryable(new Error(source.message))).toBeUndefined()
+  expect(providerRetryable(Object.assign(source, { code: "invalid_prompt" }))).toBe(false)
+})
+
+test.each(["server_is_overloaded", "server_overloaded", "service_unavailable_error", "slow_down"])(
+  "classifies the Responses transient code %s",
+  (code) => {
+    for (const error of [
+      { code, message: "temporarily unavailable" },
+      { type: "error", error: { code, message: "temporarily unavailable" } },
+      new Error(JSON.stringify({ type: "response.failed", response: { error: { code } } })),
+    ]) {
+      expect(providerRetryable(error)).toBe(true)
+    }
+  },
+)
+
+test.each([
+  "Our servers are currently overloaded. Please try again later.",
+  "Selected model is at capacity. Please try a different model.",
+])("recognizes the message-only subscription failure: %s", (message) => {
+  expect(providerRetryable(new Error(message))).toBe(true)
+  expect(providerRetryable(`Error: ${message}`)).toBe(true)
+  expect(providerRetryable(new Error(`Unrecognized failure: ${message}`))).toBeUndefined()
+  expect(providerRetryable(Object.assign(new Error(message), { statusCode: 401 }))).toBe(false)
+})
+
+test.each([
+  "usage_limit_reached",
+  "usage_not_included",
+  "credit_balance_exhausted",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
+  "context_length_exceeded",
+  "invalid_prompt",
+  "cyber_policy",
+  "bio_policy",
+  "misalignment_policy_violation",
+])("keeps %s terminal despite HTTP 429, a transient type and retry hints", (code) => {
+  const error = new APICallError({
+    url: "https://provider.invalid",
+    requestBodyValues: {},
+    message: "Our servers are currently overloaded. Please try again later.",
+    statusCode: 429,
+    responseHeaders: { "retry-after": "1" },
+    responseBody: JSON.stringify({ error: { code, type: "server_error" } }),
+    isRetryable: true,
+  })
+  expect(providerRetryable(error)).toBe(false)
+})
+
+afterEach(
+  runtime.bind(() => {
+    Provider.getLanguage = originalLanguage
+  }),
+)
+
+async function run(doStream: LanguageModelV2["doStream"], retries: number) {
+  const language: LanguageModelV2 = {
+    specificationVersion: "v2",
+    provider: "test",
+    modelId: "test",
+    supportedUrls: {},
+    async doGenerate() {
+      throw new Error("unexpected generation")
+    },
+    doStream,
+  }
+  spyOn(Provider, "getLanguage").mockResolvedValue(language)
+  const result = await LLM.stream({
+    user: { id: "msg_test" },
+    sessionID: "ses_test",
+    agent: { name: "synergy" },
+    model,
+    system: [],
+    tools: {},
+    abort: new AbortController().signal,
+    retries,
+    messages: [{ role: "user", content: "test" }],
+    prepared: {
+      system: [],
+      baseSystemLength: 0,
+      params: { options: {} },
+      provider: { options: {}, timeouts: { ttfbMs: 1000, idleMs: false, wallMs: false } },
+    },
+  })
+  const owned = LLM.takeFullStream(result)
+  const events = []
+  try {
+    for await (const event of owned.stream) events.push(event)
+  } finally {
+    await owned.dispose()
+  }
+  return events
+}
+
+function success() {
+  return {
+    stream: new ReadableStream<LanguageModelV2StreamPart>({
+      start(controller) {
+        controller.enqueue({ type: "text-start", id: "text" })
+        controller.enqueue({ type: "text-delta", id: "text", delta: "recovered" })
+        controller.enqueue({ type: "text-end", id: "text" })
+        controller.enqueue({
+          type: "finish",
+          finishReason: "stop",
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        })
+        controller.close()
+      },
+    }),
+  }
+}
+
+test(
+  "the SDK does not retry a provider spending-limit refusal",
+  runtime.bind(async () => {
+    for (const responseBody of [
+      JSON.stringify({ error: { code: "personal-team-blocked:spending-limit" } }),
+      "personal-team-blocked:spending-limit",
+    ]) {
+      let calls = 0
+      await run(async () => {
+        calls++
+        throw new APICallError({
+          message: "Request refused",
+          url: "https://provider.invalid",
+          requestBodyValues: {},
+          responseBody,
+          statusCode: 429,
+          isRetryable: true,
+        })
+      }, 1)
+      expect(calls).toBe(1)
+    }
+  }),
+)
+
+test.each(["ETIMEOUT", "ENOTFOUND"])(
+  "the real SDK retries raw DNS %s failures inside the caller's retry budget",
+  runtime.bind(async (code) => {
+    let calls = 0
+    const events = await run(async () => {
+      if (++calls === 1)
+        throw Object.assign(new TypeError(`getaddrinfo ${code} provider.invalid`), { code, syscall: "getaddrinfo" })
+      return success()
+    }, 1)
+    expect(calls).toBe(2)
+    expect(events.some((event) => event.type === "text-delta" && event.text === "recovered")).toBe(true)
+  }),
+  10000,
+)
+
+test.each(["ETIMEOUT", "ENOTFOUND"])(
+  "normal session %s calls leave retry ownership with the processor",
+  runtime.bind(async (code) => {
+    let calls = 0
+    const events = await run(async () => {
+      calls++
+      throw Object.assign(new TypeError(`getaddrinfo ${code} provider.invalid`), { code, syscall: "getaddrinfo" })
+    }, 0)
+    expect(calls).toBe(1)
+    expect(events.some((event) => event.type === "error")).toBe(true)
+  }),
+)
+
+test(
+  "the SDK does not retry a certificate failure hidden by fetch failed",
+  runtime.bind(async () => {
+    let calls = 0
+    await run(async () => {
+      calls++
+      throw new TypeError("fetch failed", { cause: Object.assign(new Error("expired"), { code: "CERT_HAS_EXPIRED" }) })
+    }, 2)
+    expect(calls).toBe(1)
+  }),
+)
+
+test(
+  "stream failures after content are left to the owning session",
+  runtime.bind(async () => {
+    let calls = 0
+    const events = await run(async () => {
+      calls++
+      return {
+        stream: new ReadableStream<LanguageModelV2StreamPart>({
+          start(controller) {
+            controller.enqueue({ type: "text-start", id: "text" })
+            controller.enqueue({ type: "text-delta", id: "text", delta: "partial" })
+            controller.enqueue({
+              type: "error",
+              error: Object.assign(new Error("disconnected"), { code: "ECONNRESET" }),
+            })
+            controller.close()
+          },
+        }),
+      }
+    }, 2)
+    expect(calls).toBe(1)
+    expect(events.some((event) => event.type === "error")).toBe(true)
+  }),
+)
+
+test(
+  "recording failures retain their identity despite transient causes",
+  runtime.bind(() => {
+    const error = new RolloutRecordingError(
+      { message: "recording failed" },
+      { cause: Object.assign(new Error("lost"), { code: "ECONNRESET" }) },
+    )
+    expect(normalizeProviderError(error)).toBe(error)
+    expect(providerRetryable(error)).toBe(false)
+  }),
+)
+
+test(
+  "exhausted billing quota is terminal even when represented by HTTP 429",
+  runtime.bind(() => {
+    const error = new APICallError({
+      message: "quota",
+      url: "https://provider.invalid",
+      requestBodyValues: {},
+      statusCode: 429,
+      responseBody: JSON.stringify({ error: { code: "insufficient_quota" } }),
+    })
+    expect(providerRetryable(error)).toBe(false)
+    expect(normalizeProviderError(error)).toMatchObject({ message: "quota", isRetryable: false, statusCode: 429 })
+  }),
+)
+
+test(
+  "an exhausted SDK retry budget does not become another outer retry budget",
+  runtime.bind(() => {
+    const error = new RetryError({
+      message: "Failed after 2 attempts",
+      reason: "maxRetriesExceeded",
+      errors: [Object.assign(new Error("connection lost"), { code: "ECONNRESET" })],
+    })
+    expect(providerRetryable(error)).toBe(false)
+  }),
+)
+
+test(
+  "normalization preserves HTTP diagnostics from a plain transport error",
+  runtime.bind(() => {
+    const error = Object.assign(new Error("unavailable"), {
+      statusCode: 503,
+      responseHeaders: { "retry-after": "3" },
+      responseBody: "upstream unavailable",
+    })
+    expect(normalizeProviderError(error)).toMatchObject({
+      message: "unavailable",
+      statusCode: 503,
+      responseHeaders: { "retry-after": "3" },
+      responseBody: "upstream unavailable",
+      isRetryable: true,
+    })
+  }),
+)
+
+test(
+  "explicit provider KV capacity failures retain their transient classification",
+  runtime.bind(() => {
+    expect(providerRetryable({ error: { message: "no_kv_space" } })).toBe(true)
+    expect(providerRetryable({ code: "no_kv_space" })).toBe(true)
+    expect(providerRetryable({ error: { message: "unknown server detail" } })).toBeUndefined()
+  }),
+)
+
+test(
+  "a TTFB watchdog abort stays retryable after signal composition",
+  runtime.bind(async () => {
+    const session = new AbortController()
+    const ttfb = new AbortController()
+    const combined = AbortSignal.any([session.signal, ttfb.signal])
+
+    ttfb.abort(new DOMException("TTFB timeout: no response received within 15000ms", "TimeoutError"))
+
+    expect(combined.reason).toMatchObject({ name: "TimeoutError" })
+    // The session itself was never cancelled, so this must not read as a user abort.
+    expect(SessionProcessor.isFastAbort(session.signal, combined.reason)).toBe(false)
+    expect(providerRetryable(combined.reason)).toBe(true)
+
+    const error = MessageV2.fromError(combined.reason, { providerID: "test", modelID: "test" })
+    expect(error).toMatchObject({ name: "APIError", data: { isRetryable: true } })
+    expect(SessionRetry.retryable(error)).toBeDefined()
+  }),
+)
+
+test(
+  "a wall-clock watchdog abort stays retryable after signal composition",
+  runtime.bind(async () => {
+    const session = new AbortController()
+    // AbortSignal.timeout cannot be cancelled, so race it instead of waiting on a
+    // fixed sleep: the wall watchdog is what the request path installs.
+    const wall = AbortSignal.timeout(20)
+    const combined = AbortSignal.any([session.signal, wall])
+
+    await new Promise<void>((resolve) => combined.addEventListener("abort", () => resolve(), { once: true }))
+
+    expect(combined.reason).toMatchObject({ name: "TimeoutError" })
+    expect(SessionProcessor.isFastAbort(session.signal, combined.reason)).toBe(false)
+    expect(providerRetryable(combined.reason)).toBe(true)
+
+    const error = MessageV2.fromError(combined.reason, { providerID: "test", modelID: "test" })
+    expect(error).toMatchObject({ name: "APIError", data: { isRetryable: true } })
+    expect(SessionRetry.retryable(error)).toBeDefined()
+  }),
+)
+
+test(
+  "a genuine user cancellation is still suppressed as a fast abort",
+  runtime.bind(async () => {
+    const session = new AbortController()
+    const ttfb = new AbortController()
+    const combined = AbortSignal.any([session.signal, ttfb.signal])
+
+    session.abort(new DOMException("Aborted", "AbortError"))
+
+    expect(SessionProcessor.isFastAbort(session.signal, combined.reason)).toBe(true)
+  }),
+)
+
+afterRuntimeTests(() => runtime.close())

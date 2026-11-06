@@ -28,4 +28,4 @@ Complete the lattice vertical slice (S5) by extending the H2 prompt registry int
 - L1→product drops to 45 (`session→lattice` and `tool→lattice` removed; `scope→lattice` remains until S9). Product pairs 43→42; R3 violations 0; total analyzer warnings 190→166.
 - The prompt registry is now the complete workflow lifecycle surface: policy (H1), prompts/wrappers/control-sources, init/finalize/onModelCall, enable/disable, recovery (`isActive`), and conflict classification. Core `session/` no longer contains any workflow-domain behavior beyond plan (the one core-owned kind).
 - Without lattice registration, lattice sessions pass through unwrapped, `enableLattice` throws a load-the-manifest error, and recovery treats the workflow as inactive — the correct loud/quiet degradation split.
-- Registry-asserting tests import `src/product-registration`; the S5a golden and the lattice tool tests exercise the registry-mediated path.
+- Registry-asserting tests import `src/registration`; the S5a golden and the lattice tool tests exercise the registry-mediated path.

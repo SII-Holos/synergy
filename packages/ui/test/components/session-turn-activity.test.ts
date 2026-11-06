@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, mock, test } from "bun:test"
 import type {
   AssistantMessage,
@@ -24,6 +25,7 @@ mock.module("@ericsanchezok/synergy-util/path", () => ({
   getFilename: (path: string) => path.slice(path.lastIndexOf("/") + 1),
 }))
 mock.module("@lingui/solid", () => ({
+  Trans: Empty,
   useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
 }))
 mock.module("../../src/context", () => ({ useData: () => ({ store: {}, serverUrl: "" }) }))
@@ -54,6 +56,7 @@ mock.module("../../src/components/clipboard", () => ({
   }),
 }))
 mock.module("../../src/components/activity-trace", () => ({
+  AnimatedActivityCount: Empty,
   ActivityReasoningSummary: Empty,
   ActivityReceipt: Empty,
   ActivityTrace: Empty,
@@ -99,7 +102,7 @@ function assistant(id = "assistant-a"): AssistantMessage {
     parentID: "root-user",
     rootID: "root-user",
     mode: "test",
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     path: { cwd: "/workspace", root: "/workspace" },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -215,6 +218,55 @@ function project(input: {
 function activities(items: readonly ActivityTimelineItem[]) {
   return items.filter((item) => item.kind === "activity-group")
 }
+
+describe("continuous reasoning fragments", () => {
+  const fragment = (id: string, itemId = "rs_shared", provider = "openai-codex"): ReasoningPart =>
+    ({
+      ...reasoning(id),
+      type: "reasoning",
+      text: `Summary ${id}`,
+      time: { start: 1, end: 2 },
+      metadata: { [provider]: { itemId } },
+    }) as ReasoningPart
+
+  test("adjacent fragments share one stable disclosure as another summary arrives", () => {
+    const first = fragment("summary-0")
+    const before = project({ parts: [first] })
+    const after = project({ parts: [first, fragment("summary-1"), tool({ id: "read" })] })
+    expect(after.map((item) => item.kind)).toEqual(["activity-reasoning-summary", "activity-group"])
+    expect(after[0]).toMatchObject({
+      key: activityItemStableKey(before[0]),
+      partID: "summary-0",
+      partIDs: ["summary-0", "summary-1"],
+    })
+  })
+
+  test("continuous reasoning ignores provider item boundaries and missing identities", () => {
+    const fragments = Array.from({ length: 27 }, (_, index) =>
+      fragment(`summary-${index}`, `rs_${Math.floor(index / 3)}`),
+    )
+    const parts = [
+      ...fragments,
+      fragment("other-provider", "rs_0", "openai"),
+      reasoning("unknown"),
+      { ...fragment("ambiguous"), metadata: { openai: { itemId: "a" }, other: { itemId: "b" } } },
+    ]
+    const original = structuredClone(parts)
+    const result = project({ parts })
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ partID: "summary-0", partIDs: parts.map((part) => part.id) })
+    expect(parts).toEqual(original)
+  })
+
+  test("tools, public prose and attachments end a reasoning disclosure", () => {
+    for (const boundary of [tool({ id: "read" }), text("prose"), attachment("file")]) {
+      const result = project({ parts: [fragment("summary-0"), boundary, fragment("summary-1")] })
+      const disclosures = result.filter((item) => item.kind === "activity-reasoning-summary")
+      expect(disclosures).toHaveLength(2)
+      expect(disclosures.at(-1)?.partID).toBe("summary-1")
+    }
+  })
+})
 
 describe("balanced reasoning projection", () => {
   test("keeps a Thinking status row per assistant message while working", () => {
@@ -483,6 +535,32 @@ describe("session turn activity projection", () => {
     expect(items.some((item) => item.kind === "passthrough" && item.item.part?.id === "plugin")).toBe(true)
   })
 
+  test.each(["render", "plugin_owned_tool"])("keeps %s content distinct from its source attachment", (name) => {
+    const completed = tool({ id: "visual", tool: name })
+    const file: AttachmentPart = {
+      id: "visual-source",
+      sessionID: completed.sessionID,
+      messageID: completed.messageID,
+      type: "attachment",
+      mime: "application/vnd.synergy.visual+json",
+      filename: "visual.synergy.json",
+      url: "asset://0123456789abcdef.bin",
+      presentation: { purpose: "deliverable", renderer: "file" },
+    }
+    if (completed.state.status === "completed") completed.state.attachments = [file]
+
+    const items = project({
+      parts: [completed],
+      isToolRenderBoundary: (tool) => tool === "plugin_owned_tool",
+    })
+
+    expect(items).toMatchObject([
+      { kind: "passthrough", item: { kind: "part", part: completed } },
+      { kind: "passthrough", item: { kind: "tool-attachments", part: completed, files: [file] } },
+    ])
+    expect(new Set(items.map(activityItemStableKey)).size).toBe(2)
+  })
+
   test("computes boundaries before completed reasoning is hidden so group keys stay stable", () => {
     const parts = [tool({ id: "read-a" }), reasoning("thinking"), tool({ id: "read-b" }), text("answer")]
     const working = project({ parts, working: true })
@@ -519,91 +597,14 @@ describe("session turn activity projection", () => {
     expect(JSON.stringify(streaming)).not.toContain('"text":"Thinking"')
   })
 
-  test("keeps persisted tool topics separate from the generic reasoning status", () => {
+  test("ignores historical model summaries and groups tools deterministically", () => {
     const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 2,
-        reasoning: {
-          thinking: {
-            state: "live",
-            text: "Locating the activity rendering boundary",
-            updatedAt: 10,
-          },
-        },
-        groups: {
-          "activity:assistant-a:inspect-local::read-a": {
-            state: "stable",
-            text: "Checked the relevant UI entry points",
-            updatedAt: 11,
-          },
-        },
-      },
-    }
-    const projected = project({
-      message,
-      parts: [reasoning("thinking"), tool({ id: "read-a" })],
-      working: true,
-    })
-
-    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
-    expect(reasoningItems).toHaveLength(1)
-    expect(reasoningItems[0]?.text).toBeUndefined()
-    expect(activities(projected)).toHaveLength(1)
-    expect(activities(projected)[0]).toMatchObject({
-      state: "done",
-      topic: {
-        state: "stable",
-        text: "Checked the relevant UI entry points",
-      },
-    })
-  })
-
-  test("ignores legacy reasoning text when persisted semantic grouping has no topic", () => {
-    const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 2,
-        reasoning: {
-          planning: {
-            state: "live",
-            text: "Researching the ZERO project",
-            source: "nano",
-            updatedAt: 10,
-          },
-        },
-        groups: {
-          "activity:assistant-a:inspect-local::read-zero": {
-            state: "fallback",
-            signature: "read-zero:web-zero",
-            updatedAt: 11,
-          },
-        },
-      },
-    }
-    const projected = project({
-      message,
-      parts: [
-        reasoning("planning"),
-        tool({ id: "read-zero", tool: "read" }),
-        tool({ id: "web-zero", tool: "websearch" }),
-      ],
-      working: true,
-    })
-    const groups = activities(projected)
-
-    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
-    expect(reasoningItems).toHaveLength(1)
-    expect(reasoningItems[0]?.text).toBeUndefined()
-    expect(groups).toHaveLength(1)
-    expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "research-web"])
-    expect(groups[0]?.topic).toBeUndefined()
-  })
-
-  test("projects persisted nano topics across heterogeneous tool families", () => {
-    const message = assistant()
+    const parts = [
+      tool({ id: "read-flow", tool: "read", args: { filePath: "/workspace/src/activity.ts" } }),
+      tool({ id: "edit-flow", tool: "revise_file", args: { filePath: "/workspace/src/activity.ts" } }),
+      tool({ id: "test-flow", tool: "bash", args: { command: "bun test" } }),
+    ]
+    const expected = activities(project({ message, parts }))
     message.metadata = {
       activity: {
         v: 1,
@@ -612,137 +613,17 @@ describe("session turn activity projection", () => {
           "activity:assistant-a:inspect-local:path:/workspace:read-flow": {
             state: "stable",
             signature: "read-flow:edit-flow:test-flow",
-            text: "Implemented and verified the activity trace",
+            text: "Historical model summary",
             updatedAt: 10,
           },
         },
       },
     }
-    const groups = activities(
-      project({
-        message,
-        parts: [
-          tool({ id: "read-flow", tool: "read", args: { filePath: "/workspace/src/activity.ts" } }),
-          tool({ id: "edit-flow", tool: "revise_file", args: { filePath: "/workspace/src/activity.ts" } }),
-          tool({ id: "test-flow", tool: "bash", args: { command: "bun test" } }),
-        ],
-      }),
+    const actual = activities(project({ message, parts }))
+    expect(actual.map((group) => group.steps.map((step) => step.part.id))).toEqual(
+      expected.map((group) => group.steps.map((step) => step.part.id)),
     )
-
-    expect(groups).toHaveLength(1)
-    expect(groups[0]?.steps.map((step) => step.part.id)).toEqual(["read-flow", "edit-flow", "test-flow"])
-    expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "modify-files", "execute"])
-    expect(groups[0]).toMatchObject({
-      key: "activity:assistant-a:inspect-local:path:/workspace:read-flow",
-      topic: { state: "stable", text: "Implemented and verified the activity trace" },
-    })
-  })
-
-  test("does not use legacy reasoning text to merge an unsettled heterogeneous tail", () => {
-    const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 1,
-        reasoning: {
-          planning: {
-            state: "live",
-            text: "Planning the ZERO refactor",
-            source: "nano",
-            updatedAt: 10,
-          },
-        },
-        now: {
-          text: "Planning the ZERO refactor",
-          source: "reasoning",
-          updatedAt: 10,
-        },
-      },
-    }
-    const projected = project({
-      message,
-      parts: [
-        reasoning("planning"),
-        tool({ id: "read-zero", tool: "read", args: { filePath: "/workspace/ZERO/README.md" }, status: "running" }),
-        tool({ id: "web-zero", tool: "websearch", args: { query: "ZERO project" }, status: "running" }),
-      ],
-      working: true,
-    })
-    const groups = activities(projected)
-
-    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
-    expect(reasoningItems).toHaveLength(1)
-    expect(reasoningItems[0]?.text).toBeUndefined()
-    expect(groups).toHaveLength(2)
-    expect(groups.map((group) => group.steps[0]?.family)).toEqual(["inspect-local", "research-web"])
-    expect(groups.every((group) => group.topic?.text === undefined)).toBe(true)
-  })
-
-  test("ignores persisted semantic membership that crosses a presentation boundary", () => {
-    const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 1,
-        groups: {
-          "activity:assistant-a:inspect-local::read-before": {
-            state: "stable",
-            signature: "read-before:plugin-card:read-after",
-            text: "Invalid legacy group",
-            updatedAt: 10,
-          },
-        },
-      },
-    }
-    const groups = activities(
-      project({
-        message,
-        parts: [
-          tool({ id: "read-before" }),
-          tool({ id: "plugin-card", tool: "plugin_owned_tool" }),
-          tool({ id: "read-after" }),
-        ],
-        isToolRenderBoundary: (name) => name === "plugin_owned_tool",
-      }),
-    )
-
-    expect(groups.map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-before"], ["read-after"]])
-    expect(groups.every((group) => group.topic === undefined)).toBe(true)
-  })
-
-  test("does not merge an unsettled streaming tail into a persisted semantic group", () => {
-    const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 1,
-        groups: {
-          "activity:assistant-a:inspect-local:path:/workspace:read-flow": {
-            state: "stable",
-            signature: "read-flow:edit-flow:test-flow",
-            text: "Implemented and verified the activity trace",
-            updatedAt: 10,
-          },
-        },
-      },
-    }
-    const groups = activities(
-      project({
-        message,
-        parts: [
-          tool({ id: "read-flow", tool: "read", args: { filePath: "/workspace/src/activity.ts" } }),
-          tool({ id: "edit-flow", tool: "revise_file", args: { filePath: "/workspace/src/activity.ts" } }),
-          tool({ id: "test-flow", tool: "bash", args: { command: "bun test" } }),
-          tool({ id: "read-tail", tool: "read", args: { filePath: "/workspace/src/next.ts" } }),
-        ],
-      }),
-    )
-
-    expect(groups.map((group) => group.steps.map((step) => step.part.id))).toEqual([
-      ["read-flow", "edit-flow", "test-flow"],
-      ["read-tail"],
-    ])
-    expect(groups[1]?.topic).toBeUndefined()
+    expect(actual.every((group) => !("topic" in group))).toBe(true)
   })
 
   test("caps a group at 24 steps and gives continuation groups their own first-part key", () => {
@@ -907,19 +788,42 @@ describe("session turn activity projection", () => {
     expect(groups[0]?.steps[0]?.part.id).toBe("hidden-error")
   })
 
-  test("preserves media and promoted tool attachments on the existing timeline path", () => {
+  test("preserves media, visual cards and their promoted attachments on the existing timeline path", () => {
     const media = tool({ id: "media", tool: "plugin__synergy-meme-plugin__generate_meme", status: "running" })
     media.state.metadata = { display: { kind: "media-generation", toolCard: "hidden" } }
-    const completed = tool({ id: "attachment-tool", tool: "attach" })
+    const completed = tool({ id: "attachment-tool", tool: "plugin_export" })
     if (completed.state.status === "completed") {
       completed.state.metadata = { display: { toolCard: "hidden" } }
       completed.state.attachments = [attachment("promoted") as never]
     }
-    const items = project({ parts: [tool({ id: "read-a" }), media, completed, tool({ id: "read-b" })] })
+    const visual = tool({ id: "visual", tool: "render" })
+    if (visual.state.status === "completed") visual.state.attachments = [attachment("source") as never]
+    const items = project({ parts: [tool({ id: "read-a" }), media, completed, visual, tool({ id: "read-b" })] })
 
     expect(activities(items).map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-a"], ["read-b"]])
-    expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "media-pending")).toBe(true)
+    expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "media")).toBe(true)
     expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "tool-attachments")).toBe(true)
+    const faces = items
+      .filter(
+        (item) => item.kind === "passthrough" && item.item.kind !== "compaction" && item.item.part.id === visual.id,
+      )
+      .map((item) => item.kind === "passthrough" && item.item.kind)
+    expect(faces).toEqual(["part", "tool-attachments"])
+    expect(new Set(items.map(activityItemStableKey)).size).toBe(items.length)
+  })
+  test("folds built-in MCP search tools into one activity group", () => {
+    const parts = [
+      tool({ id: "any-search", tool: "mcp__anysearch__search", args: { query: "release notes" } }),
+      tool({ id: "any-batch", tool: "mcp__anysearch__batch_search", args: { queries: ["a", "b"] } }),
+      tool({ id: "scholight", tool: "mcp__scholight__search_papers", args: { query: "diffusion" } }),
+    ]
+    const items = project({ parts })
+    const groups = activities(items)
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ family: "research-web", state: "done" })
+    expect(groups[0]?.steps.map((step) => step.part.id)).toEqual(["any-search", "any-batch", "scholight"])
+    expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "part")).toBe(false)
   })
 })
 
@@ -967,7 +871,7 @@ describe("minimal activity projection", () => {
       message,
       parts: [
         tool({ id: "read-zero", tool: "read" }),
-        tool({ id: "web-zero", tool: "websearch" }),
+        tool({ id: "web-zero", tool: "webfetch" }),
         tool({ id: "test-zero", tool: "bash", args: { command: "bun test" } }),
       ],
     })
@@ -981,7 +885,7 @@ describe("minimal activity projection", () => {
     ])
   })
 
-  test("adds the latest bounded activity summary as the minimal now line", () => {
+  test("ignores historical summary text in minimal mode", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -998,15 +902,10 @@ describe("minimal activity projection", () => {
     const minimal = projectMinimalActivityItems(projected, "root-user", false)
     const summary = minimal.find((item) => item.kind === "activity-summary")
 
-    expect(summary).toMatchObject({
-      kind: "activity-summary",
-      now: {
-        text: "Verifying the compressed activity trace",
-        source: "reasoning",
-      },
-    })
+    expect(summary).toMatchObject({ kind: "activity-summary", total: 1 })
+    expect(summary).not.toHaveProperty("now")
   })
-  test("drops reasoning summary items while preserving the minimal now line", () => {
+  test("drops reasoning summary items while preserving activity counts", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -1024,7 +923,7 @@ describe("minimal activity projection", () => {
 
     expect(minimal.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
     expect(minimal.find((item) => item.kind === "activity-summary")).toMatchObject({
-      now: { text: "Verifying the compressed activity trace", source: "reasoning" },
+      total: 1,
     })
   })
   test("renders no summary without ordinary activity", () => {

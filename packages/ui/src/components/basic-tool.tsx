@@ -1,3 +1,4 @@
+import { getToolIcon } from "./tool/icons"
 import {
   createContext,
   createEffect,
@@ -21,6 +22,8 @@ import { type IconName } from "./icon"
 import { ToolTextOutput } from "./tool-output-text"
 import { classifyTool } from "./tool/classifier"
 import { toolCountdown, type ToolTime } from "./tool/timeout"
+import type { ToolMetadata } from "./tool-registry-lazy"
+import { useToolExpansion } from "./tool-expansion"
 
 const charsLabelDescriptor = { id: "ui.basicTool.chars", message: "{count} chars" }
 const autoExpandedLabelDescriptor = { id: "ui.basicTool.autoExpanded", message: "Auto-loaded" }
@@ -54,12 +57,11 @@ export interface BasicToolProps {
   icon?: IconName
   children?: JSX.Element
   hideDetails?: boolean
+  hasDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
   status?: string
-  countdown?: number
-  countdownStartedAt?: number
-  metadata?: Record<string, any>
+  metadata?: ToolMetadata
   time?: ToolTime
   charsReceived?: number
   onSubtitleClick?: () => void
@@ -92,7 +94,7 @@ function fromTrigger(
     if (t.icon) return withSubtitleClickHandler(trigger as ToolTriggerProps, onSubtitleClick)
     if (typeof t.title === "string") {
       return {
-        icon: icon ?? "settings",
+        icon: icon ?? getToolIcon(""),
         title: t.title as string,
         titleClass: t.titleClass as string | undefined,
         subtitle: t.subtitle as string | undefined,
@@ -110,7 +112,7 @@ function fromTrigger(
     const resolved = (trigger as () => LegacyTriggerValue)()
     if (!resolved || typeof resolved.title !== "string") return undefined
     return {
-      icon: icon ?? "settings",
+      icon: icon ?? getToolIcon(""),
       title: resolved.title,
       titleClass: resolved.titleClass,
       subtitle: resolved.subtitle,
@@ -128,7 +130,13 @@ function fromTrigger(
 export function BasicTool(props: BasicToolProps) {
   const resultOnly = useContext(ToolResultPresentationContext)
   const { _ } = useLingui()
-  const [open, setOpen] = createSignal(props.defaultOpen ?? false)
+  const expansion = useToolExpansion()
+  const [open, updateOpen] = createSignal(expansion?.get() ?? props.defaultOpen ?? false)
+  const setOpen = (open: boolean) => {
+    expansion?.set(open)
+    updateOpen(open)
+  }
+  const hasDetails = () => !props.hideDetails && (props.hasDetails ?? "children" in props)
   const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
 
   createEffect(() => {
@@ -143,12 +151,7 @@ export function BasicTool(props: BasicToolProps) {
     if (!props.metadata?.autoExpanded) return null
     return _(autoExpandedLabelDescriptor)
   })
-  const countdown = createMemo(() => {
-    if (props.countdown !== undefined) {
-      return { seconds: props.countdown, startedAt: props.countdownStartedAt ?? props.time?.start }
-    }
-    return toolCountdown(props.metadata, props.time)
-  })
+  const countdown = createMemo(() => toolCountdown(props.metadata, props.time))
 
   const triggerProps = createMemo(() => {
     const base = fromTrigger(props.trigger, props.icon, props.onSubtitleClick)
@@ -190,17 +193,19 @@ export function BasicTool(props: BasicToolProps) {
                 <span data-slot="tool-trigger-chars">{charsLabel()}</span>
               </Show>
               <Show keyed when={countdown()}>
-                {(value) => <Countdown seconds={value.seconds} startedAt={value.startedAt} active={active()} />}
+                {(value) => (
+                  <Countdown seconds={value.seconds} startedAt={value.startedAt} kind={value.kind} active={active()} />
+                )}
               </Show>
               <Spinner />
             </Match>
-            <Match when={props.children && !props.hideDetails}>
+            <Match when={hasDetails()}>
               <Collapsible.Arrow />
             </Match>
           </Switch>
         </div>
       </Collapsible.Trigger>
-      <Show when={props.children && !props.hideDetails}>
+      <Show when={hasDetails()}>
         <Collapsible.Content>{props.children}</Collapsible.Content>
       </Show>
     </Collapsible>
@@ -222,9 +227,6 @@ export function BasicTool(props: BasicToolProps) {
  * gemini read_file), MCP tools, and any future tools — all without
  * writing a single new ToolRegistry.register() entry.
  *
- * When `fallbackMeta` is provided (from plugin Tier 1 declarative metadata),
- * its icon/title/subtitleTemplate values override the auto-classified
- * defaults, giving plugin authors control over the smart fallback display.
  */
 export function SmartTool(props: {
   tool: string
@@ -236,11 +238,6 @@ export function SmartTool(props: {
   hideDetails?: boolean
   metadata?: Record<string, any>
   time?: ToolTime
-  fallbackMeta?: {
-    icon?: string
-    title?: string
-    subtitleTemplate?: string
-  }
 }) {
   const { i18n } = useLingui()
   const classified = createMemo(() =>
@@ -248,25 +245,15 @@ export function SmartTool(props: {
   )
 
   const icon = createMemo(() => {
-    const fb = props.fallbackMeta
-    if (fb?.icon) return fb.icon as IconName
-    return classified().spec.icon
+    return getToolIcon(props.tool, props.input, props.metadata)
   })
 
   const title = createMemo(() => {
-    const fb = props.fallbackMeta
-    if (fb?.title) return fb.title
     const descriptor = classified().titleDescriptor
     return descriptor ? translateToolDescriptor(i18n(), descriptor) : classified().title
   })
 
-  const subtitle = createMemo(() => {
-    const fb = props.fallbackMeta
-    if (fb?.subtitleTemplate) {
-      return resolveTemplate(fb.subtitleTemplate, props.input, props.metadata ?? {})
-    }
-    return classified().subtitle
-  })
+  const subtitle = () => classified().subtitle
   const tags = createMemo(() => {
     const items = classified().args?.map((label) => ({ label })) ?? []
     const descriptor = classified().countDescriptor
@@ -298,29 +285,4 @@ export function SmartTool(props: {
       </Show>
     </BasicTool>
   )
-}
-
-/**
- * Resolve a template string like "Reading {input.path}" by substituting
- * placeholder values from input or metadata.
- *
- * Placeholders use dot-separated paths: `{input.path}`, `{metadata.key}`.
- * Missing values produce the placeholder as-is.
- */
-function resolveTemplate(template: string, input: Record<string, any>, metadata: Record<string, any>): string {
-  return template.replace(/\{(\w[\w.]*)\}/g, (_match, path: string) => {
-    const parts = path.split(".")
-    const root = parts[0]
-    let source: Record<string, any> | undefined
-    if (root === "input") source = input
-    else if (root === "metadata") source = metadata
-    else return `{${path}}`
-
-    let val: any = source
-    for (const part of parts) {
-      if (val == null || typeof val !== "object") return `{${path}}`
-      val = val[part]
-    }
-    return typeof val === "string" ? val : `{${path}}`
-  })
 }

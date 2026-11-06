@@ -1,0 +1,803 @@
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
+import { testResources } from "@ericsanchezok/synergy-testing/resources"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { chromium, type Browser, type Page } from "playwright"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
+
+let browser: Browser
+let page: Page
+let server: BrowserFixture
+let fixture: string
+let url: string
+const errors: string[] = []
+const resources = testResources()
+
+beforeAll(async () => {
+  fixture = await mkdtemp(path.join(import.meta.dir, ".settings-details-"))
+  resources.defer("settings fixture directory", () => rm(fixture, { recursive: true, force: true }))
+  const source = path.resolve(import.meta.dir, "../../../src")
+  await Bun.write(
+    path.join(fixture, "index.html"),
+    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+  )
+  await Bun.write(
+    path.join(fixture, "sdk.ts"),
+    `
+    const calls = { plan: 0, apply: 0, read: 0, status: [] }
+    window.fixtureCalls = calls
+    const domain = { id: "general", filename: "general.jsonc", label: "General", path: "/fixture/general.jsonc", changes: [], diagnostics: [], mode: "merge" }
+    const plan = { scope: "global", revision: "fixture-revision", domains: [domain], conflicts: [], diagnostics: [] }
+    export const domains = [{ ...domain, ownedKeys: ["username"], uiSection: "general", importable: true, reloadTargets: [] }]
+    export const scopes = [{ id: "scope-fixture", name: "Fixture project", type: "project", local: { worktree: "/fixture/project", directory: "/fixture/project", sandboxes: [] }, time: { created: 1, updated: 1 } }]
+    export function useGlobalSDK() { return { client: {
+      config: { import: {
+        plan: async () => { calls.plan++; return { data: plan } },
+        apply: async () => { calls.apply++; return { data: { plan, reload: { success: true, changedFields: ["username"], requested: [], executed: [], targets: [], errors: [], restartRequired: [] } } } }
+      } },
+      formatter: { status: async input => { calls.status.push(input); if (location.search.includes("failure")) throw new Error("Status unavailable"); return { data: [{ name: "fixture-formatter", extensions: [".ts"], enabled: true }] } } },
+      lsp: { status: async input => { calls.status.push(input); return { data: [] } } }
+    } } }
+    export async function refresh() { calls.read++; if (calls.read === 1) throw new Error("Read failed") }
+  `,
+  )
+  await Bun.write(path.join(fixture, "toast.ts"), "export function showToast() {}")
+  await Bun.write(
+    path.join(fixture, "sync.ts"),
+    "export function useGlobalSync() { return { data: { config: { fullAccessAcknowledged: true } } } }",
+  )
+  await Bun.write(
+    path.join(fixture, "main.tsx"),
+    `
+    import { render } from "solid-js/web"
+    import { createSignal, Show } from "solid-js"
+    import { createStore } from "solid-js/store"
+    import { setupI18n } from "@lingui/core"
+    import { I18nProvider } from "@lingui/solid"
+    import { ThemeProvider, useTheme } from "@ericsanchezok/synergy-ui/theme"
+    import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
+    import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+    import { Button } from "@ericsanchezok/synergy-ui/button"
+    import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+    import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
+    import { EmailPanel } from "${source}/components/settings/panels/EmailPanel.tsx"
+    import { LearningPanel } from "${source}/components/settings/panels/LibraryPanels.tsx"
+    import { BossModePanel } from "${source}/components/settings/panels/BossModePanel.tsx"
+    import { CompactionPanel } from "${source}/components/settings/panels/RuntimePanels.tsx"
+    import { ExperimentsPanel } from "${source}/components/settings/panels/ExperimentsPanel.tsx"
+    import { createExperimentsController } from "${source}/components/settings/panels/experiments-controller.ts"
+    import { ImportPanel } from "${source}/components/settings/panels/ImportPanel.tsx"
+    import { LanguageToolsPanel } from "${source}/components/settings/panels/LanguageToolsPanel.tsx"
+    import { ControlProfilePanel } from "${source}/components/settings/panels/SafetyPanels.tsx"
+    import { McpPanel } from "${source}/components/settings/panels/McpPanel.tsx"
+    import { SettingsPathRow, SettingsPage } from "${source}/components/settings/components/SettingsPrimitives.tsx"
+    import { SettingRow } from "${source}/components/settings/components/SettingsSettingRow.tsx"
+    import { SettingsChoices } from "${source}/components/settings/components/SettingsChoices.tsx"
+    import { SegmentPill } from "${source}/components/settings/components/SegmentPill.tsx"
+    import { ModelRoleRow } from "${source}/components/settings/components/ModelRoleRow.tsx"
+    import { DeclarativeSettingsForm } from "${source}/plugin/components/declarative-settings-form.tsx"
+    import { SettingsStepScale } from "${source}/components/settings/components/SettingsStepScale.tsx"
+    import { defaultSettingsState, emptyMcp } from "${source}/components/settings/types.ts"
+    import { buildPatch } from "${source}/components/settings/hooks/useConfigPatch.ts"
+    import { SettingsViewStateContext } from "${source}/components/settings/settings-view-state.ts"
+    import "${source}/components/settings/settings-panel.css"
+    import "@ericsanchezok/synergy-ui/styles"
+    import { messages as en } from "${source}/locales/en/messages.po"
+    import { messages as zh } from "${source}/locales/zh-CN/messages.po"
+    import { domains, scopes, refresh } from "./sdk"
+    const query = new URLSearchParams(location.search)
+    const i18n = setupI18n({ locale: query.get("locale") || "en", messages: { en, "zh-CN": zh } })
+    function Fixture() {
+      useTheme().setColorScheme(query.get("theme") || "light")
+      const [view, setView] = createSignal("email")
+      const experimentState = { failLoad: false, failSave: true, empty: false, selected: ["retained"], writes: [] }
+      const experiments = createExperimentsController({
+        async get() {
+          if (experimentState.failLoad) throw new Error("private load diagnostic")
+          if (experimentState.empty) return []
+          return [
+            ["boss", "Boss", "experimental", "restart", true],
+            ["retained", "Retained feature", "experimental", "restart", false],
+            ["missing", "Missing feature", "experimental", "restart", false],
+            ["live-preview", "Live preview", "experimental", "live", true],
+            ["stable-feature", "Stable feature", "stable", "live", true],
+          ].map(([id, name, maturity, activation, available]) => ({
+            id, available, selected: experimentState.selected.includes(id), enabled: false,
+            pendingRestart: id === "boss" && experimentState.selected.includes(id),
+            reason: available ? undefined : id === "missing" ? "not-installed" : "dependency-unavailable",
+            definition: { id, name, maturity, activation, owner: "fixture", description: "Feature description" },
+          }))
+        },
+        async update(ids) {
+          experimentState.writes.push([...ids])
+          if (experimentState.failSave) throw new Error("private save diagnostic")
+          experimentState.selected = ids
+        },
+      }, { owner: () => "fixture", identity: () => "fixture", visible: () => view() === "experiments" })
+      window.experimentsFixture = Object.assign(experimentState, { reload: () => experiments.load() })
+      const [email, setEmail] = createStore(defaultSettingsState().email)
+      const [library, setLibrary] = createStore(defaultSettingsState().library)
+      const [runtime, setRuntime] = createStore(defaultSettingsState().runtime)
+      setRuntime("compactionOverflowThreshold", query.get("compaction") || "0.9")
+      const [anima, setAnima] = createSignal(false)
+      const [choice, setChoice] = createSignal("ask")
+      const [segment, setSegment] = createSignal("balanced")
+      const [displayName, setDisplayName] = createSignal("Fixture gateway")
+      const [font, setFont] = createSignal("")
+      const [layer, setLayer] = createSignal()
+      const [plugin, setPlugin] = createSignal({ mode: "first" })
+      const [models, setModels] = createStore({ ...defaultSettingsState().models, model: "fixture/first" })
+      const [safety, setSafety] = createStore(defaultSettingsState().safety)
+      const [mcp, setMcp] = createStore({ entries: [{ ...emptyMcp(), key: "Fixture server", type: "remote", url: "https://mcp.example.com/mcp" }], builtins: [{ name: "builtin-fixture", url: "https://mcp.example.com/builtin", status: { status: "uninitialized" }, toggle: true, keyConfigured: false, apiKeyDraft: "", clearApiKey: false }] })
+      const views = new Map()
+      const expanded = new Map()
+      return <OverlayLayerProvider layer={layer}><Button variant="secondary" data-testid="outside-settings">Outside Settings</Button><div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("plugin")}>Plugin page</button><button onClick={() => setView("mcp")}>MCP page</button></nav><main class="settings-panel-content">
+        <button onClick={() => setView("experiments")}>Experiments page</button>
+        <Show when={view() === "experiments"}><ExperimentsPanel controller={experiments} onRetrySave={() => void experiments.save()} /><button onClick={() => void experiments.save()}>Save experiments</button></Show>
+        <Show when={view() === "email"}><EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value)} /></Show>
+        <div><button onClick={() => setView("learning")}>Learning page</button><button onClick={() => setAnima(value => !value)}>Toggle Anima</button><button onClick={() => setView("boss")}>Boss page</button><button onClick={() => setView("compaction")}>Compaction page</button></div>
+        <Show when={view() === "learning"}><LearningPanel library={library} showAutonomy={anima()} onLibraryChange={(key, value) => setLibrary(key, value)} /></Show>
+        <Show when={view() === "boss"}><BossModePanel runtime={runtime} onRuntimeChange={(key, value) => setRuntime(key, value)} nameAvailable={false} nameController={{ content: () => "", setContent: () => {}, dirty: () => false, loaded: () => true, status: () => "idle", error: () => undefined, load: async () => {}, save: async () => true, discard: () => {} }} onOpenBossSession={async () => { window.bossOpens = (window.bossOpens || 0) + 1 }} /></Show>
+        <Show when={view() === "compaction"}><CompactionPanel runtime={runtime} onRuntimeChange={(key, value) => setRuntime(key, value)} /></Show>
+        <Show when={view() === "import"}><ImportPanel domains={domains} scopes={scopes} onImported={refresh} /></Show>
+        <Show when={view() === "formatter"}><LanguageToolsPanel kind="formatter" title="Formatter" description="Formatter configuration" config={{ formatter: { custom: { command: ["fixture"], extensions: [".tsx"] } }, lsp: { unrelated: { command: ["do-not-show"] } }, timeout: { invoke: 123 } }} scopes={scopes} domains={[]} /></Show>
+        <Show when={view() === "paths"}><SettingsPage title="Config Files"><SettingsPathRow compact label="90-channels.jsonc" path={"/fixture/config/" + "long-directory/".repeat(12) + "90-channels.jsonc"} status="Empty" ownedKeys={["channel"]} mergePolicy="merge" /></SettingsPage></Show>
+        <Show when={view() === "profiles"}><ControlProfilePanel safety={safety} controlProfiles={[]} onSafetyChange={(key, value) => setSafety(key, value)} /></Show>
+        <Show when={view() === "models"}><SettingsPage title="Models"><ModelRoleRow summary={{ id: "primary", field: "model", label: "Primary model", summary: "", fallbackChain: ["model"], usedBy: [], resolvedModel: { providerID: "fixture", modelID: "first", via: "model" } }} value={models.model} draftModels={models} savedModels={models} providers={[{ providerId: "fixture", providerName: "Fixture", models: [{ id: "first", name: "First model", variantKeys: ["low", "high"] }, { id: "second", name: "Second model", variantKeys: [] }] }]} availableVariants={["low", "high"]} popoverLayer={layer()} onChange={(key, value) => setModels(key, value)} onVariantChange={() => {}} /></SettingsPage></Show>
+        <Show when={view() === "plugin"}><SettingsPage title="Plugin settings"><DeclarativeSettingsForm schema={{ properties: { mode: { type: "string", title: "Plugin mode", description: "Choose a plugin mode", enum: ["first", "second"] }, name: { type: "string", title: "Plugin name" }, count: { type: "number", title: "Plugin count" }, secret: { type: "string", format: "password", title: "Plugin secret" } } }} values={plugin()} onChange={setPlugin} /><output data-testid="plugin-values">{JSON.stringify(plugin())}</output></SettingsPage></Show>
+        <Show when={view() === "mcp"}><SettingsViewStateContext.Provider value={{ view: key => views.get(key), setView: (key, value) => views.set(key, value), expanded: key => expanded.get(key), setExpanded: (key, value) => expanded.set(key, value), searchField: () => undefined }}><McpPanel entries={mcp.entries} builtins={mcp.builtins} onAdd={() => setMcp("entries", entries => [...entries, emptyMcp()])} onChange={(index, key, value) => setMcp("entries", index, key, value)} onRemove={index => setMcp("entries", entries => entries.filter((_, i) => i !== index))} /></SettingsViewStateContext.Provider><output hidden data-testid="mcp-patch">{JSON.stringify(buildPatch({ cfg: {}, state: { ...defaultSettingsState("enter"), mcps: mcp }, originalMcps: {} }).mcp)}</output></Show>
+        <Show when={view() === "controls"}><div class="ds-page-inner">
+          <div data-testid="neutral-actions"><Button variant="secondary">Check now</Button><Button variant="primary">Save Changes</Button><Button variant="ghost">Cancel</Button><Button disabled>Unavailable action</Button><IconButton icon="check" aria-label="Confirm setting" /><button class="border border-border-base bg-surface-raised-base" onClick={() => setDisplayName("Native action")}>New native action</button></div>
+          <SettingRow title="Display name" description="A name for the connection" trailing={<TextField value={displayName()} onChange={setDisplayName} />} />
+          <SettingRow title="Activity display" trailing={<SegmentPill value={segment()} ariaLabel="Activity display" options={[{ value: "full", label: "Full" }, { value: "balanced", label: "Balanced" }, { value: "minimal", label: "Minimal" }]} onChange={setSegment} />} />
+          <SettingRow title="Sending port" description="Use a valid port" stateLabel="Unsaved" trailing={<TextField type="number" validationState="invalid" error="Enter a whole number" value="0" copyable />} />
+          <SettingRow title="Policy" description="Requests wait for approval" trailing={<SettingsChoices ariaLabel="Policy" value={choice()} options={[{ value: "ask", label: "Ask" }, { value: "allow", label: "Allow" }, { value: "deny", label: "Deny" }]} onChange={setChoice} />} />
+          <SettingRow title="Duration" description="Ordered durations" trailing={<SettingsStepScale ariaLabel="Duration" value="37" options={[{ value: "10", label: "Short" }, { value: "60", label: "Long" }]} onChange={() => {}} />} />
+          <SettingRow title="Font" description="Choose a typeface" stateLabel="Current font: system" trailing={<MenuField value={font()} ariaLabel="Font" options={[{ value: "", label: "System default" }, { value: "serif", label: "Serif" }, { value: "unavailable", label: "Unavailable font", disabled: true }]} onChange={setFont} />} />
+        </div></Show>
+      </main><div class="settings-popover-layer" ref={setLayer} /></div></OverlayLayerProvider>
+    }
+    render(() => <I18nProvider i18n={i18n}><ThemeProvider><DialogProvider><Fixture /></DialogProvider></ThemeProvider></I18nProvider>, document.getElementById("root"))
+  `,
+  )
+  server = await createBrowserFixture({
+    root: fixture,
+    styled: true,
+    aliases: [
+      { find: "@/context/global-sdk", replacement: path.join(fixture, "sdk.ts") },
+      { find: "@/context/global-sync", replacement: path.join(fixture, "sync.ts") },
+      { find: "@ericsanchezok/synergy-ui/toast", replacement: path.join(fixture, "toast.ts") },
+      { find: "@/", replacement: source + "/" },
+    ],
+  })
+  resources.defer("settings fixture server", () => server.close())
+  url = server.url
+  browser = await chromium.launch({ headless: true })
+  resources.defer("settings browser", () => browser.close())
+}, 60000)
+
+beforeEach(async () => {
+  errors.length = 0
+  page = await browser.newPage()
+  page.setDefaultTimeout(5000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 })
+  await page.getByRole("heading", { name: "Email", exact: true }).waitFor({ timeout: 30000 })
+})
+afterEach(async () => {
+  await page?.close()
+})
+afterAll(() => resources.close())
+
+type ExperimentsFixture = {
+  failLoad: boolean
+  failSave: boolean
+  empty: boolean
+  writes: string[][]
+  reload(): Promise<void>
+}
+
+test("experimental controls retain failed drafts, allow disabling unavailable choices and report restart truthfully", async () => {
+  await page.getByRole("button", { name: "Experiments page", exact: true }).click()
+  const boss = page.getByRole("switch", { name: "Boss mode", exact: true })
+  await boss.waitFor()
+  expect(await page.getByRole("switch", { name: "Stable feature", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("switch", { name: "Missing feature", exact: true }).isDisabled()).toBe(true)
+  expect(await page.getByText("Applies to the next action after saving", { exact: true }).isVisible()).toBe(true)
+  const retained = page.getByRole("switch", { name: "Retained feature", exact: true })
+  expect(await retained.isChecked()).toBe(true)
+  expect(await retained.isEnabled()).toBe(true)
+  await retained.press("Space")
+  await boss.press("Space")
+  expect(await page.getByText("Not saved", { exact: true }).count()).toBe(2)
+  await page.getByRole("button", { name: "Save experiments", exact: true }).click()
+  await page.getByRole("alert").waitFor()
+  expect(await page.getByRole("alert").textContent()).toContain("Your draft is kept.")
+  expect(await boss.isChecked()).toBe(true)
+  expect(await retained.isChecked()).toBe(false)
+  await page.evaluate(() => {
+    ;(window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture.failSave = false
+  })
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.getByText("Saved. Restart to apply.", { exact: true }).waitFor()
+  expect(await page.getByRole("alert").count()).toBe(0)
+  expect(await boss.isChecked()).toBe(true)
+  expect(await retained.isDisabled()).toBe(true)
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture.writes,
+    ),
+  ).toEqual([["boss"], ["boss"]])
+  expect(errors).toEqual([])
+})
+
+test("experimental feature load failures retry without exposing diagnostics and empty catalogs stay usable", async () => {
+  await page.evaluate(() => {
+    ;(window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture.failLoad = true
+  })
+  await page.getByRole("button", { name: "Experiments page", exact: true }).click()
+  await page.getByRole("alert").waitFor()
+  expect(await page.getByRole("alert").textContent()).toBe("Couldn't load experimental features.")
+  expect(await page.locator("body").textContent()).not.toContain("private load diagnostic")
+  await page.evaluate(() => {
+    ;(window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture.failLoad = false
+  })
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.getByRole("switch", { name: "Boss mode", exact: true }).waitFor()
+  expect(await page.getByRole("alert").count()).toBe(0)
+  await page.evaluate(async () => {
+    const fixture = (window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture
+    fixture.empty = true
+    await fixture.reload()
+  })
+  await page.getByText("No experimental features available.", { exact: true }).waitFor()
+  expect(await page.getByRole("switch").count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test("Library learning hides Anima controls until selected and restores the retained draft", async () => {
+  await page.getByRole("button", { name: "Learning page", exact: true }).click()
+  const autonomy = page.getByRole("switch", { name: "Autonomous routines", exact: true })
+  expect(await autonomy.count()).toBe(0)
+  expect(
+    await page
+      .getByText("Allow reflection and planning jobs to run quietly in the background.", { exact: true })
+      .count(),
+  ).toBe(0)
+  await page.getByRole("button", { name: "Toggle Anima", exact: true }).click()
+  await autonomy.waitFor()
+  await autonomy.press("Space")
+  expect(await autonomy.getAttribute("aria-checked")).toBe("false")
+  await page.getByRole("button", { name: "Toggle Anima", exact: true }).click()
+  expect(await autonomy.count()).toBe(0)
+  await page.getByRole("button", { name: "Toggle Anima", exact: true }).click()
+  expect(await autonomy.getAttribute("aria-checked")).toBe("false")
+  expect(errors).toEqual([])
+})
+
+test("Boss settings keep task actions without promising an optional channel integration", async () => {
+  for (const variant of [
+    { locale: "en", theme: "light", width: 1280, open: "Open task entry" },
+    { locale: "zh-CN", theme: "dark", width: 375, open: "打开任务入口" },
+  ]) {
+    await page.setViewportSize({ width: variant.width, height: 800 })
+    await page.goto(`${url}?locale=${variant.locale}&theme=${variant.theme}`)
+    await page.getByRole("button", { name: "Boss page", exact: true }).click()
+    const panel = page.locator(".ds-content-inner")
+    expect(await panel.getByText(/Feishu|飞书|Created on first use|首次使用时创建/).count()).toBe(0)
+    const open = page.getByRole("button", { name: variant.open, exact: true })
+    expect(await open.isDisabled()).toBe(true)
+    await page.getByRole("switch").press("Space")
+    await open.click()
+    expect(await page.evaluate(() => (window as unknown as { bossOpens: number }).bossOpens)).toBe(1)
+  }
+  expect(errors).toEqual([])
+})
+
+test("MCP separates its server list from focused editing and restores the entry after Escape", async () => {
+  await page.getByRole("button", { name: "MCP page" }).click()
+  expect(await page.getByLabel("Server name", { exact: true }).count()).toBe(0)
+  const entry = page.getByRole("button", { name: "Configure Fixture server" })
+  await entry.click()
+  await page.getByLabel("Server name", { exact: true }).fill("Renamed server")
+  expect(await page.getByLabel("Timeout (ms)", { exact: true }).count()).toBe(0)
+  await page.getByLabel("Server URL", { exact: true }).press("Escape")
+  await page.getByRole("button", { name: "Configure Renamed server" }).waitFor()
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Configure Renamed server")
+  expect(
+    await page
+      .getByRole("button", { name: "Configure Renamed server" })
+      .evaluate((el) => el === document.activeElement),
+  ).toBe(true)
+  await page.getByRole("button", { name: "Configure Renamed server" }).click()
+  await page.getByRole("button", { name: "Controls page" }).click()
+  await page.getByRole("button", { name: "MCP page" }).click()
+  expect(await page.getByLabel("Server name", { exact: true }).inputValue()).toBe("Renamed server")
+  await page.getByRole("button", { name: "Back to servers", exact: true }).click()
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Configure Renamed server")
+  expect(errors).toEqual([])
+})
+
+test("MCP key/value fields preserve compound values, transport drafts and row focus", async () => {
+  await page.getByRole("button", { name: "MCP page" }).click()
+  await page.getByRole("button", { name: "Add server", exact: true }).click()
+  await page.getByLabel("Server name", { exact: true }).fill("Custom server")
+  await page.getByRole("button", { name: "Connection type: Local command" }).click()
+  await page.getByRole("option", { name: "Remote endpoint", exact: true }).click()
+  await page.getByLabel("Server URL", { exact: true }).fill("https://mcp.example.com/custom")
+  await page.getByRole("button", { name: "Add request header", exact: true }).click()
+  await page.getByLabel("Request header 1 name", { exact: true }).fill("Authorization")
+  const value = page.getByLabel("Request header 1 value", { exact: true })
+  await value.fill("Bearer fixture:with=spaces")
+  expect(await value.evaluate((el) => el === document.activeElement)).toBe(true)
+  await page.getByRole("button", { name: "Connection type: Remote endpoint" }).click()
+  await page.getByRole("option", { name: "Local command", exact: true }).click()
+  await page.getByLabel("Start command", { exact: true }).fill("npx fixture-server")
+  await page.getByRole("button", { name: "Add environment variable", exact: true }).click()
+  await page.getByLabel("Environment variable 1 name", { exact: true }).fill("FIXTURE")
+  await page.getByLabel("Environment variable 1 value", { exact: true }).fill("a=b c:d")
+  await page.getByRole("button", { name: "Back to servers", exact: true }).click()
+  await page.getByRole("button", { name: "Configure Custom server" }).click()
+  expect(await page.getByLabel("Environment variable 1 value", { exact: true }).inputValue()).toBe("a=b c:d")
+  await page.getByRole("button", { name: "Connection type: Local command" }).click()
+  await page.getByRole("option", { name: "Remote endpoint", exact: true }).click()
+  expect(await page.getByLabel("Request header 1 value", { exact: true }).inputValue()).toBe(
+    "Bearer fixture:with=spaces",
+  )
+  expect(JSON.parse((await page.getByTestId("mcp-patch").textContent()) || "{}")["Custom server"]).toMatchObject({
+    type: "remote",
+    headers: { Authorization: "Bearer fixture:with=spaces" },
+  })
+  await page.getByRole("button", { name: "Remove request header: Authorization" }).click()
+  expect(await page.getByLabel("Request header 1 name", { exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test("a deferred MCP row focus does not interrupt editing another field", async () => {
+  await page.getByRole("button", { name: "MCP page" }).click()
+  await page.getByRole("button", { name: "Add server", exact: true }).click()
+  await page.getByLabel("Server name", { exact: true }).fill("Focus fixture")
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+  await page.evaluate(() => {
+    const original = window.requestAnimationFrame
+    const pending: FrameRequestCallback[] = []
+    window.requestAnimationFrame = (callback) => pending.push(callback)
+    Object.assign(window, {
+      flushRowFocus() {
+        window.requestAnimationFrame = original
+        for (const callback of pending) callback(performance.now())
+      },
+    })
+  })
+  await page.getByRole("button", { name: "Add environment variable", exact: true }).click()
+  const value = page.getByLabel("Environment variable 1 value", { exact: true })
+  await value.fill("keep typing")
+  await page.evaluate(() => (window as unknown as { flushRowFocus(): void }).flushRowFocus())
+  expect(await value.evaluate((element) => element === document.activeElement)).toBe(true)
+  expect(await value.inputValue()).toBe("keep typing")
+})
+
+test("MCP search recovers from no results and its configuration fits narrow content", async () => {
+  await page.getByRole("button", { name: "MCP page" }).click()
+  await page.getByRole("searchbox", { name: "Search MCP servers" }).fill("builtin-fixture")
+  expect(await page.getByRole("button", { name: "Configure Builtin-fixture", exact: true }).count()).toBe(1)
+  expect(await page.getByRole("button", { name: "Configure Fixture server", exact: true }).count()).toBe(0)
+  await page.getByRole("searchbox", { name: "Search MCP servers" }).fill("missing")
+  await page.getByText("No matching servers", { exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Configure Builtin-fixture", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Clear server search" }).first().click()
+  await page.getByRole("button", { name: "Configure Fixture server" }).click()
+  for (const width of [1280, 800, 375, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    const name = page.getByLabel("Server name", { exact: true })
+    const type = page.getByRole("button", { name: "Connection type: Remote endpoint" })
+    const boxes = await Promise.all([name.boundingBox(), type.boundingBox()])
+    expect(boxes.every((box) => box && box.width >= 100 && box.x >= 0 && box.x + box.width <= width)).toBe(true)
+    if (width <= 375) expect(boxes[1]!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height)
+  }
+  expect(errors).toEqual([])
+})
+
+test("email tasks retain their drafts and report incomplete configurations without claiming health", async () => {
+  expect(await page.getByLabel("Reading host", { exact: true }).count()).toBe(0)
+  await page.getByLabel("Sending host", { exact: true }).fill("smtp.fixture")
+  await page
+    .getByText("Sending: Incomplete. Reading: Not configured. Server connections have not been verified.", {
+      exact: true,
+    })
+    .waitFor()
+  await page.getByRole("tab", { name: "Sending", exact: true }).press("ArrowRight")
+  await page.getByLabel("Reading host", { exact: true }).fill("imap.fixture")
+  expect(await page.getByLabel("Sending host", { exact: true }).count()).toBe(0)
+  await page.getByRole("tab", { name: "Reading", exact: true }).press("Home")
+  expect(await page.getByLabel("Sending host", { exact: true }).inputValue()).toBe("smtp.fixture")
+  expect(errors).toEqual([])
+})
+
+test("import parse errors stay associated with the input and an applied import retries only reading", async () => {
+  await page.getByRole("button", { name: "Import page" }).click()
+  const input = page.getByRole("textbox", { name: "Paste JSON or JSONC" })
+  await input.fill('{\n "username": }')
+  await page.getByRole("button", { name: "Review Paste" }).click()
+  await page.getByRole("alert").waitFor()
+  expect(await input.getAttribute("aria-invalid")).toBe("true")
+  const description = await input.getAttribute("aria-describedby")
+  expect(await page.locator(`[id="${description}"]`).innerText()).toContain("line 2")
+  await input.fill('{"username":"Fixture"}')
+  await page.getByRole("button", { name: "Review Paste" }).click()
+  await page.getByRole("button", { name: "Apply", exact: true }).click()
+  await page.getByText("Configuration imported. The view still needs to update.", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Retry reading" }).click()
+  expect(await page.evaluate("window.fixtureCalls")).toMatchObject({ plan: 1, apply: 1, read: 2 })
+  expect(await page.getByRole("button", { name: "Apply", exact: true }).isEnabled()).toBe(false)
+  expect(errors).toEqual([])
+})
+
+test("formatter status is scoped to a chosen project and its page excludes unrelated runtime configuration", async () => {
+  await page.getByRole("button", { name: "Formatter page" }).click()
+  expect(await page.getByText("custom", { exact: true }).count()).toBe(1)
+  expect(await page.getByText("unrelated", { exact: true }).count()).toBe(0)
+  expect(await page.evaluate<{ scopeID: string }[]>("window.fixtureCalls.status")).toEqual([])
+  await page.getByRole("button", { name: "Project: Select a project" }).click()
+  await page.getByRole("option", { name: "Fixture project" }).click()
+  await page.getByText("fixture-formatter", { exact: true }).waitFor()
+  expect(await page.evaluate<{ scopeID: string }[]>("window.fixtureCalls.status")).toEqual([
+    { scopeID: "scope-fixture" },
+  ])
+  expect(errors).toEqual([])
+})
+
+test("settings controls expose field descriptions, errors, object names and radio keyboard selection", async () => {
+  await page.getByRole("button", { name: "Controls page" }).click()
+  const input = page.getByRole("spinbutton", { name: "Sending port", exact: true })
+  const descriptions = (await input.getAttribute("aria-describedby"))?.split(" ") ?? []
+  const texts = await Promise.all(descriptions.map((id) => page.locator(`[id="${id}"]`).innerText()))
+  expect(texts.join(" ")).toContain("Use a valid port")
+  expect(texts.join(" ")).toContain("Enter a whole number")
+  expect(await page.getByRole("button", { name: "Copy Sending port", exact: true }).count()).toBe(1)
+  await page.getByRole("radio", { name: "Ask", exact: true }).focus()
+  await page.getByRole("radio", { name: "Ask", exact: true }).press("ArrowDown")
+  expect(await page.getByRole("radio", { name: "Allow", exact: true }).isChecked()).toBe(true)
+  expect(await page.getByRole("slider", { name: "Duration", exact: true }).getAttribute("aria-valuetext")).toBe(
+    "Custom 37",
+  )
+  expect(errors).toEqual([])
+})
+
+test("compaction thresholds keep persisted decimal values on their matching steps", async () => {
+  const values = ["0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.95"]
+  for (const [index, value] of values.entries()) {
+    await page.goto(`${url}?compaction=${value}`)
+    await page.getByRole("heading", { name: "Email", exact: true }).waitFor()
+    await page.getByRole("button", { name: "Compaction page", exact: true }).click()
+    const slider = page.getByRole("slider", { name: "Compaction overflow threshold", exact: true })
+    expect(await slider.inputValue()).toBe(String(index))
+    expect(await slider.getAttribute("aria-valuetext")).toBe(`${Number(value) * 100}%`)
+  }
+  expect(errors).toEqual([])
+})
+
+test("settings actions, inputs and choices share the borderless menu surface without changing other pages", async () => {
+  for (const theme of ["light", "dark"]) {
+    await page.goto(url + "?theme=" + theme)
+    await page.getByRole("button", { name: "Controls page", exact: true }).click()
+    await page.mouse.move(0, 0)
+    const reference = page.getByRole("button", { name: "Font: System default", exact: true })
+    const background = await reference.evaluate((element) => getComputedStyle(element).backgroundColor)
+    expect(background).not.toBe("rgba(0, 0, 0, 0)")
+    const controls = page.locator(
+      '[data-testid="neutral-actions"] button, .ds-segment-item:not([aria-pressed="true"]), .settings-choice:not([data-checked]) label, [data-component="input"]:not([data-invalid]) [data-slot="input-wrapper"]',
+    )
+    expect(await controls.count()).toBeGreaterThanOrEqual(10)
+    for (const control of await controls.all()) {
+      const style = await control.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow }
+      })
+      expect(style).toEqual({ background, border: "0px", shadow: "none" })
+    }
+    const outside = page.getByTestId("outside-settings")
+    expect(await outside.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("1px")
+    expect(await outside.evaluate((element) => getComputedStyle(element).borderTopColor)).toBe("rgba(0, 0, 0, 0)")
+    const input = page.getByRole("textbox", { name: "Display name", exact: true })
+    await input.focus()
+    await input.fill("Edited gateway")
+    expect(await input.inputValue()).toBe("Edited gateway")
+    expect(await input.evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor)).toBe(background)
+    const check = page.getByRole("button", { name: "Check now", exact: true })
+    await check.focus()
+    await page.keyboard.press("Tab")
+    await page.keyboard.press("Shift+Tab")
+    expect(await check.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe("none")
+    expect(await check.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    expect(await page.getByRole("button", { name: "Unavailable action", exact: true }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "New native action", exact: true }).click()
+    expect(await input.inputValue()).toBe("Native action")
+    const selected = page.getByRole("button", { name: "Balanced", exact: true })
+    expect(await selected.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(background)
+    expect(await selected.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    await page.getByRole("button", { name: "Full", exact: true }).click()
+    expect(await page.getByRole("button", { name: "Full", exact: true }).getAttribute("aria-pressed")).toBe("true")
+    expect(await page.getByRole("spinbutton", { name: "Sending port", exact: true }).getAttribute("aria-invalid")).toBe(
+      "true",
+    )
+    expect(await page.getByText("Enter a whole number", { exact: true }).isVisible()).toBe(true)
+    expect(errors).toEqual([])
+  }
+})
+
+test("entity card rows keep their card surface while ordinary settings actions keep the inset fill", async () => {
+  for (const theme of ["light", "dark"]) {
+    await page.goto(url + "?theme=" + theme)
+    await page.mouse.move(0, 0)
+    await page.getByRole("button", { name: "MCP page", exact: true }).click()
+    const card = page.locator(".settings-mcp-card").first()
+    const summary = card.locator(".settings-mcp-summary").first()
+    const resting = await summary.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow }
+    })
+    expect(resting).toEqual({ background: "rgba(0, 0, 0, 0)", border: "0px", shadow: "none" })
+    const action = page.getByRole("button", { name: "Add server", exact: true })
+    expect(await action.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)")
+
+    const builtin = page.locator(".settings-mcp-card").last().locator(".settings-mcp-summary").first()
+    expect(await builtin.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+
+    await page.getByRole("button", { name: "Models page", exact: true }).click()
+    const info = page.locator(".settings-model-info-button").first()
+    expect(await info.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+    const infoHandle = await info.elementHandle()
+    await info.hover()
+    await page.waitForFunction(
+      (element) => getComputedStyle(element!).backgroundColor !== "rgba(0, 0, 0, 0)",
+      infoHandle,
+    )
+    expect(errors).toEqual([])
+  }
+})
+
+test("wide and narrow settings selectors keep the value leading and the chevron trailing", async () => {
+  for (const width of [1280, 375, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    await page.getByRole("button", { name: "Controls page" }).click()
+    const trigger = page.getByRole("button", { name: "Font: System default" })
+    const bounds = await trigger.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      const value = element.querySelector(".menu-field-value")!.getBoundingClientRect()
+      const chevron = element.querySelector(".menu-field-chevron")!.getBoundingClientRect()
+      return {
+        left: box.left,
+        right: box.right,
+        valueLeft: value.left,
+        valueRight: value.right,
+        arrowLeft: chevron.left,
+        arrowRight: chevron.right,
+      }
+    })
+    expect(bounds.arrowRight).toBeGreaterThanOrEqual(bounds.right - 16)
+    expect(bounds.valueLeft).toBeLessThanOrEqual(bounds.left + 16)
+    expect(bounds.valueRight).toBeLessThan(bounds.arrowLeft)
+    await trigger.click()
+    await page.getByRole("option", { name: "System default", exact: true }).waitFor()
+    await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "option")
+    await page.keyboard.press("Escape")
+    await trigger.waitFor({ state: "visible" })
+    await page.waitForFunction(() => document.activeElement?.classList.contains("menu-field-trigger"))
+    expect(errors).toEqual([])
+  }
+})
+
+test("expanded configuration details inset readable paths and keep actions reachable without overflow", async () => {
+  await page.getByRole("button", { name: "Config files page" }).click()
+  const summary = page.locator(".ds-path-index > summary")
+  await summary.focus()
+  await summary.press("Enter")
+  for (const width of [1280, 375, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    const detail = page.locator(".ds-path-index .ds-path-row")
+    const pathText = page.locator(".ds-path-text")
+    const metrics = await detail.evaluate((element) => {
+      const style = getComputedStyle(element)
+      const path = element.querySelector(".ds-path-text")!
+      const pathStyle = getComputedStyle(path)
+      const frameStyle = getComputedStyle(element.closest(".settings-panel-frame")!)
+      return {
+        padding: parseFloat(style.paddingInlineStart),
+        font: pathStyle.fontFamily,
+        expectedFont: frameStyle.getPropertyValue("--font-family-mono").trim(),
+        overflow: element.scrollWidth > element.clientWidth,
+        wordBreak: pathStyle.wordBreak,
+        fontSize: parseFloat(pathStyle.fontSize),
+      }
+    })
+    expect(metrics.padding).toBeGreaterThanOrEqual(12)
+    expect(metrics.font).toBe(metrics.expectedFont)
+    expect(metrics.fontSize).toBeLessThanOrEqual(14)
+    expect(metrics.wordBreak).toBe("normal")
+    expect(metrics.overflow).toBe(false)
+    const copy = page.getByRole("button", { name: "Copy path: 90-channels.jsonc" })
+    const copyBounds = await copy.boundingBox()
+    expect(copyBounds!.x + copyBounds!.width).toBeLessThanOrEqual(width)
+    expect(await pathText.textContent()).toEndWith("90-channels.jsonc")
+  }
+  await summary.press("Enter")
+  expect(await page.getByRole("button", { name: "Copy path: 90-channels.jsonc" }).isVisible()).toBe(false)
+  expect(errors).toEqual([])
+})
+
+test("settings dropdowns distinguish the saved choice from hover and keep a visible keyboard focus", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  for (const theme of ["light", "dark"]) {
+    await page.goto(url + "?theme=" + theme)
+    await page.getByRole("button", { name: "Controls page", exact: true }).click()
+    const trigger = page.getByRole("button", { name: "Font: System default", exact: true })
+    await page.mouse.move(0, 0)
+    const restingBackground = await trigger.evaluate((element) => getComputedStyle(element).backgroundImage)
+    expect(await trigger.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    expect(await trigger.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    await trigger.press("Enter")
+    const selected = page.getByRole("option", { name: "System default", exact: true })
+    const alternative = page.getByRole("option", { name: "Serif", exact: true })
+    await alternative.hover()
+    expect(await selected.getAttribute("aria-selected")).toBe("true")
+    expect(await selected.locator(".menu-field-item-indicator").isVisible()).toBe(true)
+    expect(await alternative.locator(".menu-field-item-indicator").count()).toBe(0)
+    const hoverColor = await alternative.evaluate((element) => {
+      const reference = document.createElement("span")
+      reference.style.backgroundColor = "var(--surface-raised-stronger-hover)"
+      element.append(reference)
+      const color = getComputedStyle(reference).backgroundColor
+      reference.remove()
+      return color
+    })
+    expect(hoverColor).not.toBe("rgba(0, 0, 0, 0)")
+    await page.waitForFunction((expected) => {
+      const current = document.querySelector('.menu-field-item[aria-selected="true"]')!
+      const hover = document.querySelector('.menu-field-item[data-highlighted]:not([aria-selected="true"])')!
+      const surface = document.querySelector(".menu-field-surface")!
+      return (
+        getComputedStyle(current).backgroundColor === "rgba(0, 0, 0, 0)" &&
+        getComputedStyle(hover).backgroundColor === expected &&
+        getComputedStyle(hover).backgroundColor !== getComputedStyle(surface).backgroundColor
+      )
+    }, hoverColor)
+    const surface = page.locator(".menu-field-surface")
+    expect((await surface.boundingBox())!.width).toBeGreaterThanOrEqual((await trigger.boundingBox())!.width - 1)
+    const disabled = page.getByRole("option", { name: "Unavailable font", exact: true })
+    await disabled.hover()
+    expect(await disabled.getAttribute("aria-disabled")).toBe("true")
+    expect(await disabled.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+    await alternative.focus()
+    await page.keyboard.press("Enter")
+    await selected.waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Font: Serif")
+    const updated = page.getByRole("button", { name: "Font: Serif", exact: true })
+    expect(await updated.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+    expect(await updated.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe(restingBackground)
+    expect(await updated.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    expect(await updated.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("none")
+    await updated.press("Enter")
+    await page.getByRole("option", { name: "Serif", exact: true }).press("Escape")
+    expect(errors).toEqual([])
+  }
+})
+
+test("model and thinking menus use the same borderless triggers and quiet pointer feedback", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.getByRole("button", { name: "Models page", exact: true }).click()
+  const model = page.locator(".settings-model-trigger")
+  const thinking = page.getByRole("button", { name: "Select thinking effort: Default", exact: true })
+  for (const { trigger, selected, alternative, indicator } of [
+    {
+      trigger: model,
+      selected: page.locator('[data-slot="list-item"][data-selected="true"]'),
+      alternative: page.locator('[data-slot="list-item"][data-selected="false"]').last(),
+      indicator: '[data-slot="list-item-selected-icon"]',
+    },
+    {
+      trigger: thinking,
+      selected: page.getByRole("option", { selected: true }),
+      alternative: page.getByRole("option", { selected: false }).last(),
+      indicator: '[data-slot="menu-field-indicator"]',
+    },
+  ]) {
+    await page.mouse.move(0, 0)
+    expect(await trigger.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    expect(await trigger.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    await trigger.click()
+    await page.getByRole("dialog").locator(":focus").waitFor()
+    await alternative.hover()
+    expect(await selected.locator(indicator).isVisible()).toBe(true)
+    expect(await alternative.locator(indicator).count()).toBe(0)
+    const feedback = await alternative.evaluate(async (element) => {
+      await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+      return getComputedStyle(element).backgroundColor
+    })
+    const swatch = await alternative.evaluate((element) => {
+      const reference = document.createElement("span")
+      reference.style.backgroundColor = "var(--surface-raised-stronger-hover)"
+      element.append(reference)
+      const color = getComputedStyle(reference).backgroundColor
+      reference.remove()
+      return color
+    })
+    expect(swatch).not.toBe("rgba(0, 0, 0, 0)")
+    expect(feedback).toBe(swatch)
+    await page.keyboard.press("Escape")
+    await selected.waitFor({ state: "detached" })
+  }
+  expect(errors).toEqual([])
+})
+
+test("touch menus retain reachable option rows within narrow settings widths", async () => {
+  for (const width of [375, 320]) {
+    await page.close()
+    page = await browser.newPage({ hasTouch: true, viewport: { width, height: 720 } })
+    page.on("pageerror", (error) => errors.push(error.message))
+    await page.goto(url, { waitUntil: "domcontentloaded" })
+    await page.getByRole("button", { name: "Controls page", exact: true }).click()
+    const trigger = page.getByRole("button", { name: "Font: System default", exact: true })
+    await trigger.click()
+    const option = page.getByRole("option", { name: "Serif", exact: true })
+    await page.locator(".settings-popover-layer").evaluate(async (layer) => {
+      await Promise.allSettled(layer.getAnimations({ subtree: true }).map((animation) => animation.finished))
+    })
+    expect((await option.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    const bounds = (await page.locator(".menu-field-surface").boundingBox())!
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+    await option.press("Escape")
+    expect(await trigger.isVisible()).toBe(true)
+  }
+  expect(errors).toEqual([])
+})
+
+test("declarative plugin choices share the menu presentation while retaining labels and staged values", async () => {
+  await page.getByRole("button", { name: "Plugin page", exact: true }).click()
+  const trigger = page.getByRole("button", { name: "Plugin mode: first", exact: true })
+  await trigger.click()
+  expect(await page.getByRole("option", { name: "first", exact: true }).getAttribute("aria-selected")).toBe("true")
+  await page.getByRole("option", { name: "second", exact: true }).click()
+  const updated = page.getByRole("button", { name: "Plugin mode: second", exact: true })
+  await updated.waitFor()
+  expect(await page.getByTestId("plugin-values").textContent()).toBe('{"mode":"second"}')
+  expect(await updated.getAttribute("id")).toBe("plugin-setting-mode")
+  expect(await updated.getAttribute("aria-describedby")).toContain("plugin-setting-mode-description")
+  await page.mouse.move(0, 0)
+  await updated.evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+  })
+  const background = await updated.evaluate((element) => getComputedStyle(element).backgroundColor)
+  for (const field of await page.locator(".declarative-settings-form input").all()) {
+    expect(await field.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(background)
+    expect(await field.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    expect(await field.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+  }
+  await page.getByLabel("Plugin name", { exact: true }).fill("New integration")
+  await page.getByLabel("Plugin name", { exact: true }).press("Tab")
+  expect(JSON.parse((await page.getByTestId("plugin-values").textContent())!)).toEqual({
+    mode: "second",
+    name: "New integration",
+  })
+  expect(errors).toEqual([])
+})
+
+test("Chinese permission choices use the same names and canonical values in both session scopes", async () => {
+  await page.goto(url + "?locale=zh-CN", { waitUntil: "domcontentloaded" })
+  await page.getByRole("button", { name: "Permissions page" }).click()
+  const regular = page.getByRole("radiogroup", { name: "权限模式", exact: true })
+  const nonInteractive = page.getByRole("radiogroup", { name: "非交互会话的权限模式", exact: true })
+  for (const name of ["无人值守", "完全访问权限"]) {
+    expect(await regular.getByRole("radio", { name: new RegExp(`^${name}`) }).count()).toBe(1)
+    expect(await nonInteractive.getByRole("radio", { name, exact: true }).count()).toBe(1)
+  }
+  expect(await nonInteractive.getByRole("radio", { name: "无人值守", exact: true }).inputValue()).toBe("autonomous")
+  expect(await nonInteractive.getByRole("radio", { name: "完全访问权限", exact: true }).inputValue()).toBe(
+    "full_access",
+  )
+  expect(errors).toEqual([])
+})

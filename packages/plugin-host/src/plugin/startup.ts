@@ -1,0 +1,35 @@
+import { StorageRecovery } from "@ericsanchezok/synergy-harness/storage/recovery"
+import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
+import { Plugin } from "."
+
+/**
+ * H5 plugin startup contributions: scope activation and initialization move
+ * out of scope/runtime.ts into the plugin domain. activate runs before any
+ * starting listener (channels rely on hearing every scope start); init runs
+ * right after the listeners, before session recovery. Registered through
+ * src/registration.ts.
+ */
+async function recoverInstallations(progress?: () => void) {
+  const { PluginInstallationRecovery } = await import("./installation-recovery")
+  await PluginInstallationRecovery.recover(progress)
+  const { recoverInstalledPlugins } = await import("../installation/plugin-activation")
+  await recoverInstalledPlugins(progress)
+}
+
+export function registerPluginStartup() {
+  StorageRecovery.register("plugin-installation", recoverInstallations)
+  ScopeStartup.register({
+    name: "plugin-activate",
+    phase: "core",
+    before: ["starting-listeners"],
+    init: (scope) => Plugin.activateScope(scope.id),
+  })
+  ScopeStartup.register({
+    name: "plugin-init",
+    phase: "core",
+    after: ["starting-listeners"],
+    before: ["session-recovery"],
+    init: () => Plugin.init(),
+    dispose: (scopeID) => Plugin.disposeScope(scopeID),
+  })
+}

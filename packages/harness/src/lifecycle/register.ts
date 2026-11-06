@@ -1,0 +1,49 @@
+import { SessionTransferGate } from "../session/transfer-gate"
+import { registerCoreEvents } from "../bus/register"
+import { WorkspaceOperations } from "../workspace/operations"
+import { registerConfigMigrations } from "../config/migration"
+import { registerScopeMigrations } from "../scope/migration"
+import { registerSessionMigrations } from "../session/migration"
+import { registerObservabilityMigrations } from "../observability/migration"
+import { registerStorageMigrations } from "../storage/migration"
+import { registerSessionResolver } from "../session/index"
+import { registerSummaryJob } from "../session/summary"
+import { registerTitleJob } from "../session/title"
+import { registerLoopSignals } from "../session/loop-signals"
+import { SessionCompaction } from "../session/compaction"
+import { ObservabilityMetrics } from "../observability/metrics"
+import { RuntimeContext } from "./context"
+import { UsageMigration } from "../usage/migration"
+import { Environment } from "../environment"
+import { registerEnvironmentMigrations } from "../environment/migration"
+import { registerWorkspaceMigrations } from "../workspace/migration"
+import { WorkspaceMounts } from "../workspace/mount"
+import { EnvironmentExecution } from "../environment/execution"
+
+const registration = RuntimeContext.state(() => ({ complete: false }))
+
+export function registerHarness() {
+  const state = registration()
+  if (state.complete) return
+  registerCoreEvents()
+  registerConfigMigrations()
+  registerScopeMigrations()
+  registerSessionMigrations()
+  registerObservabilityMigrations()
+  registerStorageMigrations()
+  UsageMigration.register()
+  registerWorkspaceMigrations()
+  registerEnvironmentMigrations()
+  Environment.registerRecovery()
+  WorkspaceMounts.register()
+  EnvironmentExecution.registerRecovery()
+  WorkspaceOperations.register()
+  SessionTransferGate.register()
+  registerSessionResolver()
+  registerSummaryJob()
+  registerTitleJob()
+  registerLoopSignals()
+  SessionCompaction.registerJobs()
+  ObservabilityMetrics.register()
+  state.complete = true
+}

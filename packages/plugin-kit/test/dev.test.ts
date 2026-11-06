@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs"
 import path from "path"
-import { publishGeneration } from "../src/commands/dev"
+import { publishGeneration, watchPluginProject } from "../src/commands/dev"
 import { createFixtureProject, writeMinimalPlugin } from "./fixtures"
 
 function generationSource(version: string, description: string) {
@@ -14,6 +14,20 @@ export default definePlugin({
 })
 `
 }
+
+test("closing a watcher waits for and cancels its active generation without publishing late output", async () => {
+  const project = createFixtureProject("dev-close")
+  try {
+    writeMinimalPlugin(project, generationSource("1.0.0", "closing"))
+    const watcher = watchPluginProject(project.root, { initialBuild: true })
+    await watcher.close()
+    expect(fs.existsSync(path.join(project.root, "dist/dev/current.json"))).toBe(false)
+    expect(fs.readdirSync(path.join(project.root, "dist/dev"))).toEqual([])
+    await watcher.close()
+  } finally {
+    project.cleanup()
+  }
+})
 
 describe("publishGeneration", () => {
   test("cleans the staging directory when the build fails", async () => {
@@ -121,4 +135,24 @@ describe("publishGeneration", () => {
       project.cleanup()
     }
   })
+})
+
+test("metadata-only edits produce a new generation and an invalid rebuild retains its pointer", async () => {
+  const project = createFixtureProject("dev-metadata")
+  try {
+    writeMinimalPlugin(project, generationSource("1.0.0", "first"))
+    expect(await publishGeneration(project.root)).toBe(true)
+    const pointer = path.join(project.root, "dist/dev/current.json")
+    const first = await Bun.file(pointer).json()
+    project.writeFile("src/index.ts", generationSource("1.0.0", "second"))
+    expect(await publishGeneration(project.root)).toBe(true)
+    const second = await Bun.file(pointer).json()
+    expect(second.generation).not.toBe(first.generation)
+    expect((await Bun.file(path.join(second.directory, "plugin.json")).json()).description).toBe("second")
+    project.writeFile("src/index.ts", "export default @")
+    expect(await publishGeneration(project.root)).toBe(false)
+    expect(await Bun.file(pointer).json()).toEqual(second)
+  } finally {
+    project.cleanup()
+  }
 })

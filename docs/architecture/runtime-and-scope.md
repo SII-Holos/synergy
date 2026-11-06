@@ -1,8 +1,12 @@
 # Runtime and Scope
 
+The Runtime owns an explicit transactional Agent Storage Handle independently of Scope directories. It completes database upgrade and recovery before admission, then drains and closes owned storage during shutdown. See [Agent storage](agent-storage.md) for authority, ownership, engine and file-commit boundaries.
+
+[Environments](environments.md) own independently allocated compute destinations and durable usage records. Runtime and Session creation do not allocate an Environment.
+
 ## Runtime Model
 
-Synergy has one server runtime that can serve multiple clients and multiple project contexts. The process is not bound to the directory from which it was started; each scoped request supplies a `scopeID` or directory, and each session persists its own Scope and workspace binding.
+A process may host multiple independent Runtime instances. Each instance has an immutable `RuntimeHost` (`home`, `root`, environment), an explicitly selected composition, and an owned or borrowed Storage Handle. One writing Runtime owns a Home at a time. Harness can run without an HTTP server; a server composition exposes its instance to multiple clients and project contexts. The runtime is not bound to the launch directory: scoped operations select a `scopeID` or directory, and each session persists its own Scope and workspace binding.
 
 The same runtime can be launched through several ownership surfaces:
 
@@ -12,19 +16,52 @@ The same runtime can be launched through several ownership surfaces:
 | `synergy server`                             | Runs the server in the foreground for direct operation or debugging.                  |
 | Desktop managed mode                         | The Electron app owns a packaged local server and its lifecycle.                      |
 | Source `bun dev server`, `web`, or `desktop` | The source development orchestrator owns the selected development processes.          |
-| `synergy send` without `--attach`            | Starts an ephemeral local server for the one-off invocation.                          |
+| `synergy send` without `--attach`            | Opens an in-process task runtime, executes directly, flushes evidence and closes.     |
 | `web` or `send --attach`                     | Connects to an already running runtime and does not own it.                           |
 
-`SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One server owns a given `SYNERGY_HOME` at a time.
+`SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One writing runtime owns a given `SYNERGY_HOME` at a time.
 
-## Global Runtime
+`RuntimeHost.launch` captures typed launch provenance independently of Scope and Workspace. Source development entrypoints supply `SYNERGY_RUNTIME_ENTRY`; CLI handlers supply foreground server or one-shot defaults, Desktop supplies managed ownership, and daemon ownership takes precedence. Installed generation pins and build metadata distinguish installed execution from source; Desktop's dev/stable channel alone does not. Local source hosts capture their own module checkout and Git revision once, not the user's project directory. `RuntimeContext.Instance` owns a fixed ID, start time and execution mode. Prompt assembly consumes this snapshot and the Runtime-owned actual listener through the [fixed advisory identity source](llm-loop.md#prompt-assembly); attached clients cannot relabel the backend.
 
-`GlobalRuntime.start()` runs once per server process inside the home Scope. It starts or initializes:
+## Composition and migration registration
+
+`RuntimeComponents` validates the selected dependency graph before registration. Each component owns its schemas, migrations, tools, reload handlers, lifecycle and optional transport adapters. Required predecessors and present optional predecessors determine a stable registration order. Services and registration completion are Runtime-scoped; component objects can be reused across instances. Extension cleanup drains started owners in reverse order, including the owner whose initialization failed. Resident startup prepares every selected service before ready hooks activate scheduling, and shutdown drains the reverse order.
+
+`openAgentRuntime` supplies Bun hosting and an in-process client for an explicitly selected composition. Agent and policy workers receive the host's versioned selection, load only their role entries and seal registration. HTTP adapters load only when an HTTP host is selected. Unregistered configuration remains on disk and is excluded from that runtime's client schema; owner migration IDs and ledgers remain unchanged.
+
+`RuntimeHandle.open({ host, composition, storage, ... })` creates the instance, registers Harness and the selected composition, validates the startup graph, and seals that instance's registration before opening storage and running migrations. Imports define capabilities without activating them. Local and product hosts select their composition explicitly; importing product modules does not add capabilities to a core Runtime.
+
+An exclusive `ConfigSource` owns configuration independently of dormant files. After composition, Runtime excludes migrations marked `configuration: "files"` before locking the migration registry or opening storage. Their receipts remain pending for a later Runtime using local files. Other migrations and mixed-domain tracking remain active; credential and cache conversions use separate migrations from file configuration.
+
+Runtime startup has one terminal readiness event, emitted only after the entire open operation and its maintenance observer succeed. Aggregate lifecycle stages cover every awaited startup interval, including component extensions, transport, resident services and finalization. Component composition counts completed hooks automatically and forwards optional checked-work callbacks for long individual hooks. Managed CLI holds the terminal event until its Runtime factory returns and shutdown monitoring is armed; Desktop requires it together with successful HTTP health. Migration summaries and storage or execution-history completion are subordinate progress, never whole-Runtime readiness. A newly added await remains inside the active lifecycle stage even without a detailed reporter. See the [startup readiness decision](../decisions/implemented/bug-fix/2026-10-06-storage-recovery-startup-progress.md).
+
+`handle.run()` enters the owning instance; `handle.bind()` captures it for callbacks crossing native or transport boundaries. Runtime registries, configuration, credentials, provider catalogs, event buses, workers, caches, timers and resources belong to that instance. Scope, workspace, observability, experiment, migration-target and rollout contexts reject inherited values from another Runtime. Rollout identity, transport evidence sinks and tool completion callbacks share this ownership boundary; leaving the Runtime also leaves those contexts. A disposed handle rejects work and cannot recreate its state. A storage transaction cannot switch Runtime owners.
+
+Owned storage follows prepare, migrate, validate, activate and admission ordering. Borrowed storage retains the caller's close responsibility and cannot be attached to a second live Runtime. Opening failure or cancellation releases resources already acquired. Closing is idempotent: close admission, cancel execution, drain owned tasks and child streams, dispose Scope and composition services, flush telemetry, close owned storage, then release Home ownership. Callback work cannot outlive the instance that owns it.
+
+The HTTP health check owns its provider-wait deadline and clears it whenever the wait settles. A fast provider response or rejection must not leave a referenced deadline timer after the health response. A timed-out build retains the existing settled-state fallback.
+
+Registration is sealed per instance. Identical contributions may be repeated where the owning registry permits it; conflicts and new contributions after opening fail explicitly. A later Runtime starts with a fresh registry. Tests can compose core and product instances together in one process and close either independently. Offline migration fixtures use an explicit unsealed context and isolated storage.
+
+The migration tracking upgrade moves only IDs recognized by registered owners out of the old combined log. Unregistered IDs remain in that log so a later process with the owning capability can recover its history. `registerLibrary()` and `registerNote()` assemble each domain's migrations, tools, and lifecycle contributions before runtime startup; they do not require the full product manifest or plugin delivery to be installed.
+
+Agent permission contributions and Bash virtual-file providers are registered by their owning component before composition seals. Library supplies primary memory policy; Note supplies its virtual path matcher and Markdown reader. Harness and local execution do not install either product implicitly. Shared execution guidance requires only the selected tool surface; Cortex completion notifications require no scheduling component.
+
+`BusEvent.define()` creates a definition without registering it. Harness and component owners explicitly register their event schemas in the current Runtime before composition seals. Session workflow unions and extension schemas follow the same owner selection. Importing all factories cannot enlarge a reduced Runtime's OpenAPI or affect another Runtime's registration. Retained unsupported owner data is distinct from the public schema and remains available for reinstall.
+
+Agent permission contributions use registration keys, owners and builtin roles independently of configured display names or visibility. Base rules precede user overrides; final rules preserve the established visible-primary memory-write policy. Model guidance is contributed only when its required tools are available and permitted for the current session, including deferred expansion. Tool catalog text and ACP protocol declarations follow actual capabilities. Workbench statistics read Runtime-owned resource providers without initializing unselected Browser, MCP or Plugin services.
+
+The global capabilities response separates stable frontend `features` from component diagnostics. A feature requires the selected owner and its HTTP adapter; discovery returns 503 until service initialization finishes and after admission closes. Web uses these features and connection epochs for both presentation and request execution. See the [component absence decision](../decisions/implemented/architecture/2026-10-12-optional-component-absence.md).
+
+Startup migrations finish before HTTP requests are admitted. Managed Desktop receives versioned aggregate migration progress from the CLI reporter, keeps waiting while work advances, and displays the current step in its startup overlay. The optional `task` field accepts only the public categories defined by `synergy-util/runtime-startup`; CLI classifies known work without forwarding migration metadata. Desktop accepts records without that field, retains unknown-total counts, and measures elapsed and inactive time from accepted lifecycle events. Renderer timers do not renew backend deadlines. Migration callbacks accept an optional nonnegative phase index, starting at zero. Multi-scan migrations advance the phase before preparing each independent scan; the runner announces a new reporter step and resets progress throttling. Counts are monotonic within a phase, and reports from earlier phases are ignored. The [development reference](../reference/development.md) defines startup presentation and waiting limits; the [decision record](../decisions/implemented/bug-fix/2026-09-08-desktop-migration-progress-wait.md) explains the progress-based deadline.
+
+## Resident services
+
+Each selected component contributes resident services through `RuntimeServices`. The shared lifecycle starts them once inside the Runtime’s Home Scope. Presets selects the services below; a standalone local task enables its selected execution services without starting resident product services:
 
 - plugin discovery and runtime initialization
 - home-scope session recovery
 - configured Channels and outbound channel delivery
-- the optional Holos runtime
 - global file watching
 - MCP startup
 - plugin marketplace registry prefetch
@@ -32,13 +69,15 @@ The same runtime can be launched through several ownership surfaces:
 - Agenda and its built-in bootstrap items
 - the bounded Agent and Policy worker pools plus the ToolTask scheduler
 
-Shutdown admission closes as soon as the process receives its first termination signal: HTTP requests return `503 RuntimeShuttingDown`, and Agent, Policy, and tool admission closes synchronously before any shutdown await so no new execution can escape the process drain. The runtime force-exit deadline is derived from the largest configured execution cancellation grace plus a settlement margin; Desktop's managed-server supervisor and the generated systemd user unit both wait beyond the maximum supported runtime deadline before force-killing the process. Shutdown then stops Agenda, Channels, MCP, project Scope runtimes, and other process-owned resources before actively closing remaining HTTP, SSE, and WebSocket connections.
+Shutdown admission closes as soon as the process receives its first termination signal: HTTP requests return `503 RuntimeShuttingDown`, and Agent, Policy, and tool admission closes synchronously before any shutdown await so no new execution can escape the process drain. The runtime force-exit deadline is derived from the largest configured execution cancellation grace plus a settlement margin; Desktop's managed-server supervisor and the generated systemd user unit both wait beyond the maximum supported runtime deadline before force-killing the process. Shutdown then stops Agenda, Channels, MCP, project Scope runtimes, and other Runtime-owned resources before actively closing remaining HTTP, SSE, and WebSocket connections.
 
 Global services may still perform scoped work. They must enter the relevant `ScopeContext` before reading scoped configuration, storage, files, or session state.
 
+MCP authentication belongs to a Runtime-local server epoch. Interactive authorization revokes the previous connection before awaiting cleanup and blocks background recovery through code exchange and cleanup; credential mutations check their captured owner and per-authentication credential snapshot inside the serialized store operation. HTTP and SSE transports share the OAuth connection coordinator, which merges concurrent authentication challenges while ordinary requests remain parallel, delegates OAuth grants to the SDK, and permits one authorized replay. See the [OAuth ownership decision](../decisions/implemented/bug-fix/2026-09-27-own-mcp-oauth-rounds.md).
+
 ## Execution Topology
 
-The server process is the Control Plane. It owns HTTP and WebSocket availability, session generation leases, canonical Session/Message writes, event ordering, permission state, tool scheduling, recovery, and aggregate observability. It assembles and releases the immutable turn snapshot, while provider request serialization, network streaming, response parsing, and their retained working sets run outside its event loop.
+The runtime host process is the Control Plane. It owns session generation leases, canonical Session/Message writes, event ordering, permission state, tool scheduling, recovery, and aggregate observability. Server compositions additionally own HTTP and WebSocket availability. It assembles and releases the immutable turn snapshot, while provider request serialization, network streaming, response parsing, and their retained working sets run outside its event loop.
 
 ```mermaid
 flowchart LR
@@ -57,23 +96,33 @@ flowchart LR
 
 Every product LLM turn, including sessionless title, summary, classification, and agent-generation calls, enters `AgentTurn`. Production uses a bounded pool of recyclable Bun child processes; only tests use the in-process adapter. The Control Plane resolves final prompt and parameter plugin hooks plus a serializable provider runtime plan before admission. The worker reconstructs built-in provider runtime functions from that plan without provider-plugin discovery, so it cannot initialize plugin runtimes or call Host Services. A worker owns one provider turn at a time and is released before permission or tool waiting begins. Workers cannot receive executable tool callbacks and do not write canonical Session, Message, event, or observability state.
 
-The Agent worker pool has a live target capacity. Increasing the target starts workers immediately. Decreasing it removes excess idle workers first and marks only the remaining excess active workers to retire after their owned turns reach a terminal boundary. Resizing alone never aborts an active turn; subsequent target changes recompute the retirement set.
+The Agent worker pool has a live target capacity. Resident startup prewarms the pool toward its configured warm reserve (`agentWorkerMinIdle`, default one) without making HTTP/WebSocket availability depend on a worker handshake, so the first turn normally finds a ready worker. Increasing the target starts workers immediately. Decreasing it removes excess idle workers first and marks only the remaining excess active workers to retire after their owned turns reach a terminal boundary. Resizing alone never aborts an active turn; subsequent target changes recompute the retirement set. Idle-timeout and turn-count recycling replace the warm reserve instead of emptying the pool below it.
 
 The Agent protocol is versioned and schema-validated. A turn snapshot is limited to 64 MiB, transferred in at most 1 MiB chunks, and advanced by per-chunk acknowledgements. Stream events are limited to 2 MiB frames; text and reasoning deltas are coalesced, and the next frame is acknowledged only after the Control Plane consumer has drained the current frame. Queue item counts and aggregate queued bytes are bounded independently. Cancellation has a grace deadline, heartbeats detect stuck workers, and workers terminate or recycle after a configured turn count, RSS threshold, or heap-used threshold.
 
-Capability classification runs in a separate prewarmed Policy worker pool. Global-runtime startup begins prewarming without making HTTP/WebSocket availability depend on a child-process handshake. A classification that reaches a cold pool waits at most ten seconds for the first ready worker, so startup is bounded but not charged to the shorter request deadline. The Control Plane sends only a schema-validated, byte-bounded snapshot of the tool name, arguments, and classification context; the worker returns a capability envelope and never owns profile decisions, permission state, canonical writes, or tool execution. Once the pool is ready, each request has one total queue/transfer/classification deadline. A startup timeout, request timeout, process crash, invalid protocol message, or memory/heartbeat violation produces a finite opaque `protected_op` result and an immediate transient denial without entering approval, including under `guarded` and `full_access`. Workers recycle after bounded request counts or memory watermarks. Pre-ready failures use bounded exponential backoff and a startup circuit so a broken worker executable cannot create a Control Plane respawn storm.
+Capability classification runs in a separate prewarmed Policy worker pool. Resident startup begins prewarming without making HTTP/WebSocket availability depend on a child-process handshake. A classification that reaches a cold pool waits at most ten seconds for the first ready worker, so startup is bounded but not charged to the shorter request deadline. The Control Plane sends only a schema-validated, byte-bounded snapshot of the tool name, arguments, and classification context; the worker returns a capability envelope and never owns profile decisions, permission state, canonical writes, or tool execution. Once the pool is ready, each request has one total queue/transfer/classification deadline. A startup timeout, request timeout, process crash, invalid protocol message, or memory/heartbeat violation produces a finite opaque `protected_op` result without entering approval. That result is an immediate transient denial under `guarded` and `autonomous`, and is fail-open under `full_access`, whose entire purpose is to pre-authorize capabilities it has not yet seen; see [Execution boundaries](execution-boundaries.md#control-profiles). Workers recycle after bounded request counts or memory watermarks. Pre-ready failures use bounded exponential backoff and a startup circuit so a broken worker executable cannot create a Control Plane respawn storm.
 
-`ToolScheduler` is the asynchronous boundary between proposed model tool calls and execution. It applies process-wide and per-executor-class admission limits, byte-bounded queues, generation-aware idempotency, cancellation, and terminal accounting. The executor classes are local process, file, plugin, MCP, Browser, Link, and narrow Control Plane operations. Physical isolation follows the capability: Bash and command-based search own child processes and bounded pipes, plugins reuse the plugin process runtime, and MCP, Browser, and Link retain their canonical transports/runtimes. File and canonical-state operations remain scheduled in the Control Plane when their implementation depends on its single-writer state; executor classification does not weaken permission, sandbox, Scope, or ownership rules.
+`ToolScheduler` is the asynchronous boundary between proposed model tool calls and execution. It applies Runtime-wide and per-executor-class admission limits, byte-bounded queues, generation-aware idempotency, cancellation, and terminal accounting. The executor classes are local process, file, plugin, MCP, Browser, Link, and narrow Control Plane operations. Physical isolation follows the capability: Bash and command-based search own child processes and bounded pipes, plugins reuse the plugin process runtime, and MCP, Browser, and Link retain their canonical transports/runtimes. File and canonical-state operations remain scheduled in the Control Plane when their implementation depends on its single-writer state; executor classification does not weaken permission, sandbox, Scope, or ownership rules.
 
 The Control Plane is the only canonical observability writer. Agent and Policy workers send bounded execution data back through their protocols and do not initialize the performance store. Provider credential file updates use a process-safe lock so concurrent worker refreshes cannot lose writes.
 
+### Process resource sampling
+
+Harness `ProcessInspection` owns asynchronous local RSS queries. Linux reads procfs with cancellation and checks the process start tick around the RSS read. macOS and Windows query batches of at most 128 PIDs through asynchronous `ps` or PowerShell execution. Queries have a shared one-second maximum sampling deadline, a four-execution admission ceiling across callers, and a 256 KiB command-output limit; saturated work is left unmeasured rather than queued or served from a cache. The internal deadline retains valid completed sub-batches while cancelling and draining remaining reads or query commands; caller cancellation discards all results. A query command's admission slot remains held until completion. Timers and abort listeners are disposed on settlement.
+
+Registry snapshots and Registry/MCP resource stats return Promises without changing their response fields. Registry's default OS sampler delegates its one-second internal deadline to `ProcessInspection` and forwards only the true caller cancellation signal, so completed sub-batches survive the deadline through Registry completion. Registry completion checks the captured process object, child handle and PID against the current owner. Only the latest sampling generation can update current/baseline/peak RSS or settle stale processes. Missing, terminated, failed, cancelled and superseded samples have no per-process RSS reading; aggregate sums retain an explicit measured-process count. An owned child's `alive()` accessor preserves `true`, `false` and `undefined`; unknown liveness cannot fall back to PID probing, settle a stale process or remove its terminator. PID probing applies only when that accessor is absent. The existing injected Registry inspector receives a cancellation signal, has its own one-second deadline and four in-flight calls per Runtime, and retains its admission slot until its underlying Promise settles, even when the deadline wins.
+
+MCP pins the OS start identity when a local connection opens and requires that identity and the connection generation to match later samples. A failed initial identity capture leaves that connection unmeasured. Linux start ticks and Windows UTC start-time ticks distinguish reused PIDs; macOS `ps lstart` has only second precision and cannot distinguish reuse within the same second. Registry child handles supply exit evidence, but PID-only registrations have no equivalent lifecycle guarantee. These precision limits are not evidence of strict PID-reuse exclusion.
+
+Explicit Observability resource snapshots cancel superseded queries. Periodic sampling skips ticks while a query is pending instead of cancelling it, so a query longer than the interval can still produce a frame. Event-loop lag measures lateness before awaiting RSS and advances the expected tick even when a busy tick is skipped; query latency is not event-loop lag. Stopping the sampler cancels pending sampling and returns a completion Promise for Runtime shutdown to await. Cancelled snapshots cannot persist a resource frame. Plugin memory monitoring skips overlapping ticks and cancels its pending query when stopped. Performance remains an aggregator of owner snapshots, not a process controller.
+
 ## Scope
 
-`Scope` is the canonical workspace context. It has two forms:
+`Scope` identifies ownership of sessions, configuration and events. Its required `local` field is either local filesystem metadata (`directory`, `worktree`, `vcs`, `sandboxes`) or `null`. Scope identity does not imply a filesystem workspace. It has two forms:
 
 | Type    | ID                | Meaning                                                                                                    |
 | ------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| Home    | `home`            | Installation-wide work and data rooted at the Synergy home directory.                                      |
+| Home    | `home`            | Installation-wide work and data; `local: null` grants no workspace access.                                 |
 | Project | Stable project ID | A user-selected project boundary with project metadata, VCS information, and known sandbox/worktree paths. |
 
 ### Directory resolution
@@ -85,58 +134,55 @@ The Control Plane is the only canonical observability writer. Agent and Policy w
 - If the selected directory contains `.git`, it records Git identity and worktree information without changing the selected boundary.
 - A Git-backed Scope uses a stable repository identity when available and tracks additional worktree/sandbox paths under the same project record.
 - A non-Git directory uses a stable hash of its resolved path.
-- A missing directory resolves to home and causes a matching stale project record to be archived.
-- Discovery-only Scope resolution may use a transient Scope without registering the directory, writing Git identity cache files, archiving stale records, or emitting Scope events.
+- An explicit missing directory fails with `WorkspaceUnavailable`; it never resolves to Home. Missing and archived projects retain their identity and readable history.
+- Discovery-only resolution may use a transient Scope without registering the directory, writing Git identity cache files or emitting Scope events.
+- When both `scopeID` and a directory are supplied, the stable Scope ID owns resolution. No selector means Home; there is no implicit current-directory lookup.
 
 The user therefore chooses the project boundary. Code must not reintroduce implicit upward repository discovery.
 
-### Project folders (multi-root trust boundary)
+### Project folders and Workspace write authority
 
-A project Scope can declare multiple folders: the main `worktree` plus additional `sandboxes` entries persisted under the same project record. `Scope.fromDirectory()` appends opened worktree/related directories to `sandboxes`, and the Web project editor manages the list explicitly. `scope.update` accepts a `?directory=` query parameter: when the path `scopeID` is unknown, the handler resolves and persists the project from that directory, so a client that only knows the worktree path can still update it.
+A project Scope can declare multiple folders: the main `local.worktree` plus additional `local.sandboxes` entries persisted under the same project record. `Scope.fromDirectory()` appends opened worktree/related directories to `local.sandboxes`, and the Web project editor manages the list explicitly. `scope.update` requires the canonical path `scopeID`. Directory hints cannot register or redirect a project during an update; an unknown ID fails explicitly. Clients resolve a directory before updating its Scope.
 
 The canonical derivation lives in `Scope.Root`:
 
-- `Scope.Root.projectRoots(scope)` — `[worktree, ...sandboxes]`, absolute,
+- `Scope.Root.projectRoots(scope)` — `[local.worktree, ...local.sandboxes]`, absolute,
   deduplicated, existing directories only. This is the single source of truth for "which directories belong to this project Scope".
-- `Scope.Root.trustRoots(scope, workspace)` — project roots for the current
-  session; in a `git_worktree` session the original main checkout is excluded so it stays outside the trust boundary.
-- `Scope.Root.executionRoots(scope, workspace, extraRoots)` — trust roots
-  merged with caller-provided roots (e.g. Skill source roots); every `EnforcementGate` creation site uses this so project folders are trusted automatically.
+- `Scope.Root.trustRoots(scope, workspace)` identifies only the selected Workspace directory.
+- `Scope.Root.executionRoots(scope, workspace)` asynchronously resolves that directory plus its direct explicit writable shares, validating and pinning every local binding used by the turn.
 
-The execution boundary, sandbox policy, system prompt, and file-tool containment checks all consume these roots. In a worktree session, sibling worktrees declared as project folders are trusted — only the original checkout remains external and requires explicit authorization.
+Project membership does not grant write authority. The execution boundary, sandbox policy, system prompt and file-tool containment checks consume the canonical execution roots. Skill source roots are read grants. The original checkout and sibling worktrees require explicit sharing or authorization before writes.
 
 ### Scope identity and execution path
 
 Scope ownership and the current execution directory are related but distinct:
 
 - `scope.id` owns scoped storage, events, configuration, and project identity.
-- `scope.directory` is the active project/sandbox directory represented by that Scope value.
-- `scope.worktree` records the persisted main worktree or repository anchor.
+- `scope.local.directory` is the active project/sandbox directory represented by that Scope value.
+- `scope.local.worktree` records the persisted main worktree or repository anchor.
 - `session.workspace.path` is the path in which that session currently executes.
 
-`ScopeContext.current.directory` returns the active session workspace path when a workspace is present; otherwise it returns the Scope directory. This lets a session execute in an isolated worktree while its events and data remain owned by the original project Scope.
+`ScopeContext.current.workspace` is the explicit workspace binding or `null`. `current.directory` requires a workspace and throws `WorkspaceRequired` otherwise. Entering a Scope without an explicit workspace selects its local directory only when `scope.local` exists. Entering a session always supplies its persisted binding, including `null`, so a workspace-free session inside a project cannot regain filesystem access implicitly.
 
 ## Session Workspace
 
-A session workspace contains at least:
+Sessions persist a canonical `workspaceID` reference, with `null` representing no filesystem workspace. Their public `workspace` descriptor projects the current catalog binding and metadata. Missing catalog entries retain their ID and expose an error rather than becoming workspace-free. The [Workspace and files](workspace-and-files.md) contract defines catalog identity, generation and native-resource ownership.
 
-```ts
-{
-  type: string
-  path: string
-  scopeID: string
-}
-```
-
-The schema is intentionally open to workspace-specific metadata. New sessions default to the main workspace at the Scope directory. Child sessions inherit the parent workspace unless the caller supplies another binding.
+New project sessions default to the Scope local directory. Local Runtime gives new Home sessions a shared, persistent Workspace at `workspaces/home/` under the Runtime root, created and registered on first use through the existing Workspace provider. Home Scope still has `local: null`; entering the Scope alone does not select those files. Hosts without local Workspace services retain a null default. Explicit Workspace choices and child inheritance, including `null`, take precedence. Existing sessions and imports retain their saved references without a migration. Bindings must belong to the session Scope.
 
 Workspace selection supports:
 
-- `current` — use the current Scope directory
+- `none` — persist `null` and retain the session Scope
+- `current` — retain an existing Workspace reference or an absent nonlocal binding; otherwise use the Scope local directory
+- `workspace` — select a registered Workspace ID with an expected binding generation
 - `existing` — bind to an existing worktree target
 - `create` — create an isolated worktree, optionally from the current or a fresh base
 
-Workspace transitions update session state; they do not create a new Scope merely because the execution path changes.
+Workspace transitions update session state; they do not create a new Scope merely because the execution path changes. Submission validates the persisted binding before writing input or scheduling a turn. An unavailable or archived workspace rejects execution while history remains readable.
+
+Tools declare `requiresWorkspace` independently of permission profiles. Discovery omits workspace tools for a null binding, and retained tool handles check again before execution. `full_access` does not bypass workspace availability. Network, session, Notes, Library and managed Asset operations can operate without a workspace when their owning capability declares that support. Undeclared plugin and MCP requirements default to requiring a workspace.
+
+The Scope migration changes metadata only. Session bindings upgrade lazily when records are accessed, including deferred legacy import; message payloads and rollout evidence are not rewritten during Runtime startup. The owner applies the same canonical normalization for upgrade and import.
 
 ## Project Scope Runtime
 
@@ -151,7 +197,7 @@ Workspace transitions update session state; they do not create a new Scope merel
 - the listener that records project initialization after the built-in init command
 - startup listeners that rebind services owned by an active global subsystem before recovery can publish Scope-local events, including Channel question and outbound bridges for connected accounts
 
-Home does not start a second project runtime because its installation-wide services are owned by `GlobalRuntime`.
+Home does not start a second project runtime because its installation-wide services are owned by its selected resident services.
 
 Scope-local state uses `ScopedState`, keyed by Scope ID. Disposing a Scope runtime:
 
@@ -184,7 +230,7 @@ GET responses produced inside a Scope advertise the current event watermark thro
 
 `SessionManager.run()` restores both the persisted Scope and workspace before executing a session loop. Code reached through a session should use `ScopeContext.current` rather than process working-directory assumptions.
 
-Execution-context checks reject sessions whose Scope or workspace cannot be used safely. This is especially important for:
+Execution-context checks reject a mismatched persisted selection. Physical availability is checked when an operation uses the resource, so a missing directory does not block API-only work. Resource checks cover:
 
 - restored sessions whose project directory disappeared
 - worktree sessions
@@ -201,6 +247,8 @@ The exact domain files and precedence are defined in the [configuration referenc
 
 ## Invariants
 
+Runtime startup recovers committed execution history under exclusive Home ownership before opening HTTP admission. The host may observe aggregate recovery work through `RuntimeHandle` without changing journal replay or evidence validation. Managed Desktop uses those advancing counts to distinguish active recovery from a stalled startup; [Development](../reference/development.md) defines its waiting policy.
+
 - A server process is installation-scoped, not project-scoped.
 - Every project-sensitive operation runs inside an explicit Scope.
 - The selected directory is the project boundary; no upward discovery occurs.
@@ -215,3 +263,5 @@ The exact domain files and precedence are defined in the [configuration referenc
 - Project runtimes start lazily, once per Scope ID, and are disposable.
 - Project Scope disposal cancels only its detached plugin Agent calls before scoped state is removed; explicit reactivation is required before new calls are admitted.
 - Runtime ownership follows the launch surface; one client must not stop or replace a runtime owned by another surface.
+
+Runtime extension shutdown follows execution and background-job draining. Browser and Library component factories connect their owner disposal to the shared lifecycle; embedded hosts select the same factories. Low-level hosts supplying their own composition must connect the owner disposal operations through `RuntimeServices.disposeExtensions`. Browser registration and suspended owner-state reads do not launch Chromium. The root `script/runtime-composition-check.ts` installs packed dependency closures outside the repository and verifies execution, persistence, optional-package absence, resource closure and natural process exit.

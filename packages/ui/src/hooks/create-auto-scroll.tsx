@@ -1,27 +1,79 @@
-import { createEffect, on, onCleanup } from "solid-js"
+import { createEffect, createSignal, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
+import { createScrollMotion } from "../utils/scroll-motion"
+import { makeResizeObserver } from "@solid-primitives/resize-observer"
+
+export interface AutoScrollReadingAnchor {
+  owner: HTMLElement
+  restore(): void
+}
 
 export interface AutoScrollOptions {
+  enabled?: () => boolean
+  motionTarget?: () => HTMLElement | undefined
   working: () => boolean
   onUserInteracted?: () => void
+  /** Reports the distance from the bottom for content growth that fires no scroll event. */
+  onMeasure?: (distanceFromBottom: number) => void
+  /** How long a forced pin keeps re-pinning through late content growth (images, code blocks) before follow releases. Default 1000. */
+  settleMs?: number
+  captureReadingAnchor?: (input: { reading: boolean; target?: Element }) => AutoScrollReadingAnchor | undefined
 }
 
 export function createAutoScroll(options: AutoScrollOptions) {
   let scroll: HTMLElement | undefined
   let settling = false
+  let forcedSettling = false
+  let followingLatest = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let scrollFrame: number | undefined
+  let measureFrame: number | undefined
   let forceNextScroll = false
   let down = false
   let cleanup: (() => void) | undefined
+  let readingAnchor: AutoScrollReadingAnchor | undefined
+  let anchoredScrollTop: number | undefined
+  let anchoredScrollHeight: number | undefined
+  let movementOffset: number | undefined
+  let resumeRequested = false
+  let previousOffset = 0
+  let interactionVersion = 0
+  let smoothForce = false
+  let navigating = false
+  const motion = createScrollMotion(() => options.motionTarget?.())
+  createEffect(
+    on(
+      () => options.motionTarget?.(),
+      () => motion.cancel(),
+    ),
+  )
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
+    viewportRef: undefined as HTMLElement | undefined,
     userScrolled: false,
   })
+  const [readingAnchorOwner, setReadingAnchorOwner] = createSignal<HTMLElement>()
 
-  const active = () => options.working() || settling
+  const enabled = () => options.enabled?.() !== false
+  const active = () => enabled() && (options.working() || settling || followingLatest)
+  const clearReadingAnchor = () => {
+    readingAnchor = undefined
+    setReadingAnchorOwner(undefined)
+    anchoredScrollTop = undefined
+    anchoredScrollHeight = undefined
+    movementOffset = undefined
+  }
+  const preserveReadingAnchor = (target?: Element) => {
+    if (!store.userScrolled || navigating) {
+      clearReadingAnchor()
+      return
+    }
+    readingAnchor = options.captureReadingAnchor?.({ reading: store.userScrolled, target })
+    setReadingAnchorOwner(readingAnchor?.owner)
+    anchoredScrollTop = scroll?.scrollTop
+    anchoredScrollHeight = scroll?.scrollHeight
+  }
 
   const distanceFromBottom = () => {
     const el = scroll
@@ -29,11 +81,34 @@ export function createAutoScroll(options: AutoScrollOptions) {
     return el.scrollHeight - el.clientHeight - el.scrollTop
   }
 
-  const flushScrollToBottom = () => {
+  const settleWindow = () => options.settleMs ?? 1000
+
+  const beginSettle = (ms: number, forced = false) => {
+    if (forcedSettling && !forced) return
+    settling = true
+    forcedSettling = forced
+    if (settleTimer) clearTimeout(settleTimer)
+    settleTimer = setTimeout(() => {
+      settling = false
+      forcedSettling = false
+      settleTimer = undefined
+    }, ms)
+  }
+
+  const scheduleMeasure = () => {
+    if (!enabled()) return
+    if (measureFrame !== undefined) return
+    measureFrame = requestAnimationFrame(() => {
+      measureFrame = undefined
+      if (enabled()) options.onMeasure?.(distanceFromBottom())
+    })
+  }
+
+  const flushScrollToBottom = (allowGrowthMotion = true) => {
     scrollFrame = undefined
     const force = forceNextScroll
     forceNextScroll = false
-
+    if (!enabled()) return
     if (!force && !active()) return
     if (!scroll) return
 
@@ -42,32 +117,57 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     const bottom = scroll.scrollHeight
     const distance = bottom - scroll.clientHeight - scroll.scrollTop
-    if (distance < 2) return
+    if (Math.abs(distance) < 2 && !options.motionTarget) return
 
-    scroll.scrollTo({ top: bottom, behavior: "auto" })
+    const animate = !!options.motionTarget && (smoothForce || (allowGrowthMotion && !force))
+    motion.move(scroll, bottom, animate, animate && !!store.contentRef?.querySelector("[data-motion-resizing]"))
+    smoothForce = false
   }
 
   const scrollToBottom = (force: boolean) => {
+    if (!enabled()) return
     if (!force && !active()) return
     if (!scroll) return
     if (!force && store.userScrolled) return
+    if (force) {
+      navigating = false
+      resumeRequested = false
+      clearReadingAnchor()
+    }
 
+    // A forced pin lands on whatever layout exists right now; open the settle
+    // window immediately so late content growth keeps re-pinning underneath.
+    if (force) beginSettle(settleWindow(), true)
     forceNextScroll ||= force
     if (scrollFrame !== undefined) return
-    scrollFrame = requestAnimationFrame(flushScrollToBottom)
+    scrollFrame = requestAnimationFrame(() => flushScrollToBottom())
   }
 
-  const stop = () => {
-    if (!active()) return
+  const stop = (allowResume = false) => {
+    interactionVersion++
+    motion.interrupt(scroll)
+    resumeRequested = allowResume
+    followingLatest = false
+    forceNextScroll = false
+    if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+    scrollFrame = undefined
     if (store.userScrolled) return
 
     setStore("userScrolled", true)
     options.onUserInteracted?.()
   }
 
+  const beginMovement = () => {
+    navigating = false
+    if (scroll && Math.abs(scroll.scrollTop - (anchoredScrollTop ?? previousOffset)) > 0.5) clearReadingAnchor()
+    anchoredScrollTop = undefined
+    movementOffset = scroll?.scrollTop
+  }
+
   const handleWheel = (e: WheelEvent) => {
-    if (e.deltaY >= 0) return
-    stop()
+    if (e.deltaY) beginMovement()
+    if (e.deltaY < 0) stop()
+    else if (e.deltaY > 0) resumeRequested = true
   }
 
   const handlePointerUp = () => {
@@ -76,6 +176,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handlePointerDown = () => {
+    beginMovement()
+    if (followingLatest) stop()
+    resumeRequested = true
     if (down) return
     down = true
     window.addEventListener("pointerup", handlePointerUp)
@@ -87,94 +190,252 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleTouchStart = () => {
+    beginMovement()
+    if (followingLatest) stop()
+    resumeRequested = true
     if (down) return
     down = true
     window.addEventListener("touchend", handleTouchEnd)
   }
 
-  const handleScroll = () => {
-    if (!active()) return
-    if (!scroll) return
-
-    if (distanceFromBottom() < 10) {
-      if (store.userScrolled) setStore("userScrolled", false)
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return
+    if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return
+    if (event.key === " ") {
+      if (event.target instanceof Element && event.target.closest("button, summary, [role=button]")) return
+      beginMovement()
+      if (event.shiftKey) stop()
+      else resumeRequested = true
       return
     }
-
-    if (down) stop()
+    if (["ArrowUp", "PageUp", "Home"].includes(event.key)) {
+      beginMovement()
+      stop()
+    }
+    if (["ArrowDown", "PageDown", "End"].includes(event.key)) {
+      beginMovement()
+      resumeRequested = true
+    }
   }
 
-  const handleInteraction = () => {
+  const handleScroll = () => {
+    if (!scroll || !enabled()) return
+    // Only a scroll receipt acknowledges changed extent; compensation can arrive before or after ResizeObserver.
+    if (readingAnchor && movementOffset === undefined && anchoredScrollHeight !== scroll.scrollHeight) {
+      readingAnchor.restore()
+      anchoredScrollTop = scroll.scrollTop
+      anchoredScrollHeight = scroll.scrollHeight
+    }
+    const compensated =
+      (anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1) ||
+      (!!readingAnchor && movementOffset === undefined && Math.abs(scroll.scrollTop - previousOffset) < 1)
+    anchoredScrollTop = undefined
+    const advancing = scroll.scrollTop > previousOffset
+    previousOffset = scroll.scrollTop
+    if (!compensated && resumeRequested && advancing && distanceFromBottom() < 10) {
+      if (store.userScrolled) setStore("userScrolled", false)
+      followingLatest = true
+      clearReadingAnchor()
+      resumeRequested = false
+      return
+    }
+    if (!compensated && down) stop(resumeRequested)
+    if (!compensated) {
+      if (movementOffset !== undefined) movementOffset = scroll.scrollTop
+      preserveReadingAnchor()
+    }
+  }
+
+  // One input can produce several scroll receipts: https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollend_event
+  const handleScrollEnd = () => {
+    movementOffset = undefined
+  }
+
+  const handleLayoutRestored = (event: Event) => {
+    if (!enabled() || !store.userScrolled || !(event.target instanceof Element)) return
+    if (!readingAnchor?.owner.contains(event.target)) return
+    preserveReadingAnchor()
+  }
+
+  const handleInteraction = (event?: Event) => {
+    navigating = false
+    movementOffset = undefined
     stop()
+    preserveReadingAnchor(event && event.target instanceof Element ? event.target : undefined)
   }
 
-  createResizeObserver(
-    () => store.contentRef,
+  const handleNavigation = () => {
+    navigating = true
+    stop()
+    clearReadingAnchor()
+  }
+
+  const restoreReadingLayout = () => {
+    if (movementOffset !== undefined && scroll && Math.abs(scroll.scrollTop - movementOffset) > 0.5) {
+      scheduleMeasure()
+      return
+    }
+    readingAnchor?.restore()
+    if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
+    if (scroll && readingAnchor) {
+      anchoredScrollTop = scroll.scrollTop
+      if (movementOffset !== undefined) movementOffset = scroll.scrollTop
+    }
+    scheduleMeasure()
+  }
+
+  const resizeObserver = makeResizeObserver(
     () => {
-      if (!active()) return
-      if (store.userScrolled) return
-      scrollToBottom(false)
+      if (!enabled()) return
+      // While pinned-follow, resizes only re-pin (and extend an active settle
+      // window). Otherwise content grows without scroll events, so report the
+      // distance so "scrolled up" state stays honest in idle sessions.
+      if (active() && !store.userScrolled) {
+        if (forcedSettling) beginSettle(settleWindow(), true)
+        // Resize delivery follows frame callbacks; another frame would paint the new height before its latest pin.
+        if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+        flushScrollToBottom(false)
+        return
+      }
+      restoreReadingLayout()
     },
+    { box: "border-box" },
+  )
+
+  createEffect<Set<HTMLElement | undefined>>((previous) => {
+    // Virtual rows can resize before the content extent updates; preserve reading in that same paint.
+    // Re-observing stable ancestors while capturing an owner would restart their initial resize notifications.
+    const targets = new Set(enabled() ? [store.contentRef, store.viewportRef, readingAnchorOwner()] : [])
+    for (const target of previous) if (target && !targets.has(target)) resizeObserver.unobserve(target)
+    for (const target of targets) if (target && !previous.has(target)) resizeObserver.observe(target)
+    return targets
+  }, new Set())
+
+  createEffect(() => {
+    const owner = readingAnchorOwner()
+    if (!enabled() || !owner) return
+    // Virtual placement can change an anchor's offset without resizing it or the content extent.
+    const observer = new MutationObserver(() => {
+      if (enabled()) restoreReadingLayout()
+    })
+    for (let element: HTMLElement | null = owner; element && element !== scroll; element = element.parentElement)
+      observer.observe(element, { attributes: true, attributeFilter: ["style"] })
+    onCleanup(() => observer.disconnect())
+  })
+
+  createEffect(
+    on(enabled, (value) => {
+      if (value) {
+        if (!store.userScrolled) scrollToBottom(false)
+        return
+      }
+      motion.settle()
+      if (settleTimer) clearTimeout(settleTimer)
+      settleTimer = undefined
+      settling = forcedSettling = false
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+      if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
+      scrollFrame = measureFrame = undefined
+      forceNextScroll = false
+    }),
   )
 
   createEffect(
     on(options.working, (working) => {
-      settling = false
-      if (settleTimer) clearTimeout(settleTimer)
-      settleTimer = undefined
-
       if (working) {
         if (!store.userScrolled) {
-          scrollToBottom(true)
+          scrollToBottom(false)
         }
         return
       }
 
       if (!store.userScrolled) {
-        settling = true
-        settleTimer = setTimeout(() => {
-          settling = false
-        }, 300)
+        beginSettle(300)
       }
     }),
   )
 
   onCleanup(() => {
+    motion.dispose()
+    followingLatest = false
+    clearReadingAnchor()
     if (settleTimer) clearTimeout(settleTimer)
     if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+    if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
     if (cleanup) cleanup()
   })
 
   return {
-    scrollRef: (el: HTMLElement | undefined) => {
+    scrollRef: (el: HTMLElement | undefined, releaseOf?: HTMLElement) => {
+      // A keyed subtree swap mounts the successor viewport before the
+      // swapped-out owner's cleanup runs; an attributed release only
+      // clears a binding it still owns.
+      if (!el && releaseOf !== undefined && scroll !== releaseOf) return
+      if (scroll === el) return
       if (cleanup) {
         cleanup()
         cleanup = undefined
       }
 
+      motion.settle()
+      clearReadingAnchor()
+      if (settleTimer) clearTimeout(settleTimer)
+      settleTimer = undefined
+      settling = false
+      forcedSettling = false
+      followingLatest = false
+      navigating = false
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+      if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
+      scrollFrame = undefined
+      measureFrame = undefined
+      forceNextScroll = false
       scroll = el
+      setStore("viewportRef", el)
       down = false
+      resumeRequested = false
+      previousOffset = el?.scrollTop ?? 0
 
       if (!el) return
+      if (store.userScrolled) setStore("userScrolled", false)
 
       el.style.overflowAnchor = "none"
       el.addEventListener("wheel", handleWheel, { passive: true })
       el.addEventListener("pointerdown", handlePointerDown)
       el.addEventListener("touchstart", handleTouchStart, { passive: true })
+      el.addEventListener("keydown", handleKeyDown)
+      el.addEventListener("scrollend", handleScrollEnd)
+      el.addEventListener("content-layout-restored", handleLayoutRestored)
 
       cleanup = () => {
         el.removeEventListener("wheel", handleWheel)
         el.removeEventListener("pointerdown", handlePointerDown)
         el.removeEventListener("touchstart", handleTouchStart)
+        el.removeEventListener("keydown", handleKeyDown)
+        el.removeEventListener("scrollend", handleScrollEnd)
+        el.removeEventListener("content-layout-restored", handleLayoutRestored)
         window.removeEventListener("pointerup", handlePointerUp)
         window.removeEventListener("touchend", handleTouchEnd)
       }
     },
-    contentRef: (el: HTMLElement | undefined) => setStore("contentRef", el),
+    contentRef: (el: HTMLElement | undefined, releaseOf?: HTMLElement) => {
+      if (!el && releaseOf !== undefined && store.contentRef !== releaseOf) return
+      if (store.contentRef === el) return
+      clearReadingAnchor()
+      setStore("contentRef", el)
+    },
     handleScroll,
     handleInteraction,
+    handleNavigation,
+    preserveReadingAnchor,
+    readingAnchorOwner,
+    interactionVersion: () => interactionVersion,
     scrollToBottom: () => scrollToBottom(false),
-    forceScrollToBottom: () => scrollToBottom(true),
+    forceScrollToBottom: (input?: { untilInteraction?: boolean; smooth?: boolean }) => {
+      smoothForce = input?.smooth === true
+      if (scroll && input?.untilInteraction) followingLatest = true
+      scrollToBottom(true)
+    },
     userScrolled: () => store.userScrolled,
   }
 }

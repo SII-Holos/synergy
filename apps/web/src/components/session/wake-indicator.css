@@ -1,0 +1,25 @@
+.session-agenda-wake-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+}
+.session-agenda-wake-row-main {
+  min-width: 0;
+}
+.session-agenda-wake-time {
+  color: var(--text-base);
+  font-size: 13px;
+  line-height: 20px;
+}
+.session-agenda-wake-title {
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.session-agenda-wake-meta {
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 18px;
+}

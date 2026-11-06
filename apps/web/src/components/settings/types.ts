@@ -1,0 +1,592 @@
+import type { MessageDescriptor } from "@lingui/core"
+import type { Config, McpStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { LocalePreference } from "@/context/locale/types"
+import type { ColorScheme } from "@ericsanchezok/synergy-ui/theme"
+import type { SendShortcut } from "@/context/input"
+import type { NewSessionWorkspacePreference } from "@/components/session/worktree-session"
+
+export type ProviderModel = {
+  providerId: string
+  providerName: string
+  modelId: string
+  modelName: string
+  variantKeys: string[]
+}
+
+export type ModelKey =
+  | "model"
+  | "nano_model"
+  | "mini_model"
+  | "mid_model"
+  | "vision_model"
+  | "thinking_model"
+  | "long_context_model"
+  | "creative_model"
+
+export type ActivityDisplay = "full" | "balanced" | "minimal"
+
+/** Empty strings mean this role falls back to runtime model resolution. */
+export const MODEL_DEFAULTS: Record<ModelKey, string> = {
+  model: "",
+  nano_model: "",
+  mini_model: "",
+  mid_model: "",
+  vision_model: "",
+  thinking_model: "",
+  long_context_model: "",
+  creative_model: "",
+}
+
+/** Defaults used by frontend form fallbacks, kept in sync with backend Config.state() defaults. */
+export const UI_DEFAULTS = {
+  locale: "system" as LocalePreference,
+  theme: "" as string,
+  activityDisplay: "balanced" as ActivityDisplay,
+  username: "" as string,
+  snapshot: true,
+  compactReasoning: false,
+  preferWorkBrief: false,
+  welcomeGames: true,
+  permission: "ask" as string, // resolved from backend { "*": "ask" } object
+  sandboxEnabled: "true" as string,
+  sandboxFallbackPolicy: "warn" as string,
+  questionTimeout: 3600,
+  compactionAuto: "true" as string,
+  compactionPrune: "true" as string,
+  compactionOverflowThreshold: "0.85" as string,
+  compactionMaxHistoryImages: "8" as string,
+  compactionCodexRemote: "false" as string,
+  retryMaxAttempts: "10" as string,
+  retryUnlimited: "false" as string,
+  cortexConcurrency: "8" as string,
+  agentWorkers: "" as string,
+  libraryLearning: "true" as string,
+  libraryAutonomy: "true" as string,
+  memorySimThreshold: "0.7" as string,
+  memoryTopK: "3" as string,
+  embeddingSource: "huggingface" as LocalEmbeddingSource,
+  embeddingRemoteHost: "" as string,
+  embeddingCacheDir: "" as string,
+  experienceSimThreshold: "0.7" as string,
+  experienceTopK: "8" as string,
+  experienceEpsilon: "0.1" as string,
+  controlProfile: "guarded" as string,
+  nonInteractiveControlProfile: "autonomous" as string,
+  invokeTimeout: "21600" as string,
+  providerTtfbTimeout: "3600" as string,
+  providerIdleTimeout: "900" as string,
+  providerWallTimeout: "" as string,
+  toolDefaultTimeout: "7200" as string,
+  toolOverrides: "" as string,
+  watcherIgnore: "" as string,
+  logLevel: "" as string,
+  performanceEnabled: "true" as "true" | "false",
+  coauthorReminder: "true" as string,
+  bossMode: "false" as "true" | "false",
+  bossIdentityText: "" as string,
+  bossBriefingIntervalDays: "" as string,
+  bossPersonaPreset: "none" as string,
+  bossPersonaFormality: "0.5" as string,
+  bossPersonaConciseness: "0.5" as string,
+  bossPersonaProactiveness: "0.5" as string,
+  bossPersonaWarmth: "0.5" as string,
+  bossName: "" as string,
+  lspWriteDiagnostics: "true" as string,
+  lspDiagnosticsSeverity: "error" as string,
+  lspDiagnosticsScope: "project" as string,
+  defaultAgent: "atlas" as string,
+  fileToolGroup: "replace" as NonNullable<Config["fileToolGroup"]>,
+  defaultSessionWorkspace: "main" as NewSessionWorkspacePreference,
+} as const
+
+/** Resolve Config.permission (object or string) into a simple UI string. */
+export function resolvePermissionForUi(permission: unknown): string {
+  if (!permission) return UI_DEFAULTS.permission
+  if (typeof permission === "string") return permission
+  if (typeof permission === "object" && permission !== null) {
+    const obj = permission as Record<string, unknown>
+    if (obj["*"] === "ask") return "ask"
+    if (obj["*"] === "allow") return "allow"
+    if (obj["*"] === "deny") return "deny"
+  }
+  return UI_DEFAULTS.permission
+}
+export type ModelRoleDefinition = { key: ModelKey; label: MessageDescriptor; description: MessageDescriptor }
+
+export const MODEL_ROLES: ModelRoleDefinition[] = [
+  {
+    key: "model",
+    label: { id: "settings.modelRole.model.label", message: "Default Model" },
+    description: {
+      id: "settings.modelRole.model.description",
+      message: "Primary model for conversations and agent tasks",
+    },
+  },
+  {
+    key: "nano_model",
+    label: { id: "settings.modelRole.nanoModel.label", message: "Nano Model" },
+    description: {
+      id: "settings.modelRole.nanoModel.description",
+      message: "Cheapest model for trivial tasks like title generation",
+    },
+  },
+  {
+    key: "mini_model",
+    label: { id: "settings.modelRole.miniModel.label", message: "Mini Model" },
+    description: {
+      id: "settings.modelRole.miniModel.description",
+      message: "Intent detection, script extraction, and reward evaluation",
+    },
+  },
+  {
+    key: "mid_model",
+    label: { id: "settings.modelRole.midModel.label", message: "Mid Model" },
+    description: {
+      id: "settings.modelRole.midModel.description",
+      message: "Explore, scout, and quick-category task routing",
+    },
+  },
+  {
+    key: "vision_model",
+    label: { id: "settings.modelRole.visionModel.label", message: "Vision Model" },
+    description: { id: "settings.modelRole.visionModel.description", message: "Image, PDF, and file analysis" },
+  },
+  {
+    key: "thinking_model",
+    label: { id: "settings.modelRole.thinkingModel.label", message: "Thinking Model" },
+    description: {
+      id: "settings.modelRole.thinkingModel.description",
+      message: "Complex reasoning and architecture decisions",
+    },
+  },
+  {
+    key: "long_context_model",
+    label: { id: "settings.modelRole.longContextModel.label", message: "Long Context Model" },
+    description: {
+      id: "settings.modelRole.longContextModel.description",
+      message: "Session compaction, long document analysis",
+    },
+  },
+  {
+    key: "creative_model",
+    label: { id: "settings.modelRole.creativeModel.label", message: "Creative Model" },
+    description: { id: "settings.modelRole.creativeModel.description", message: "Writing, design, and artistry" },
+  },
+]
+
+export function getModelRoleDefinition(key: string): ModelRoleDefinition | undefined {
+  return MODEL_ROLES.find((role) => role.key === key)
+}
+export type PluginEntry = {
+  value: string
+}
+
+export type McpEntry = {
+  key: string
+  type: "local" | "remote"
+  enabled: boolean
+  expandByDefault: boolean
+  command: string
+  url: string
+  timeout: string
+  environment: string
+  headers: string
+}
+
+export type BuiltinMcpInfo = {
+  name: string
+  url: string
+  status: McpStatus
+  keyConfigured: boolean
+  /** Server-computed masked tail of the stored key; absent when none is stored. */
+  keyHint?: string
+}
+
+export type BuiltinMcpDraft = BuiltinMcpInfo & {
+  /** Draft toggle state; false means the builtin is opted out. */
+  toggle: boolean
+  /** Non-empty when the user typed a replacement key to save. */
+  apiKeyDraft: string
+  /** True when the user explicitly requested key removal. */
+  clearApiKey: boolean
+}
+export type SkillsSettings = {
+  agents: boolean
+  claude: boolean
+  codex: boolean
+  openclaw: boolean
+}
+
+export type EmailSettings = {
+  enabled: boolean
+  fromAddress: string
+  fromName: string
+  smtpHost: string
+  smtpPort: string
+  smtpSecure: boolean
+  smtpUsername: string
+  smtpPassword: string
+  imapHost: string
+  imapPort: string
+  imapSecure: boolean
+  imapUsername: string
+  imapPassword: string
+}
+
+export type AccountToggle = {
+  key: string
+  enabled: boolean
+  model: string
+  variant: string
+}
+
+export type GithubAccountToggle = {
+  key: string
+  enabled: boolean
+  repositories: string
+  workspaceDir: string
+  workspaceTtlHours: string
+  pollingIntervalMs: string
+  autoReview: boolean
+  autoRespond: boolean
+  /** Optional GitHub handle users @-mention; empty = resolve from the App slug. */
+  mention: string
+}
+
+export type ChannelSettings = {
+  feishuAccounts: AccountToggle[]
+  githubAccounts: GithubAccountToggle[]
+}
+
+export type GithubIntegrationSettings = {
+  identitySyncEnabled: boolean
+  identitySyncName: string
+  identitySyncEmail: string
+  watchEnabled: boolean
+}
+
+export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
+export const DEFAULT_TOAST_DURATION_MS = 4000
+export const TOAST_DURATION_STOPS = [1000, 2000, DEFAULT_TOAST_DURATION_MS, 8000] as const
+export type ToastType = (typeof TOAST_TYPES)[number]
+export type ToastDurationOverrides = Record<ToastType, string>
+
+export function emptyToastDurationOverrides(): ToastDurationOverrides {
+  return { info: "", success: "", warning: "", error: "" }
+}
+
+export function snapToastDuration(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_TOAST_DURATION_MS
+
+  let best: number = TOAST_DURATION_STOPS[0]
+  let bestDistance = Math.abs(best - value)
+  for (const stop of TOAST_DURATION_STOPS) {
+    const distance = Math.abs(stop - value)
+    if (distance < bestDistance || (distance === bestDistance && stop > best)) {
+      best = stop
+      bestDistance = distance
+    }
+  }
+  return best
+}
+
+export function emptyMcp(): McpEntry {
+  return {
+    key: "",
+    type: "local",
+    enabled: true,
+    expandByDefault: false,
+    command: "",
+    url: "",
+    timeout: "",
+    environment: "",
+    headers: "",
+  }
+}
+
+export type DialogSettingsProps = {
+  initialTab?: string
+  providerFocusID?: string
+}
+
+export type ProviderGroup = {
+  providerId: string
+  providerName: string
+  models: Array<{ id: string; name: string; variantKeys: string[] }>
+}
+
+export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
+  const map = new Map<string, ProviderGroup>()
+  for (const item of list) {
+    let group = map.get(item.providerId)
+    if (!group) {
+      group = { providerId: item.providerId, providerName: item.providerName, models: [] }
+      map.set(item.providerId, group)
+    }
+    group.models.push({ id: item.modelId, name: item.modelName, variantKeys: item.variantKeys })
+  }
+  return Array.from(map.values())
+}
+
+export type GeneralStore = {
+  colorScheme: ColorScheme
+  snapshot: boolean
+  compactReasoning: boolean
+  preferWorkBrief: boolean
+  welcomeGames: boolean
+  username: string
+  theme: string
+  locale: LocalePreference
+  activityDisplay: ActivityDisplay
+  defaultSessionWorkspace: NewSessionWorkspacePreference
+  mutedToasts: string[]
+  toastDurations: ToastDurationOverrides
+  sendShortcut: SendShortcut
+}
+
+export type QuickSwitcherPreference = {
+  providerID: string
+  modelID: string
+  state: "add" | "remove"
+}
+
+export type ModelsStore = {
+  model: string
+  nano_model: string
+  mini_model: string
+  mid_model: string
+  vision_model: string
+  thinking_model: string
+  long_context_model: string
+  creative_model: string
+  quick_switcher: QuickSwitcherPreference[]
+}
+
+export type AgentsStore = {
+  fileToolGroup: NonNullable<Config["fileToolGroup"]>
+  defaultAgent: string
+}
+
+export type PluginsStore = {
+  entries: PluginEntry[]
+}
+
+export type McpsStore = {
+  entries: McpEntry[]
+  builtins: BuiltinMcpDraft[]
+}
+
+export type LocalEmbeddingSource = "huggingface" | "hf-mirror" | "custom"
+
+export type LibrarySettingsStore = {
+  learning: string
+  autonomy: string
+  memorySimThreshold: string
+  memoryTopK: string
+  experienceSimThreshold: string
+  experienceTopK: string
+  experienceEpsilon: string
+  embeddingSource: LocalEmbeddingSource
+  embeddingRemoteHost: string
+  embeddingCacheDir: string
+}
+
+export type ProvidersStore = {
+  enabledProviders: string
+  disabledProviders: string
+}
+
+export type SafetyStore = {
+  controlProfile: string
+  nonInteractiveControlProfile: string
+  permission: string
+  smartAllow: string
+  sandboxEnabled: string
+  sandboxFallbackPolicy: string
+}
+
+export type RuntimeStore = {
+  questionTimeout: string
+  compactionAuto: string
+  compactionPrune: string
+  compactionOverflowThreshold: string
+  compactionMaxHistoryImages: string
+  compactionCodexRemote: string
+  retryMaxAttempts: string
+  retryUnlimited: string
+  cortexConcurrency: string
+  agentWorkers: string
+  invokeTimeout: string
+  providerTtfbTimeout: string
+  providerIdleTimeout: string
+  providerWallTimeout: string
+  toolDefaultTimeout: string
+  toolOverrides: string
+  watcherIgnore: string
+  logLevel: string
+  performanceEnabled: "true" | "false"
+  coauthorReminder: string
+  bossMode: "true" | "false"
+  bossIdentityText: string
+  bossBriefingIntervalDays: string
+  bossPersonaPreset: string
+  bossPersonaFormality: string
+  bossPersonaConciseness: string
+  bossPersonaProactiveness: string
+  bossPersonaWarmth: string
+  bossName: string
+  lspWriteDiagnostics: string
+  lspDiagnosticsSeverity: string
+  lspDiagnosticsScope: string
+}
+
+export type SettingsState = {
+  digitalTwin: { automatic: boolean; model: string }
+  general: GeneralStore
+  models: ModelsStore
+  agents: AgentsStore
+  providers: ProvidersStore
+  plugins: PluginsStore
+  mcps: McpsStore
+  library: LibrarySettingsStore
+  skills: SkillsSettings
+  safety: SafetyStore
+  runtime: RuntimeStore
+  email: EmailSettings
+  channels: ChannelSettings
+  github: GithubIntegrationSettings
+  roleVariant: Record<string, string>
+}
+
+export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: ColorScheme = "system"): SettingsState {
+  return {
+    digitalTwin: { automatic: false, model: "" },
+    general: {
+      colorScheme,
+      snapshot: UI_DEFAULTS.snapshot,
+      compactReasoning: UI_DEFAULTS.compactReasoning,
+      preferWorkBrief: UI_DEFAULTS.preferWorkBrief,
+      welcomeGames: UI_DEFAULTS.welcomeGames,
+      username: UI_DEFAULTS.username,
+      theme: UI_DEFAULTS.theme,
+      locale: UI_DEFAULTS.locale,
+      activityDisplay: UI_DEFAULTS.activityDisplay,
+      defaultSessionWorkspace: UI_DEFAULTS.defaultSessionWorkspace,
+      mutedToasts: [],
+      toastDurations: emptyToastDurationOverrides(),
+      sendShortcut,
+    },
+    models: {
+      model: MODEL_DEFAULTS.model,
+      nano_model: MODEL_DEFAULTS.nano_model,
+      mini_model: MODEL_DEFAULTS.mini_model,
+      mid_model: MODEL_DEFAULTS.mid_model,
+      vision_model: MODEL_DEFAULTS.vision_model,
+      thinking_model: MODEL_DEFAULTS.thinking_model,
+      long_context_model: MODEL_DEFAULTS.long_context_model,
+      creative_model: MODEL_DEFAULTS.creative_model,
+      quick_switcher: [],
+    },
+    agents: {
+      defaultAgent: UI_DEFAULTS.defaultAgent,
+      fileToolGroup: UI_DEFAULTS.fileToolGroup,
+    },
+    providers: {
+      enabledProviders: "",
+      disabledProviders: "",
+    },
+    plugins: {
+      entries: [],
+    },
+    mcps: {
+      entries: [],
+      builtins: [],
+    },
+    library: {
+      learning: UI_DEFAULTS.libraryLearning,
+      autonomy: UI_DEFAULTS.libraryAutonomy,
+      memorySimThreshold: UI_DEFAULTS.memorySimThreshold,
+      memoryTopK: UI_DEFAULTS.memoryTopK,
+      experienceSimThreshold: UI_DEFAULTS.experienceSimThreshold,
+      experienceTopK: UI_DEFAULTS.experienceTopK,
+      experienceEpsilon: UI_DEFAULTS.experienceEpsilon,
+      embeddingSource: UI_DEFAULTS.embeddingSource,
+      embeddingRemoteHost: UI_DEFAULTS.embeddingRemoteHost,
+      embeddingCacheDir: UI_DEFAULTS.embeddingCacheDir,
+    },
+    skills: {
+      agents: true,
+      claude: true,
+      codex: true,
+      openclaw: true,
+    },
+    safety: {
+      controlProfile: UI_DEFAULTS.controlProfile,
+      nonInteractiveControlProfile: UI_DEFAULTS.nonInteractiveControlProfile,
+      permission: UI_DEFAULTS.permission,
+      smartAllow: "false",
+      sandboxEnabled: UI_DEFAULTS.sandboxEnabled,
+      sandboxFallbackPolicy: UI_DEFAULTS.sandboxFallbackPolicy,
+    },
+    runtime: {
+      questionTimeout: String(UI_DEFAULTS.questionTimeout),
+      compactionAuto: UI_DEFAULTS.compactionAuto,
+      compactionPrune: UI_DEFAULTS.compactionPrune,
+      compactionOverflowThreshold: UI_DEFAULTS.compactionOverflowThreshold,
+      compactionMaxHistoryImages: UI_DEFAULTS.compactionMaxHistoryImages,
+      compactionCodexRemote: UI_DEFAULTS.compactionCodexRemote,
+      retryMaxAttempts: UI_DEFAULTS.retryMaxAttempts,
+      retryUnlimited: UI_DEFAULTS.retryUnlimited,
+      cortexConcurrency: UI_DEFAULTS.cortexConcurrency,
+      agentWorkers: UI_DEFAULTS.agentWorkers,
+      invokeTimeout: UI_DEFAULTS.invokeTimeout,
+      providerTtfbTimeout: UI_DEFAULTS.providerTtfbTimeout,
+      providerIdleTimeout: UI_DEFAULTS.providerIdleTimeout,
+      providerWallTimeout: UI_DEFAULTS.providerWallTimeout,
+      toolDefaultTimeout: UI_DEFAULTS.toolDefaultTimeout,
+      toolOverrides: UI_DEFAULTS.toolOverrides,
+      watcherIgnore: UI_DEFAULTS.watcherIgnore,
+      logLevel: UI_DEFAULTS.logLevel,
+      performanceEnabled: UI_DEFAULTS.performanceEnabled,
+      coauthorReminder: UI_DEFAULTS.coauthorReminder,
+      bossMode: UI_DEFAULTS.bossMode,
+      bossIdentityText: UI_DEFAULTS.bossIdentityText,
+      bossBriefingIntervalDays: UI_DEFAULTS.bossBriefingIntervalDays,
+      bossPersonaPreset: UI_DEFAULTS.bossPersonaPreset,
+      bossPersonaFormality: UI_DEFAULTS.bossPersonaFormality,
+      bossPersonaConciseness: UI_DEFAULTS.bossPersonaConciseness,
+      bossPersonaProactiveness: UI_DEFAULTS.bossPersonaProactiveness,
+      bossPersonaWarmth: UI_DEFAULTS.bossPersonaWarmth,
+      bossName: UI_DEFAULTS.bossName,
+      lspWriteDiagnostics: UI_DEFAULTS.lspWriteDiagnostics,
+      lspDiagnosticsSeverity: UI_DEFAULTS.lspDiagnosticsSeverity,
+      lspDiagnosticsScope: UI_DEFAULTS.lspDiagnosticsScope,
+    },
+    email: {
+      enabled: true,
+      fromAddress: "",
+      fromName: "",
+      smtpHost: "",
+      smtpPort: "",
+      smtpSecure: true,
+      smtpUsername: "",
+      smtpPassword: "",
+      imapHost: "",
+      imapPort: "",
+      imapSecure: true,
+      imapUsername: "",
+      imapPassword: "",
+    },
+    channels: {
+      feishuAccounts: [],
+      githubAccounts: [],
+    },
+    github: {
+      identitySyncEnabled: false,
+      identitySyncName: "",
+      identitySyncEmail: "",
+      watchEnabled: true,
+    },
+    roleVariant: {},
+  }
+}

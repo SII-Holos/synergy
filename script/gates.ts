@@ -13,7 +13,10 @@
  */
 
 import path from "node:path"
+import { createHash } from "node:crypto"
 import { $ } from "bun"
+import { rename } from "node:fs/promises"
+import { WorkingSnapshot, verificationToolchain } from "./verification"
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..")
 
@@ -24,10 +27,12 @@ export interface Gate {
 }
 
 const LOCAL_GATES: Gate[] = [
+  { id: "feature:check", run: "bun run feature:check", needs: [] },
   { id: "format:check", run: "bun run format:check", needs: [] },
   { id: "lint", run: "bun run lint", needs: [] },
   { id: "skill:check", run: "bun run skill:check", needs: [] },
   { id: "package-guide:check", run: "bun run package-guide:check", needs: [] },
+  { id: "test-policy:check", run: "bun run test-policy:check", needs: [] },
   { id: "test-layout:check", run: "bun run test-layout:check", needs: [] },
   { id: "localization:check", run: "bun run localization:check", needs: [] },
   { id: "typecheck", run: "bun run typecheck", needs: [] },
@@ -40,10 +45,19 @@ const LOCAL_GATES: Gate[] = [
   { id: "deadcode", run: "bun run deadcode", needs: [] },
   {
     id: "browser-crypto:check",
-    run: "bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts",
+    run: "bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts",
     needs: [],
   },
-  { id: "coverage:check", run: "bun run coverage:check", needs: [] },
+  {
+    id: "ci-matrix:check",
+    run: "bun test --config /dev/null test/script/coverage-matrix.test.ts test/script/test-matrix.test.ts test/script/ci-*.test.ts",
+    needs: [],
+  },
+  {
+    id: "ci-types:check",
+    run: "bun packages/testing/node_modules/.bin/tsc --project script/ci/tsconfig.json",
+    needs: [],
+  },
   { id: "secrets:check", run: "bun run secrets:check", needs: [] },
   { id: "workflow:check", run: "bun run workflow:check", needs: [] },
 ]
@@ -51,12 +65,15 @@ const LOCAL_GATES: Gate[] = [
 const ALL_GATE_IDS = LOCAL_GATES.map((gate) => gate.id)
 
 const MODES: Record<string, { include: string[]; exclude: string[] }> = {
-  local: { include: ALL_GATE_IDS, exclude: ["browser-crypto:check", "coverage:check"] },
+  local: { include: ALL_GATE_IDS, exclude: ["browser-crypto:check"] },
   "ci-static": {
     include: ALL_GATE_IDS,
-    exclude: ["coverage:check", "secrets:check", "workflow:check"],
+    exclude: ["secrets:check", "workflow:check"],
   },
-  "ci-coverage": { include: ["coverage:check"], exclude: [] },
+  "pre-push": {
+    include: ["format:check", "lint", "typecheck", "monorepo:check", "doc:check", "decision:check"],
+    exclude: [],
+  },
 }
 
 export interface GateError {
@@ -108,15 +125,15 @@ export function concurrencyLimit(): number {
 async function runGate(gate: Gate, root: string): Promise<GateError | null> {
   const output = await $`sh -c ${gate.run}`.cwd(root).nothrow().quiet()
   if (output.exitCode === 0) return null
-  // Keep the full failure detail: coverage gates print per-file uncovered
-  // lines that a 1000-char slice truncates to the alphabetically last file,
-  // hiding the real gap list. Include stdout too — coverage-check's per-package
-  // verdict lines go there and are otherwise invisible. Cap only to avoid
-  // pathological logs.
-  const stderr = output.stderr.toString()
-  const stdout = output.stdout.toString()
-  const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
-  return { gate: gate.id, exitCode: output.exitCode, stderr: detail.slice(0, 100_000) }
+  function bounded(stream: Uint8Array) {
+    const text = Buffer.from(stream).toString()
+    if (text.length <= 49_000) return text
+    return `${text.slice(0, 24_000)}\n… output truncated …\n${text.slice(-24_000)}`
+  }
+  const stderr = bounded(output.stderr)
+  const stdout = bounded(output.stdout)
+  const detail = stdout ? `--- stdout ---\n${stdout}\n--- stderr ---\n${stderr}` : stderr
+  return { gate: gate.id, exitCode: output.exitCode, stderr: detail }
 }
 
 export function validateGateGraph(gates: Gate[]): string[] {
@@ -151,7 +168,7 @@ export async function runGateSet(
   await new Promise<void>((resolve, reject) => {
     const pump = () => {
       while (running < limit) {
-        const ready = gates.find((gate) => pending.has(gate.id) && gate.needs.every((need) => !pending.has(need)))
+        const ready = gates.find((gate) => pending.has(gate.id) && gate.needs.every((need) => results.has(need)))
         if (!ready) break
         pending.delete(ready.id)
         running++
@@ -172,8 +189,67 @@ export async function runGateSet(
   return { gates: gates.map((gate) => gate.id), failures }
 }
 
+const REUSABLE = new Set(["format:check", "lint", "typecheck", "monorepo:check", "doc:check", "decision:check"])
+type Receipt = { version: 1; input: string; gates: Record<string, { command: string; completed: number }> }
+
+export async function cachedChecks(
+  root: string,
+  gates: Gate[],
+  execute: (gate: Gate) => Promise<GateError | null>,
+  toolchain = verificationToolchain(root),
+) {
+  const snapshot = new WorkingSnapshot(root)
+  const input = createHash("sha256").update(snapshot.digest).update(toolchain).digest("hex")
+  const file = path.join(root, ".artifacts/verify/checks.json")
+  const previous = (await Bun.file(file)
+    .json()
+    .catch(() => undefined)) as Receipt | undefined
+  const saved =
+    previous?.version === 1 && previous.input === input && previous.gates && typeof previous.gates === "object"
+      ? previous.gates
+      : {}
+  const reused = gates
+    .filter((gate) => {
+      const receipt = saved[gate.id]
+      return (
+        REUSABLE.has(gate.id) &&
+        receipt?.command === gate.run &&
+        Number.isFinite(receipt.completed) &&
+        receipt.completed <= Date.now() &&
+        Date.now() - receipt.completed < 24 * 60 * 60 * 1000
+      )
+    })
+    .map((gate) => gate.id)
+  const result = await runGateSet(gates, root, async (gate) => (reused.includes(gate.id) ? null : execute(gate)))
+  if (new WorkingSnapshot(root).digest !== snapshot.digest) {
+    result.failures.push({
+      gate: "inputs-changed",
+      exitCode: 1,
+      stderr: "Verification inputs changed during checks; run again.",
+    })
+    await Bun.write(file, "{}\n")
+    return { ...result, reused }
+  }
+  const receipts = { ...saved }
+  for (const gate of gates) {
+    delete receipts[gate.id]
+    if (REUSABLE.has(gate.id) && !result.failures.some((failure) => failure.gate === gate.id))
+      receipts[gate.id] = { command: gate.run, completed: Date.now() }
+  }
+  const temporary = `${file}.${crypto.randomUUID()}.tmp`
+  await Bun.write(temporary, JSON.stringify({ version: 1, input, gates: receipts } satisfies Receipt))
+  await rename(temporary, file)
+  return { ...result, reused }
+}
+
 export async function runGates(mode: string, root: string = REPO_ROOT): Promise<GateRunResult> {
-  return runGateSet(gatesForMode(mode), root)
+  const gates = gatesForMode(mode)
+  if (["local", "pre-push"].includes(mode) && !process.env.CI) {
+    const result = await cachedChecks(root, gates, (gate) => runGate(gate, root))
+    if (result.reused.length) console.log(`Reused static checks: ${result.reused.join(", ")}`)
+    return result
+  }
+  return runGateSet(gates, root)
 }
 
 if (import.meta.main) {

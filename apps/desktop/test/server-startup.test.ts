@@ -1,0 +1,400 @@
+import { describe, expect, test } from "bun:test"
+import { DesktopServerStartup } from "../src/server-startup.js"
+
+const line = (value: unknown) => `SYNERGY_STARTUP_V1 ${JSON.stringify(value)}\n`
+
+describe("managed startup progress", () => {
+  test("installed module preparation has a bounded stage before Runtime initialization", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "installation" }))
+    now = 31_000
+    expect(startup.remainingMs()).toBe(269_000)
+    expect(startup.isReady()).toBe(false)
+    expect(startup.status().detail).toBe("Preparing installed modules.")
+    now = 300_000
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "installation" }))
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("installation")
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "initializing" }))
+    expect(startup.remainingMs()).toBe(300_000)
+    expect(startup.status().detail).toBe("Preparing the runtime.")
+  })
+
+  test("only Runtime readiness can finish startup after subsystem completion", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "initializing" }))
+    for (const progress of [
+      { phase: "runtime", state: "opening", stage: "migrations" },
+      { phase: "migration", step: 1, current: 1, total: 1 },
+      { phase: "starting" },
+      { phase: "runtime", state: "opening", stage: "storage-recovery" },
+      { phase: "storage", step: 1, stage: "complete", current: 0, total: 0, bytes: 0 },
+      { phase: "runtime", state: "opening", stage: "execution-recovery" },
+      { phase: "recovery", current: 1 },
+      { phase: "starting" },
+    ]) {
+      startup.receive(line(progress))
+      now += 31_000
+      expect(startup.remainingMs()).toBeGreaterThan(0)
+    }
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "extensions" }))
+    now += 300_000
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("extensions")
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.remainingMs()).toBe(30_000)
+    now += 30_000
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "services" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    startup.receive(line({ phase: "migration", step: 100, current: 1, total: 1 }))
+    expect(startup.remainingMs()).toBe(0)
+  })
+
+  test("stage repetition, regression and late subsystem reports cannot renew a stalled Runtime", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.isReady()).toBe(false)
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "extensions" }))
+    now = 300_000
+    for (const stage of ["initializing", "storage-recovery", "extensions"])
+      startup.receive(line({ phase: "runtime", state: "opening", stage }))
+    startup.receive(line({ phase: "migration", step: 1, current: 100, total: 100 }))
+    startup.receive(line({ phase: "storage", step: 1, stage: "complete", current: 0, total: 0, bytes: 0 }))
+    startup.receive(line({ phase: "recovery", current: 100 }))
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.status()).toMatchObject({ detail: "Initializing extensions.", idleMs: 300_000 })
+    startup.receive(line({ phase: "runtime", state: "failed" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.isReady()).toBe(false)
+    expect(startup.timeoutError().message).toContain("failed during extensions")
+  })
+
+  test("readiness cannot hide outstanding maintenance", () => {
+    const startup = new DesktopServerStartup()
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "extensions" }))
+    startup.receive(line({ phase: "maintenance", id: 1, state: "started", operation: "vacuum", timeoutMs: 600_000 }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.isReady()).toBe(false)
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("unfinished database maintenance")
+  })
+
+  for (const phase of ["storage", "migration"] as const) {
+    test(`${phase} total discovery preserves counts and cannot turn stale work into progress`, () => {
+      let now = 0
+      const startup = new DesktopServerStartup({ now: () => now })
+      const progress = (current: number, total: number, bytes = 100) =>
+        phase === "storage"
+          ? { phase, step: 1, stage: "scan", current, total, bytes }
+          : { phase, step: 1, current, total }
+      startup.receive(line(progress(10, 0)))
+      now = 1_000
+      startup.receive(line(progress(5, 100, 101)))
+      expect(startup.status().progress).toEqual({ current: 10, total: 0 })
+      expect(startup.status().idleMs).toBe(1_000)
+      expect(startup.remainingMs()).toBe(299_000)
+      if (phase === "storage") {
+        startup.receive(line(progress(11, 100, 50)))
+        expect(startup.status().progress).toEqual({ current: 10, total: 0 })
+      }
+      now = 2_000
+      startup.receive(line(progress(10, 100)))
+      expect(startup.status().progress).toEqual({ current: 10, total: 100 })
+      expect(startup.status().idleMs).toBe(0)
+      expect(startup.remainingMs()).toBe(300_000)
+      now = 3_000
+      startup.receive(line(progress(10, 100)))
+      expect(startup.status().idleMs).toBe(1_000)
+      expect(startup.remainingMs()).toBe(299_000)
+    })
+  }
+
+  test("stale maintenance stages cannot restart activity or hide the migration step", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 4, current: 0, total: 0 }))
+    startup.receive(line({ phase: "maintenance", id: 1, operation: "vacuum", state: "started", timeoutMs: 900_000 }))
+    now = 1_000
+    startup.receive(line({ phase: "maintenance", id: 1, state: "stage", stage: "checkpoint-after" }))
+    now = 31_000
+    for (const stage of ["checkpoint-before", "rewrite", "checkpoint-after"]) {
+      startup.receive(line({ phase: "maintenance", id: 1, state: "stage", stage }))
+      expect(startup.status()).toMatchObject({ step: 4, detail: "Finishing the database journal.", idleMs: 30_000 })
+      expect(startup.remainingMs()).toBe(874_000)
+    }
+  })
+
+  test("keeps unknown-total work visible with a task, step and clocks without renewing idle work", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 16, current: 0, total: 0, task: "tool-history" }))
+    now = 2_000
+    startup.receive(line({ phase: "migration", step: 16, current: 128, total: 0, task: "tool-history" }))
+    now = 65_000
+    expect(startup.status()).toMatchObject({
+      phase: "migration",
+      step: 16,
+      detail: "Updating saved tool history.",
+      progress: { current: 128, total: 0 },
+      elapsedMs: 65_000,
+      totalElapsedMs: 65_000,
+      idleMs: 63_000,
+    })
+    expect(startup.remainingMs()).toBe(237_000)
+    startup.receive(line({ phase: "migration", step: 16, current: 128, total: 0, task: "tool-history" }))
+    expect(startup.status().idleMs).toBe(63_000)
+    expect(startup.remainingMs()).toBe(237_000)
+    startup.receive(line({ phase: "migration", step: 17, current: 0, total: 0, task: "notes" }))
+    expect(startup.status()).toMatchObject({ elapsedMs: 0, totalElapsedMs: 65_000, idleMs: 0, step: 17 })
+  })
+
+  test("shows counts and elapsed time for legacy migrations and recovery without an estimated percentage", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    now = 1_000
+    startup.receive(line({ phase: "migration", step: 1, current: 256, total: 0 }))
+    now = 6_000
+    expect(startup.status()).toMatchObject({
+      progress: { current: 256, total: 0 },
+      elapsedMs: 5_000,
+      totalElapsedMs: 6_000,
+      idleMs: 5_000,
+    })
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.status().phase).toBe("migration")
+    startup.receive(line({ phase: "storage", step: 1, stage: "activate", current: 0, total: 0, bytes: 0 }))
+    expect(startup.status().phase).toBe("migration")
+    startup.receive(line({ phase: "recovery", current: 9_001 }))
+    now = 8_000
+    expect(startup.status()).toMatchObject({
+      phase: "recovery",
+      progress: { current: 9_001, total: 0 },
+      elapsedMs: 2_000,
+      totalElapsedMs: 8_000,
+      idleMs: 2_000,
+    })
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.status().phase).toBe("starting")
+  })
+
+  test("waits for maintenance inside a migration without renewing its fixed budget", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 4, current: 0, total: 0 }))
+    const begin = { phase: "maintenance", id: 1, operation: "vacuum", state: "started", timeoutMs: 900_000 }
+    startup.receive(line(begin))
+    now = 300_001
+    expect(startup.remainingMs()).toBe(604_999)
+    expect(startup.status().detail).toContain("Rebuilding")
+    startup.receive(line(begin))
+    startup.receive(line({ ...begin, timeoutMs: 1_800_000 }))
+    startup.receive(line({ phase: "maintenance", id: 1, state: "stage", stage: "checkpoint-after" }))
+    startup.receive(line({ phase: "migration", step: 4, current: 1, total: 10 }))
+    expect(startup.remainingMs()).toBe(604_999)
+    now = 905_000
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("vacuum")
+    startup.receive(line({ phase: "maintenance", id: 1, state: "completed", elapsedMs: 905_000 }))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line(begin))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(300_000)
+  })
+
+  test("keeps overlapping maintenance bounded and ignores stale completions", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(
+      line({ phase: "maintenance", id: 1, operation: "create-index", state: "started", timeoutMs: 600_000 }),
+    )
+    now = 100
+    startup.receive(
+      line({ phase: "maintenance", id: 2, operation: "integrity-check", state: "started", timeoutMs: 900_000 }),
+    )
+    expect(startup.remainingMs()).toBe(604_900)
+    startup.receive(line({ phase: "maintenance", id: 1, state: "completed", elapsedMs: 100 }))
+    expect(startup.remainingMs()).toBe(905_000)
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(905_000)
+    startup.receive(line({ phase: "maintenance", id: 1, state: "failed", elapsedMs: 100 }))
+    expect(startup.remainingMs()).toBe(905_000)
+    startup.receive(line({ phase: "maintenance", id: 2, state: "failed", elapsedMs: 100 }))
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("integrity-check failed")
+  })
+
+  test("waits for a finite engine verification budget without renewing duplicate announcements", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    const engine = {
+      phase: "storage",
+      step: 1,
+      stage: "validate-engine",
+      current: 0,
+      total: 0,
+      bytes: 0,
+      timeoutMs: 900_000,
+    }
+    startup.receive(line(engine))
+    now = 300_001
+    expect(startup.remainingMs()).toBe(599_999)
+    expect(startup.status().detail).toBe("Checking database integrity.")
+    startup.receive(line(engine))
+    startup.receive(line({ ...engine, timeoutMs: 1_800_000 }))
+    expect(startup.remainingMs()).toBe(599_999)
+    now = 900_000
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("900000ms")
+    startup.receive(line({ phase: "storage", step: 2, stage: "validate", current: 256, total: 0, bytes: 0 }))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line(engine))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line({ phase: "storage", step: 3, stage: "complete", current: 0, total: 0, bytes: 0 }))
+    expect(startup.remainingMs()).toBe(300_000)
+  })
+
+  test("waits through storage scanning, domain migrations and activation without accepting stale work", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    const storage = (step: number, current: number, stage = "scan", bytes = 0) =>
+      line({ phase: "storage", step, stage, current, total: 0, bytes })
+    startup.receive(storage(1, 0))
+    now = 31_000
+    expect(startup.remainingMs()).toBe(269_000)
+    startup.receive(storage(1, 1))
+    expect(startup.status().title).toBe("Updating saved data")
+    now = 331_000
+    startup.receive(storage(1, 1))
+    expect(startup.remainingMs()).toBe(0)
+    startup.receive(storage(1, 2))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(storage(2, 0, "backup"))
+    startup.receive(storage(1, 999))
+    expect(startup.status().detail).toContain("Backing up")
+    startup.receive(line({ phase: "migration", step: 1, current: 0, total: 0 }))
+    startup.receive(line({ phase: "starting" }))
+    startup.receive(storage(3, 0, "activate"))
+    now += 31_000
+    expect(startup.remainingMs()).toBe(269_000)
+    startup.receive(storage(4, 0, "complete"))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line({ phase: "recovery", current: 1 }))
+    startup.receive(line({ phase: "starting" }))
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "finalizing" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    now += 30_000
+    startup.receive(storage(5, 10))
+    expect(startup.remainingMs()).toBe(0)
+  })
+
+  test("waits for advancing recovery after migrations and bounds the final health check", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "starting" }))
+    startup.receive(line({ phase: "recovery", current: 0 }))
+    now = 60_000
+    startup.receive(line({ phase: "recovery", current: 10_000 }))
+    expect(startup.remainingMs()).toBe(300_000)
+    expect(startup.status().title).toBe("Restoring saved work")
+    expect(startup.status().progress).toEqual({ current: 10_000, total: 0 })
+    now = 360_000
+    startup.receive(line({ phase: "recovery", current: 10_000 }))
+    startup.receive(line({ phase: "recovery", current: 9_000 }))
+    startup.receive("ordinary server output\n")
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("recovery made no progress")
+    expect(startup.timeoutError().message).toContain("10000")
+    startup.receive(line({ phase: "recovery", current: 10_001 }))
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "finalizing" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.remainingMs()).toBe(30_000)
+    now += 30_000
+    startup.receive(line({ phase: "recovery", current: 10_002 }))
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(0)
+  })
+
+  test("keeps progressing upgrades alive beyond the ordinary startup deadline", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    expect(startup.remainingMs()).toBe(30_000)
+    startup.receive(line({ phase: "migration", step: 1, current: 0, total: 0 }))
+    now = 29_000
+    startup.receive(line({ phase: "migration", step: 1, current: 358, total: 8494 }))
+    now = 60_000
+    expect(startup.remainingMs()).toBe(269_000)
+    expect(startup.status()).toMatchObject({ progress: { current: 358, total: 8494 } })
+    now = 328_000
+    startup.receive(line({ phase: "migration", step: 1, current: 400, total: 8494 }))
+    expect(startup.remainingMs()).toBe(300_000)
+  })
+
+  test("renews the deadline during a second scan with smaller independent counts", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 1, current: 10_000, total: 10_000 }))
+    now = 200_000
+    startup.receive(line({ phase: "migration", step: 2, current: 0, total: 0 }))
+    now = 400_000
+    startup.receive(line({ phase: "migration", step: 2, current: 1, total: 100 }))
+    now = 600_000
+    startup.receive(line({ phase: "migration", step: 2, current: 2, total: 100 }))
+    expect(startup.remainingMs()).toBe(300_000)
+    expect(startup.status()).toMatchObject({ progress: { current: 2, total: 100 } })
+  })
+
+  test("does not let repeated counts, stale steps or ordinary logs hide a stalled migration", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    const progress = line({ phase: "migration", step: 2, current: 3, total: 10 })
+    startup.receive(progress)
+    now = 300_000
+    startup.receive(progress)
+    startup.receive(line({ phase: "migration", step: 1, current: 10, total: 10 }))
+    startup.receive("connected\n".repeat(100))
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("no progress for 300000ms")
+    expect(startup.timeoutError().message).toContain("3/10")
+  })
+
+  test("keeps migration completion pending until Runtime readiness", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 1, current: 0, total: 0 }))
+    now = 100_000
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(300_000)
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "finalizing" }))
+    startup.receive(line({ phase: "runtime", state: "ready" }))
+    expect(startup.remainingMs()).toBe(30_000)
+    expect(startup.status().progress).toBeUndefined()
+    now = 130_000
+    startup.receive(line({ phase: "starting" }))
+    startup.receive(line({ phase: "migration", step: 2, current: 0, total: 0 }))
+    expect(startup.remainingMs()).toBe(0)
+  })
+
+  test("decodes split records and ignores invalid or oversized output", () => {
+    const statuses: unknown[] = []
+    const startup = new DesktopServerStartup({ onStatus: (status) => statuses.push(status) })
+    const progress = line({ phase: "migration", step: 1, current: 1, total: 10 })
+    startup.receive(progress.slice(0, 15))
+    expect(statuses).toHaveLength(0)
+    startup.receive(progress.slice(15))
+    expect(statuses).toHaveLength(1)
+    startup.receive(line({ phase: "migration", step: 1, current: 11, total: 10 }))
+    startup.receive("SYNERGY_STARTUP_V1 {broken}\n")
+    startup.receive("x".repeat(100_000))
+    startup.receive(progress)
+    expect(statuses).toHaveLength(1)
+    startup.receive(line({ phase: "migration", step: 2, current: 0, total: 0 }))
+    expect(statuses).toHaveLength(2)
+  })
+})

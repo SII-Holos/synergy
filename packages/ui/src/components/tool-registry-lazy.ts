@@ -1,12 +1,17 @@
 import { createSignal } from "solid-js"
 import type { Component } from "solid-js"
 import type { AttachmentPart } from "@ericsanchezok/synergy-sdk"
+import type { ToolTimeoutMetadata } from "@ericsanchezok/synergy-util/tool-timeout"
+
+// Index signature is preserved so plugin-authored renderers keep reading their
+// own metadata keys; `toolTimeout` is the one entry with a shared shape.
+export type ToolMetadata = Record<string, any> & { toolTimeout?: ToolTimeoutMetadata }
 
 // ── Tool component type ──────────────────────────────────────
 
 export interface ToolProps {
   input: Record<string, any>
-  metadata: Record<string, any>
+  metadata: ToolMetadata
   tool: string
   title?: string
   output?: string
@@ -18,6 +23,7 @@ export interface ToolProps {
   defaultOpen?: boolean
   forceOpen?: boolean
   sessionId?: string
+  partId?: string
   messageId?: string
   attachments?: AttachmentPart[]
 }
@@ -49,23 +55,6 @@ export const ToolRegistry = {
 export let externalLookup: ((name: string) => ToolComponent | undefined) | undefined
 export function setExternalToolLookup(fn: (name: string) => ToolComponent | undefined) {
   externalLookup = fn
-}
-
-// External fallback metadata lookup — injected by plugin ToolRegistry bridge.
-// Returns declarative icon/title/subtitleTemplate for Tier 1 tool renderers.
-export let externalFallbackLookup:
-  | ((name: string) =>
-      | {
-          icon?: string
-          title?: string
-          subtitleTemplate?: string
-        }
-      | undefined)
-  | undefined
-export function setExternalFallbackLookup(
-  fn: (name: string) => { icon?: string; title?: string; subtitleTemplate?: string } | undefined,
-) {
-  externalFallbackLookup = fn
 }
 
 // Bumped by the app layer when a lazy-loaded plugin tool renderer becomes

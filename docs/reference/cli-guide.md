@@ -1,6 +1,6 @@
 # CLI Reference
 
-The installed `synergy` CLI manages the product runtime and submits work to it. Source development uses the separate root `bun dev` orchestrator described in [Development](development.md).
+The installed `synergy` CLI manages the preset runtime and submits work to it. Source development uses the separate root `bun dev` orchestrator described in [Development](development.md).
 
 Run `synergy --help` or `synergy <command> --help` for the exact options supported by the installed version.
 
@@ -16,14 +16,14 @@ Run `synergy --help` or `synergy <command> --help` for the exact options support
 
 ## Runtime Modes
 
-| Command            | Ownership and lifetime                                                                                            |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `synergy start`    | Install/start a managed background service through launchd, systemd user services, or Windows Task Scheduler      |
-| `synergy server`   | Run the server in the current foreground terminal; bare `synergy` is an alias for this command                    |
-| `synergy web`      | Open the Web UI served by an already running runtime                                                              |
-| `synergy send ...` | Attach to a runtime when `--attach` is supplied; otherwise start a private ephemeral local server for the command |
+| Command            | Ownership and lifetime                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `synergy start`    | Install/start a managed background service through launchd, systemd user services, or Windows Task Scheduler |
+| `synergy server`   | Run the server in the current foreground terminal; bare `synergy` is an alias for this command               |
+| `synergy web`      | Open the Web UI served by an already running runtime                                                         |
+| `synergy send ...` | Attach to a runtime when `--attach` is supplied; otherwise start a private local runtime for the command     |
 
-These modes share data and configuration when they use the same `SYNERGY_HOME`, but only one persistent server process may own that home at a time. A private `send` server stops when its task reaches idle.
+These modes share data and configuration when they use the same `SYNERGY_HOME`, but only one writing runtime process may own that home at a time. Local `send` calls the runtime directly and drains task execution and evidence before closing; it does not open an HTTP listener. Use `--attach` to submit work to an existing server that owns the home.
 
 ### Background service
 
@@ -35,7 +35,7 @@ synergy logs --follow
 synergy stop
 ```
 
-`start` runs the first-time configuration wizard in an interactive terminal when no config exists. `--non-interactive` skips first-run and Holos prompts. Existing services report config drift; stop and start again to install changed network settings into the service definition.
+`start` runs the first-time configuration wizard in an interactive terminal when no config exists. `--non-interactive` skips the first-run configuration wizard. Existing services report config drift; stop and start again to install changed network settings into the service definition.
 
 The managed service defaults to `127.0.0.1:4096`. `--hostname`, `--port`, `--mdns`, and repeatable `--cors` override the corresponding `server` config for the installed service invocation. Each explicit `--cors` value authorizes both cross-origin HTTP requests and Browser viewer WebSocket handshakes from that exact HTTP(S) origin. Automatically detected LAN CORS origins and reverse-proxy forwarding headers do not authorize Browser viewer sockets, so pass the public Browser viewer Origin explicitly.
 
@@ -61,6 +61,20 @@ synergy web --attach http://localhost:4097
 
 `web` does not start a server. It verifies `/global/health`, verifies that the target serves the Web application, and opens the authenticated attach URL. The default target is `http://localhost:4096`.
 
+## Workspace and Environment resources
+
+`synergy workspace` and `synergy environment` operate on an existing server through the generated SDK. Supply `--attach` and `--scope`; these commands do not open local Agent storage or acquire its writer lock. Results are JSON; HTTP errors retain their structured payload and set a nonzero exit status. Set `SYNERGY_SERVER_TOKEN` for authenticated servers, or select another variable with `--token-env`.
+
+Use `environment profiles`, `environment list`, `environment inspect`, and `workspace list` to inspect resources without starting compute. `environment create <profile> --request-id <stable-id>` selects a profile; reuse the request ID when reconciling a response that was lost. Session selection, reclamation and detachment require the observed IDs or revisions shown by inspection. `recover` reconciles an existing operation and retries saving; it never resubmits its command.
+
+```bash
+synergy environment profiles --attach http://localhost:4096 --scope home
+synergy workspace create files --name Research --attach http://localhost:4096 --scope home
+synergy environment create worker --request-id research-compute --attach http://localhost:4096 --scope home
+```
+
+Saved files can be moved with `workspace export <workspace-id> <new-file> --revision <observed-revision>` and `workspace import <file> <destination-profile>`. Use `workspace recover-saved <workspace-id> <profile> --revision <observed-revision>` to create a separate saved copy when a live view is unavailable. These commands do not include unsaved live changes or resolve unknown execution. All take the same explicit `--attach` and `--scope` options. See [Workspace file authority](../architecture/workspace-and-files.md).
+
 ## One-off Work with `send`
 
 ```bash
@@ -68,48 +82,52 @@ synergy send "Summarize this project"
 synergy send --scope home "Summarize recent work"
 synergy send --scope <scope-id> "Continue work in that project"
 synergy send --attach http://localhost:4096 "Continue the work"
-synergy send --agent synergy-max --model provider/model "Fix the failing test"
+synergy send --agent forge --model provider/model "Fix the failing test"
 synergy send --file report.pdf --file src "Review these inputs"
 printf 'extra context' | synergy send "Use stdin too"
 ```
 
 Important options:
 
-| Option                           | Meaning                                                                                                                                                         |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--attach <url>`                 | Use a running server instead of a private ephemeral server                                                                                                      |
-| `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation                                                                      |
-| `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                                                                                     |
-| `-s`, `--session <id>`           | Continue a specific session                                                                                                                                     |
-| `--agent <name>`                 | Select a primary agent; subagent names are rejected as primary choices                                                                                          |
-| `-m`, `--model <provider/model>` | Override the model                                                                                                                                              |
-| `--variant <name>`               | Select provider-specific reasoning/model variant                                                                                                                |
-| `-f`, `--file <path>`            | Attach a file or directory; repeatable                                                                                                                          |
-| `--command <name>`               | Run a configured Synergy command, using the message as arguments                                                                                                |
-| `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                                                                                            |
-| `--workflow lightloop`           | Run the message as a Light Loop workflow task: the session enables `loop_stop` and a reviewer loop, and `send` exits when the workflow reaches a terminal state |
-| `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                                                                                                 |
-| `--port <number>`                | Port for the private local server; omitted means an available port                                                                                              |
+| Option                           | Meaning                                                                                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--attach <url>`                 | Use a running server instead of an in-process local runtime                                                                                  |
+| `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation                                                   |
+| `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                                                                  |
+| `-s`, `--session <id>`           | Continue a specific session                                                                                                                  |
+| `--agent <name>`                 | Select a primary agent; subagent names are rejected as primary choices                                                                       |
+| `-m`, `--model <provider/model>` | Override the model                                                                                                                           |
+| `--variant <name>`               | Select provider-specific reasoning/model variant                                                                                             |
+| `-f`, `--file <path>`            | Attach a file or directory; repeatable                                                                                                       |
+| `--command <name>`               | Run a configured Synergy command, using the message as arguments                                                                             |
+| `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                                                                         |
+| `--workflow lightloop`           | Run a Light Loop task: the executor verifies the full outcome and calls `loop_stop`; `send` exits when the workflow reaches a terminal state |
+| `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                                                                              |
+| `--port <number>`                | Accepted for command-line compatibility; local execution does not bind a port                                                                |
 
 When `--scope` is omitted, `send` uses the launch directory (or `SYNERGY_CWD`). An existing directory is resolved and registered as a project Scope when needed, even if Synergy has not opened it before; a missing directory resolves to the home Scope. Pass `--scope` to select an already registered Scope without registering the launch directory. With `--attach`, the target runtime owns and validates the Scope ID.
+
+The command follows durable input status while a message is queued or preparing, then returns its settled execution result. Removal or preparation failure ends the command with an error; timeout and interruption cancel the accepted input even before execution starts.
 
 Piped stdin is appended to the prompt. The command subscribes to session events before prompting, renders completed tools and terminal text, and handles interactive `guarded` permission requests with allow-once or reject choices.
 
 ## Configuration, Providers, and Models
 
-| Command family                               | Purpose                                                         |
-| -------------------------------------------- | --------------------------------------------------------------- |
-| `synergy config path`                        | Print config, data, and cache roots                             |
-| `synergy config wizard`                      | Detect providers and write core model configuration             |
-| `synergy config import <file-or-url>`        | Preview or apply domain-aware config import                     |
-| `synergy config export`                      | Export config as JSONC (secrets redacted by default)            |
-| `synergy config embedding`                   | Configure an embedding provider                                 |
-| `synergy config rerank`                      | Configure a rerank provider                                     |
-| `synergy auth login\|logout\|list\|usage`    | Manage provider credentials and inspect supported usage windows |
-| `synergy models [provider]`                  | List available configured models                                |
-| `synergy agent create\|list`                 | Create or inspect agent definitions                             |
-| `synergy mcp add\|list\|auth\|logout\|debug` | Configure, authenticate, and inspect MCP servers                |
-| `synergy embed download`                     | Download the local embedding model assets                       |
+| Command family                                                 | Purpose                                                         |
+| -------------------------------------------------------------- | --------------------------------------------------------------- |
+| `synergy config path`                                          | Print config, data, and cache roots                             |
+| `synergy config wizard`                                        | Detect providers and write core model configuration             |
+| `synergy config import <file-or-url>`                          | Preview or apply domain-aware config import                     |
+| `synergy config export`                                        | Export config as JSONC (secrets redacted by default)            |
+| `synergy config embedding`                                     | Configure an embedding provider                                 |
+| `synergy config rerank`                                        | Configure a rerank provider                                     |
+| `synergy auth login\|logout\|list\|usage`                      | Manage provider credentials and inspect supported usage windows |
+| `synergy models [provider]`                                    | List available configured models                                |
+| `synergy agent create\|list`                                   | Create or inspect agent definitions                             |
+| `synergy mcp add\|list\|auth\|logout\|debug\|connect\|restart` | Configure, authenticate, inspect, and recover MCP servers       |
+| `synergy embed download`                                       | Download the local embedding model assets                       |
+
+`synergy models --refresh` refreshes the shared service/model directory before listing configured models. A failed or disabled refresh exits nonzero and preserves the existing cache; partial results report skipped entries. See [Service and model directory](configuration-layout.md#service-and-model-directory) for validation and fallback behavior.
 
 ### config import
 
@@ -208,40 +226,30 @@ See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for th
 | `synergy migrate [--target <path>]`                 | Backward-compatible alias for the interactive data-move workflow                                                   |
 | `synergy migration status\|run\|rollback\|generate` | Inspect and manage versioned schema/data migrations                                                                |
 
+`synergy data snapshots inspect` reports logical bytes, filesystem allocation, and storage ownership. `check` validates objects and historical roots. `migrate` imports registered legacy repositories and consolidates old shared pools once their legacy owners have migrated; `compact` packs shared objects while preserving unreachable contents; `clean` reclaims legacy directories that have neither an owner record nor a session record. Mutations default to dry-run and require `--apply` to execute. Non-pruning compaction preserves interrupted import packs under explicit unknown-object refs before releasing their import protection. Only `compact --apply --prune` collects unreferenced objects, after integrity and recovery checks. All snapshot commands accept `--scope <id>` and `--json`; JSON results contain `ok`, `results`, and an optional structured `error`. Failed checks or execution return a nonzero exit status. Busy maintenance leaves the running instance untouched.
+
+`pack-legacy` reduces loose-object allocation within each legacy repository without changing session ownership or requiring SQL initialization. It packs every local loose object, including unreferenced evidence, verifies and flushes the resulting pack, and removes only loose copies now present in packs. Existing packs and alternate stores remain intact. It refuses to change source snapshots after an interrupted storage backup has begun. Use `pack-legacy --scope <id> --session <id> --apply` for a pilot. `migrate` also accepts `--session` with `--scope` to move one session into the shared store. A scope-wide migration reports pool status in its JSON result, retains the old pool path through a relative Git alternate, and removes duplicated pool objects only after shared retention is durable. Session-filtered pilots leave pools unchanged. Both operations report per-repository progress on stderr; the final JSON stays on stdout. Packing reduces small-file overhead; migrating into shared storage additionally removes repeated objects across sessions.
+
 Use the data commands for supported relocation and merge workflows. Copying individual JSON files while the server is running can violate indexes and atomic update assumptions.
 
 `synergy stats --json` emits the complete snapshot; `--recompute` rebuilds its derived digests and buckets, while `--days`, `--tools`, and `--models` change the displayed view. The accepted `--project` option currently recomputes but does not filter the installation-wide result. See [Activity and Statistics](../product/activity-and-statistics.md).
 
 ## Connections
 
-| Command family                                                        | Purpose                                        |
-| --------------------------------------------------------------------- | ---------------------------------------------- |
-| `synergy channel add\|list\|start\|stop\|status`                      | Configure and control Channel accounts         |
-| `synergy holos login\|logout\|status\|verify\|reconnect\|credentials` | Manage Holos identity and connection readiness |
-| `synergy acp`                                                         | Run the Agent Client Protocol integration      |
+| Command family                                   | Purpose                                   |
+| ------------------------------------------------ | ----------------------------------------- |
+| `synergy channel add\|list\|start\|stop\|status` | Configure and control Channel accounts    |
+| `synergy acp`                                    | Run the Agent Client Protocol integration |
 
-Channel and Holos connection models are described in [Connections](../product/connections.md).
+Channel connection models are described in [Connections](../product/connections.md).
 
-## Browser Installation and Diagnostics
+## Desktop Browser
 
-```bash
-synergy browser doctor
-synergy browser doctor --json
-synergy browser install
-synergy browser install --force --json
-synergy browser install --no-deps
-synergy browser install-deps
-```
-
-`browser doctor` checks Chromium discovery, executable version, and an actual headless launch using the same arguments as Browser tools. On Linux it also reports dynamic-loader diagnostics. The command exits with status 1 when Browser is not ready; `--json` emits the complete structured report.
-
-`browser install` downloads Chromium into Synergy-managed data without replacing system browsers. It accepts only a release manifest signed by Synergy, verifies the target, archive size, and SHA-256 digest, and installs atomically. Repeated installs reuse the current managed version; `--force` reinstalls it.
-
-On Linux, `browser install` also installs the distribution packages required by the release's pinned Playwright version. This system-package step can invoke `sudo` or `su`; run it from an account authorized to install packages. Use `--no-deps` when those packages are managed separately, or run `browser install-deps` to repair only the system dependencies. JSON install reports include `systemDependencies` with `installed`, `not-required`, or `skipped`.
-
-Local source builds do not have signed release manifests; use an installed release or set `CHROMIUM_PATH`. Unsupported platforms can also install Chrome or Chromium separately and set `CHROMIUM_PATH`.
+The built-in Browser uses Desktop's bundled Electron engine and local backend. CLI and Web do not install or host a browser; use their web search, fetch or MCP capabilities. See [Browser workspace](../product/browser.md) for pages, website identities and recovery.
 
 ## Diagnostics and Maintenance
+
+`synergy data storage compact-rollout` inspects retained journal encodings under an exclusive maintenance lock. `--apply` creates a consistent backup and resumes the registered historical compaction migration. Stop the target instance through its ordinary lifecycle before maintenance; use a copied Home for acceptance. `data storage status` includes the compaction cursor and backup receipt. Compression reduces encoded records and leaves database pages available for reuse; it does not shrink the database file or delete its backup automatically. `data storage reclaim` drains outstanding format reclamation, and `prune` owns evidence retention. Backups remain retained until explicitly removed after verification.
 
 | Command                    | Purpose                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------ |
@@ -254,6 +262,10 @@ Local source builds do not have signed release manifests; use an installed relea
 | `synergy generate`         | Generate supported artifacts used by development/release workflows                         |
 
 `synergy doctor` lists the current installation method, every detected installation channel (`npm`, `yarn`, `pnpm`, `bun`, `desktop`, or `standalone`) with its version and, where available, its executable, plus the `synergy` candidates on PATH. It exits nonzero when no supported installation is detected, when multiple channels coexist, or when an installed version cannot be verified. A PATH-first mismatch (the first `synergy` on PATH is not the current CLI) is reported as a warning. Homebrew's `synergy` formula is unrelated to this project and is not detected or managed.
+
+It also reports sandbox readiness and provider endpoint health. The endpoint checks cover two distinct failure modes. **Provider endpoint routing** warns when a configured provider endpoint resolves into `198.18.0.0/15` or `240.0.0.0/4` — the ranges used by fake-IP DNS in Clash/mihomo-style transparent proxies — or when the route table carries a half-default route pair or a default route bound to a `utun*`/`tun*` device. **Provider endpoint TLS** performs a real handshake against each endpoint host and fails when verification does not complete, reporting the presented issuer and resolved address. Endpoint probes are advisory and strictly time-bounded; an offline machine degrades to a warning rather than an error.
+
+A routing warning means a proxy or VPN owns name resolution and routing for that endpoint, so a transient handshake break can surface as an unattributable TLS failure. The recovery action is to stop or reconfigure the interception, or to supply the intercepted certificate authority through `NODE_EXTRA_CA_CERTS` or `SSL_CERT_FILE`, which the Bun runtime this product ships on honors. Certificate verification itself is never relaxed, so these checks never disable or bypass TLS validation.
 
 `synergy upgrade` preserves the detected installation channel. Supported package-manager installations use their owning manager, Desktop installations defer to the Desktop updater, and standalone CLI installations rerun the official installer pinned to the requested release's `vX.Y.Z` GitHub tag. Standalone upgrades therefore require a published GitHub release tag and do not use an npm-only dev or preview version's installer. Override detection with `--method <npm|yarn|pnpm|bun|desktop|standalone>`; if multiple channels coexist and no override is provided, upgrade exits nonzero instead of guessing. Installer and package-manager warning checks are advisory and fail open, so probe failures do not block installation.
 

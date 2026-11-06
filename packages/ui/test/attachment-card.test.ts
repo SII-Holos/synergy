@@ -12,11 +12,11 @@ describe("attachment card helpers", () => {
   test("resolves safe attachment URLs", () => {
     const serverUrl = "http://localhost:3000/"
 
-    expect(resolveAttachmentUrl(serverUrl, file({ url: "asset://abc123.png" }))).toBe(
-      "http://localhost:3000/asset/abc123.png",
+    expect(resolveAttachmentUrl(serverUrl, file({ url: "asset://1111111111111111.png" }))).toBe(
+      "http://localhost:3000/asset/1111111111111111.png",
     )
-    expect(resolveAttachmentUrl(serverUrl, file({ assetId: "def456.pdf" }))).toBe(
-      "http://localhost:3000/asset/def456.pdf",
+    expect(resolveAttachmentUrl(serverUrl, file({ assetId: "2222222222222222.pdf" }))).toBe(
+      "http://localhost:3000/asset/2222222222222222.pdf",
     )
     expect(resolveAttachmentUrl(serverUrl, file({ url: "data:image/png;base64,AAA" }))).toBe(
       "data:image/png;base64,AAA",
@@ -25,6 +25,8 @@ describe("attachment card helpers", () => {
       "https://example.com/report.pdf",
     )
     expect(resolveAttachmentUrl(serverUrl, file({ url: "file:///tmp/secret.png" }))).toBeUndefined()
+    expect(resolveAttachmentUrl(serverUrl, file({ url: "asset://../secret.png" }))).toBeUndefined()
+    expect(resolveAttachmentUrl(serverUrl, file({ assetId: "../secret.png" }))).toBeUndefined()
   })
 
   test("labels common attachment kinds and sizes", () => {

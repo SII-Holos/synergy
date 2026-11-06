@@ -12,6 +12,22 @@ Research documents preserve investigations, measurements, experiments, and desig
 
 ## Preserved Research Summaries
 
+### Parallel Workspace checkpoint settlement
+
+[Real-process checkpoint settlement measurements](2026-10-21-parallel-workspace-checkpoint-settlement.md) records frozen real-directory comparisons, complete pause and next-input timings, single-Workspace controls, source fingerprints and host-resource uncertainty. Correctness verification passes, but the candidate is not performance-accepted because later-input and resource regressions remain unresolved.
+
+### 跨 Host Session 迁移与任务恢复
+
+[多设备恢复实现调查](2026-10-10-distributed-host-recovery.md) 保存暂停、单 Session 导出、执行排空、Workspace 与 Rollout 的源码证据，以及后续自动恢复的原理边界；第一版设计与验收统一放在[暂停 Session 手动迁移提案](../decisions/implemented/architecture/2026-10-10-distributed-host-runtime.md)，尚未实现。
+
+### Snapshot ingestion latency
+
+[Snapshot import performance](2026-10-04-snapshot-import-performance.md) records the loose-object synchronization bottleneck, repeated full-capture measurements, concurrent-import ownership and remaining directory pressure. The implementation contract lives in [Workspace and files](../architecture/workspace-and-files.md#snapshots-rollback-and-restore).
+
+### Session 交互卡顿调查
+
+[2026-10-03 Session 卡顿与交互失效诊断](2026-10-03-session-latency-audit.md) 保存主实例与最新 dev 的版本对照、会话切换和首条消息复现、工具快照阶段测量、交接视图异常及可观测性缺陷，并区分已确认问题、既有改进和待验证项。
+
 ### Runtime performance investigation
 
 The former `docs/architecture/runtime-performance.md` was an implementation investigation rather than a durable architecture contract. It was retired from the working tree because its source locations and implementation-status table describe one point in repository history. The full report remains available in Git history at its former path.
@@ -54,3 +70,19 @@ Open questions intentionally left for later work included advanced Anthropic TTL
 | `docs/kvcache-validation-result.md`       | Quality, risk, and remaining-uncertainty assessment | Summarized; long form retired |
 
 Current prompt assembly and compaction contracts live in [LLM loop and compaction](../architecture/llm-loop.md). Current provider configuration belongs in [Configuration](../reference/configuration.md); operational performance evidence belongs in [Performance observability](../operations/performance-observability.md).
+
+### UI API 5 frontend performance
+
+[UI API 5 performance acceptance](2026-09-07-plugin-ui5-performance.md) records the same-machine production-build comparison, bounded rendering and plugin request counts for the public frontend extraction.
+
+### 网络重试与恢复边界
+
+[网络重试覆盖与恢复边界审查](2026-09-15-network-retry-audit.md) 记录 DNS/连接错误、SDK 与 worker 信息传递、HTTP/流错误、网页读取和工具重放的审查证据，并列出跨会话冷却与流式文本投影的后续范围。
+
+### 编码观察与等待成本
+
+[Local-24 最终修复研究](context-efficiency/2026-09-23-local24-glm-fault-repair-study.md) 保存完整配对结果与受干扰项的来源；[CompCert 与 Mailman 等待提示实验](context-efficiency/2026-09-24-process-waiting-study.md) 单独记录后续两项的原生测试、逐请求用量、等待行为、资源条件和完整最终数据。
+
+[等待提示后续诊断](context-efficiency/2026-09-24-process-waiting-followup.md) 区分子进程交互等待、命令失败、工具目录和缓存成本，并说明定向验证与完整 24 题覆盖分别回答的问题。
+
+[八题双臂契约验证](context-efficiency/2026-09-28-quality-contract-diagnostic-study.md) 记录统一 evaluator 下的原生正确率、真实测试、逐请求用量及归档续验证据，区分一题净胜与双方仍失败题目的实际断言差异。

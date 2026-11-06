@@ -24,6 +24,7 @@ export type ClipboardEnvironment = {
   navigator?: Pick<Navigator, "clipboard">
   document?: Document
   isSecureContext?: boolean
+  ClipboardItem?: typeof ClipboardItem
 }
 
 export type ClipboardConfig = {
@@ -70,6 +71,7 @@ function currentEnvironment(environment?: ClipboardEnvironment): ClipboardEnviro
     navigator: environment?.navigator ?? (typeof navigator !== "undefined" ? navigator : undefined),
     document: environment?.document ?? (typeof document !== "undefined" ? document : undefined),
     isSecureContext: environment?.isSecureContext ?? (typeof window !== "undefined" ? window.isSecureContext : false),
+    ClipboardItem: environment?.ClipboardItem ?? (typeof ClipboardItem !== "undefined" ? ClipboardItem : undefined),
   }
 }
 
@@ -149,8 +151,29 @@ export async function copyTextToClipboard(text: string, options: CopyTextOptions
   return result
 }
 
+export async function copyImageToClipboard(
+  loadPng: () => Promise<Blob>,
+  options?: ClipboardEnvironment,
+): Promise<ClipboardCopyResult> {
+  const environment = currentEnvironment(options)
+  const clipboard = environment.navigator?.clipboard
+  const Item = environment.ClipboardItem
+  if (!environment.isSecureContext || !clipboard?.write || !Item) return { ok: false, reason: "unavailable" }
+  try {
+    const png = loadPng()
+    // Admission can fail before Chromium observes a later conversion rejection.
+    void png.catch(() => {})
+    // Admit within the click task; decoding must not consume user activation.
+    await clipboard.write([new Item({ "image/png": png })])
+    return { ok: true, method: "navigator" }
+  } catch (error) {
+    return { ok: false, reason: "failed", error }
+  }
+}
+
 export type CopyControllerOptions = {
   text: CopyTextSource
+  loadText?: () => Promise<string | null | undefined>
   copyLabel?: string
   copiedLabel?: string
   failedLabel?: string
@@ -169,7 +192,7 @@ export function createCopyController(options: CopyControllerOptions) {
   let operation = 0
 
   const text = createMemo(() => resolveText(options.text))
-  const disabled = createMemo(() => text().length === 0)
+  const disabled = createMemo(() => !options.loadText && text().length === 0)
   const copied = createMemo(() => state() === "copied")
   const failed = createMemo(() => state() === "failed")
   const tooltip = createMemo(() => {
@@ -203,11 +226,20 @@ export function createCopyController(options: CopyControllerOptions) {
     const token = ++operation
     if (resetTimer) clearTimeout(resetTimer)
     resetTimer = undefined
-    const value = resolveText(source ?? options.text)
-    const result = await copyTextToClipboard(value, {
-      label: options.copyLabel,
-      failureDescription: options.failureDescription,
-    })
+    let result: ClipboardCopyResult
+    try {
+      const value =
+        source === undefined && options.loadText
+          ? ((await options.loadText()) ?? "")
+          : resolveText(source ?? options.text)
+      if (token !== operation) return { ok: false, reason: "empty" }
+      result = await copyTextToClipboard(value, {
+        label: options.copyLabel,
+        failureDescription: options.failureDescription,
+      })
+    } catch (error) {
+      result = { ok: false, reason: "failed", error }
+    }
 
     if (token !== operation) return result
     if (result.ok) {

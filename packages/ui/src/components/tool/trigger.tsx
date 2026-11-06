@@ -2,11 +2,11 @@ import { For, Show, type JSX } from "solid-js"
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { Icon, type IconName } from "../icon"
+import { Icon, type IconSource } from "../icon"
 import { DiffChanges } from "../diff-changes"
 
 export interface ToolTriggerProps {
-  icon: IconName
+  icon: IconSource
   title: string | MessageDescriptor
   titleClass?: string
   subtitle?: string

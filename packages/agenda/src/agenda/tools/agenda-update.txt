@@ -1,0 +1,12 @@
+Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged.
+
+Use agenda_list to find the item ID first.
+
+Common actions:
+- Pause: agenda_update(agendaItemId="agd_xxx", status="paused")
+- Resume: agenda_update(agendaItemId="agd_xxx", status="active")
+- Mark done: agenda_update(agendaItemId="agd_xxx", status="done")
+- Change executionInstructions: agenda_update(agendaItemId="agd_xxx", executionInstructions="new instructions...")
+- Change control profile: agenda_update(agendaItemId="agd_xxx", controlProfile="full_access")
+
+To change the trigger/schedule itself, pass a new triggers array: agenda_update(agendaItemId="agd_xxx", triggers=[{type:"cron", expr:"0 6 * * *", tz:"Asia/Shanghai"}])

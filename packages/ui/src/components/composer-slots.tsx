@@ -1,3 +1,4 @@
+import { useExtensionOutlet } from "../context/extension-outlet"
 import { ErrorBoundary, For, Show, createEffect, createMemo, createSignal, onCleanup, type Component } from "solid-js"
 import { Dynamic } from "solid-js/web"
 
@@ -25,8 +26,7 @@ export interface ExternalComposerSlotEntry {
 }
 
 export let externalComposerSlotLookup:
-  | ((slot: ComposerSlotName) => readonly ExternalComposerSlotEntry[] | undefined)
-  | undefined
+  ((slot: ComposerSlotName) => readonly ExternalComposerSlotEntry[] | undefined) | undefined
 
 export function setExternalComposerSlotLookup(
   fn: (slot: ComposerSlotName) => readonly ExternalComposerSlotEntry[] | undefined,
@@ -77,6 +77,7 @@ function ComposerSlotEntryView(props: { entry: ExternalComposerSlotEntry; slotPr
 }
 
 export function ComposerSlotOutlet(props: ComposerSlotOutletProps) {
+  useExtensionOutlet(props.slot)
   const entries = createMemo(() => {
     externalComposerSlotNotify()
     return [...(externalComposerSlotLookup?.(props.slot) ?? [])]

@@ -1,0 +1,377 @@
+import { newerExecutionSample } from "@/utils/execution-time"
+import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
+import type { ExecutionSummary, ExecutionTrajectoryNode } from "@ericsanchezok/synergy-sdk/client"
+import type { SDKContext } from "@/context/sdk"
+import {
+  capExecutionRows,
+  executionOrder,
+  executionWindowMatches,
+  mergeExecutionWindow,
+  retainExecutionPendingIds,
+} from "./window"
+
+export function createExecutionTrajectory(input: {
+  sdk: Pick<SDKContext, "client" | "event">
+  sessionID: Accessor<string | undefined>
+  runID: Accessor<string>
+  actor: Accessor<string>
+  kind: Accessor<ExecutionTrajectoryNode["kind"] | "">
+  status: Accessor<ExecutionTrajectoryNode["status"] | "">
+  query: Accessor<string>
+  anchor: Accessor<string>
+  connectionVersion: Accessor<number>
+  enabled?: Accessor<boolean>
+  mode?: Accessor<"process" | "records">
+  kinds?: Accessor<string>
+  statuses?: Accessor<string>
+  anomalies?: Accessor<boolean>
+  order?: Accessor<"time" | "round" | "call">
+  capacity?: Accessor<number>
+  rounds?: Accessor<ExecutionSummary["rounds"]>
+}) {
+  const [state, setState] = createStore({
+    rows: [] as ExecutionTrajectoryNode[],
+    revision: -1,
+    total: 0,
+    next: null as string | null,
+    previous: null as string | null,
+    loading: false,
+    error: false,
+    pendingIds: [] as string[],
+    history: false,
+    summary: undefined as ExecutionSummary | undefined,
+  })
+  const [generation, setGeneration] = createSignal(0)
+  const [recoveryVersion, setRecoveryVersion] = createSignal(0)
+  let abort: AbortController | undefined
+  let summaryAbort: AbortController | undefined
+  let pending: { key: string; controller: AbortController; promise: Promise<void> } | undefined
+  let disposed = false
+  let selectionKey = ""
+  let wasEnabled = false
+  let connection = -1
+  let requiredRevision = -1
+  let buffered = new Map<string, ExecutionTrajectoryNode>()
+  let removed = new Set<string>()
+  const compare = () =>
+    executionOrder(
+      input.order?.() ?? "time",
+      new Map((input.rounds?.() ?? state.summary?.rounds ?? []).map((round, index) => [round.id, index])),
+    )
+  const load = (cursor?: string, anchor?: string, direction?: "next" | "previous", restore = false): Promise<void> => {
+    const sessionID = input.sessionID()
+    if (!sessionID || input.enabled?.() === false) return Promise.resolve()
+    const request = {
+      sessionID,
+      runID: input.runID() || undefined,
+      session: input.actor() && input.actor() !== "all" ? input.actor() : undefined,
+      actor: input.actor() === "all" || (input.query() && !input.actor()) ? "all" : "main",
+      kind: input.kind() || undefined,
+      mode: input.mode?.() ?? "records",
+      kinds: input.kinds?.() || undefined,
+      statuses: input.statuses?.() || undefined,
+      anomalies: input.anomalies?.() ?? false,
+      order: input.order?.() ?? "time",
+      status: input.status() || undefined,
+      query: input.query() || undefined,
+      cursor: direction && state.rows.length ? undefined : cursor,
+      anchor:
+        direction && state.rows.length ? (direction === "previous" ? state.rows[0].id : state.rows.at(-1)!.id) : anchor,
+      position: direction ? (direction === "previous" ? "before" : "after") : undefined,
+      limit: restore ? Math.min(input.capacity?.() ?? 500, Math.max(100, state.rows.length)) : 100,
+    } as const
+    const key = JSON.stringify([input.connectionVersion(), request, direction, restore])
+    if (pending?.key === key && !pending.controller.signal.aborted) return pending.promise
+    abort?.abort()
+    const controller = new AbortController()
+    abort = controller
+    const version = generation() + 1
+    const reading = state.history
+    setGeneration(version)
+    buffered = new Map()
+    removed = new Set()
+    setState({ loading: true, error: false })
+    const promise = Promise.resolve().then(async () => {
+      try {
+        const response = await input.sdk.client.session.executionTrajectory(request, {
+          signal: controller.signal,
+          throwOnError: true,
+        })
+        if (disposed || generation() !== version || controller.signal.aborted || input.enabled?.() === false) return
+        const page = response.data
+        const rows = direction
+          ? mergeExecutionWindow(state.rows, page.items, [], {
+              history: direction === "previous",
+              cap: input.capacity?.() ?? 500,
+              compare: compare(),
+            }).rows
+          : page.items
+        // Paging explicitly admits new history rows, unlike live updates.
+        const paged =
+          direction === "previous"
+            ? [...new Map([...page.items, ...state.rows].map((row) => [row.id, row])).values()]
+                .sort(compare())
+                .slice(0, input.capacity?.() ?? 500)
+            : rows
+        const withhold = (restore && reading) || !!page.nextCursor
+        const merged = mergeExecutionWindow(paged, [...buffered.values()], [...removed], {
+          history: withhold,
+          cap: input.capacity?.() ?? 500,
+          compare: compare(),
+        })
+        const candidates = [...(direction ? state.rows : []), ...page.items, ...buffered.values()]
+        const order = compare()
+        const first = merged.rows[0]
+        const last = merged.rows.at(-1)
+        const before = first && candidates.some((row) => order(row, first) < 0)
+        const after = last && candidates.some((row) => order(row, last) > 0)
+        const previous = direction === "next" ? state.previous : page.previousCursor
+        const next = direction === "previous" ? state.next : page.nextCursor
+        setState("rows", reconcile(merged.rows))
+        setState({
+          total: page.total,
+          revision: Math.max(state.revision, page.revision),
+          loading: false,
+          next: next ?? (after ? last.id : null),
+          previous: previous ?? (before ? first.id : null),
+          history: withhold || direction === "previous",
+          pendingIds: retainExecutionPendingIds(direction || restore ? state.pendingIds : [], {
+            rows: merged.rows,
+            addedIds: merged.addedIds,
+            removedIds: [...removed],
+            droppedIds: merged.droppedIds,
+            withhold,
+          }),
+        })
+        if (page.revision >= requiredRevision) requiredRevision = -1
+        else
+          queueMicrotask(() => {
+            if (disposed || generation() !== version || input.enabled?.() === false) return
+            void load(
+              undefined,
+              state.history ? state.rows[Math.floor(state.rows.length / 2)]?.id : "latest",
+              undefined,
+              true,
+            )
+          })
+      } catch {
+        if (!disposed && generation() === version && !controller.signal.aborted)
+          setState({ loading: false, error: true })
+      } finally {
+        if (pending?.controller === controller) pending = undefined
+        if (!disposed && generation() === version) setState("loading", false)
+      }
+    })
+    pending = { key, controller, promise }
+    return promise
+  }
+  const refreshSummary = async () => {
+    const sessionID = input.sessionID()
+    const runID = input.runID()
+    const client = input.sdk.client
+    const connection = input.connectionVersion()
+    summaryAbort?.abort()
+    const controller = new AbortController()
+    summaryAbort = controller
+    const current = () =>
+      !disposed &&
+      summaryAbort === controller &&
+      !controller.signal.aborted &&
+      input.enabled?.() !== false &&
+      input.sessionID() === sessionID &&
+      input.runID() === runID &&
+      input.sdk.client === client &&
+      input.connectionVersion() === connection
+    if (!sessionID || input.enabled?.() === false) return
+    if (!runID) {
+      setState("summary", undefined)
+      return
+    }
+    try {
+      const response = await client.session.executionSummary(
+        { sessionID, runID },
+        { signal: controller.signal, throwOnError: true },
+      )
+      if (current() && newerExecutionSample(state.summary, response.data, true))
+        setState("summary", reconcile(response.data))
+    } catch {
+      if (current()) setState("error", true)
+    }
+  }
+  createEffect(
+    on(
+      [
+        input.sessionID,
+        input.runID,
+        input.actor,
+        input.kind,
+        input.status,
+        input.query,
+        input.anchor,
+        input.connectionVersion,
+        () => input.mode?.(),
+        () => input.kinds?.(),
+        () => input.statuses?.(),
+        () => input.anomalies?.(),
+        () => input.order?.(),
+        () => input.enabled?.() ?? true,
+      ],
+      () => {
+        if (input.enabled?.() === false) {
+          wasEnabled = false
+          setGeneration((value) => value + 1)
+          abort?.abort()
+          setState("loading", false)
+          return
+        }
+        const key = JSON.stringify([
+          input.sessionID(),
+          input.runID(),
+          input.actor(),
+          input.kind(),
+          input.status(),
+          input.query(),
+          input.anchor(),
+          input.mode?.(),
+          input.kinds?.(),
+          input.statuses?.(),
+          input.anomalies?.(),
+          input.order?.(),
+        ])
+        const restoring = selectionKey === key && state.rows.length > 0
+        const connectionChanged = connection !== input.connectionVersion()
+        if (connectionChanged) requiredRevision = -1
+        const recover = !wasEnabled || connectionChanged
+        wasEnabled = true
+        connection = input.connectionVersion()
+        if (restoring) {
+          if (recover) {
+            if (connectionChanged) setState("revision", -1)
+            void load(
+              undefined,
+              state.history ? state.rows[Math.floor(state.rows.length / 2)]?.id : "latest",
+              undefined,
+              true,
+            )
+          }
+          return
+        }
+        selectionKey = key
+        requiredRevision = -1
+        setState({ rows: [], revision: -1, next: null, previous: null, pendingIds: [], history: false })
+        void load(undefined, input.anchor() || (input.query() ? undefined : "latest"))
+      },
+    ),
+  )
+  createEffect(
+    on(
+      [input.sessionID, input.runID, () => input.sdk.client, input.connectionVersion, () => input.enabled?.() ?? true],
+      ([sessionID, runID, client], previous) => {
+        if (!previous || previous[0] !== sessionID || previous[1] !== runID || previous[2] !== client)
+          setState("summary", undefined)
+        void refreshSummary()
+      },
+    ),
+  )
+  const unsubscribe = input.sdk.event.on("execution.updated", (event) => {
+    const update = event.properties
+    if (input.enabled?.() === false) return
+    if (update.sessionID !== input.sessionID() || update.revision <= state.revision) return
+    const summary = input.runID() ? update.roundSummaries.find((value) => value.runID === input.runID()) : undefined
+    if (summary && newerExecutionSample(state.summary, summary)) setState("summary", reconcile(summary))
+    if (update.previousRevision !== undefined && update.previousRevision > state.revision) {
+      requiredRevision = Math.max(requiredRevision, update.revision)
+      setRecoveryVersion((value) => value + 1)
+      if (!state.loading) {
+        void load(
+          undefined,
+          state.history ? state.rows[Math.floor(state.rows.length / 2)]?.id : "latest",
+          undefined,
+          true,
+        )
+        return
+      }
+    }
+    const runs = input.runID()
+      ? new Set([
+          input.sessionID() + ":" + input.runID(),
+          ...((summary ?? state.summary)?.tasks.flatMap((task) => task.runs.map((run) => task.sessionID + ":" + run)) ??
+            []),
+        ])
+      : undefined
+    const parents = new Map(update.summary.tasks.map((task) => [task.sessionID, task.parentID]))
+    const filter = {
+      sessionID: input.sessionID()!,
+      actor: input.query() && !input.actor() ? "all" : input.actor(),
+      kind: input.kind(),
+      status: input.status(),
+      query: input.query(),
+      runs,
+      parents,
+    }
+    const accepts = (node: ExecutionTrajectoryNode) =>
+      executionWindowMatches(node, filter) &&
+      (!input.kinds?.() || input.kinds()!.split(",").includes(node.kind)) &&
+      (!input.statuses?.() || input.statuses()!.split(",").includes(node.status)) &&
+      (!input.anomalies?.() || node.kind === "retry" || ["failed", "cancelled", "interrupted"].includes(node.status))
+    const updates = input.mode?.() === "process" ? (update.processUpserts ?? update.upserts) : update.upserts
+    const removals =
+      input.mode?.() === "process" ? [...update.removed, ...(update.processRemoved ?? [])] : update.removed
+    const changed = updates.filter(accepts)
+    const excluded = updates.filter((node) => !accepts(node)).map((node) => node.id)
+    if (state.loading) {
+      for (const node of changed) {
+        buffered.set(node.id, node)
+        removed.delete(node.id)
+      }
+      for (const id of [...removals, ...excluded]) {
+        removed.add(id)
+        buffered.delete(id)
+      }
+    }
+    const removedIds = [...removals, ...excluded]
+    const withhold = state.history || !!state.next
+    const result = mergeExecutionWindow(state.rows, changed, removedIds, {
+      history: withhold,
+      cap: input.capacity?.() ?? 500,
+      compare: compare(),
+    })
+    setState("rows", reconcile(result.rows))
+    if (result.droppedIds.length && result.rows.length && !state.previous) setState("previous", result.rows[0].id)
+    setState({
+      revision: update.revision,
+      pendingIds: retainExecutionPendingIds(state.pendingIds, {
+        rows: result.rows,
+        addedIds: result.addedIds,
+        removedIds,
+        droppedIds: result.droppedIds,
+        withhold,
+      }),
+    })
+  })
+  createEffect(() => {
+    const cap = input.capacity?.() ?? 500
+    if (state.rows.length <= Math.max(0, cap)) return
+    const capped = capExecutionRows(state.rows, cap)
+    setState("rows", reconcile(capped.rows))
+    if (capped.rows.length && !state.previous) setState("previous", capped.rows[0].id)
+    setState(
+      "pendingIds",
+      retainExecutionPendingIds(state.pendingIds, {
+        rows: capped.rows,
+        addedIds: [],
+        removedIds: [],
+        droppedIds: capped.droppedIds,
+        withhold: false,
+      }),
+    )
+  })
+  onCleanup(() => {
+    disposed = true
+    abort?.abort()
+    summaryAbort?.abort()
+    unsubscribe()
+  })
+  return { state, load, recoveryVersion, setHistory: (value: boolean) => setState("history", value), refreshSummary }
+}

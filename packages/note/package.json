@@ -1,0 +1,90 @@
+{
+  "name": "@ericsanchezok/synergy-note",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./event": "./src/event.ts",
+    "./migration": "./src/migration.ts",
+    "./tools": "./src/tools.ts",
+    "./virtual-file-source": "./src/virtual-file-source.ts",
+    "./routes/note": "./src/routes/note.ts",
+    "./tools/note-archive": "./src/tools/note-archive.ts",
+    "./tools/note-edit": "./src/tools/note-edit.ts",
+    "./tools/note-write": "./src/tools/note-write.ts",
+    "./tools/note-delete": "./src/tools/note-delete.ts",
+    "./tools/note-read": "./src/tools/note-read.ts",
+    "./register": "./src/register.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./document-kinds": "./src/document-kinds.ts",
+    "./types": "./src/types.ts",
+    "./tools/note-list": "./src/tools/note-list.ts",
+    "./tools/note-search": "./src/tools/note-search.ts",
+    "./features": "./src/features.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/note",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "0.4.0",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "remeda": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "note",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "note",
+    "requires": {
+      "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "note",
+          "owner": "note",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Note",
+          "description": "Provide note capabilities.",
+          "component": "note"
+        }
+      ]
+    }
+  }
+}

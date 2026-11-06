@@ -1,3 +1,5 @@
+import { sessionActivityLabel } from "../../src/components/session-status"
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, mock, test } from "bun:test"
 import type {
   AssistantMessage,
@@ -21,6 +23,7 @@ mock.module("@ericsanchezok/synergy-util/path", () => ({
   getFilename: (path: string) => path.slice(path.lastIndexOf("/") + 1),
 }))
 mock.module("@lingui/solid", () => ({
+  Trans: Empty,
   useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
 }))
 mock.module("../../src/context", () => ({ useData: () => ({ store: {}, serverUrl: "" }) }))
@@ -51,6 +54,7 @@ mock.module("../../src/components/clipboard", () => ({
   }),
 }))
 mock.module("../../src/components/activity-trace", () => ({
+  AnimatedActivityCount: Empty,
   ActivityReasoningSummary: Empty,
   ActivityReceipt: Empty,
   ActivityTrace: Empty,
@@ -88,10 +92,9 @@ const {
   formatTurnCost,
   formatTurnTokenCount,
   providerPreludeElapsedLabel,
-  providerPreludeText,
   resolveSessionTurnError,
   resolveTurnWorking,
-  shouldShowProviderPrelude,
+  shouldShowCurrentActivity,
   turnCompletionStats,
   timelineItemStableKey,
   timelineVisualKind,
@@ -107,7 +110,7 @@ function user(
     sessionID: "session",
     role: "user",
     time: { created: 1 },
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     model: { providerID: "provider", modelID: "model" },
     isRoot,
     rootID: opts?.rootID ?? id,
@@ -128,7 +131,7 @@ function assistantFor(id: string, parentID: string): AssistantMessage {
     parentID,
     rootID: parentID,
     mode: "test",
-    agent: "synergy",
+    agent: TEST_AGENT_NAME,
     path: { cwd: "/tmp", root: "/tmp" },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -571,6 +574,24 @@ describe("session turn assistant collection", () => {
       "error",
     )
     expect(shouldShowTurnDiffs({ summary: { diffs: [diff], diffState: { status: "ready" } } })).toBe("ready")
+    expect(
+      shouldShowTurnDiffs({
+        summary: {
+          diffs: [],
+          diffTotals: { files: 300, additions: 900, deletions: 1 },
+          diffState: { status: "ready" },
+        },
+      }),
+    ).toBe("ready")
+    expect(
+      shouldShowTurnDiffs({
+        summary: {
+          diffs: [diff],
+          diffTotals: { files: 300, additions: 900, deletions: 1 },
+          diffState: { status: "live" },
+        },
+      }),
+    ).toBe("hidden")
     expect(shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "ready" } } })).toBe("hidden")
     expect(shouldShowTurnDiffs({ summary: { diffs: [] } })).toBe("hidden")
   })
@@ -640,6 +661,18 @@ describe("session turn working state", () => {
     ).toBe(false)
   })
 
+  test("missing and paused runtime states never manufacture live work", () => {
+    const messages = [assistant("assistant-running")]
+    expect(resolveTurnWorking({ isLastUserMessage: true, messages })).toBe(false)
+    expect(
+      resolveTurnWorking({
+        isLastUserMessage: true,
+        messages,
+        sessionStatus: { type: "paused", reason: "aborted", since: 10 },
+      }),
+    ).toBe(false)
+  })
+
   test("never marks an older turn as working", () => {
     expect(
       resolveTurnWorking({
@@ -692,95 +725,22 @@ describe("session turn timeline", () => {
       values: { availability: "none", availableVariants: "" },
     })
   })
-  test("shows provider prelude while the first assistant response has no visible part", () => {
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: undefined,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(true)
+  test("keeps the current activity visible throughout active execution", () => {
+    expect(shouldShowCurrentActivity({ working: true, hasError: false })).toBe(true)
+    expect(shouldShowCurrentActivity({ working: false, hasError: false })).toBe(false)
+    expect(shouldShowCurrentActivity({ working: true, hasError: true })).toBe(false)
   })
 
-  test("shows provider prelude after prior visible work when the latest assistant response is empty", () => {
-    const previous = completedAssistant("assistant-a")
-    const latest = assistant("assistant-b")
-    const previousItems = collectSessionTurnTimelineItems(
-      [previous],
-      { [previous.id]: [ordinaryTool({ id: "tool-a", messageID: previous.id, status: "completed" })] },
-      true,
-    )
-    const latestItems = collectSessionTurnTimelineItems([latest], {}, true)
-
-    expect(previousItems).toHaveLength(1)
-    expect(latestItems).toHaveLength(0)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: latestItems,
-      }),
-    ).toBe(true)
-  })
-
-  test("hides provider prelude once the latest assistant response has a visible part", () => {
-    const latest = assistant("assistant-a")
-    const latestItems = collectSessionTurnTimelineItems(
-      [latest],
-      { [latest.id]: [textPart("text-a", latest.id)] },
-      true,
-    )
-
-    expect(latestItems).toHaveLength(1)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: latestItems,
-      }),
-    ).toBe(false)
-  })
-
-  test("hides provider prelude when the turn is not actively waiting", () => {
-    const latest = assistant("assistant-a")
-
-    expect(
-      shouldShowProviderPrelude({
-        working: false,
-        hasError: false,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: true,
-        latestAssistant: latest,
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-    expect(
-      shouldShowProviderPrelude({
-        working: true,
-        hasError: false,
-        latestAssistant: completedAssistant("assistant-b"),
-        latestAssistantTimelineItems: [],
-      }),
-    ).toBe(false)
-  })
-
-  test("keeps backend provider prelude status text verbatim", () => {
+  test("uses canonical activity labels while waiting for provider content", () => {
     const status = {
       type: "busy",
       description: "Awaiting response…",
     } satisfies SessionStatus
 
-    expect(providerPreludeText(status)).toBe("Awaiting response…")
-    expect(providerPreludeText({ type: "busy" })).toBe("Awaiting response…")
+    expect(sessionActivityLabel(status)).toBe("Processing task")
+    expect(sessionActivityLabel({ type: "busy", activity: { phase: "waiting_model", startedAt: 1 } })).toBe(
+      "Waiting for model response",
+    )
   })
 
   test("formats provider prelude elapsed time as a quiet timer label", () => {
@@ -896,7 +856,7 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, true)
 
-    expect(items.map((item) => item.kind)).toEqual(["reasoning", "media-pending", "part"])
+    expect(items.map((item) => item.kind)).toEqual(["reasoning", "media", "part"])
     expect(items[0]).toMatchObject({ kind: "reasoning", part: { type: "reasoning" } })
     expect(items[2]).toMatchObject({ kind: "part", part: { type: "text" } })
   })
@@ -911,7 +871,7 @@ describe("session turn timeline", () => {
         true,
       )
 
-      expect(items.map((item) => item.kind)).toEqual(["media-pending"])
+      expect(items.map((item) => item.kind)).toEqual(["media"])
     }
   })
 
@@ -983,8 +943,8 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
 
-    expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part"])
-    expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
+    expect(items.map((item) => item.kind)).toEqual(["media", "part"])
+    expect(items[0]).toMatchObject({ kind: "media", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
   })
 
@@ -1162,13 +1122,13 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([first, second, third], partsByMessage, false)
 
-    expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part", "part"])
-    expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
+    expect(items.map((item) => item.kind)).toEqual(["media", "part", "part"])
+    expect(items[0]).toMatchObject({ kind: "media", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
     expect(items[2]).toMatchObject({ kind: "part", part: { type: "tool", tool: "render" } })
   })
 
-  test("keeps ordinary tool attachments inside the ordinary tool item", () => {
+  test("projects ordinary tool deliverables after the execution while evidence stays with inspection", () => {
     const message = assistant("assistant-a")
     const readTool = {
       id: "read-a",
@@ -1183,31 +1143,32 @@ describe("session turn timeline", () => {
         output: "Read report.pdf",
         title: "report.pdf",
         metadata: {},
-        attachments: [image],
+        attachments: [{ ...image, presentation: { purpose: "evidence" } }, image],
         time: { start: 1, end: 2 },
       },
     } as PartType
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: [readTool] }, false)
 
-    expect(items).toHaveLength(1)
+    expect(items).toHaveLength(2)
     expect(items[0]).toMatchObject({ kind: "part", part: { type: "tool", tool: "read" } })
+    expect(items[1]).toMatchObject({ kind: "tool-attachments", files: [image] })
   })
-  test("routes completed hidden-card tools with attachments (e.g. attach) to the gallery", () => {
+  test("routes completed hidden-card tools with attachments to the gallery", () => {
     const message = assistant("assistant-a")
-    const attachTool = {
-      id: "attach-a",
+    const exportTool = {
+      id: "export-a",
       sessionID: "session",
       messageID: message.id,
       type: "tool",
-      callID: "call-attach",
-      tool: "attach",
+      callID: "call-export",
+      tool: "plugin_export",
       state: {
         status: "completed",
         input: { file_path: "report.pdf" },
         output: "File delivered: report.pdf (2.0 KB)",
         title: "report.pdf",
-        // attach hides the tool card (toolCard: "hidden") but is NOT a
+        // The producer hides the tool card (toolCard: "hidden") but is NOT a
         // media-generation tool — completed attachments must still surface
         // through the auto-expanded attachment gallery.
         metadata: { display: { toolCard: "hidden" } },
@@ -1216,13 +1177,13 @@ describe("session turn timeline", () => {
       },
     } as PartType
 
-    const items = collectSessionTurnTimelineItems([message], { [message.id]: [attachTool] }, false)
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [exportTool] }, false)
 
     expect(items).toHaveLength(1)
     expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
   })
 
-  test("hides completed media tools without attachments when their tool card is hidden", () => {
+  test("retains an empty generation result for explicit failure presentation", () => {
     const message = assistant("assistant-a")
     const parts: PartType[] = [
       mediaTool({ id: "tool-a", messageID: message.id, status: "completed", attachments: [] }),
@@ -1237,8 +1198,8 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
 
-    expect(items.map((item) => item.kind)).toEqual(["part"])
-    expect(items[0]).toMatchObject({ kind: "part", part: { type: "text" } })
+    expect(items.map((item) => item.kind)).toEqual(["media", "part"])
+    expect(items[0]).toMatchObject({ kind: "media", files: [] })
   })
 
   test("keeps ordinary tool timeline key stable across state updates", () => {
@@ -1258,7 +1219,7 @@ describe("session turn timeline", () => {
     expect(keys[0]).toBe("tool:assistant-a:tool-a")
   })
 
-  test("changes timeline key when a media tool changes render shape", () => {
+  test("keeps one timeline identity throughout media generation", () => {
     const message = assistant("assistant-a")
     const pending = collectSessionTurnTimelineItems(
       [message],
@@ -1271,8 +1232,8 @@ describe("session turn timeline", () => {
       false,
     )
 
-    expect(timelineItemStableKey(pending[0])).toBe("media-pending:assistant-a:tool-a")
-    expect(timelineItemStableKey(completed[0])).toBe("tool-attachments:assistant-a:tool-a")
+    expect(timelineItemStableKey(pending[0])).toBe("media:assistant-a:tool-a")
+    expect(timelineItemStableKey(completed[0])).toBe(timelineItemStableKey(pending[0]))
   })
 })
 
@@ -1347,4 +1308,33 @@ describe("persisted reasoning injection", () => {
 
     expect(injectPersistedReasoningItems(items, [message], { [message.id]: parts })).toEqual(items)
   })
+})
+
+test("managed deliveries deduplicate across tools and yield to final Markdown", () => {
+  const work = { ...assistant("work"), finish: "tool-calls" } as AssistantMessage
+  const final = completedAssistant("final")
+  const file = { ...image, url: "asset://0123456789abcdef.png" }
+  const first = mediaTool({ id: "first", messageID: work.id, status: "completed", attachments: [file, file] })
+  const second = mediaTool({ id: "second", messageID: work.id, status: "completed", attachments: [file] })
+  const before = collectSessionTurnTimelineItems([work], { work: [first, second] }, true)
+  expect(before).toHaveLength(1)
+  expect(before[0].kind === "media" && before[0].files).toHaveLength(1)
+  const after = collectSessionTurnTimelineItems(
+    [work, final],
+    { work: [first, second], final: [textPart("answer", final.id, `![chart](${file.url})`)] },
+    false,
+  )
+  expect(after.map((item) => item.part?.id)).toEqual(["answer"])
+  const process = collectSessionTurnTimelineItems(
+    [work],
+    { work: [first, textPart("progress", work.id, `![chart](${file.url})`)] },
+    true,
+  )
+  expect(process.some((item) => item.kind === "media")).toBe(true)
+  const incomplete = collectSessionTurnTimelineItems(
+    [work, final],
+    { work: [first], final: [textPart("answer", final.id, `![chart](${file.url}`)] },
+    true,
+  )
+  expect(incomplete.some((item) => item.kind === "media")).toBe(true)
 })

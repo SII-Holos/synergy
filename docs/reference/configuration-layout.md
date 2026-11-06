@@ -4,6 +4,14 @@ The field-level reference is generated at [configuration.md](configuration.md); 
 
 Synergy uses JSONC domain files. Global and project configuration share the same domain names so one setting has one owning file.
 
+## Package ownership
+
+The harness owns configuration loading, file transactions, core schemas, and the `ConfigExtensions` registry. Each optional backend owns its field schemas, defaults, provider-reference checks, and exact credential redaction/restoration in `src/config-schema.ts`. The full product composes these through `packages/presets/src/configuration.ts` before validating configuration or generating its schema. Schema references obtained before registration resolve the current composition, including registered domain IDs.
+
+A reduced composition preserves unregistered fields in shared files and leaves unregistered domain files untouched. Replacing a known domain retains its unregistered fields on disk. Client-facing redaction omits fields whose owner is absent because the core cannot classify that owner's credentials. Explicit requests for an unregistered domain or unsupported experiment override fail validation; dormant optional experiment settings in an existing home do not activate that capability. Full composition retains the strict root validation and recovery rules of the product.
+
+The host supplies the published configuration schema path to `Global.initialize()`. The core does not locate product schema assets or create embedding-model directories at startup.
+
 ## Locations
 
 Global configuration:
@@ -22,29 +30,49 @@ Project configuration for an explicitly selected project Scope:
 
 Use `synergy config path` to print the active global roots.
 
-Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
-
-Clarus accounts live in the Channel domain and reuse Holos credentials:
+`135-resources.jsonc` is global-only. It configures Environment profiles and Workspace object stores. Resource records retain the settings chosen at creation, so changing a profile does not relocate existing files. Invalid resource configuration remains in place and blocks selection until repaired.
 
 ```jsonc
 {
-  "channel": {
-    "clarus": {
-      "type": "clarus",
-      "accounts": {
-        "<holos-agent-id>": {
-          "enabled": false,
-          "agent": "synergy",
+  "resources": {
+    "defaultEnvironment": "worker",
+    "environments": {
+      "worker": {
+        "provider": "docker",
+        "spec": {
+          "image": "synergy-execution-host:development",
+          "host": { "endpoint": "unix:///var/run/docker.sock" },
         },
+        "reuse": "session",
+        "idleTimeoutMs": 600000,
       },
+    },
+    "stores": {
+      "files": { "provider": "local", "spec": { "namespace": "default" } },
     },
   },
 }
 ```
 
-Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. A versioned Holos migration provisions the same disabled account for an existing active identity. There is no top-level `clarus` domain or Clarus workspace-root setting.
+Build the example image from this checkout with `bun run --cwd packages/local-runtime build:execution-host`. The image includes the matching Executor protocol and native assets. Remote Docker hosts use an HTTPS Engine endpoint and an execution hostname reachable by the controller; `host.engineTLS` and `host.executionTLS` contain `certRef`, `keyRef` and optional `caRef` Secret Vault IDs. Execution TLS is required beyond loopback. Optional external bind/volume mounts are read-only and resolve on the daemon host.
 
-Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
+For an S3 or OSS store, use `provider: "s3"` or `"oss"` with `bucket`, `region`, optional `endpoint` and `prefix`, and `credentialsRef`. That Vault entry contains JSON with `accessKeyId`, `secretAccessKey` and optional `sessionToken`. OSS uses its own signing SDK. Local object storage lives in the Runtime's data directory; it remains independent of disposable execution volumes. API-only sessions need no Workspace or Environment. Set `defaultEnvironment: null` to require explicit execution selection.
+
+Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
+
+Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs. Startup migrates legacy global and project files into domain files and archives the originals once every field has a registered owner. A reduced composition defers a migration containing unregistered fields, retains the original file, and reads its core values beneath canonical domain overrides until the complete owner set is available.
+
+### Assistant and Tool deadlines
+
+`timeout.invoke_sec` sets the assistant-step wall clock; its default is 21,600 seconds. `timeout.tool.default_sec` defaults to 7,200 seconds, and `timeout.tool.overrides` selects a duration by Tool name. Zero disables only the corresponding deadline. Caller cancellation, provider watchdogs, permission expiry and bounded settlement remain independent. See the [explicit deadline decision](../decisions/implemented/feature/2026-10-02-explicitly-disable-assistant-and-tool-deadlines.md).
+
+### Provider request timeouts
+
+Global `timeout.provider` and per-provider `provider.<id>.timeout` fields use seconds. The defaults are 300 seconds until the first response body byte, 120 seconds between body chunks, and 1,800 seconds total per HTTP request. Response headers alone do not satisfy TTFB. SSE keep-alive traffic resets idle time but does not extend the wall budget. These request limits do not shorten the session or tool execution budget.
+
+Each provider timeout field overrides its global counterpart. For idle only, the resolved legacy `options.timeout` sits between the provider timeout field and the global field: model options override provider options, and legacy numbers use milliseconds. `idle_sec: false` or `idle_sec: 0` disables idle protection; legacy `options.timeout: false` also disables it. `wall_sec: 0` disables the wall watchdog, including when a provider overrides a positive global value.
+
+The Control Plane resolves the effective model policy before transferring a turn to its worker. SDK and language-model caches distinguish effective policies so a reused worker applies the current request's configuration. See the [provider watchdog decision](../decisions/implemented/bug-fix/2026-09-21-provider-stream-watchdog-and-stage-metrics.md) for the trade-offs.
 
 ### Execution isolation
 
@@ -54,7 +82,7 @@ The optional `execution` object in `120-runtime.jsonc` controls bounded Agent an
 {
   "execution": {
     "agentWorkers": 4,
-    "agentWorkerMinIdle": 0,
+    "agentWorkerMinIdle": 1,
     "agentWorkerIdleTimeoutMs": 60000,
     "agentQueueMax": 256,
     "agentQueueMaxMb": 256,
@@ -92,9 +120,11 @@ The optional `execution` object in `120-runtime.jsonc` controls bounded Agent an
 }
 ```
 
-`agentWorkers` is the maximum Agent-turn concurrency, not an eagerly allocated pool size. It defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. The pool starts workers on demand, keeps `agentWorkerMinIdle` idle workers warm (default 0), and retires excess workers after `agentWorkerIdleTimeoutMs` (default 60 seconds). `agentWorkerMinIdle` cannot exceed the effective `agentWorkers` limit.
+`agentWorkers` is the maximum Agent-turn concurrency, not an eagerly allocated pool size. When it is unset the value is derived from the machine rather than from CPU count alone: half the effective memory limit (the minimum of `memory.max` and `memory.high` along the cgroup ancestor chain, or total host memory when no limit applies) divided by the per-worker soft recycle watermark (`agentWorkerMaxRssMb / 2`), capped by available CPUs minus one and by a validated maximum of 64, and never below the resolved `agentWorkerMinIdle`. Derivation enumerates cgroups itself instead of using a runtime API because Bun and Node report different cgroup limits, and only the leaf level would be visible. Setting `agentWorkers` explicitly — including `1`, which benchmarks pin — uses that value verbatim and disables derivation. The ceiling in effect is published as `agent.pool.size` with a `source` label of `explicit` or `derived`. Global-runtime startup prewarms the pool toward the warm reserve without waiting on worker readiness; beyond that reserve the pool starts workers on demand, keeps `agentWorkerMinIdle` idle workers warm (default 1 on resident servers; one-shot runs default to 0), and retires excess workers after `agentWorkerIdleTimeoutMs` (default 60 seconds). `agentWorkerMinIdle` cannot exceed the effective `agentWorkers` limit.
 
 `agentWorkers` can be changed from Settings → Agents or the Runtime domain while the global runtime is running. Increasing it raises the ceiling and admits queued demand without eagerly filling unused capacity. Decreasing it releases excess idle workers immediately, while excess active workers finish their current turns before retiring.
+
+Settings → Agents shows the resolved capacity and its source for the pool. While `execution.agentWorkers` is unset the row reads the machine-derived effective value; while it is set the row reads the explicit value. Clearing the number field writes `null` in the Runtime domain, which is equivalent to an absent key and returns the pool to derivation on the next reload, so an operator can always see what will actually run instead of only that the value is automatic.
 
 Agent request and event-frame protocol bounds are fixed safety invariants rather than configuration. RSS and heap-used watermarks are enforced from worker heartbeats as well as normal turn completion; the heartbeat timeout is constrained to 30-300 seconds so it cannot undercut the worker heartbeat cadence. `agentWorkerMaxRssMb` and `agentWorkerMaxHeapMb` are hard limits, defaulting to 3072 MiB and 2048 MiB. Each soft recycle watermark is fixed at half its hard limit. Crossing a soft watermark during an active turn requests a full collection inside that worker; if the post-collection sample remains above soft but below hard, the worker finishes the turn and recycles only after `released`. Hard RSS remains an immediate last-resort limit, while hard heap terminates only when a full-collection sample is still over the limit. Released workers report RSS, heap, external, and array-buffer memory after stream disposal and can be recycled without interrupting a turn. Linux performs one coalesced full collection at that release boundary by default, and `agentWorkerIdleBaselineRecycle` recycles a worker whose post-release RSS or external memory grows beyond its warm minimum by the configured thresholds. Baseline recycling defaults on for Linux and off elsewhere; absolute watermarks and turn-count recycling remain independent.
 
@@ -156,12 +186,16 @@ The frontend may mirror the value locally to choose a catalog before the server 
 
 `balanced` is the default when the field is absent. Settings manages the preference globally in the installation config. If the key is declared manually in project config, ordinary project-over-global precedence still applies.
 
-- `full` preserves the detailed turn timeline: every reasoning, text, tool, media, and attachment part stays in its original part order, matching pre-preference behavior. It never invokes the activity-summary nano model.
+- `full` preserves the detailed turn timeline: every reasoning, text, tool, media, and attachment part stays in its original part order, matching pre-preference behavior. Activity display never invokes a model.
 - `balanced` replaces raw reasoning with one root-turn status row rather than model-generated reasoning text. After reasoning begins, the working turn shows one stable `Thinking…` row across all assistant messages, or — when `compactReasoning` is enabled — one live single-line reasoning row. When the turn completes, that row disappears if the turn produced text, tool activity, or a receipt; an otherwise empty reasoning-only turn keeps one deterministic `Reasoning` fallback. With `compactReasoning` enabled, each settled assistant message instead keeps one collapsed expandable reasoning row anchored at its original part position, so the complete reasoning stays available. Reasoning never invokes the `nano` model or writes derived activity metadata.
-  Settled ordinary tool tails (completed or error) are grouped by shared user-facing intent through one bounded `nano` call; stable semantic groups carry a concise summary, while deterministic fallback tail groups may omit text. Text, reasoning, attachment, receipt-tool, and message boundaries remain hard boundaries; in settled and persisted semantic membership, an error step stays in its current group, promotes that group to error, and prevents later steps from joining, while transient unpersisted streaming grouping uses deterministic family-and-scope adjacency until persisted signatures arrive. File and URL hints sent for semantic grouping are reduced to bounded non-sensitive forms such as a basename or origin; tool inputs, outputs, full paths, raw errors, and secrets are excluded. The model output must cover every step once, preserve order, and stay within the 24-step group limit. Invalid output, timeout, provider failure, or a manifest larger than 48 steps falls back for the whole unsettled tail. Tool-group nano summaries and semantic group signatures remain internal presentation metadata rather than visible parent rows. The group's original tool calls render as flat, independently expandable rows, may span different activity families, and keep their own family action labels, titles, states, results, and specialized content. Balanced mode does not render a group topic, progress marker, step count, connector, or parent indentation.
-- `minimal` collapses each turn into one compact per-turn activity summary with animated count updates and, when available, one latest high-level tool-activity line. Raw reasoning and reasoning-status rows are not rendered. Permission, failure, external-action, and production communication receipts stay standalone, and other non-tool timeline items continue to render in their original position.
+  Ordinary tool activity uses deterministic family-and-scope grouping. Each original tool call renders as a flat, independently expandable row with its own family action label, title, state, result, and specialized content. Text, reasoning, attachments, receipts, and message boundaries keep their original order.
+- `minimal` collapses each turn into one compact per-turn activity summary with animated count updates. Raw reasoning and reasoning-status rows are not rendered. Permission, failure, external-action, and production communication receipts stay standalone, and other non-tool timeline items continue to render in their original position.
 
-The mode changes only activity presentation. It never hides permission requests, failures, or external-action and production communication receipts, and it never rewrites message parts or changes model context. In `balanced` and `minimal`, bounded tool-group nano summaries and semantic group signatures may be persisted as derived assistant `metadata.activity` so reconnects and historical turns retain the same presentation. Historical `reasoning` entries and `now.source: "reasoning"` remain schema-valid read-only compatibility data but are not produced or used by the Balanced reasoning projection. Mode changes update already rendered turns reactively without remounting them.
+The mode changes only activity presentation. It never hides permission requests, failures, or external-action and production communication receipts, and it never rewrites message parts or changes model context. Historical derived activity metadata is preserved in storage but ignored by presentation. Mode changes update already rendered turns reactively without remounting them.
+
+## Tool action descriptions
+
+Tool rows have an independent global General preference, `preferWorkBrief`, stored in `00-general.jsonc` and defaulting to `false`. Settings labels it **Prefer action descriptions**. When enabled, a non-empty `workBrief` supplies the row label; missing or whitespace-only intent retains the action-and-target label. All activity display modes, session views and Kanban use the same preference. It changes presentation only, preserves original messages and does not request generated summaries.
 
 ## Compact reasoning
 
@@ -192,7 +226,9 @@ String values support two substitutions:
 - `{env:NAME}` inserts an environment variable; an unset variable becomes an empty string with a warning
 - `{file:path}` inserts trimmed file content, resolved relative to the config file (or `~/` / absolute paths)
 
-Use file or environment references for secrets instead of checking credentials into project config. Provider, MCP, Holos, and plugin auth stores remain separate from ordinary JSONC configuration.
+Use file or environment references for secrets instead of checking credentials into project config. Provider, MCP, and plugin auth stores remain separate from ordinary JSONC configuration.
+
+Substitution happens at read time only. Domain writes — Settings saves, `synergy config` writes, and config import — edit the raw fragment with targeted JSONC edits: `{env:}`/`{file:}` reference text stays a reference, `//` comments survive, untouched entries remain byte-identical, and a save that changes nothing does not rewrite the file at all. A patch value that merely echoes a reference's resolved value (for example a redacted Settings round-trip) restores the reference instead of writing the literal; a genuinely new value replaces the reference with the literal. Domain fragments are written user-only (`0600`). Only export resolves references into its payload — see the export caveat in [Config export](#config-export).
 
 Malformed JSONC is a startup/config error with line and column information. When the root remains valid but individual schema sections are invalid, Synergy can drop those sections, warn, and retain usable config; do not rely on this recovery as validation.
 
@@ -236,6 +272,12 @@ Model names use `provider/model`. Provider definitions and model defaults live i
 - `grok` uses xAI subscription OAuth device-code credentials (SuperGrok / X Premium+) and the OpenAI-compatible `https://api.x.ai/v1` API. The Grok model list is discovered live from the xAI `/v1/language-models` API with the stored subscription OAuth credential and refreshes automatically (≤1h TTL, or via `synergy models --refresh`); offline or failed discovery falls back to the bundled list.
 
 Do not copy credentials or billing assumptions between them. Use `synergy auth` or the Settings UI to manage auth.
+
+### Service and model directory
+
+The shared Models.dev directory supplies the service list and baseline model metadata. Startup reads a validated local cache or embedded snapshot and refreshes in the background from Models.dev, then its mirror. External price metadata permits extension fields in context-price tiers and preserves them in the captured raw pricing data; configured context-price tiers retain their existing strict validation. Malformed providers or models are skipped individually, with aggregate rejection counts in diagnostics. A usable directory must still contain non-empty OpenAI, Anthropic, and Google model lists. If every source fails that check, the last usable cache remains intact.
+
+`synergy models --refresh` reports success only after a usable directory is stored and the provider view is rebuilt. It exits unsuccessfully when fetching is disabled or every source fails, and reports skipped entries for partial results. Account-specific model refresh is a separate operation described below.
 
 ### Live provider model discovery
 
@@ -281,6 +323,20 @@ Feishu/Lark account configuration may pair an explicit `model` with `variant`. T
 
 A Feishu/Lark account may also set `projectDir` to bind the account's sessions to a project Scope. Resolution rules and error behavior are documented in the [Channels reference](../product/connections.md).
 
+## MCP Tool Exposure
+
+MCP tools are deferred unless a per-server `expandByDefault` or the `mcpDefaults.expandByDefault` setting explicitly makes them resident. Per-server settings override the global default. Built-in Anysearch and Scholight tools share the `online` capability group; full typed user entries with those names remain user-owned servers. API-key-only stubs retain built-in ownership and the default deferred presentation. See [tool catalog and exposure](../product/agents-and-tools.md#tool-catalog-and-exposure).
+
+```jsonc
+{
+  "mcp": {
+    "anysearch": { "expandByDefault": true },
+  },
+}
+```
+
+This makes the built-in Anysearch tools resident without taking ownership of the server configuration. A global `mcpDefaults.expandByDefault: true` applies to every server unless that server explicitly sets `false`. Exposure never bypasses tool permissions, disabled servers, or connection availability.
+
 ## MCP Server Authentication
 
 Remote MCP servers (`type: "remote"` in `40-mcp.jsonc`) use OAuth 2.0 authorization-code flows with PKCE and dynamic client registration by default. Credentials (tokens, registered client info, and in-flight PKCE state) live in the auth store, never in `40-mcp.jsonc`; the `oauth` object in the server config only carries a pre-registered `clientId`/`clientSecret`/`scope` when a server does not support dynamic registration.
@@ -300,9 +356,13 @@ Remote MCP servers (`type: "remote"` in `40-mcp.jsonc`) use OAuth 2.0 authorizat
 
 Authenticate a server with `synergy mcp auth <name>` (or `synergy mcp auth` to pick from a list). The command opens the provider's authorization page in a browser, waits for the local callback, exchanges the code for tokens, and saves them to the auth store. A long-running server process picks up CLI-authenticated credentials automatically within ~30 seconds (the supervisor re-checks servers in the `needs_auth` state on an interval and reconnects when valid tokens appear), so no restart is required after authenticating from the CLI.
 
-Background supervision never writes PKCE state: an unauthenticated server is marked `needs_auth` (with an actionable `synergy mcp auth <name>` error on the status) and left idle (no network probes) until credentials exist. Once credentials exist, the supervisor reconnects within ~30 seconds even if the stored access token already expired, as long as a refresh token is present — refreshed tokens are persisted back to the auth store. This keeps background auto-connect from interfering with an interactive `mcp auth` flow for the same server.
+Background supervision never writes PKCE state: an unauthenticated server is marked `needs_auth` (with an actionable `synergy mcp auth <name>` error on the status) and left idle (no network probes) until credentials exist. Once credentials exist, the supervisor reconnects within ~30 seconds even if the stored access token already expired, as long as the refresh token is still valid — refreshed tokens are persisted back to the auth store. If the provider rejects the refresh token (for example after the grant was revoked), the supervisor clears the rejected credentials and moves the server to `needs_auth` instead of leaving it permanently `failed`; run `synergy mcp auth <name>` to authorize again. Re-authorizing from that state works directly, because `mcp auth` no longer requires the rejected credentials to be removed first. This keeps background auto-connect from interfering with an interactive `mcp auth` flow for the same server.
 
-`startup` controls when a server connects: `"eager"` (default) connects at runtime start, `"lazy"` connects on first tool use, and `"manual"` never auto-connects (use `synergy mcp connect <name>`). Set `"manual"` for a server you only authenticate on demand.
+`startup` controls when a server connects: `"eager"` (default) connects at runtime start, `"lazy"` connects on first tool use, and `"manual"` never auto-connects. Set `"manual"` for a server you only authenticate on demand.
+
+A server in the `failed` state is not permanently stuck: `"eager"` servers retry automatically after `retry.cooldownMs` (default `60000`; `0` begins the next cycle immediately) with no attempt limit, so transient failures such as a dropped VPN, a sleeping laptop, or a remote 5xx heal on their own. `"lazy"` and `"manual"` servers stay `failed` until they are connected explicitly. Each retry cycle logs one warning that carries the sanitized reason for the failure, and that same reason appears as the `error` on `GET /mcp` and in the `mcp.failed` event. Recover a server on a running instance with `synergy mcp connect <name>` (connect it and report the resulting status) or `synergy mcp restart <name>` (restart it and report the initiated status); both act on the running server rather than a short-lived CLI process, and both accept `--attach <url>` to target a different instance.
+
+`mcp connect` and `mcp restart` use HTTP without acquiring the local Home lock and can target the instance using that Home. Other MCP subcommands require exclusive local storage access; use the running application's MCP authentication controls when that instance owns the Home.
 
 The OAuth callback listener runs on `127.0.0.1:19876` by default. If another Synergy process is already running an OAuth flow on that port, `mcp auth` fails with an actionable error; set `SYNERGY_OAUTH_CALLBACK_PORT` to a free port to run a flow in the second process.
 
@@ -485,40 +545,34 @@ Compaction settings are owned by the Runtime domain (`120-runtime.jsonc`):
 }
 ```
 
-| Field                          | Required | Default | Description                                                                                 |
-| ------------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------- |
-| `compaction.auto`              | no       | `true`  | Enable automatic compaction when the measured prompt crosses the soft budget                |
-| `compaction.prune`             | no       | `true`  | Enable pruning of old tool outputs                                                          |
-| `compaction.overflowThreshold` | no       | `0.85`  | Fraction of the input envelope that triggers auto-compaction; constrained to `0.5`–`1`      |
-| `compaction.maxHistoryImages`  | no       | `8`     | Maximum historical images sent as base64 per request; older images become text placeholders |
+| Field                          | Required | Default | Description                                                                                  |
+| ------------------------------ | -------- | ------- | -------------------------------------------------------------------------------------------- |
+| `compaction.auto`              | no       | `true`  | Enable automatic compaction when the measured prompt crosses the soft budget                 |
+| `compaction.prune`             | no       | `true`  | Prune eligible old tool outputs when the existing prompt budget reports pressure             |
+| `compaction.overflowThreshold` | no       | `0.85`  | Fraction of the visible input window that triggers auto-compaction; constrained to `0.2`–`1` |
+| `compaction.maxHistoryImages`  | no       | `8`     | Maximum historical images sent as base64 per request; older images become text placeholders  |
 
-The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the usable input for models with an explicit input limit, and `context - output - margin` for shared-context models only when reserving output and margin leaves a positive remainder; fully shared or near-window output declarations otherwise use the model's usable input. The margin is `min(32000, max(2048, ceil(context * 0.05)))`. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. When automatic compaction is enabled, a prompt with no response space receives one root-scoped compaction attempt before Synergy stops locally with an actionable error; when automatic compaction is disabled, it stops immediately. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
+The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the explicit input limit when present, otherwise the model context. Declared output is clamped per request to the remaining context after a margin of `min(32000, max(2048, ceil(context * 0.05)))`; it does not lower the compaction threshold. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. Prompt pressure first permits eligible pruning and remeasurement. If no response space remains, automatic compaction receives one root-scoped recovery attempt before Synergy stops locally with an actionable error; with automatic compaction disabled, it stops after pruning cannot relieve that overflow. The `prune` and `auto` switches are independent. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
 
 ## Runtime Boss Mode
 
-Runtime Boss Mode is an experimental Runtime-domain feature: when enabled, the runtime auto-provisions a home-scope runtime boss session per enabled Feishu account and routes all accepted Feishu group and direct messages to it. All keys are optional, experimental, and live under `experimental` in `120-runtime.jsonc`:
+Boss is an experimental component. Opt in through the global features domain and restart before changing its business settings. The Runtime domain retains the following configuration in `120-runtime.jsonc` even while Boss is dormant:
 
 ```jsonc
 {
-  "experimental": {
-    "boss_mode": true,
-    "boss_identity_text": "...",
-    "boss_briefing_interval_days": 7,
+  "boss": {
+    "enabled": true,
+    "persona": { "preset": "ops_assistant" },
+    "briefingIntervalDays": 7,
   },
 }
 ```
 
-| Key                                        | Type             | Default         | Behavior                                                                                                                                                                                                                                               |
-| ------------------------------------------ | ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `experimental.boss_mode`                   | boolean          | `false`         | Enables Runtime Boss Mode: auto-provisions one home-scope runtime boss session per enabled Feishu account and routes all accepted Feishu group and direct messages to it.                                                                              |
-| `experimental.boss_identity_text`          | string           | default persona | Optional colleague-identity description injected into the runtime boss session briefing and per-turn `<boss-identity>` context; when omitted, a default colleague persona is used and the collaboration discipline block is still injected every turn. |
-| `experimental.boss_briefing_interval_days` | positive integer | disabled        | Periodically delivers a refresh instruction to the runtime boss to re-enumerate sessions, projects, agenda, memory, and experience; omitted or non-positive disables periodic re-injection.                                                            |
-
-Disabling `boss_mode` reverts Feishu routing to per-chat sessions; the boss session and its history remain. See [Workflows](../architecture/workflows.md) and [Connections](../product/connections.md) for routing and governance details.
+`boss.enabled` controls the assembled Boss service; it never opts into the experiment. Feishu routing additionally requires the `boss-feishu` bridge and an enabled account. `boss.persona`, `boss.identityText` and `boss.briefingIntervalDays` retain their business meanings. Disabling or deselecting Boss preserves its configuration and history. See the generated [configuration reference](configuration.md), [Workflows](../architecture/workflows.md) and [Feature lifecycle](../architecture/feature-lifecycle.md).
 
 ## GitHub Channel
 
-The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
+The GitHub Channel connects a GitHub App installation as a Channel (like Feishu). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
 
 Configuration lives in the Channels domain (`90-channels.jsonc`) under `channel.github`:
 
@@ -614,7 +668,7 @@ Export secrets handling:
 Additional export semantics:
 
 - **Export is read-only.** A domain file that fails to parse is skipped and reported in the result's `warnings` (and on stderr for the CLI); it is not quarantined. This differs from the startup/reload path, which moves broken files aside.
-- **`{env:VAR}` and `{file:path}` references are resolved at read time.** An export therefore contains resolved values, not the references: `--include-secrets` backups materialize the referenced secret, and re-importing an export produced from referenced values writes those values back as plain literals. If you rely on env/file indirection, re-add the `{env:}`/`{file:}` references after importing.
+- **`{env:VAR}` and `{file:path}` references are resolved at read time.** An export therefore contains resolved values, not the references, and `--include-secrets` backups materialize the referenced secret. Re-importing an export on a machine where the reference still resolves to the exported value restores the reference text; where it does not (missing file, changed secret, different machine), the exported value is written as a plain literal.
 - **`plugin` specs are exported relative to the config directory** (`./dev-plugins/foo` stays `./dev-plugins/foo`) so the payload is machine-independent in shape. The referenced plugin directories themselves commonly differ across machines — after a cross-machine import, re-check plugin paths before reloading.
 - **The HTTP API is always redacted.** `GET /config/export` rejects `includeSecrets=true` with `400 ConfigExportSecretsRejectedError`; plaintext export is available only through the local CLI (`synergy config export --include-secrets`).
 
@@ -630,12 +684,13 @@ Configuration files are validated as they are loaded. A file with a JSON(C) synt
 - The affected domain is skipped; the rest of the configuration loads normally, and the server keeps running.
 - The event is recorded in the diagnostics registry and surfaced in the startup banner, the Web Settings panel banner, and `GET /config/diagnostics` (SDK: `client.config.diagnostics()`).
 - Section-level schema errors keep the existing behavior: the invalid section is stripped and defaults are used; the file is not moved.
+- A top-level key unknown to the schema (for example a retired key restored from an old backup) is stripped with a warning and the rest of the fragment stays active; the file is not moved. A top-level key that belongs to a _different_ domain is still quarantined as described above.
 
 Quarantine uses a non-blocking domain lock: when a configuration write transaction (for example a Settings save) is already in flight for the same domain, the broken file is _not_ moved aside — the transaction's own write replaces it with a valid configuration, which is equivalent to recovery. The issue is still recorded in the diagnostics registry. Reload and startup paths, which hold no transaction lock, always quarantine as described above.
 
 To recover a quarantined file, fix the content and rename it back to its original name (for example `110-email.jsonc.invalid-…` → `110-email.jsonc`). The file watcher picks the change up and reloads the domain. Quarantined files are never deleted automatically.
 
-The legacy global config file (`synergy.jsonc`/`synergy.json`) is handled the same way: a broken legacy file is quarantined and the domain fragment migration is skipped. A malformed remote well-known config is skipped with a warning. Explicit CLI inputs (`SYNERGY_CONFIG_CONTENT`) still fail loudly because they are intentional process-level overrides.
+The legacy global config file (`synergy.jsonc`/`synergy.json`) is handled the same way: a broken legacy file is quarantined and the domain fragment migration is skipped. A retired top-level key in a legacy monolithic file keeps failing the load instead of being stripped — the error is a migration signal, so the migration pipeline rewrites the file before configuration is read. A malformed remote well-known config is skipped with a warning. Explicit CLI inputs (`SYNERGY_CONFIG_CONTENT`) still fail loudly because they are intentional process-level overrides.
 
 ## Process Environment
 
@@ -658,14 +713,13 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Network and discovery overrides
 
-| Variable                                      | Effect                                                                                                                                                                      |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SYNERGY_ARXIV_API_URL`                       | Replace the built-in arXiv search service base URL                                                                                                                          |
-| `SYNERGY_SEARXNG_URL`                         | Replace the built-in Web search service base URL                                                                                                                            |
-| `SYNERGY_DISABLE_MODELS_FETCH=true` or `1`    | Disable ModelsDev catalog fetches performed by the source macro and runtime refresh; runtime disk cache and the bundled snapshot remain active                              |
-| `MODELS_DEV_API_JSON`                         | Override the models catalog source embedded by the build-time Bun macro; local builds may set this, while the release workflow always forces the repository-pinned snapshot |
-| `SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH=true` | Use the last verified provider catalog cache instead of fetching its signed remote source                                                                                   |
-| `SYNERGY_DISABLE_LSP_DOWNLOAD=1`              | Prevent automatic language-server downloads                                                                                                                                 |
+| Variable                                   | Effect                                                                                                                                                                      |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SYNERGY_ARXIV_API_URL`                    | Replace the built-in arXiv search service base URL                                                                                                                          |
+| `SYNERGY_SEARXNG_URL`                      | Replace the built-in Web search service base URL                                                                                                                            |
+| `SYNERGY_DISABLE_MODELS_FETCH=true` or `1` | Disable ModelsDev catalog fetches performed by the source macro and runtime refresh; runtime disk cache and the bundled snapshot remain active                              |
+| `MODELS_DEV_API_JSON`                      | Override the models catalog source embedded by the build-time Bun macro; local builds may set this, while the release workflow always forces the repository-pinned snapshot |
+| `SYNERGY_DISABLE_LSP_DOWNLOAD=1`           | Prevent automatic language-server downloads                                                                                                                                 |
 
 ### Compatibility and behavior overrides
 
@@ -680,21 +734,30 @@ Domain files are the durable configuration contract. Environment variables are p
 | `SYNERGY_CORTEX_GLOBAL_CONCURRENCY`    | Override the process-global Cortex subagent concurrency maximum with a positive integer |
 | `SYNERGY_FAKE_VCS`                     | Override detected Scope VCS type for tests and controlled embedding                     |
 
-### Experimental and diagnostic escape hatches
+### Diagnostic overrides
 
-| Variable                             | Effect                                                                                                                                                   |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SYNERGY_ALLOW_REAL_HOME=1`          | Opt out of the test-home guard (`TestHomeGuardError`) for a deliberate real-home or non-isolated test run                                                |
-| `SYNERGY_TEST_HOME`                  | Isolated home for test processes (positive marker required by the test-home guard; set by `test:ci`/`test:coverage` orchestrators and `test/preload.ts`) |
-| `SYNERGY_TEST_ROOT`                  | Isolated fixture root for test processes (set by the orchestrators and `test/preload.ts`)                                                                |
-| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it                                                                                     |
-| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                                                                                            |
-| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                                                                                         |
-| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                                                                                                |
-| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read                                                             |
-| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare the cached model working set with storage and fall back when they diverge                                                                        |
-| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the aggregate and per-session model-working-set cache byte budget; defaults to 256 MiB                                                               |
-| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand                                                                                   |
-| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two                                                                        |
+| Variable                          | Effect                                                                                                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SYNERGY_ALLOW_REAL_HOME=1`       | Opt out of the test-home guard (`TestHomeGuardError`) for a deliberate real-home or non-isolated test run                                                |
+| `SYNERGY_TEST_HOME`               | Isolated home for test processes (positive marker required by the test-home guard; set by `test:ci`/`test:coverage` orchestrators and `test/preload.ts`) |
+| `SYNERGY_TEST_ROOT`               | Isolated fixture root for test processes (set by the orchestrators and `test/preload.ts`)                                                                |
+| `SYNERGY_DISABLE_MESSAGE_CACHE=1` | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read                                                             |
+| `SYNERGY_VERIFY_MESSAGE_CACHE=1`  | Compare the cached model working set with storage and fall back when they diverge                                                                        |
+| `SYNERGY_SESSION_CACHE_MAX_BYTES` | Set the aggregate and per-session model-working-set cache byte budget; defaults to 256 MiB                                                               |
+| `SYNERGY_DISABLE_LSP_REAP=1`      | Disable idle-age reaping; native write contention still retires idle LSP clients                                                                         |
 
-Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).
+Diagnostic variables are not persisted preferences. Use domain configuration for ordinary behavior settings. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).
+
+## File read/write tool group
+
+Set `fileToolGroup` in the existing `60-agents.jsonc` domain. The values are `replace` (Text replacement / 文本替换), `hashline` (Line-anchored editing / 行锚编辑), and `patch` (Patch editing / 补丁编辑). The universal fallback is `replace`. The existing Agent runtime Settings page stages this global preference through Save/Discard; project domain files and configuration import use the normal project override layer. Removing an override reveals the lower layer, or `replace` when absent everywhere.
+
+This setting changes the local file interface independently of Agent and model selection. It does not grant permission, install an optional component, or configure external agents' own tools. Existing permission-only interface switching must be replaced by an explicit group setting. Existing `read`/`edit` and concrete-tool restrictions remain authoritative; a conflicting `edit: deny` can leave the selected interface read-only. No migration deletes these restrictions or falls back to another group. See [file tool interfaces](../architecture/workspace-and-files.md#file-tool-interfaces) for the member table, search modes and patch failure guarantees.
+
+`parse_code` now checks permission against resolved file paths before returning matches. Rules previously keyed to an AST expression must be replaced with path patterns; semantic `read` restrictions also apply.
+
+## Experimental feature preferences
+
+The global `features` domain uses `140-features.jsonc` and stores `{ "features": { "optIn": [] } }`. Lists replace previous selections; project and Session overrides are unsupported. Boss, Lattice and Kanban default off even when retained business configuration enables their internal behavior. Settings → Experimental features displays saved, active and pending-restart state. See [Feature lifecycle](../architecture/feature-lifecycle.md) for ownership, live behavior and graduation.
+
+`SYNERGY_EXPERIMENTAL` and `SYNERGY_EXPERIMENTAL_*` variables are ignored with a migration warning. Configure ordinary formatter, LSP and tool-exposure parameters through their domain settings; these parameters do not opt into product experiments. Execution-parameter `Experiment` files remain independent.

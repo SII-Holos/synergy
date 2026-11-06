@@ -1,0 +1,2600 @@
+import { useViewActivity } from "@/context/view-residency"
+import { ConversationPresentation } from "@/components/session/conversation-presentation"
+import { ConversationLoadingPlaceholder } from "@/components/session/conversation-loading-placeholder"
+import { useFileRestore } from "@/components/session/file-restore-dialog-loader"
+import { isSessionSubmissionContentReady } from "@/components/session/session-transition-handoff"
+import { submissionPartPage } from "@/context/session-submission-view"
+import { catalogFileWorkspace } from "@/context/file/workspace"
+import { projectEntryCopy } from "@/components/dialog/project-entry-copy"
+import { projectTaskIntent } from "@/components/session/project-task-intent"
+import { createProjectDirectoryResource } from "@/components/session/project-directory-resource"
+import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-autofocus"
+import { useGlobalSDK } from "@/context/global-sdk"
+import {
+  SessionPreparation,
+  SessionPreparationNotice,
+  useSessionPreparation,
+} from "@/components/session/session-preparation"
+import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
+import { NewSessionGreeting, SessionEmptyView } from "@/components/session/session-new-view"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { SlotOutlet } from "@/plugin/slot-outlet"
+import { SessionInbox } from "@/components/session/session-inbox"
+import { PendingComposerQueue } from "@/components/session/pending-composer-queue"
+import { editPendingMessage, takePendingMessage } from "@/components/session/conversation-pending"
+import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
+import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
+import { promptDockBackToParentID } from "@/components/session/prompt-dock-model"
+import { S } from "@/components/session/session-i18n"
+import { forkHistoryIsComplete } from "@/components/session/dialog-fork-confirm-model"
+import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
+import { SessionSubmissionStatus } from "@/components/session/session-submission-status"
+import { optimisticPartSummaries } from "@/components/prompt-input/submission-parts"
+import { DataProvider, useData } from "@ericsanchezok/synergy-ui/context/data"
+import { HostView } from "@/plugin/host-view"
+import type { PluginSessionService, PluginSessionLayoutService } from "@ericsanchezok/synergy-plugin"
+import { DefaultSession } from "@/plugin/default-session"
+import { PluginPageOutlet } from "@/plugin/shell-outlet"
+import { WorkspaceOutputEffects } from "@/components/workspace/workspace-output-effects"
+import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
+import { SessionDecisionHost } from "@/components/session/decision-surface"
+import {
+  lazy,
+  Show,
+  Match,
+  Switch,
+  createMemo,
+  createEffect,
+  createSignal,
+  on,
+  onCleanup,
+  untrack,
+  type JSX,
+} from "solid-js"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useLocal } from "@/context/local"
+import { useFile, useProjectFiles, type SelectedLineRange } from "@/context/file"
+import { createStore } from "solid-js/store"
+import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special-user-message"
+
+import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
+import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import {
+  captureConversationReadingAnchor,
+  captureConversationReadingPosition,
+  restoreConversationReadingPosition,
+} from "@/components/session/conversation-reading-anchor"
+import { conversationReadingInset } from "@/components/session/conversation-layout"
+
+import { useSync } from "@/context/sync"
+import { useGlobalSync } from "@/context/global-sync"
+import { useSessionDataView } from "@/context/session-data-view"
+import { useTerminal } from "@/context/terminal"
+import { useLayout } from "@/context/layout"
+import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { DialogConnectProvider, DialogSelectModel } from "@/components/dialog"
+import { useCommand } from "@/context/command"
+import { useNavigate } from "@solidjs/router"
+import { useLocation, useParams } from "@/context/session-route"
+import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
+import type { Session, SessionInboxItem, SessionStatus, SessionInputProgress } from "@ericsanchezok/synergy-sdk/client"
+import { useSDK } from "@/context/sdk"
+import { observeSessionInput } from "@/components/session/session-input-observer"
+import { recoverSessionInputReceipt } from "@/components/prompt-input/input-receipt"
+import { usePrompt } from "@/context/prompt"
+import { extractPromptDraft } from "@/utils/prompt"
+import { inlineLength } from "@/components/prompt-input/content"
+
+import { navMark, navParams } from "@/utils/perf"
+import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+
+import { requestErrorMessage } from "@/utils/error"
+import { useSessionCommands } from "@/components/session/commands"
+import { useSessionMeta } from "@/composables/use-session-meta"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
+import { replaceSessionHistoryUrl, sessionRouteReplaceOptions } from "@/composables/use-navigate-to-session-model"
+import { SessionConversation } from "@/components/session/conversation"
+import { PromptDock } from "@/components/session/prompt-dock"
+import { createPromptDockHeight } from "@/components/session/prompt-dock-height"
+import { createWorkbenchService } from "@/plugin/workbench-service"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
+import { MobileWorkspaceDialog } from "@/components/workspace/mobile-workspace-dialog"
+import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
+import { SessionTopBar } from "@/components/top-bar/session-top-bar"
+import {
+  createNewSessionWorkspaceAcceptedProgress,
+  createNewSessionWorkspaceSuccessProgress,
+  createWorkspaceTransitionErrorProgress,
+  createWorkspaceTransitionLoadingProgress,
+  createWorkspaceTransitionRefreshErrorProgress,
+  createWorkspaceTransitionRefreshProgress,
+  createWorkspaceTransitionSuccessProgress,
+  defaultNewSessionWorkspaceSelection,
+  isWorktreeWorkspaceSelection,
+  normalizePathForCompare,
+  worktreeSetupFailureMessage,
+  type NewSessionWorkspacePreference,
+  type NewSessionWorkspaceSelection,
+  type SessionWorkspaceTransitionRequest,
+} from "@/components/session/worktree-session"
+import {
+  createNewSessionTransitionAcceptedProgress,
+  createNewSessionTransitionSuccessProgress,
+  createSessionTransitionHandoffErrorProgress,
+  isSessionTransitionBlocking,
+  type SessionTransitionActions,
+  type SessionTransitionProgress,
+} from "@/components/session/session-transition-progress"
+import {
+  decideSessionTransitionHandoff,
+  recoverSessionTransitionHandoff,
+  SESSION_TRANSITION_HANDOFF_TIMEOUT_MS,
+  type SessionTransitionHandoff,
+} from "@/components/session/session-transition-handoff"
+import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
+import { RollbackDialog } from "@/components/session/rollback-dialog"
+import { rollbackDialogAction } from "@/components/session/rollback-dialog-model"
+import { resolveRollbackDialogSeenKey } from "@/context/rollback-dialog"
+import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
+import { createRewindRetryInput } from "@/components/session/rewind-retry"
+import { DialogForkConfirm, forkReplyPreview } from "@/components/session/dialog-fork-confirm"
+import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
+import { TerminalProvider } from "@/context/terminal"
+import { PromptProvider } from "@/context/prompt"
+import { SessionRenderProvider } from "@/context/render"
+import { ResourceOpenProvider } from "@/context/resource-open"
+import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
+import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
+import {
+  isActionCommandMessage,
+  messagesFrom,
+  messagesHiddenByRollback,
+  previousMessage,
+  selectMessagesInCanonicalOrder,
+} from "@/components/session/session-message-order"
+import { adjustTrimScrollTop, computeTurnTrim } from "@/components/session/session-history-scroll"
+import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
+import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
+import { hasMessageWindowSnapshot } from "@/context/session-message-window"
+import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
+import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
+import { createBottomRecoveryTrigger } from "@/context/session-bottom-recovery"
+import { isWorkingStatus, resolveSessionStatus } from "@/utils/session-status"
+
+const MobileSessionReview = lazy(() =>
+  import("@/components/session/mobile-session-review").then((module) => ({ default: module.MobileSessionReview })),
+)
+
+const handoff = {
+  prompt: "",
+  terminals: [] as string[],
+  files: {} as Record<string, SelectedLineRange | null>,
+}
+
+export default function Page() {
+  const sdk = useGlobalSDK()
+  return (
+    <TerminalProvider>
+      <SessionRenderProvider>
+        <ResourceOpenProvider>
+          <PromptProvider connection={sdk.url} drafts={sdk.drafts}>
+            <BuiltinWorkbenchPanelsProvider>
+              <SessionPreparation>
+                <SessionPageData />
+              </SessionPreparation>
+            </BuiltinWorkbenchPanelsProvider>
+          </PromptProvider>
+        </ResourceOpenProvider>
+      </SessionRenderProvider>
+    </TerminalProvider>
+  )
+}
+
+function SessionPageData() {
+  const data = useData()
+  const params = useParams()
+  const sdk = useSDK()
+  const dialog = useDialog()
+  const transitions = useSessionTransition()
+  const submission = () => transitions.get(params.id ?? draftTransitionKey(sdk.url, sdk.scopeKey))?.draft
+  const preparation = useSessionPreparation()
+  const view = useSessionDataView(submission, preparation.ready)
+  return (
+    <DataProvider
+      hasFeature={data.hasFeature}
+      data={data.store}
+      view={view()}
+      directory={data.directory}
+      serverUrl={data.serverUrl}
+      onPermissionRespond={data.respondToPermission}
+      onNavigateToSession={data.navigateToSession}
+      onSessionRecovery={async (action) => {
+        if (action.kind === "retry") {
+          await sdk.client.session.retryRequest(
+            { sessionID: action.sessionID, messageID: action.messageID },
+            { throwOnError: true },
+          )
+        } else if (action.kind === "authenticate") {
+          dialog.show(() => <DialogConnectProvider provider={action.providerID} />)
+        } else {
+          dialog.show(() => <DialogSelectModel />)
+        }
+      }}
+    >
+      <SessionPageContent />
+    </DataProvider>
+  )
+}
+
+function SessionPageContent() {
+  const active = useViewActivity()
+  const globalSDK = useGlobalSDK()
+  const layout = useLayout()
+  const local = useLocal()
+  const file = useFile()
+  const projectFiles = useProjectFiles()
+  const sync = useSync()
+  const globalSync = useGlobalSync()
+  const preparation = useSessionPreparation()
+  const terminal = useTerminal()
+  const dialog = useDialog()
+  const confirm = useConfirm()
+  const command = useCommand()
+  const params = useParams()
+  const restoreFiles = useFileRestore(() => params.id)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const sdk = useSDK()
+  const navigateToSession = useNavigateToSession()
+  const prompt = usePrompt()
+  const { fmt, i18n } = useLocale()
+  const workbench = useWorkbenchPanels()
+  const workbenchService = createWorkbenchService(workbench)
+  const sessionTransition = useSessionTransition()
+  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
+  const sideSurface = createMemo(() => layout.surface(sessionKey(), "side"))
+  const bottomSurface = createMemo(() => layout.surface(sessionKey(), "bottom"))
+  const sideOpen = createMemo(() => sideSurface().opened())
+  const view = createMemo(() => layout.view(sessionKey()))
+
+  createEffect(
+    on(
+      () => [params.dir, params.id, sync.data.scopeID, active()] as const,
+      ([dir, id, scopeID, shown], prev) => {
+        if (!id || !shown) return
+        navParams({ dir, from: prev?.[1], to: id, scopeID })
+      },
+    ),
+  )
+
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (!prompt.ready()) return
+    navMark({ dir: params.dir, to: id, name: "storage:prompt-ready" })
+  })
+
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (!terminal.ready()) return
+    navMark({ dir: params.dir, to: id, name: "storage:terminal-ready" })
+  })
+
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (!file.ready()) return
+    navMark({ dir: params.dir, to: id, name: "storage:file-view-ready" })
+  })
+
+  let presented = false
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    if (!active() || !hasMessageWindowSnapshot(dataView().messagesFor(id), sync.data.messageWindow[id])) return
+    navMark({ dir: params.dir, to: id, name: "session:data-ready" })
+    if (!prompt.ready()) return
+    const dir = params.dir
+    let frame: number | undefined
+    let painted = false
+    const measure = () => {
+      if (frame !== undefined || painted) return
+      frame = requestAnimationFrame(() => {
+        frame = undefined
+        if (
+          !active() ||
+          params.id !== id ||
+          params.dir !== dir ||
+          !scroller?.isConnected ||
+          !scroller.clientHeight ||
+          !inputRef?.isConnected
+        )
+          return
+        const content = [
+          ...scroller.querySelectorAll<HTMLElement>('[data-component="text-part"], [data-component="tool-part"]'),
+        ].some((element) => element.offsetHeight > 0 && !!element.textContent?.trim())
+        if (dataView().messagesFor(id).length && !content) return
+        painted = true
+        if (presented) navMark({ dir, to: id, name: "session:cached-present" })
+        presented = true
+        navMark({ dir, to: id, name: "session:first-body-painted" })
+        frame = requestAnimationFrame(() => {
+          frame = undefined
+          if (active() && inputRef?.isConnected && scroller?.clientHeight)
+            navMark({ dir, to: id, name: "session:interactive" })
+        })
+      })
+    }
+    const observer = new MutationObserver(measure)
+    if (scroller) observer.observe(scroller, { childList: true, subtree: true, characterData: true })
+    measure()
+    onCleanup(() => {
+      observer.disconnect()
+      if (frame !== undefined) cancelAnimationFrame(frame)
+    })
+  })
+
+  const isDesktop = () => layout.isDesktop()
+  const sideWorkspaceMounts = createMemo(() => sessionSideWorkspaceMounts(isDesktop(), sideOpen()))
+
+  const [store, setStore] = createStore({
+    messageId: undefined as string | undefined,
+    turnStart: 0,
+    newSessionEnvironment: undefined as
+      { scopeID: string; id: string | null | undefined; profile?: string | null } | undefined,
+    newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
+    promptHeight: 0,
+    mobileReviewOpen: false,
+    mobileReviewSelectedFile: undefined as string | undefined,
+    mobileReviewMessageID: undefined as string | undefined,
+    delayedMessageLoad: undefined as { sessionID: string; generation: number } | undefined,
+  })
+
+  const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
+  const rollback = createMemo(() => info()?.history?.rollback)
+  const [pendingRollbackDialogKey, setPendingRollbackDialogKey] = createSignal<string>()
+  const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
+  let activeRollbackKey: string | undefined
+  let rollbackDialogID: string | undefined
+  let forkDialogID: string | undefined
+  createEffect(
+    on(
+      () => params.id,
+      () => setPendingRollbackDialogKey(undefined),
+      { defer: true },
+    ),
+  )
+  createEffect(() => {
+    const sessionID = params.id
+    const rollbackID = info()?.rollbackAck?.rollbackID
+    if (!sessionID || !rollbackID) return
+    if (pendingRollbackDialogKey() !== `${sessionID}:${rollbackID}`) return
+    setPendingRollbackDialogKey(undefined)
+  })
+  const visibleSessionTransitionEntry = createMemo(() => {
+    const sessionID = params.id
+    return sessionTransition.get(sessionID ?? draftTransitionKey(sdk.url, sdk.scopeKey))
+  })
+  const submissionDraft = createMemo(() => visibleSessionTransitionEntry()?.draft)
+  const dataView = useSessionDataView(submissionDraft, preparation.ready)
+  const conversationSessionID = () => params.id ?? submissionDraft()?.message?.sessionID ?? ""
+  const submissionSummaries = createMemo(() => optimisticPartSummaries(submissionDraft()?.parts ?? []))
+  const visibleSessionTransition = createMemo(() => visibleSessionTransitionEntry()?.progress ?? null)
+  const visibleSessionTransitionActions = createMemo(() => visibleSessionTransitionEntry()?.actions)
+  const sessionTransitionPending = createMemo(
+    () => !preparation.ready() || isSessionTransitionBlocking(visibleSessionTransition()),
+  )
+  const clearSessionTransition = sessionTransition.clear
+  const setSessionTransition = sessionTransition.set
+  const refreshWorkspaceTransition = (input: {
+    request: SessionWorkspaceTransitionRequest
+    success: SessionTransitionProgress
+    toast: { title: string; description: string }
+  }) => {
+    const { request } = input
+    setSessionTransition(request.sessionID, createWorkspaceTransitionRefreshProgress(request))
+    const retry = () => refreshWorkspaceTransition(input)
+    const run = async () => {
+      try {
+        await sync.session.sync(request.sessionID, { trigger: { type: "workspace-transition" } })
+        setSessionTransition(request.sessionID, input.success, {
+          dismiss: () => clearSessionTransition(request.sessionID),
+        })
+        showToast({ type: "info", ...input.toast })
+      } catch (error) {
+        const message = requestErrorMessage(error)
+        setSessionTransition(
+          request.sessionID,
+          createWorkspaceTransitionRefreshErrorProgress({ operation: request.operation, message }),
+          {
+            retry,
+            dismiss: () => clearSessionTransition(request.sessionID),
+          },
+        )
+        showToast({
+          type: "error",
+          title: i18n._(AP.layoutWorktreeRefreshFailed.id),
+          description: message,
+        })
+      }
+    }
+    void run()
+  }
+  const startWorkspaceTransition = (request: SessionWorkspaceTransitionRequest) => {
+    if (sessionTransition.get(request.sessionID)?.progress.phase === "loading") return
+    const retry = () => startWorkspaceTransition(request)
+    setSessionTransition(request.sessionID, createWorkspaceTransitionLoadingProgress(request))
+    const run = async () => {
+      try {
+        if (request.operation === "leave") {
+          await sdk.client.worktree.leave({ scopeID: request.directory, sessionID: request.sessionID })
+          refreshWorkspaceTransition({
+            request,
+            success: createWorkspaceTransitionSuccessProgress({ operation: "leave" }),
+            toast: {
+              title: i18n._(AP.layoutLeftWorktree.id),
+              description: i18n._(AP.layoutWorktreeLeftToast.id),
+            },
+          })
+          return
+        }
+
+        const result = await sdk.client.worktree.create({
+          scopeID: request.directory,
+          worktreeCreateInput: {
+            sessionID: request.sessionID,
+            bind: true,
+            name: request.name,
+          },
+        })
+        const setupFailure = worktreeSetupFailureMessage(result.data)
+        if (setupFailure) {
+          await sdk.client.worktree
+            .leave({ scopeID: request.directory, sessionID: request.sessionID })
+            .catch(() => undefined)
+          await sync.session
+            .sync(request.sessionID, { trigger: { type: "workspace-transition" } })
+            .catch(() => undefined)
+          throw new Error(setupFailure)
+        }
+        const description = result.data?.name
+          ? i18n._(AP.layoutWorktreeDesc.id, { name: result.data.name })
+          : i18n._(AP.layoutWorktreeDescDefault.id)
+        refreshWorkspaceTransition({
+          request,
+          success: createWorkspaceTransitionSuccessProgress({ operation: "enter", description }),
+          toast: { title: i18n._(AP.layoutMovedToWorktree.id), description },
+        })
+      } catch (error) {
+        const message = requestErrorMessage(error)
+        setSessionTransition(
+          request.sessionID,
+          createWorkspaceTransitionErrorProgress({
+            operation: request.operation,
+            message,
+          }),
+          {
+            retry,
+            dismiss: () => clearSessionTransition(request.sessionID),
+          },
+        )
+        showToast({
+          type: "error",
+          title:
+            request.operation === "leave"
+              ? i18n._(AP.layoutLeaveWorktreeFailed.id)
+              : i18n._(AP.layoutMoveWorktreeFailed.id),
+          description: message,
+        })
+      }
+    }
+    void run()
+  }
+  const setNewSessionTransition = (input: {
+    sessionID: string
+    progress: SessionTransitionProgress | null
+    actions?: SessionTransitionActions
+    handoff?: SessionTransitionHandoff
+  }) => {
+    if (!input.progress) {
+      clearSessionTransition(input.sessionID)
+      return
+    }
+    setSessionTransition(input.sessionID, input.progress, input.actions, input.handoff)
+  }
+  const markRollbackPresented = (sessionID: string, rollbackID: string) => {
+    setPendingRollbackDialogKey(`${sessionID}:${rollbackID}`)
+    void sync.rollbackDialog.markPresented(sessionID, rollbackID).catch(() => {})
+  }
+  createEffect(() => {
+    const summary = rollback()
+    const sessionID = params.id
+    const rollbackKey = summary && sessionID ? `${sessionID}:${summary.id}` : undefined
+    const seenKey = resolveRollbackDialogSeenKey({
+      sessionID,
+      rollbackID: summary?.id,
+      rollbackAck: info()?.rollbackAck,
+      pendingKey: pendingRollbackDialogKey(),
+    })
+    const action = rollbackDialogAction({
+      rollbackKey,
+      activeDialogID: dialog.active?.id,
+      rollbackDialogID,
+      activeRollbackKey,
+      seenKey,
+    })
+
+    if (action === "close") {
+      dialog.close()
+      return
+    }
+    if (!rollbackKey) {
+      activeRollbackKey = undefined
+      rollbackDialogID = undefined
+      return
+    }
+    if (action !== "show" || !summary || !sessionID) return
+
+    activeRollbackKey = rollbackKey
+    let mountedDialogID: string | undefined
+    dialog.show(
+      () => <RollbackDialog sessionID={sessionID} rollback={() => rollback() ?? summary} sdk={sdk} />,
+      () => {
+        if (rollbackDialogID !== mountedDialogID) return
+        activeRollbackKey = undefined
+        rollbackDialogID = undefined
+      },
+    )
+    mountedDialogID = dialog.active?.id
+    rollbackDialogID = mountedDialogID
+    markRollbackPresented(sessionID, summary.id)
+  })
+  onCleanup(() => {
+    if (rollbackDialogID && dialog.active?.id === rollbackDialogID) dialog.close()
+  })
+  const messageSnapshot = createMemo(() => {
+    const id = conversationSessionID()
+    if (!id) return [] as Message[]
+    if (!preparation.ready()) return submissionDraft()?.message ? [submissionDraft()!.message!] : undefined
+    const messages = dataView().messagesFor(id)
+    if (submissionDraft()?.message?.sessionID === id) return messages
+    return hasMessageWindowSnapshot(messages, sync.data.messageWindow[id]) ? messages : undefined
+  })
+  const messages = createMemo(() => {
+    const raw = messageSnapshot() ?? []
+    // A resent root can arrive through message.updated before session.updated
+    // invalidates redo. Keep that replacement visible while continuing to
+    // prefix-hide post-rollback non-root injections.
+    const rb = rollback()
+    if (!rb) return raw
+    return messagesHiddenByRollback(raw, rb)
+  })
+  const openRewindConfirm = async (message: UserMessage | undefined) => {
+    if (!message?.id) return
+    if (!messageAllowsCanonicalActions(message)) return
+    const targetID = message.id
+    const sessionID = params.id
+    if (!sessionID) return
+    const canonical = await sdk.client.session
+      .message({ sessionID, messageID: targetID }, { throwOnError: true })
+      .catch((error) => {
+        showToast({ type: "error", description: requestErrorMessage(error) })
+        return undefined
+      })
+    if (params.id !== sessionID || canonical?.data?.info.role !== "user") return
+    const targetMsg = canonical.data.info
+    const cutParts = canonical.data.parts
+    const retryInput = createRewindRetryInput({ message: targetMsg, parts: cutParts })
+    dialog.push(() => (
+      <DialogRewindConfirm
+        cutMessage={targetMsg}
+        allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
+        partsByMessage={dataView().partTable()}
+        canRetry={retryInput !== undefined}
+        onConfirm={async (action, cutMessageID) => {
+          if (!sessionID || !cutMessageID) return
+          const previousActiveMessage = previousMessage(userMessages(), cutMessageID)
+          // Abort if running, then allow the runtime to release its loop lease before rollback asserts idle.
+          if (isWorkingStatus(status())) {
+            await sdk.client.session.abort({ sessionID }).catch(() => {})
+            await new Promise((resolve) => setTimeout(resolve, 500))
+          }
+          const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
+          if (action === "retry") {
+            if (result.data?.id) {
+              markRollbackPresented(sessionID, result.data.id)
+            }
+            try {
+              await sync.session.sync(sessionID, { trigger: { type: "history-transition" } })
+            } catch (error) {
+              return requestErrorMessage(error)
+            }
+          }
+          if (cutParts.length > 0) {
+            const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
+            prompt.set(restored.prompt, inlineLength(restored.prompt))
+            prompt.context.set(restored.context)
+          }
+          setActiveMessage(previousActiveMessage)
+          if (action !== "retry" || !retryInput) return
+          try {
+            await sdk.client.session.input(retryInput, { throwOnError: true })
+            prompt.resetDraft()
+            setActiveMessage(undefined)
+          } catch (error) {
+            return requestErrorMessage(error)
+          }
+        }}
+      />
+    ))
+  }
+  const openForkConfirm = (messageID?: string) => {
+    const source = currentSession()
+    if (!source || forkDialogID) return
+    const sessionID = source.id
+    const client = sdk.client
+    const scopeID = sdk.scopeID
+    const controlProfile = source.controlProfile ?? sync.data.config.controlProfile
+    const localLocations = !sdk.isHome && globalSDK.capabilities.has("workbench")
+    const isCurrent = () => active() && params.id === sessionID && sdk.client === client && sdk.scopeID === scopeID
+    const target = messages().find((message) => message.id === messageID)
+    if (messageID && !target) return
+    const timeline = messages().filter((message) => message.role === "user" || message.role === "assistant")
+    let id: string | undefined
+    id = dialog.push(
+      () => (
+        <DialogForkConfirm
+          source={source}
+          message={target ? { id: target.id, time: target.time } : undefined}
+          allMessages={timeline}
+          hasCompleteHistory={forkHistoryIsComplete({
+            hasEarlier: historyMore(),
+            atLatest: historyMode() === "latest" && !historyTailMissingLatest(),
+            messageID,
+          })}
+          preview={messageID ? forkReplyPreview(dataView().partsFor(messageID)) : undefined}
+          loadDirectories={
+            localLocations
+              ? async () => {
+                  if (source.environmentID) {
+                    const environment = await client.environment.get(
+                      { environmentID: source.environmentID },
+                      { throwOnError: true },
+                    )
+                    if (environment.data?.provider !== "native") return undefined
+                  }
+                  return (await client.project.directories({ scopeID }, { throwOnError: true })).data
+                }
+              : undefined
+          }
+          onClose={() => {
+            if (id) dialog.close(id)
+          }}
+          onConfirm={async (workspace) => {
+            if (!isCurrent()) return false
+            try {
+              const forked = await client.session.fork(
+                {
+                  sessionID,
+                  position: messageID ? { type: "through", messageID } : { type: "current" },
+                  workspace,
+                  controlProfile,
+                },
+                { throwOnError: true },
+              )
+              if (!forked.data) throw new Error(i18n._(S.forkConfirmRequestFailed))
+              if (!isCurrent()) return true
+              showToast({
+                type: "success",
+                title: i18n._(AP.sessionForked.id),
+                description: i18n._(AP.sessionForkedDesc.id),
+              })
+              navigateToSession(forked.data.id)
+              return true
+            } catch (error) {
+              if (!isCurrent()) return false
+              showToast({
+                type: "error",
+                title: i18n._(AP.sessionForkFailed.id),
+                description: requestErrorMessage(error),
+              })
+              return false
+            }
+          }}
+        />
+      ),
+      () => {
+        if (forkDialogID === id) forkDialogID = undefined
+      },
+    )
+    forkDialogID = id
+  }
+  onCleanup(() => {
+    if (forkDialogID) dialog.close(forkDialogID)
+  })
+  const messagesReady = createMemo(() => messageSnapshot() !== undefined)
+  const messageLoad = createMemo(() => {
+    const id = params.id
+    if (!id) return { phase: "idle" as const, generation: 0, hasSnapshot: false }
+    return sync.session.loadState(id)
+  })
+  let loadingRecoveryTimer: ReturnType<typeof setTimeout> | undefined
+  createEffect(
+    on(
+      () => [params.id, messageLoad().phase, messageLoad().generation, messageLoad().hasSnapshot] as const,
+      ([sessionID, phase, generation, hasSnapshot]) => {
+        clearTimeout(loadingRecoveryTimer)
+        setStore("delayedMessageLoad", undefined)
+        if (!sessionID || phase !== "loading" || hasSnapshot) return
+        loadingRecoveryTimer = setTimeout(() => {
+          setStore("delayedMessageLoad", { sessionID, generation })
+        }, 10_000)
+      },
+    ),
+  )
+  const messageLoadDelayed = createMemo(() => {
+    const delayed = store.delayedMessageLoad
+    if (!delayed) return false
+    const load = messageLoad()
+    return delayed.sessionID === params.id && delayed.generation === load.generation
+  })
+  const historyMore = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return sync.session.history.more(id)
+  })
+  const historyLoading = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return sync.session.history.loading(id)
+  })
+  const historyMode = createMemo(() => {
+    const id = params.id
+    if (!id) return "latest" as const
+    return sync.session.history.mode(id)
+  })
+  const historyPendingLatest = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return sync.session.history.pendingLatest(id)
+  })
+  const historyTailMissingLatest = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return sync.session.history.tailMissingLatest(id)
+  })
+  // ── Root message derivation layer ───────────────────────────────────
+  // Replaces old isSessionIdentityAnchor / isGuidedContextUserMessage / synthetic metadata
+  // heuristics with orthogonal isRoot/visible/rootID/origin fields.
+  /** @deprecated Use inline empty arrays or nullish coalescing. */
+  const emptyUserMessages: UserMessage[] = []
+  const rootMessages = createMemo(
+    () => messages().filter((m) => m.role === "user" && (m as UserMessage).isRoot === true) as UserMessage[],
+    emptyUserMessages,
+  )
+  const visibleRoots = createMemo(() => rootMessages().filter((m) => m.visible !== false), emptyUserMessages)
+  const turnProjection = createMemo(() => buildSessionTurnProjection(messages()))
+  const activityDisplay = createMemo(() => resolveActivityDisplay(sync.data.config.activityDisplay))
+  const lastRoot = createMemo(() => rootMessages().at(-1))
+  // visibleRoots for navigation/timeline (deprecated old names kept for compatibility)
+  const visibleUserMessages = visibleRoots
+  // userMessages — kept for commands hook compatibility
+  const userMessages = visibleRoots
+  // renderableUserMessages — deprecated alias, use visibleRoots
+  const renderableUserMessages = visibleRoots
+  const lastUserMessage = lastRoot
+  const lastRenderableUserMessage = lastRoot
+  const dismissSessionTransitionHandoff = (sessionID: string, messageID: string) => {
+    sessionTransition.dismissHandoff(sessionID, messageID)
+  }
+  const acceptedProgressForHandoff = (handoff: Pick<SessionTransitionHandoff, "workspaceSelection">) => {
+    const selection = handoff.workspaceSelection
+    return selection && isWorktreeWorkspaceSelection(selection)
+      ? createNewSessionWorkspaceAcceptedProgress({ selection })
+      : createNewSessionTransitionAcceptedProgress()
+  }
+  const successProgressForHandoff = (handoff: Pick<SessionTransitionHandoff, "workspaceSelection">) => {
+    const selection = handoff.workspaceSelection
+    return selection && isWorktreeWorkspaceSelection(selection)
+      ? createNewSessionWorkspaceSuccessProgress({ selection })
+      : createNewSessionTransitionSuccessProgress()
+  }
+  const [retryingHandoffs, setRetryingHandoffs] = createSignal<Record<string, boolean>>({})
+  const showStalledHandoff = (
+    sessionID: string,
+    handoff: SessionTransitionHandoff,
+    error?: { code?: string; message: string },
+  ) => {
+    const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+    const retry = () => retrySessionTransitionHandoff(sessionID, handoff)
+    setSessionTransition(
+      sessionID,
+      createSessionTransitionHandoffErrorProgress({
+        kind: accepted.kind,
+        error,
+      }),
+      {
+        retry,
+        dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID),
+      },
+      { ...handoff, accepted },
+    )
+  }
+  const retrySessionTransitionHandoff = (sessionID: string, handoff: SessionTransitionHandoff) => {
+    const key = JSON.stringify([sessionID, handoff.messageID])
+    if (retryingHandoffs()[key]) return
+    setRetryingHandoffs((all) => ({ ...all, [key]: true }))
+    const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+    const nextHandoff = {
+      ...handoff,
+      acceptedAt: Date.now(),
+      accepted,
+      refreshAttempted: false,
+    }
+    setSessionTransition(sessionID, accepted, undefined, nextHandoff)
+    const run = async () => {
+      try {
+        const { data: status } = await sdk.client.session.inputStatus(
+          { sessionID, messageID: handoff.messageID },
+          { throwOnError: true },
+        )
+        if (status.canonical || status.state === "cancelled" || status.state === "completed") {
+          await sync.session.refresh(sessionID)
+          sessionTransition.completeHandoff(sessionID, handoff.messageID)
+          return
+        }
+        if (status.state === "failed" && status.itemID) {
+          await sdk.client.session.inboxRetry({ sessionID, itemID: status.itemID }, { throwOnError: true })
+        }
+      } catch (error) {
+        if (sessionTransition.get(sessionID)?.handoff?.messageID !== handoff.messageID) return
+        showStalledHandoff(sessionID, nextHandoff, {
+          message: requestErrorMessage(error, i18n._(S.transitionRecoveryFailed)),
+        })
+      } finally {
+        setRetryingHandoffs((all) => ({ ...all, [key]: false }))
+      }
+    }
+    void run()
+  }
+  createEffect(() => {
+    const sessionID = params.id
+    if (!sessionID || visibleSessionTransitionEntry()) return
+    const recovered = recoverSessionTransitionHandoff({
+      // Explicit exemption: recoverSessionTransitionHandoff distinguishes
+      // "not loaded" (undefined) from "loaded empty" via these buckets; the
+      // view layer's empty arrays would break the gate.
+      messages: sync.data.message[sessionID],
+      inbox: sync.data.inbox[sessionID],
+    })
+    if (!recovered) return
+    if (sessionTransition.isHandoffDismissed(sessionID, recovered.messageID)) return
+    const accepted = acceptedProgressForHandoff(recovered)
+    setSessionTransition(sessionID, accepted, undefined, {
+      ...recovered,
+      acceptedAt: recovered.acceptedAt ?? Date.now(),
+      accepted,
+      success: successProgressForHandoff(recovered),
+    })
+  })
+  const handoffAttempt = createMemo(() => {
+    const entry = visibleSessionTransitionEntry()
+    return entry?.handoff &&
+      entry.progress.phase === "loading" &&
+      !retryingHandoffs()[JSON.stringify([params.id, entry.handoff.messageID])]
+      ? `${params.id}:${entry.handoff.messageID}:${entry.handoff.acceptedAt}`
+      : undefined
+  })
+  createEffect(
+    on(handoffAttempt, (attempt) => {
+      if (!attempt) return
+      const sessionID = params.id!
+      const handoff = visibleSessionTransitionEntry()!.handoff!
+      let unconfirmed = handoff.unconfirmed
+      const update = async (status: SessionInputProgress) => {
+        if (handoffAttempt() !== attempt) return
+        if (unconfirmed && status.durable) {
+          sessionTransition.confirmHandoff(sessionID, handoff.messageID)
+          unconfirmed = undefined
+        }
+        if (status.canonical) {
+          await sync.session.refresh(sessionID)
+          return
+        }
+        if (status.state === "failed") {
+          showStalledHandoff(sessionID, { ...handoff, itemID: status.itemID ?? handoff.itemID }, status.error)
+          return
+        }
+        const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+        if (status.state === "cancelled") {
+          setSessionTransition(
+            sessionID,
+            {
+              ...createSessionTransitionHandoffErrorProgress({ kind: accepted.kind }),
+              description: S.transitionDescCancelled,
+            },
+            { dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID) },
+            handoff,
+          )
+          return
+        }
+        const phase =
+          status.state === "queued_storage"
+            ? "queued_storage"
+            : status.state === "retrying"
+              ? "retrying_input"
+              : "materializing_input"
+        setSessionTransition(
+          sessionID,
+          { ...accepted, activity: { phase, startedAt: accepted.activity?.startedAt ?? Date.now() } },
+          undefined,
+          handoff,
+        )
+      }
+      const stop = observeSessionInput({
+        read: (signal) => recoverSessionInputReceipt(sdk.client, { sessionID, messageID: handoff.messageID }, signal),
+        update: async (receipt) => {
+          if (handoffAttempt() !== attempt) return false
+          if (receipt.kind === "accepted") await update(receipt.progress)
+          else if (receipt.kind === "missing") {
+            if (unconfirmed) unconfirmed.missing()
+            else showStalledHandoff(sessionID, handoff)
+            return false
+          } else {
+            const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+            setSessionTransition(
+              sessionID,
+              { ...accepted, activity: { phase: "reconnecting", startedAt: Date.now() } },
+              undefined,
+              handoff,
+            )
+          }
+        },
+        unavailable: () => {
+          if (handoffAttempt() !== attempt) return
+          const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+          setSessionTransition(
+            sessionID,
+            { ...accepted, activity: { phase: "reconnecting", startedAt: Date.now() } },
+            undefined,
+            handoff,
+          )
+        },
+      })
+      const unsubscribe = sdk.event.on("session.input.progress", ({ properties }) => {
+        if (properties.sessionID === sessionID && properties.messageID === handoff.messageID)
+          void update(properties).catch(() => {})
+      })
+      onCleanup(() => {
+        stop()
+        unsubscribe()
+      })
+    }),
+  )
+  // Event-driven handoff resolution: re-evaluates only when the message
+  // window, inbox, or transition entry changes. A message arriving in the
+  // window and authoritative execution state resolve it without polling.
+  createEffect(() => {
+    const sessionID = params.id
+    const entry = visibleSessionTransitionEntry()
+    if (!sessionID || !entry?.handoff) return
+    const acceptedAt = entry.handoff.acceptedAt ?? Date.now()
+    const decision = decideSessionTransitionHandoff({
+      messageID: entry.handoff.messageID,
+      phase: entry.progress.phase,
+      messages: messages(),
+      // Explicit exemption: same undefined-loading semantics as above.
+      inbox: sync.data.inbox[sessionID],
+      elapsedMs: Math.max(0, Date.now() - acceptedAt),
+      refreshAttempted: entry.handoff.refreshAttempted ?? false,
+    })
+    if (decision === "ready") {
+      const rootID = entry.handoff.messageID
+      if (
+        !isSessionSubmissionContentReady({
+          ready:
+            preparation.ready() &&
+            globalSync.ready &&
+            globalSync.reconnectVersion() > 0 &&
+            !globalSync.scopeRecoveryPending(sdk.scopeKey) &&
+            globalSDK.connected(),
+          message: messages().find((message) => message.id === rootID),
+          captured: entry.draft?.parts,
+          summaries: sync.data.partSummary[rootID],
+          parts: sync.data.part[rootID],
+          versions: sync.data.partVersion,
+        })
+      )
+        return
+      const runtime = dataView().statusFor(sessionID)
+      if (
+        (runtime?.type === "busy" && runtime.activity?.rootID === rootID) ||
+        messages().some((message) => message.role === "assistant" && (message.rootID ?? message.parentID) === rootID)
+      )
+        sessionTransition.completeHandoff(sessionID, rootID)
+      return
+    }
+    if (decision !== "refresh") return
+    setSessionTransition(sessionID, entry.progress, undefined, {
+      ...entry.handoff,
+      refreshAttempted: true,
+    })
+    void sync.session.refresh(sessionID).catch(() => undefined)
+  })
+  // Composer agent/model inheritance is handled inside local.model/local.agent as
+  // a read-only "sessionDefault" derivation (server modelOverride, else the last
+  // root message). The old effect that wrote lastRoot's agent/model back into the
+  // local selector store was removed: it let a late message load silently
+  // overwrite the user's explicit in-composer choice (issue #318).
+
+  const renderedUserMessages = createMemo(() => {
+    const msgs = turnProjection().roots
+    if (!msgs) return emptyUserMessages
+    const start = store.turnStart
+    if (start <= 0) return msgs
+    if (start >= msgs.length) return emptyUserMessages
+    return msgs.slice(start) as UserMessage[]
+  }, emptyUserMessages)
+
+  const renderedConversationUserMessages = createMemo(() => {
+    const firstID = renderedUserMessages()[0]?.id
+    const msgs = visibleRoots()
+    if (!firstID) return msgs
+    return messagesFrom(msgs, firstID)
+  }, emptyUserMessages)
+
+  /** @deprecated Use inline empty arrays or nullish coalescing. */
+  const emptyTimeline: Message[] = []
+
+  const mergeTimelineMessages = (items: Message[]) => selectMessagesInCanonicalOrder(messages(), items)
+
+  const pendingTimeline = createMemo(() => {
+    const sessionID = params.id
+    if (!sessionID) return [] as SessionInboxItem[]
+    return selectPendingTimelineItems(dataView().inboxFor(sessionID), messages())
+  })
+  const isNewSession = createMemo(() => !params.id && !submissionDraft()?.message)
+  const guidePending = async (item: SessionInboxItem) => {
+    await sdk.client.session.inboxGuide({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+  }
+  const removePending = async (item: SessionInboxItem) => {
+    const client = sdk.client
+    const { data } = await client.session.inboxRemoved({ sessionID: item.sessionID }, { throwOnError: true })
+    if (!data?.some((removed) => removed.id === item.id)) {
+      await client.session.inboxRemove({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+    }
+    await sync.session.refresh(item.sessionID)
+  }
+
+  const editPending = async (item: SessionInboxItem) => {
+    const client = sdk.client
+    const owner = sessionKey()
+    const binding = prompt.capture()
+    const eligible = () =>
+      active() &&
+      sessionKey() === owner &&
+      sdk.client === client &&
+      binding.isCurrent() &&
+      params.id === item.sessionID &&
+      !rollbackActive() &&
+      !sessionMeta().isReadOnly &&
+      !composer()?.input.submitting() &&
+      (item.mode !== "task" || item.status === "failed" || rootMessages().length > 0)
+    const removedItem = async () => {
+      const { data } = await client.session.inboxRemoved({ sessionID: item.sessionID }, { throwOnError: true })
+      return data?.find((entry) => entry.id === item.id)
+    }
+    const requeue = async () => {
+      await client.session.inboxRestore({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+    }
+    try {
+      const result = await editPendingMessage({
+        item,
+        directory: sdk.directory,
+        draft: binding.draft,
+        eligible,
+        take: () =>
+          takePendingMessage({
+            removed: removedItem,
+            eligible,
+            restore: requeue,
+            remove: async () => {
+              await client.session.inboxRemove({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+            },
+            unavailable: () => new Error(i18n._(S.convEditPendingUnavailable)),
+          }),
+        requeue,
+      })
+      if (result !== "edited" && sessionKey() === owner) {
+        showToast({
+          type: "warning",
+          description: i18n._(
+            result === "draft-not-empty"
+              ? S.convEditPendingDraft
+              : result === "draft-changed"
+                ? S.convEditPendingChanged
+                : S.convEditPendingUnavailable,
+          ),
+        })
+      }
+      if (result === "edited" && eligible()) {
+        composer()?.input.setMode("normal")
+        queueMicrotask(() => {
+          if (eligible()) inputRef?.focus({ preventScroll: true })
+        })
+      }
+      await sync.session.refresh(item.sessionID)
+    } finally {
+      binding.release()
+    }
+  }
+
+  const timeline = createMemo(() => {
+    const turns = renderedConversationUserMessages() as Message[]
+    const firstID = renderedUserMessages()[0]?.id ?? turns[0]?.id
+    const canonical = firstID ? messagesFrom(messages(), firstID) : messages()
+    const mailbox: Message[] = []
+    const actionCommands: Message[] = []
+    for (const msg of canonical) {
+      if (isActionCommandMessage(msg)) {
+        actionCommands.push(msg)
+        continue
+      }
+      if (msg.role !== "assistant") continue
+      if (!(msg as AssistantMessage).metadata?.mailbox) continue
+      mailbox.push(msg)
+    }
+    if ((!turns || turns.length === 0) && actionCommands.length === 0) return emptyTimeline
+    if (mailbox.length === 0 && actionCommands.length === 0) return turns
+    return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
+  }, emptyTimeline)
+
+  const [projectDirectories, { refetch: refreshProjectDirectories, mutate: updateProjectDirectories }] =
+    createProjectDirectoryResource(() =>
+      !sdk.isHome && globalSDK.capabilities.has("workbench") ? { client: sdk.client, scopeID: sdk.scopeID } : false,
+    )
+  const projectDirectorySnapshot = () => {
+    const snapshot = projectDirectories.latest
+    return snapshot?.client === sdk.client && snapshot.scopeID === sdk.scopeID ? snapshot : undefined
+  }
+  const mainFolder = createMemo(() =>
+    projectDirectorySnapshot()?.data?.folders.find(
+      (folder) => folder.workspaceID === projectDirectorySnapshot()?.data?.mainWorkspaceID,
+    ),
+  )
+  const scopeRoot = createMemo(() => mainFolder()?.path ?? sync.scope?.local?.worktree ?? sync.data.path.directory)
+  const newSessionWorkspaceSelection = createMemo(() =>
+    globalSDK.capabilities.has("workbench") && !sdk.isHome
+      ? projectTaskIntent({
+          directories: projectDirectorySnapshot()?.data,
+          workspaces: sync.data.workspaces,
+          selected: store.newSessionWorkspaceSelection,
+          preference: sync.data.config.defaultSessionWorkspace ?? "main",
+        })
+      : defaultNewSessionWorkspaceSelection({ selected: store.newSessionWorkspaceSelection, preference: "main" }),
+  )
+  createEffect(() => {
+    if (params.id || !globalSDK.capabilities.has("workbench")) {
+      projectFiles.setTaskWorkspace(undefined)
+      return
+    }
+    const choice = newSessionWorkspaceSelection()
+    const id =
+      choice.mode === "workspace" ? choice.workspaceID : choice.mode === "create" ? choice.sourceWorkspaceID : undefined
+    const record = sync.data.workspaces.find(
+      (item) =>
+        item.id === id ||
+        (choice.mode === "existing" && [item.metadata.worktreeID, item.binding.path].includes(choice.target)),
+    )
+    const folder = projectDirectorySnapshot()?.data?.folders.find((item) => item.workspaceID === id)
+    projectFiles.setTaskWorkspace(
+      record
+        ? catalogFileWorkspace(record)
+        : folder?.available
+          ? {
+              id: folder.workspaceID,
+              scopeID: sdk.scopeID,
+              generation: folder.generation,
+              path: folder.path,
+              type: "directory",
+            }
+          : null,
+    )
+  })
+  onCleanup(() => projectFiles.setTaskWorkspace(undefined))
+  const scopeName = createMemo(() => getFilename(scopeRoot() ?? ""))
+  const branch = createMemo(() => sync.data.vcs?.branch)
+  const lastModified = createMemo(() => {
+    const scope = sync.scope
+    if (!scope) return undefined
+    return fmt.relative(scope.time.updated ?? scope.time.created)
+  })
+
+  const activeMessage = createMemo(() => {
+    if (!store.messageId) return lastUserMessage()
+    const found = visibleUserMessages()?.find((m) => m.id === store.messageId)
+    return found ?? lastUserMessage()
+  })
+  const conversationLoadView = createMemo(() =>
+    sessionLoadView({
+      hasRenderableContent: hasSessionRenderableContent({
+        hasActiveMessage: !!activeMessage(),
+        timelineCount: timeline()?.length ?? 0,
+        pendingTimelineCount: pendingTimeline().length,
+        hasTransition: visibleSessionTransition() !== null,
+      }),
+      messages: messageSnapshot(),
+      load: messageLoad(),
+      delayed: messageLoadDelayed(),
+    }),
+  )
+  const conversationLoadError = createMemo(() => {
+    const view = conversationLoadView()
+    if (view.type === "initial-error" || view.type === "empty-error") return view.error
+    return ""
+  })
+  const refreshConversation = async () => {
+    const id = params.id
+    if (!id || !preparation.ready()) return
+    await sync.session.refresh(id).catch(() => undefined)
+  }
+  const setActiveMessage = (message: UserMessage | undefined) => {
+    setStore("messageId", message?.id)
+  }
+
+  function navigateMessageByOffset(offset: number) {
+    const msgs = visibleUserMessages()
+    if (!msgs || msgs.length === 0) return
+
+    const current = activeMessage()
+    const currentIndex = current ? msgs.findIndex((m) => m.id === current.id) : -1
+
+    let targetIndex: number
+    if (currentIndex === -1) {
+      targetIndex = offset > 0 ? 0 : msgs.length - 1
+    } else {
+      targetIndex = currentIndex + offset
+    }
+
+    if (targetIndex < 0 || targetIndex >= msgs.length) return
+
+    scrollToMessage(msgs[targetIndex], "auto")
+  }
+
+  let inputRef!: HTMLDivElement
+  let scroller: HTMLDivElement | undefined
+
+  const hydratedSessions = new Set<string>()
+  const initializedSessions = new Set<string>()
+
+  // Single idempotent entry point for loading a session's data. Runs when the
+  // scope is initially ready, on session switch, and after reconnect recovery
+  // publishes its completed generation. sync.session.sync dedups concurrent or
+  // already-ready loads internally.
+  createEffect(
+    on(
+      () =>
+        sessionSyncWatchKey({
+          sessionID: active() ? params.id : undefined,
+          connected: sdk.connected(),
+          ready: sync.ready && preparation.ready(),
+          reconnectVersion: sync.reconnectVersion,
+          historyID: rollback()?.id,
+          canUnrollback: rollbackActive(),
+        }),
+      (current, prev) => {
+        const [id] = current
+        const prevId = prev?.[0]
+        // Protect the viewed session's buckets from LRU eviction.
+        if (active()) sync.markActiveSession(id)
+        if (!id || !shouldRunSessionSync(current, prev)) return
+        const historyChanged = prevId === id && (prev?.[4] !== current[4] || prev?.[5] !== current[5])
+        void sync.session
+          .sync(id, {
+            refreshVolatile: true,
+            ...(historyChanged ? { trigger: { type: "history-transition" as const } } : {}),
+          })
+          .catch(() => undefined)
+      },
+    ),
+  )
+
+  createEffect(
+    on(
+      () => visibleUserMessages().at(-1)?.id,
+      (lastId, prevLastId) => {
+        if (lastId && prevLastId && lastId > prevLastId) {
+          setStore("messageId", undefined)
+          clearHash()
+        }
+      },
+      { defer: true },
+    ),
+  )
+
+  const currentSession = createMemo(() => (preparation.ready() ? dataView().sessionFor(params.id ?? "") : undefined))
+  const status = createMemo<SessionStatus>(() =>
+    resolveSessionStatus({
+      runtimeStatus: dataView().statusFor(params.id ?? ""),
+      working: currentSession()?.working,
+    }),
+  )
+
+  const sessionHasMessages = createMemo(() => (messageSnapshot()?.length ?? 0) > 0)
+
+  const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
+
+  createEffect(() => {
+    if (!active()) return
+    const session = currentSession()
+    const id = params.id
+    if (!session || !id) return
+    const routeScope = sdk.scopeKey
+    const sessionScope = session.scope.id
+    if (!sessionScope) return
+    if (normalizePathForCompare(routeScope) === normalizePathForCompare(sessionScope)) return
+    navigate(`/${base64Encode(sessionScope)}/session/${id}`, sessionRouteReplaceOptions(location.state))
+  })
+  const parentSession = createMemo(() => {
+    const current = currentSession()
+    if (!current?.parentID) return undefined
+    return dataView().sessionFor(current.parentID)
+  })
+
+  createEffect(() => {
+    if (!active()) return
+    const session = currentSession()
+    let title: string
+    if (isHomeScope(sdk.scopeKey)) {
+      title = i18n._(AP.sessionTitleHome.id)
+    } else {
+      title = session?.title || i18n._(AP.sessionTitleNew.id)
+    }
+    document.title = i18n._(AP.sessionTitleTemplate.id, { title })
+  })
+
+  onCleanup(() => {
+    if (active()) document.title = i18n._(AP.sessionTitleApp.id)
+  })
+
+  createEffect(
+    on(
+      () => params.id,
+      () => {
+        setStore("messageId", undefined)
+      },
+      { defer: true },
+    ),
+  )
+
+  createEffect(() => {
+    if (!active()) return
+    useSessionCommands({
+      command,
+      sdk,
+      sync,
+      local,
+      dialog,
+      terminal,
+      layout,
+      prompt,
+      navigate,
+      routeParams: params as unknown as { dir: string; id?: string },
+      info,
+      status,
+      activeMessage,
+      visibleUserMessages,
+      userMessages,
+      setActiveMessage,
+      navigateMessageByOffset,
+      isWorking: () => isWorkingStatus(status()),
+      onRewind: openRewindConfirm,
+      onFork: () => openForkConfirm(),
+      locateMessage,
+    })
+  })
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    handleComposerTypingAutofocus(event, inputRef, !!dialog.active)
+  }
+
+  const isWorking = createMemo(() => isWorkingStatus(status()))
+  const [scrolledUp, setScrolledUp] = createSignal(false)
+  const [historyLocationPinned, setHistoryLocationPinned] = createSignal(false)
+  const releaseHistoryLocation = (event: WheelEvent | KeyboardEvent) => {
+    if (
+      (event instanceof WheelEvent && event.deltaY > 0) ||
+      (event instanceof KeyboardEvent && ["ArrowDown", "PageDown", "End"].includes(event.key))
+    )
+      setHistoryLocationPinned(false)
+  }
+
+  const autoScroll = createAutoScroll({
+    enabled: active,
+    motionTarget: () =>
+      initialScrollSettled() === params.id && hydratedConversation() === conversationSessionID()
+        ? (scroller?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined)
+        : undefined,
+    working: isWorking,
+    captureReadingAnchor(input) {
+      const container = scroller
+      if (!container) return
+      const owner = sessionKey()
+      const server = sdk.url
+      const scope = sdk.scopeKey
+      const current = () =>
+        owner === sessionKey() && sdk.url === server && sdk.scopeKey === scope && scroller === container
+      return captureConversationReadingAnchor(container, current, input.target)
+    },
+    onMeasure: (distance) => {
+      // Until the session's initial scroll lands, growth-driven measures only
+      // see the partially laid-out document and would flash the jump button;
+      // afterwards they keep the button honest when content grows without
+      // firing scroll events.
+      if (initialScrollSettled() !== params.id) return
+      setScrolledUp(distance > 100)
+    },
+  })
+  const conversationAutoScroll = {
+    ...autoScroll,
+    forceScrollToBottom: () => autoScroll.forceScrollToBottom({ untilInteraction: true }),
+  }
+
+  let scrollSpyFrame: number | undefined
+  let scrollSpyTarget: HTMLDivElement | undefined
+  let initScrollFrame: number | undefined
+  let historyScrollFrame: number | undefined
+  const [initialScrollSettled, setInitialScrollSettled] = createSignal<string>()
+  const [hydratedConversation, setHydratedConversation] = createSignal<string>()
+  createEffect(() => {
+    if (!active()) setHydratedConversation(undefined)
+  })
+  const [presentedSession, setPresentedSession] = createSignal<string>()
+  let scrollView: ReturnType<typeof layout.view> | undefined
+  let scrollSession: string | undefined
+  let scrollWasReady = false
+  const saveReadingPosition = () => {
+    if (!active() || !scroller || !scrollWasReady) return
+    const following = !autoScroll.userScrolled()
+    scrollView?.conversation.set({
+      following,
+      position: following ? undefined : captureConversationReadingPosition(scroller),
+    })
+  }
+  const admittedConversation = (id: string) => {
+    if (id !== scrollSession || id !== conversationSessionID() || !scroller) return
+    const saved = scrollView?.conversation.get()
+    if (saved && !saved.following && saved.position && !window.location.hash) {
+      restoreConversationReadingPosition(scroller, saved.position)
+      scroller.dispatchEvent(new Event("conversation-location-reset"))
+      autoScroll.handleInteraction()
+      setScrolledUp(true)
+    }
+    scrollWasReady = true
+    setPresentedSession(id)
+  }
+
+  const anchor = (id: string) => `message-${id}`
+
+  const setScrollRef = (el: HTMLDivElement | undefined, releaseOf?: HTMLDivElement) => {
+    // Attributed release: keyed session swaps mount the successor viewport
+    // before the swapped-out owner's cleanup runs; only clear when the
+    // binding is still the element this releaser bound.
+    if (!el && releaseOf !== undefined && scroller !== releaseOf) return
+    saveReadingPosition()
+    const id = el ? conversationSessionID() : undefined
+    scrollView = el ? layout.view(`${params.dir}${id ? "/" + id : ""}`) : undefined
+    scrollSession = id
+    scrollWasReady = false
+    scroller?.removeEventListener("wheel", releaseHistoryLocation)
+    scroller?.removeEventListener("keydown", releaseHistoryLocation)
+    if (scroller !== el) setHydratedConversation(undefined)
+    scroller = el
+    el?.addEventListener("wheel", releaseHistoryLocation, { passive: true })
+    el?.addEventListener("keydown", releaseHistoryLocation)
+    autoScroll.scrollRef(el, releaseOf)
+  }
+
+  const afterHistoryLayoutSettles = (fn: () => void) => {
+    if (historyScrollFrame !== undefined) cancelAnimationFrame(historyScrollFrame)
+    historyScrollFrame = requestAnimationFrame(() => {
+      historyScrollFrame = requestAnimationFrame(() => {
+        historyScrollFrame = undefined
+        if (active()) fn()
+      })
+    })
+  }
+
+  const loadEarlierMessages = async () => {
+    const id = params.id
+    if (!id) return
+    setHistoryLocationPinned(true)
+    autoScroll.handleInteraction()
+    try {
+      const result = await sync.session.history.loadMore(id)
+      if (!result || params.id !== id) return
+      setStore("turnStart", 0)
+      if (result === "latest")
+        afterHistoryLayoutSettles(() => {
+          if (params.id === id) autoScroll.forceScrollToBottom({ untilInteraction: true })
+        })
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: i18n._(AP.sessionLoadEarlierFailed.id),
+        description: requestErrorMessage(error),
+      })
+    }
+  }
+
+  const returnToLatestMessages = async () => {
+    const id = params.id
+    if (!id) return
+    scroller?.dispatchEvent(new Event("conversation-location-reset"))
+    const intent = autoScroll.interactionVersion()
+    try {
+      await sync.session.history.returnLatest(id)
+      if (params.id !== id || autoScroll.interactionVersion() !== intent) return
+      setHistoryLocationPinned(false)
+      setStore("turnStart", 0)
+      afterHistoryLayoutSettles(() => {
+        if (params.id === id && autoScroll.interactionVersion() === intent)
+          autoScroll.forceScrollToBottom({ untilInteraction: true, smooth: true })
+      })
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: i18n._(AP.sessionReturnLatestFailed.id),
+        description: requestErrorMessage(error),
+      })
+    }
+  }
+
+  createEffect(
+    on(
+      sessionTransition.messageArrival.submitted,
+      (intent) => {
+        if (!intent || intent.owner[0] !== sdk.url || intent.owner[1] !== sdk.scopeKey || intent.owner[2] !== params.id)
+          return
+        clearHash()
+        view().conversation.set({ following: true })
+        void returnToLatestMessages()
+      },
+      { defer: true },
+    ),
+  )
+
+  // When the bounded history window no longer reaches the true latest
+  // (cap-evicted tail or unseen arrivals), recover through the existing
+  // return-to-latest path. The trigger evaluates the recovery predicate as a
+  // level rather than a single scrolled-up falling edge, so a history load
+  // finishing under an already-parked cursor or streamed arrivals parking
+  // into a history window the user never left recover too. A session starts
+  // disarmed and is armed by engagement (a history load or scrolling up), so
+  // navigating onto a retained history window never discards its stored view.
+  // The recover callback returns the request promise so the in-flight guard
+  // spans the actual return-to-latest load.
+  createBottomRecoveryTrigger(
+    {
+      sessionID: () => (active() ? params.id : undefined),
+      scrolledUp,
+      mode: historyMode,
+      tailMissingLatest: historyTailMissingLatest,
+      pendingLatest: historyPendingLatest,
+      historyLoading: historyLoading,
+      locationPinned: historyLocationPinned,
+    },
+    () => returnToLatestMessages(),
+  )
+
+  const turnInit = 20
+  const turnBatch = 20
+
+  // Keep the rendered tree bounded while pinned to the bottom: when a new turn
+  // pushes the visible root count past MAX_RENDERED_TURNS, advance turnStart so
+  // the top turns are trimmed from the DOM. Only trims in latest mode while the
+  // user is pinned at the bottom — any scrolled-up / history / user-scrolled
+  // state keeps the full window (the "Load earlier" button restores trimmed
+  // turns). The scroll position is re-pinned after layout settles because
+  // overflowAnchor is disabled (create-auto-scroll) and top removal would
+  // otherwise shift the viewport.
+  const MAX_RENDERED_TURNS = 40
+  createEffect(() => {
+    if (!active()) return
+    const roots = visibleUserMessages()
+    const len = roots?.length ?? 0
+    const el = scroller
+    if (!el) return
+    const decision = computeTurnTrim({
+      visibleRootCount: len,
+      turnStart: store.turnStart,
+      maxRenderedTurns: MAX_RENDERED_TURNS,
+      historyMode: historyMode() === "history",
+      scrolledUp: scrolledUp(),
+      userScrolled: autoScroll.userScrolled(),
+      distanceFromBottom: el.scrollHeight - el.clientHeight - el.scrollTop,
+      pinnedThreshold: 10,
+    })
+    if (!decision.trim) return
+
+    const beforeScrollHeight = el.scrollHeight
+    const nextStart = decision.nextTurnStart
+    setStore("turnStart", nextStart)
+
+    // A focused/hash-linked message that was trimmed away is no longer
+    // reachable in the DOM; clear it so scrollSpy/activeMessage fall back.
+    const activeMessageID = store.messageId
+    if (activeMessageID) {
+      const index = roots.findIndex((m) => m.id === activeMessageID)
+      if (index !== -1 && index < nextStart) {
+        setStore("messageId", undefined)
+        clearHash()
+      }
+    }
+
+    afterHistoryLayoutSettles(() => {
+      const container = scroller
+      if (!container) return
+      // Re-pin to the bottom. The clamp formula is the defensive fallback if a
+      // race (trim + streamed append) left us off the bottom; when pinned the
+      // forced bottom position is what keeps the viewport stable.
+      container.scrollTop = Math.max(
+        container.scrollHeight - container.clientHeight,
+        adjustTrimScrollTop({
+          scrollTop: container.scrollTop,
+          beforeScrollHeight,
+          afterScrollHeight: container.scrollHeight,
+          clientHeight: container.clientHeight,
+        }),
+      )
+    })
+  })
+
+  createEffect(
+    on(
+      () => [params.id, messagesReady()] as const,
+      ([id, ready]) => {
+        setStore("turnStart", 0)
+        setScrolledUp(false)
+        if (!id || !ready) return
+
+        if (hydratedSessions.has(id)) return
+        hydratedSessions.add(id)
+
+        const len = visibleUserMessages()?.length ?? 0
+        const start = len > turnInit ? len - turnInit : 0
+        setStore("turnStart", start)
+      },
+      { defer: true },
+    ),
+  )
+
+  const dockHeight = createPromptDockHeight((next) => {
+    if (!active() || next === store.promptHeight) return
+
+    setStore("promptHeight", next)
+  }, active)
+
+  const updateHash = (id: string) => {
+    if (!active()) return
+    replaceSessionHistoryUrl(window.history, `#${anchor(id)}`)
+  }
+
+  const clearHash = () => {
+    if (!active()) return
+    setHistoryLocationPinned(false)
+    if (!window.location.hash) return
+    replaceSessionHistoryUrl(window.history, window.location.pathname + window.location.search)
+  }
+
+  let messageLocator: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
+  async function locateMessage(messageID: string, partID?: string) {
+    const locate = messageLocator
+    if (!locate) return false
+    const found = await locate(messageID, "auto", partID)
+    if (found && messageLocator === locate) updateHash(messageID)
+    return found
+  }
+  const scrollToMessage = (message: UserMessage, behavior: ScrollBehavior = "smooth") => {
+    setActiveMessage(message)
+    if (messageLocator) {
+      const locate = messageLocator
+      void locate(message.id, behavior).then((found) => {
+        if (!found || messageLocator !== locate) return
+        updateHash(message.id)
+      })
+      return
+    }
+
+    const msgs = visibleUserMessages()
+    const index = msgs.findIndex((m) => m.id === message.id)
+    if (index !== -1 && index < store.turnStart) {
+      setStore("turnStart", index)
+
+      requestAnimationFrame(() => {
+        const el = document.getElementById(anchor(message.id))
+        if (el) el.scrollIntoView({ behavior, block: "start" })
+      })
+
+      updateHash(message.id)
+      return
+    }
+
+    const el = document.getElementById(anchor(message.id))
+    if (el) el.scrollIntoView({ behavior, block: "start" })
+    updateHash(message.id)
+  }
+
+  const scheduleScrollSpy = (container: HTMLDivElement, messageID?: string) => {
+    if (messageID) {
+      if (messageID !== store.messageId) setStore("messageId", messageID)
+      return
+    }
+    scrollSpyTarget = container
+    if (scrollSpyFrame !== undefined) return
+
+    scrollSpyFrame = requestAnimationFrame(() => {
+      scrollSpyFrame = undefined
+
+      const target = scrollSpyTarget
+      scrollSpyTarget = undefined
+      if (!target) return
+      if (target === scroller) saveReadingPosition()
+
+      const nodes = target.querySelectorAll<HTMLElement>("[data-message-id]")
+      const cutoff = target.scrollTop + conversationReadingInset
+      let id: string | undefined
+
+      for (const node of nodes) {
+        const next = node.dataset.messageId
+        if (!next) continue
+        if (node.offsetTop > cutoff) break
+        id = next
+      }
+
+      if (!id) return
+      if (id === store.messageId) return
+
+      setStore("messageId", id)
+    })
+  }
+  createEffect(
+    on(
+      () => [params.id, messagesReady(), active()] as const,
+      ([sessionID, ready, visible], previous) => {
+        if (sessionID && previous?.[0] !== sessionID) initializedSessions.delete(sessionID)
+        if (initScrollFrame !== undefined) {
+          cancelAnimationFrame(initScrollFrame)
+          initScrollFrame = undefined
+        }
+
+        if (!visible) {
+          if (sessionID && initialScrollSettled() !== sessionID) initializedSessions.delete(sessionID)
+          return
+        }
+
+        // Re-arm: a chain cancelled by a readiness flip must be able to run
+        // again when readiness returns, or the session opens scrolled to the top.
+        if (!sessionID || !ready) {
+          if (sessionID) initializedSessions.delete(sessionID)
+          return
+        }
+
+        if (initializedSessions.has(sessionID)) return
+        initializedSessions.add(sessionID)
+        setInitialScrollSettled(undefined)
+
+        const afterLayoutSettles = (fn: () => void) => {
+          initScrollFrame = requestAnimationFrame(() => {
+            initScrollFrame = requestAnimationFrame(() => {
+              initScrollFrame = undefined
+              fn()
+            })
+          })
+        }
+        initScrollFrame = requestAnimationFrame(() => {
+          initScrollFrame = undefined
+
+          const hash = window.location.hash.slice(1)
+          if (!hash) {
+            const saved = view().conversation.get()
+            afterLayoutSettles(() => {
+              const restore = async () => {
+                if (saved && !saved.following && saved.position && messageLocator) {
+                  autoScroll.handleInteraction()
+                  setHistoryLocationPinned(true)
+                  const locate = messageLocator
+                  let found = await locate(saved.position.messageID, "auto", saved.position.partID).catch(() => false)
+                  if (!active() || params.id !== sessionID || messageLocator !== locate) return
+                  if (!found && saved.position.partID)
+                    found = await locate(saved.position.messageID, "auto").catch(() => false)
+                  if (!active() || params.id !== sessionID || messageLocator !== locate) return
+                  if (!found) {
+                    const nearest =
+                      rootMessages().find((message) => message.id >= saved.position!.messageID) ?? rootMessages().at(-1)
+                    if (nearest) found = await locate(nearest.id, "auto").catch(() => false)
+                  }
+                  if (!active() || params.id !== sessionID || messageLocator !== locate) return
+                  if (found && scroller) {
+                    const target = scroller
+                    const deadline = performance.now() + 3000
+                    while (
+                      !restoreConversationReadingPosition(target, saved.position, true) &&
+                      performance.now() < deadline
+                    ) {
+                      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+                      if (!active() || params.id !== sessionID || messageLocator !== locate || scroller !== target)
+                        return
+                    }
+                    restoreConversationReadingPosition(target, saved.position)
+                    scroller.dispatchEvent(new Event("conversation-location-reset"))
+                    autoScroll.handleInteraction()
+                    setScrolledUp(true)
+                    setInitialScrollSettled(sessionID)
+                    return
+                  }
+                }
+                if (!active() || params.id !== sessionID) return
+                autoScroll.forceScrollToBottom({ untilInteraction: true })
+                setInitialScrollSettled(sessionID)
+              }
+              void restore().catch(() => {
+                if (!active() || params.id !== sessionID) return
+                autoScroll.forceScrollToBottom({ untilInteraction: true })
+                setInitialScrollSettled(sessionID)
+              })
+            })
+            return
+          }
+
+          afterLayoutSettles(() => {
+            const hashTarget = document.getElementById(hash)
+            if (hashTarget) {
+              hashTarget.scrollIntoView({ behavior: "auto", block: "start" })
+              setInitialScrollSettled(sessionID)
+              return
+            }
+
+            const match = hash.match(/^message-(.+)$/)
+            if (match) {
+              if (messageLocator) {
+                void locateMessage(match[1]).finally(() => {
+                  if (active() && params.id === sessionID) setInitialScrollSettled(sessionID)
+                })
+                return
+              }
+              const anyMessage = messages().find((message) => message.id === match[1])
+              if (anyMessage) {
+                const el = document.getElementById(hash)
+                if (el) el.scrollIntoView({ behavior: "auto", block: "center" })
+                setInitialScrollSettled(sessionID)
+                return
+              }
+
+              const msg = visibleUserMessages().find((m) => m.id === match[1])
+              if (msg) {
+                scrollToMessage(msg, "auto")
+                setInitialScrollSettled(sessionID)
+                return
+              }
+            }
+
+            autoScroll.forceScrollToBottom({ untilInteraction: true })
+            setInitialScrollSettled(sessionID)
+          })
+        })
+      },
+    ),
+  )
+
+  createEffect(() => {
+    if (!active()) return
+    document.addEventListener("keydown", handleKeyDown)
+    onCleanup(() => document.removeEventListener("keydown", handleKeyDown))
+  })
+
+  const previewPrompt = () =>
+    prompt
+      .current()
+      .map((part) => {
+        if (part.type === "file") return `[file:${part.path}]`
+        if (part.type === "attachment") return `[file:${part.filename}]`
+        if (part.type === "note") return `[note:${part.title || "Untitled"}]`
+        if (part.type === "session") return `[session:${part.title || "Untitled"}]`
+        if (part.type === "quote") return `[quote:${part.text.slice(0, 40)}]`
+        return part.content
+      })
+      .join("")
+      .trim()
+
+  createEffect(() => {
+    if (!active() || !prompt.ready()) return
+    handoff.prompt = previewPrompt()
+  })
+
+  createEffect(() => {
+    if (!active() || !terminal.ready()) return
+    handoff.terminals = terminal.all().map((t) => t.title)
+  })
+
+  createEffect(() => {
+    if (!active() || !file.ready()) return
+    handoff.files = Object.fromEntries(
+      Array.from(file.openPaths()).map((path) => [path, file.view.selectedLines(path) ?? null] as const),
+    )
+  })
+
+  onCleanup(() => {
+    document.removeEventListener("keydown", handleKeyDown)
+    scroller?.removeEventListener("wheel", releaseHistoryLocation)
+    scroller?.removeEventListener("keydown", releaseHistoryLocation)
+    if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
+    if (initScrollFrame !== undefined) cancelAnimationFrame(initScrollFrame)
+    if (historyScrollFrame !== undefined) cancelAnimationFrame(historyScrollFrame)
+    hydratedSessions.clear()
+    initializedSessions.clear()
+    clearTimeout(loadingRecoveryTimer)
+  })
+
+  const [priorityControl, setPriorityControl] = createSignal<JSX.Element>()
+  const composerReady = createMemo((ready: boolean) => ready || prompt.ready(), false)
+  const composer = createMemo(() =>
+    active() && composerReady()
+      ? untrack(() =>
+          createPromptInputController({
+            ref: (element) => {
+              inputRef = element
+            },
+            get readOnly() {
+              return sessionMeta().isReadOnly
+            },
+            get locationPending() {
+              return (
+                !params.id &&
+                !sdk.isHome &&
+                globalSDK.capabilities.has("workbench") &&
+                (!projectDirectorySnapshot()?.data || projectDirectories.loading || !!projectDirectorySnapshot()?.error)
+              )
+            },
+            onValidateLocation: async () => {
+              if (params.id || sdk.isHome || !globalSDK.capabilities.has("workbench")) return
+              const client = sdk.client
+              const scopeID = sdk.scopeID
+              const expected = projectDirectorySnapshot()?.data?.revision
+              const result = (await client.project.directories({ scopeID }, { throwOnError: true })).data
+              if (sdk.client !== client || sdk.scopeID !== scopeID) throw new Error(i18n._(projectEntryCopy.changed))
+              if (expected === result.revision) return
+              updateProjectDirectories({ client, scopeID, data: result, error: "" })
+              setStore(
+                "newSessionWorkspaceSelection",
+                store.newSessionWorkspaceSelection?.mode === "create" ? { mode: "create" } : undefined,
+              )
+              throw new Error(i18n._(projectEntryCopy.changed))
+            },
+            get projectDirectories() {
+              return projectDirectorySnapshot()?.data
+            },
+            get projectDirectoryError() {
+              return projectDirectorySnapshot()?.error
+            },
+            onProjectDirectoriesRefresh: async () => {
+              const result = await refreshProjectDirectories()
+              if (result?.error) throw new Error(result.error)
+            },
+            get newSessionEnvironmentID() {
+              return store.newSessionEnvironment?.scopeID === sdk.scopeID ? store.newSessionEnvironment.id : undefined
+            },
+            get newSessionEnvironmentProfile() {
+              return store.newSessionEnvironment?.scopeID === sdk.scopeID &&
+                store.newSessionEnvironment.profile !== undefined
+                ? store.newSessionEnvironment.profile
+                : sync.data.config.defaultSessionEnvironmentProfile === undefined
+                  ? "native"
+                  : sync.data.config.defaultSessionEnvironmentProfile
+            },
+            onNewSessionEnvironmentProfileChange: (profile) =>
+              setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id: undefined, profile }),
+            get newSessionWorkspaceSelection() {
+              return newSessionWorkspaceSelection()
+            },
+            get newSessionWorkspaceSelectionKey() {
+              return JSON.stringify(store.newSessionWorkspaceSelection ?? null)
+            },
+            get newSessionCanonicalDirectory() {
+              return scopeRoot() ?? undefined
+            },
+            get newSessionCurrentDirectory() {
+              return sync.data.path.directory ?? undefined
+            },
+            get newSessionCanCreateWorktree() {
+              return mainFolder()?.git ?? sync.scope?.local?.vcs === "git"
+            },
+            onNewSessionEnvironmentChange: (id) => setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id }),
+            onNewSessionWorkspaceSelectionChange: (selection) => setStore("newSessionWorkspaceSelection", selection),
+            onNewSessionWorkspaceSelectionReset: () =>
+              setStore({ newSessionWorkspaceSelection: undefined, newSessionEnvironment: undefined }),
+            onNewSessionTransitionChange: setNewSessionTransition,
+            onWorkspaceTransition: startWorkspaceTransition,
+            get sessionTransitionPending() {
+              return (
+                sessionTransitionPending() ||
+                (!!params.id && presentedSession() !== params.id && conversationLoadView().type === "conversation")
+              )
+            },
+            get sessionTransitionError() {
+              return visibleSessionTransition()?.phase === "error"
+            },
+            get hideAgentSelector() {
+              return !sessionMeta().showInputBar
+            },
+            onPriorityControlChange: (control) => setPriorityControl(() => control),
+          }),
+        )
+      : undefined,
+  )
+
+  const session: PluginSessionService = {
+    current: currentSession,
+    messages,
+    message: (id) => messages().find((message) => message.id === id),
+    parts: (id) => (messages().some((message) => message.id === id) ? dataView().partsFor(id) : []),
+    status,
+    ready: messagesReady,
+    history: () => ({
+      mode: historyMode(),
+      more: historyMore(),
+      loading: historyLoading(),
+      pendingLatest: historyPendingLatest(),
+    }),
+    loadEarlier: loadEarlierMessages,
+    returnLatest: returnToLatestMessages,
+    refresh: refreshConversation,
+    rewind: (id) => openRewindConfirm(userMessages().find((message) => message.id === id)),
+    fork: openForkConfirm,
+  }
+  const conversation: PluginConversationService = {
+    content: {
+      summaries: (messageID) => {
+        const canonical = preparation.ready() ? (sync.data.partSummary[messageID] ?? []) : []
+        if (submissionDraft()?.message?.id !== messageID) return canonical
+        const missing = submissionSummaries().filter((part) => !canonical.some((item) => item.id === part.id))
+        return missing.length ? [...canonical, ...missing].sort((a, b) => a.id.localeCompare(b.id)) : canonical
+      },
+      page: (messageID) =>
+        submissionPartPage({
+          ready: preparation.ready(),
+          captured: submissionDraft()?.message?.id === messageID,
+          message: params.id ? sync.data.message[params.id]?.find((message) => message.id === messageID) : undefined,
+          page: sync.data.partPage[messageID],
+        }),
+      load: (messageID, more, force) =>
+        preparation.ready() && params.id && sync.data.message[params.id]?.some((message) => message.id === messageID)
+          ? sync.session.content.summaries(params.id, messageID, more, force)
+          : Promise.resolve(),
+      retain: (summary) =>
+        summary.content.version.startsWith("optimistic:") && !sync.data.partVersion[summary.id]
+          ? { ready: Promise.resolve(), release() {} }
+          : sync.session.content.retain(summary),
+      text: (messageID) =>
+        preparation.ready() && params.id && sync.data.message[params.id]?.some((message) => message.id === messageID)
+          ? sync.session.content.text(params.id, messageID)
+          : Promise.resolve(
+              submissionDraft()
+                ?.parts?.filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join("\n") ?? "",
+            ),
+      loadWindow: async (messageID, partID) => {
+        setHistoryLocationPinned(true)
+        autoScroll.handleNavigation()
+        setStore("turnStart", 0)
+        return sync.session.history.locate(params.id!, messageID, partID)
+      },
+      loadEarlier: (messageID) => sync.session.content.earlier(params.id!, messageID),
+    },
+    registerMessageLocator(locate) {
+      messageLocator = locate
+      return () => {
+        if (messageLocator === locate) messageLocator = undefined
+      }
+    },
+    get sessionID() {
+      return conversationSessionID()
+    },
+    get timeline() {
+      return timeline
+    },
+    get turnProjection() {
+      return turnProjection
+    },
+    get activityDisplay() {
+      return activityDisplay
+    },
+    activityView: {
+      getExpanded: (key) => view().activity.getExpanded(key),
+      setExpanded(key, expanded) {
+        const owner = sessionKey()
+        const detached = scrolledUp() || autoScroll.userScrolled()
+        if (detached) autoScroll.preserveReadingAnchor()
+        view().activity.setExpanded(key, expanded)
+        requestAnimationFrame(() => {
+          if (owner !== sessionKey()) return
+          if (!detached) autoScroll.forceScrollToBottom()
+        })
+      },
+    },
+    get pendingTimeline() {
+      return pendingTimeline
+    },
+    get visibleUserMessages() {
+      return visibleUserMessages
+    },
+    get hasCanonicalRoot() {
+      return () => rootMessages().length > 0
+    },
+    get lastUserMessage() {
+      return lastRenderableUserMessage
+    },
+    get activeMessage() {
+      return activeMessage
+    },
+    get isWorking() {
+      return isWorking
+    },
+    get compactReasoning() {
+      return () => sync.data.config.compactReasoning === true
+    },
+    get preferWorkBrief() {
+      return () => sync.data.config.preferWorkBrief === true
+    },
+    get turnStart() {
+      return store.turnStart
+    },
+    get turnBatch() {
+      return turnBatch
+    },
+    get onSetTurnStart() {
+      return (start: number) => setStore("turnStart", start)
+    },
+    get historyMore() {
+      return historyMore
+    },
+    get historyLoading() {
+      return historyLoading
+    },
+    get historyMode() {
+      return historyMode
+    },
+    get historyPendingLatest() {
+      return historyPendingLatest
+    },
+    get onLoadMore() {
+      return () => void loadEarlierMessages()
+    },
+    get onReturnLatest() {
+      return () => void returnToLatestMessages()
+    },
+    get scrolledUp() {
+      return () => scrolledUp() || autoScroll.userScrolled()
+    },
+    get onScrolledUpChange() {
+      return setScrolledUp
+    },
+    get autoScroll() {
+      return conversationAutoScroll
+    },
+    get onClearHash() {
+      return clearHash
+    },
+    get onScheduleScrollSpy() {
+      return scheduleScrollSpy
+    },
+    get setScrollRef() {
+      return setScrollRef
+    },
+    get isDesktop() {
+      return isDesktop
+    },
+    get scrollToMessage() {
+      return scrollToMessage
+    },
+    get anchor() {
+      return anchor
+    },
+    get terminalHeight() {
+      return bottomSurface().opened() ? bottomSurface().size : () => 0
+    },
+    get workspaceOpen() {
+      return sideOpen
+    },
+    get onRewind() {
+      return openRewindConfirm
+    },
+    get onReviewChanges() {
+      return (input: { messageID: string; file?: string }) => {
+        if (isDesktop()) {
+          void workbench.openPanel("session-review", {
+            reuseExisting: true,
+            init: {
+              ...(input.file ? { resourceId: input.file } : {}),
+              source: input.messageID,
+            },
+          })
+        } else {
+          setStore({
+            mobileReviewOpen: true,
+            mobileReviewSelectedFile: input.file,
+            mobileReviewMessageID: input.messageID,
+          })
+        }
+      }
+    },
+    get onPendingGuide() {
+      return (item: SessionInboxItem) => guidePending(item)
+    },
+    get onPendingRemove() {
+      return (item: SessionInboxItem) => removePending(item)
+    },
+    get onForkMessage() {
+      return (messageID: string) => openForkConfirm(messageID)
+    },
+    get rollbackActive() {
+      return rollbackActive()
+    },
+    onFirstTurnMounted: () => navMark({ dir: params.dir!, to: params.id!, name: "session:first-turn-mounted" }),
+    canRewind: messageAllowsCanonicalActions,
+    transition: () => (
+      <Show when={visibleSessionTransitionEntry()}>
+        {(entry) => {
+          const rootID = () => entry().handoff?.messageID ?? entry().draft?.messageID
+          return (
+            <div class="w-full min-w-0 px-3 md:px-1">
+              <SessionSubmissionStatus
+                entry={entry()}
+                hideLoading={rootMessages().some((root) => root.id === rootID())}
+                hideError={messages().some(
+                  (message) =>
+                    message.role === "assistant" &&
+                    (message.rootID ?? message.parentID) === rootID() &&
+                    !!message.error,
+                )}
+              />
+            </div>
+          )
+        }}
+      </Show>
+    ),
+  }
+  const greeting = () => (
+    <NewSessionGreeting
+      disabled={
+        !composer()?.input.ready() ||
+        composer()?.input.readOnly() ||
+        composer()?.input.submitting() ||
+        composer()?.input.composing() ||
+        composer()?.input.current().mode !== "normal"
+      }
+      onProject={() => command.trigger("project.select")}
+      onFiles={() => composer()?.pickFiles()}
+    />
+  )
+  const emptyContributions = () => <SlotOutlet slot="session.empty" sessionId={params.id} />
+  const composerLayout: PluginComposerLayoutService = {
+    input: () => composer()?.input,
+    mount: dockHeight.mount,
+    ready: prompt.ready,
+    isNewSession,
+    readOnly: () => sessionMeta().isReadOnly,
+    isGlobal: () => isHomeScope(sdk.scopeKey),
+    pendingText: () => handoff.prompt || i18n._(S.dockLoadingPrompt),
+    scopeName,
+    branch,
+    lastModified,
+    links() {
+      const links: ReturnType<PluginComposerLayoutService["links"]>[number][] = []
+      const parent = promptDockBackToParentID(sessionMeta())
+      if (parent)
+        links.push({
+          id: "parent",
+          label: i18n._(S.dockBackToParent),
+          title: parentSession()?.title || i18n._(S.dockParentSession),
+          icon: "navigation.back",
+          open: () => navigateToSession(parent, "return-to-parent"),
+        })
+      return links
+    },
+    render(part) {
+      if (part === "priority")
+        return (
+          <Show when={params.id}>
+            {(id) => (
+              <PromptDockFloatLayer
+                sessionID={id()}
+                priorityControl={priorityControl()}
+                onReview={(messageID) => conversation.onReviewChanges?.({ messageID })}
+              />
+            )}
+          </Show>
+        )
+      if (part === "greeting")
+        return (
+          <>
+            {greeting()}
+            {emptyContributions()}
+          </>
+        )
+      if (part === "inbox")
+        return (
+          <Show when={params.id}>
+            {(id) => (
+              <SessionInbox
+                sessionID={id()}
+                sync={sync}
+                sdk={sdk}
+                hasCanonicalRoot={rootMessages().length > 0}
+                freezeHint={rollbackActive()}
+              />
+            )}
+          </Show>
+        )
+      return (
+        <Show when={sessionMeta().cortex}>
+          {(delegation) => (
+            <Show when={params.id}>
+              {(id) => (
+                <SubagentSessionFooter
+                  cortex={delegation()}
+                  sessionID={id()}
+                  parentSessionID={sessionMeta().parentID ?? undefined}
+                />
+              )}
+            </Show>
+          )}
+        </Show>
+      )
+    },
+  }
+  const views = {
+    conversation: () => (
+      <ConversationPresentation
+        owner={[sdk.url, sdk.scopeKey, conversationSessionID()]}
+        ready={
+          isNewSession() ||
+          presentedSession() === params.id ||
+          ["initial-error", "empty-error", "empty"].includes(conversationLoadView().type) ||
+          ("failed" in preparation && preparation.failed()) ||
+          ("status" in preparation && ["failed", "blocked"].includes(preparation.status()?.state ?? ""))
+        }
+        onLeave={() => {
+          saveReadingPosition()
+          scrollWasReady = false
+          setPresentedSession(undefined)
+        }}
+      >
+        <SessionTopBar
+          hasCanonicalRoot={rootMessages().length > 0}
+          inboxFrozen={rollbackActive()}
+          onWorkspaceTransition={startWorkspaceTransition}
+          sessionTransitionPending={sessionTransitionPending}
+        />
+        <div class="relative flex-1 min-h-0 min-w-0 overflow-hidden">
+          <Switch>
+            <Match
+              when={
+                !!submissionDraft()?.message ||
+                (preparation.ready() && !isNewSession() && conversationLoadView().type === "conversation")
+              }
+            >
+              <SessionConversation
+                context={conversation}
+                onAdmitted={admittedConversation}
+                onHydrationChange={(id, ready) => {
+                  if (id === conversationSessionID()) setHydratedConversation(ready ? id : undefined)
+                }}
+                initialScrollSettled={() =>
+                  !!submissionDraft()?.message ||
+                  !params.id ||
+                  (sdk.connected() &&
+                    globalSync.reconnectVersion() > 0 &&
+                    !globalSync.scopeRecoveryPending(sdk.scopeKey) &&
+                    initialScrollSettled() === params.id)
+                }
+              />
+            </Match>
+            <Match when={!preparation.ready()}>
+              <SessionPreparationNotice />
+            </Match>
+            <Match when={!isNewSession()}>
+              <Switch>
+                <Match
+                  when={conversationLoadView().type === "loading" || conversationLoadView().type === "delayed-loading"}
+                >
+                  <ConversationLoadingPlaceholder
+                    action={
+                      conversationLoadView().type === "delayed-loading" ? (
+                        <button
+                          type="button"
+                          class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
+                          onClick={() => void refreshConversation()}
+                        >
+                          <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                          <span>{i18n._(AP.sessionRetry.id)}</span>
+                        </button>
+                      ) : undefined
+                    }
+                  />
+                </Match>
+                <Match when={conversationLoadView().type === "initial-error"}>
+                  <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
+                    <span class="text-sm text-text-strong">{i18n._(AP.sessionErrorTitle.id)}</span>
+                    <span class="max-w-md text-sm text-text-weak">{conversationLoadError()}</span>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
+                      onClick={() => void refreshConversation()}
+                    >
+                      <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                      <span>{i18n._(AP.sessionRetry.id)}</span>
+                    </button>
+                  </div>
+                </Match>
+                <Match when={true}>
+                  <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
+                    <span class="text-sm text-text-weak">{i18n._(AP.sessionNoMessages.id)}</span>
+                    <Show when={conversationLoadView().type === "empty-error"}>
+                      <span class="max-w-md text-sm text-text-error">{conversationLoadError()}</span>
+                    </Show>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base disabled:opacity-50"
+                      disabled={conversationLoadView().type === "refreshing-empty"}
+                      onClick={() => void refreshConversation()}
+                    >
+                      <Icon
+                        name={getSemanticIcon("action.refresh")}
+                        size="small"
+                        class={conversationLoadView().type === "refreshing-empty" ? "animate-spin" : undefined}
+                      />
+                      <span>
+                        {conversationLoadView().type === "refreshing-empty"
+                          ? i18n._(AP.sessionRefreshing.id)
+                          : i18n._(AP.sessionRefresh.id)}
+                      </span>
+                    </button>
+                  </div>
+                </Match>
+              </Switch>
+            </Match>
+            <Match when={true}>
+              <SessionEmptyView interactive={!params.id} greeting={greeting()}>
+                {emptyContributions()}
+              </SessionEmptyView>
+            </Match>
+          </Switch>
+        </div>
+      </ConversationPresentation>
+    ),
+    composer: () => (
+      <Show when={active()}>
+        <PromptDock
+          context={composerLayout}
+          pending={
+            <PendingComposerQueue
+              identity={sessionKey()}
+              items={pendingTimeline()}
+              rollbackActive={rollbackActive()}
+              hasCanonicalRoot={rootMessages().length > 0}
+              serverUrl={sdk.url}
+              onGuide={guidePending}
+              onRemove={removePending}
+              onEdit={editPending}
+            />
+          }
+        />
+      </Show>
+    ),
+    "workbench.side": () => (
+      <>
+        <Show when={sideWorkspaceMounts().desktop}>
+          <div class="hidden md:block">
+            <WorkbenchSurface surface="side" />
+          </div>
+        </Show>
+
+        {/* Mobile side workspace overlay */}
+        <Show when={sideWorkspaceMounts().mobile}>
+          <MobileWorkspaceDialog onClose={() => sideSurface().close()}>
+            <WorkbenchSurface surface="side" modalHost />
+          </MobileWorkspaceDialog>
+        </Show>
+      </>
+    ),
+    "workbench.bottom": () => (
+      <>
+        <Show when={isDesktop()}>
+          <WorkbenchSurface surface="bottom" />
+        </Show>
+        <Show when={!isDesktop() && store.mobileReviewOpen}>
+          <MobileWorkspaceDialog onClose={() => setStore("mobileReviewOpen", false)}>
+            <div class="flex h-full min-h-0 flex-col">
+              <div class="flex-1 min-h-0 overflow-auto">
+                <MobileSessionReview
+                  onClose={() => setStore("mobileReviewOpen", false)}
+                  messageID={store.mobileReviewMessageID}
+                  workspace={() => file.workspace}
+                  title={
+                    store.mobileReviewMessageID
+                      ? i18n._({ id: "session.review.turnTitle", message: "Turn changes" })
+                      : i18n._({ id: "session.review.sessionTitle", message: "Session changes" })
+                  }
+                  actions={
+                    <Button
+                      variant="ghost"
+                      onClick={() => void restoreFiles({ messageID: store.mobileReviewMessageID })}
+                    >
+                      {i18n._({ id: "session.review.undo", message: "Undo changes" })}
+                    </Button>
+                  }
+                  onRestoreFile={(diff) =>
+                    diff.workspace &&
+                    void restoreFiles({
+                      messageID: store.mobileReviewMessageID,
+                      selectedFiles: [
+                        { workspaceID: diff.workspace.id, generation: diff.workspace.generation, file: diff.file },
+                      ],
+                    })
+                  }
+                  view={view}
+                  diffStyle="unified"
+                  selectedFile={() => store.mobileReviewSelectedFile}
+                  onViewFile={(path) => void file.openWorkspaceFile(path)}
+                />
+              </div>
+            </div>
+          </MobileWorkspaceDialog>
+        </Show>
+      </>
+    ),
+  }
+  const sessionLayout: PluginSessionLayoutService = {
+    minimumWidth: () => (isDesktop() && sideOpen() ? WORKSPACE_SESSION_MIN_WIDTH : undefined),
+    promptHeight: () => store.promptHeight || undefined,
+    render: (part) => <HostView render={views[part]} />,
+  }
+  return (
+    <>
+      <WorkspaceOutputEffects />
+      <Show when={composer()}>{(controller) => controller().extensions()}</Show>
+      <SessionDecisionHost
+        sessionId={preparation.ready() ? params.id : undefined}
+        onReturnFocus={() => {
+          if (sessionMeta().isReadOnly || !inputRef?.isConnected) return false
+          inputRef.focus({ preventScroll: true })
+          return true
+        }}
+      >
+        <PluginPageOutlet
+          page="session"
+          sessionId={params.id}
+          session={session}
+          conversation={params.id ? conversation : undefined}
+          composerLayout={composerLayout}
+          input={composer()?.input}
+          layout={sessionLayout}
+          workbench={workbenchService}
+          views={views}
+          fallback={() => <DefaultSession context={{ layout: sessionLayout }} column={layout.conversation} />}
+        />
+      </SessionDecisionHost>
+    </>
+  )
+}

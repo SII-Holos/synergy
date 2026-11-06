@@ -3,6 +3,15 @@ import { TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../../../src/components/tool-t
 import { classifyTool } from "../../../src/components/tool/classifier"
 
 describe("tool classifier localization", () => {
+  test("classifies worktree archive as localized workspace configuration", () => {
+    const classified = classifyTool("worktree_archive", { target: "feature" })
+
+    expect(classified.category).toBe("config")
+    expect(classified.titleDescriptor?.id).toBe("tool.title.archive-worktree")
+    expect(classified.title).toBe("Archive isolated workspace")
+    expect(classified.subtitle).toBe("feature")
+  })
+
   test("returns a localized count descriptor instead of an English badge", () => {
     const classified = classifyTool("session_list", {}, { count: 2 })
 
@@ -35,6 +44,28 @@ describe("tool classifier localization", () => {
     expect(classified.category).toBe("communication")
     expect(classified.titleDescriptor).toBe(TOOL_TITLE_DESC.response_card)
     expect(classified.subtitle).toBe("Choose a release path")
+  })
+
+  test("classifies channel_reaction_only as localized communication with the reaction as subtitle", () => {
+    // The tool takes no parameters and records its terminal intent in part
+    // metadata, so the reaction only ever lives under metadata.intent.
+    const classified = classifyTool(
+      "channel_reaction_only",
+      {},
+      { intent: { type: "reaction_only", reaction: "SILENT" } },
+    )
+
+    expect(classified.category).toBe("communication")
+    expect(classified.titleDescriptor).toBe(TOOL_TITLE_DESC.channel_reaction_only)
+    expect(classified.subtitle).toBe("SILENT")
+  })
+
+  test("classifies speak as localized communication", () => {
+    const classified = classifyTool("speak", { text: "Hello" })
+
+    expect(classified.category).toBe("communication")
+    expect(classified.titleDescriptor).toBe(TOOL_TITLE_DESC.speak)
+    expect(classified.title).toBe("Speak")
   })
 
   test("preserves Boss tool categories from the shared classifier", () => {

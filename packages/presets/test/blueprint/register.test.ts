@@ -1,0 +1,40 @@
+import { describe, expect, test } from "bun:test"
+// The L4 manifest registers every built-in product domain
+import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
+import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/workflow-prompt-registry"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+/**
+ * Blueprint domain registration canary: after the L4 product manifest loads,
+ * the continuation policy, the prompt contribution (control sources + plugin
+ * timer reattach), and the domain tool provider are all registered. This is
+ * the wiring contract every real entry point (CLI and server) shares.
+ */
+describe("blueprint domain registration (L4 manifest canary)", () => {
+  test("continuation policy is registered under the blueprint provider", () =>
+    runtime.run(() => {
+      expect(ContinuationKernel.registeredPolicyIDs()).toContain("blueprint_loop")
+    }))
+
+  test("prompt contribution carries the control sources and the timer reattach hook", () =>
+    runtime.run(() => {
+      const contribution = WorkflowPromptRegistry.get("blueprint")
+      expect(contribution).toBeDefined()
+      expect([...(contribution?.controlSources ?? [])].sort()).toEqual([
+        "blueprint_loop_continuation",
+        "blueprint_loop_rejected",
+        "blueprint_loop_start",
+      ])
+      expect(typeof contribution?.reattachPluginTimers).toBe("function")
+    }))
+
+  test("domain tools are registered under the blueprint provider", () =>
+    runtime.run(() => {
+      expect(ToolRegistry.toolProviderIDs()).toContain("blueprint")
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

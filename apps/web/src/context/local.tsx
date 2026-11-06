@@ -1,0 +1,601 @@
+import { createStore } from "solid-js/store"
+import { batch, createEffect, createMemo, createRoot, onCleanup } from "solid-js"
+import { uniqueBy } from "remeda"
+import type {
+  ProviderListResponse,
+  SessionModelSelection,
+  SessionModelChoice,
+  SessionThinkingSelection,
+} from "@ericsanchezok/synergy-sdk"
+import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import { useParams } from "@/context/session-route"
+import { useSDK } from "./sdk"
+import { useSessionDataView } from "@/context/session-data-view"
+import { useSync } from "./sync"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { useProviders } from "@/hooks/use-providers"
+import { Persist, persisted } from "@/utils/persist"
+import { createModelVariantSession } from "./prompt/model-variant"
+import * as ComposerIntent from "./prompt/composer-intent"
+import { createModelSelectionWriter, thinkingSelection, thinkingValue } from "./prompt/model-selection"
+import {
+  isSelectableModel,
+  modelRefKey,
+  recommendQuickSwitcherModels,
+  resolveQuickSwitcherModels,
+  resolveSessionModel,
+} from "@/components/provider/model-catalog"
+
+export type TextSelection = { startLine: number; startChar: number; endLine: number; endChar: number }
+
+type ProviderListItem = ProviderListResponse["all"][number]
+type ProviderListModel = ProviderListItem["models"][string]
+
+export type LocalModel = Omit<ProviderListModel, "provider"> & {
+  provider: ProviderListItem
+  latest: boolean
+}
+export type ModelKey = { providerID: string; modelID: string }
+
+export type FileContext = { type: "file"; path: string; selection?: TextSelection }
+export type ContextItem = FileContext
+
+const WORKSPACE_KEY = "__workspace__"
+const MAX_MODEL_VARIANT_SESSIONS = 20
+
+type ModelVariantSession = ReturnType<typeof createModelVariantSession>
+
+type ModelVariantCacheEntry = {
+  value: ModelVariantSession
+  dispose: VoidFunction
+}
+
+export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
+  name: "Local",
+  gate: false,
+  init: () => {
+    const sdk = useSDK()
+    const params = useParams()
+    const sync = useSync()
+    const view = useSessionDataView()
+    const providers = useProviders()
+
+    function isModelValid(model: ModelKey) {
+      const provider = providers.all().find((x) => x.id === model.providerID)
+      return (
+        !!provider?.models[model.modelID] &&
+        isSelectableModel(provider.models[model.modelID]) &&
+        providers
+          .available()
+          .map((p) => p.id)
+          .includes(model.providerID)
+      )
+    }
+
+    function getFirstValidModel(...modelFns: (() => ModelKey | undefined)[]) {
+      for (const modelFn of modelFns) {
+        const model = modelFn()
+        if (!model) continue
+        if (isModelValid(model)) return model
+      }
+    }
+
+    // Composer intent is scoped per session visit; a not-yet-created session
+    // (new-session composer) uses a stable sentinel key so a selection made
+    // before the session exists still applies to the first prompt.
+    const NEW_SESSION_INTENT_KEY = "__new__"
+    const intentKey = () => params.id ?? NEW_SESSION_INTENT_KEY
+
+    const agent = (() => {
+      const list = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
+      // draft: explicit per-session user choice; global: last choice, used for the
+      // new-session composer. History (sessionDefault) is a read-only derivation
+      // and is never written back here — that is the #318 fix.
+      const [store, setStore] = createStore<{
+        global?: string
+        draft: Record<string, string>
+      }>({
+        global: undefined,
+        draft: {},
+      })
+      const sessionDefault = createMemo(() =>
+        ComposerIntent.sessionDefaultAgent(params.id ? view().messagesFor(params.id) : undefined),
+      )
+      const isSelectable = (name: string) => list().some((x) => x.name === name)
+      const currentName = createMemo(() => {
+        const available = list()
+        if (available.length === 0) return undefined
+        return (
+          ComposerIntent.resolveAgent(
+            [store.draft[intentKey()], sessionDefault(), store.global, sync.data.config.default_agent],
+            isSelectable,
+          ) ?? available[0].name
+        )
+      })
+      return {
+        list,
+        current() {
+          const available = list()
+          if (available.length === 0) return undefined
+          const name = currentName()
+          return available.find((x) => x.name === name) ?? available[0]
+        },
+        set(name: string | undefined) {
+          const available = list()
+          if (available.length === 0) return
+          const target = name && isSelectable(name) ? name : available[0].name
+          setStore("draft", intentKey(), target)
+          setStore("global", target)
+        },
+        move(direction: 1 | -1) {
+          const available = list()
+          if (available.length === 0) return
+          let next = available.findIndex((x) => x.name === currentName()) + direction
+          if (next < 0) next = available.length - 1
+          if (next >= available.length) next = 0
+          const value = available[next]
+          if (!value) return
+          setStore("draft", intentKey(), value.name)
+          setStore("global", value.name)
+          if (value.model)
+            model.set({
+              providerID: value.model.providerID,
+              modelID: value.model.modelID,
+            })
+        },
+        handoffNewSessionIntent(sessionID: string) {
+          const next = ComposerIntent.handoffNewSessionDraft(store.draft, NEW_SESSION_INTENT_KEY, sessionID)
+          if (next === store.draft) return
+          const value = next[sessionID]
+          if (value !== undefined) setStore("draft", sessionID, value)
+        },
+      }
+    })()
+
+    const model = (() => {
+      function migrateModelStore(value: unknown) {
+        if (!value || typeof value !== "object") return value
+
+        const record = value as Record<string, unknown>
+        const recent = Array.isArray(record.recent) ? (record.recent as ModelKey[]) : []
+        const quickSwitcher = Array.isArray(record.quickSwitcher)
+          ? (record.quickSwitcher as (ModelKey & { state: "add" | "remove" })[])
+          : Array.isArray(record.user)
+            ? record.user.flatMap((item) => {
+                if (!item || typeof item !== "object") return []
+                const entry = item as Record<string, unknown>
+                if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
+                const state = entry.visibility === "hide" ? "remove" : "add"
+                return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
+              })
+            : []
+
+        return {
+          quickSwitcher,
+          recent,
+        }
+      }
+
+      const [store, setStore, _, modelReady] = persisted(
+        {
+          ...Persist.global("model", ["model.v1"]),
+          migrate: migrateModelStore,
+        },
+        createStore<{
+          quickSwitcher: (ModelKey & { state: "add" | "remove" })[]
+          recent: ModelKey[]
+        }>({
+          quickSwitcher: [],
+          recent: [],
+        }),
+      )
+
+      // Session-scoped draft of the user's explicit model choice (keyed by
+      // session id, or the new-session sentinel). Replaces the old agent-scoped
+      // ephemeral store, which leaked model choices across sessions sharing an
+      // agent and could not distinguish user intent from history (#318).
+      const [draft, setDraft] = createStore<{
+        model: Record<string, ModelKey>
+      }>({
+        model: {},
+      })
+
+      const variantCache = new Map<string, ModelVariantCacheEntry>()
+
+      const disposeVariantCache = () => {
+        for (const entry of variantCache.values()) {
+          entry.dispose()
+        }
+        variantCache.clear()
+      }
+
+      onCleanup(disposeVariantCache)
+
+      const pruneVariantCache = () => {
+        while (variantCache.size > MAX_MODEL_VARIANT_SESSIONS) {
+          const first = variantCache.keys().next().value
+          if (!first) return
+          const entry = variantCache.get(first)
+          entry?.dispose()
+          variantCache.delete(first)
+        }
+      }
+
+      const loadVariantSession = (dir: string, id: string | undefined) => {
+        const key = `${dir}:${id ?? WORKSPACE_KEY}`
+        const existing = variantCache.get(key)
+        if (existing) {
+          variantCache.delete(key)
+          variantCache.set(key, existing)
+          return existing.value
+        }
+
+        const entry = createRoot((dispose) => ({
+          value: createModelVariantSession(Persist.scopeKey(sdk.url, dir), id),
+          dispose,
+        }))
+
+        variantCache.set(key, entry)
+        pruneVariantCache()
+        return entry.value
+      }
+
+      const variantSession = createMemo(() => loadVariantSession(sdk.scopeKey, params.id))
+      const selectionWriter = createModelSelectionWriter()
+      const [accepted, setAccepted] = createStore<Record<string, SessionModelSelection>>({})
+      const [pending, setPending] = createStore<Record<string, { generation: number; choice: SessionModelChoice }>>({})
+      const [failed, setFailed] = createStore<Record<string, boolean>>({})
+      const retries = new Map<string, () => void>()
+      let generation = 0
+      const selectionKey = (id: string, scope = sdk.scopeKey) => JSON.stringify([scope, id])
+      const savedSelection = (id = params.id, scope = sdk.scopeKey) => {
+        if (!id) return
+        const server = scope === sdk.scopeKey ? view().sessionFor(id)?.modelSelection : undefined
+        const response = accepted[selectionKey(id, scope)]
+        if (!response || (server && server.revision >= response.revision)) return server
+        return response
+      }
+      const selected = () => {
+        const id = params.id
+        return id ? (pending[selectionKey(id)]?.choice ?? savedSelection(id)?.selected) : undefined
+      }
+
+      const saveSelection = (model: ModelKey, thinking?: SessionThinkingSelection) => {
+        const id = params.id
+        if (!id) return
+        const scope = sdk.scopeKey
+        const client = sdk.client
+        const key = selectionKey(id, scope)
+        const operation = ++generation
+        const choice = {
+          model,
+          thinking: thinking ??
+            savedSelection(id)?.preferences[JSON.stringify([model.providerID, model.modelID])] ?? {
+              mode: "provider-default" as const,
+            },
+        }
+        setPending(key, { generation: operation, choice })
+        setFailed(key, false)
+        retries.set(key, () => saveSelection(model, thinking))
+        void selectionWriter
+          .enqueue(key, async () => {
+            const response = await client.session.setModelSelection(
+              {
+                sessionID: id,
+                sessionModelSelectionInput: {
+                  model,
+                  thinking,
+                  expectedRevision: savedSelection(id, scope)?.revision ?? 0,
+                },
+              },
+              { throwOnError: true },
+            )
+            const state = response.data?.modelSelection
+            if (!state) throw new Error("Missing model selection")
+            setAccepted(key, state)
+          })
+          .then(() => {
+            if (pending[key]?.generation === operation) {
+              setPending(key, undefined!)
+              retries.delete(key)
+            }
+          })
+          .catch(() => {
+            if (pending[key]?.generation === operation) {
+              setPending(key, undefined!)
+              setFailed(key, true)
+            }
+            void client.session
+              .get({ sessionID: id })
+              .then((response) => {
+                const state = response.data?.modelSelection
+                if (state && state.revision >= (accepted[key]?.revision ?? 0)) setAccepted(key, state)
+              })
+              .catch(() => {})
+          })
+      }
+
+      const catalog = createMemo(() =>
+        providers.available().flatMap((p) =>
+          Object.values(p.models).map((m) => ({
+            ...m,
+            provider: p,
+          })),
+        ),
+      )
+
+      const all = createMemo(() =>
+        catalog()
+          .filter(isSelectableModel)
+          .map((m) => ({
+            ...m,
+            name: m.name.replace("(latest)", "").trim(),
+            latest: m.name.includes("(latest)"),
+          })),
+      )
+
+      const find = (key: ModelKey | undefined) => {
+        if (!key) return undefined
+        return all().find((m) => m.id === key.modelID && m.provider.id === key.providerID)
+      }
+
+      const recommended = createMemo(() => recommendQuickSwitcherModels(all(), providers.default()))
+
+      const recommendedSet = createMemo(() => new Set(recommended().map(modelRefKey)))
+
+      const quickSwitcherPreferences = createMemo(() => sync.data.config.quick_switcher?.models ?? [])
+
+      const quickSwitcherSet = createMemo(
+        () => new Set(resolveQuickSwitcherModels(recommended(), quickSwitcherPreferences()).map(modelRefKey)),
+      )
+
+      const fallbackModel = createMemo((): ModelKey | undefined => {
+        if (sync.data.config.model) {
+          const [providerID, modelID] = sync.data.config.model.split("/")
+          if (isModelValid({ providerID, modelID })) {
+            return {
+              providerID,
+              modelID,
+            }
+          }
+        }
+
+        for (const item of store.recent) {
+          if (isModelValid(item)) {
+            return item
+          }
+        }
+
+        for (const p of providers.available()) {
+          if (p.id in providers.default()) {
+            return {
+              providerID: p.id,
+              modelID: providers.default()[p.id],
+            }
+          }
+        }
+
+        // No model available yet (e.g. user is still configuring providers, or
+        // the connected provider has no default model mapping). Returning
+        // undefined lets the current() memo resolve gracefully instead of
+        // throwing when model settings open with no valid model configured.
+        return undefined
+      })
+
+      // Layer 2: the session's default model — server modelOverride, else the
+      // model inherited from the last root user message. Read-only derivation;
+      // never written back, so it cannot clobber the user's draft (#318).
+      const sessionDefaultModel = createMemo((): ModelKey | undefined => {
+        const id = params.id
+        if (!id) return undefined
+        return (
+          selected()?.model ??
+          ComposerIntent.sessionDefaultModel(sync.session.get(id)?.modelOverride, view().messagesFor(id))
+        )
+      })
+
+      const current = createMemo(() => {
+        const a = agent.current()
+        if (!a) return undefined
+        const draftModel = params.id && selected() ? undefined : draft.model[intentKey()]
+        const preferred = draftModel ?? sessionDefaultModel()
+        if (preferred && !providers.complete() && !providers.resolved(preferred)) return undefined
+        const activeDraft = find(draftModel)
+        if (activeDraft) return activeDraft
+        const retainedDraft = params.id ? resolveSessionModel(providers.connected(), draftModel) : undefined
+        if (retainedDraft) {
+          return {
+            ...retainedDraft.model,
+            provider: retainedDraft.provider,
+            name: retainedDraft.model.name.replace("(latest)", "").trim(),
+            latest: retainedDraft.model.name.includes("(latest)"),
+          }
+        }
+        const existing = resolveSessionModel(providers.connected(), sessionDefaultModel())
+        if (existing) {
+          return {
+            ...existing.model,
+            provider: existing.provider,
+            name: existing.model.name.replace("(latest)", "").trim(),
+            latest: existing.model.name.includes("(latest)"),
+          }
+        }
+        const key = getFirstValidModel(() => a.model, fallbackModel)
+        if (!key) return undefined
+        return find(key)
+      })
+
+      const variantResolution = createMemo((): ComposerIntent.SessionVariantResolution => {
+        const id = params.id
+        const m = current()
+        const model = m ? { providerID: m.provider.id, modelID: m.id } : undefined
+        const choice = selected()
+        if (id && choice) return { ready: true, value: thinkingValue(choice.thinking) }
+        const session = variantSession()
+        if (!session.ready()) return { ready: false, value: undefined }
+        return ComposerIntent.resolveSessionVariant({
+          hasSession: !!id,
+          hasDraft: !id && session.has(model),
+          draft: !id ? session.get(model) : undefined,
+          model,
+          // Explicit exemption: resolveSessionVariant treats messages ===
+          // undefined as "session not ready"; the view layer's empty array
+          // would flip the variant-ready semantics.
+          messages: id ? sync.data.message[id] : undefined,
+        })
+      })
+      const currentVariant = () => variantResolution().value
+
+      const displayedVariant = () => {
+        const choice = selected()
+        if (choice) return thinkingValue(choice.thinking)
+        const a = agent.current()
+        const model = current()
+        if (!params.id && model && variantSession().has({ providerID: model.provider.id, modelID: model.id }))
+          return currentVariant()
+        return ComposerIntent.resolveVariantDisplay(
+          variantResolution(),
+          a?.defaultVariant,
+          a ? (sync.data.config.role_variant?.[a.modelRole || "default"] ?? undefined) : undefined,
+          model?.variants ? Object.keys(model.variants) : undefined,
+        )
+      }
+
+      const recent = createMemo(() => store.recent.map(find).filter((model): model is LocalModel => !!model))
+      createEffect(() => {
+        const preferred = sessionDefaultModel()
+        const keys = [...store.recent, ...quickSwitcherPreferences(), ...(preferred ? [preferred] : [])]
+        void providers.ensureModels(keys).catch(() => {})
+      })
+
+      function inQuickSwitcher(model: ModelKey) {
+        return quickSwitcherSet().has(modelRefKey(model))
+      }
+
+      const quickSwitcher = createMemo(() =>
+        all().filter((item) => inQuickSwitcher({ providerID: item.provider.id, modelID: item.id })),
+      )
+
+      const cycle = (direction: 1 | -1) => {
+        const recentList = recent()
+        const currentModel = current()
+        if (!currentModel) return
+
+        const index = recentList.findIndex(
+          (x) => x?.provider.id === currentModel.provider.id && x?.id === currentModel.id,
+        )
+        if (index === -1) return
+
+        let next = index + direction
+        if (next < 0) next = recentList.length - 1
+        if (next >= recentList.length) next = 0
+
+        const val = recentList[next]
+        if (!val) return
+
+        model.set({
+          providerID: val.provider.id,
+          modelID: val.id,
+        })
+      }
+
+      return {
+        ready: modelReady,
+        current,
+        recent,
+        all,
+        quickSwitcher,
+        quickSwitcherPreferences,
+        cycle,
+        selection: {
+          state: () => savedSelection(),
+          saving: () => !!params.id && !!pending[selectionKey(params.id)],
+          error: () => !!params.id && !!failed[selectionKey(params.id)],
+          retry: () => {
+            if (params.id) retries.get(selectionKey(params.id))?.()
+          },
+        },
+        set(model: ModelKey | undefined, options?: { recent?: boolean }) {
+          batch(() => {
+            // Explicit user choice → session-scoped draft (layer 1). Falling back
+            // to fallbackModel() keeps a concrete value when the caller clears.
+            const resolved = model ?? fallbackModel()
+            if (resolved && !params.id) setDraft("model", intentKey(), resolved)
+            if (options?.recent && model) {
+              // Recent records must not share mutable objects with the draft.
+              const uniq = uniqueBy([model, ...store.recent], modelRefKey).map(({ providerID, modelID }) => ({
+                providerID,
+                modelID,
+              }))
+              if (uniq.length > 5) uniq.pop()
+              setStore("recent", uniq)
+            }
+          })
+          if (model && params.id) saveSelection(model)
+        },
+        handoffNewSessionIntent(sessionID: string) {
+          const next = ComposerIntent.handoffNewSessionDraft(draft.model, NEW_SESSION_INTENT_KEY, sessionID)
+          if (next === draft.model) return
+          const value = next[sessionID]
+          if (value !== undefined) setDraft("model", sessionID, value)
+        },
+        inQuickSwitcher,
+        isRecommended(model: ModelKey) {
+          return recommendedSet().has(modelRefKey(model))
+        },
+        variant: {
+          ready: () => variantResolution().ready && (!params.id || !pending[selectionKey(params.id)]),
+          current: currentVariant,
+          displayed: displayedVariant,
+          list() {
+            const m = current()
+            if (!m) return []
+            if (!m.variants) return []
+            return Object.keys(m.variants)
+          },
+          set(value: string | undefined, target?: ModelKey) {
+            const m = current()
+            const modelKey = target ?? (m ? { providerID: m.provider.id, modelID: m.id } : undefined)
+            if (!modelKey) return
+            if (params.id) saveSelection(modelKey, thinkingSelection(value))
+            else variantSession().set(modelKey, value)
+          },
+          setForSession(sessionID: string, value: string | undefined, target?: ModelKey, scopeKey = sdk.scopeKey) {
+            const m = current()
+            const modelKey = target ?? (m ? { providerID: m.provider.id, modelID: m.id } : undefined)
+            if (!modelKey) return
+            loadVariantSession(scopeKey, sessionID).set(modelKey, value)
+          },
+          cycle() {
+            const variants = this.list()
+            if (variants.length === 0) return
+            const currentVariant = this.displayed()
+            if (!currentVariant) {
+              this.set(variants[0])
+              return
+            }
+            const index = variants.indexOf(currentVariant)
+            if (index === -1 || index === variants.length - 1) {
+              this.set(undefined)
+              return
+            }
+            this.set(variants[index + 1])
+          },
+        },
+      }
+    })()
+
+    const result = {
+      slug: createMemo(() => base64Encode(sdk.scopeKey)),
+      model,
+      agent,
+      handoffNewSessionIntent(sessionID: string) {
+        batch(() => {
+          agent.handoffNewSessionIntent(sessionID)
+          model.handoffNewSessionIntent(sessionID)
+        })
+      },
+    }
+    return result
+  },
+})

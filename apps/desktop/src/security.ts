@@ -1,0 +1,63 @@
+import { session, shell, type BrowserWindow, type WebContents } from "electron"
+import { canOpenExternal, isAllowedAppNavigation } from "./navigation-policy.js"
+
+export { canOpenExternal, isAllowedAppNavigation } from "./navigation-policy.js"
+
+export function installSessionSecurity(
+  getAppContents: () => WebContents | undefined,
+  getAppURL: () => string | null,
+): void {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission === "fullscreen") {
+      const contents = getAppContents()
+      callback(
+        Boolean(
+          contents &&
+          webContents === contents &&
+          !contents.isDestroyed() &&
+          details.isMainFrame &&
+          details.requestingUrl === contents.getURL() &&
+          !details.requestingUrl.startsWith("data:") &&
+          isAllowedAppNavigation(details.requestingUrl, getAppURL()),
+        ),
+      )
+      return
+    }
+    // Camera and combined audio+video capture stay denied; only microphone-only requests pass.
+    const mediaTypes = details && "mediaTypes" in details ? details.mediaTypes : undefined
+    const isMicrophoneOnly = mediaTypes !== undefined && mediaTypes.includes("audio") && !mediaTypes.includes("video")
+    if (permission === "media" && isMicrophoneOnly) {
+      callback(true)
+      return
+    }
+    callback(false)
+  })
+}
+
+export function installWindowSecurity(window: BrowserWindow, getAllowedOrigin: () => string | null): void {
+  const contents = window.webContents
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedAppNavigation(url, getAllowedOrigin())) return { action: "allow" }
+    void openExternalSafely(url)
+    return { action: "deny" }
+  })
+  contents.on("will-navigate", (event, url) => {
+    if (isAllowedAppNavigation(url, getAllowedOrigin())) return
+    event.preventDefault()
+    void openExternalSafely(url)
+  })
+}
+
+export async function openExternalSafely(url: string): Promise<void> {
+  if (!canOpenExternal(url)) return
+  await shell.openExternal(url)
+}
+
+export function enforceProductionLoading(contents: WebContents, getAppOrigin: () => string | null): void {
+  contents.on("did-fail-load", (_event, code, description, url) => {
+    if (code === -3) return
+    if (url && !isAllowedAppNavigation(url, getAppOrigin())) {
+      console.error(`[desktop] blocked failed navigation outside app origin: ${url}`, description)
+    }
+  })
+}

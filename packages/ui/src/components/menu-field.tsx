@@ -1,0 +1,197 @@
+import { useSettingRow } from "./setting-row-context"
+import { restorePopoverFocus } from "./popover"
+import { useOverlayLayer } from "../context/overlay-layer"
+import { useViewActivity } from "../context/view-activity"
+import { PortalStyleOwner } from "../context/ui-style"
+import { Popover } from "@kobalte/core/popover"
+import { Listbox, Item, ItemLabel, ItemIndicator } from "@kobalte/core/listbox"
+import { createEffect, createSignal, Show, untrack, type Component, type JSX } from "solid-js"
+import { Icon, type IconName } from "./icon"
+import { getSemanticIcon } from "./semantic-icon"
+import "./menu-field.css"
+
+export type MenuFieldOption<T extends string> = {
+  value: T
+  label: string
+  count?: number
+  disabled?: boolean
+}
+
+type MenuFieldBaseProps<T extends string> = {
+  id?: string
+  options: MenuFieldOption<T>[]
+  ariaLabel: string
+  icon?: IconName
+  ariaDescribedBy?: string
+  disabled?: boolean
+  placement?: "top-start" | "top-end" | "bottom-start" | "bottom-end"
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Controlled owners can wait for a changed value to be accepted; unchanged picks still dismiss. */
+  closeOnChange?: boolean
+  popoverLayer?: HTMLElement
+  surfaceClass?: string
+  triggerAs?: Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
+  /** Overrides the trigger class when the host surface styles it (e.g. Library sort buttons). */
+  triggerClass?: string
+  /** Overrides the trigger label instead of deriving it from the current value. */
+  triggerLabel?: string
+  /** Renders an extra action row above the option list; `close` closes the popover. */
+  leading?: (close: () => void) => JSX.Element
+  children?: (option: MenuFieldOption<T>) => JSX.Element
+}
+
+export type MenuFieldSingleProps<T extends string> = MenuFieldBaseProps<T> & {
+  multiple?: false
+  value: T
+  onChange: (value: T) => void
+}
+
+export type MenuFieldMultipleProps<T extends string> = MenuFieldBaseProps<T> & {
+  multiple: true
+  value: T[]
+  onChange: (value: T[]) => void
+}
+
+export type MenuFieldProps<T extends string> = MenuFieldSingleProps<T> | MenuFieldMultipleProps<T>
+
+export function MenuField<T extends string>(props: MenuFieldProps<T>) {
+  let trigger: HTMLButtonElement | undefined
+  let surface: HTMLDivElement | undefined
+  const row = useSettingRow()
+  const parentLayer = useOverlayLayer()
+  const active = useViewActivity()
+  const [localOpen, setLocalOpen] = createSignal(false)
+  const open = () => props.open ?? localOpen()
+  const setOpen = (requested: boolean) => {
+    const next = active() && requested
+    setLocalOpen(next)
+    props.onOpenChange?.(next)
+  }
+  createEffect(() => {
+    if (!active() && open()) setOpen(false)
+  })
+  const multiple = () => props.multiple === true
+  const selected = () =>
+    multiple() ? (props as MenuFieldMultipleProps<T>).value : [(props as MenuFieldSingleProps<T>).value]
+  const current = () => props.options.find((option) => option.value === (props as MenuFieldSingleProps<T>).value)
+  const triggerText = () => props.triggerLabel ?? current()?.label ?? ""
+
+  function handleChange(next: Set<string>) {
+    const values = [...next] as T[]
+    if (multiple()) {
+      ;(props as MenuFieldMultipleProps<T>).onChange(values)
+    } else {
+      const value = values[0]
+      if (value === (props as MenuFieldSingleProps<T>).value) {
+        setOpen(false)
+        return
+      }
+      if (value !== undefined) {
+        ;(props as MenuFieldSingleProps<T>).onChange(value)
+      }
+    }
+    if (!multiple() && props.closeOnChange !== false) setOpen(false)
+  }
+
+  const content = () => (
+    <PortalStyleOwner>
+      <Popover.Content
+        ref={surface}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          if (active()) void restorePopoverFocus(trigger, surface)
+        }}
+        onEscapeKeyDown={(event) => event.stopPropagation()}
+        class={`menu-field-surface ${props.surfaceClass ?? ""}`}
+        aria-label={props.ariaLabel}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          const selectedOption = surface?.querySelector<HTMLElement>(
+            '[role="option"][aria-selected="true"]:not([aria-disabled="true"])',
+          )
+          const firstOption = surface?.querySelector<HTMLElement>('[role="option"]:not([aria-disabled="true"])')
+          const target = selectedOption ?? firstOption ?? surface?.querySelector<HTMLElement>('[role="listbox"]')
+          // Synchronous focus handlers must not subscribe the popover's mounting effect to list state.
+          untrack(() => target?.focus({ preventScroll: true }))
+        }}
+      >
+        {props.leading?.(() => setOpen(false))}
+        <Listbox
+          class="menu-field-list"
+          aria-label={props.ariaLabel}
+          autoFocus={false}
+          scrollRef={() => surface}
+          options={props.options}
+          optionValue={(option) => option.value}
+          optionTextValue={(option) => option.label}
+          optionDisabled={(option) => props.disabled || option.disabled || false}
+          shouldFocusOnHover
+          selectionMode={multiple() ? "multiple" : "single"}
+          disallowEmptySelection={!multiple()}
+          selectOnFocus={false}
+          allowDuplicateSelectionEvents={!multiple()}
+          value={selected()}
+          onChange={handleChange}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return
+            event.preventDefault()
+            event.stopPropagation()
+            setOpen(false)
+          }}
+          renderItem={(node) => {
+            const option = node.rawValue as MenuFieldOption<T>
+            return (
+              <Item item={node} class="menu-field-item">
+                <ItemLabel class="menu-field-item-label">
+                  {props.children ? props.children(option) : option.label}
+                </ItemLabel>
+                <Show when={option.count !== undefined}>
+                  <span class="menu-field-count">{option.count}</span>
+                </Show>
+                <span class="menu-field-item-mark" aria-hidden="true">
+                  <ItemIndicator as="span" class="menu-field-item-indicator" data-slot="menu-field-indicator">
+                    <Icon name={getSemanticIcon("state.success")} size="small" />
+                  </ItemIndicator>
+                </span>
+              </Item>
+            )
+          }}
+        />
+      </Popover.Content>
+    </PortalStyleOwner>
+  )
+
+  return (
+    <Popover
+      open={active() && open()}
+      onOpenChange={(value) => setOpen(active() && value)}
+      placement={props.placement ?? "bottom-start"}
+      gutter={6}
+      overflowPadding={12}
+    >
+      <Popover.Trigger
+        ref={trigger}
+        id={props.id}
+        as={props.triggerAs ?? "button"}
+        type="button"
+        data-slot="popover-trigger"
+        data-component="menu-field"
+        class={props.triggerClass ?? "menu-field-trigger"}
+        aria-label={triggerText() ? `${props.ariaLabel}: ${triggerText()}` : props.ariaLabel}
+        aria-describedby={[row?.descriptionId, props.ariaDescribedBy].filter(Boolean).join(" ") || undefined}
+        disabled={props.disabled}
+        onKeyDown={(event: KeyboardEvent) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+          event.preventDefault()
+          setOpen(true)
+        }}
+      >
+        <Show when={props.icon}>{(icon) => <Icon name={icon()} size="small" />}</Show>
+        <span class="menu-field-value">{triggerText()}</span>
+        <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="menu-field-chevron" />
+      </Popover.Trigger>
+      <Popover.Portal mount={props.popoverLayer ?? parentLayer()}>{content()}</Popover.Portal>
+    </Popover>
+  )
+}

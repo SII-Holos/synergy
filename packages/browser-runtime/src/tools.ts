@@ -1,0 +1,65 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { registerToolGroup } from "./tool-group-browser"
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { BrowserAnnotateTool } from "./tools/browser-annotate"
+import { BrowserSnapshotTool } from "./tools/browser-snapshot"
+import { BrowserScreenshotTool } from "./tools/browser-screenshot"
+import { BrowserInspectTool } from "./tools/browser-inspect"
+import { BrowserWaitTool } from "./tools/browser-wait"
+import { BrowserConsoleTool } from "./tools/browser-console"
+import { BrowserNetworkTool } from "./tools/browser-network"
+import { BrowserDownloadsTool } from "./tools/browser-downloads"
+import { BrowserReadTool } from "./tools/browser-read"
+import { BrowserClipboardTool } from "./tools/browser-clipboard"
+import { BrowserNavigationTool } from "./tools/browser-navigation"
+import { BrowserAssetsTool } from "./tools/browser-assets"
+import { BrowserActionTool } from "./tools/browser-action"
+import { BrowserEvalTool } from "./tools/browser-eval"
+import { BrowserPerformanceTool } from "./tools/browser-performance"
+import { BrowserAuditTool } from "./tools/browser-audit"
+import { BrowserEmulateTool } from "./tools/browser-emulate"
+import { BrowserDialogTool } from "./tools/browser-dialog"
+import { BrowserUploadTool } from "./tools/browser-upload"
+
+/**
+ * Browser domain tool registration. Loaded through src/registration.ts.
+ */
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
+
+export function registerBrowserTools(): void {
+  const instanceState = runtimeState()
+
+  Tool.registerInputHistory("browser", {
+    browser_console: { id: "entryId" },
+    browser_network: { id: "requestId" },
+    browser_downloads: { id: "downloadId", path: "filePath" },
+  })
+  registerToolGroup()
+  if (instanceState.registered) return
+  instanceState.registered = true
+
+  ToolRegistry.registerToolProvider("browser", () => [
+    BrowserAnnotateTool,
+    BrowserSnapshotTool,
+    BrowserScreenshotTool,
+    BrowserInspectTool,
+    BrowserWaitTool,
+    BrowserConsoleTool,
+    BrowserNetworkTool,
+    BrowserDownloadsTool,
+    BrowserReadTool,
+    BrowserClipboardTool,
+    BrowserNavigationTool,
+    BrowserAssetsTool,
+    BrowserActionTool,
+    BrowserEvalTool,
+    BrowserPerformanceTool,
+    BrowserAuditTool,
+    BrowserEmulateTool,
+    BrowserDialogTool,
+    BrowserUploadTool,
+  ])
+}

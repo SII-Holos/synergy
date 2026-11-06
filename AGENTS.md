@@ -1,21 +1,21 @@
 # Synergy Repository Rules
 
-These rules apply to the Bun/TypeScript monorepo. Read the nearest package `AGENTS.md` before editing package code. Each rule links the document holding its rationale. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
+Bun/TypeScript monorepo rules. Read the nearest package `AGENTS.md` before editing code. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Work from Current Evidence
 
-- Verify the implementation, tests, schemas, generated contracts, and current CLI before changing code or docs.
+- Verify implementation, tests, schemas, generated contracts and CLI before editing.
 - Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Keep retired names inside `docs/migrations/` or `docs/research/` only.
 - Start architecture work at [docs/README.md](docs/README.md), then read only the relevant document.
-- Inspect adjacent domains before assuming a directory boundary.
+- Inspect adjacent domains before assuming ownership.
 - Keep a nearest `AGENTS.md` in every workspace package; update it when that package's ownership, public boundary, or verification commands change.
-- Fix the root cause with a focused change; preserve unrelated user work and avoid opportunistic cleanup.
+- Fix root causes; preserve unrelated work and avoid opportunistic cleanup.
 
 The project-local `architecture` skill provides the code-tracing workflow and links canonical documents instead of duplicating them.
 
 ## Protect Checkouts and Runtimes
 
-The primary checkout, pre-existing checkouts, and active Synergy runtime may be shared by concurrent sessions.
+Checkouts and active Synergy runtimes may be shared.
 
 - Inspect `git status`, the current branch, and the worktree list before editing or performing Git operations. Direct edits in the current checkout are allowed; preserve unrelated dirty and untracked files.
 - Do not run `git checkout`/`git switch` or rebase a shared checkout unless the user explicitly requests it; these change state observed by every session using that directory.
@@ -24,11 +24,14 @@ The primary checkout, pre-existing checkouts, and active Synergy runtime may be 
 - Preserve unrelated dirty and untracked files; inspect status again before staging and stage only files owned by the current task.
 - Do not use destructive Git commands, force pushes, or hook bypasses without explicit user authority and a reviewed recovery plan.
 - Push, open a PR, or mutate external systems only when the user requests that action.
+- A pull request whose intent corresponds to a BlueprintLoop is accepted only when that loop reached `completed` through `blueprint_loop_approve`. An executor's self-assessment, or a loop that stalled in `auditing`, failed, or was rejected without a fresh audit, is not acceptance. State the loop's final status and audit conclusion in the pull request body.
 - Keep local/runtime paths, session/Scope IDs, logs, credentials, and private endpoints out of commit messages, PR bodies, comments, and reviews. Every agent-created commit uses a concise conventional type and the `Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>` footer.
 - Never stop, restart, signal, or modify the `SYNERGY_HOME` of the Synergy instance carrying the current task.
 - Run source changes in an isolated second home with explicit alternate ports. Load `develop-synergy` for the exact workflow.
 
 Load `git-guide` for worktrees, history, commits, rebases, pushes, and PRs.
+
+Feature development follows [develop-feature](.synergy/skill/develop-feature/SKILL.md).
 
 ## Development Entry Points
 
@@ -81,23 +84,25 @@ Read the owning architecture document before changing these areas:
 
 - session/message/compaction and LLM loop: `docs/architecture/session-and-messages.md`, `llm-loop.md`
 - frontend snapshots, events, replay, reconcile, and eviction: `frontend-data-sync.md`
+- Read [Memory residency scope](docs/operations/memory-residency-scope.md) before changing retain, boundary, or hot paths.
 - capability classification, control profiles, permissions, and sandbox: `execution-boundaries.md`
 - Cortex child sessions and task outputs: `cortex.md`
 - Plan, Blueprints, BlueprintLoop, Light Loop, and Lattice: `workflows.md`
-- Browser native/WebRTC presentation and one-session/one-page ownership: `browser-runtime.md`
-- Channels, managed Projects, provider lifecycle, and Native Clarus tasks: `channels.md`
+- Browser Desktop-native presentation, page collections and identity ownership: `browser-runtime.md`
+- Channels, managed Projects, provider lifecycle: `channels.md`
 
 Do not create compatibility paths that violate those contracts. In particular:
 
 - `guarded` is the only standard interactive profile; `autonomous` never asks; `full_access` silently allows permission-system capabilities but cannot suppress ordinary runtime failures.
 - Worktree isolation permits ordinary external reads while protecting sensitive paths and blocking unapproved external writes/execution.
-- Browser keeps desktop-native `WebContentsView` and Web WebRTC/data-channel presentation as first-class modes. Do not add iframe, screenshot-stream, pseudo-tab, or multi-page session fallbacks.
+- Browser is Desktop-local and uses real `WebContentsView` pages with immutable identities and explicit Agent page targets. Keep human selection independent; do not add WebRTC, headless, iframe or screenshot-stream fallbacks.
 
 ## Tool, Agent, and Plugin Changes
 
+- Design Agent-facing prompts, tools, context and results for effective decisions. Preserve constraints, uncertainty and recovery; remove internal narration and duplicate rules. Follow [agent-facing design](.synergy/skill/integrate-llm/references/agent-facing-design.md).
 - Load `add-tool`, `add-agent`, or `add-cli-command` for their complete implementation and verification workflows.
 - A first-party tool requires backend registration, taxonomy, and all Web presentation/classifier registrations described by `add-tool`.
-- Built-in primary agents are `synergy` and `synergy-max`; visibility masks and delegation groups define each subagent catalog. BlueprintLoop and Light Loop reviewers remain host-selected, while their Cortex tasks are visible in the execution session's Subagent Dock.
+- Primary agents: Atlas (`general`), Forge (`coding`), Pico (`lightweight`); use Harness `agent/primary-identity`. Visibility masks and delegation groups define subagent catalogs. BlueprintLoop reviewers stay host-selected; Light Loop uses self-check. Workbench shows recorded Cortex tasks in Task details; minimal servers retain Cortex interfaces.
 - Plugins use the public definition, generated manifest, capability-gated Host Services, process runtime, operation/event/hook, approval, and trusted UI contracts in [Plugin documentation](docs/plugins/README.md). Do not import private runtime modules into plugins.
 
 ## Testing and Quality
@@ -106,22 +111,21 @@ Write a failing behavioral test first for new behavior and bug fixes. Test publi
 
 Every test file must live under the `test/` directory of its owning package, mirroring the relevant source domain when useful; repository-level script and policy tests belong under the root `test/` directory. Do not colocate `*.test.*`/`*.spec.*` beside `src/`, `script/`, or implementation directories; `bun run test-layout:check` enforces this.
 
-Core tests run from `packages/synergy`:
+Harness tests run from `packages/harness`:
 
 ```bash
-cd packages/synergy
+cd packages/harness
 bun test test/<domain>/<file>.test.ts
-bun run test:changed
 bun test
 bun run test:ci
 bun run test:coverage
 ```
 
-Frontend suites run via `bun run --cwd packages/app test` and `bun run --cwd packages/ui test`, both part of the Turbo test graph. Browser capability or App bootstrap changes also run the browser crypto contract and the production-build private HTTP browser smoke in `packages/app/AGENTS.md`.
+Frontend suites run via `bun run --cwd apps/web test` and `bun run --cwd packages/ui test`. Browser capability or App bootstrap changes also run the browser crypto contract and the production-build private HTTP browser smoke in `apps/web/AGENTS.md`.
 
-Coverage has a floor: `bun run coverage:check` enforces per-package thresholds via `script/coverage-exempt.json` (Bun 1.3.14 has no ignore comments; exclusions only through that manifest; every entry carries a reason; broad ones rejected). Run the narrowest relevant check locally and let CI own the full matrix — never default to the full suite for a commit or push. `bun run quality:quick` runs the local static cluster; pre-commit hooks run staged fast checks; pre-push adds `doc:check`/`decision:check`.
+Coverage has a floor: `bun run coverage:check` enforces per-package thresholds via `script/coverage-exempt.json` (exclusions only through that manifest; every entry carries a reason; broad ones rejected). Run focused checks locally; CI owns the full matrix. Never default to full suites before commits or pushes. Use `verify local --test <path>` for focused checks, `verify plan` for scope, and `verify stability --test <path> --batch` for intermittent failures. Hooks reuse identical local static inputs; CI runs independently.
 
-Never raw `bun test --coverage`/`--parallel` on `packages/synergy` — workers drop preload env, writing into the real home. `TestHomeGuardError` blocks without `SYNERGY_TEST_HOME` unless `SYNERGY_ALLOW_REAL_HOME=1`.
+Never raw `bun test --coverage`/`--parallel` on `packages/harness` — workers drop preload env, writing into the real home. `TestHomeGuardError` blocks without `SYNERGY_TEST_HOME` unless `SYNERGY_ALLOW_REAL_HOME=1`.
 
 ## Documentation and Decision Records
 
@@ -143,4 +147,4 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 
 ## Repository Skills
 
-`development-standards` (route changes, capture rules), `architecture` (trace ownership), `develop-frontend`/`integrate-llm` (Web UI, model-backed), `change-server-api`/`change-persistence` (API, durable state), `change-execution-boundaries` (permissions, sandboxing), `change-browser-runtime` (Browser/Desktop presentation), `change-channel-runtime` (Channels, providers, Clarus), `change-plugin-runtime` (Plugin API), `develop-synergy` (isolated instance), `testing-guide` (fixtures), `git-guide` (worktrees, PRs), `add-agent`/`add-cli-command`/`add-tool` (workflows), `find-logs`/`inspect-sessions` (diagnostics), `find-simplifications` (surface audits), `release-log-workflow` (notes).
+`development-standards` (route changes, capture rules), `architecture` (trace ownership), `develop-frontend`/`integrate-llm` (Web UI, model-backed), `change-server-api`/`change-persistence` (API, durable state), `change-execution-boundaries` (permissions, sandboxing), `change-browser-runtime` (Browser/Desktop presentation), `change-computer-runtime` (native Computer), `change-channel-runtime` (Channels and providers), `change-plugin-runtime` (Plugin API), `develop-synergy` (isolated instance), `testing-guide` (fixtures), `develop-benchmark` (evaluation infrastructure), `git-guide` (worktrees, PRs), `add-agent`/`add-cli-command`/`add-tool` (workflows), `find-logs`/`inspect-sessions` (diagnostics), `report-bug` (issue drafting), `find-simplifications` (surface audits), `release-log-workflow` (notes).

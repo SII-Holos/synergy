@@ -4,6 +4,8 @@ import os from "node:os"
 import path from "node:path"
 import {
   evaluatePackage,
+  runCoverageCheck,
+  loadManifest,
   extractFailureSignals,
   matchesExempt,
   mergeLcov,
@@ -15,6 +17,16 @@ import {
 } from "../../script/coverage-check"
 
 const roots: string[] = []
+
+test("the Computer protocol participates in coverage enforcement", async () => {
+  const manifest = await loadManifest()
+  const config = manifest.packages["packages/computer-protocol"]
+  expect(config).toBeDefined()
+  expect(config!.command).toContain("coverage")
+  expect(config!.thresholds.lines).toBeGreaterThanOrEqual(80)
+  expect(config!.thresholds.functions).toBeGreaterThanOrEqual(75)
+  expect(config!.exempt).toEqual([])
+})
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
@@ -265,6 +277,38 @@ describe("coverage failure signal extraction", () => {
     expect(signals.some((line) => line.includes("broken two"))).toBe(true)
   })
 
+  test("identifies the owning suite when an unnamed lifecycle hook fails", () => {
+    const signals = extractFailureSignals(
+      "test/runtime/instance.test.ts:\n(pass) runtime opens [1ms]\n(fail) (unnamed) [30002ms]",
+    )
+    expect(signals).toContain("test/runtime/instance.test.ts: (fail) (unnamed) [30002ms]")
+  })
+
+  test("preserves assertion differences across blank lines without including the next suite", () => {
+    const signals = extractFailureSignals(
+      [
+        "test/runtime/imports.test.ts:",
+        "error: expect(received).toEqual(expected)",
+        "",
+        "  {",
+        '-   "code": 0,',
+        '+   "code": 1,',
+        "  }",
+        "",
+        "      at test/runtime/imports.test.ts:42:28",
+        "",
+        "test/runtime/next.test.ts:",
+        "next suite output",
+        "(pass) next suite [1ms]",
+      ].join("\n"),
+    )
+    expect(signals).toHaveLength(1)
+    expect(signals[0]).toContain('-   "code": 0,')
+    expect(signals[0]).toContain('+   "code": 1,')
+    expect(signals[0]).toContain("at test/runtime/imports.test.ts:42:28")
+    expect(signals[0]).not.toContain("next suite")
+  })
+
   test("caps the failing test list and reports the remainder", () => {
     const lines = Array.from({ length: 40 }, (_, index) => `(fail) suite > case ${index} [1ms]`)
     const signals = extractFailureSignals(lines.join("\n"), 5)
@@ -307,4 +351,204 @@ describe("coverage failure signal extraction", () => {
     expect(signals).toHaveLength(25)
     expect(signals[0]).toContain("plain line 15")
   })
+})
+
+describe("relocated coverage enforcement", () => {
+  test("every extracted runtime owner keeps the legacy 75/75 floor", async () => {
+    const manifest = await loadManifest()
+    expect(manifest.packages["packages/synergy"]).toBeUndefined()
+    expect(manifest.packages["packages/app"]).toBeUndefined()
+    expect(manifest.packages["apps/web"]?.thresholds).toEqual({ lines: 60, functions: 50 })
+    expect(manifest.packages["apps/desktop"]?.thresholds).toEqual({ lines: 60, functions: 50 })
+    for (const owner of [
+      "harness",
+      "local-runtime",
+      "server",
+      "cli",
+      "presets",
+      "library",
+      "note",
+      "browser-runtime",
+      "computer-runtime",
+      "connections",
+      "mcp",
+      "lsp",
+      "formatter",
+      "acp",
+      "external-agents",
+      "code-tools",
+      "plugin-host",
+      "media",
+      "workbench",
+      "workflows",
+      "testing",
+    ]) {
+      const config = manifest.packages[`packages/${owner}`]
+      expect(config).toBeDefined()
+      expect(config!.thresholds.lines).toBeGreaterThanOrEqual(75)
+      expect(config!.thresholds.functions).toBeGreaterThanOrEqual(75)
+      expect(config!.command).toBe("bun run test:coverage")
+    }
+    expect(await validateManifest(manifest)).toEqual([])
+  })
+
+  test("existing reports enforce thresholds without running a command, and unknown packages fail", async () => {
+    const root = await fixture()
+    await mkdir(path.join(root, "script"), { recursive: true })
+    await mkdir(path.join(root, "packages/pkg/src"), { recursive: true })
+    await mkdir(path.join(root, "packages/pkg/coverage"), { recursive: true })
+    await writeFile(path.join(root, "packages/pkg/src/a.ts"), "export const a = 1\n")
+    await writeFile(
+      path.join(root, "packages/pkg/coverage/lcov.info"),
+      "SF:src/a.ts\nDA:1,0\nLF:1\nLH:0\nFNF:1\nFNH:0\nend_of_record\n",
+    )
+    await writeFile(
+      path.join(root, "script/coverage-exempt.json"),
+      JSON.stringify({
+        packages: {
+          "packages/pkg": {
+            command: "exit 99",
+            lcov: "coverage/lcov.info",
+            thresholds: { lines: 75, functions: 75 },
+            exempt: [],
+          },
+        },
+      }),
+    )
+    const result = await runCoverageCheck({ root, packages: ["packages/pkg"], existing: true })
+    expect(result.passed).toBe(false)
+    expect(result.verdicts[0]?.errors).toEqual([])
+    expect(result.verdicts[0]?.linesPct).toBe(0)
+    expect(result.verdicts[0]?.measured).toBe(1)
+    const unknown = await runCoverageCheck({ root, packages: ["packages/typo"], existing: true })
+    expect(unknown.passed).toBe(false)
+    expect(unknown.errors).toContain("Unknown coverage package: packages/typo")
+  })
+})
+
+test("full fresh runs union hits across source owners and cannot reuse stale reports", async () => {
+  const root = await fixture()
+  await mkdir(path.join(root, "script"), { recursive: true })
+  const packages: CoverageManifest["packages"] = {}
+  for (const owner of ["a", "b"]) {
+    const directory = path.join(root, "packages", owner)
+    await mkdir(path.join(directory, "src"), { recursive: true })
+    await writeFile(path.join(directory, "src/value.ts"), "export const value = 1\n")
+    packages[`packages/${owner}`] = {
+      command: "bun coverage-fixture.ts",
+      lcov: "coverage/lcov.info",
+      thresholds: { lines: 100, functions: 100 },
+      exempt: [],
+    }
+    const own = `SF:src/value.ts\nDA:1,1\n${owner === "a" ? "DA:2,0\nLF:2\n" : "LF:1\n"}LH:1\nFNF:1\nFNH:1\nend_of_record\n`
+    const shared =
+      owner === "b" ? "SF:../a/src/value.ts\nDA:1,0\nDA:2,1\nLF:2\nLH:1\nFNF:1\nFNH:1\nend_of_record\n" : ""
+    await writeFile(
+      path.join(directory, "coverage-fixture.ts"),
+      `await Bun.write("coverage/lcov.info", ${JSON.stringify(own + shared)})`,
+    )
+  }
+  await writeFile(path.join(root, "script/coverage-exempt.json"), JSON.stringify({ packages }))
+  const complete = await runCoverageCheck({ root })
+  expect(complete.passed).toBe(true)
+  expect(complete.verdicts.map((verdict) => verdict.linesPct)).toEqual([100, 100])
+  expect(complete.verification.shared).toBe(true)
+  const local = await runCoverageCheck({ root, packages: ["packages/a"], existing: true })
+  expect(local.passed).toBe(false)
+  expect(local.verdicts[0]?.linesPct).toBe(50)
+  expect(local.verification.shared).toBe(false)
+  packages["packages/b"]!.command = "true"
+  await writeFile(path.join(root, "script/coverage-exempt.json"), JSON.stringify({ packages }))
+  const missing = await runCoverageCheck({ root })
+  expect(missing.passed).toBe(false)
+  expect(missing.verification.shared).toBe(false)
+  expect(missing.verdicts.find((verdict) => verdict.package === "packages/b")?.errors.join(" ")).toContain(
+    "no lcov output",
+  )
+  expect(missing.verdicts.find((verdict) => verdict.package === "packages/a")?.linesPct).toBe(50)
+  packages["packages/b"]!.command = "bun coverage-fixture.ts && exit 1"
+  await writeFile(path.join(root, "script/coverage-exempt.json"), JSON.stringify({ packages }))
+  const failed = await runCoverageCheck({ root })
+  expect(failed.passed).toBe(false)
+  expect(failed.verification.shared).toBe(false)
+  expect(failed.verdicts.find((verdict) => verdict.package === "packages/a")?.linesPct).toBe(50)
+  expect(failed.verdicts.find((verdict) => verdict.package === "packages/b")?.errors.join(" ")).toContain("exited 1")
+})
+
+test("aggregate mode unions reports from disk without running commands and fails on gaps", async () => {
+  const root = await fixture()
+  await mkdir(path.join(root, "script"), { recursive: true })
+  const packages: CoverageManifest["packages"] = {}
+  for (const owner of ["a", "b"]) {
+    const directory = path.join(root, "packages", owner)
+    await mkdir(path.join(directory, "src"), { recursive: true })
+    await mkdir(path.join(directory, "coverage"), { recursive: true })
+    await writeFile(path.join(directory, "src/value.ts"), "export const value = 1\n")
+    packages[`packages/${owner}`] = {
+      command: "exit 99",
+      lcov: "coverage/lcov.info",
+      thresholds: { lines: 100, functions: 100 },
+      exempt: [],
+    }
+  }
+  await writeFile(
+    path.join(root, "packages/a/coverage/lcov.info"),
+    "SF:src/value.ts\nDA:1,1\nDA:2,0\nLF:2\nLH:1\nFNF:1\nFNH:1\nend_of_record\n",
+  )
+  await writeFile(
+    path.join(root, "packages/b/coverage/lcov.info"),
+    "SF:src/value.ts\nDA:1,1\nLF:1\nLH:1\nFNF:1\nFNH:1\nend_of_record\nSF:../a/src/value.ts\nDA:1,0\nDA:2,1\nLF:2\nLH:1\nFNF:1\nFNH:1\nend_of_record\n",
+  )
+  await writeFile(path.join(root, "script/coverage-exempt.json"), JSON.stringify({ packages }))
+  const result = await runCoverageCheck({ root, aggregate: true })
+  expect(result.passed).toBe(true)
+  expect(result.verification.shared).toBe(true)
+  expect(result.verification.source).toBe("existing")
+  expect(result.verdicts.map((verdict) => verdict.linesPct)).toEqual([100, 100])
+  const partial = await runCoverageCheck({ root, aggregate: true, packages: ["packages/b"] })
+  expect(partial.passed).toBe(false)
+  expect(partial.errors.join(" ")).toContain("complete manifest")
+  for (const flags of [{ existing: true }, { executeOnly: true }]) {
+    const conflicting = await runCoverageCheck({ root, aggregate: true, ...flags })
+    expect(conflicting.passed).toBe(false)
+    expect(conflicting.errors.join(" ")).toContain("cannot be combined")
+  }
+  await rm(path.join(root, "packages/b/coverage/lcov.info"))
+  const gapped = await runCoverageCheck({ root, aggregate: true })
+  expect(gapped.passed).toBe(false)
+  expect(gapped.verification.shared).toBe(false)
+  expect(gapped.verdicts.find((verdict) => verdict.package === "packages/b")?.errors.join(" ")).toContain(
+    "no lcov output",
+  )
+})
+
+test("execute-only runs shard commands, collects failures, and never evaluates thresholds", async () => {
+  const root = await fixture()
+  await mkdir(path.join(root, "script"), { recursive: true })
+  const packages: CoverageManifest["packages"] = {}
+  const lcov = "SF:src/value.ts\nDA:1,1\nLF:1\nLH:1\nFNF:1\nFNH:1\nend_of_record\n"
+  for (const owner of ["a", "b"]) {
+    const directory = path.join(root, "packages", owner)
+    await mkdir(path.join(directory, "src"), { recursive: true })
+    await writeFile(path.join(directory, "src/value.ts"), "export const value = 1\n")
+    packages[`packages/${owner}`] = {
+      command: owner === "a" ? "exit 3" : "bun coverage-fixture.ts",
+      lcov: "coverage/lcov.info",
+      thresholds: { lines: 100, functions: 100 },
+      exempt: [],
+    }
+    if (owner === "b") {
+      await writeFile(
+        path.join(directory, "coverage-fixture.ts"),
+        `await Bun.write("coverage/lcov.info", ${JSON.stringify(lcov)})`,
+      )
+    }
+  }
+  await writeFile(path.join(root, "script/coverage-exempt.json"), JSON.stringify({ packages }))
+  const result = await runCoverageCheck({ root, executeOnly: true, packages: ["packages/a", "packages/b"] })
+  expect(result.passed).toBe(false)
+  expect(result.verdicts).toEqual([])
+  expect(result.errors).toHaveLength(1)
+  expect(result.errors[0]).toContain("packages/a")
+  expect(result.errors[0]).toContain("exited 3")
 })

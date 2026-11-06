@@ -1,177 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
-import path from "node:path"
-import { pathToFileURL } from "node:url"
 import { JSDOM } from "jsdom"
-import { build } from "vite"
-import solidPlugin from "vite-plugin-solid"
+import { domFixture } from "../support/dom-fixtures"
 
-let fixtureDirectory: string
 let dom: JSDOM
 
 const waitForUpdate = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 beforeAll(async () => {
-  fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".session-turn-attachments-collapse-fixture-"))
-  const sessionTurnPath = path.resolve(import.meta.dir, "../../src/components/session-turn.tsx")
-  const dataContextPath = path.resolve(import.meta.dir, "../../src/context/data.tsx")
-  const dialogContextPath = path.resolve(import.meta.dir, "../../src/context/dialog.tsx")
-  const diffContextPath = path.resolve(import.meta.dir, "../../src/context/diff.tsx")
-  const markedContextPath = path.resolve(import.meta.dir, "../../src/context/marked.tsx")
-  const resourceOpenContextPath = path.resolve(import.meta.dir, "../../src/context/resource-open.tsx")
-  const i18nPath = path.resolve(import.meta.dir, "../../src/testing/i18n.tsx")
-  const pluginThemePath = path.resolve(import.meta.dir, "../../../plugin/src/theme/index.ts")
-  const entry = path.join(fixtureDirectory, "main.tsx")
-
-  await Bun.write(
-    entry,
-    `
-      import { I18nProvider } from "@lingui/solid"
-      import { render } from "solid-js/web"
-      import { DataProvider } from ${JSON.stringify(dataContextPath)}
-      import { DialogProvider } from ${JSON.stringify(dialogContextPath)}
-      import { DiffComponentProvider } from ${JSON.stringify(diffContextPath)}
-      import { MarkedProvider } from ${JSON.stringify(markedContextPath)}
-      import { ResourceOpenProvider } from ${JSON.stringify(resourceOpenContextPath)}
-      import { SessionTurn } from ${JSON.stringify(sessionTurnPath)}
-      import { setupI18n } from ${JSON.stringify(i18nPath)}
-
-      const sessionID = "session-attachments-collapse"
-      const rootID = "user-attachments-collapse"
-      const assistantID = "assistant-attachments-collapse"
-      const rootMessage = {
-        id: rootID,
-        sessionID,
-        role: "user",
-        time: { created: 1 },
-        agent: "synergy",
-        model: { providerID: "provider", modelID: "model" },
-        isRoot: true,
-        rootID,
-        visible: true,
-      }
-      const assistantMessage = {
-        id: assistantID,
-        sessionID,
-        role: "assistant",
-        parentID: rootID,
-        rootID,
-        mode: "test",
-        agent: "synergy",
-        path: { cwd: "/workspace", root: "/workspace" },
-        cost: 0,
-        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-        modelID: "model",
-        providerID: "provider",
-        time: { created: 1, completed: 2 },
-        finish: "stop",
-      }
-      const imagePart = {
-        id: "file-image",
-        sessionID,
-        messageID: assistantID,
-        type: "attachment",
-        mime: "image/svg+xml",
-        filename: "meme.svg",
-        url: "asset://meme",
-      }
-      const attachPart = {
-        id: "tool-attach",
-        sessionID,
-        messageID: assistantID,
-        type: "tool",
-        callID: "call-attach",
-        tool: "attach",
-        state: {
-          status: "completed",
-          input: { file_path: "meme.svg" },
-          output: "File delivered: meme.svg (1.0 KB)",
-          title: "meme.svg",
-          metadata: { display: { toolCard: "hidden" } },
-          attachments: [imagePart],
-          time: { start: 1, end: 2 },
-        },
-      }
-      const mediaPart = {
-        id: "tool-media",
-        sessionID,
-        messageID: assistantID,
-        type: "tool",
-        callID: "call-media",
-        tool: "plugin__synergy-meme-plugin__generate_meme",
-        state: {
-          status: "completed",
-          input: { prompt: "random meme" },
-          output: "",
-          title: "Meme",
-          metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
-          attachments: [{ ...imagePart, id: "file-image-media", filename: "meme-2.svg" }],
-          time: { start: 1, end: 2 },
-        },
-      }
-      const data = {
-        session: [],
-        session_status: { [sessionID]: { type: "idle" } },
-        session_diff: { [sessionID]: [] },
-        permission: { [sessionID]: [] },
-        message: { [sessionID]: [rootMessage, assistantMessage] },
-        part: {
-          [rootID]: [],
-          [assistantID]: [attachPart, mediaPart],
-        },
-      }
-      const resourceController = {
-        open: () => false,
-        openAttachment: () => false,
-        resolveWorkspacePath: (value) => value,
-        openWorkspaceSource: () => false,
-      }
-      const EmptyDiff = () => null
-
-      render(
-        () => (
-          <I18nProvider i18n={setupI18n()}>
-            <DialogProvider>
-              <ResourceOpenProvider value={resourceController}>
-                <MarkedProvider>
-                  <DiffComponentProvider component={EmptyDiff}>
-                    <DataProvider data={data} directory="/workspace" serverUrl="http://localhost">
-                      <SessionTurn
-                        sessionID={sessionID}
-                        messageID={rootID}
-                        rootMessage={rootMessage}
-                        messages={[rootMessage, assistantMessage]}
-                        lastUserMessageID={rootID}
-                      />
-                    </DataProvider>
-                  </DiffComponentProvider>
-                </MarkedProvider>
-              </ResourceOpenProvider>
-            </DialogProvider>
-          </I18nProvider>
-        ),
-        document.querySelector("#root"),
-      )
-    `,
-  )
-
-  await build({
-    configFile: false,
-    logLevel: "silent",
-    plugins: [solidPlugin()],
-    resolve: {
-      alias: { "@ericsanchezok/synergy-plugin/theme": pluginThemePath },
-    },
-    worker: { format: "es" },
-    build: {
-      outDir: path.join(fixtureDirectory, "dist"),
-      emptyOutDir: true,
-      minify: false,
-      lib: { entry, formats: ["es"], fileName: "fixture" },
-      rollupOptions: { output: { inlineDynamicImports: true } },
-    },
-  })
-
   dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: "http://localhost/",
   })
@@ -219,48 +54,112 @@ beforeAll(async () => {
     cancelAnimationFrame: (id: number) => clearTimeout(id),
   })
 
-  await import(`${pathToFileURL(path.join(fixtureDirectory, "dist", "fixture.js")).href}?test=${Date.now()}`)
+  await import(await domFixture("session-turn-attachments-collapse.dom"))
 }, 60000)
 
-afterAll(async () => {
+afterAll(() => {
   dom?.window.close()
-  if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
 })
 
-describe("SessionTurn delivered attachment collapse", () => {
-  test("renders hidden-card attach deliveries in a default-expanded collapsible card", async () => {
-    const cards = document.querySelectorAll('[data-component="collapsible"][data-variant="tool"]')
-    expect(cards.length).toBe(1)
-
-    const attachCard = cards[0] as HTMLElement
-    expect(attachCard.hasAttribute("data-expanded")).toBe(true)
-
-    const trigger = attachCard.querySelector('[data-slot="collapsible-trigger"]') as HTMLElement
-    expect(trigger?.textContent).toContain("Add attachment")
-    expect(trigger?.textContent).toContain("meme.svg")
-
-    expect(attachCard.querySelector('[data-component="attachment-gallery"]')).toBeTruthy()
-
-    trigger.click()
-    await waitForUpdate()
-
-    expect(attachCard.hasAttribute("data-expanded")).toBe(false)
-    expect(attachCard.querySelector('[data-component="attachment-gallery"]')).toBeNull()
-  })
-
-  test("renders completed media-generation deliveries as a bare inline gallery", () => {
-    const items = document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]')
+describe("SessionTurn attachment placement", () => {
+  test("renders ordinary and generated deliverables directly while the process is closed", () => {
+    const items = document.querySelectorAll(
+      '[data-slot="session-turn-timeline-item"]:is([data-kind="tool-attachments"], [data-kind="media"])',
+    )
     expect(items.length).toBe(2)
 
-    const attachItem = items[0] as HTMLElement
-    expect(attachItem.querySelector('[data-component="collapsible"]')).toBeTruthy()
-
-    const mediaItem = items[1] as HTMLElement
-    expect(mediaItem.querySelector('[data-component="collapsible"]')).toBeNull()
-    expect(mediaItem.querySelector('[data-slot="collapsible-trigger"]')).toBeNull()
-
-    const gallery = mediaItem.querySelector('[data-component="attachment-gallery"]')
-    expect(gallery).toBeTruthy()
-    expect(mediaItem.querySelector('[data-component="attachment-card"]')).toBeTruthy()
+    for (const item of items) {
+      expect(!!item.querySelector('[data-component="collapsible"]')).toBe(false)
+      expect(item.querySelector('[data-component="attachment-gallery"]')).toBeTruthy()
+      expect(item.querySelector('[data-component="attachment-card"]')).toBeTruthy()
+    }
+    expect(!!document.querySelector('[data-slot="activity-evidence"]')?.closest('[hidden], [aria-hidden="true"]')).toBe(
+      true,
+    )
   })
+  test("expanding inspection exposes compact evidence without duplicating deliverables", async () => {
+    const trigger = document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!
+    trigger.click()
+    await waitForUpdate()
+    document.querySelector<HTMLButtonElement>('[data-slot="activity-batch-trigger"]')?.click()
+    await waitForUpdate()
+    const evidence = document.querySelector('[data-slot="activity-evidence"]')!
+    expect(evidence).toBeTruthy()
+    expect(!!evidence.closest('[hidden], [aria-hidden="true"]')).toBe(false)
+    expect(
+      evidence.querySelector('[data-component="attachment-card"][data-compact="process"]')?.getAttribute("title"),
+    ).toBe("evidence.svg")
+    expect(
+      document.querySelectorAll(
+        '[data-slot="session-turn-timeline-item"]:is([data-kind="tool-attachments"], [data-kind="media"])',
+      ),
+    ).toHaveLength(2)
+    trigger.click()
+    await waitForUpdate()
+    expect(!!evidence.closest('[hidden], [aria-hidden="true"]')).toBe(true)
+    expect(
+      document.querySelectorAll(
+        '[data-slot="session-turn-timeline-item"]:is([data-kind="tool-attachments"], [data-kind="media"])',
+      ),
+    ).toHaveLength(2)
+  })
+})
+
+test("media generation retains results but removes cancelled output without a replacement row", async () => {
+  const harness = (globalThis as typeof globalThis & { __mediaLifecycleHarness: { move: (status: string) => void } })
+    .__mediaLifecycleHarness
+  const card = document.querySelector('[data-component="media-generation-card"]')!
+  expect(Boolean(card)).toBe(true)
+  for (const status of ["pending", "generating", "running", "completed", "failed", "empty"]) {
+    harness.move(status)
+    await waitForUpdate()
+    expect(document.querySelector('[data-component="media-generation-card"]') === card).toBe(true)
+    const pending = ["pending", "generating", "running"].includes(status)
+    expect(card.getAttribute("aria-busy")).toBe(String(pending))
+    expect(Boolean(card.querySelector('[data-slot="media-generation-placeholder"]'))).toBe(pending)
+    expect(Boolean(card.querySelector('[data-component="attachment-gallery"]'))).toBe(status === "completed")
+    if (status === "failed") expect(card.textContent).toContain("Provider unavailable")
+    if (status === "empty") expect(card.textContent).toContain("No media was returned")
+  }
+  harness.move("cancelled")
+  await waitForUpdate()
+  expect(Boolean(document.querySelector('[data-component="media-generation-card"]'))).toBe(false)
+  expect(Boolean(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="media"]'))).toBe(false)
+  expect(document.body.textContent).not.toContain("Generation stopped")
+  expect(
+    document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]'),
+  ).toHaveLength(1)
+  harness.move("running")
+  await waitForUpdate()
+  expect(Boolean(document.querySelector('[data-slot="media-generation-placeholder"]'))).toBe(true)
+  harness.move("completed")
+  await waitForUpdate()
+  expect(
+    Boolean(document.querySelector('[data-component="media-generation-card"] [data-component="attachment-gallery"]')),
+  ).toBe(true)
+})
+
+test("removed media owners hide generation controls while retaining delivered attachments", async () => {
+  const harness = (
+    globalThis as typeof globalThis & {
+      __mediaLifecycleHarness: { move(status: string): void; features(value: string[] | undefined): void }
+    }
+  ).__mediaLifecycleHarness
+  for (const features of [undefined, []] as const) {
+    harness.features(features ? [...features] : undefined)
+    for (const status of ["running", "failed", "empty", "completed"]) {
+      harness.move(status)
+      await waitForUpdate()
+      expect(document.querySelector('[data-component="media-generation-card"]')).toBeNull()
+      expect(document.body.textContent).not.toContain("Generating media")
+      const media = document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="media"]')
+      expect(Boolean(media?.querySelector('[data-component="attachment-card"]'))).toBe(status === "completed")
+      expect(document.querySelector('[data-kind="tool-attachments"] [data-component="attachment-card"]')).not.toBeNull()
+    }
+  }
+  harness.features(["plugin-host", "media"])
+  harness.move("running")
+  await waitForUpdate()
+  expect(document.querySelector('[data-slot="media-generation-placeholder"]')).not.toBeNull()
+  harness.move("completed")
 })

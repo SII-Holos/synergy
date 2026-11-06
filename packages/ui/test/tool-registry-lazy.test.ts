@@ -4,7 +4,6 @@ import {
   registerTool,
   resolveExternalToolRenderer,
   resolveToolRenderer,
-  setExternalFallbackLookup,
   setExternalToolLookup,
   type ToolComponent,
 } from "../src/components/tool-registry-lazy"
@@ -38,7 +37,6 @@ function makeRegistry() {
 beforeEach(() => {
   // Reset module-level external lookup state between tests
   setExternalToolLookup(undefined as any)
-  setExternalFallbackLookup(undefined as any)
 })
 
 // ====================================================================
@@ -235,63 +233,5 @@ describe("notifyExternalToolLoaded", () => {
       externalLookup: (() => extRenderer) as any,
     })
     expect(result2).toBe(extRenderer)
-  })
-})
-
-// ====================================================================
-// setExternalFallbackLookup
-// ====================================================================
-
-describe("setExternalFallbackLookup", () => {
-  test("accepts a fallback metadata function", () => {
-    const fallbackFn = (name: string) => {
-      if (name === "custom_mcp_tool") {
-        return { icon: "beaker", title: "Custom Tool", subtitleTemplate: "{input.query}" }
-      }
-      return undefined
-    }
-
-    expect(() => setExternalFallbackLookup(fallbackFn)).not.toThrow()
-  })
-
-  test("returns correct metadata for a known tool name", () => {
-    const fallbackFn = (name: string) => {
-      if (name === "custom_mcp_tool") {
-        return { icon: "beaker", title: "Custom Tool", subtitleTemplate: "{input.query}" }
-      }
-      return undefined
-    }
-
-    setExternalFallbackLookup(fallbackFn)
-
-    const meta = fallbackFn("custom_mcp_tool")
-    expect(meta).toEqual({
-      icon: "beaker",
-      title: "Custom Tool",
-      subtitleTemplate: "{input.query}",
-    })
-  })
-
-  test("returns undefined for an unknown tool name", () => {
-    const fallbackFn = (name: string) => {
-      if (name === "known_only") return { icon: "check", title: "Known" }
-      return undefined
-    }
-
-    setExternalFallbackLookup(fallbackFn)
-
-    const meta = fallbackFn("unknown_tool")
-    expect(meta).toBeUndefined()
-  })
-
-  test("can be reset and reassigned", () => {
-    setExternalFallbackLookup((name: string) => ({ icon: "gear", title: name }))
-    setExternalFallbackLookup(undefined as any)
-
-    const newFn = (name: string) => ({ icon: "star", title: `Star: ${name}` })
-    setExternalFallbackLookup(newFn)
-
-    const meta = newFn("test_tool")
-    expect(meta).toEqual({ icon: "star", title: "Star: test_tool" })
   })
 })

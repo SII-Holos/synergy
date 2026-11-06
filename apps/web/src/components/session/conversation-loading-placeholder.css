@@ -1,0 +1,40 @@
+[data-conversation-loading-line] {
+  display: block;
+  height: 0.62em;
+  margin-block: 0.5em;
+  border-radius: 0.31em;
+  background: var(--surface-inset-strong);
+  opacity: 0.65;
+}
+
+[data-conversation-loading-sheen] {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    color-mix(in srgb, var(--workbench-canvas-bg, var(--background-stronger)) 65%, transparent) 50%,
+    transparent 75%
+  );
+  animation: conversation-loading-drift 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+[data-conversation-loading][data-active="false"] [data-conversation-loading-sheen] {
+  animation-play-state: paused;
+}
+
+@keyframes conversation-loading-drift {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-conversation-loading-sheen] {
+    display: none;
+    animation: none;
+  }
+}

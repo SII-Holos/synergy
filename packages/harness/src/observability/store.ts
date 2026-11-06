@@ -1,0 +1,1333 @@
+import { RuntimeContext } from "../lifecycle/context"
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
+import { Database } from "bun:sqlite"
+import fsSync from "fs"
+import { ObservabilityConfig } from "./config"
+import { ObservabilitySchema } from "./schema"
+import { SqliteMaintenance } from "../storage/sqlite-maintenance"
+import { ObservabilityDbSchema } from "./db-schema"
+import { ObservabilityPaths } from "./paths"
+import { ObservabilityDbWrites } from "./db-writes"
+import { ObservabilityTelemetryClient } from "./telemetry-client"
+import { TelemetryProtocol } from "./telemetry-protocol"
+import type { SqliteWorkerClient } from "../storage/sqlite-worker-client"
+import { StorageQueue } from "../storage/queue"
+import { StorageClosedError } from "../storage/errors"
+
+export namespace ObservabilityStore {
+  export const schemaVersion = ObservabilityDbSchema.schemaVersion
+  const MAX_PENDING = 10_000
+  const FLUSH_MS = 250
+  const runtimeState = RuntimeContext.state(() => ({
+    stopped: false,
+    db: undefined as Database | undefined,
+    readonlyDb: undefined as Database | undefined,
+    metricReader: undefined as { ready: Promise<SqliteWorkerClient>; queue: StorageQueue } | undefined,
+    clientActive: false,
+    checkpointTimer: undefined as ReturnType<typeof setInterval> | undefined,
+    compactTimer: undefined as ReturnType<typeof setInterval> | undefined,
+    retentionTimer: undefined as ReturnType<typeof setInterval> | undefined,
+    flushTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+    retentionQueued: false,
+    droppedJobs: 0,
+    lastOpenError: undefined as string | undefined,
+    openFailed: false,
+    capExceededBytes: 0,
+    maintenanceDeferred: false,
+    checkpointIntervalMs: undefined as number | undefined,
+    retentionIntervalMs: undefined as number | undefined,
+    pending: [] as Array<{ run: () => void; observations: number }>,
+    beforeFlushHooks: new Set<(force: boolean) => void>(),
+    drainingBuffered: false,
+    dataVersionCounter: 0,
+    runtimeReady: false,
+  }))
+
+  // Monotonic write counter so read-side caches (e.g. the dashboard summary)
+  // can invalidate when new telemetry lands instead of serving stale rows.
+  export function dataVersion() {
+    const instanceState = runtimeState()
+
+    return instanceState.dataVersionCounter
+  }
+
+  function inlineMode() {
+    return RuntimeContext.current().host.env.SYNERGY_OBSERVABILITY_INLINE === "1"
+  }
+
+  // Set once migrations complete. Before that, runtime reconfiguration must
+  // not start the telemetry worker: the migration window still needs the
+  // inline write connection, and a second write connection would race it.
+
+  export function markRuntimeReady() {
+    const instanceState = runtimeState()
+
+    instanceState.runtimeReady = true
+  }
+
+  // In worker mode the migration window is the only time the Control Plane
+  // writes directly; release that connection before the worker takes over.
+  export function releaseMigrationConnection() {
+    const instanceState = runtimeState()
+
+    if (!inlineMode() && instanceState.db) {
+      instanceState.db.close(false)
+      instanceState.db = undefined
+    }
+  }
+
+  function workerConfigFrom(config: ReturnType<typeof ObservabilityConfig.current>): TelemetryProtocol.WorkerConfig {
+    return {
+      maxSqliteBytes: config.storage.maxSqliteBytes,
+      walCheckpointIntervalMs: config.storage.walCheckpointIntervalMs,
+      metricRetentionMs: config.metricRetentionMs,
+      traceRetentionMs: config.traceRetentionMs,
+      maintenanceBudgetMs: 500,
+    }
+  }
+
+  // Worker-mode enqueue must honor the same enabled guard as the inline
+  // enqueue: telemetry produced while observability is disabled is dropped,
+  // not buffered for a later re-enable.
+  function workerEnqueue(row: TelemetryProtocol.BatchRow) {
+    if (!canEnqueue()) return
+    ObservabilityTelemetryClient.enqueue(row)
+  }
+
+  function queryConnection(): Database | undefined {
+    const instanceState = runtimeState()
+
+    if (!inlineMode()) {
+      if (!instanceState.readonlyDb) {
+        try {
+          initializeSqliteEngine()
+          const conn = new Database(pathName(), { readonly: true })
+          conn.exec("PRAGMA busy_timeout=5000")
+          instanceState.readonlyDb = conn
+        } catch {
+          return undefined
+        }
+      }
+      return instanceState.readonlyDb
+    }
+    return open()
+  }
+
+  export function stats() {
+    const instanceState = runtimeState()
+
+    if (!inlineMode()) {
+      const client = ObservabilityTelemetryClient.stats()
+      const config = ObservabilityConfig.current()
+      return {
+        pending: client.pending,
+        dropped: instanceState.droppedJobs + client.dropped,
+        uncertain: client.uncertain,
+        available: queryConnection() !== undefined,
+        lastOpenError: instanceState.lastOpenError,
+        capExceededBytes: client.capExceededBytes,
+        maintenanceDeferred: client.maintenanceDeferred,
+        checkpointIntervalMs: config.storage.walCheckpointIntervalMs,
+        retentionIntervalMs: TelemetryProtocol.RETENTION_INTERVAL_MS,
+      }
+    }
+    return {
+      pending: instanceState.pending.length,
+      dropped: instanceState.droppedJobs,
+      uncertain: 0,
+      available: !!instanceState.db,
+      lastOpenError: instanceState.lastOpenError,
+      capExceededBytes: instanceState.capExceededBytes,
+      maintenanceDeferred: instanceState.maintenanceDeferred,
+      checkpointIntervalMs: instanceState.checkpointIntervalMs,
+      retentionIntervalMs: instanceState.retentionIntervalMs,
+    }
+  }
+
+  export function beforeFlush(hook: (force: boolean) => void) {
+    const instanceState = runtimeState()
+
+    const drain = (force = false) => {
+      const previous = instanceState.drainingBuffered
+      instanceState.drainingBuffered = true
+      try {
+        hook(force)
+      } finally {
+        instanceState.drainingBuffered = previous
+      }
+    }
+    instanceState.beforeFlushHooks.add(drain)
+    const removeWorkerHook = ObservabilityTelemetryClient.beforeFlush(drain)
+    return () => {
+      instanceState.beforeFlushHooks.delete(drain)
+      removeWorkerHook()
+    }
+  }
+
+  export function accepting() {
+    return !runtimeState().stopped && ObservabilityConfig.current().enabled
+  }
+
+  function canEnqueue() {
+    // Flush hooks materialize observations accepted before configuration was disabled.
+    return accepting() || (!runtimeState().stopped && runtimeState().drainingBuffered)
+  }
+
+  export function requestFlush() {
+    if (!accepting()) return
+    if (!inlineMode()) {
+      open()
+      ObservabilityTelemetryClient.requestFlush()
+      return
+    }
+    const instanceState = runtimeState()
+    if (!instanceState.flushTimer) {
+      instanceState.flushTimer = setTimeout(flush, FLUSH_MS)
+      instanceState.flushTimer.unref()
+    }
+  }
+
+  export function dir() {
+    return ObservabilityPaths.dir()
+  }
+
+  export function pathName() {
+    return ObservabilityPaths.pathName()
+  }
+
+  export function legacyPerformancePath() {
+    return ObservabilityPaths.legacyPerformancePath()
+  }
+
+  export function open(): Database | undefined {
+    const instanceState = runtimeState()
+    if (instanceState.stopped) return
+
+    if (!inlineMode()) {
+      const config = ObservabilityConfig.current()
+      if (!config.enabled || !config.storage.sqliteEnabled) return undefined
+      if (!instanceState.runtimeReady) return undefined
+      if (!instanceState.clientActive) {
+        ObservabilityTelemetryClient.start({ dbPath: pathName(), config: workerConfigFrom(config) })
+        instanceState.clientActive = true
+      }
+      return queryConnection()
+    }
+    if (instanceState.db) return instanceState.db
+    const config = ObservabilityConfig.current()
+    if ((!config.enabled || !config.storage.sqliteEnabled) && !instanceState.drainingBuffered) return undefined
+    if (instanceState.openFailed) return undefined
+    try {
+      instanceState.db = createConnection()
+      instanceState.lastOpenError = undefined
+    } catch (error) {
+      instanceState.openFailed = true
+      instanceState.lastOpenError = error instanceof Error ? error.message : String(error)
+      return undefined
+    }
+    scheduleTimers(config)
+    queueRetention()
+    return instanceState.db
+  }
+
+  export function reconfigure() {
+    const instanceState = runtimeState()
+
+    const config = ObservabilityConfig.current()
+    if (!config.enabled || !config.storage.sqliteEnabled) {
+      return close()
+    }
+    if (!inlineMode()) {
+      if (!instanceState.runtimeReady) return
+      if (!instanceState.clientActive) {
+        ObservabilityTelemetryClient.start({ dbPath: pathName(), config: workerConfigFrom(config) })
+        instanceState.clientActive = true
+      } else {
+        ObservabilityTelemetryClient.sendReconfigure(workerConfigFrom(config))
+      }
+      return
+    }
+    clearTimers()
+    if (!instanceState.db) {
+      instanceState.openFailed = false
+      open()
+      return
+    }
+    scheduleTimers(config)
+    enforceMaxSize(instanceState.db, config.storage.maxSqliteBytes)
+  }
+
+  function scheduleTimers(config: ReturnType<typeof ObservabilityConfig.current>) {
+    const instanceState = runtimeState()
+
+    instanceState.checkpointIntervalMs = config.storage.walCheckpointIntervalMs
+    instanceState.retentionIntervalMs = Math.max(config.metricRetentionMs / 4, 60_000)
+    instanceState.checkpointTimer = setInterval(checkpointSafely, config.storage.walCheckpointIntervalMs)
+    instanceState.checkpointTimer.unref()
+    instanceState.compactTimer = setInterval(
+      maintainSizeSafely,
+      Math.min(config.storage.walCheckpointIntervalMs * 10, 600_000),
+    )
+    instanceState.compactTimer.unref()
+    instanceState.retentionTimer = setInterval(() => retain(), instanceState.retentionIntervalMs)
+    instanceState.retentionTimer.unref()
+  }
+
+  export function stop() {
+    flush(true)
+    runtimeState().stopped = true
+    return close()
+  }
+
+  export function close() {
+    const instanceState = runtimeState()
+
+    if (!inlineMode()) {
+      clearTimers()
+      flush(true)
+      instanceState.readonlyDb?.close(false)
+      instanceState.readonlyDb = undefined
+      instanceState.clientActive = false
+      const reader = instanceState.metricReader
+      instanceState.metricReader = undefined
+      return Promise.all([
+        ObservabilityTelemetryClient.stop(),
+        reader &&
+          Promise.all([
+            reader.queue.close(),
+            reader.ready.then(
+              (client) => client.close(),
+              () => {},
+            ),
+          ]),
+      ]).then(() => {})
+    }
+    // Stop every producer before draining the queue. A timer firing between
+    // flush() and close() can otherwise retain a statement and make SQLite's
+    // strict close report SQLITE_BUSY during shutdown.
+    clearTimers()
+    try {
+      flush(true)
+    } finally {
+      // A lazy flush can open the connection and schedule maintenance again.
+      clearTimers()
+    }
+    if (instanceState.db) checkpointConnectionSafely(instanceState.db)
+    // All queued writes have been committed above. Non-throwing close uses
+    // sqlite3_close_v2 semantics, so outstanding cached statements can finish
+    // without turning an otherwise clean server shutdown into an exception.
+    instanceState.db?.close(false)
+    instanceState.db = undefined
+    instanceState.openFailed = false
+  }
+
+  function clearTimers() {
+    const instanceState = runtimeState()
+
+    if (instanceState.checkpointTimer) clearInterval(instanceState.checkpointTimer)
+    if (instanceState.retentionTimer) clearInterval(instanceState.retentionTimer)
+    if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+    instanceState.checkpointTimer = undefined
+    if (instanceState.compactTimer) {
+      clearInterval(instanceState.compactTimer)
+      instanceState.compactTimer = undefined
+    }
+    instanceState.retentionTimer = undefined
+    instanceState.flushTimer = undefined
+    instanceState.checkpointIntervalMs = undefined
+    instanceState.retentionIntervalMs = undefined
+  }
+
+  export function checkpoint() {
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.sendCheckpoint()
+      return
+    }
+    const conn = open()
+    if (!conn) return
+    checkpointConnection(conn)
+  }
+
+  export function insertMetric(metric: ObservabilitySchema.Metric) {
+    const instanceState = runtimeState()
+
+    // Data version must stay frozen while disabled: the dashboard summary
+    // cache keys on it, so an increment that never persists would still
+    // defeat the cache.
+    if (!canEnqueue()) return
+    instanceState.dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "metric", row: metric })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertMetric(conn, metric)
+    })
+  }
+
+  export function insertSpan(span: ObservabilitySchema.Span) {
+    const instanceState = runtimeState()
+
+    if (!canEnqueue()) return
+    instanceState.dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "span", row: span })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.upsertSpan(conn, span)
+    })
+  }
+
+  export function updateSpan(span: ObservabilitySchema.Span) {
+    insertSpan(span)
+  }
+
+  export function insertEvent(event: ObservabilitySchema.Event) {
+    const instanceState = runtimeState()
+
+    if (!canEnqueue()) return
+    instanceState.dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "event", row: event })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertEvent(conn, event)
+    })
+  }
+
+  export function insertResource(sample: ObservabilitySchema.ResourceSample) {
+    const instanceState = runtimeState()
+
+    if (!canEnqueue()) return
+    instanceState.dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "resource", row: sample })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertResource(conn, sample)
+    })
+  }
+
+  export function insertIssue(issue: ObservabilitySchema.Issue) {
+    const instanceState = runtimeState()
+
+    if (!canEnqueue()) return
+    instanceState.dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "issue", row: issue })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertIssue(conn, issue)
+    }, issue.occurrenceCount)
+  }
+
+  export function updateIssueStatus(update: TelemetryProtocol.IssueStatusUpdate) {
+    if (!canEnqueue()) return
+    runtimeState().dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "issue-status", row: update })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.updateIssueStatus(conn, update)
+    })
+  }
+
+  export function findPersistedOpenIssue(fingerprint: string) {
+    const conn = queryConnection()
+    return conn
+      ? getRow<StoredIssue>(conn, "SELECT * FROM obs_issues WHERE fingerprint = ? AND status = 'open'", fingerprint)
+      : undefined
+  }
+
+  export function insertBrowserBatch(input: {
+    batchId: string
+    receivedTime: number
+    sentAt: number
+    accepted: number
+    rejected: number
+    page: Record<string, unknown>
+  }) {
+    const instanceState = runtimeState()
+
+    if (!canEnqueue()) return
+    instanceState.dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "browser-batch", row: input })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertBrowserBatch(conn, input)
+    })
+  }
+
+  export function queryEvents(input: ObservabilitySchema.Query = {}) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return [] as StoredEvent[]
+    const filters: string[] = []
+    const params: Array<string | number> = []
+    if (input.since !== undefined) {
+      filters.push("time >= ?")
+      params.push(input.since)
+    }
+    if (input.until !== undefined) {
+      filters.push("time < ?")
+      params.push(input.until)
+    }
+    if (input.traceId) {
+      filters.push("trace_id = ?")
+      params.push(input.traceId)
+    }
+    if (input.correlationId) {
+      filters.push("correlation_id = ?")
+      params.push(input.correlationId)
+    }
+    if (input.sessionID) {
+      filters.push("session_id = ?")
+      params.push(input.sessionID)
+    }
+    if (input.callID) {
+      filters.push("call_id = ?")
+      params.push(input.callID)
+    }
+    if (input.level) {
+      filters.push("level = ?")
+      params.push(input.level)
+    }
+    if (input.type) {
+      filters.push("type = ?")
+      params.push(input.type)
+    }
+    params.push(Math.max(1, Math.min(input.limit ?? 500, 5000)))
+    return allRows<StoredEvent>(
+      conn,
+      `SELECT * FROM obs_events ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY time DESC,event_id DESC LIMIT ?`,
+      ...params,
+    )
+  }
+
+  export function queryMetrics(opts: {
+    since: number
+    until?: number
+    names?: string[]
+    module?: string
+    scopeID?: string
+    sessionID?: string
+    tool?: string
+    providerID?: string
+    traceId?: string
+    correlationId?: string
+    limit?: number
+    newestFirst?: boolean
+  }) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return [] as StoredMetric[]
+    const { filters, params } = metricFilters(opts)
+    params.push(opts.limit ?? 10_000)
+    const order = opts.newestFirst ? "time DESC, metric_id DESC" : "time ASC, metric_id ASC"
+    return allRows<StoredMetric>(
+      conn,
+      `SELECT * FROM obs_metrics WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT ?`,
+      ...params,
+    )
+  }
+
+  function metricFilters(opts: Parameters<typeof queryMetrics>[0]) {
+    const filters = ["time >= ?"]
+    const params: Array<string | number> = [opts.since]
+    if (opts.until !== undefined) {
+      filters.push("time < ?")
+      params.push(opts.until)
+    }
+    if (opts.names?.length) {
+      filters.push(`name IN (${opts.names.map(() => "?").join(",")})`)
+      params.push(...opts.names)
+    }
+    if (opts.module) {
+      filters.push("module = ?")
+      params.push(opts.module)
+    }
+    if (opts.scopeID) {
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
+    }
+    if (opts.sessionID) {
+      filters.push("session_id = ?")
+      params.push(opts.sessionID)
+    }
+    if (opts.tool) {
+      filters.push("tool = ?")
+      params.push(opts.tool)
+    }
+    if (opts.traceId) {
+      filters.push("trace_id = ?")
+      params.push(opts.traceId)
+    }
+    if (opts.correlationId) {
+      filters.push("correlation_id = ?")
+      params.push(opts.correlationId)
+    }
+    if (opts.providerID) {
+      filters.push("(json_extract(labels_json, '$.providerID') = ? OR json_extract(labels_json, '$.provider') = ?)")
+      params.push(opts.providerID, opts.providerID)
+    }
+    return { filters, params }
+  }
+
+  export function queryMetricBuckets(opts: Parameters<typeof queryMetrics>[0] & { bucketMs: number }) {
+    const { filters, params } = metricFilters(opts)
+    return metricRows<{
+      bucket: number
+      count: number
+      sum: number
+      avg: number
+      max: number
+      latest: number
+      p50: number
+      p95: number
+      p99: number
+      errors: number
+    }>(
+      `WITH samples AS (
+      SELECT value, time, metric_id, labels_json, CAST((time - ?) / ? AS INTEGER) AS bucket
+      FROM obs_metrics WHERE ${filters.join(" AND ")}
+    ), ranked AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY value) AS rank,
+        ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY time DESC, metric_id DESC) AS recent,
+        COUNT(*) OVER (PARTITION BY bucket) AS count FROM samples
+    ) SELECT bucket, COUNT(*) AS count, SUM(value) AS sum, AVG(value) AS avg, MAX(value) AS max,
+      MAX(CASE WHEN recent = 1 THEN value END) AS latest,
+      MAX(CASE WHEN rank = CAST((count * 50 + 99) / 100 AS INTEGER) THEN value END) AS p50,
+      MAX(CASE WHEN rank = CAST((count * 95 + 99) / 100 AS INTEGER) THEN value END) AS p95,
+      MAX(CASE WHEN rank = CAST((count * 99 + 99) / 100 AS INTEGER) THEN value END) AS p99,
+      SUM(CASE WHEN CAST(json_extract(labels_json, '$.status') AS INTEGER) >= 500 THEN 1 ELSE 0 END) AS errors
+      FROM ranked GROUP BY bucket ORDER BY bucket`,
+      opts.since,
+      opts.bucketMs,
+      ...params,
+    )
+  }
+
+  export function queryMetricHighlights(opts: Parameters<typeof queryMetrics>[0]) {
+    const { filters, params } = metricFilters(opts)
+    return metricRows<StoredMetric>(
+      `WITH ranked AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY value DESC, metric_id DESC) AS slow,
+        ROW_NUMBER() OVER (PARTITION BY name, CASE WHEN name = 'frontend.web_vital' THEN json_extract(labels_json, '$.name') END ORDER BY time DESC, metric_id DESC) AS recent
+      FROM obs_metrics WHERE ${filters.join(" AND ")}
+    ) SELECT * FROM ranked WHERE slow <= 5 OR recent <= 5 ORDER BY time DESC, metric_id DESC`,
+      ...params,
+    )
+  }
+
+  export function queryMetricSums(opts: Parameters<typeof queryMetrics>[0]) {
+    const { filters, params } = metricFilters(opts)
+    return metricRows<Pick<StoredMetric, "name" | "tool" | "labels_json" | "value">>(
+      `SELECT name, tool, labels_json, SUM(value) AS value
+      FROM obs_metrics WHERE ${filters.join(" AND ")} GROUP BY name, tool, labels_json`,
+      ...params,
+    )
+  }
+
+  export function queryMetricCounts(opts: Parameters<typeof queryMetrics>[0]) {
+    const { filters, params } = metricFilters(opts)
+    return metricRows<{ name: string; module: string; count: number }>(
+      `SELECT name, module, COUNT(*) AS count FROM obs_metrics
+      WHERE ${filters.join(" AND ")} GROUP BY name, module`,
+      ...params,
+    )
+  }
+
+  export async function countMetricSessions(opts: Parameters<typeof queryMetrics>[0]) {
+    const { filters, params } = metricFilters(opts)
+    return (
+      (
+        await metricRows<{ count: number }>(
+          `SELECT COUNT(DISTINCT session_id) AS count FROM obs_metrics
+      WHERE ${filters.join(" AND ")}`,
+          ...params,
+        )
+      )[0]?.count ?? 0
+    )
+  }
+
+  export function queryMetricSeries(
+    opts: Omit<Parameters<typeof queryMetrics>[0], "names" | "limit" | "newestFirst"> & {
+      name: string
+      limit?: number
+    },
+  ) {
+    return queryMetrics({ ...opts, names: [opts.name], limit: opts.limit ?? 50_000, newestFirst: true })
+  }
+
+  export function querySpans(opts: {
+    since?: number
+    until?: number
+    activeSince?: number
+    traceId?: string
+    correlationId?: string
+    limit?: number
+    minDurationMs?: number
+    status?: string
+    scopeID?: string
+    sessionID?: string
+    module?: string
+    kind?: string
+    kinds?: string[]
+    distinctTrace?: boolean
+  }) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return [] as StoredSpan[]
+    const filters: string[] = []
+    const params: Array<string | number> = []
+    if (opts.since !== undefined) {
+      filters.push("start_time >= ?")
+      params.push(opts.since)
+    }
+    if (opts.activeSince !== undefined) {
+      filters.push("last_activity_time >= ?")
+      params.push(opts.activeSince)
+    }
+    if (opts.until !== undefined) {
+      filters.push("start_time <= ?")
+      params.push(opts.until)
+    }
+    if (opts.traceId) {
+      filters.push("trace_id = ?")
+      params.push(opts.traceId)
+    }
+    if (opts.correlationId) {
+      filters.push("correlation_id = ?")
+      params.push(opts.correlationId)
+    }
+    if (opts.minDurationMs !== undefined) {
+      filters.push("duration_ms >= ?")
+      params.push(opts.minDurationMs)
+    }
+    if (opts.status) {
+      filters.push("status = ?")
+      params.push(opts.status)
+    }
+    if (opts.scopeID) {
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
+    }
+    if (opts.sessionID) {
+      filters.push("session_id = ?")
+      params.push(opts.sessionID)
+    }
+    if (opts.module) {
+      filters.push("module = ?")
+      params.push(opts.module)
+    }
+    if (opts.kind) {
+      filters.push("kind = ?")
+      params.push(opts.kind)
+    }
+    if (opts.kinds?.length) {
+      filters.push(`kind IN (${opts.kinds.map(() => "?").join(",")})`)
+      params.push(...opts.kinds)
+    }
+    params.push(opts.limit ?? 1000)
+    if (opts.distinctTrace) {
+      return allRows<StoredSpan>(
+        conn,
+        `SELECT * FROM (
+             SELECT *, ROW_NUMBER() OVER (PARTITION BY trace_id ORDER BY start_time ASC,span_id ASC) AS trace_rank
+             FROM obs_spans ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
+           ) WHERE trace_rank = 1 ORDER BY start_time DESC LIMIT ?`,
+        ...params,
+      )
+    }
+    return allRows<StoredSpan>(
+      conn,
+      `SELECT * FROM obs_spans ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY start_time DESC LIMIT ?`,
+      ...params,
+    )
+  }
+
+  export function queryInflight(
+    opts: { activeSince?: number; limit?: number; staleMs?: number; scopeID?: string; sessionID?: string } = {},
+  ) {
+    const rows = querySpans({
+      activeSince: opts.activeSince,
+      status: "running",
+      scopeID: opts.scopeID,
+      sessionID: opts.sessionID,
+      limit: opts.limit ?? 100,
+    })
+    const now = Date.now()
+    const staleMs = opts.staleMs ?? ObservabilityConfig.current().thresholds.slowToolMs ?? 30_000
+    return rows.map((row) => ({
+      ...row,
+      age_ms: now - row.start_time,
+      idle_ms: now - (row.last_activity_time ?? row.start_time),
+      stale: now - (row.last_activity_time ?? row.start_time) >= staleMs,
+    }))
+  }
+
+  export function interruptRunningSpans(opts: { reason: "previous_runtime_ended" | "runtime_shutdown" }) {
+    if (!inlineMode()) {
+      flush()
+      ObservabilityTelemetryClient.sendInterruptSpans(opts.reason)
+      return 0
+    }
+    flush()
+    const conn = open()
+    if (!conn) return 0
+    return ObservabilityDbWrites.interruptRunningSpans(conn, opts.reason)
+  }
+
+  export function queryIssues(
+    opts: {
+      status?: string
+      severity?: string
+      module?: string
+      scopeID?: string
+      tool?: string
+      since?: number
+      until?: number
+      limit?: number
+    } = {},
+  ) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return [] as StoredIssue[]
+    const filters: string[] = []
+    const params: Array<string | number> = []
+    if (opts.status) {
+      filters.push("status = ?")
+      params.push(opts.status)
+    }
+    if (opts.severity) {
+      filters.push("severity = ?")
+      params.push(opts.severity)
+    }
+    if (opts.module) {
+      filters.push("module = ?")
+      params.push(opts.module)
+    }
+    if (opts.tool) {
+      filters.push("json_extract(evidence_json, '$.tool') = ?")
+      params.push(opts.tool)
+    }
+    if (opts.since !== undefined) {
+      filters.push("last_seen_time >= ?")
+      params.push(opts.since)
+    }
+    if (opts.until !== undefined) {
+      filters.push("last_seen_time < ?")
+      params.push(opts.until)
+    }
+    if (opts.scopeID) {
+      filters.push("(scope_id = ? OR json_extract(evidence_json, '$.scopeID') = ?)")
+      params.push(opts.scopeID, opts.scopeID)
+    }
+    params.push(opts.limit ?? 50)
+    return allRows<StoredIssue>(
+      conn,
+      `SELECT * FROM obs_issues ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY last_seen_time DESC LIMIT ?`,
+      ...params,
+    )
+  }
+  export function countIssues(opts: { status?: string; scopeID?: string; since?: number; until?: number } = {}) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return { total: 0, info: 0, warning: 0, error: 0, critical: 0 }
+    const filters: string[] = []
+    const params: Array<string | number> = []
+    if (opts.status) {
+      filters.push("status = ?")
+      params.push(opts.status)
+    }
+    if (opts.since !== undefined) {
+      filters.push("last_seen_time >= ?")
+      params.push(opts.since)
+    }
+    if (opts.until !== undefined) {
+      filters.push("last_seen_time < ?")
+      params.push(opts.until)
+    }
+    if (opts.scopeID) {
+      filters.push("(scope_id = ? OR json_extract(evidence_json, '$.scopeID') = ?)")
+      params.push(opts.scopeID, opts.scopeID)
+    }
+    const rows = allRows<{ severity: ObservabilitySchema.IssueSeverity; count: number }>(
+      conn,
+      `SELECT severity, COUNT(*) AS count FROM obs_issues ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} GROUP BY severity`,
+      ...params,
+    )
+    const result = { total: 0, info: 0, warning: 0, error: 0, critical: 0 }
+    for (const row of rows) {
+      result[row.severity] += row.count
+      result.total += row.count
+    }
+    return result
+  }
+
+  export function latestResource(opts: { scopeID?: string } = {}) {
+    flush()
+    const conn = queryConnection()
+    if (!conn) return undefined
+    if (opts.scopeID) {
+      return getRow<StoredResource>(
+        conn,
+        "SELECT * FROM obs_resource_samples WHERE scope_id = ? ORDER BY time DESC LIMIT 1",
+        opts.scopeID,
+      )
+    }
+    return getRow<StoredResource>(conn, "SELECT * FROM obs_resource_samples ORDER BY time DESC LIMIT 1")
+  }
+
+  export function resourceSince(
+    since: number,
+    opts: {
+      scopeID?: string
+      role?: ObservabilitySchema.ResourceSample["process"]["role"]
+      until?: number
+      limit?: number
+      newestFirst?: boolean
+    } = {},
+  ) {
+    flush()
+    const limit = opts.limit ?? 10_000
+    const conn = queryConnection()
+    if (!conn) return []
+    const filters = ["time >= ?"]
+    const params: SqlBinding[] = [since]
+    if (opts.until !== undefined) {
+      filters.push("time < ?")
+      params.push(opts.until)
+    }
+    if (opts.scopeID) {
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
+    }
+    if (opts.role) {
+      filters.push("process_role = ?")
+      params.push(opts.role)
+    }
+    return allRows<StoredResource>(
+      conn,
+      `SELECT * FROM obs_resource_samples WHERE ${filters.join(" AND ")} ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
+      ...params,
+      limit,
+    )
+  }
+
+  export async function resourceSummary(opts: {
+    since: number
+    until: number
+    role: ObservabilitySchema.ResourceSample["process"]["role"]
+  }) {
+    const [summary] = await metricRows<{
+      count: number
+      measuredCount: number
+      rssBytes: number | null
+      peakRssBytes: number | null
+      eventLoopLagP95Ms: number | null
+    }>(
+      `WITH ranked AS (
+        SELECT memory_rss_bytes, COALESCE(event_loop_lag_ms, 0) AS lag,
+          ROW_NUMBER() OVER (ORDER BY COALESCE(event_loop_lag_ms, 0)) AS rank,
+          COUNT(*) OVER () AS count
+        FROM obs_resource_samples WHERE process_role = ? AND time >= ? AND time < ?
+      ) SELECT COUNT(*) AS count, COUNT(memory_rss_bytes) AS measuredCount,
+        SUM(memory_rss_bytes) AS rssBytes, MAX(memory_rss_bytes) AS peakRssBytes,
+        MAX(CASE WHEN rank = CAST((count * 95 + 99) / 100 AS INTEGER) THEN lag END) AS eventLoopLagP95Ms
+        FROM ranked`,
+      opts.role,
+      opts.since,
+      opts.until,
+    )
+    return summary
+  }
+
+  export function retain(now = Date.now()) {
+    if (!inlineMode()) {
+      flush()
+      ObservabilityTelemetryClient.sendRetainNow()
+      return
+    }
+    const conn = open()
+    if (!conn) return
+    const config = ObservabilityConfig.current()
+    ObservabilityDbWrites.retain(conn, now, now - config.metricRetentionMs, now - config.traceRetentionMs)
+    enforceMaxSize(conn, config.storage.maxSqliteBytes)
+  }
+
+  export function flush(force = false) {
+    const instanceState = runtimeState()
+    const previous = instanceState.drainingBuffered
+    instanceState.drainingBuffered ||= force
+    try {
+      for (const hook of instanceState.beforeFlushHooks) hook(force)
+      if (!inlineMode()) {
+        if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+        instanceState.flushTimer = undefined
+        ObservabilityTelemetryClient.flushPending()
+        return
+      }
+      if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+      instanceState.flushTimer = undefined
+      if (!instanceState.pending.length) return
+      const conn = open()
+      if (!conn) {
+        instanceState.droppedJobs += instanceState.pending.reduce((total, job) => total + job.observations, 0)
+        instanceState.pending.length = 0
+        return
+      }
+      const jobs = instanceState.pending.splice(0, instanceState.pending.length)
+      try {
+        conn.transaction(() => {
+          for (const job of jobs) job.run()
+        })()
+      } catch {
+        instanceState.droppedJobs += jobs.reduce((total, job) => total + job.observations, 0)
+        return
+      }
+      if (instanceState.retentionQueued) {
+        instanceState.retentionQueued = false
+        retain()
+      } else {
+        enforceMaxSize(conn, ObservabilityConfig.current().storage.maxSqliteBytes)
+      }
+    } finally {
+      instanceState.drainingBuffered = previous
+    }
+  }
+
+  export function meta() {
+    const conn = queryConnection()
+    return conn ? allRows<ObservabilityMetaRow>(conn, "SELECT key,value FROM obs_meta ORDER BY key ASC") : []
+  }
+
+  export function initializeForMigration() {
+    const instanceState = runtimeState()
+
+    // Migration runs before the worker starts, so it always uses the inline
+    // write connection regardless of the runtime mode.
+    if (instanceState.db) return instanceState.db
+    const conn = createConnection()
+    instanceState.db = conn
+    return conn
+  }
+
+  export function enableIncrementalVacuumForMigration() {
+    const conn = initializeForMigration()
+    SqliteMaintenance.enableIncrementalVacuum(conn)
+  }
+
+  function createConnection() {
+    fsSync.mkdirSync(ObservabilityPaths.dir(), { recursive: true })
+    const fresh = !fsSync.existsSync(ObservabilityPaths.pathName())
+    initializeSqliteEngine()
+    const conn = new Database(ObservabilityPaths.pathName(), { create: true })
+    ObservabilityDbSchema.configureWriteConnection(conn, fresh)
+    return conn
+  }
+
+  function checkpointSafely() {
+    const conn = open()
+    if (!conn) return
+    checkpointConnectionSafely(conn)
+  }
+
+  function maintainSizeSafely() {
+    try {
+      const conn = open()
+      if (!conn) return
+      enforceMaxSize(conn, ObservabilityConfig.current().storage.maxSqliteBytes)
+    } catch {}
+  }
+
+  function checkpointConnectionSafely(conn: Database) {
+    try {
+      checkpointConnection(conn)
+    } catch {}
+  }
+
+  function checkpointConnection(conn: Database) {
+    ObservabilityDbWrites.checkpoint(conn)
+  }
+
+  function enqueue(job: () => void, observations = 1) {
+    const instanceState = runtimeState()
+
+    if (!canEnqueue()) return
+    if (instanceState.pending.length >= MAX_PENDING) {
+      const dropCount = Math.max(1, Math.floor(MAX_PENDING / 10))
+      const dropped = instanceState.pending.splice(0, dropCount)
+      instanceState.droppedJobs += dropped.reduce((total, item) => total + item.observations, 0)
+    }
+    instanceState.pending.push({ run: job, observations })
+    requestFlush()
+  }
+
+  function queueRetention() {
+    const instanceState = runtimeState()
+
+    if (instanceState.stopped) return
+    instanceState.retentionQueued = true
+    if (!instanceState.flushTimer) {
+      instanceState.flushTimer = setTimeout(flush, FLUSH_MS)
+      instanceState.flushTimer.unref()
+    }
+  }
+
+  function enforceMaxSize(conn: Database, maxBytes: number) {
+    const instanceState = runtimeState()
+
+    try {
+      const result = SqliteMaintenance.enforce({
+        db: conn,
+        path: pathName(),
+        maxBytes,
+        tables: ObservabilityDbSchema.SIZE_CAP_TABLES,
+        budgetMs: 500,
+      })
+      instanceState.capExceededBytes = result.capExceededBytes
+      instanceState.maintenanceDeferred = result.deferred ?? false
+    } catch {}
+  }
+
+  type SqlBinding = string | number | bigint | boolean | null | Uint8Array
+
+  async function metricRows<Row>(sql: string, ...params: SqlBinding[]): Promise<Row[]> {
+    flush()
+    if (inlineMode()) {
+      const conn = queryConnection()
+      return conn ? allRows<Row>(conn, sql, ...params) : []
+    }
+    const state = runtimeState()
+    if (state.stopped) throw new StorageClosedError()
+    if (!state.metricReader) {
+      if (!fsSync.existsSync(pathName())) return []
+      const queue = new StorageQueue("observability.reader")
+      // The supervised client records telemetry; load it after the observability module graph has initialized.
+      const ready = import("../storage/sqlite-worker-client").then(async ({ SqliteWorkerClient }) => {
+        const client = new SqliteWorkerClient("observability-reader")
+        client.onUnavailable(() => {
+          if (state.metricReader?.queue === queue) state.metricReader = undefined
+          void queue.close()
+        })
+        try {
+          await client.request({ action: "open", filename: pathName(), readonly: true })
+          await client.request({ action: "query", statement: "PRAGMA mmap_size = 0" })
+          await client.request({ action: "query", statement: "PRAGMA cache_size = -8192" })
+          return client
+        } catch (error) {
+          await client.close()
+          throw error
+        }
+      })
+      const reader = { ready, queue }
+      state.metricReader = reader
+      void ready.catch(() => {
+        if (state.metricReader === reader) state.metricReader = undefined
+        void queue.close()
+      })
+    }
+    const reader = state.metricReader
+    return reader.queue.run(async () => {
+      const client = await reader.ready
+      const { rows } = await client.request({
+        action: "query",
+        statement: sql,
+        cacheStatement: false,
+        values: params.map((value) => (typeof value === "boolean" ? Number(value) : value)),
+      })
+      return rows.map((row) =>
+        Object.fromEntries(
+          Object.entries(row).map(([key, value]) => [key, typeof value === "bigint" ? Number(value) : value]),
+        ),
+      ) as Row[]
+    })
+  }
+
+  function allRows<Row>(conn: Database, sql: string, ...params: SqlBinding[]): Row[] {
+    const statement = conn.prepare(sql)
+    try {
+      return statement.all(...params) as Row[]
+    } finally {
+      statement.finalize()
+    }
+  }
+
+  function getRow<Row>(conn: Database, sql: string, ...params: SqlBinding[]): Row | undefined {
+    const statement = conn.prepare(sql)
+    try {
+      return statement.get(...params) as Row | undefined
+    } finally {
+      statement.finalize()
+    }
+  }
+
+  export interface StoredMetric {
+    metric_id: string
+    time: number
+    name: string
+    value: number
+    unit: ObservabilitySchema.Unit
+    source: ObservabilitySchema.Source
+    module: ObservabilitySchema.Module
+    correlation_id?: string | null
+    scope_id?: string | null
+    session_id?: string | null
+    message_id?: string | null
+    call_id?: string | null
+    trace_id?: string | null
+    span_id?: string | null
+    parent_span_id?: string | null
+    rid?: string | null
+    process_id?: string | null
+    pid?: number | null
+    tool?: string | null
+    labels_json: string
+    sample_rate: number
+  }
+
+  export interface StoredSpan {
+    trace_id: string
+    correlation_id?: string | null
+    span_id: string
+    parent_span_id?: string | null
+    kind: ObservabilitySchema.SpanKind
+    name: string
+    module: ObservabilitySchema.Module
+    source: ObservabilitySchema.Source
+    start_time: number
+    end_time?: number | null
+    duration_ms?: number | null
+    last_activity_time?: number | null
+    heartbeat_time?: number | null
+    heartbeat_count?: number | null
+    stalled?: number | null
+    status: ObservabilitySchema.SpanStatus
+    error_code?: string | null
+    error_message?: string | null
+    scope_id?: string | null
+    session_id?: string | null
+    message_id?: string | null
+    call_id?: string | null
+    rid?: string | null
+    process_id?: string | null
+    pid?: number | null
+    tool?: string | null
+    attributes_json: string
+    redaction_json?: string | null
+  }
+
+  export interface StoredEvent {
+    event_id: string
+    time: number
+    iso: string
+    type: string
+    level?: ObservabilitySchema.EventLevel | null
+    correlation_id?: string | null
+    trace_id?: string | null
+    span_id?: string | null
+    parent_span_id?: string | null
+    session_id?: string | null
+    message_id?: string | null
+    call_id?: string | null
+    tool?: string | null
+    process_id?: string | null
+    pid?: number | null
+    cwd?: string | null
+    scope_id?: string | null
+    rid?: string | null
+    source: ObservabilitySchema.Source
+    module: ObservabilitySchema.Module
+    data_json: string
+    redaction_json?: string | null
+  }
+
+  export interface StoredResource {
+    sample_id: string
+    time: number
+    iso: string
+    source: ObservabilitySchema.Source
+    correlation_id?: string | null
+    trace_id?: string | null
+    scope_id?: string | null
+    session_id?: string | null
+    pid?: number | null
+    process_id?: string | null
+    process_role?: string | null
+    cpu_user_micros?: number | null
+    cpu_system_micros?: number | null
+    cpu_utilization_ratio?: number | null
+    memory_rss_bytes?: number | null
+    memory_heap_total_bytes?: number | null
+    memory_heap_used_bytes?: number | null
+    memory_external_bytes?: number | null
+    memory_array_buffers_bytes?: number | null
+    event_loop_lag_ms?: number | null
+    event_loop_sample_window_ms?: number | null
+    app_read_bytes?: number | null
+    app_written_bytes?: number | null
+    app_read_ops?: number | null
+    app_write_ops?: number | null
+    os_read_bytes?: number | null
+    os_written_bytes?: number | null
+    os_available?: number | null
+    cgroup_current_bytes?: number | null
+    cgroup_high_bytes?: number | null
+    cgroup_max_bytes?: number | null
+    cgroup_peak_bytes?: number | null
+    cgroup_oom_count?: number | null
+    cgroup_oom_kill_count?: number | null
+    service_memory_rss_bytes?: number | null
+    service_memory_source?: "cgroup_v2" | "process_api" | null
+    service_memory_completeness?: "full" | "partial" | null
+    labels_json?: string | null
+    redaction_json?: string | null
+  }
+
+  export interface StoredIssue {
+    issue_id: string
+    time: number
+    iso: string
+    severity: ObservabilitySchema.IssueSeverity
+    status: ObservabilitySchema.IssueStatus
+    code: string
+    title: string
+    message: string
+    recommendation?: string | null
+    module: ObservabilitySchema.Module
+    correlation_id?: string | null
+    trace_id?: string | null
+    span_id?: string | null
+    scope_id?: string | null
+    session_id?: string | null
+    message_id?: string | null
+    call_id?: string | null
+    rid?: string | null
+    evidence_json: string
+    first_seen_time: number
+    last_seen_time: number
+    occurrence_count: number
+    fingerprint: string
+    redaction_json?: string | null
+  }
+
+  export interface ObservabilityMetaRow {
+    key: string
+    value: string
+  }
+}

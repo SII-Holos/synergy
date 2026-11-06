@@ -1,0 +1,15 @@
+Manage background Bash processes in the current Session Environment using the returned processId.
+
+- list: running and recently finished processes.
+- poll: status and recent output; nonblocking by default. block: true waits for exit or timeoutSeconds (seconds, default 30). This is a wait window, not an execution deadline.
+- log: available full output, with offset/limit pagination; returns immediately.
+- write: raw stdin data. send-keys: key sequences.
+- kill: terminate. clear: remove a finished process. remove: kill if running, then remove.
+
+Continue independent work while a process runs. Check only when the result can change a decision. If completion gates progress and no independent work remains, use a suitable blocking poll (for example timeoutSeconds: 300). For persistent services, check readiness instead of waiting for exit.
+
+Running means alive, not progressing. If input is requested or a wait gives no progress evidence and interaction/stalled dependencies are plausible, inspect relevant output or process state once; redirected output may be in a log file. Confirmed quiet work can keep waiting. Supply input only when known and authorized; otherwise surface the missing decision. Do not kill/rerun because a wait ends, guess confirmations, or replace repeated polls with shell status loops.
+
+Ending a turn does not schedule a later check; use delayed follow-up only if the runtime provides it. Subagent completion already sends an automatic notification.
+
+send-keys tokens: literal characters; Enter, Tab, Escape, Space, Backspace; Up, Down, Left, Right; Ctrl as C-c/C-d/C-z; Alt as M-x; F1–F12.

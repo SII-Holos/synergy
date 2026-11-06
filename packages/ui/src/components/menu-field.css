@@ -1,0 +1,175 @@
+.menu-field-trigger {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.625rem;
+  background: var(--menu-field-control-bg, var(--workbench-control-bg, var(--surface-inset-base)));
+  padding: 0 0.725rem;
+  color: var(--text-base);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 18px;
+  box-shadow: none;
+  border: 0;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.menu-field-trigger:hover:not(:disabled) {
+  background: var(--menu-field-control-bg-hover, var(--workbench-control-bg-hover, var(--surface-inset-base-hover)));
+  color: var(--text-base);
+}
+
+.menu-field-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.menu-field-trigger[aria-expanded="true"] {
+  background: var(--menu-field-control-bg-hover, var(--workbench-control-bg-hover, var(--surface-inset-base-hover)));
+  color: var(--text-base);
+}
+
+.menu-field-value {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-field-chevron {
+  flex-shrink: 0;
+  color: var(--icon-weak);
+  transition: transform var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+.menu-field-trigger[aria-expanded="true"] .menu-field-chevron {
+  transform: rotate(180deg);
+}
+
+.menu-field-surface {
+  z-index: 70;
+  min-width: min(max(9rem, var(--kb-popper-anchor-width, 0px)), calc(100vw - 24px));
+  width: max-content;
+  max-width: min(calc(100vw - 24px), var(--kb-popper-content-available-width, 100vw));
+  max-height: min(24rem, var(--kb-popper-content-available-height, calc(100dvh - 24px)));
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid var(--menu-field-border, var(--workbench-border, var(--border-weaker-base)));
+  background: var(--menu-field-popover-bg, var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha)));
+  padding: 4px;
+  box-shadow: var(--shadow-popover);
+  outline: none;
+  scrollbar-width: thin;
+  transform-origin: var(--kb-popover-content-transform-origin);
+}
+
+.menu-field-surface[data-expanded] {
+  animation: popover-open var(--motion-duration-base) var(--motion-ease-emphasized);
+}
+
+.menu-field-surface[data-closed] {
+  animation: popover-close var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.menu-field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.menu-field-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-base);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.menu-field-item:hover:not([data-disabled]),
+.menu-field-item[data-highlighted]:not([data-disabled]) {
+  background: var(
+    --menu-field-control-bg-hover,
+    var(--workbench-control-bg-hover, var(--surface-raised-stronger-hover))
+  );
+}
+
+.menu-field-item[data-selected] {
+  color: var(--text-strong);
+}
+
+.menu-field-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.menu-field-item-mark,
+.menu-field-item-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--icon-strong-base);
+}
+
+.menu-field-count {
+  flex-shrink: 0;
+  color: var(--text-weaker);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.menu-field-item[data-disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 639px), (pointer: coarse) {
+  .menu-field-trigger,
+  .menu-field-item {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-field-surface[data-expanded],
+  .menu-field-surface[data-closed] {
+    animation: none;
+  }
+
+  .menu-field-trigger,
+  .menu-field-chevron,
+  .menu-field-item {
+    transition: none;
+  }
+}

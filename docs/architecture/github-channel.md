@@ -1,12 +1,12 @@
 # GitHub Channel
 
-The GitHub channel turns a GitHub account (a GitHub App installation) into a Synergy Channel, like Feishu or Clarus. It polls the GitHub REST API outbound using GitHub App installation tokens, synthesizes repository events into conversation messages, and runs an agentic loop that reviews pull requests, answers questions, and fixes issues — posting results back as GitHub comments.
+The GitHub channel turns a GitHub account (a GitHub App installation) into a Synergy Channel, like Feishu. It polls the GitHub REST API outbound using GitHub App installation tokens, synthesizes repository events into conversation messages, and runs an agentic loop that reviews pull requests, answers questions, and fixes issues — posting results back as GitHub comments.
 
 The channel reuses the standard Channel runtime: providers register through `Channel.registerProvider()`, inbound events flow through `ChannelHost.conversations.receive()`, sessions are persisted per issue/PR thread under the Channel navigation section, and replies are delivered by `ChannelOutbound` through the provider's `replyMessage`/`pushMessage`.
 
 ## Why a channel (migration from the legacy integration)
 
-The former first-party GitHub integration (`packages/synergy/src/github/`) used a bespoke delivery store, gate, worker, and Cortex-anchored subagents. It was migrated into a channel provider so GitHub reuses the same lifecycle, session persistence, sidebar projection, diagnostics, and settings UI as Feishu/Clarus:
+The GitHub provider in `packages/channel-github/src/channel/provider/github/` uses the shared Channel lifecycle, session persistence, sidebar projection, diagnostics and settings UI:
 
 - **Lifecycle** — the provider connects when the account is enabled; polling loops start and stop with the account; status surfaces in Settings → Channels.
 - **Sessions** — every issue/PR thread maps to one persistent channel Session (endpoint `channel:github:<accountId>:chat:<owner/repo>#<number>`), so the sidebar shows the whole conversation history and follow-up comments continue the same thread.
@@ -102,6 +102,10 @@ Each issue/PR thread resolves to a deterministic random-hash directory under `wo
 - For issue threads, checks out the default branch and pulls `--ff-only` on reuse.
 - Binds the directory with `Scope.fromDirectory(directory, { persist: true })` and records the mapping in the account workspace index (`data/channel/providers/github/accounts/<hash>/workspaces/index/...`).
 
+The polling watermark and seen-event state advance only after all synthesized events settle their acceptance phase. Checkout contention or failed preparation retains the prior state and first-poll lookback; retries reuse deterministic message IDs.
+
+Each checkout record retains its canonical Workspace ID. The Channel-owned global migration assigns references to historical local records before provider startup; imports retain their unavailable historical bindings. Refresh and expiry hold native retirement ownership and use the owned Git process path; active sessions or processes prevent directory replacement. Rebuilding a verified expired checkout preserves the ID and advances its binding generation, including when the filesystem reuses the deleted directory's physical identifier. Refreshing an existing checkout preserves its generation. Uncommitted files, local-only commits, replaced directories, and unverified imported records are retained. A failed unpublished clone is removed only while its captured physical identity still belongs to the operation. Home transfer remaps the record's Workspace reference with its owning catalog.
+
 The channel core calls the provider's `resolveConversationScope()` per message, so the Session for each thread is created inside its own Scope. Sessions are therefore isolated: a review of PR #3 cannot read or modify another thread's checkout.
 
 ## Conversation flow
@@ -117,7 +121,7 @@ Status reactions are mapped to GitHub's reaction set (`eyes` while queued/workin
 
 When the agent fixes an issue, the fix is delivered as a pull request by default. The agent creates one focused local commit on a branch named `synergy/fix/<issue-number>-<slug>`, then calls the `github_deliver_fix` tool with the branch name, a concise title, and a body. The provider:
 
-1. Verifies the session is bound to a GitHub channel thread and the workspace checkout exists.
+1. Pins the Session selection, verifies that the checkout is its selected Workspace, and retains the native binding through delivery.
 2. Resolves the repository default branch as the PR base.
 3. Resolves the supplied ref to its canonical local branch (rejecting symbolic refs such as `HEAD`, which would push whatever branch is checked out), then rejects the request when that branch is the repository base branch itself — delivery must use a dedicated fix branch so the provider never pushes directly to the default branch.
 4. Verifies the branch has at least one commit beyond the comparison ref: the fetched PR head for PR threads (so pushing the unchanged PR back is never reported as a delivery), otherwise the repository base branch.

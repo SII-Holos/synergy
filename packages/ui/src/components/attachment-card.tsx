@@ -1,16 +1,28 @@
-import { createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import {
+  createComputed,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onMount,
+  Show,
+  Switch,
+  type JSX,
+} from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
-import { useDialog } from "../context/dialog"
-import { useResourceOpen } from "../context/resource-open"
+import { useReferenceContext, useResourceOpen } from "../context/resource-open"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
-import { ImagePreview } from "./image-preview"
 import { getSemanticIcon } from "./semantic-icon"
+import { AttachmentRows } from "./attachment-rows"
 import {
   attachmentColumns,
   attachmentMeta,
   isHtmlAttachment,
   isPdfAttachment,
+  isImageAttachment,
   resolveAttachmentPresentation,
   resolveAttachmentOpenTarget,
   resolveAttachmentThumbnailUrl,
@@ -21,6 +33,10 @@ import {
 import type { ImagePreviewImage } from "./image-preview-model"
 export type { AttachmentFile } from "./attachment-card-utils"
 export {
+  attachmentCopyReference,
+  attachmentDocumentContext,
+  attachmentReferenceContext,
+  attachmentFromReference,
   attachmentColumnCount,
   attachmentColumns,
   attachmentKind,
@@ -33,6 +49,12 @@ export {
   resolveAttachmentUrl,
   resolveImagePreviewImage,
 } from "./attachment-card-utils"
+import {
+  claimSpeakAutoplay,
+  finishSpeakAutoplay,
+  rememberSpeakPlaybackPosition,
+  speakPlaybackPosition,
+} from "./session-turn-speak-autoplay"
 
 const previewImageDescriptor = { id: "ui.attachment.previewImage", message: "Preview {filename}" }
 const openAttachmentDescriptor = { id: "ui.attachment.openAttachment", message: "Open {filename}" }
@@ -41,34 +63,129 @@ export function AttachmentCard(props: {
   file: AttachmentFile
   serverUrl: string
   imagePreview?: { images: ImagePreviewImage[]; index: number }
+  autoplay?: boolean
+  autoplayKey?: string
+  compact?: "draft" | "user" | "process"
+  details?: boolean
+  singleImage?: boolean
+  onOpen?: (file: AttachmentFile) => void
 }) {
   const { _ } = useLingui()
-  const dialog = useDialog()
   const resourceOpen = useResourceOpen()
+  const referenceContext = useReferenceContext()
   const [imageFailed, setImageFailed] = createSignal(false)
   const url = createMemo(() => resolveAttachmentUrl(props.serverUrl, props.file))
   const thumbnailUrl = createMemo(() => resolveAttachmentThumbnailUrl(props.serverUrl, props.file))
+  const [originalPreview, setOriginalPreview] = createSignal(false)
+  const [imageDimensions, setImageDimensions] = createSignal<{ width: number; height: number }>()
+  createEffect(() => {
+    url()
+    thumbnailUrl()
+    setOriginalPreview(false)
+    setImageFailed(false)
+    setImageDimensions(undefined)
+  })
+  const imageSrc = () => (originalPreview() ? url() : (thumbnailUrl() ?? url()))
+  const imageStyle = () => {
+    if (!props.singleImage) return undefined
+    const thumbnail = props.file.metadata?.thumbnail as { width?: number; height?: number } | undefined
+    const dimensions = imageDimensions() ?? thumbnail
+    if (!dimensions?.width || !dimensions.height) return undefined
+    const scale = Math.min(240 / dimensions.width, 180 / dimensions.height)
+    return {
+      "--attachment-image-width": `${dimensions.width * scale}px`,
+      "aspect-ratio": `${dimensions.width} / ${dimensions.height}`,
+    }
+  }
+  const previewLoaded = (event: Event & { currentTarget: HTMLImageElement }) => {
+    const image = event.currentTarget
+    if (image.naturalWidth && image.naturalHeight)
+      setImageDimensions({ width: image.naturalWidth, height: image.naturalHeight })
+    if (image.src === url() || originalPreview() || !thumbnailUrl()) return
+    const bounds = image.getBoundingClientRect()
+    const density = window.devicePixelRatio || 1
+    if (image.naturalWidth < bounds.width * density || image.naturalHeight < bounds.height * density)
+      setOriginalPreview(true)
+  }
+  const previewFailed = () => {
+    if (!originalPreview() && thumbnailUrl() && thumbnailUrl() !== url()) setOriginalPreview(true)
+    else setImageFailed(true)
+  }
   const presentation = createMemo(() => resolveAttachmentPresentation(props.file))
   const filename = createMemo(() => props.file.filename ?? (isPdfAttachment(props.file) ? "file.pdf" : "file"))
-  const meta = createMemo(() => attachmentMeta(props.file))
+  const meta = createMemo(() =>
+    attachmentMeta(props.compact ? { ...props.file, mime: props.file.mime.split(";")[0]!.trim() } : props.file),
+  )
+  const [mounted, setMounted] = createSignal(false)
+  let audioRef: HTMLAudioElement | undefined
+
+  onMount(() => setMounted(true))
+
+  // Speech the agent decided to announce (speak tool) plays on its own when
+  // its freshly generated card renders, and keeps playing across the turn
+  // settlement re-projection that remounts the card while audio is in
+  // flight. Qualification is sticky in the tracker until the clip ends or
+  // the user pauses, so a remounted card resumes from the remembered
+  // position instead of silencing or restarting. Browsers may reject play()
+  // without a user gesture — controls remain for manual playback.
+  let autoplayWired = false
+  const wireAutoplayEvents = (key: string) => {
+    if (autoplayWired) return
+    autoplayWired = true
+    const element = audioRef
+    if (!element) return
+    const remember = () => rememberSpeakPlaybackPosition(key, element.currentTime)
+    const finish = () => finishSpeakAutoplay(key)
+    element.addEventListener("timeupdate", remember)
+    element.addEventListener("ended", finish)
+    element.addEventListener("pause", finish)
+  }
+
+  createEffect(() => {
+    if (!props.autoplay || !mounted()) return
+    const renderer = presentation().renderer
+    const audioUrl = url()
+    if (renderer !== "audio" || !audioUrl) return
+    const element = audioRef
+    if (!element) return
+    if (props.autoplayKey !== undefined && !claimSpeakAutoplay(props.autoplayKey)) return
+    if (props.autoplayKey !== undefined) {
+      wireAutoplayEvents(props.autoplayKey)
+      const resumeAt = speakPlaybackPosition(props.autoplayKey)
+      if (resumeAt > 0 && (!element.duration || resumeAt < element.duration - 0.5)) {
+        element.currentTime = resumeAt
+      }
+    }
+    void element.play().catch(() => {})
+  })
+
   const openAttachment = () => {
-    const preview = props.imagePreview
-    if (preview) {
-      const images = preview.images.map((image) => ({
-        ...image,
-        sourcePath: resourceOpen?.resolveWorkspacePath?.(image.sourcePath),
-      }))
-      dialog.show(() => <ImagePreview images={images} initialIndex={preview.index} />)
+    if (props.onOpen) {
+      props.onOpen(props.file)
       return
     }
-    if (resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl })) return
-    const href = url()
-    if (!href) return
-    window.open(href, "_blank", "noopener,noreferrer")
+    if (resourceOpen) {
+      void resourceOpen.open(
+        { kind: "attachment", file: props.file, serverUrl: props.serverUrl },
+        {
+          prefer: props.compact === "user" ? "workspace" : "preview",
+          context: referenceContext() ?? { state: "unresolved" },
+          imagePreview: props.imagePreview,
+        },
+      )
+    }
   }
 
   const size = () => presentation().size
-  const crop = () => (presentation().crop ? "true" : "false")
+  const crop = () => (!props.details && presentation().crop ? "true" : "false")
+  const mediaDetails = () => (
+    <Show when={props.details}>
+      <span data-slot="attachment-card-body">
+        <span data-slot="attachment-card-filename">{filename()}</span>
+        <span data-slot="attachment-card-meta">{meta()}</span>
+      </span>
+    </Show>
+  )
 
   return (
     <Switch
@@ -83,11 +200,48 @@ export function AttachmentCard(props: {
         />
       }
     >
-      <Match when={presentation().renderer === "image" && url() && !imageFailed()}>
+      <Match when={props.compact}>
+        <button
+          type="button"
+          data-component="attachment-card"
+          data-compact={props.compact}
+          data-type={isImageAttachment(props.file) ? "image" : "file"}
+          data-single-image={props.singleImage ? "" : undefined}
+          data-image-failed={imageFailed() ? "" : undefined}
+          style={imageStyle()}
+          aria-label={_({ ...openAttachmentDescriptor, values: { filename: filename() } })}
+          title={filename()}
+          onClick={openAttachment}
+        >
+          <Show
+            when={isImageAttachment(props.file) && url() && !imageFailed()}
+            fallback={
+              <>
+                <span data-slot="attachment-card-preview">
+                  <FileIcon node={{ path: filename(), type: "file" }} />
+                </span>
+                <span data-slot="attachment-card-body">
+                  <span data-slot="attachment-card-filename" class="attachment-compact-filename">
+                    <span>
+                      {filename().includes(".") ? filename().slice(0, filename().lastIndexOf(".")) : filename()}
+                    </span>
+                    <span>{filename().includes(".") ? filename().slice(filename().lastIndexOf(".")) : ""}</span>
+                  </span>
+                  <span data-slot="attachment-card-meta">{meta()}</span>
+                </span>
+              </>
+            }
+          >
+            <img src={imageSrc()} alt={filename()} loading="lazy" onLoad={previewLoaded} onError={previewFailed} />
+          </Show>
+        </button>
+      </Match>
+      <Match when={!props.compact && presentation().renderer === "image" && url() && !imageFailed()}>
         <button
           type="button"
           data-component="attachment-card"
           data-type="image"
+          data-details={props.details ? "" : undefined}
           data-size={size()}
           data-crop={crop()}
           aria-label={_({ ...previewImageDescriptor, values: { filename: filename() } })}
@@ -95,11 +249,19 @@ export function AttachmentCard(props: {
           onClick={openAttachment}
         >
           <img src={url()!} alt={filename()} loading="lazy" onError={() => setImageFailed(true)} />
+          {mediaDetails()}
         </button>
       </Match>
-      <Match when={presentation().renderer === "video" && url()}>
-        <div data-component="attachment-card" data-type="video" data-size={size()} data-crop={crop()}>
+      <Match when={!props.compact && presentation().renderer === "video" && url()}>
+        <div
+          data-component="attachment-card"
+          data-type="video"
+          data-size={size()}
+          data-crop={crop()}
+          data-details={props.details ? "" : undefined}
+        >
           <video src={url()} controls preload="metadata" title={filename()} />
+          {mediaDetails()}
           <button
             type="button"
             data-slot="attachment-card-open"
@@ -111,7 +273,7 @@ export function AttachmentCard(props: {
           </button>
         </div>
       </Match>
-      <Match when={presentation().renderer === "audio" && url()}>
+      <Match when={!props.compact && presentation().renderer === "audio" && url()}>
         <div data-component="attachment-card" data-type="audio" data-size={size()}>
           <span data-slot="attachment-card-preview">
             <FileIcon node={{ path: filename(), type: "file" }} />
@@ -119,7 +281,7 @@ export function AttachmentCard(props: {
           <span data-slot="attachment-card-body">
             <span data-slot="attachment-card-filename">{filename()}</span>
             <span data-slot="attachment-card-meta">{meta()}</span>
-            <audio src={url()} controls preload="metadata" />
+            <audio ref={audioRef} src={url()} controls preload="metadata" />
           </span>
           <button
             type="button"
@@ -132,7 +294,7 @@ export function AttachmentCard(props: {
           </button>
         </div>
       </Match>
-      <Match when={presentation().renderer === "thumbnail" && thumbnailUrl() && !imageFailed()}>
+      <Match when={!props.compact && presentation().renderer === "thumbnail" && thumbnailUrl() && !imageFailed()}>
         <button
           type="button"
           data-component="attachment-card"
@@ -175,7 +337,12 @@ function FileAttachmentCard(props: {
         <FileIcon node={{ path: props.filename, type: "file" }} />
       </span>
       <span data-slot="attachment-card-body">
-        <span data-slot="attachment-card-filename">{props.filename}</span>
+        <span data-slot="attachment-card-filename" class="attachment-compact-filename" title={props.filename}>
+          <span>
+            {props.filename.includes(".") ? props.filename.slice(0, props.filename.lastIndexOf(".")) : props.filename}
+          </span>
+          <span>{props.filename.includes(".") ? props.filename.slice(props.filename.lastIndexOf(".")) : ""}</span>
+        </span>
         <span data-slot="attachment-card-meta">{props.meta}</span>
       </span>
       <Show when={props.url}>
@@ -238,52 +405,106 @@ function DynamicAttachmentLink(props: {
 }
 
 interface AttachmentGalleryEntry {
+  key: string
   file: AttachmentFile
   imagePreview?: ImagePreviewImage
   imagePreviewIndex?: number
 }
 
-export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: string; align?: "start" | "end" }) {
+export function AttachmentGallery(props: {
+  files: AttachmentFile[]
+  serverUrl: string
+  align?: "start" | "end"
+  autoplay?: boolean
+  autoplayKey?: string
+  layout?: "columns" | "rows"
+  compact?: "draft" | "user" | "process"
+  details?: boolean
+  expanded?: boolean
+  onExpandedChange?: (value: boolean) => void
+  onOpen?: (file: AttachmentFile) => void
+}) {
   const visibleFiles = createMemo(() => props.files.filter((file) => !resolveAttachmentPresentation(file).hidden))
-  const entries = createMemo<AttachmentGalleryEntry[]>(() => {
+  const [entries, setEntries] = createStore<AttachmentGalleryEntry[]>([])
+  createComputed(() => {
     let previewIndex = 0
-    return visibleFiles().map((file, index) => {
-      const imagePreview = resolveImagePreviewImage(props.serverUrl, file, index)
-      if (!imagePreview) return { file }
-      return { file, imagePreview, imagePreviewIndex: previewIndex++ }
-    })
+    setEntries(
+      reconcile(
+        visibleFiles().map((file, index) => {
+          const key = file.id ?? `${index}:${file.url ?? file.assetId ?? file.filename}`
+          const imagePreview = resolveImagePreviewImage(props.serverUrl, file, index)
+          if (!imagePreview) return { key, file }
+          return { key, file, imagePreview, imagePreviewIndex: previewIndex++ }
+        }),
+        { key: "key" },
+      ),
+    )
   })
   const previewImages = createMemo(() =>
-    entries()
-      .map((entry) => entry.imagePreview)
-      .filter((image): image is ImagePreviewImage => Boolean(image)),
+    entries.map((entry) => entry.imagePreview).filter((image): image is ImagePreviewImage => Boolean(image)),
   )
-  const columns = createMemo(() => attachmentColumns(entries()))
+  const columns = createMemo(() => (props.details && entries.length ? [entries] : attachmentColumns(entries)))
   return (
-    <Show when={columns().length > 0}>
-      <div data-component="attachment-gallery" data-columns={columns().length} data-align={props.align ?? "start"}>
-        <div data-slot="attachment-column-layout">
-          <For each={columns()}>
-            {(column) => (
-              <div data-slot="attachment-column">
-                <For each={column}>
-                  {(entry) => (
-                    <AttachmentCard
-                      file={entry.file}
-                      serverUrl={props.serverUrl}
-                      imagePreview={
-                        entry.imagePreviewIndex !== undefined
-                          ? { images: previewImages(), index: entry.imagePreviewIndex }
-                          : undefined
-                      }
-                    />
-                  )}
-                </For>
-              </div>
+    <Show
+      when={props.layout !== "rows"}
+      fallback={
+        <div data-component="attachment-gallery" data-align={props.align ?? "start"} data-compact={props.compact}>
+          <AttachmentRows items={entries} expanded={props.expanded} onExpandedChange={props.onExpandedChange}>
+            {(entry) => (
+              <AttachmentCard
+                file={entry.file}
+                serverUrl={props.serverUrl}
+                compact={props.compact}
+                details={props.details}
+                singleImage={props.compact === "user" && visibleFiles().length === 1 && isImageAttachment(entry.file)}
+                onOpen={props.onOpen}
+                imagePreview={
+                  entry.imagePreviewIndex !== undefined
+                    ? { images: previewImages(), index: entry.imagePreviewIndex! }
+                    : undefined
+                }
+              />
             )}
-          </For>
+          </AttachmentRows>
         </div>
-      </div>
+      }
+    >
+      <Show when={columns().length > 0}>
+        <div
+          data-component="attachment-gallery"
+          data-columns={columns().length}
+          data-align={props.align ?? "start"}
+          data-compact={props.compact}
+          data-details={props.details ? "" : undefined}
+        >
+          <div data-slot="attachment-column-layout">
+            <For each={columns()}>
+              {(column) => (
+                <div data-slot="attachment-column">
+                  <For each={column}>
+                    {(entry) => (
+                      <AttachmentCard
+                        file={entry.file}
+                        serverUrl={props.serverUrl}
+                        autoplay={props.autoplay}
+                        autoplayKey={props.autoplay ? props.autoplayKey : undefined}
+                        onOpen={props.onOpen}
+                        compact={props.compact}
+                        details={props.details}
+                        imagePreview={
+                          entry.imagePreviewIndex !== undefined
+                            ? { images: previewImages(), index: entry.imagePreviewIndex }
+                            : undefined
+                        }
+                      />
+                    )}
+                  </For>
+                </div>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
     </Show>
   )
 }

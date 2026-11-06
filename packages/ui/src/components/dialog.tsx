@@ -1,6 +1,8 @@
+import { OverlayLayerProvider } from "../context/overlay-layer"
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
-import { ComponentProps, JSXElement, Match, ParentProps, Show, Switch } from "solid-js"
+import { createSignal, ComponentProps, JSXElement, Match, ParentProps, Show, Switch, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { Dynamic } from "solid-js/web"
 import { Icon } from "./icon"
 
 const dialogCloseDescriptor = { id: "ui.dialog.close", message: "Close dialog" }
@@ -13,6 +15,10 @@ export interface DialogProps extends ParentProps {
   title?: JSXElement
   description?: JSXElement
   action?: JSXElement
+  initialFocus?: () => HTMLElement | undefined
+  footer?: JSXElement
+  onEscapeKeyDown?: (event: KeyboardEvent) => void
+  onCloseRequest?: () => void
   dismissible?: boolean
   size?: DialogSize
   placement?: DialogPlacement
@@ -22,59 +28,90 @@ export interface DialogProps extends ParentProps {
 
 export function Dialog(props: DialogProps) {
   const { _ } = useLingui()
+  const [layer, setLayer] = createSignal<HTMLElement>()
+  let autofocusFrame: number | undefined
+  onCleanup(() => {
+    if (autofocusFrame !== undefined) cancelAnimationFrame(autofocusFrame)
+  })
   return (
     <div data-component="dialog" data-size={props.size ?? "content"} data-placement={props.placement ?? "center"}>
       <div data-slot="dialog-container">
-        <Kobalte.Content
-          aria-label={props.ariaLabel}
-          data-slot="dialog-content"
-          onEscapeKeyDown={(e) => {
-            if (props.dismissible === false) e.preventDefault()
-          }}
-          onPointerDownOutside={(e) => {
-            if (props.dismissible === false) e.preventDefault()
-          }}
-          onInteractOutside={(e) => {
-            if (props.dismissible === false) e.preventDefault()
-          }}
-          classList={{
-            ...(props.classList ?? {}),
-            [props.class ?? ""]: !!props.class,
-          }}
-          onOpenAutoFocus={(e) => {
-            const target = e.currentTarget as HTMLElement | null
-            const autofocusEl = target?.querySelector("[autofocus]") as HTMLElement | null
-            if (autofocusEl) {
-              e.preventDefault()
-              autofocusEl.focus()
-            }
-          }}
-        >
-          <Show when={props.title || props.action}>
-            <div data-slot="dialog-header">
-              <Show when={props.title}>
-                <Kobalte.Title data-slot="dialog-title">{props.title}</Kobalte.Title>
-              </Show>
-              <Switch>
-                <Match when={props.action}>{props.action}</Match>
-                <Match when={true}>
-                  <Kobalte.CloseButton
-                    aria-label={_(dialogCloseDescriptor)}
-                    data-slot="dialog-close-button"
-                    data-component="icon-button"
-                    data-variant="ghost"
-                  >
-                    <Icon name="x" size="small" />
-                  </Kobalte.CloseButton>
-                </Match>
-              </Switch>
-            </div>
-          </Show>
-          <Show when={props.description}>
-            <Kobalte.Description data-slot="dialog-description">{props.description}</Kobalte.Description>
-          </Show>
-          <div data-slot="dialog-body">{props.children}</div>
-        </Kobalte.Content>
+        <OverlayLayerProvider layer={layer}>
+          <Kobalte.Content
+            ref={setLayer}
+            aria-label={props.ariaLabel}
+            data-slot="dialog-content"
+            onEscapeKeyDown={(e) => {
+              if (e.defaultPrevented) return
+              if (props.dismissible === false) e.preventDefault()
+              props.onEscapeKeyDown?.(e)
+              if (!e.defaultPrevented && props.onCloseRequest) {
+                e.preventDefault()
+                props.onCloseRequest()
+              }
+            }}
+            onPointerDownOutside={(e) => {
+              if (props.dismissible === false) e.preventDefault()
+              else if (props.onCloseRequest) {
+                e.preventDefault()
+                props.onCloseRequest()
+              }
+            }}
+            onInteractOutside={(e) => {
+              if (props.dismissible === false || props.onCloseRequest) e.preventDefault()
+            }}
+            classList={{
+              ...(props.classList ?? {}),
+              [props.class ?? ""]: !!props.class,
+            }}
+            onOpenAutoFocus={(e) => {
+              const target = layer()
+              const autofocusEl = props.initialFocus?.() ?? target?.querySelector<HTMLElement>("[autofocus]")
+              if (autofocusEl) {
+                e.preventDefault()
+                autofocusFrame = requestAnimationFrame(() => {
+                  if (autofocusEl.isConnected) autofocusEl.focus({ preventScroll: true })
+                })
+              }
+            }}
+          >
+            <Show when={props.title || props.action}>
+              <div data-slot="dialog-header">
+                <Show when={props.title}>
+                  <Kobalte.Title data-slot="dialog-title">{props.title}</Kobalte.Title>
+                </Show>
+                <Switch>
+                  <Match when={props.action}>{props.action}</Match>
+                  <Match when={true}>
+                    <Dynamic
+                      component={props.onCloseRequest ? "button" : Kobalte.CloseButton}
+                      type="button"
+                      onClick={(event: MouseEvent) => {
+                        if (props.onCloseRequest) {
+                          event.preventDefault()
+                          props.onCloseRequest()
+                        }
+                      }}
+                      aria-label={_(dialogCloseDescriptor)}
+                      data-slot="dialog-close-button"
+                      data-component="icon-button"
+                      data-variant="ghost"
+                    >
+                      <Icon name="x" size="small" />
+                    </Dynamic>
+                  </Match>
+                </Switch>
+              </div>
+            </Show>
+            <Show when={props.description}>
+              <Kobalte.Description data-slot="dialog-description">{props.description}</Kobalte.Description>
+            </Show>
+            <div data-slot="dialog-body">{props.children}</div>
+            <Show when={props.footer}>
+              <div data-slot="dialog-footer">{props.footer}</div>
+            </Show>
+          </Kobalte.Content>
+        </OverlayLayerProvider>
       </div>
     </div>
   )

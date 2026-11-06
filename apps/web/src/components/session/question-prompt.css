@@ -1,0 +1,108 @@
+.question-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.question-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 18px;
+  &:empty {
+    display: none;
+  }
+}
+.question-options {
+  display: grid;
+  gap: 8px;
+}
+.question-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 1px solid var(--workbench-border, var(--border-weak-base));
+  border-radius: 8px;
+  color: var(--text-base);
+  background: var(--workbench-row-bg, var(--surface-base));
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+  &:hover {
+    background: var(--workbench-row-bg-hover, var(--surface-base-hover));
+  }
+  &[data-selected] {
+    background: var(--workbench-selected-bg, var(--surface-interactive-selected));
+    border-color: var(--border-interactive-base);
+  }
+  &:focus-visible,
+  &:focus-within {
+    background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
+  }
+  &:disabled,
+  &:has(input:disabled) {
+    cursor: default;
+  }
+}
+.question-option input,
+.question-custom-source input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--icon-interactive-base);
+}
+.question-option > [data-component="icon"] {
+  flex: none;
+  align-self: center;
+  margin-inline-start: auto;
+  color: var(--icon-weak-base);
+}
+.question-option-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.question-option-label {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.question-option-description {
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 18px;
+}
+.question-custom-source {
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.question-prompt [data-component="input"] textarea {
+  min-height: 64px;
+  max-height: 120px;
+  resize: vertical;
+}
+@media (pointer: coarse) {
+  .question-option {
+    min-height: 44px;
+  }
+  .question-custom-source {
+    min-height: 44px;
+    align-items: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .question-option {
+    transition: none;
+  }
+}

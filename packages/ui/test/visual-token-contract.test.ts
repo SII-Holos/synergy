@@ -122,7 +122,7 @@ const P0_UI_FILES = [
 ]
 
 /** P0 app-side CSS files covered by the visual token contract */
-const P0_APP_FILES = ["../app/src/components/prompt-input/quick-actions.css"]
+const P0_APP_FILES = ["../../apps/web/src/components/prompt-input/quick-actions.css"]
 
 // ── Valid reference set (post-implementation target) ─────────
 
@@ -184,6 +184,7 @@ function buildP0ValidTokenSet(): Set<string> {
     "radius-2xl",
     "shadow-xs",
     "shadow-md",
+    "shadow-dialog",
     "shadow-lg",
     "shadow-xs-border",
     "shadow-xs-border-base",
@@ -206,6 +207,7 @@ function buildP0ValidTokenSet(): Set<string> {
 
   // Local component-scoped tokens
   const localTokens = [
+    "conversation-reading-max-width",
     "workbench-canvas-bg",
     "workbench-panel-bg",
     "workbench-panel-bg-hover",
@@ -323,21 +325,21 @@ describe("Visual Token Contract", () => {
   describe("1b. Static theme fallback preserves neutral workbench surfaces", () => {
     test("light fallback keeps raised surfaces brighter than the canvas", async () => {
       const css = extractLightFallbackBlock(await readThemeCss())
-      expectCustomPropValue(css, "background-stronger", "#FAFAFA")
+      expectCustomPropValue(css, "background-stronger", "#F8F8F7")
       expectCustomPropValue(css, "surface-raised-base", "#FFFFFF")
       expectCustomPropValue(css, "surface-raised-strong", "#FFFFFF")
       expectCustomPropValue(css, "surface-raised-stronger", "#FFFFFF")
       expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#FFFFFF")
-      expectCustomPropValue(css, "surface-inset-base", "#F4F4F5")
+      expectCustomPropValue(css, "surface-inset-base", "#F0F0F0")
     })
 
     test("dark fallback makes raised content brighter than the canvas", async () => {
       const css = extractDarkFallbackBlock(await readThemeCss())
-      expectCustomPropValue(css, "background-stronger", "#0F0F10")
-      expectCustomPropValue(css, "surface-raised-base", "#1B1B1D")
-      expectCustomPropValue(css, "surface-raised-strong", "#222326")
-      expectCustomPropValue(css, "surface-raised-stronger", "#2A2B2F")
-      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#2A2B2F")
+      expectCustomPropValue(css, "background-stronger", "#1B1B1B")
+      expectCustomPropValue(css, "surface-raised-base", "#242424")
+      expectCustomPropValue(css, "surface-raised-strong", "#292929")
+      expectCustomPropValue(css, "surface-raised-stronger", "#313131")
+      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#272727")
     })
   })
 
@@ -413,7 +415,7 @@ describe("Visual Token Contract", () => {
     })
 
     test("quick-actions.css pill 元素使用 --radius-full", async () => {
-      const css = await readFileSafe("../app/src/components/prompt-input/quick-actions.css")
+      const css = await readFileSafe("../../apps/web/src/components/prompt-input/quick-actions.css")
       const radiusFullRefs = (css.match(/var\(--radius-full\)/g) || []).length
       expect(radiusFullRefs, "quick-actions.css 的 pill 元素应使用 var(--radius-full)").toBeGreaterThan(0)
     })

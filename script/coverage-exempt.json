@@ -1,370 +1,24 @@
 {
   "packages": {
-    "packages/synergy": {
-      "command": "bun run script/coverage-run.ts",
+    "apps/desktop": {
+      "command": "bun run test:coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
-        "lines": 75,
-        "functions": 75
+        "lines": 60,
+        "functions": 50
       },
       "exempt": [
         {
-          "glob": "src/acp/types.ts",
-          "reason": "types-only declarations, no runtime logic"
+          "glob": "src/main.ts",
+          "reason": "Electron main-process entry; launches the full desktop runtime"
         },
         {
-          "glob": "src/agenda/store.ts",
-          "reason": "agenda store requires the full scheduler runtime"
-        },
-        {
-          "glob": "src/agent/prompt/types.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/browser/driver.ts",
-          "reason": "requires a real browser runtime"
-        },
-        {
-          "glob": "src/browser/page.ts",
-          "reason": "requires a real browser runtime"
-        },
-        {
-          "glob": "src/browser/types.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/channel/provider/feishu/api-context.ts",
-          "reason": "channel providers require live external services"
-        },
-        {
-          "glob": "src/channel/provider/feishu/feishu-types.ts",
-          "reason": "channel providers require live external services"
-        },
-        {
-          "glob": "src/channel/provider/feishu/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/channel/provider/feishu/svg-raster-worker.ts",
-          "reason": "channel providers require live external services"
-        },
-        {
-          "glob": "src/channel/provider/github/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/channel/provider/github/poll.ts",
-          "reason": "channel providers require live external services"
-        },
-        {
-          "glob": "src/cli/cmd/auth.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/cli/cmd/channel.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/cli/cmd/config.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/cli/cmd/mcp.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/cli/cmd/plugin.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/cli/cmd/run.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/cli/cmd/stats.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/cli/cmd/uninstall.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/config/import.ts",
-          "reason": "not exercised by the unit suite; requires full runtime or external service"
-        },
-        {
-          "glob": "src/config/setup.ts",
-          "reason": "not exercised by the unit suite; requires full runtime or external service"
-        },
-        {
-          "glob": "src/control-profile/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/control-profile/types.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/daemon/launchd.ts",
-          "reason": "OS daemon integration (launchd/schtasks/systemd)"
-        },
-        {
-          "glob": "src/daemon/schtasks.ts",
-          "reason": "OS daemon integration (launchd/schtasks/systemd)"
-        },
-        {
-          "glob": "src/email/imap.ts",
-          "reason": "requires live IMAP/SMTP service"
-        },
-        {
-          "glob": "src/external-agent/adapter/claude-code.ts",
-          "reason": "external agent adapters require live subprocesses or agents"
-        },
-        {
-          "glob": "src/external-agent/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/holos/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/holos/startup.ts",
-          "reason": "requires live Holos control plane"
-        },
-        {
-          "glob": "src/lattice/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/library/stats/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/lsp/server.ts",
-          "reason": "LSP server requires the full language-service runtime"
-        },
-        {
-          "glob": "src/migration/types.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/note/store.ts",
-          "reason": "note store requires the full storage runtime"
-        },
-        {
-          "glob": "src/observability/telemetry-worker.ts",
-          "reason": "telemetry worker is spawned as a child process"
-        },
-        {
-          "glob": "src/performance/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/permission/toml/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/plugin-runtime/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/plugin-runtime/runner.ts",
-          "reason": "plugin runtime requires a live plugin process"
-        },
-        {
-          "glob": "src/plugin/runtime-policy.ts",
-          "reason": "plugin runtime requires a live plugin process"
-        },
-        {
-          "glob": "src/process/pty.ts",
-          "reason": "process/PTY handling requires real child-process runtime"
-        },
-        {
-          "glob": "src/provider/anthropic-oauth.ts",
-          "reason": "requires live external provider or API credentials"
-        },
-        {
-          "glob": "src/provider/codex.ts",
-          "reason": "requires live external provider or API credentials"
-        },
-        {
-          "glob": "src/provider/grok.ts",
-          "reason": "requires live external provider or API credentials"
-        },
-        {
-          "glob": "src/provider/models-macro.ts",
-          "reason": "compile-time Bun macro (import ... with { type: 'macro' }); inlined during bundling, never executed under the runtime coverage instrument"
-        },
-        {
-          "glob": "src/remote/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/sandbox/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/sandbox/readiness.ts",
-          "reason": "sandbox enforcement requires a real OS sandbox environment"
-        },
-        {
-          "glob": "src/sandbox/types.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/server/runtime.ts",
-          "reason": "HTTP server runtime requires full server bootstrap"
-        },
-        {
-          "glob": "src/server/server.ts",
-          "reason": "HTTP server runtime requires full server bootstrap"
-        },
-        {
-          "glob": "src/session/agent-turn/runner.ts",
-          "reason": "session/LLM-loop runtime requires the full model pipeline"
-        },
-        {
-          "glob": "src/session/invoke.ts",
-          "reason": "session/LLM-loop runtime requires the full model pipeline"
-        },
-        {
-          "glob": "src/session/processor.ts",
-          "reason": "session/LLM-loop runtime requires the full model pipeline"
-        },
-        {
-          "glob": "src/session/tool-resolver.ts",
-          "reason": "session/LLM-loop runtime requires the full model pipeline"
-        },
-        {
-          "glob": "src/setup/service.ts",
-          "reason": "system service setup (interactive or privileged)"
-        },
-        {
-          "glob": "src/tool/process/shared.ts",
-          "reason": "tool implementations require live tool runtime context"
-        },
-        {
-          "glob": "src/project/tools/session-control.ts",
-          "reason": "tool implementations require live tool runtime context"
+          "glob": "src/browser-page-preload.ts",
+          "reason": "Electron page preload is compiled and exercised by test/browser-runtime-smoke.test.ts for prompt defaults, text, empty acceptance and cancellation; child Electron execution does not contribute coverage to Bun."
         }
       ]
     },
-    "packages/util": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": []
-    },
-    "packages/browser": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": []
-    },
-    "packages/plugin": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": []
-    },
-    "packages/plugin-kit": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": [
-        {
-          "glob": "src/commands/publish-market.ts",
-          "reason": "not exercised by the unit suite; requires full runtime or external service"
-        }
-      ]
-    },
-    "packages/synergy-link": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": [
-        {
-          "glob": "src/cli.ts",
-          "reason": "not exercised by the unit suite; requires full runtime or external service"
-        }
-      ]
-    },
-    "packages/synergy-link-protocol": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": []
-    },
-    "packages/sdk/js": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": [
-        {
-          "glob": "src/gen/client/client.gen.ts",
-          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
-        },
-        {
-          "glob": "src/gen/client/types.gen.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/gen/client/utils.gen.ts",
-          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
-        },
-        {
-          "glob": "src/gen/core/bodySerializer.gen.ts",
-          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
-        },
-        {
-          "glob": "src/gen/core/pathSerializer.gen.ts",
-          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
-        },
-        {
-          "glob": "src/gen/core/queryKeySerializer.gen.ts",
-          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
-        },
-        {
-          "glob": "src/gen/core/serverSentEvents.gen.ts",
-          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
-        },
-        {
-          "glob": "src/gen/core/types.gen.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/gen/core/utils.gen.ts",
-          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
-        },
-        {
-          "glob": "src/gen/sdk.gen.ts",
-          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
-        }
-      ]
-    },
-    "packages/app": {
+    "apps/web": {
       "command": "bun run test -- --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
@@ -397,8 +51,8 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
-          "glob": "src/components/agenda/expand.ts",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+          "glob": "src/components/agenda/details.tsx",
+          "reason": "Schedule details, slow run history, pause/enable actions and origin dismissal are exercised by test/components/execution/task-details.dom.test.tsx and test/components/agenda/agenda-interaction.dom.test.tsx in Vite/Chromium; Bun cannot attribute that execution to the TSX source."
         },
         {
           "glob": "src/components/agenda/form.tsx",
@@ -417,6 +71,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/agenda/session-item-dialog.tsx",
+          "reason": "Captured-client dialog requests, slow history, stale responses and sequential actions after the task popover closes are exercised by test/components/execution/task-details.dom.test.tsx; Vite/Chromium execution is outside Bun source coverage."
+        },
+        {
           "glob": "src/components/agenda/shared.ts",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -430,6 +88,10 @@
         },
         {
           "glob": "src/components/app-shell/desktop-native-titlebar.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/app-shell/desktop-power-sync.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
@@ -453,10 +115,6 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
-          "glob": "src/components/app-shell/mobile-tools-drawer.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
           "glob": "src/components/attachment-workbench/content.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -471,6 +129,10 @@
         {
           "glob": "src/components/dialog/dialog-connect-provider.tsx",
           "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-environment.tsx",
+          "reason": "Rendered in Playwright by test/components/dialog/environment-dialog.dom.test.ts, covering conditional selection, stable creation retries, drafts and recovery; browser execution does not contribute to Bun coverage."
         },
         {
           "glob": "src/components/dialog/dialog-scope-edit.tsx",
@@ -509,12 +171,32 @@
           "reason": "barrel re-export"
         },
         {
+          "glob": "src/components/digital-twin/composer.tsx",
+          "reason": "Fresh completion events, absent/reinstalled capability, held responses, draft/source/model/Session changes and IME are exercised by test/components/digital-twin/composer.dom.test.ts in Vite/Chromium; Bun cannot attribute browser execution to TSX. The request state machine has direct behavioral coverage."
+        },
+        {
+          "glob": "src/components/digital-twin/settings.tsx",
+          "reason": "Both settings, defaults, keyboard switching and manual prediction with automatic mode disabled are rendered in test/components/digital-twin/composer.dom.test.ts; Vite/Chromium execution is outside Bun source coverage."
+        },
+        {
+          "glob": "src/components/digital-twin/copy.ts",
+          "reason": "Localized descriptors are exercised by the rendered Digital Twin browser suite and the localization extraction gate; browser-bundled modules are outside Bun coverage."
+        },
+        {
           "glob": "src/components/dialog/project-directory-picker.tsx",
           "reason": "dialogs require interactive flows"
         },
         {
+          "glob": "src/components/file-workbench/close-dialog.tsx",
+          "reason": "Save, discard, cancel, dismissal and focus return are verified by test/components/dialog/file-entry-dialog.dom.test.ts with the real shared dialog provider in Chromium; Bun cannot instrument the Vite renderer's TSX source. File save failures and draft revisions remain measured in test/context/file/close-policy.test.ts."
+        },
+        {
           "glob": "src/components/file-workbench/content.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/file-workbench/entry-actions.tsx",
+          "reason": "Inline naming, conflicts, captured entry versions, clipboard copy/move, resource remounts and Desktop path copying are exercised by test/components/file-workbench/explorer-restore.dom.test.ts in Vite/Chromium. Bun cannot attribute that renderer execution to the TSX source; package coverage thresholds remain unchanged."
         },
         {
           "glob": "src/components/file-workbench/explorer.tsx",
@@ -555,10 +237,6 @@
         {
           "glob": "src/components/kanban/pane/pane.tsx",
           "reason": "UI component not rendered by the unit suite; exercised through the dev app board view"
-        },
-        {
-          "glob": "src/components/holos/agent-actions.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
           "glob": "src/components/lattice/lattice-config-dialog.tsx",
@@ -613,12 +291,8 @@
           "reason": "prompt input requires a live editor runtime"
         },
         {
-          "glob": "src/components/prompt-input/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/components/prompt-input/light-loop-submit-control.tsx",
-          "reason": "prompt input requires a live editor runtime"
+          "glob": "src/components/prompt-input/pending-attachment-card.tsx",
+          "reason": "Rendered by test/components/prompt-input/pending-attachment-card.dom.test.tsx in Playwright; browser execution is outside Bun lcov instrumentation"
         },
         {
           "glob": "src/components/prompt-input/permission-modes.ts",
@@ -641,7 +315,7 @@
           "reason": "prompt input requires a live editor runtime"
         },
         {
-          "glob": "src/components/prompt-input/prompt-input.tsx",
+          "glob": "src/components/prompt-input/prompt-controller.tsx",
           "reason": "prompt input requires a live editor runtime"
         },
         {
@@ -665,6 +339,14 @@
           "reason": "types-only declarations, no runtime logic"
         },
         {
+          "glob": "src/components/prompt-input/use-voice-dictation.tsx",
+          "reason": "voice dictation requires a live editor runtime and microphone access"
+        },
+        {
+          "glob": "src/components/prompt-input/voice-dictation-browser.ts",
+          "reason": "Browser MediaRecorder and OfflineAudioContext bindings are exercised with real Chromium audio in test/components/settings/panels/VoicePanel.test.ts. Vite/browser execution does not contribute to Bun lcov; recorder state and audio conversion remain measured by voice-dictation.test.ts and voice-dictation-audio.test.ts."
+        },
+        {
           "glob": "src/components/prompt-input/worktree-unavailable-dialog.tsx",
           "reason": "prompt input requires a live editor runtime"
         },
@@ -678,6 +360,10 @@
         },
         {
           "glob": "src/components/provider/model-manager.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/provider/model-unavailable-notice.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
@@ -705,12 +391,28 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/conversation-presentation.tsx",
+          "reason": "test/components/session/conversation-presentation.dom.test.ts exercises retained outgoing frames, superseded navigation, Scope boundaries, admission continuity and reduced motion in Chromium. Composer and toolbar browser suites also compose this real presentation layer; Vite/browser execution does not contribute Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/conversation-loading-placeholder.tsx",
+          "reason": "test/components/session/conversation-loading-placeholder.dom.test.ts renders the real ConversationViewport in Chromium and asserts the waiting column's left edge and width against the arriving transcript, its absent body text, the hidden status message, the first line's optical centre matching the admitted first paragraph, the last line clearing the pane bottom edge, and a still shape under reduced motion. Vite/browser execution does not contribute Bun source LCOV."
+        },
+        {
           "glob": "src/components/session/conversation-viewport.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
           "glob": "src/components/session/conversation.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-preparation.tsx",
+          "reason": "Solid presentation is exercised in test/components/session/session-preparation.dom.test.tsx with real Chromium, readiness gating, retries, quarantine, navigation/server cancellation and reactive localization. Bun cannot instrument Vite/browser execution; session-preparation-controller.ts remains measured by unit tests."
+        },
+        {
+          "glob": "src/components/session/session-tag-menu.tsx",
+          "reason": "Rendered by test/components/session/session-tag-menu.dom.test.tsx in real Chromium, covering failed-save input retention, serialized pending edits, delayed events, localization and Escape dismissal. Bun cannot instrument Vite/browser execution; session-tag-filter.ts remains measured by unit tests."
         },
         {
           "glob": "src/components/session/dialog-fork-confirm.tsx",
@@ -770,39 +472,35 @@
         },
         {
           "glob": "src/components/session/session-progress-dag.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+          "reason": "DAG navigation, inspector, retained viewport and lifecycle run in session-activity.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
         },
         {
           "glob": "src/components/session/session-progress-island.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+          "reason": "Progress expansion, adaptive dialog, keyboard focus and geometry run in session-activity.dom.test.tsx and decision-surface.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
         },
         {
           "glob": "src/components/session/session-progress-panel.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+          "reason": "Reactive progress lifecycle, child waits, disconnect and retained graph run in session-activity.dom.test.tsx through Vite and Chromium; pure summaries remain measured."
         },
         {
           "glob": "src/components/session/session-progress-todo.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+          "reason": "Read-only Todo status and wrapping run in session-activity.dom.test.tsx through Vite and Chromium; pure summaries remain measured."
+        },
+        {
+          "glob": "src/components/session/session-submission-status.tsx",
+          "reason": "test/components/session/session-submission-status.dom.test.ts verifies current submission phases, locale changes, prompt retention, structured errors and keyboard retry in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/session-surface-focus.tsx",
+          "reason": "Solid focus context is exercised in test/components/session/decision-surface.dom.test.tsx; Bun cannot instrument Vite/Chromium execution."
         },
         {
           "glob": "src/components/session/session-review-tab.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
-          "glob": "src/components/session/session-timeline.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-transition-card.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
-          "glob": "src/components/session/session-transition-progress-steps.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
-        },
-        {
           "glob": "src/components/session/subagent-dock.tsx",
-          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+          "reason": "Pointer and keyboard cancellation, navigation, interruption and retry run in session-activity.dom.test.tsx through Vite and Chromium; Bun cannot instrument the browser bundle."
         },
         {
           "glob": "src/components/session/subagent-session-footer.tsx",
@@ -821,11 +519,15 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
-          "glob": "src/components/settings/components/AccountToggleCard.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+          "glob": "src/components/settings/panels/BrowserPanel.tsx",
+          "reason": "test/components/settings/browser-settings.dom.test.tsx renders the two-action Settings page, navigation/search/deep-link gating and immediate dialogs in Chromium; Vite TSX execution is outside Bun LCOV. Capability and context lifecycle remain measured by browser-settings.test.ts and browser-data-context.test.ts."
         },
         {
-          "glob": "src/components/settings/components/BasicAccountToggleCard.tsx",
+          "glob": "src/components/settings/browser-profile-data-dialog.tsx",
+          "reason": "test/components/settings/browser-settings.dom.test.tsx exercises the actual profile dialog, captured target, password metadata, reconnect removal and retained Settings drafts in Chromium; Bun cannot instrument Vite's TSX bundle. Context creation and release remain measured by browser-data-context.test.ts."
+        },
+        {
+          "glob": "src/components/settings/components/AccountToggleCard.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
@@ -837,8 +539,8 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
-          "glob": "src/components/settings/components/ModelVariantPicker.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+          "glob": "src/components/provider/model-thinking-picker.tsx",
+          "reason": "shared picker renders through Solid/browser; browser tests cover selection, layering, keyboard and focus"
         },
         {
           "glob": "src/components/settings/components/PasswordField.tsx",
@@ -854,10 +556,6 @@
         },
         {
           "glob": "src/components/settings/components/SegmentPill.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
-        },
-        {
-          "glob": "src/components/settings/components/SettingRow.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
@@ -877,8 +575,8 @@
           "reason": "barrel re-export"
         },
         {
-          "glob": "src/components/settings/panels/AccountPanel.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+          "glob": "src/components/settings/panels/SecretsPanel.tsx",
+          "reason": "Settings JSX composes authenticated SDK lifecycle actions and locale/dialog providers; draft and policy behavior is covered by secrets-panel-model.test.ts"
         },
         {
           "glob": "src/components/settings/panels/ArchivedSessionsPanel.tsx",
@@ -898,6 +596,14 @@
         },
         {
           "glob": "src/components/settings/panels/ConfigFilesPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/CustomProviderEditor.tsx",
+          "reason": "test/components/settings/settings-resource-flows.dom.test.tsx mounts the real editor in Chromium and verifies independent custom creation, explicit limits and capabilities, retained drafts, disabled-account recovery, and credential/read retries without duplicate config writes. Browser execution does not contribute to Bun LCOV; custom-provider-model.ts and provider-setup-drafts.ts remain measured by unit tests."
+        },
+        {
+          "glob": "src/components/settings/panels/DevicePushBlock.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
@@ -925,6 +631,10 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/LanguageToolsPanel.tsx",
+          "reason": "Rendered by test/components/settings/settings-details.dom.test.tsx for owner-specific formatter configuration and selected-project status. Vite/browser execution does not contribute to Bun lcov."
+        },
+        {
           "glob": "src/components/settings/panels/McpPanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
@@ -935,6 +645,14 @@
         {
           "glob": "src/components/settings/panels/PersonalizePanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/ProviderAccountEditor.tsx",
+          "reason": "test/components/settings/settings-resource-flows.dom.test.tsx mounts the real editor in Chromium and verifies default/named account updates, remark and credential draft isolation, saved-write refresh recovery, discard confirmation and keyboard geometry. Vite/browser execution is outside Bun source LCOV; the account command and draft controller remain measured by unit tests."
+        },
+        {
+          "glob": "src/components/settings/panels/ProviderAdditionalAccountSetup.tsx",
+          "reason": "test/components/settings/settings-resource-flows.dom.test.tsx mounts the actual component in Chromium and verifies explicit connection creation, stable retry identity, sibling authentication, retained drafts and cancellation. Vite/browser execution is outside Bun source LCOV; the account command and draft controller remain measured by unit tests."
         },
         {
           "glob": "src/components/settings/panels/ProvidersPanel.tsx",
@@ -953,11 +671,11 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
-          "glob": "src/components/settings/panels/SynergyLinkPanel.tsx",
+          "glob": "src/components/settings/panels/UsagePanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
-          "glob": "src/components/settings/panels/UsagePanel.tsx",
+          "glob": "src/components/settings/panels/VoicePanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
@@ -1013,6 +731,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/status-bar/upgrade-status.tsx",
+          "reason": "Solid view composes server, SDK and locale contexts; polling, completion, retries and disposal are covered in upgrade-status-controller.test.ts"
+        },
+        {
           "glob": "src/components/terminal/index.ts",
           "reason": "barrel re-export"
         },
@@ -1033,10 +755,6 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
-          "glob": "src/components/workspace/browser/agent-assistant.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
-        },
-        {
           "glob": "src/components/workspace/browser/annotation-input.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
@@ -1045,16 +763,64 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
+          "glob": "src/components/workspace/browser/browser-catalog.tsx",
+          "reason": "Canonical catalog metadata, native presentation initialization and peer page switching are verified by test/components/workspace/browser/browser-panel-presentation.dom.test.tsx and browser-workbench-sync.dom.test.tsx in Chromium; Bun cannot instrument the Vite renderer's TSX source."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-data-settings.tsx",
+          "reason": "Account filtering and origin-scoped fill are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-import-dialog.tsx",
+          "reason": "Source selection, data switches, narrow layout and partial results are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-import-entry.tsx",
+          "reason": "Immediate dialog mounting, lazy form lifetime, unavailable native capability and retry are exercised by browser-opening.dom.test.tsx, browser-panel-presentation.dom.test.tsx and browser-interaction.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage. Target binding remains measured in browser-import-target.test.ts."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-import.tsx",
+          "reason": "The Solid hook captures its initiating tab and Session and is exercised by browser-opening.dom.test.tsx for pending discovery, frame replacement and target closure in Chromium; Vite execution does not contribute Bun coverage. Target binding remains measured in browser-import-target.test.ts."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-preparing.tsx",
+          "reason": "The lightweight frame, disabled navigation, first-frame presentation, visible preparation failures and Retry are exercised by browser-opening.dom.test.tsx and browser-panel-presentation.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-error-message.tsx",
+          "reason": "Localized recovery copy and expandable redacted diagnostics are exercised by browser-opening.dom.test.tsx and browser-panel-presentation.dom.test.tsx in Chromium; Bun cannot instrument the child renderer's TSX source. Error classification remains measured in browser-error.test.ts."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-toolbar.tsx",
+          "reason": "First-frame progress and stable content bounds across loading and completion are exercised by browser-opening.dom.test.tsx and browser-panel-presentation.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-new-tab.tsx",
+          "reason": "New-tab search composition/submission, footer styles and keyboard import/focus return are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
+        },
+        {
           "glob": "src/components/workspace/browser/browser-panel.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
+          "reason": "Native presentation initialization and peer page switching are exercised by browser-panel-presentation.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-result-dialog.tsx",
+          "reason": "Keyboard annotation bounds and attachment feedback are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source; browser-draft.test.ts measures draft attachment logic directly"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-settings.tsx",
+          "reason": "Settings focus return and native page preservation are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
         {
           "glob": "src/components/workspace/browser/browser-surface.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
-          "glob": "src/components/workspace/browser/browser-view-effects.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
+          "glob": "src/components/workspace/workspace-output-effects.tsx",
+          "reason": "Live task output presentation is verified by the workbench acceptance fixture; the finite reveal policy is measured in test/context/workbench/reveal-policy.test.ts"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-workbench-sync.tsx",
+          "reason": "Background page reconciliation is exercised by browser-workbench-sync.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source; workbench model and API behavior remain directly measured"
         },
         {
           "glob": "src/components/workspace/browser/console-panel.tsx",
@@ -1073,10 +839,6 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
-          "glob": "src/components/workspace/browser/remote-browser-surface.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
-        },
-        {
           "glob": "src/components/workspace/browser/viewport-selector.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
@@ -1091,6 +853,34 @@
         {
           "glob": "src/components/workspace/tool-browser.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/resource-home.tsx",
+          "reason": "Dynamic registry entries, capability and session availability, matching resource menus and narrow layouts are verified by test/components/workspace/resource-home.dom.test.ts in Chromium; Bun cannot instrument the Vite renderer's TSX source."
+        },
+        {
+          "glob": "src/components/workspace/review-copy.ts",
+          "reason": "Runtime Lingui descriptors consumed by browser-only Review views; catalog extraction, strict locale compilation and product-copy checks validate this data module, which contains no execution logic."
+        },
+        {
+          "glob": "src/components/workspace/review-data.ts",
+          "reason": "Solid resource ownership, initial comparison/notes failures, explicit retries and Session switches are exercised in Chromium by test/components/workspace/review-data.dom.test.ts. Actual ReviewPanel regressions also cover retained content through refresh failure and late responses. Vite browser execution does not contribute to Bun coverage; the read queue and diff projection remain measured by unit tests."
+        },
+        {
+          "glob": "src/components/workspace/review-file-tree.tsx",
+          "reason": "Interactive Solid navigation is exercised in Chromium by test/components/workspace/review-panel.dom.test.ts, including independent filtering, duplicate workspace paths, roving focus and directional folder navigation. Vite cannot contribute TSX execution to Bun coverage; canonical row identities remain measured by shared session-review unit tests."
+        },
+        {
+          "glob": "src/components/workspace/review-file-picker.tsx",
+          "reason": "The actual ReviewPanel Chromium fixture verifies independent quick-jump search, duplicate basename workspace labels, directional selection, Enter/Escape focus and bounded virtualized options across 5,000 files. Vite TSX and virtua DOM execution cannot contribute to Bun coverage."
+        },
+        {
+          "glob": "src/components/workspace/review-panel.tsx",
+          "reason": "Review composes live Scope, Session, SDK, restoration and dialog owners. test/components/workspace/review-panel.dom.test.ts runs the actual panel and production CSS in Chromium for navigation, sources, refresh/retry, focus, responsive touch controls, theme, scaling and large-file retention. Production Web acceptance covers model-backed review, comments, handoff, exports and restoration; queue/projection/export logic stays measured by unit tests."
+        },
+        {
+          "glob": "src/components/workspace/review-version-preview.tsx",
+          "reason": "Historical source, missing versions, Markdown and sandboxed HTML/SVG previews are verified in production Web acceptance. Browser iframe focus loading is covered by the shared iframe-focus browser regression; sanitization and Markdown parsing remain measured by their owning unit suites."
         },
         {
           "glob": "src/components/workspace/tool-context.tsx",
@@ -1117,6 +907,14 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
+          "glob": "src/components/workspace/workspace-navigator.tsx",
+          "reason": "Resource-bounded drawers, responsive widths, nested overlays, Escape dismissal and focus restoration are verified by test/components/workspace/workbench-surface.dom.test.ts in Chromium; Bun cannot instrument the Vite renderer's TSX source."
+        },
+        {
+          "glob": "src/composables/use-full-access-acknowledgement.ts",
+          "reason": "Solid context wrapper over the confirm dialog, SDK client, and global sync; its decision logic is the separately covered needsFullAccessAcknowledgement predicate"
+        },
+        {
           "glob": "src/composables/use-navigate-to-session.ts",
           "reason": "not exercised by the unit suite; requires full runtime or external service"
         },
@@ -1138,10 +936,6 @@
         },
         {
           "glob": "src/context/global-sync.tsx",
-          "reason": "global context requires full app bootstrap"
-        },
-        {
-          "glob": "src/context/holos.tsx",
           "reason": "global context requires full app bootstrap"
         },
         {
@@ -1169,12 +963,28 @@
           "reason": "global context requires full app bootstrap"
         },
         {
+          "glob": "src/context/render.tsx",
+          "reason": "The real provider and shared dialog are exercised by test/context/render-confirmation.browser.test.ts for confirmation, draft preservation, stable Inbox retries, owner changes and canonical state updates. Vite/Chromium execution does not contribute to Bun source coverage."
+        },
+        {
           "glob": "src/context/resource-open.tsx",
           "reason": "global context requires full app bootstrap"
         },
         {
           "glob": "src/context/sdk.tsx",
           "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/components/session/prompt-dock-height.ts",
+          "reason": "reactive ResizeObserver is verified by prompt-dock-height.dom.test.tsx through Vite and Chromium, outside Bun coverage"
+        },
+        {
+          "glob": "src/context/session-bottom-recovery.ts",
+          "reason": "reactive trigger executed through the dom suite's vite build, invisible to bun coverage"
+        },
+        {
+          "glob": "src/context/session-decision.tsx",
+          "reason": "Solid request owner is exercised in test/components/session/decision-surface.dom.test.tsx for draft persistence and isolation, authoritative cleanup, delayed replies, unknown outcomes and failed storage; Bun cannot instrument Vite/Chromium execution. Pure draft, snapshot and submission modules remain measured by unit tests."
         },
         {
           "glob": "src/context/sync.tsx",
@@ -1186,7 +996,7 @@
         },
         {
           "glob": "src/context/workbench/index.tsx",
-          "reason": "global context requires full app bootstrap"
+          "reason": "Rendered workbench lifecycle and selection are covered by browser-opening.dom.test.tsx, resource-home.dom.test.ts and workbench-surface.dom.test.ts in Chromium; Vite execution does not contribute Bun coverage. Close, reveal and resource policies remain directly measured under test/context/workbench."
         },
         {
           "glob": "src/custom-elements.d.ts",
@@ -1199,6 +1009,10 @@
         {
           "glob": "src/env.d.ts",
           "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/hooks/use-image-actions.ts",
+          "reason": "The platform and Lingui adapter runs in test/components/attachment-workbench/content.dom.test.ts and message.dom.test.ts, including original-byte downloads and source navigation. Vite/Chromium execution does not contribute Bun coverage; image-actions.ts and the shared clipboard core retain direct behavioral coverage."
         },
         {
           "glob": "src/hooks/use-providers.ts",
@@ -1265,10 +1079,6 @@
           "reason": "plugin runtime requires a live plugin process"
         },
         {
-          "glob": "src/plugin/dev-reload.ts",
-          "reason": "plugin runtime requires a live plugin process"
-        },
-        {
           "glob": "src/plugin/host.tsx",
           "reason": "plugin runtime requires a live plugin process"
         },
@@ -1329,10 +1139,6 @@
           "reason": "plugin runtime requires a live plugin process"
         },
         {
-          "glob": "src/plugin/plugin-interaction-i18n.ts",
-          "reason": "plugin runtime requires a live plugin process"
-        },
-        {
           "glob": "src/plugin/registries/composer-extension-registry.tsx",
           "reason": "plugin runtime requires a live plugin process"
         },
@@ -1362,10 +1168,6 @@
         },
         {
           "glob": "src/plugin/route-scope.tsx",
-          "reason": "plugin runtime requires a live plugin process"
-        },
-        {
-          "glob": "src/plugin/text-action-surface.tsx",
           "reason": "plugin runtime requires a live plugin process"
         },
         {
@@ -1403,22 +1205,875 @@
         {
           "glob": "src/utils/speech.ts",
           "reason": "utility modules exercised via dom tests"
+        },
+        {
+          "glob": "src/components/session/decision-surface.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/component-mount.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/components/plugin-ui-diagnostics.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/default-composer-editor.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/default-composer.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/default-session.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/default-shell.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/environment.ts",
+          "reason": "router, locale, viewport and live synchronization adapter exercised in test/plugin-ui5 production host; requires App providers"
+        },
+        {
+          "glob": "src/plugin/extension-service.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/host-view.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/menu-outlet.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/runtime-components.ts",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/shell-outlet.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/shell-preference-row.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/skin-preference-row.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/skin-root.tsx",
+          "reason": "Solid host presentation exercised in test/plugin-ui5 production browser acceptance; Bun unit instrumentation cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/surface-overlays.tsx",
+          "reason": "owned overlay lifecycle exercised in test/plugin/overlays.dom.test.ts through the browser; Bun instrumentation cannot observe the portal runtime"
+        },
+        {
+          "glob": "src/components/file-workbench/entry-dialog.tsx",
+          "reason": "Entry operation dialog executes in real Chromium under test/components/dialog/file-entry-dialog.dom.test.ts; Bun coverage does not instrument the Vite browser bundle"
+        },
+        {
+          "glob": "src/components/agenda/task-list.tsx",
+          "reason": "Task filters, lifecycle actions and details are verified in test/components/agenda/agenda-interaction.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
+        },
+        {
+          "glob": "src/components/agenda/detail-actions.tsx",
+          "reason": "Detail actions and nested menu dismissal are verified in test/components/agenda/agenda-interaction.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
+        },
+        {
+          "glob": "src/components/kanban/pane/reorder-menu.tsx",
+          "reason": "Keyboard ordering, disabled actions and focus return are verified in test/components/kanban/layout.dom.test.tsx; Bun coverage cannot instrument the Vite-compiled Chromium bundle."
+        },
+        {
+          "glob": "src/components/app-shell/mobile-drawer-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/app-shell/mobile-tools-drawer.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/performance/snapshot-boundary.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/performance/snapshot-boundary.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/search/session-search-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/search/session-search-dialog.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/session/pending-timeline-item.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/session/session-recovery.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/session/history-search-dialog.tsx",
+          "reason": "Production browser search and historical result navigation are verified in test/plugin-ui5/messages-browser.test.ts; Bun cannot instrument the browser bundle. Query cancellation and pagination remain measured in test/components/history-search.test.ts."
+        },
+        {
+          "glob": "src/components/session/virtual-conversation-rows.tsx",
+          "reason": "Production browser prepend, older-text reading, bounded mounting, return-to-latest and reconnect are verified in test/plugin-ui5/messages-browser.test.ts; Bun cannot instrument the browser bundle. Row projection and retention remain measured in the Web conversation row tests."
+        },
+        {
+          "glob": "src/components/session/request-submission-notice.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/sidebar/sidebar-section-button.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/sidebar/sidebar-collections.dom.test.tsx and test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/workspace/browser/page-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/workspace/browser/browser-interaction.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/workspace/mobile-workspace-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/workspace/mobile-workspace-dialog.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/execution/panel.tsx",
+          "reason": "Task navigation, retained branches, filters, dialogs and bounded virtual rows are exercised by test/components/execution/delegation.dom.test.tsx in compiled Chromium. Bun cannot attribute that browser execution to TSX; trajectory and window logic remain directly measured."
+        },
+        {
+          "glob": "src/components/execution/inspector.tsx",
+          "reason": "Node selection, saved failures and return navigation are exercised by test/components/execution/delegation.dom.test.tsx in compiled Chromium, outside Bun's source instrumentation. Its reusable evidence block is directly measured by controls.render.test.ts."
+        },
+        {
+          "glob": "src/components/execution/reader.tsx",
+          "reason": "Pinned content, complete copy, cancellation, checksum failures and 20MB Unicode search/reading are exercised by test/components/execution/reader.dom.test.tsx in compiled Chromium. Bun cannot attribute the browser bundle to TSX; reader-state and content helpers remain directly measured."
+        },
+        {
+          "glob": "src/components/attachment-workbench/docx-reader.tsx",
+          "reason": "test/components/attachment-workbench/docx-reader.dom.test.ts exercises document pages, search, embedded resources and errors in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/draft-preview.tsx",
+          "reason": "test/components/attachment-workbench/office-integration.dom.test.ts and content.dom.test.ts exercise temporary previews, original resource identity, downloads and disposal in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/office-pages.tsx",
+          "reason": "test/components/attachment-workbench/docx-reader.dom.test.ts exercises document pages, search, embedded resources and errors in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/office-preview.tsx",
+          "reason": "test/components/attachment-workbench/office-preview.dom.test.ts and office-integration.dom.test.ts exercise lazy-reader failures and real dev/production readers in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/office-state.tsx",
+          "reason": "test/components/attachment-workbench/office-preview.dom.test.ts and office-integration.dom.test.ts exercise lazy-reader failures and real dev/production readers in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/office-worker.ts",
+          "reason": "test/components/attachment-workbench/office-integration.dom.test.ts runs the real module Worker in development and production; package validation and parsers have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/pptx-reader.tsx",
+          "reason": "test/components/attachment-workbench/pptx-reader.dom.test.ts exercises sandboxed slides, navigation, search, resource cleanup and read failures in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/preview.tsx",
+          "reason": "test/components/attachment-workbench/office-integration.dom.test.ts and content.dom.test.ts exercise temporary previews, original resource identity, downloads and disposal in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/xlsx-grid.tsx",
+          "reason": "test/components/attachment-workbench/xlsx-reader.dom.test.ts exercises virtualized cells, cached formulas, sheet changes, selection, copy and narrow controls in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/attachment-workbench/xlsx-reader.tsx",
+          "reason": "test/components/attachment-workbench/xlsx-reader.dom.test.ts exercises virtualized cells, cached formulas, sheet changes, selection, copy and narrow controls in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/prompt-input/composer-expand-button.tsx",
+          "reason": "test/components/prompt-input/composer-resize.dom.test.ts exercises pointer, keyboard, focus, touch, narrow layout and reduced motion on the real controls in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/prompt-input/composer-long-editor.tsx",
+          "reason": "test/components/prompt-input/composer-motion.dom.test.ts mounts DefaultComposer and exercises expansion, previews, interrupted animation, retained selection, scrolling, native undo and disposal in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/prompt-input/composer-motion.ts",
+          "reason": "test/components/prompt-input/composer-motion.dom.test.ts mounts DefaultComposer and exercises expansion, previews, interrupted animation, retained selection, scrolling, native undo and disposal in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/prompt-input/composer-resize-controls.tsx",
+          "reason": "test/components/prompt-input/composer-resize.dom.test.ts exercises pointer, keyboard, focus, touch, narrow layout and reduced motion on the real controls in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/conversation-reading-anchor.ts",
+          "reason": "test/components/session/conversation-reading-anchor.dom.test.ts exercises real transcript geometry, prepend anchoring and retained reading position in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/dialog-file-restore.tsx",
+          "reason": "test/components/session/rollback-files.dom.test.ts mounts RollbackDialog and its lazy restore dialog, covering preview, duplicate submission, partial failure and retry identity in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/file-restore-dialog-loader.ts",
+          "reason": "test/components/session/rollback-files.dom.test.ts mounts RollbackDialog and its lazy restore dialog, covering preview, duplicate submission, partial failure and retry identity in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/ambient.tsx",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/blocks/scene.tsx",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/clock.ts",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/context.tsx",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/flight/scene.tsx",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/pixels.ts",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/registry.ts",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/slingshot/scene.tsx",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/stack/scene.tsx",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/stage.tsx",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/welcome/surface.tsx",
+          "reason": "test/components/session/welcome/stage.dom.test.tsx exercises the registered Canvas scenes, lifecycle, keyboard, touch, theme changes, pausing, retries and resource cleanup in Chromium; rules, fixed timing, selection and experience memory have directly measured unit tests; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/focus.ts",
+          "reason": "test/components/workspace/workbench-surface.dom.test.ts exercises actual layout visibility, hidden menu anchors, forward/reverse Tab, nested navigation and focus return in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/tool-execution-detail.tsx",
+          "reason": "test/components/workspace/execution-detail.dom.test.ts exercises the real result viewer, historical identity, cancellation, copy, large output and retained reading state in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/tool-long-term-summary.tsx",
+          "reason": "test/context/workbench/residency-capabilities.dom.test.ts exercises full Markdown/copy, hidden internal metadata, selection/scroll stability, owner isolation, rollback/removal and capability restoration in real Chromium; test/components/workspace/execution-detail.dom.test.ts covers the S-to-L action. Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/execution-detail-layout.tsx",
+          "reason": "Shared execution detail shell is exercised by test/components/workspace/execution-detail.dom.test.ts for keyboard tabs, failure retry, retained evidence and invocation changes in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/execution-report.tsx",
+          "reason": "Shared report, trajectory and original-output views are exercised by test/components/workspace/execution-detail.dom.test.ts with production Markdown and real clipboard controllers in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/execution-code-block.tsx",
+          "reason": "Extracted from tool-execution-detail.tsx; test/components/workspace/execution-detail.dom.test.ts verifies independent copy actions, empty and large outputs, preview expansion and preserved reading state in Chromium. Vite/browser execution remains outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/process-event-detail.tsx",
+          "reason": "test/components/workspace/execution-detail.dom.test.ts verifies Agent result identity, summary loading, full copying, retry, cancellation and bounded previews in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/dialog/dialog-session-transfer.tsx",
+          "reason": "Paused migration selection, precommit failure/cancellation and committed retry/open behavior run in test/components/dialog/session-transfer.dom.test.ts through real Vite/Chromium; Bun cannot attribute browser TSX execution. The SDK handoff state machine is measured separately in test/components/session/session-transfer.test.ts."
+        },
+        {
+          "glob": "src/components/session/retained-session-views.tsx",
+          "reason": "Cross-Scope DOM, disclosure, scroll, owner fencing, deletion and six-view eviction are exercised by test/components/session/retained-session-views.dom.test.ts in Chromium; Vite browser execution does not contribute to Bun lcov."
+        },
+        {
+          "glob": "src/context/view-residency.tsx",
+          "reason": "Real activity composition and global six-view/eight-panel eviction are exercised by retained-session-views.dom.test.ts and workbench-surface.dom.test.ts; the Solid renderer executes in Chromium outside Bun lcov."
+        },
+        {
+          "glob": "src/context/session-route.tsx",
+          "reason": "Owner-bound routes are exercised by the built App in test/performance/browser.mjs and panels.mjs, including cross-Scope switches and delayed reconnect. Browser TSX execution cannot be attributed by Bun lcov."
+        },
+        {
+          "glob": "src/context/workbench/registry.tsx",
+          "reason": "The scoped provider is exercised by the built App panel continuity fixture in test/performance/panels.mjs; its registry ownership model remains measured by test/plugin/registries/workbench-owners.test.ts. Vite browser TSX does not contribute to Bun lcov."
+        },
+        {
+          "glob": "src/pages/session-route.tsx",
+          "reason": "Production route composition is exercised by test/performance/browser.mjs, panels.mjs and the private HTTP build smoke; retained lifetime behavior is covered in retained-session-views.dom.test.ts. Bun cannot instrument the browser renderer."
+        },
+        {
+          "glob": "src/components/digital-twin/background.tsx",
+          "reason": "Completion routing, mounted-consumer handoff and cancellation on capability, connection and configuration changes run in test/components/digital-twin/composer.dom.test.ts through Vite/Chromium, outside Bun coverage. Ownership and bounded completion claims have direct unit coverage."
+        },
+        {
+          "glob": "src/components/text-selection/i18n.ts",
+          "reason": "Localized descriptors are exercised by test/components/text-selection/toolbar.dom.test.ts and localization extraction; browser-bundled descriptor modules are outside Bun coverage."
+        },
+        {
+          "glob": "src/components/text-selection/selection-toolbar.tsx",
+          "reason": "Real selection, copy, quote dispatch and stale asynchronous action completion run in test/components/text-selection/toolbar.dom.test.ts through Vite/Chromium, outside Bun coverage. Controller, ownership and positioning have direct unit coverage."
+        },
+        {
+          "glob": "src/components/session/welcome/pointer.ts",
+          "reason": "Browser-only media-query wrapper exercised by the touch-first and mouse-copy cases in apps/web/test/components/session/welcome/stage.dom.test.tsx. Chromium execution does not contribute Bun source LCOV."
+        },
+        {
+          "glob": "src/components/settings/feature-copy.ts",
+          "reason": "Generated message descriptors verified by script/gen/gen-feature-catalog.ts --check and rendered by the experimental settings browser scenarios; this file contains no runtime behavior."
+        },
+        {
+          "glob": "src/components/settings/panels/ExperimentsPanel.tsx",
+          "reason": "apps/web/test/components/settings/settings-details.dom.test.tsx renders the real panel and controller in Chromium, covering unavailable choices, retained failed drafts, retry, restart status and empty catalogs. The controller remains measured directly; browser rendering does not contribute Bun source LCOV."
+        },
+        {
+          "glob": "src/components/sidebar/space-switcher.tsx",
+          "reason": "Rendered in Chromium by test/components/sidebar/space-switcher.dom.test.tsx and test/components/app-shell/mobile-drawer-drag-region.test.tsx, including keyboard focus, localized labels and nested settings; browser-bundled execution does not contribute Bun coverage."
         }
       ]
     },
-    "packages/desktop": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+    "packages/browser-core": {
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
-        "lines": 60,
-        "functions": 50
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/browser-runtime": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
       },
       "exempt": [
         {
-          "glob": "src/main.ts",
-          "reason": "Electron main-process entry; launches the full desktop runtime"
+          "glob": "src/page.ts",
+          "reason": "requires a real browser runtime"
+        },
+        {
+          "glob": "src/types.ts",
+          "reason": "types-only declarations, no runtime logic"
         }
       ]
+    },
+    "packages/cli": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/cli/cmd/agent.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/auth.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/config.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/logs.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/send.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/session.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/uninstall.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/setup/config.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/daemon/launchd.ts",
+          "reason": "OS daemon integration (launchd/schtasks/systemd)"
+        },
+        {
+          "glob": "src/daemon/schtasks.ts",
+          "reason": "OS daemon integration (launchd/schtasks/systemd)"
+        },
+        {
+          "glob": "src/setup/service.ts",
+          "reason": "system service setup (interactive or privileged)"
+        },
+        {
+          "glob": "src/server/runtime.ts",
+          "reason": "Server process lifetime, terminal banner and signal/storage-failure drainage run in real child-process integration tests in packages/presets; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/launcher.ts",
+          "reason": "Installed executable bootstrap executes in its own process before loading the selected modules. test/cli/artifact.test.ts verifies real compiled core/full and npm installations, execution, cancellation and archive roundtrips; Plugin Host installation tests cover the shared generation verification and loader. Bun does not merge child coverage."
+        }
+      ]
+    },
+    "packages/computer-protocol": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/computer-runtime": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/connections": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/config-schema.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agents.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/app.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/cli/channel.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/command.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/host.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/managed-project-ownership.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/outbound.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/provider/feishu/svg-raster-runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/provider/github.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/response-card.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/routes/channel.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/session-projects.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools/channel-push.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools/github-deliver-fix.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools/response-card.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/types.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/workspace-transfer.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/email/tools/email-read.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/email/tools.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/github/identity.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/github/routes.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/script/svg-raster-runtime-assets.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        }
+      ]
+    },
+    "packages/harness": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/agent/prompt/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/config/import.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/control-profile/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/control-profile/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/migration/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/observability/telemetry-worker.ts",
+          "reason": "telemetry worker is spawned as a child process"
+        },
+        {
+          "glob": "src/permission/toml/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/provider/anthropic-oauth.ts",
+          "reason": "requires live external provider or API credentials"
+        },
+        {
+          "glob": "src/provider/auth-types.ts",
+          "reason": "types-only provider authentication contracts, no runtime logic"
+        },
+        {
+          "glob": "src/provider/codex.ts",
+          "reason": "requires live external provider or API credentials"
+        },
+        {
+          "glob": "src/provider/grok.ts",
+          "reason": "requires live external provider or API credentials"
+        },
+        {
+          "glob": "src/provider/models-macro.ts",
+          "reason": "compile-time Bun macro (import ... with { type: 'macro' }); inlined during bundling, never executed under the runtime coverage instrument"
+        },
+        {
+          "glob": "src/sandbox/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/session/agent-turn/runner.ts",
+          "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/session/invoke.ts",
+          "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/session/processor.ts",
+          "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/session/tool-resolver.ts",
+          "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/storage/blobs.ts",
+          "reason": "types-only immutable and reclaimable BlobStore contracts; concrete storage behavior is exercised by test/storage/object-artifacts.test.ts and Local Runtime's test/workspace/blob-store.test.ts"
+        },
+        {
+          "glob": "src/storage/sql-contract.ts",
+          "reason": "types-only SQL and IPC contracts, no runtime logic"
+        },
+        {
+          "glob": "src/storage/sqlite-worker.ts",
+          "reason": "dedicated IPC child process exercised by test/storage/transactional-store.test.ts and test/storage/crash-recovery.test.ts, including committed snapshots, rollback, owner loss and process-group cancellation; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/process/handle.ts",
+          "reason": "types-only ProcessHandle contract; no runtime implementation"
+        }
+      ]
+    },
+    "packages/library": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/cli/library.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/stats/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/vector/runtime-check.ts",
+          "reason": "Standalone ONNX probe entry must run with the compiled WASM backend in a fresh process. test/vector/embedding-standalone.test.ts compiles and invokes this entry through its fixture, and release artifact validation invokes its registered runner. Bun does not merge child coverage."
+        }
+      ]
+    },
+    "packages/media": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/note": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/store.ts",
+          "reason": "note store requires the full storage runtime"
+        }
+      ]
+    },
+    "packages/plugin": {
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/composer-layout.ts",
+          "reason": "types-only public presentation contracts, no runtime logic"
+        },
+        {
+          "glob": "src/conversation.ts",
+          "reason": "types-only public presentation contracts, no runtime logic"
+        }
+      ]
+    },
+    "packages/plugin-host": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/plugin/cli/plugin.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/plugin-runtime/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/plugin-runtime/runner.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/runtime-policy.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        }
+      ]
+    },
+    "packages/plugin-kit": {
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/commands/publish-market.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        }
+      ]
+    },
+    "packages/presets": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/cli/data/move.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        }
+      ]
+    },
+    "packages/local-runtime": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/agent-worker.ts",
+          "reason": "source worker composition entry runs in a child process; real IPC, SDK retry and shutdown behavior is verified by test/session/agent-worker-process.test.ts, and installed/compiled CLI behavior by packages/cli/test/cli/artifact.test.ts; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/sandbox/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/sandbox/readiness.ts",
+          "reason": "sandbox enforcement requires a real OS sandbox environment"
+        },
+        {
+          "glob": "src/tools/process/shared.ts",
+          "reason": "tool implementations require live tool runtime context"
+        },
+        {
+          "glob": "src/policy-worker.ts",
+          "reason": "source policy worker entry runs in a child process; test/enforcement/policy-worker-process.test.ts verifies the production local composition, classifier parity and shutdown across IPC; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/process/owned-worker.ts",
+          "reason": "Native process worker executes in a separate launchd process; test/process/owned-process.test.ts and test/process/pty.test.ts verify activation, output, descendant lifetime and crash cleanup; Bun does not merge worker coverage"
+        }
+      ]
+    },
+    "packages/sdk/js": {
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../../testing/script/run.ts --coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/gen/client/client.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/client/types.gen.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/gen/client/utils.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/bodySerializer.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/pathSerializer.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/queryKeySerializer.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/serverSentEvents.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/types.gen.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/gen/core/utils.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/sdk.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        }
+      ]
+    },
+    "packages/server": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/server/server.ts",
+          "reason": "HTTP server runtime requires full server bootstrap"
+        }
+      ]
+    },
+    "packages/testing": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
     },
     "packages/ui": {
       "command": "bun run test -- --coverage",
@@ -1431,6 +2086,10 @@
         {
           "glob": "src/assets.d.ts",
           "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/styles/index.d.ts",
+          "reason": "CSS entry type declarations contain no runtime logic; package exports and consumer typechecks validate them"
         },
         {
           "glob": "src/components/accordion.tsx",
@@ -1490,7 +2149,7 @@
         },
         {
           "glob": "src/components/countdown.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+          "reason": "Rendered by test/components/countdown-anchor.dom.test.ts, but that suite bundles the component through a temporary Vite fixture, so lcov records the fixture bundle path and never attributes coverage to this source file"
         },
         {
           "glob": "src/components/dag-graph.tsx",
@@ -1541,6 +2200,18 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/image-viewer-actions.ts",
+          "reason": "Types-only host action declarations contain no runtime logic; consumer typechecks validate the contract."
+        },
+        {
+          "glob": "src/components/image-viewer-controls.tsx",
+          "reason": "The real themed toolbar, pointer/keyboard context menu, fullscreen portals and focus return run in apps/web/test/components/attachment-workbench/image-viewer.dom.test.ts. Vite/Chromium execution does not contribute Bun source coverage."
+        },
+        {
+          "glob": "src/components/image-viewer.tsx",
+          "reason": "Rendered source-pixel transforms, pointer capture, pinch, loading/retry, stale actions, fullscreen focus and gallery navigation run in apps/web/test/components/attachment-workbench/image-viewer.dom.test.ts. Vite/Chromium execution does not contribute Bun coverage; image-viewer-model.ts retains direct behavioral coverage."
+        },
+        {
           "glob": "src/components/list.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -1589,6 +2260,34 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/resource-preview.tsx",
+          "reason": "test/components/resource-preview.browser.test.ts exercises the real portalled preview with 400ms intent, keyboard traversal, touch, copy, stale cancellation and stream settlement in Chromium; Bun cannot instrument Vite TSX execution. Parsing and target projection remain measured by markdown-link-boundary.test.ts and resource-display.test.ts."
+        },
+        {
+          "glob": "src/components/resource-icon.tsx",
+          "reason": "test/markdown-resources.test.ts and test/components/resource-preview.browser.test.ts verify the real semantic and file icons, idempotence and baseline geometry through compiled DOM/Chromium fixtures; Bun cannot attribute the generated TSX bundle to this source."
+        },
+        {
+          "glob": "src/components/markdown-resource-decoration.tsx",
+          "reason": "test/markdown-resources.test.ts and test/components/resource-preview.browser.test.ts exercise compact labels, duplicate-path disambiguation, one icon, original selection/copy and touch information actions in actual DOM; Vite and fixture-compiled TSX execute outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/review-viewer.tsx",
+          "reason": "Pierre Shadow DOM rendering, bounded 20,000-line virtualization, distant-file navigation, header geometry, layout switches and pointer/keyboard/Shift selection are exercised by test/components/review-viewer.dom.test.ts in Chromium; Vite browser execution does not contribute to Bun coverage."
+        },
+        {
+          "glob": "src/components/render-tool.tsx",
+          "reason": "The real SessionTurn Chromium fixture in test/components/render-html.browser.test.ts exercises inline visual lifecycle, viewer keyboard focus and dismissal, narrow layouts and readable fallback output. Solid TSX executed by Vite in Chromium does not contribute to Bun lcov coverage."
+        },
+        {
+          "glob": "src/components/render/library-chart.ts",
+          "reason": "Bundled iframe entrypoint exercised by test/components/render-interactive.browser.test.ts, which loads Chart through the real Vite asset pipeline and verifies the sandboxed Chart global. The emitted script executes in Chromium, outside Bun source coverage."
+        },
+        {
+          "glob": "src/components/render/library-d3.ts",
+          "reason": "Bundled iframe entrypoint exercised by test/components/render-interactive.browser.test.ts, which loads D3 through the real Vite asset pipeline and verifies the sandboxed selection API. The emitted script executes in Chromium, outside Bun source coverage."
+        },
+        {
           "glob": "src/components/session-review.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -1621,6 +2320,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/tool-expansion.tsx",
+          "reason": "Solid context providers and the Part-bound expansion handle are exercised by test/components/basic-tool-lifecycle.dom.test.ts, which verifies an expanded tool survives virtual row unmount and remount. Vite compiles this wrapper into the fixture, so its execution does not produce Bun source LCOV."
+        },
+        {
           "glob": "src/components/tool-output-text.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -1629,8 +2332,20 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/user-message-content.tsx",
+          "reason": "apps/web/test/components/session/session-submission-status.dom.test.ts and apps/web/test/components/attachment-workbench/message.dom.test.ts exercise this shared renderer in Chromium, covering canonical identity, attachment disclosure, source view, metadata, preview and keyboard recovery. Vite/browser execution does not contribute Bun source LCOV; user-message-utils remains directly measured."
+        },
+        {
           "glob": "src/components/tool/anysearch-info.ts",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool/content-preview.tsx",
+          "reason": "Solid wrapper exercised by basic-tool-lifecycle.dom.test.ts through Vite; Bun coverage attributes the compiled fixture instead of this TSX source. Preview logic remains measured in content-preview-model.ts."
+        },
+        {
+          "glob": "src/context/markdown-worker.ts",
+          "reason": "Real worker rendering, version replacement, math/code copying and grammar loading are verified in test/markdown-virtual.browser.test.ts; Bun does not instrument browser workers. Parser, document and worker-client behavior remain measured by the UI unit tests."
         },
         {
           "glob": "src/components/tool/index.ts",
@@ -1739,8 +2454,711 @@
         {
           "glob": "src/theme/types.ts",
           "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/components/menu-field.tsx",
+          "reason": "shared browser UI exercised by App components.dom, overlays.dom, skin.dom and real-host acceptance; package Bun coverage cannot observe browser execution"
+        },
+        {
+          "glob": "src/components/plugin-components.tsx",
+          "reason": "shared browser UI exercised by App components.dom, overlays.dom, skin.dom and real-host acceptance; package Bun coverage cannot observe browser execution"
+        },
+        {
+          "glob": "src/components/setting-row.tsx",
+          "reason": "shared browser UI exercised by App components.dom, overlays.dom, skin.dom and real-host acceptance; package Bun coverage cannot observe browser execution"
+        },
+        {
+          "glob": "src/context/overlay-layer.tsx",
+          "reason": "shared browser UI exercised by App components.dom, overlays.dom, skin.dom and real-host acceptance; package Bun coverage cannot observe browser execution"
+        },
+        {
+          "glob": "src/context/ui-style.tsx",
+          "reason": "shared browser UI exercised by App components.dom, overlays.dom, skin.dom and real-host acceptance; package Bun coverage cannot observe browser execution"
+        },
+        {
+          "glob": "src/plugin/skin.ts",
+          "reason": "shared browser UI exercised by App components.dom, overlays.dom, skin.dom and real-host acceptance; package Bun coverage cannot observe browser execution"
+        },
+        {
+          "glob": "src/components/render-native.tsx",
+          "reason": "Native preview promotion, canonical conflicts, shared-view flushing, confirmed follow-ups and standalone exports run in test/components/render-interactive.browser.test.ts through Vite and Chromium. Solid browser execution is outside Bun source coverage; the shared catalog is measured separately by test/components/render/catalog.test.ts."
         }
       ]
+    },
+    "packages/util": {
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/provider-auth.ts",
+          "reason": "types-only provider authentication contracts, no runtime logic"
+        },
+        {
+          "glob": "src/setting-condition.ts",
+          "reason": "types-only setting condition contract, no runtime logic"
+        },
+        {
+          "glob": "src/tool-timeout.ts",
+          "reason": "types-only tool timeout contract shared by the runtime producer and the shared UI consumer, no runtime logic"
+        }
+      ]
+    },
+    "packages/workbench": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/stats/cli/stats.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/performance/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/push/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/project/tools/session-control.ts",
+          "reason": "tool implementations require live tool runtime context"
+        }
+      ]
+    },
+    "packages/workflows": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/config-schema.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/clock.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/delivery.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/github-trigger.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/github-watch-policy.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/reactor.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/routes/agenda.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/routes/session-agenda.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/session-signals.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/session-wakeup.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/store.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/tools/agenda-watch.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/tools.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/types.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/watcher.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/webhook.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agents.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/anima-schedule.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/continuation.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/loop-store.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/plugin-adapter.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/register.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/review-access.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/routes/blueprint.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/session-state.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/tool-access.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/tools/blueprint-loop-approve.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/tools/blueprint-loop-reject.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/tools/blueprint-loop-stop.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/boss-prompt.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/boss-runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/boss.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/register.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/routes/boss.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-assign.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-cancel.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-project.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-report.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-spawn.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-status.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/controller.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/machine.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/prompt.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/register.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/routes/lattice.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/run-service.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/startup.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/store.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/tools/lattice-submit.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/tools/pathway-read.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/tools/pathway-write.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/types.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/continuation.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/plugin-adapter.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/register.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/terminal-hook.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/tools/loop-stop.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/session/blueprint-state.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/session/light-loop-state.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/superplan/session-env.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        }
+      ]
+    },
+    "packages/secret-detection": {
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 85,
+        "functions": 85
+      },
+      "exempt": []
+    },
+    "packages/mcp": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/cli/mcp.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        }
+      ]
+    },
+    "packages/lsp": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/server.ts",
+          "reason": "LSP server requires the full language-service runtime"
+        }
+      ]
+    },
+    "packages/formatter": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/acp": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        }
+      ]
+    },
+    "packages/external-agents": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/adapter/claude-code.ts",
+          "reason": "external agent adapters require live subprocesses or agents"
+        },
+        {
+          "glob": "src/index.ts",
+          "reason": "barrel re-export"
+        }
+      ]
+    },
+    "packages/code-tools": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/agent-runtime": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/agent-worker.ts",
+          "reason": "Top-level agent worker entry executes only in a child process. test/workers.test.ts verifies pinned component selection and real readiness/shutdown; Presets test/session/worker-composition.test.ts measures the shared registrars in-process. Bun does not merge child coverage."
+        },
+        {
+          "glob": "src/policy-worker.ts",
+          "reason": "Top-level policy worker entry executes only in a child process. test/workers.test.ts verifies real policy IPC readiness/shutdown and missing-plan rejection; the shared worker loader remains measured. Bun does not merge child coverage."
+        }
+      ]
+    },
+    "packages/agenda": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/agenda/store.ts",
+          "reason": "agenda store requires the full scheduler runtime"
+        }
+      ]
+    },
+    "packages/light-loop": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/blueprint": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/lattice": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/lattice/index.ts",
+          "reason": "barrel re-export"
+        }
+      ]
+    },
+    "packages/boss": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/anima": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channels": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/channel/cli/channel.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        }
+      ]
+    },
+    "packages/channel-feishu": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/channel/provider/feishu/api-context.ts",
+          "reason": "channel providers require live external services"
+        },
+        {
+          "glob": "src/channel/provider/feishu/feishu-types.ts",
+          "reason": "channel providers require live external services"
+        },
+        {
+          "glob": "src/channel/provider/feishu/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/channel/provider/feishu/svg-raster-worker.ts",
+          "reason": "channel providers require live external services"
+        }
+      ]
+    },
+    "packages/github": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channel-github": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/channel/provider/github/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/channel/provider/github/poll.ts",
+          "reason": "channel providers require live external services"
+        }
+      ]
+    },
+    "packages/email": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/email/imap.ts",
+          "reason": "requires live IMAP/SMTP service"
+        }
+      ]
+    },
+    "packages/agenda-blueprint": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/agenda-light-loop": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/plugin-agenda": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/plugin-blueprint": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/plugin-light-loop": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/boss-feishu": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/github-agenda": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channel-blueprint": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channel-light-loop": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channel-lattice": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/digital-twin": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
     }
   }
 }

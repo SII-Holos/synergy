@@ -1,0 +1,9 @@
+[data-conversation-viewport][data-ready="false"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+[data-conversation-viewport] {
+  overscroll-behavior-y: none;
+}

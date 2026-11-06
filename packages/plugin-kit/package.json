@@ -18,8 +18,8 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsgo --noEmit",
-    "build": "bun run --cwd ../plugin build && rm -rf dist && tsc -p tsconfig.build.json"
+    "typecheck": "tsc --noEmit",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {
@@ -28,15 +28,26 @@
       "import": "./dist/index.js"
     },
     "./commands": {
-      "bun": "./src/commands/index.ts",
       "types": "./src/commands/index.ts",
+      "bun": "./src/commands/index.ts",
       "import": "./dist/commands/index.js"
     },
     "./market-entry": {
       "bun": "./src/lib/market-entry.ts",
       "types": "./src/lib/market-entry.ts",
       "import": "./dist/lib/market-entry.js"
-    }
+    },
+    "./testing": {
+      "bun": "./src/testing.ts",
+      "types": "./src/testing.ts",
+      "import": "./dist/testing.js"
+    },
+    "./component": {
+      "bun": "./src/component.ts",
+      "types": "./src/component.ts",
+      "import": "./dist/component.js"
+    },
+    "./features": "./src/features.ts"
   },
   "files": [
     "dist"
@@ -45,8 +56,12 @@
     "@babel/core": "catalog:",
     "@babel/preset-typescript": "catalog:",
     "@ericsanchezok/synergy-plugin": "workspace:*",
+    "@ericsanchezok/synergy-sdk": "workspace:*",
     "babel-preset-solid": "catalog:",
-    "yargs": "18.0.0"
+    "css-tree": "3.2.1",
+    "json-schema-to-typescript": "16.0.0",
+    "prettier": "3.9.10",
+    "yargs": "18.2.0"
   },
   "peerDependencies": {
     "zod": ">=4.0.0"
@@ -56,12 +71,31 @@
     "@tsconfig/node22": "catalog:",
     "@types/babel__core": "catalog:",
     "@types/bun": "catalog:",
+    "@types/css-tree": "3.2.0",
     "@types/node": "catalog:",
-    "@types/yargs": "17.0.33",
-    "@typescript/native-preview": "catalog:",
-    "ajv": "8.18.0",
+    "@types/yargs": "17.0.35",
+    "ajv": "8.20.0",
     "solid-js": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "plugin-kit",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "pluginKit",
+    "requires": {
+      "plugin-host": "1.1.26"
+    },
+    "features": {
+      "kind": "foundation",
+      "definitions": []
+    }
   }
 }

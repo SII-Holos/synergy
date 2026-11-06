@@ -1,3 +1,4 @@
+import { getToolIcon } from "../icons"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
 import { browserToolLabels, ToolRegistry } from "../../message-part"
@@ -64,6 +65,11 @@ function milliseconds(translate: (descriptor: MessageDescriptor) => string, valu
   return count === undefined ? undefined : translate({ ...BROWSER_TOOL_DESC.milliseconds, values: { count } })
 }
 
+function timeoutInputMs(input: Record<string, any>): number | undefined {
+  const seconds = browserNumber(input.timeoutSeconds)
+  return seconds === undefined ? undefined : seconds * 1_000
+}
+
 function BrowserActionTool(props: ToolProps & { config: BrowserToolConfig }) {
   const { _ } = useLingui()
   const input = () => props.input ?? {}
@@ -73,7 +79,7 @@ function BrowserActionTool(props: ToolProps & { config: BrowserToolConfig }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: joinBrowserSummary(type(), browserTargetName(browserTarget(input(), metadata()))),
         tags: [tag(type()), ...stateTags(_, metadata())].filter(Boolean) as BrowserTag[],
@@ -104,7 +110,7 @@ function BrowserNavigationTool(props: ToolProps & { config: BrowserToolConfig })
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: joinBrowserSummary(actionName(), browserUrl(input(), metadata())),
         tags: [tag(actionName()), ...stateTags(_, metadata())].filter(Boolean) as BrowserTag[],
@@ -143,7 +149,7 @@ function BrowserWaitTool(props: ToolProps & { config: BrowserToolConfig }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: joinBrowserSummary("wait", formatBrowserCondition(waitCondition())),
         tags: waitTags().filter(Boolean) as BrowserTag[],
@@ -152,7 +158,10 @@ function BrowserWaitTool(props: ToolProps & { config: BrowserToolConfig }) {
       <SummaryGrid
         rows={[
           { label: _(BROWSER_TOOL_DESC.condition), value: formatBrowserCondition(waitCondition()) },
-          { label: _(BROWSER_TOOL_DESC.timeout), value: milliseconds(_, metadata().timeoutMs ?? input().timeoutMs) },
+          {
+            label: _(BROWSER_TOOL_DESC.timeout),
+            value: milliseconds(_, metadata().timeoutMs ?? timeoutInputMs(input())),
+          },
           { label: _(BROWSER_TOOL_DESC.elapsed), value: milliseconds(_, metadata().elapsedMs) },
           { label: _(BROWSER_TOOL_DESC.url), value: browserUrl(input(), metadata()) },
           { label: _(BROWSER_TOOL_DESC.title), value: shortText(metadata().title) },
@@ -171,7 +180,7 @@ function BrowserSnapshotTool(props: ToolProps & { config: BrowserToolConfig }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: joinBrowserSummary("snapshot", elementLabel()),
         tags: [tag(elementLabel())].filter(Boolean) as BrowserTag[],
@@ -212,7 +221,7 @@ function GenericBrowserTool(props: ToolProps & { config: BrowserToolConfig }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: genericSubtitle(),
         tags: genericTags().filter(Boolean) as BrowserTag[],

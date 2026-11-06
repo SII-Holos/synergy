@@ -33,11 +33,13 @@
     }
   }
 
+  /* Same fill-only treatment as the shared secondary button, so icon actions
+     read as quiet controls instead of bordered slabs. */
   &[data-variant="secondary"] {
-    border: transparent;
+    border: 1px solid transparent;
     background-color: var(--workbench-control-bg, var(--button-secondary-base));
     color: var(--text-strong);
-    box-shadow: var(--shadow-xs-border);
+    box-shadow: none;
 
     &:hover:not(:disabled) {
       background-color: var(--workbench-control-bg-hover, var(--button-secondary-hover));
@@ -47,7 +49,6 @@
     }
     &:focus-visible:not(:active) {
       background-color: var(--workbench-control-bg, var(--button-secondary-base));
-      box-shadow: var(--shadow-xs-border-focus);
     }
     &:focus-visible:active {
       box-shadow: none;

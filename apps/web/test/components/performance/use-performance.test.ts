@@ -1,0 +1,614 @@
+import { describe, expect, test } from "bun:test"
+import { createRoot, sharedConfig } from "solid-js"
+import { usePerformance } from "../../../src/components/performance/use-performance"
+import type {
+  PerformanceSummary,
+  PerformanceTimeline,
+  PerformanceTraceDetail,
+  PerformanceTraceSpan,
+  PerformanceAnalysis,
+} from "../../../src/components/performance/types"
+
+function snapshot(windowMs = 900_000): PerformanceSummary {
+  return { generatedAt: "2026-09-25T06:20:00.000Z", windowMs } as PerformanceSummary
+}
+
+function mountPerformance(
+  summary: (input: { windowMs: number }) => Promise<{ data: PerformanceSummary | null }>,
+  timeline = async (): Promise<{ data: PerformanceTimeline | null }> => ({ data: null }),
+  trace = async (_id: string): Promise<{ data: PerformanceTraceDetail | null }> => ({ data: null }),
+  traces = async (): Promise<{ data: { items: PerformanceTraceSpan[] } }> => ({ data: { items: [] } }),
+) {
+  const sdk = {
+    client: {
+      performance: {
+        summary,
+        timeline,
+        traces: {
+          list: traces,
+          detail: async ({ traceId }: { traceId: string }) => trace(traceId),
+        },
+      },
+    },
+  }
+  return createRoot((dispose) => ({
+    dispose,
+    perf: (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk),
+  }))
+}
+
+describe("performance refresh", () => {
+  test("retains ready detail groups during a same-range refresh and lets each failed group retry", async () => {
+    const data: PerformanceTimeline = { generatedAt: "2026-10-02T01:00:00Z", from: 0, to: 1, bucketMs: 1, series: [] }
+    const items: PerformanceTraceSpan[] = [
+      {
+        traceId: "trace-ready",
+        name: "recorded operation",
+        kind: "internal",
+        status: "ok",
+        startedAt: "2026-10-02T01:00:00Z",
+        module: "server",
+        source: "backend",
+        redactionApplied: false,
+      },
+    ]
+    const pendingTimeline = Promise.withResolvers<{ data: PerformanceTimeline | null }>()
+    const pendingTraces = Promise.withResolvers<{ data: { items: PerformanceTraceSpan[] } }>()
+    let timelineCalls = 0
+    let traceCalls = 0
+    const { perf, dispose } = mountPerformance(
+      async () => ({ data: snapshot() }),
+      async () => (++timelineCalls === 2 ? pendingTimeline.promise : { data }),
+      undefined,
+      async () => (++traceCalls === 2 ? pendingTraces.promise : { data: { items } }),
+    )
+    try {
+      await settle()
+      expect(perf.timeline()).toBe(data)
+      expect(perf.eventTraces()).toBe(items)
+      await perf.refresh()
+      expect(perf.timelineLoading()).toBe(true)
+      expect(perf.tracesLoading()).toBe(true)
+      expect(perf.timeline()).toBe(data)
+      expect(perf.eventTraces()).toBe(items)
+      pendingTimeline.reject(new Error("timeline refresh unavailable"))
+      pendingTraces.reject(new Error("trace refresh unavailable"))
+      await settle()
+      expect(perf.timeline()).toBe(data)
+      expect(perf.eventTraces()).toBe(items)
+      expect(perf.timelineError()).toBe("timeline refresh unavailable")
+      expect(perf.tracesError()).toBe("trace refresh unavailable")
+      await perf.loadTimeline()
+      await perf.loadTraces()
+      expect(perf.timelineError()).toBeNull()
+      expect(perf.tracesError()).toBeNull()
+      expect(timelineCalls).toBe(3)
+      expect(traceCalls).toBe(3)
+    } finally {
+      dispose()
+    }
+  })
+
+  test("settles the displayed snapshot's pending timeline after a failed same-range refresh", async () => {
+    const pending = Promise.withResolvers<{ data: null }>()
+    let calls = 0
+    const { perf, dispose } = mountPerformance(
+      async () => {
+        if (++calls > 1) throw new Error("refresh unavailable")
+        return { data: snapshot() }
+      },
+      () => pending.promise,
+    )
+    try {
+      await settle()
+      expect(perf.timelineLoading()).toBe(true)
+      await perf.refresh()
+      pending.reject(new Error("timeline unavailable"))
+      await settle()
+      expect(perf.timelineLoading()).toBe(false)
+      expect(perf.timelineError()).toBe("timeline unavailable")
+      expect(perf.error()).toBe("refresh unavailable")
+    } finally {
+      dispose()
+    }
+  })
+
+  test("ignores a previous range's timeline failure after the current range settles", async () => {
+    const pending = Promise.withResolvers<{ data: null }>()
+    let calls = 0
+    const { perf, dispose } = mountPerformance(
+      async ({ windowMs }) => ({ data: snapshot(windowMs) }),
+      async () => (++calls === 1 ? pending.promise : { data: null }),
+    )
+    try {
+      await settle()
+      perf.setWindowMs(3_600_000)
+      await settle()
+      expect(perf.timelineLoading()).toBe(false)
+      pending.reject(new Error("old timeline failure"))
+      await settle()
+      expect(perf.timelineError()).toBeNull()
+      expect(perf.summary()?.windowMs).toBe(3_600_000)
+    } finally {
+      dispose()
+    }
+  })
+
+  test("keeps the last successful same-range snapshot after a failed manual refresh", async () => {
+    const data = snapshot()
+    let calls = 0
+    const { perf, dispose } = mountPerformance(async () => {
+      if (++calls > 1) throw new Error("snapshot unavailable")
+      return { data }
+    })
+    try {
+      await settle()
+      expect(perf.summary()).toBe(data)
+      await perf.refresh()
+      expect(perf.loading).toBe(false)
+      expect(perf.error()).toBe("snapshot unavailable")
+      expect(perf.summary()).toBe(data)
+      expect(perf.summary()?.generatedAt).toBe(data.generatedAt)
+    } finally {
+      dispose()
+    }
+  })
+
+  test("hides the previous range immediately and never restores it after a failed new-range load", async () => {
+    const next = Promise.withResolvers<{ data: PerformanceSummary }>()
+    const { perf, dispose } = mountPerformance(async ({ windowMs }) =>
+      windowMs === 900_000 ? { data: snapshot() } : next.promise,
+    )
+    try {
+      await settle()
+      expect(perf.summary()?.windowMs).toBe(900_000)
+      perf.setWindowMs(3_600_000)
+      expect(perf.summary()).toBeNull()
+      expect(perf.loading).toBe(true)
+      next.reject(new Error("new range unavailable"))
+      await settle()
+      expect(perf.summary()).toBeNull()
+      expect(perf.error()).toBe("new range unavailable")
+    } finally {
+      dispose()
+    }
+  })
+
+  test("does not let an older range failure overwrite a newer successful snapshot", async () => {
+    const first = Promise.withResolvers<{ data: PerformanceSummary }>()
+    const current = snapshot(3_600_000)
+    const { perf, dispose } = mountPerformance(async ({ windowMs }) =>
+      windowMs === 900_000 ? first.promise : { data: current },
+    )
+    try {
+      perf.setWindowMs(3_600_000)
+      await settle()
+      expect(perf.summary()).toBe(current)
+      first.reject(new Error("outdated failure"))
+      await settle()
+      expect(perf.summary()).toBe(current)
+      expect(perf.error()).toBeNull()
+    } finally {
+      dispose()
+    }
+  })
+
+  test("does not schedule or trigger background dashboard loads", async () => {
+    let summaryCalls = 0
+    let timelineCalls = 0
+    let traceListCalls = 0
+    const scheduledTimeouts: Array<() => void> = []
+    const scheduledIntervals: Array<() => void> = []
+    const originalSetTimeout = window.setTimeout
+    const originalSetInterval = window.setInterval
+    const originalClearTimeout = window.clearTimeout
+    const originalClearInterval = window.clearInterval
+    const originalEventSource = globalThis.EventSource
+    const originalHydrationContext = sharedConfig.context
+
+    window.setTimeout = ((handler: TimerHandler) => {
+      if (typeof handler === "function") scheduledTimeouts.push(handler as () => void)
+      return scheduledTimeouts.length
+    }) as typeof window.setTimeout
+    window.setInterval = ((handler: TimerHandler) => {
+      if (typeof handler === "function") scheduledIntervals.push(handler as () => void)
+      return scheduledIntervals.length
+    }) as typeof window.setInterval
+    window.clearTimeout = (() => undefined) as typeof window.clearTimeout
+    window.clearInterval = (() => undefined) as typeof window.clearInterval
+    FakeEventSource.connections = 0
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => {
+            summaryCalls++
+            return { data: null }
+          },
+          timeline: async () => {
+            timelineCalls++
+            return { data: null }
+          },
+          traces: {
+            list: async () => {
+              traceListCalls++
+              return { data: { items: [] } }
+            },
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => ({ data: null }),
+            get: async () => ({ data: null }),
+            cancel: async () => ({ data: null }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        void (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+      await settle()
+      expect(summaryCalls).toBe(1)
+      expect(timelineCalls).toBe(1)
+      expect(traceListCalls).toBe(1)
+      expect(FakeEventSource.connections).toBe(0)
+      expect(scheduledTimeouts).toHaveLength(0)
+      expect(scheduledIntervals).toHaveLength(0)
+
+      for (const callback of scheduledTimeouts.splice(0)) callback()
+      for (const callback of scheduledIntervals.splice(0)) callback()
+      document.dispatchEvent(new Event("visibilitychange"))
+      await settle()
+
+      expect(summaryCalls).toBe(1)
+      expect(timelineCalls).toBe(1)
+      expect(traceListCalls).toBe(1)
+    } finally {
+      dispose?.()
+      window.setTimeout = originalSetTimeout
+      window.setInterval = originalSetInterval
+      window.clearTimeout = originalClearTimeout
+      window.clearInterval = originalClearInterval
+      globalThis.EventSource = originalEventSource
+      sharedConfig.context = originalHydrationContext
+    }
+  })
+
+  test("releases initial loading state so manual refresh becomes available", async () => {
+    const originalHydrationContext = sharedConfig.context
+    let releaseSummary: () => void = () => undefined
+    const pendingSummary = new Promise<void>((resolve) => {
+      releaseSummary = resolve
+    })
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => {
+            await pendingSummary
+            return { data: null }
+          },
+          timeline: async () => ({ data: null }),
+          traces: {
+            list: async () => ({ data: { items: [] } }),
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => ({ data: null }),
+            get: async () => ({ data: null }),
+            cancel: async () => ({ data: null }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+    let perf: ReturnType<typeof usePerformance> | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+
+      expect(perf!.loading).toBe(true)
+      releaseSummary()
+      await settle()
+      expect(perf!.loading).toBe(false)
+    } finally {
+      dispose?.()
+      sharedConfig.context = originalHydrationContext
+    }
+  })
+
+  test("continues polling an active analysis after a transient read failure", async () => {
+    const scheduledTimeouts: Array<{ callback: () => void; delay: number }> = []
+    const originalSetTimeout = window.setTimeout
+    const originalClearTimeout = window.clearTimeout
+    const originalHydrationContext = sharedConfig.context
+    let analysisReads = 0
+
+    window.setTimeout = ((handler: TimerHandler, delay?: number) => {
+      if (typeof handler === "function") scheduledTimeouts.push({ callback: handler as () => void, delay: delay ?? 0 })
+      return scheduledTimeouts.length
+    }) as typeof window.setTimeout
+    window.clearTimeout = (() => undefined) as typeof window.clearTimeout
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+
+    const queued = {
+      sessionID: "ses_analysis",
+      status: "queued" as const,
+      startedAt: 1,
+    }
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => ({ data: null }),
+          timeline: async () => ({ data: null }),
+          traces: {
+            list: async () => ({ data: { items: [] } }),
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => ({ data: queued }),
+            get: async () => {
+              analysisReads++
+              if (analysisReads === 1) throw new Error("temporary network failure")
+              return { data: { ...queued, status: "completed" as const, completedAt: 2, result: "Healthy" } }
+            },
+            cancel: async () => ({ data: { ...queued, status: "cancelled" as const } }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+    let perf: ReturnType<typeof usePerformance> | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+      await settle()
+
+      await perf!.startAnalysis()
+      expect(scheduledTimeouts).toHaveLength(1)
+      expect(scheduledTimeouts[0]?.delay).toBe(1_000)
+
+      scheduledTimeouts.shift()!.callback()
+      await settle()
+      expect(perf!.analysisError()).toBe("temporary network failure")
+      expect(perf!.analysis()?.status).toBe("queued")
+      expect(scheduledTimeouts).toHaveLength(1)
+      expect(scheduledTimeouts[0]?.delay).toBe(2_000)
+
+      scheduledTimeouts.shift()!.callback()
+      await settle()
+      expect(perf!.analysisError()).toBeNull()
+      expect(perf!.analysis()).toMatchObject({ status: "completed", result: "Healthy" })
+      expect(scheduledTimeouts).toHaveLength(0)
+    } finally {
+      dispose?.()
+      window.setTimeout = originalSetTimeout
+      window.clearTimeout = originalClearTimeout
+      sharedConfig.context = originalHydrationContext
+    }
+  })
+
+  test("prevents concurrent analysis starts", async () => {
+    const originalHydrationContext = sharedConfig.context
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+    let startCalls = 0
+    let releaseStart: () => void = () => undefined
+    const pendingStart = new Promise<void>((resolve) => {
+      releaseStart = resolve
+    })
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => ({ data: null }),
+          timeline: async () => ({ data: null }),
+          traces: {
+            list: async () => ({ data: { items: [] } }),
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => {
+              startCalls++
+              await pendingStart
+              return { data: null }
+            },
+            get: async () => ({ data: null }),
+            cancel: async () => ({ data: null }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+    let perf: ReturnType<typeof usePerformance> | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+      await settle()
+
+      const first = perf!.startAnalysis()
+      const second = perf!.startAnalysis()
+      expect(startCalls).toBe(1)
+      releaseStart()
+      await Promise.all([first, second])
+      expect(startCalls).toBe(1)
+    } finally {
+      dispose?.()
+      sharedConfig.context = originalHydrationContext
+    }
+  })
+
+  test("shows the structured server message when analysis cannot start", async () => {
+    const originalHydrationContext = sharedConfig.context
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => ({ data: null }),
+          timeline: async () => ({ data: null }),
+          traces: {
+            list: async () => ({ data: { items: [] } }),
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => {
+              throw {
+                code: "PERF_ANALYSIS_UNAVAILABLE",
+                message: "Performance analysis requires an available Thinking model.",
+              }
+            },
+            get: async () => ({ data: null }),
+            cancel: async () => ({ data: null }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+    let perf: ReturnType<typeof usePerformance> | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+      await settle()
+
+      await perf!.startAnalysis()
+      expect(perf!.analysisError()).toBe("Performance analysis requires an available Thinking model.")
+    } finally {
+      dispose?.()
+      sharedConfig.context = originalHydrationContext
+    }
+  })
+})
+
+class FakeEventSource {
+  static connections = 0
+  onopen: (() => void) | null = null
+  onmessage: ((event: MessageEvent) => void) | null = null
+  onerror: (() => void) | null = null
+
+  constructor() {
+    FakeEventSource.connections++
+  }
+
+  addEventListener() {}
+  close() {}
+}
+
+async function settle() {
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+test("late trace details cannot replace the currently requested trace", async () => {
+  const old = Promise.withResolvers<{ data: PerformanceTraceDetail }>()
+  const detail = {
+    traceId: "current",
+    generatedAt: "now",
+    spans: [],
+    events: [],
+    redaction: { applied: true, omittedAttributes: 0 },
+  }
+  const { perf, dispose } = mountPerformance(
+    async () => ({ data: snapshot() }),
+    undefined,
+    async (id) => (id === "old" ? old.promise : { data: detail }),
+  )
+  try {
+    const pending = perf.loadTrace("old")
+    await perf.loadTrace("current")
+    old.resolve({ data: { ...detail, traceId: "old" } })
+    await pending
+    expect(perf.traceDetail()?.traceId).toBe("current")
+  } finally {
+    dispose()
+  }
+})
+
+test.each(["response", "failure"] as const)("cancelled diagnosis ignores a late polling %s", async (outcome) => {
+  const originalSetTimeout = window.setTimeout
+  const originalClearTimeout = window.clearTimeout
+  const originalHydrationContext = sharedConfig.context
+  sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+  const timers = new Map<number, () => void>()
+  let timerID = 0
+  window.setTimeout = ((handler: TimerHandler) => {
+    const id = ++timerID
+    if (typeof handler === "function") timers.set(id, handler as () => void)
+    return id
+  }) as typeof window.setTimeout
+  window.clearTimeout = ((id: number) => {
+    timers.delete(id)
+  }) as typeof window.clearTimeout
+  const pending = Promise.withResolvers<{ data: PerformanceAnalysis | null }>()
+  const running: PerformanceAnalysis = { sessionID: "diagnosis-fixture", status: "running", startedAt: 1 }
+  const cancelled: PerformanceAnalysis = { ...running, status: "cancelled", completedAt: 2 }
+  let reads = 0
+  const sdk = {
+    url: "http://localhost",
+    client: {
+      performance: {
+        summary: async () => ({ data: null }),
+        timeline: async () => ({ data: null }),
+        traces: { list: async () => ({ data: { items: [] } }), detail: async () => ({ data: null }) },
+        analysis: {
+          start: async () => ({ data: running }),
+          get: () => {
+            reads++
+            return pending.promise
+          },
+          cancel: async () => ({ data: cancelled }),
+        },
+      },
+    },
+  }
+  let dispose: (() => void) | undefined
+  let perf: ReturnType<typeof usePerformance> | undefined
+  try {
+    createRoot((rootDispose) => {
+      dispose = rootDispose
+      perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+    })
+    await settle()
+    await perf!.startAnalysis()
+    const [id, callback] = [...timers][0]!
+    timers.delete(id)
+    callback()
+    expect(reads).toBe(1)
+    await perf!.cancelAnalysis()
+    expect(perf!.analysis()?.status).toBe("cancelled")
+    if (outcome === "response") pending.resolve({ data: running })
+    else pending.reject(new Error("Obsolete polling failure"))
+    await settle()
+    expect(perf!.analysis()?.status).toBe("cancelled")
+    expect(perf!.analysisError()).toBeNull()
+    expect(timers.size).toBe(0)
+  } finally {
+    pending.resolve({ data: cancelled })
+    dispose?.()
+    window.setTimeout = originalSetTimeout
+    window.clearTimeout = originalClearTimeout
+    sharedConfig.context = originalHydrationContext
+  }
+})

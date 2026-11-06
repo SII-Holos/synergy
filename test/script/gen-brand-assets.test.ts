@@ -58,25 +58,25 @@ describe("brand asset generation", () => {
     const generated = await generateBrandAssets()
     const expected = new Map([
       ["packages/ui/src/assets/brand/synergy-product-icon.png", 512],
-      ["packages/app/public/brand/synergy-product-icon.png", 512],
-      ["packages/app/public/favicon-96x96.png", 96],
-      ["packages/app/public/apple-touch-icon.png", 180],
-      ["packages/app/public/web-app-manifest-192x192.png", 192],
-      ["packages/app/public/web-app-manifest-512x512.png", 512],
-      ["packages/desktop/build/icon.png", 1024],
-      ["packages/desktop/build/icon-unread.png", 512],
+      ["apps/web/public/brand/synergy-product-icon.png", 512],
+      ["apps/web/public/favicon-96x96.png", 96],
+      ["apps/web/public/apple-touch-icon.png", 180],
+      ["apps/web/public/web-app-manifest-192x192.png", 192],
+      ["apps/web/public/web-app-manifest-512x512.png", 512],
+      ["apps/desktop/build/icon.png", 1024],
+      ["apps/desktop/build/icon-unread.png", 512],
     ])
 
     for (const [output, size] of expected) {
       const image = await loadImage(generated.get(output)!)
       expect([image.width, image.height]).toEqual([size, size])
     }
-    expect(icoSizes(generated.get("packages/app/public/favicon.ico")!)).toEqual([16, 32, 48, 96, 256])
+    expect(icoSizes(generated.get("apps/web/public/favicon.ico")!)).toEqual([16, 32, 48, 96, 256])
   })
 
   test("keeps committed outputs fresh and removes manual desktop variants", async () => {
     expect(await checkBrandAssets()).toEqual([])
-    const manifest = await Bun.file(path.resolve(import.meta.dir, "../../packages/app/public/site.webmanifest")).json()
+    const manifest = await Bun.file(path.resolve(import.meta.dir, "../../apps/web/public/site.webmanifest")).json()
     expect(manifest.icons.map((icon: { purpose: string }) => icon.purpose)).toEqual(["any", "any"])
     for (const obsolete of OBSOLETE_BRAND_ASSETS) {
       expect(await Bun.file(path.resolve(import.meta.dir, "../..", obsolete)).exists()).toBe(false)

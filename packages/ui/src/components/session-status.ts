@@ -1,5 +1,63 @@
 import type { I18n, MessageDescriptor } from "@lingui/core"
-import type { Part as PartType, ToolPart } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  AssistantMessage,
+  UserMessage,
+  Part as PartType,
+  ToolPart,
+  SessionStatus,
+  SessionActivity,
+} from "@ericsanchezok/synergy-sdk/client"
+import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
+import { createEffect, createSignal, on, onCleanup, untrack } from "solid-js"
+
+export function createActivityLabel(label: () => string | undefined, ordinary: () => boolean) {
+  const [presented, setPresented] = createSignal(untrack(label))
+  const reduced = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined
+  const settle = () => {
+    if (reduced?.matches) setPresented(label())
+  }
+  reduced?.addEventListener?.("change", settle)
+  onCleanup(() => reduced?.removeEventListener?.("change", settle))
+  createEffect(
+    on(
+      () => [label(), ordinary()] as const,
+      ([next, delay]) => {
+        if (!delay || reduced?.matches || !next || !presented()) {
+          setPresented(next)
+          return
+        }
+        if (next === presented()) return
+        const timer = setTimeout(() => setPresented(next), 120)
+        onCleanup(() => clearTimeout(timer))
+      },
+    ),
+  )
+  return presented
+}
+
+export function hasTurnTerminalReply(messages: readonly (AssistantMessage | UserMessage)[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.role === "user") return false
+    if (message.finish && message.finish !== "tool-calls" && message.finish !== "unknown") return true
+  }
+  return false
+}
+
+export function processIsWorking(input: {
+  current: boolean
+  sessionStatus?: SessionStatus
+  submission?: { failed: boolean }
+  executionStatus?: string
+  projected?: boolean
+  fallback: boolean
+}): boolean {
+  if (input.submission) return !input.submission.failed
+  if (input.current && input.sessionStatus?.type === "paused") return false
+  if (input.projected !== undefined) return input.projected
+  if (input.executionStatus) return ["preparing", "running", "approval"].includes(input.executionStatus)
+  return input.fallback
+}
 
 // ── Descriptor helpers ──────────────────────────────────────────────
 
@@ -65,7 +123,6 @@ const TOOL_DESC: Record<string, MessageDescriptor> = {
   ast_grep: defineDescriptor("session-status.searching-codebase", "Searching the codebase"),
 
   webfetch: defineDescriptor("session-status.searching-web", "Searching the web"),
-  websearch: defineDescriptor("session-status.searching-web", "Searching the web"),
 
   edit: defineDescriptor("session-status.making-edits", "Making edits"),
   write: defineDescriptor("session-status.making-edits", "Making edits"),
@@ -80,9 +137,6 @@ const TOOL_DESC: Record<string, MessageDescriptor> = {
   lsp: defineDescriptor("session-status.querying-language-server", "Querying language server"),
 
   skill: defineDescriptor("session-status.loading-skill", "Loading skill"),
-
-  arxiv_search: defineDescriptor("session-status.searching-papers", "Searching papers"),
-  arxiv_download: defineDescriptor("session-status.searching-papers", "Searching papers"),
 
   task_output: defineDescriptor("session-status.managing-tasks", "Managing tasks"),
   task_cancel: defineDescriptor("session-status.managing-tasks", "Managing tasks"),
@@ -136,8 +190,6 @@ const TOOL_DESC: Record<string, MessageDescriptor> = {
   email_send: defineDescriptor("session-status.sending-email", "Sending email"),
   email_read: defineDescriptor("session-status.reading-email", "Reading email"),
 
-  attach: defineDescriptor("session-status.preparing-files", "Preparing files"),
-
   render: defineDescriptor("session-status.rendering-content", "Rendering content"),
 
   runtime_reload: defineDescriptor("session-status.reloading-config", "Reloading config"),
@@ -149,70 +201,6 @@ const REASONING_DESC = defineDescriptor("session-status.thinking", "Thinking")
 const REASONING_LABEL_DESC = defineDescriptor("session-status.thinking-label", "Thinking · {label}")
 const TEXT_DESC = defineDescriptor("session-status.gathering-thoughts", "Gathering thoughts")
 
-// ── Working-phrase descriptor IDs ───────────────────────────────────
-
-const WAITING_PHRASE_DESCRIPTORS = [
-  defineDescriptor(
-    "session-status.phrase.waiting.0",
-    "{agentName} waiting on {count, plural, one {# background task} other {# background tasks}}…",
-  ),
-  defineDescriptor(
-    "session-status.phrase.waiting.1",
-    "{count, plural, one {# task} other {# tasks}} still cooking — {agentName} standing by…",
-  ),
-  defineDescriptor(
-    "session-status.phrase.waiting.2",
-    "{agentName} hanging tight — {count, plural, one {# task} other {# tasks}} in flight",
-  ),
-  defineDescriptor(
-    "session-status.phrase.waiting.3",
-    "{agentName} sitting tight — {count, plural, one {# task} other {# tasks}} running",
-  ),
-  defineDescriptor(
-    "session-status.phrase.waiting.4",
-    "{count, plural, one {# agent} other {# agents}} at work — {agentName} on standby…",
-  ),
-] as const
-
-const THINKING_PHRASE_DESCRIPTORS = [
-  defineDescriptor("session-status.phrase.thinking.0", "{agentName} is cooking…"),
-  defineDescriptor("session-status.phrase.thinking.1", "{agentName} putting it together…"),
-  defineDescriptor("session-status.phrase.thinking.2", "{agentName} connecting the dots…"),
-  defineDescriptor("session-status.phrase.thinking.3", "{agentName} on it…"),
-  defineDescriptor("session-status.phrase.thinking.4", "{agentName} brewing something up…"),
-  defineDescriptor("session-status.phrase.thinking.5", "{agentName} weaving things together…"),
-] as const
-
-/** Default English messages for the phrase catalogue, keyed by descriptor ID. */
-export const PHRASE_DEFAULTS = Object.fromEntries(
-  [...WAITING_PHRASE_DESCRIPTORS, ...THINKING_PHRASE_DESCRIPTORS].map((descriptor) => [
-    descriptor.id,
-    descriptor.message!,
-  ]),
-)
-
-/** @deprecated Use computeWorkingPhrase so the active catalog is respected. */
-export const WAITING_TASKS_PHRASES = WAITING_PHRASE_DESCRIPTORS.map(
-  (descriptor) => (name: string, count: number) => resolveMsg(undefined, descriptor, { agentName: name, count }),
-)
-
-/** @deprecated Use computeWorkingPhrase so the active catalog is respected. */
-export const THINKING_PHRASES = THINKING_PHRASE_DESCRIPTORS.map(
-  (descriptor) => (name: string) => resolveMsg(undefined, descriptor, { agentName: name }),
-)
-
-// ── Public API ──────────────────────────────────────────────────────
-
-export function pickStatusPhrase<T>(phrases: readonly T[], seed: string): T {
-  const hash = seed.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  return phrases[hash % phrases.length]!
-}
-
-export function titlecaseStatusLabel(str: string): string {
-  if (!str) return str
-  return str.charAt(0).toUpperCase() + str.slice(1)
-}
-
 export function computeStatusFromPart(part: PartType | undefined, i18n?: I18n): string | undefined {
   if (!part) return undefined
 
@@ -221,6 +209,16 @@ export function computeStatusFromPart(part: PartType | undefined, i18n?: I18n): 
       const isEdit = part.tool === "edit" || part.tool === "write" || part.tool === "multiedit" || part.tool === "patch"
       const desc = isEdit ? TOOL_GEN_EDIT_DESC : TOOL_GEN_DEFAULT_DESC
       return resolveMsg(i18n, desc)
+    }
+    const input = part.state.input
+    if (
+      part.tool === "blueprint_loop_stop" &&
+      typeof input === "object" &&
+      input !== null &&
+      "action" in input &&
+      input.action === "pause"
+    ) {
+      return resolveMsg(i18n, defineDescriptor("session-status.pausing-session", "Pausing session"))
     }
     const desc = TOOL_DESC[part.tool]
     if (!desc) return undefined
@@ -241,18 +239,6 @@ export function computeStatusFromPart(part: PartType | undefined, i18n?: I18n): 
   return undefined
 }
 
-export function computeWorkingPhrase(
-  params: { agentName: string; cortexRunning: number; seed: string },
-  i18n?: I18n,
-): string {
-  if (params.cortexRunning > 0) {
-    const descriptor = pickStatusPhrase(WAITING_PHRASE_DESCRIPTORS, params.seed)
-    return resolveMsg(i18n, descriptor, { agentName: params.agentName, count: params.cortexRunning })
-  }
-  const descriptor = pickStatusPhrase(THINKING_PHRASE_DESCRIPTORS, params.seed)
-  return resolveMsg(i18n, descriptor, { agentName: params.agentName })
-}
-
 export function extractRunningTaskSessionID(part: ToolPart | undefined): string | undefined {
   if (!part?.state || !("metadata" in part.state)) return undefined
   return part.state.metadata?.sessionId as string | undefined
@@ -265,4 +251,89 @@ export function computeLatestStatusFromParts(parts: readonly PartType[], i18n?: 
     if (status) return status
   }
   return undefined
+}
+
+const ACTIVITY_DESC = {
+  checking_submission: defineDescriptor("session.activity.checkingSubmission", "Checking submission"),
+  preparing_session: defineDescriptor("session.activity.preparingSession", "Preparing session"),
+  preparing_workspace: defineDescriptor("session.activity.preparingWorkspace", "Preparing workspace"),
+  submitting_input: defineDescriptor("session.activity.submittingInput", "Submitting message"),
+  checking_receipt: defineDescriptor("session.activity.checkingReceipt", "Confirming message receipt"),
+  reconnecting: defineDescriptor("session.activity.reconnecting", "Reconnecting"),
+  queued_storage: defineDescriptor("session.activity.queuedStorage", "Waiting to save message"),
+  retrying_input: defineDescriptor("session.activity.retryingInput", "Waiting to retry preparation"),
+  materializing_input: defineDescriptor("session.activity.materializingInput", "Preparing execution"),
+  preparing_files: defineDescriptor("session.activity.preparingFiles", "Preparing project files"),
+  preparing_context: defineDescriptor("session.activity.preparingContext", "Preparing context"),
+  queued_agent: defineDescriptor("session.activity.queuedAgent", "Waiting for execution resources"),
+  waiting_resources: defineDescriptor("session.activity.waitingResources", "Waiting for available resources"),
+  waiting_model: defineDescriptor("session.activity.waitingModel", "Waiting for model response"),
+  responding: defineDescriptor("session.activity.responding", "Generating response"),
+  queued_tools: defineDescriptor("session.activity.queuedTools", "Waiting for tool execution"),
+  running_tools: defineDescriptor("session.activity.runningTools", "Calling tools"),
+  waiting_background: defineDescriptor("session.activity.waitingBackground", "Waiting for background tasks"),
+  finalizing: defineDescriptor("session.activity.finalizing", "Finalizing results"),
+  stopping: defineDescriptor("session.activity.stopping", "Stopping"),
+} satisfies Record<SessionActivity["phase"], MessageDescriptor>
+
+type SessionActivityContext = { rootID?: string; approval?: boolean; question?: boolean; connected?: boolean }
+
+// Only local backoff owns a deadline; provider admission and the in-flight attempt own a wait.
+const RETRY_PHASE_DESC = {
+  waiting: defineDescriptor("session.activity.retry", "Waiting to retry · attempt {attempt}"),
+  waiting_provider: defineDescriptor("session.activity.retryProvider", "Waiting for model connection recovery"),
+  connecting: ACTIVITY_DESC.waiting_model,
+} satisfies Record<Extract<SessionStatus, { type: "retry" }>["phase"], MessageDescriptor>
+
+export function sessionActivityAnimating(status: SessionStatus | undefined, context?: SessionActivityContext): boolean {
+  if (context?.connected === false || context?.approval || context?.question) return false
+  const activity = status?.type === "busy" ? status.activity : undefined
+  if (!activity || (context?.rootID && activity.rootID && activity.rootID !== context.rootID)) return false
+  return activity.phase !== "stopping" && activity.phase !== "reconnecting"
+}
+
+export function sessionActivityLabel(
+  status: SessionStatus | undefined,
+  i18n?: I18n,
+  context?: SessionActivityContext,
+): string {
+  if (context?.connected === false) return resolveMsg(i18n, ACTIVITY_DESC.reconnecting)
+  const activity = status?.type === "busy" ? status.activity : undefined
+  const current = !context?.rootID || !activity?.rootID || activity.rootID === context.rootID
+  if (current && activity?.phase === "stopping") return resolveMsg(i18n, ACTIVITY_DESC.stopping)
+  if (context?.approval)
+    return resolveMsg(i18n, defineDescriptor("session.activity.approval", "Waiting for your approval"))
+  if (context?.question)
+    return resolveMsg(i18n, defineDescriptor("session.activity.question", "Waiting for your answer"))
+  if (status?.type === "retry")
+    return resolveMsg(
+      i18n,
+      RETRY_PHASE_DESC[status.phase],
+      status.phase === "waiting" ? { attempt: status.attempt } : undefined,
+    )
+  if (!current || !activity) return resolveMsg(i18n, defineDescriptor("session.activity.processing", "Processing task"))
+  if (activity.phase === "preparing_workspace" && activity.workspaceOperation) {
+    const actions = {
+      create: defineDescriptor("session.activity.createWorktree", "Preparing workspace · create worktree"),
+      bind: defineDescriptor("session.activity.bindWorktree", "Preparing workspace · bind worktree"),
+      enter: defineDescriptor("session.activity.enterWorktree", "Preparing workspace · enter worktree"),
+      leave: defineDescriptor("session.activity.leaveWorktree", "Preparing workspace · return to project"),
+    }
+    return resolveMsg(i18n, actions[activity.workspaceOperation])
+  }
+  if (activity.phase === "running_tools") {
+    if (activity.tool && activity.tool.count > 1)
+      return resolveMsg(i18n, defineDescriptor("session.activity.parallelTools", "Calling tools · {count} active"), {
+        count: activity.tool.count,
+      })
+    const tool =
+      activity.tool?.id === "blueprint_loop_stop"
+        ? defineDescriptor("session.activity.blueprintAction", "Blueprint action")
+        : activity.tool?.id && TOOL_TITLE_DESC[activity.tool.id]
+    if (tool)
+      return resolveMsg(i18n, defineDescriptor("session.activity.tool", "Calling tool · {action}"), {
+        action: resolveMsg(i18n, tool),
+      })
+  }
+  return resolveMsg(i18n, ACTIVITY_DESC[activity.phase])
 }

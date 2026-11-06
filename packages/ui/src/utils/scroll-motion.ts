@@ -1,0 +1,80 @@
+export function createScrollMotion(target: () => HTMLElement | undefined) {
+  let animation: Animation | undefined
+  let element: HTMLElement | undefined
+  let position: { viewport: HTMLElement; top: number; height: number } | undefined
+  const reduced = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined
+  const offset = () => {
+    if (!element || !animation) return 0
+    const transform = getComputedStyle(element).transform
+    return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42
+  }
+  const cancel = () => {
+    if (animation) animation.onfinish = null
+    animation?.cancel()
+    animation = undefined
+  }
+  const preference = () => {
+    if (reduced?.matches) cancel()
+  }
+  reduced?.addEventListener?.("change", preference)
+  return {
+    cancel,
+    move(viewport: HTMLElement, top: number, animate: boolean, preserveDeadline = false) {
+      const next = target()
+      const carry = next === element ? offset() : 0
+      const maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+      const clamped =
+        animate &&
+        next === element &&
+        position?.viewport === viewport &&
+        position.top > maximum &&
+        Math.abs(viewport.scrollTop - maximum) < 1
+      // Content contraction already moves the following rows with native clamping.
+      // Only a taller viewport still needs compensation for its part of the clamp.
+      const correction = clamped
+        ? Math.min(position!.top - viewport.scrollTop, Math.max(0, viewport.clientHeight - position!.height))
+        : 0
+      const previous = viewport.scrollTop + correction
+      const destination = Math.max(0, Math.min(top, maximum))
+      if (animate && next === element && Math.abs(destination - previous) < 0.5) {
+        position = { viewport, top: viewport.scrollTop, height: viewport.clientHeight }
+        return
+      }
+      // Child disclosure resizes must carry the painted offset without extending
+      // the following transition on every height sample.
+      const remaining =
+        preserveDeadline && animation && next === element
+          ? Math.max(0, Number(animation.effect?.getComputedTiming().endTime) - Number(animation.currentTime))
+          : undefined
+      cancel()
+      element = next
+      viewport.scrollTo({ top, behavior: "auto" })
+      position = { viewport, top: viewport.scrollTop, height: viewport.clientHeight }
+      const delta = viewport.scrollTop - previous + carry
+      if (!animate || reduced?.matches || !next?.animate || Math.abs(delta) < 0.5) return
+      if (Math.abs(delta) >= viewport.clientHeight) return
+      const style = getComputedStyle(next)
+      const duration = style.getPropertyValue("--motion-duration-slow").trim()
+      animation = next.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], {
+        duration: remaining ?? (duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : 240),
+        easing: style.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)",
+        fill: "both",
+      })
+      animation.onfinish = cancel
+    },
+    interrupt(viewport?: HTMLElement) {
+      const carry = offset()
+      cancel()
+      if (viewport && carry) viewport.scrollTop -= carry
+      position = undefined
+    },
+    settle() {
+      cancel()
+      position = undefined
+    },
+    dispose() {
+      cancel()
+      reduced?.removeEventListener?.("change", preference)
+    },
+  }
+}

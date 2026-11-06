@@ -25,9 +25,9 @@ Product documents explain what users work with and how the major capabilities re
 - [Knowledge](product/knowledge.md) — Library memories and experiences, Notes, Blueprints, recall, and search
 - [Activity and statistics](product/activity-and-statistics.md) — usage, tokens, costs, agents, tools, code changes, trends, and derived-data freshness
 - [Automation](product/automation.md) — Agenda triggers, session modes, delivery, recovery, and failure behavior
-- [Connections](product/connections.md) — providers, MCP, Channels, Email, Holos, Synergy Link, and plugins
-- [Browser workspace](product/browser.md) — one-page session ownership, native and remote presentation, safety, and interaction
-- [Web product contract](../packages/app/PRODUCT.md) — durable interaction, visual, and accessibility rules
+- [Connections](product/connections.md) — providers, MCP, Channels, Email, and plugins
+- [Browser workspace](product/browser.md) — Desktop pages, persistent identities, permissions and recovery
+- [Web product contract](../apps/web/PRODUCT.md) — durable interaction, visual, and accessibility rules
 
 ## Architecture
 
@@ -35,16 +35,27 @@ Architecture documents define current invariants, ownership boundaries, and the 
 
 - [Architecture overview](architecture/README.md)
 - [Runtime and Scope](architecture/runtime-and-scope.md)
+- [Resource admission](architecture/resource-admission.md)
+- [Feature lifecycle](architecture/feature-lifecycle.md) — experimental declarations, activation and graduation
+- [Host connections](architecture/host-connections.md) — provider discovery, device pairing and authenticated remote access
+- [Agent storage](architecture/agent-storage.md)
 - [Workspace and files](architecture/workspace-and-files.md)
+- [Environments](architecture/environments.md)
+- [Paused Session transfer](architecture/session-transfer.md)
 - [Sessions and messages](architecture/session-and-messages.md)
 - [LLM loop and compaction](architecture/llm-loop.md)
+- [Usage accounting](architecture/usage-accounting.md)
 - [Frontend data sync](architecture/frontend-data-sync.md)
+- [Workbench presentation](architecture/workbench-presentation.md)
+- [Interactive visual results](architecture/visual-results.md)
+- [Frontend plugin platform](architecture/frontend-plugin-platform.md)
 - [Frontend localization](architecture/localization.md)
 - [Channels](architecture/channels.md)
 - [Execution boundaries](architecture/execution-boundaries.md)
 - [Cortex and delegated work](architecture/cortex.md)
 - [Workflow engine](architecture/workflows.md)
 - [Browser runtime](architecture/browser-runtime.md)
+- [Native Computer Use](architecture/computer-use.md)
 
 ## Reference
 
@@ -58,7 +69,10 @@ Reference documents answer exact operational and repository questions without re
 - [Skills](reference/skills.md)
 - [Storage and paths](reference/storage-and-paths.md)
 - [Package map](reference/packages.md)
+- [Installable packages](reference/installable-packages.md) — optional mechanisms, company presets and host components
+- [Embedding](reference/embedding.md) — Bun embedding, managed Node.js processes and runtime capabilities
 - [Development](reference/development.md)
+- [Local performance experiments](../benchmark/README.md)
 - [Frontend themes and color](reference/frontend-theming.md)
 
 ## Plugins
@@ -81,7 +95,6 @@ The package-level SDK reference remains in [`packages/plugin`](../packages/plugi
 - [Open-source quality](operations/open-source-quality.md) — local checks, CI, package validation, and contributor scenarios
 - [Desktop release](operations/desktop-release.md) — packaging, signing, publishing, updating, and recovery
 - [Performance observability](operations/performance-observability.md) — metrics, traces, storage, APIs, and performance tooling
-- [Qizhi Synergy Link](operations/qizhi-synergy-link.md) — shared-filesystem deployment, verification, recovery, and credential rotation for Synergy Link hosts
 
 ## Research and Migration History
 
@@ -94,7 +107,7 @@ Research documents record investigations and measurements; they are not current 
 
 - `README.md` is the concise repository and product entry point.
 - `docs/product/` owns user-facing concepts and flows.
-- `packages/app/PRODUCT.md` owns durable Web interaction and visual principles.
+- `apps/web/PRODUCT.md` owns durable Web interaction and visual principles.
 - `docs/architecture/` owns implementation invariants and subsystem boundaries.
 - `docs/reference/` owns exact commands, configuration, Skills, paths, packages, and development procedures.
 - `docs/plugins/` owns the public plugin platform documentation.

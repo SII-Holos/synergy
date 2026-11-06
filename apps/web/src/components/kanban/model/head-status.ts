@@ -1,0 +1,53 @@
+import type { SessionVisualState } from "@/components/sidebar/session-visual-state"
+import { isWorkingStatus } from "@/utils/session-status"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { kanbanPage } from "@/locales/messages"
+
+/**
+ * Header status for a Kanban pane, derived from the session's resolved
+ * visual state (the same resolution the sidebar rows use) plus the raw
+ * session status. Working and waiting win over completion so a pane
+ * that is both active and finished reads as what it is doing now, and
+ * "waiting for the user" always outranks "busy" because it demands attention.
+ */
+export type PaneHeadStatus = "working" | "waiting" | "completed" | undefined
+
+export function paneDisplayState(state: SessionVisualState): SessionVisualState {
+  if (!["default", "muted", "worktree"].includes(state.tone)) return state
+  if (state.completionUnread)
+    return {
+      ...state,
+      icon: getSemanticIcon("state.complete"),
+      label: { id: "app.kanban.responseReady", message: "Response ready" },
+    }
+  return { ...state, icon: getSemanticIcon("session.idle"), label: kanbanPage.statusIdle }
+}
+
+export function paneHeadStatusFromVisual(input: {
+  statusType?: string
+  tone?: SessionVisualState["tone"]
+  pulse?: boolean
+  completionUnread?: boolean
+}): PaneHeadStatus {
+  switch (input.tone) {
+    case "waiting":
+    case "blueprint-waiting":
+      return "waiting"
+    case "retry":
+    case "active":
+    case "blueprint-running":
+      return "working"
+    case "loop":
+      if (input.pulse) return "working"
+      break
+    case "blueprint-audit":
+      if (input.pulse) return "working"
+      break
+    default:
+      break
+  }
+  // The raw status covers a pane whose resolved tone is still resting, so a
+  // session that is working must not read as completed or idle.
+  if (isWorkingStatus({ type: input.statusType })) return "working"
+  return input.completionUnread ? "completed" : undefined
+}

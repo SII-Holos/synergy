@@ -65,6 +65,9 @@
   --color-border-weaker-focus: var(--border-weaker-focus);
   --color-border-weaker-hover: var(--border-weaker-hover);
   --color-border-weaker-selected: var(--border-weaker-selected);
+  --color-brand-ribbon-end: var(--brand-ribbon-end);
+  --color-brand-ribbon-middle: var(--brand-ribbon-middle);
+  --color-brand-ribbon-start: var(--brand-ribbon-start);
   --color-button-ghost-hover: var(--button-ghost-hover);
   --color-button-ghost-hover2: var(--button-ghost-hover2);
   --color-button-secondary-base: var(--button-secondary-base);
@@ -160,6 +163,7 @@
   --color-surface-base-hover: var(--surface-base-hover);
   --color-surface-base-interactive-active: var(--surface-base-interactive-active);
   --color-surface-brand-base: var(--surface-brand-base);
+  --color-surface-brand-image: var(--surface-brand-image);
   --color-surface-brand-hover: var(--surface-brand-hover);
   --color-surface-critical-base: var(--surface-critical-base);
   --color-surface-critical-solid: var(--surface-critical-solid);
@@ -204,6 +208,7 @@
   --color-surface-interactive-weak: var(--surface-interactive-weak);
   --color-surface-interactive-weak-hover: var(--surface-interactive-weak-hover);
   --color-surface-overlay: var(--surface-overlay);
+  --color-surface-shadow: var(--surface-shadow);
   --color-surface-raised-base: var(--surface-raised-base);
   --color-surface-raised-base-active: var(--surface-raised-base-active);
   --color-surface-raised-base-hover: var(--surface-raised-base-hover);
@@ -270,6 +275,7 @@
   --color-text-on-warning-base: var(--text-on-warning-base);
   --color-text-on-warning-strong: var(--text-on-warning-strong);
   --color-text-on-warning-weak: var(--text-on-warning-weak);
+  --color-text-permission-full-access: var(--text-permission-full-access);
   --color-text-strong: var(--text-strong);
   --color-text-stronger: var(--text-stronger);
   --color-text-subtle: var(--text-subtle);

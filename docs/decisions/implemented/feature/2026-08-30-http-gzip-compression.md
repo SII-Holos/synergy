@@ -8,14 +8,14 @@ The Web frontend boot path transfers ~10 MB of uncompressed JSON per load: `scop
 
 ## Decision
 
-Mount Hono's built-in `compress({ encoding: "gzip" })` middleware on the App chain in `packages/synergy/src/server/server.ts` — immediately after `cors` and before the shutdown gate, request-scope provisioning, and every route. The middleware's own guards carry the safety contract:
+Mount Hono's built-in `compress({ encoding: "gzip" })` middleware on the App chain in `packages/server/src/server/server.ts` — immediately after `cors` and before the shutdown gate, request-scope provisioning, and every route. The middleware's own guards carry the safety contract:
 
 - `text/event-stream` is excluded by the default compressible-type regex, so `/event` and the other SSE routes stream through uncompressed without any route-level opt-out.
 - Responses that already carry `Content-Encoding` or `Transfer-Encoding` are skipped, so the session-export gzip download and streamed responses are never double-encoded. A reverse proxy that already compressed a response is skipped for the same reason.
 - Strong `ETag`s are downgraded to weak and `Cache-Control: no-transform` is honored.
 - Requests without `Accept-Encoding: gzip` get the exact identity response as before.
 
-Behavioral coverage in `packages/synergy/test/server/compress.test.ts` asserts the three public invariants: gzip round-trip on a large JSON endpoint, identity pass-through without `Accept-Encoding`, and SSE never being compressed.
+Behavioral coverage in `packages/server/test/server/compress.test.ts` asserts the three public invariants: gzip round-trip on a large JSON endpoint, identity pass-through without `Accept-Encoding`, and SSE never being compressed.
 
 ## Alternatives considered
 

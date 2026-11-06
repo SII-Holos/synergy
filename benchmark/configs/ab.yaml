@@ -1,0 +1,32 @@
+version: 2
+suite: ../suites/local-24.json
+output: ../../.artifacts/benchmark/runs
+cache: ../../.artifacts/benchmark/cache
+platform: linux/amd64
+seed: 0
+repeat: 1
+concurrency: auto
+selection:
+  limit: 2
+harnesses:
+  baseline:
+    kind: synergy
+    source:
+      path: ../..
+      revision: HEAD
+    runtime: core
+  candidate:
+    kind: synergy
+    source:
+      path: ../..
+    runtime: core
+models:
+  selected:
+    model: REPLACE_WITH_YOUR_MODEL
+    protocol: chat-completions
+    base_url: https://provider.example/v1
+    api_key_env: BENCH_MODEL_KEY
+    context_window: 128000
+    max_output_tokens: 16384
+    parameters:
+      temperature: 1

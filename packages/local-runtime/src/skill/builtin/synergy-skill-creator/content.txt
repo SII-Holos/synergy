@@ -1,0 +1,104 @@
+# Synergy Skill Creator
+
+Create, update, migrate, or review Agent Skills for Synergy. Follow the Agent Skills standard and default to a portable standard Skill unless the task explicitly needs Synergy-only invocation control.
+
+## Core Principles
+
+The context window is a public good. A Skill shares the context window with the system prompt, conversation history, other Skills' metadata, and the actual user request. Default to assuming the model is already smart: add only context it does not already have, and challenge every paragraph for its token cost. Prefer concise examples over verbose explanations.
+
+### Degrees of freedom
+
+Match the Skill's level of specificity to the task's fragility and variability:
+
+- **High freedom** — text-based instructions when multiple approaches are valid and decisions depend on context.
+- **Medium freedom** — pseudocode or parameterized scripts when a preferred pattern exists but configuration affects behavior.
+- **Low freedom** — specific scripts with few parameters when operations are fragile, consistency is critical, or a specific sequence must be followed.
+
+Think of the model as exploring a path: a narrow bridge with cliffs needs specific guardrails, while an open field allows many routes.
+
+### Description as trigger
+
+The frontmatter `description` is the canonical selection signal in the catalog. Keep one concise, complete description of the Skill's purpose, triggers, and exclusions; the model sees its full content before loading the body. Do not repeat that self-routing prose in the body. Keep execution steps, next-reference routing, and authorization or safety guards in the body where the agent needs them to act.
+
+## Progressive disclosure
+
+Skills load in three levels to manage context:
+
+1. **Metadata** — `name` and `description`, always present in the catalog.
+2. **Body** — the `SKILL.md` content, loaded only after the Skill triggers.
+3. **Resources** — `references/`, `scripts/`, and `assets/`, loaded or executed only when needed.
+
+Keep the body under 500 lines. When a Skill supports multiple variations, frameworks, or options, keep the core workflow and selection guidance in the body and move variant-specific details into reference files. Reference files must stay one level deep from the body, be linked directly from it, and state when to read them. Reference files longer than 100 lines should start with a table of contents so the reader can see the full scope when previewing. Avoid deeply nested references and avoid duplicating the same information in both the body and references.
+
+## Create or Update
+
+1. Clarify the job the Skill should help an agent perform, including representative prompts and the expected durable behavior.
+2. Prefer editing an existing Skill in place. Preserve files that are not part of the requested change, especially user-owned references, scripts, assets, and local notes.
+3. Keep the main `SKILL.md` concise and imperative. Put only reusable, task-critical instructions in the body.
+4. Add resources only when they have a concrete independent need:
+   - `references/` for details the agent should load on demand with `skill(name, reference: "references/file.md")`.
+   - `scripts/` for deterministic helpers the agent runs through existing tools such as `bash`, not through a Skill executor.
+   - `assets/` for templates or output files the body tells the agent to access when needed.
+5. Do not create inventories, generated indexes, README clutter, or placeholder files. If no reference, script, or asset is needed, omit the directory. A Skill should contain only the information an agent needs to do the job — not auxiliary context about how it was created.
+
+## Manifest Contract
+
+Use standard frontmatter fields first:
+
+```yaml
+---
+name: portable-skill-name
+description: Clear trigger and purpose for agents and users.
+license: MIT
+compatibility: Optional runtime or dependency note.
+metadata:
+  owner: optional structured data
+---
+```
+
+Required standard fields are `name` and `description`. Skill names use lowercase letters, digits, and single hyphens. Synergy strict sources require `SKILL.md` and a directory name that matches `name`.
+
+Synergy accepts `allowed-tools` for Agent Skills compatibility as a space-separated string or a YAML list of strings, but `allowed-tools` has no authorization effect. Actual permission and tool access still come from the active agent, control profile, and existing tool permission system.
+
+Treat unknown Claude, Codex, or OpenClaw fields as vendor-only fields. Synergy may read them leniently from vendor roots and report diagnostics, but do not add them to portable standard Skills.
+
+## Synergy Invocation Extensions
+
+Use these Synergy invocation extensions only when the Skill must control how it appears:
+
+```yaml
+user-invocable: false
+disable-model-invocation: true
+```
+
+- `user-invocable` defaults to `true`; set it to `false` to hide the Skill from Slash command registration.
+- `disable-model-invocation` defaults to `false`; set it to `true` to make `skill(name)` reject model loading.
+- If both disable user and model invocation, the Skill can still exist in the Library but will not be offered in either invocation directory.
+
+## Slash Arguments
+
+For Skill Slash content, `$N` placeholders are one-based while `$ARGUMENTS[N]` stays zero-based:
+
+- `$ARGUMENTS` expands to the full trailing request text.
+- `$ARGUMENTS[N]` expands to the zero-based positional argument.
+- `$N` expands to the one-based positional argument, and the highest `$N` consumes the remaining arguments.
+- Quoted text is one argument with the outer quotes removed.
+- Out-of-range placeholders become an empty string.
+- If the body has supported placeholders, Synergy only substitutes them.
+- If the body has no placeholders and trailing text exists, Synergy uses the no-placeholder fallback: it adds that text as a separate user request part after the Skill content.
+
+## Creation Process
+
+Follow these steps in order, skipping only when a clear reason applies:
+
+1. **Understand the Skill with concrete examples.** Ask the user for representative tasks and the phrases that should trigger the Skill; keep questions minimal and follow up as needed.
+2. **Plan the reusable contents.** For each example, decide which scripts, references, or assets would help execute that workflow repeatedly.
+3. **Create or edit the Skill.** Write the body first, then resources. Name the Skill folder exactly after `name`.
+4. **Verify.** Run the verification steps below; fix reported issues and re-run.
+5. **Iterate.** Use the Skill on real tasks, notice struggles or inefficiencies, update the Skill, and test again.
+
+## Verification
+
+After editing, reload Skills through the current Synergy reload path or restart only an isolated development runtime. Verify with `skill(name: "portable-skill-name")`; if the Skill keeps references, also verify each retained reference with `skill(name: "portable-skill-name", reference: "references/file.md")`.
+
+Run the narrowest relevant checks for the location changed. For Synergy source changes, prefer focused Skill tests and `bun run skill:check` before broader gates.

@@ -1,0 +1,85 @@
+{
+  "name": "@ericsanchezok/synergy-email",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./component": "./src/component.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./email/imap": "./src/email/imap.ts",
+    "./email/search-filter": "./src/email/search-filter.ts",
+    "./email/service": "./src/email/service.ts",
+    "./email/tools": "./src/email/tools.ts",
+    "./email/tools/email": "./src/email/tools/email.ts",
+    "./email/tools/email-read": "./src/email/tools/email-read.ts",
+    "./email/tools/email-read.txt": "./src/email/tools/email-read.txt",
+    "./email/tools/email.txt": "./src/email/tools/email.txt",
+    "./http": "./src/http.ts",
+    "./tool-group-email": "./src/tool-group-email.ts",
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/email",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "imapflow": "2.5.5",
+    "mailparser": "3.9.46",
+    "nodemailer": "10.1.7",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/mailparser": "3.9.0",
+    "@types/node": "catalog:",
+    "@types/nodemailer": "8.0.2",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "email",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "email",
+    "requires": {
+      "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "email",
+          "owner": "email",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Email",
+          "description": "Provide email capabilities.",
+          "component": "email"
+        }
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

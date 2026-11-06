@@ -1,0 +1,43 @@
+import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "./index"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import type { Info } from "@ericsanchezok/synergy-harness/session/types"
+
+export namespace BlueprintLoopReviewAccess {
+  export interface Input {
+    agent: string
+    reviewSessionID: string
+    reviewSession?: Info
+  }
+
+  export interface Context {
+    loop: BlueprintLoopInfo
+    executionSession: Info
+    reviewSession: Info
+  }
+
+  export async function resolve(input: Input): Promise<Context | undefined> {
+    const reviewSession = input.reviewSession ?? (await Session.get(input.reviewSessionID).catch(() => undefined))
+    if (!reviewSession || reviewSession.id !== input.reviewSessionID) return undefined
+    if (reviewSession.blueprint?.loopRole !== "audit" || !reviewSession.blueprint.loopID) return undefined
+    if (reviewSession.cortex?.agent !== input.agent) return undefined
+
+    const executionSessionID = reviewSession.cortex.parentSessionID
+    if (!executionSessionID) return undefined
+    const executionSession = await Session.get(executionSessionID).catch(() => undefined)
+    if (!executionSession) return undefined
+    if (executionSession.blueprint?.loopRole !== "execution") return undefined
+    if (executionSession.blueprint.loopID !== reviewSession.blueprint.loopID) return undefined
+
+    const loop = await BlueprintLoopStore.get(executionSession.scope.id, reviewSession.blueprint.loopID).catch(
+      () => undefined,
+    )
+    if (!loop || loop.status !== "auditing") return undefined
+    if (loop.sessionID !== executionSession.id) return undefined
+    if (loop.auditSessionID !== reviewSession.id) return undefined
+    if (loop.auditTaskID !== reviewSession.cortex.taskID) return undefined
+    if (loop.stopRequest?.requesterMessageID !== reviewSession.cortex.parentMessageID) return undefined
+    if ((loop.auditAgent || "supervisor") !== input.agent) return undefined
+
+    return { loop, executionSession, reviewSession }
+  }
+}

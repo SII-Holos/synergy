@@ -1,3 +1,4 @@
+import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import z from "zod"
 import { tool, type ToolContext, type ToolDefinition, type ToolExposure, type ToolResult } from "../src/tool"
@@ -24,14 +25,18 @@ describe("tool()", () => {
     const definition = tool({
       description: "Inspect",
       exposure,
-      display: { kind: "media-generation", media: { type: "image", aspectRatio: "1:1" } },
+      display: { icon: "logo", kind: "media-generation", media: { type: "image", aspectRatio: "1:1" } },
       args: {},
       async execute(): Promise<string | ToolResult> {
         return { title: "Done", output: "ok", metadata: { display: { kind: "media-generation" } } }
       },
     })
     expect(definition.exposure).toEqual(exposure)
-    expect(definition.display).toEqual({ kind: "media-generation", media: { type: "image", aspectRatio: "1:1" } })
+    expect(definition.display).toEqual({
+      icon: "logo",
+      kind: "media-generation",
+      media: { type: "image", aspectRatio: "1:1" },
+    })
   })
 
   test("exposes the bundled Zod for plugin-side schema reuse", () => {
@@ -55,7 +60,7 @@ describe("tool()", () => {
     const context: ToolContext = {
       sessionID: "ses",
       messageID: "msg",
-      agent: "synergy",
+      agent: TEST_AGENT_NAME,
       abort: new AbortController().signal,
       directory: "/tmp",
     }
@@ -67,7 +72,7 @@ describe("tool()", () => {
       },
     })
     const result = await definition.execute({}, context)
-    expect(result).toEqual({ output: "ses:msg:synergy" })
+    expect(result).toEqual({ output: `ses:msg:${TEST_AGENT_NAME}` })
   })
 
   test("ToolDefinition carries the shape used by PluginManifest compilation", () => {

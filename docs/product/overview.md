@@ -4,7 +4,7 @@ Synergy is an open-source AI agent workspace for persistent, recoverable softwar
 
 It provides one runtime for sessions, agents, tools, automation, knowledge, and integrations. Web, Desktop, and CLI are different clients of that runtime, so work can move between interactive, background, and one-off flows without creating separate product worlds.
 
-Synergy can run on its own. Connecting to Holos adds account identity and networked capabilities, allowing for seamless work across agents around the world.
+Synergy runs independently. Personal space is the entry point for local work, settings and model providers.
 
 ## Product Promise
 
@@ -34,7 +34,7 @@ Clients connect to the server and supply the context needed for the work they st
 
 This client-server model lets one runtime serve more than one project and more than one client while keeping each task attached to an explicit workspace context.
 
-## Core Product Objects
+## Product Objects
 
 ### Scope
 
@@ -105,15 +105,15 @@ Users can work interactively from Web or Desktop, or submit a one-off task with 
 
 ### Plan and Blueprint execution
 
-Plan is a read-only planning workflow for producing or refining a decision-complete Blueprint. The agent may inspect code, documents, sessions, memory, and external sources; ask the user about blocking decisions; and use research or design subagents. It cannot implement the requested outcome, modify project files, deploy, or perform external identity actions while Plan is active.
+Plan guides the agent to produce or refine a Blueprint with detail proportional to the task, preserving the complete goal, constraints, important decisions and acceptance evidence. Investigation resolves material uncertainty within the user’s authorized scope. The prompt reserves implementation, commits, pushes, deployment, and external identity actions for the execution session. Plan adds no tool permission boundary: the selected control profile and ordinary permission rules govern all tool calls.
 
-A Blueprint is the durable handoff from planning to execution. Starting a user-owned BlueprintLoop exits Plan or Light Loop while the session is idle, binds the Blueprint to the session, and runs it until the execution agent requests review. An independent audit agent then approves the result or returns structured remaining work so execution can continue. Planning and execution therefore share one authored contract without collapsing into the same workflow phase.
+A Blueprint is the durable handoff from planning to execution. Starting a user-owned BlueprintLoop exits Plan or Light Loop while the session is idle, binds the Blueprint to the session, and runs it until the execution agent requests review. An independent audit agent then approves the result or returns actionable corrections in natural language so execution can continue. Rework reuses the reviewer’s context while checking the full Blueprint again. Planning and execution therefore share one authored contract without collapsing into the same workflow phase.
 
 ### Light Loop
 
 Light Loop is a focused persistence workflow for one task. When the session becomes idle, the continuation kernel asks the agent to compare the original task with the current work, continue anything incomplete, and gather evidence before requesting completion.
 
-Calling `loop_stop` requests an independent review rather than ending the workflow immediately. Approval completes and clears the Light Loop; rejection returns concrete remaining instructions to the execution session and re-enables continuation. This keeps a lightweight task moving without requiring the user to design a multi-step plan first.
+Calling `loop_stop({summary})` completes and clears the Light Loop after the executor verifies the whole goal. The summary records delivered results and concrete verification evidence. The durable goal remains available across continuation, compaction and resumption; BlueprintLoop provides independent final acceptance when the task needs it.
 
 ### Lattice
 
@@ -131,7 +131,7 @@ Agenda stores persistent work items that run from time, file, or webhook trigger
 
 Recurring work can reuse a persistent session so context accumulates over time. One-shot work can use an ephemeral session and archive it after the result is delivered. Agenda prevents overlapping runs of the same item and pauses repeatedly failing items instead of retrying forever without intervention.
 
-Unattended Agenda work uses autonomous control boundaries by default: it must finish within policy or fail with a clear denial rather than waiting for a user permission prompt.
+Unattended Agenda work uses non-interactive control boundaries by default: it must finish within policy or fail with a clear denial rather than waiting for a user permission prompt.
 
 ## Connected Capabilities
 
@@ -141,25 +141,13 @@ Model Context Protocol integrations add external tool ecosystems to the same age
 
 ### Email
 
-Optional SMTP and IMAP configuration lets agents send, search, summarize, read, and mark email through governed tools. Reading and sending share one communication capability family; sending is a non-bypassable external write with recipient and subject surfaced for approval. Email accounts and credentials are independent of Channels and Holos identity.
+Optional SMTP and IMAP configuration lets agents send, search, summarize, read, and mark email through governed tools. Reading and sending share one communication capability family; sending is a non-bypassable external write with recipient and subject surfaced for approval. Email accounts and credentials are independent of Channels.
 
 ### Channels
 
 Channels connect external messaging systems to Synergy sessions. Incoming messages are mapped to a persistent endpoint session, processed by an agent, and streamed back with replies and relevant progress. Account, direct-message, group, mention, attachment, and reconnect behavior belong to the channel provider.
 
-Feishu/Lark is the current built-in channel provider. The channel boundary is designed so other messaging providers can implement the same session-oriented contract.
-
-### Holos
-
-Holos is an optional identity and agent-network layer. When connected, the selected Holos agent is the Synergy account identity. Its public profile is owned remotely, while local storage retains only the credentials and metadata needed to reconnect.
-
-Synergy can create or import a Holos agent and switch between locally saved agent identities. Login state and network readiness remain separate: a saved identity can exist while its network connection is reconnecting or unavailable.
-
-After authentication, Synergy opens a persistent WebSocket agent tunnel to Holos. The runtime sends heartbeats every 30 seconds, uses a 90-second missed-pong deadline enforced at the next heartbeat check after the threshold is reached, reconnects with bounded attempts, tracks peer reachability, and maintains a user-managed local contact list with blocking controls. Agents can exchange direct messages through the tunnel. Message history is retained locally as inbox and outbox threads, while outgoing messages record delivery or failure state; retry them only when dispatch is known not to have occurred, because a liveness-loss failure may still have been delivered.
-
-The same tunnel provides the transport for Synergy Link. A connected Synergy instance can open an explicit Link session with a target Holos agent, manage that remote session's lifecycle, and route supported shell and process operations to the associated Synergy Link host. A standalone Link host sends heartbeats every 60 seconds and uses a 180-second missed-pong deadline enforced at the next heartbeat check after the threshold is reached. Link state is tied to the live Holos connection; ordinary disconnect or heartbeat-liveness loss removes the remote execution client and clears its active Link sessions. A request already dispatched when the tunnel becomes ambiguous has an unknown remote result and is never automatically retried when it may mutate state.
-
-Holos does not replace local sessions, model providers, project configuration, Library, Channels, or their stored data. Only capabilities that explicitly use the Holos network depend on the connection.
+Feishu/Lark and GitHub are the current built-in channel providers. The channel boundary is designed so other messaging providers can implement the same session-oriented contract.
 
 ### Plugins
 
@@ -171,16 +159,7 @@ Plugins participate in the same product contracts as first-party features: tool 
 
 ## Browser Workspace
 
-Browser is a session-owned workspace where humans and browser tools operate on the same page.
-
-Each session has at most one Browser page. Reading Browser state or opening an interactive viewer does not create that page; the first user or tool navigation creates it, and later navigation reuses it.
-
-Interactive presentation has two first-class modes:
-
-- Desktop presents the page through a native Electron `WebContentsView`.
-- Web presents a remote Browser host through WebRTC media and data-channel input.
-
-Both modes preserve normal browser interaction such as pointer focus, text caret, IME composition, paste, wheel, and keyboard shortcuts. Navigation and file access pass safety checks, and agent-driven Browser actions remain subject to the active control profile.
+Desktop Browser gives each task multiple real native pages, with persistent Personal/named website identities or temporary identities. Human tab selection and explicit Agent page targets remain independent. State reads create no page; open and resume are explicit operations. See [Browser workspace](browser.md) for identity, permission and recovery behavior.
 
 ## Control Boundaries
 
@@ -194,13 +173,17 @@ Synergy separates what an agent can discover from what it can execute.
 
 The standard profiles express three product modes:
 
-| Profile       | Intended behavior                                                                                                                                          |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guarded`     | Interactive work. Synergy can ask the user when a decision requires approval.                                                                              |
-| `autonomous`  | Unattended work. Synergy must automatically allow or deny and never wait for a user prompt.                                                                |
-| `full_access` | Author-at-own-risk execution. Capability checks are allowed silently, while ordinary validation, operating-system, test, and network failures still apply. |
+| Profile       | Intended behavior                                                                                                                                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guarded`     | Interactive work. Synergy can ask the user when a decision requires approval.                                                                                                                                           |
+| `autonomous`  | Unattended work. Synergy must automatically allow or deny and never wait for a user prompt.                                                                                                                             |
+| `full_access` | Author-at-own-risk execution. Nothing is refused and nothing is asked, including protected operations and classification failures, while ordinary validation, operating-system, test, and network failures still apply. |
 
-Users can switch an active session to `full_access` without stopping execution. The frontend keeps the permission-mode selector available while the session is running. Selecting Full Access persists the profile immediately and resolves eligible pending permission asks for the session and its inheriting descendant sessions with one-time approval; the agent cannot self-escalate through the `session_control` tool, which remains idle-only. See [Live Profile Transitions](../architecture/execution-boundaries.md#live-profile-transitions) for the complete semantics.
+Users can switch an active session to `full_access` without stopping execution. The frontend keeps the permission-mode selector available while the session is running. Enabling Full Access from the UI is preceded once by a confirmation describing what the mode removes. Selecting Full Access persists the profile immediately and resolves eligible pending permission asks for the session and its inheriting descendant sessions with one-time approval; the agent cannot self-escalate through the `session_control` tool, which remains idle-only. See [Live Profile Transitions](../architecture/execution-boundaries.md#live-profile-transitions) for the complete semantics.
+
+Sessions started by Channels or scheduled Agenda runs have nobody available to answer a prompt, so they resolve to the configurable non-interactive profile, which defaults to `autonomous` and can be set to `full_access`. See [Control Profiles](../architecture/execution-boundaries.md#control-profiles).
+
+Registered secrets — provider API keys, pasted credentials, values captured from tool output — are masked everywhere the model can see: session records, provider payloads, and rollout artifacts hold only stable `⟦sec:<id>⟧` references. Real values are resolved only when a tool call executes, delivered to local commands through environment variables so they never appear in the command line. The mechanism applies under every control profile, including Full Access. Secrets are managed from the Settings Secrets panel and the `synergy secrets` CLI; values are never displayed in the browser. See [Secret Masking](../architecture/execution-boundaries.md#secret-masking) for the complete semantics.
 
 ## Standalone and Connected Use
 
@@ -213,7 +196,7 @@ A standalone Synergy installation supports the complete local work model:
 - Library, Notes, Blueprints, and Agenda
 - Web, Desktop, CLI, and Browser workflows
 
-Connecting Holos adds a network identity and connected-agent capabilities. Provider credentials and model usage remain separate from Holos account identity: users configure model access through providers, whether or not Holos is connected.
+The bottom-left Personal space menu opens Settings, Providers, and the repository. Personal work requires no network account; configure model access through Providers.
 
 ## Product Principles
 
@@ -235,7 +218,7 @@ The following principles should remain true as individual features evolve:
 - A child session represents delegated work; an Agenda item represents triggered work; a Blueprint represents an executable authored plan.
 - Plan produces a Blueprint; BlueprintLoop executes and audits it; Light Loop persists on one task; Lattice coordinates a Pathway of Blueprint-backed steps; Boss Mode routes work across a tree of persistent worker sessions.
 - Library stores reusable memory and experience; Notes store authored documents.
-- Channels adapt external messaging into sessions; Holos provides optional identity and agent-network connectivity.
+- Channels adapt external messaging into sessions.
 - Browser is a session workspace with one shared page, not a separate tab or screenshot-stream automation system.
 
-For implementation-level invariants, continue with the [architecture documentation](../architecture/README.md). For durable Web interaction and visual rules, see the [Web product contract](../../packages/app/PRODUCT.md). Plugin authors should begin with the [plugin documentation](../plugins/README.md).
+For implementation-level invariants, continue with the [architecture documentation](../architecture/README.md). For durable Web interaction and visual rules, see the [Web product contract](../../apps/web/PRODUCT.md). Plugin authors should begin with the [plugin documentation](../plugins/README.md).

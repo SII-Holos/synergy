@@ -1,0 +1,384 @@
+{
+  "version": "synthetic-v1",
+  "cases": [
+    {
+      "id": "prefix-sk",
+      "group": "recognized-prefix",
+      "source": "user_message",
+      "text": "credential=sk-a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 37
+        }
+      ]
+    },
+    {
+      "id": "prefix-sk-proj",
+      "group": "recognized-prefix",
+      "source": "tool_output",
+      "text": "credential=sk-proj-a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 42
+        }
+      ]
+    },
+    {
+      "id": "prefix-sk-ant-api03",
+      "group": "recognized-prefix",
+      "source": "user_message",
+      "text": "credential=sk-ant-api03-a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 47
+        }
+      ]
+    },
+    {
+      "id": "prefix-ghp",
+      "group": "recognized-prefix",
+      "source": "tool_output",
+      "text": "credential=ghp_a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 38
+        }
+      ]
+    },
+    {
+      "id": "prefix-github_pat",
+      "group": "recognized-prefix",
+      "source": "user_message",
+      "text": "credential=github_pat_a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 45
+        }
+      ]
+    },
+    {
+      "id": "prefix-xoxb",
+      "group": "recognized-prefix",
+      "source": "tool_output",
+      "text": "credential=xoxb-a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "id": "prefix-xoxa",
+      "group": "recognized-prefix",
+      "source": "user_message",
+      "text": "credential=xoxa-a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "id": "prefix-xoxp",
+      "group": "recognized-prefix",
+      "source": "tool_output",
+      "text": "credential=xoxp-a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "id": "prefix-xoxr",
+      "group": "recognized-prefix",
+      "source": "user_message",
+      "text": "credential=xoxr-a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "id": "prefix-xoxs",
+      "group": "recognized-prefix",
+      "source": "tool_output",
+      "text": "credential=xoxs-a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "id": "prefix-hf",
+      "group": "recognized-prefix",
+      "source": "user_message",
+      "text": "credential=hf_a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 37
+        }
+      ]
+    },
+    {
+      "id": "prefix-glpat",
+      "group": "recognized-prefix",
+      "source": "tool_output",
+      "text": "credential=glpat-fakekeya1B2c3D4e5F6g7H8",
+      "expected": [
+        {
+          "start": 11,
+          "end": 40
+        }
+      ]
+    },
+    {
+      "id": "prefix-pk_live",
+      "group": "recognized-prefix",
+      "source": "user_message",
+      "text": "credential=pk_live_a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 42
+        }
+      ]
+    },
+    {
+      "id": "prefix-rk_live",
+      "group": "recognized-prefix",
+      "source": "tool_output",
+      "text": "credential=rk_live_a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 42
+        }
+      ]
+    },
+    {
+      "id": "prefix-tok",
+      "group": "recognized-prefix",
+      "source": "user_message",
+      "text": "credential=tok_a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 38
+        }
+      ]
+    },
+    {
+      "id": "prefix-key",
+      "group": "recognized-prefix",
+      "source": "tool_output",
+      "text": "credential=key_a1B2c3D4e5F6g7H8fakekey",
+      "expected": [
+        {
+          "start": 11,
+          "end": 38
+        }
+      ]
+    },
+    {
+      "id": "unicode",
+      "group": "format",
+      "source": "user_message",
+      "text": "🔐 这是密钥：ghp_abcdef12345678fakekey",
+      "expected": [
+        {
+          "start": 8,
+          "end": 33
+        }
+      ]
+    },
+    {
+      "id": "overlap",
+      "group": "format",
+      "source": "tool_output",
+      "text": "value=sk-key_abcdefghijklmnopfakekey",
+      "expected": [
+        {
+          "start": 6,
+          "end": 36
+        }
+      ]
+    },
+    {
+      "id": "json",
+      "group": "format",
+      "source": "user_message",
+      "text": "{\"apiKey\":\"sk-abcdefghijklmnopfakekey\"}",
+      "expected": [
+        {
+          "start": 11,
+          "end": 37
+        }
+      ]
+    },
+    {
+      "id": "url",
+      "group": "format",
+      "source": "tool_output",
+      "text": "https://example.invalid/?token=tok_abcdefghijklmnopfakekey&mode=test",
+      "expected": [
+        {
+          "start": 31,
+          "end": 58
+        }
+      ]
+    },
+    {
+      "id": "multiple",
+      "group": "format",
+      "source": "user_message",
+      "text": "first=ghp_abcdefgh1234fakekey second=hf_abcdefgh5678fakekey",
+      "expected": [
+        {
+          "start": 6,
+          "end": 29
+        },
+        {
+          "start": 37,
+          "end": 59
+        }
+      ]
+    },
+    {
+      "id": "unknown-password",
+      "group": "known-gap",
+      "source": "tool_output",
+      "text": "password=plain-example-passwordfakekey",
+      "expected": [
+        {
+          "start": 9,
+          "end": 38
+        }
+      ]
+    },
+    {
+      "id": "unknown-bearer",
+      "group": "known-gap",
+      "source": "user_message",
+      "text": "Authorization: Bearer opaque-example-valuefakekey",
+      "expected": [
+        {
+          "start": 22,
+          "end": 49
+        }
+      ]
+    },
+    {
+      "id": "unknown-json",
+      "group": "known-gap",
+      "source": "tool_output",
+      "text": "{\"apiKey\":\"opaque-example-api-valuefakekey\"}",
+      "expected": [
+        {
+          "start": 11,
+          "end": 42
+        }
+      ]
+    },
+    {
+      "id": "unknown-prefix",
+      "group": "known-gap",
+      "source": "user_message",
+      "text": "OAuth credential: gho_examplecredential123456fakekey",
+      "expected": [
+        {
+          "start": 18,
+          "end": 52
+        }
+      ]
+    },
+    {
+      "id": "unknown-format",
+      "group": "known-gap",
+      "source": "tool_output",
+      "text": "Credential: Q7r8S9t0U1v2W3x4Y5z6A1b2C3d4E5f6fakekey",
+      "expected": [
+        {
+          "start": 12,
+          "end": 51
+        }
+      ]
+    },
+    {
+      "id": "negative-prose",
+      "group": "negative",
+      "source": "user_message",
+      "text": "Explain API key formats without a credential.",
+      "expected": []
+    },
+    {
+      "id": "negative-code",
+      "group": "negative",
+      "source": "tool_output",
+      "text": "const max_tokens = 4096; const key = Object.keys(value)",
+      "expected": []
+    },
+    {
+      "id": "negative-short",
+      "group": "negative",
+      "source": "user_message",
+      "text": "Prefix documentation: sk- ghp_ key_ tok_",
+      "expected": []
+    },
+    {
+      "id": "negative-ids",
+      "group": "negative",
+      "source": "tool_output",
+      "text": "request_id=11111111-2222-4333-8444-555555555555",
+      "expected": []
+    },
+    {
+      "id": "negative-hash",
+      "group": "negative",
+      "source": "user_message",
+      "text": "sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "expected": []
+    },
+    {
+      "id": "negative-empty",
+      "group": "negative",
+      "source": "tool_output",
+      "text": "",
+      "expected": []
+    },
+    {
+      "id": "negative-token-reference",
+      "group": "negative",
+      "source": "user_message",
+      "text": "use ⟦sec:0123456789ab⟧",
+      "expected": []
+    },
+    {
+      "id": "negative-example",
+      "group": "negative",
+      "source": "tool_output",
+      "text": "Documentation placeholder: sk-abcdefghijklmnop",
+      "expected": []
+    },
+    {
+      "id": "negative-fixture",
+      "group": "negative",
+      "source": "user_message",
+      "text": "Unit test fixture: ghp_aaaaaaaa",
+      "expected": []
+    }
+  ]
+}

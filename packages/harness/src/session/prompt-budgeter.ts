@@ -1,0 +1,507 @@
+import { RuntimeContext } from "../lifecycle/context"
+import type { JSONSchema7, ModelMessage } from "ai"
+import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { SessionPluginHooks as Plugin } from "./plugin-hooks"
+import { ProviderTransform } from "../provider/transform"
+import type { Provider } from "../provider/provider"
+import type { MessageV2 } from "./message-v2"
+import { Token } from "../util/token"
+import { Log } from "../util/log"
+import { ToolResolver } from "./tool-resolver"
+import { ToolIntent } from "./tool-intent"
+
+export namespace PromptBudgeter {
+  const log = Log.create({ service: "prompt-budgeter" })
+  const DEFAULT_OVERFLOW_THRESHOLD = 0.85
+  const OUTPUT_MARGIN_MIN = 2_048
+  const OUTPUT_MARGIN_RATIO = 0.05
+  const TOOL_OVERHEAD_PER_TOOL = 48
+  const MESSAGE_OVERHEAD_PER_ITEM = 12
+  const ESTIMATE_CACHE_MAX = 4096
+  const runtimeState = RuntimeContext.state(() => ({
+    estimateCache: new Map<string, number>(),
+  }))
+
+  export interface PromptPlanInput {
+    sessionID: string
+    agent: string
+    messageID?: string
+    model: Provider.Model
+    system: string[]
+    systemCacheBreakpoint?: number
+    lateSystem?: string[]
+    messages: ModelMessage[]
+    messageSources?: string[]
+    toolDefinitions: ToolResolver.Definition[]
+  }
+
+  export interface PromptPlan {
+    system: string[]
+    systemCacheBreakpoint?: number
+    lateSystem?: string[]
+    messages: ModelMessage[]
+    messageSources?: string[]
+    toolDefinitions: ToolResolver.Definition[]
+  }
+
+  export interface Budget {
+    context: number
+    usable: number
+    output: number
+    margin: number
+    inputEnvelope: number
+    threshold: number
+    soft: number
+  }
+
+  export interface Measure {
+    system: number
+    messages: number
+    tools: number
+    total: number
+  }
+
+  export interface Decision {
+    budget: Budget
+    measure: Measure
+    shouldCompact: boolean
+    contextExceeded: boolean
+    maxOutputTokens?: number
+  }
+
+  export class ContextBudgetExceededError extends Error {
+    constructor() {
+      super(
+        "The assembled prompt leaves no room for a model response within this model's context window. Automatic compaction is disabled or could not reduce the context enough; enable it or shorten the conversation before retrying.",
+      )
+      this.name = "ContextBudgetExceededError"
+    }
+  }
+
+  /**
+   * Calibration data from a previous API call in the same invoke loop.
+   *
+   * Only an unchanged request envelope and message prefix may reuse actual
+   * input usage. The unified meter measures the appended projection, including
+   * replayed reasoning and tool results, instead of guessing from characters.
+   */
+  export interface Calibration {
+    actualInput: number
+    outputTokens: number
+    deltaTokens: number
+  }
+
+  export interface Snapshot {
+    envelope: string
+    messages: string[]
+    estimatedTokens: number
+  }
+
+  export type Baseline = Snapshot & { actualInput: number }
+
+  function fingerprint(value: unknown) {
+    return Bun.hash(JSON.stringify(value)).toString(16)
+  }
+
+  function envelope(plan: PromptPlan, model: Provider.Model) {
+    return fingerprint({
+      providerID: model.providerID,
+      modelID: model.id,
+      api: model.api,
+      options: model.options,
+      system: plan.system,
+      lateSystem: plan.lateSystem ?? [],
+      systemCacheBreakpoint: plan.systemCacheBreakpoint,
+      tools: plan.toolDefinitions.map(({ id, description, inputSchema }) => ({
+        id,
+        description,
+        inputSchema: ToolIntent.snapshot(inputSchema).schema,
+      })),
+    })
+  }
+
+  export async function snapshot(
+    plan: PromptPlan,
+    model: Provider.Model,
+    encryptedReasoningTokens?: ReadonlyMap<string, number>,
+  ): Promise<Snapshot> {
+    return {
+      envelope: envelope(plan, model),
+      messages: plan.messages.map(fingerprint),
+      estimatedTokens: (await measure(plan, model.id, { encryptedReasoningTokens })).total,
+    }
+  }
+
+  export function withUsage(request: Snapshot, usage: ModelLimit.TokenUsage): Baseline | undefined {
+    const actualInput = ModelLimit.actualInput(usage)
+    if (!Number.isFinite(actualInput) || actualInput <= 0) return
+    return { ...request, actualInput }
+  }
+
+  export async function calibrate(
+    plan: PromptPlan,
+    model: Provider.Model,
+    baseline?: Baseline,
+    encryptedReasoningTokens?: ReadonlyMap<string, number>,
+  ): Promise<Calibration | undefined> {
+    if (!baseline || baseline.envelope !== envelope(plan, model)) return
+    if (plan.messages.length < baseline.messages.length) return
+    if (baseline.messages.some((key, index) => key !== fingerprint(plan.messages[index]))) return
+    const measured = await measure(plan, model.id, { encryptedReasoningTokens })
+    const deltaTokens = measured.total - baseline.estimatedTokens
+    if (deltaTokens < 0 || deltaTokens > baseline.actualInput * 0.25) return
+    return { actualInput: baseline.actualInput, outputTokens: 0, deltaTokens }
+  }
+
+  export async function buildPlan(input: PromptPlanInput): Promise<PromptPlan> {
+    const original = [...input.system]
+    const transformed = await Plugin.trigger(
+      "chat.system.transform",
+      {
+        phase: "budget",
+        sessionID: input.sessionID,
+        agent: input.agent,
+        model: { providerID: input.model.providerID, modelID: input.model.id },
+        messageID: input.messageID,
+        system: original,
+      },
+      { system: original },
+    )
+    const normalizedSystem = transformed.system.length > 0 ? transformed.system : original
+    log.debug("system transform budget result", {
+      sessionID: input.sessionID,
+      ...(input.messageID ? { messageID: input.messageID } : {}),
+      agent: input.agent,
+      model: { providerID: input.model.providerID, modelID: input.model.id },
+      beforeSystemCount: original.length,
+      afterSystemCount: normalizedSystem.length,
+      restoredEmptySystem: transformed.system.length === 0,
+    })
+
+    const lateSystem = [...(input.lateSystem ?? [])]
+    const source = Symbol("messageSource")
+    const projected = ProviderTransform.message(
+      input.messages.map((message, index) => ({ ...message, [source]: input.messageSources?.[index] })),
+      input.model,
+      {
+        lookAtAvailable: input.toolDefinitions.some((tool) => tool.id === "look_at"),
+        viewImageAvailable: input.toolDefinitions.some((tool) => tool.id === "view_image"),
+      },
+    ) as Array<ModelMessage & { [source]?: string }>
+    let previousSource = ""
+    const messageSources = projected.map((message) => {
+      previousSource = message[source] ?? previousSource
+      delete message[source]
+      return previousSource
+    })
+    return {
+      system: normalizedSystem,
+      systemCacheBreakpoint: normalizeCacheBreakpoint(input.systemCacheBreakpoint, normalizedSystem.length),
+      lateSystem,
+      messages: projected,
+      messageSources: input.messageSources ? messageSources : undefined,
+      toolDefinitions: input.toolDefinitions,
+    }
+  }
+
+  function normalizeCacheBreakpoint(index: number | undefined, length: number): number | undefined {
+    if (index === undefined || length === 0) return undefined
+    if (!Number.isInteger(index) || index < 0) return undefined
+    return Math.min(index, length - 1)
+  }
+
+  export function budget(
+    limits: ModelLimit.Info | undefined,
+    options?: {
+      overflowThreshold?: number
+      maxOutputTokens?: number
+    },
+  ): Budget {
+    const context = limits?.context ?? 0
+    const usable = ModelLimit.usableInput(limits)
+    const configuredOutput = limits?.output && limits.output > 0 ? limits.output : ModelLimit.OUTPUT_TOKEN_MAX
+    const requestedOutput =
+      options?.maxOutputTokens && options.maxOutputTokens > 0 ? options.maxOutputTokens : configuredOutput
+    const providerOutput =
+      context > 0 && configuredOutput >= context
+        ? Math.max(context - ModelLimit.OUTPUT_TOKEN_HEADROOM, 1)
+        : configuredOutput
+    const output = Math.min(providerOutput, requestedOutput, ModelLimit.OUTPUT_TOKEN_MAX)
+    const margin = outputMargin(context)
+    const inputEnvelope = usable
+    const threshold = options?.overflowThreshold ?? DEFAULT_OVERFLOW_THRESHOLD
+    return {
+      context,
+      usable,
+      output,
+      margin,
+      inputEnvelope,
+      threshold,
+      soft: Math.floor(inputEnvelope * threshold),
+    }
+  }
+
+  export function outputMargin(context: number): number {
+    if (context <= 0) return 0
+    return Math.min(
+      ModelLimit.OUTPUT_TOKEN_HEADROOM,
+      Math.max(OUTPUT_MARGIN_MIN, Math.ceil(context * OUTPUT_MARGIN_RATIO)),
+    )
+  }
+
+  function remainingOutputTokens(inputTokens: number, resultBudget: Budget): number | undefined {
+    if (resultBudget.context <= 0 || resultBudget.output <= 0) return undefined
+    return Math.floor(resultBudget.context - inputTokens - resultBudget.margin)
+  }
+
+  function safeMaxOutputTokens(
+    inputTokens: number,
+    resultBudget: Budget,
+    requestedMaxOutputTokens?: number,
+  ): number | undefined {
+    if (resultBudget.context <= 0) {
+      return requestedMaxOutputTokens && requestedMaxOutputTokens > 0 ? resultBudget.output : undefined
+    }
+    const remaining = remainingOutputTokens(inputTokens, resultBudget)
+    if (remaining === undefined || remaining <= 0) return undefined
+    return Math.min(resultBudget.output, remaining)
+  }
+
+  function contextExceeded(inputTokens: number, resultBudget: Budget): boolean {
+    const remaining = remainingOutputTokens(inputTokens, resultBudget)
+    return remaining !== undefined && remaining <= 0
+  }
+
+  /**
+   * Estimated visual tokens per image/file for budgeter purposes.
+   *
+   * Text tokenizers (tiktoken) count base64 bytes as text tokens, massively
+   * overcounting the real cost — providers charge by visual tokens (typically
+   * 85–1000 per image depending on resolution and provider). This fixed
+   * estimate is intentionally conservative to avoid false-positive
+   * compactions while still catching genuine overflows from many images.
+   */
+  const IMAGE_TOKEN_ESTIMATE = 500
+  function encryptedReasoning(metadata: unknown) {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return []
+    return (["openai", "xai"] as const).flatMap((namespace) => {
+      const options = (metadata as Record<string, unknown>)[namespace]
+      if (!options || typeof options !== "object" || Array.isArray(options)) return []
+      if (!("reasoningEncryptedContent" in options) || typeof options.reasoningEncryptedContent !== "string") return []
+      return [
+        {
+          namespace,
+          options,
+          content: options.reasoningEncryptedContent,
+          key: reasoningItemKey({ [namespace]: options }),
+        },
+      ]
+    })
+  }
+
+  export function reasoningReplayTokens(messages: MessageV2.WithParts[]): ReadonlyMap<string, number> {
+    const result = new Map<string, number>()
+    for (const message of messages) {
+      if (message.info.role !== "assistant") continue
+      const ids = new Set<string>()
+      for (const part of message.parts) {
+        if (part.type !== "reasoning") continue
+        for (const item of encryptedReasoning(part.metadata)) {
+          if (item.content && item.key) ids.add(item.key)
+        }
+      }
+      const reported = message.info.tokens.reasoning || message.info.tokens.output
+      if (!Number.isSafeInteger(reported) || reported <= 0 || ids.size === 0) continue
+      const perItem = Math.ceil(reported / ids.size)
+      for (const id of ids) result.set(id, Math.max(result.get(id) ?? 0, perItem))
+    }
+    return result
+  }
+
+  const ENCRYPTED_REASONING_TOKEN_ESTIMATE = 1_024
+
+  /**
+   * Sanitize ModelMessage content for token estimation by replacing
+   * opaque image, file, and encrypted reasoning payloads with placeholders.
+   * Text tokenizers count encoded bytes as text rather than provider-side
+   * tokens, producing inflated estimates and premature compaction.
+   */
+  function sanitizeForEstimation(
+    msgs: ModelMessage[],
+    encryptedReasoningTokens?: ReadonlyMap<string, number>,
+    reasoningItems = new Set<string>(),
+  ) {
+    let imageParts = 0
+    let encryptedReasoningCost = 0
+    const sanitized = msgs.map((msg) => ({
+      ...msg,
+      content: Array.isArray(msg.content)
+        ? msg.content.map((part) => {
+            if (part.type === "image") {
+              imageParts++
+              return { ...part, image: "[image]" }
+            }
+            if (part.type === "file") {
+              imageParts++
+              return { ...part, data: "[file data]", mediaType: part.mediaType }
+            }
+            if (part.type === "reasoning") {
+              const items = encryptedReasoning(part.providerOptions)
+              if (!items.length) return part
+              const providerOptions = { ...part.providerOptions }
+              for (const item of items) {
+                if (item.content && (!item.key || !reasoningItems.has(item.key))) {
+                  const reported = item.key ? encryptedReasoningTokens?.get(item.key) : undefined
+                  encryptedReasoningCost +=
+                    typeof reported === "number" && Number.isFinite(reported) && reported > 0
+                      ? reported
+                      : ENCRYPTED_REASONING_TOKEN_ESTIMATE
+                  if (item.key) reasoningItems.add(item.key)
+                }
+                providerOptions[item.namespace] = {
+                  ...item.options,
+                  reasoningEncryptedContent: "[encrypted reasoning]",
+                }
+              }
+              return { ...part, providerOptions }
+            }
+            return part
+          })
+        : msg.content,
+    }))
+    return { sanitized, imageParts, encryptedReasoningCost }
+  }
+
+  export async function measure(
+    plan: PromptPlan,
+    modelID: string,
+    options?: { encryptedReasoningTokens?: ReadonlyMap<string, number> },
+  ): Promise<Measure> {
+    await Token.warmup(modelID)
+    const systemCost = await estimateModelJSONCached(
+      modelID,
+      [...plan.system, ...(plan.lateSystem ?? [])].map((content) => ({ role: "system", content })),
+    )
+    const messageCost = (await measureMessageCosts(plan.messages, modelID, options?.encryptedReasoningTokens)).reduce(
+      (sum, cost) => sum + cost,
+      0,
+    )
+    const toolCost = await estimateTools(plan.toolDefinitions, modelID)
+    return {
+      system: systemCost,
+      messages: messageCost,
+      tools: toolCost,
+      total: systemCost + messageCost + toolCost,
+    }
+  }
+
+  export async function measureMessageCosts(
+    messages: ModelMessage[],
+    modelID: string,
+    encryptedReasoningTokens?: ReadonlyMap<string, number>,
+  ) {
+    await Token.warmup(modelID)
+    const costs: number[] = []
+    const reasoningItems = new Set<string>()
+    for (const message of messages) {
+      const { sanitized, imageParts, encryptedReasoningCost } = sanitizeForEstimation(
+        [message],
+        encryptedReasoningTokens,
+        reasoningItems,
+      )
+      costs.push(
+        (await estimateModelJSONCached(modelID, sanitized)) +
+          imageParts * IMAGE_TOKEN_ESTIMATE +
+          encryptedReasoningCost,
+      )
+    }
+    return costs
+  }
+
+  async function estimateModelJSONCached(modelID: string, value: unknown) {
+    const instanceState = runtimeState()
+
+    const serialized = serializeForEstimate(value)
+    if (serialized === undefined) return 0
+    const key = estimateKey(modelID, serialized)
+    const cached = instanceState.estimateCache.get(key)
+    if (cached !== undefined) return cached
+    const estimated = await Token.estimateModelJSON(modelID, serialized)
+    instanceState.estimateCache.set(key, estimated)
+    if (instanceState.estimateCache.size > ESTIMATE_CACHE_MAX) {
+      const first = instanceState.estimateCache.keys().next().value
+      if (first) instanceState.estimateCache.delete(first)
+    }
+    return estimated
+  }
+
+  function serializeForEstimate(value: unknown): string | undefined {
+    if (typeof value === "string") return value
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return undefined
+    }
+  }
+
+  function estimateKey(modelID: string, serialized: string) {
+    // A cache key needs a fast non-cryptographic hash, not SHA-256. Bun.hash
+    // (wyhash) is ~10x faster; collisions are irrelevant at this cache size and
+    // would only yield a slightly-off token estimate that calibration corrects.
+    return `${modelID}\0${Bun.hash(serialized)}`
+  }
+
+  export async function decide(
+    plan: PromptPlan,
+    limits: ModelLimit.Info | undefined,
+    modelID: string,
+    options?: {
+      overflowThreshold?: number
+      calibration?: Calibration
+      maxOutputTokens?: number
+      encryptedReasoningTokens?: ReadonlyMap<string, number>
+    },
+  ): Promise<Decision> {
+    const resultBudget = budget(limits, options)
+
+    if (options?.calibration && options.calibration.actualInput > 0) {
+      const { actualInput, outputTokens, deltaTokens } = options.calibration
+      const calibratedTotal = actualInput + outputTokens + deltaTokens
+      return {
+        budget: resultBudget,
+        measure: { system: 0, messages: calibratedTotal, tools: 0, total: calibratedTotal },
+        shouldCompact: resultBudget.usable > 0 && calibratedTotal >= resultBudget.soft,
+        contextExceeded: contextExceeded(calibratedTotal, resultBudget),
+        maxOutputTokens: safeMaxOutputTokens(calibratedTotal, resultBudget, options?.maxOutputTokens),
+      }
+    }
+
+    const resultMeasure = await measure(plan, modelID, options)
+    return {
+      budget: resultBudget,
+      measure: resultMeasure,
+      shouldCompact: resultBudget.usable > 0 && resultMeasure.total >= resultBudget.soft,
+      contextExceeded: contextExceeded(resultMeasure.total, resultBudget),
+      maxOutputTokens: safeMaxOutputTokens(resultMeasure.total, resultBudget, options?.maxOutputTokens),
+    }
+  }
+
+  async function estimateTools(defs: ToolResolver.Definition[], modelID: string) {
+    const results = await Promise.all(
+      defs.map(async (item) => {
+        const [idTokens, descTokens, schemaTokens] = await Promise.all([
+          Token.estimateModel(modelID, item.id),
+          Token.estimateModel(modelID, item.description),
+          estimateSchema(modelID, ToolIntent.snapshot(item.inputSchema).schema),
+        ])
+        return TOOL_OVERHEAD_PER_TOOL + idTokens + descTokens + schemaTokens
+      }),
+    )
+    return results.reduce((sum, n) => sum + n, 0)
+  }
+
+  async function estimateSchema(modelID: string, schema: JSONSchema7) {
+    return (await estimateModelJSONCached(modelID, schema)) + MESSAGE_OVERHEAD_PER_ITEM
+  }
+}

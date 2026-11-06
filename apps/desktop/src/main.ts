@@ -1,0 +1,1325 @@
+import { installDesktopStdioHandlers } from "./stdio.js"
+import { configureDesktopUserData } from "./user-data.js"
+import { configureDesktopChromium } from "./chromium.js"
+import { ComputerBrokerClient } from "./computer/broker-client.js"
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  ClipboardItem,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  nativeTheme,
+  powerMonitor,
+  powerSaveBlocker,
+  shell,
+  safeStorage,
+  session,
+  systemPreferences,
+  Tray,
+  type BrowserWindowConstructorOptions,
+} from "electron"
+import { readFile, writeFile } from "node:fs/promises"
+import { randomBytes } from "node:crypto"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+import { BrowserNativeViewManager } from "./browser-native-view.js"
+import { BrowserHostBrokerClient } from "./browser-host-broker.js"
+import { BrowserNativePagePool } from "./browser-native-page-pool.js"
+import { runBrowserPageAction } from "./browser-page-actions.js"
+import { BrowserDataStore } from "./browser-data-store.js"
+import { BrowserDataActions } from "./browser-data-actions.js"
+import { BrowserImportSources } from "./browser-import-sources.js"
+import { createBrowserImportLogger } from "./browser-import-diagnostics.js"
+import { BrowserDataContexts } from "./browser-data-contexts.js"
+import {
+  BrowserFileActionSchema,
+  sanitizeBrowserFilename,
+  BROWSER_MAX_DOWNLOAD_BYTES,
+  BrowserPageActionRequestSchema,
+} from "@ericsanchezok/synergy-browser-core"
+import { BrowserNativeLease } from "@ericsanchezok/synergy-browser-core/native-lease"
+import {
+  BROWSER_PROTOCOL_VERSION,
+  BrowserRegistrationSecretSchema,
+  type BrowserNativeBrokerStatus,
+  type BrowserNativePresentationIPCError,
+  type BrowserNativePresentationTicketRequest,
+  type BrowserNativePresentationTicketResult,
+} from "@ericsanchezok/synergy-browser-core"
+import { desktopErrorPage } from "./error-page.js"
+import {
+  DESKTOP_PROTOCOL,
+  type DesktopChannel,
+  desktopAppUserModelId,
+  desktopChannel,
+  desktopServerMode,
+  desktopWindowTitle,
+  isDebugEnabled,
+} from "./identity.js"
+import {
+  parseBrowserNativeAttach,
+  parseBrowserNativePage,
+  parseBrowserNativePresentationCapability,
+  parseBrowserNativeResize,
+  parseBrowserNativePresentationTicket,
+  parseClipboardWriteText,
+  parseExternalUrl,
+} from "./ipc-contract.js"
+import { selectDirectoryWithNativeDialog } from "./directory-picker.js"
+import { installAppMenu } from "./menu.js"
+import { DesktopRendererDelivery } from "./main-renderer-delivery.js"
+import { DesktopServerManager } from "./server-manager.js"
+import { DesktopServerActions, trustedServerFrame } from "./server-ipc.js"
+import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
+import { DesktopStartupOverlay } from "./startup-overlay.js"
+import type { DesktopStartupStatus } from "./startup-page.js"
+import { DesktopUpdateMode, DesktopUpdater, desktopUpdateInstallActive } from "./updater.js"
+import {
+  applyDesktopThemeToWindow,
+  defaultDesktopSkinState,
+  desktopThemeBackground,
+  desktopThemeSnapshot,
+  loadDesktopSkinState,
+  parseDesktopSkinUpdate,
+  parseDesktopThemeSource,
+  saveDesktopSkinState,
+  type DesktopSkinStateV2,
+  type DesktopThemeSnapshot,
+} from "./theme.js"
+import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
+import {
+  DEFAULT_DESKTOP_ZOOM_FACTOR,
+  applyDesktopZoomToWindow,
+  loadDesktopZoom,
+  parseDesktopZoomFactor,
+  saveDesktopZoom,
+} from "./zoom-state.js"
+import {
+  ACTIVITY_FAILURE_GRACE_MS,
+  ACTIVITY_POLL_MS,
+  RELEASE_DEBOUNCE_MS,
+  createDesktopActivityWatcher,
+  createDesktopPowerGuard,
+  loadDesktopPower,
+  parseDesktopPowerUpdate,
+  saveDesktopPower,
+  type DesktopActivityWatcher,
+  type DesktopPowerGuard,
+  type DesktopPowerSnapshot,
+} from "./power-save.js"
+import {
+  desktopDevDockIconPath,
+  desktopIconPath,
+  desktopEmitsWindowStateEvents,
+  desktopShouldHideToTray,
+  desktopStartupIconPath,
+  desktopUsesSystemTray,
+  desktopWindowChromeOptions,
+  desktopWindowState,
+} from "./window-chrome.js"
+import { applyDesktopUnreadUpdate, desktopUnreadAssetPaths, desktopUnreadPresentation } from "./unread-indicator.js"
+
+installDesktopStdioHandlers()
+configureDesktopChromium(app)
+
+const dirname = path.dirname(fileURLToPath(import.meta.url))
+process.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toString("hex")
+process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toString("hex")
+BrowserRegistrationSecretSchema.parse(process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET)
+
+let mainWindow: BrowserWindow | null = null
+let mainRendererDelivery: DesktopRendererDelivery | null = null
+let startupOverlay: DesktopStartupOverlay | null = null
+let nativeViews: BrowserNativeViewManager | null = null
+let nativePagePool: BrowserNativePagePool | null = null
+let browserData: BrowserDataStore | undefined
+let browserDataActions: BrowserDataActions | undefined
+const browserDataContexts = new BrowserDataContexts({ session: (partition) => session.fromPartition(partition) })
+
+function localBrowserData() {
+  return (browserData ??= new BrowserDataStore(path.join(app.getPath("userData"), "browser-data"), {
+    async available() {
+      const available = await safeStorage.isAsyncEncryptionAvailable()
+      return available && !(process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text")
+    },
+    encrypt: (text) => safeStorage.encryptStringAsync(text),
+    decrypt: async (data) => (await safeStorage.decryptStringAsync(data)).result,
+  }))
+}
+let computerBroker: ComputerBrokerClient | null = null
+let computerBrokerOrigin: string | null = null
+let browserBroker: BrowserHostBrokerClient | null = null
+let browserBrokerOrigin: string | null = null
+let browserBrokerStatus: BrowserNativeBrokerStatus = "failed"
+let serverManager: DesktopServerManager | null = null
+let updater: DesktopUpdater | null = null
+let desktopTray: Tray | null = null
+let currentAppURL: string | null = null
+let recoveryURL: string | null = null
+let serverDocumentGeneration = 0
+let cancellingMaintenance = false
+const serverActions = new DesktopServerActions()
+let shouldStart = true
+let isQuitting = false
+let isUpdateQuit = false
+let pendingCreateWindow: Promise<void> | null = null
+let currentDesktopTheme: DesktopThemeSnapshot | null = null
+let unreadCompletionCount = 0
+let desktopUnreadOverlayIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
+let desktopUnreadTrayIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
+let desktopTrayDefaultIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
+let emitDesktopWindowState: (() => void) | null = null
+let currentDesktopZoomFactor = DEFAULT_DESKTOP_ZOOM_FACTOR
+let zoomWriteQueue: Promise<void> = Promise.resolve()
+let keepAwakeWhileRunning = false
+let desktopPowerGuard: DesktopPowerGuard | null = null
+let desktopActivityWatcher: DesktopActivityWatcher | null = null
+let desktopPowerWriteQueue: Promise<void> = Promise.resolve()
+
+const updateQuitApp = app as typeof app & {
+  on(event: "before-quit-for-update", listener: () => void): typeof app
+}
+
+configureDesktopUserData(app, process.env)
+
+try {
+  app.setAppUserModelId(desktopAppUserModelId(desktopChannel(app.isPackaged)))
+} catch {
+  // AppUserModelId is only meaningful on Windows.
+}
+
+if (!app.requestSingleInstanceLock()) {
+  shouldStart = false
+  app.quit()
+}
+
+function runtimeLog(message: string, data?: Record<string, unknown>) {
+  if (process.env.SYNERGY_DESKTOP_RUNTIME_TEST !== "1") return
+  console.log(`[desktop-runtime] ${message}${data ? ` ${JSON.stringify(data)}` : ""}`)
+}
+
+async function loadStartupIconDataURL(iconPath: string): Promise<string | undefined> {
+  try {
+    const data = await readFile(iconPath)
+    return `data:image/png;base64,${data.toString("base64")}`
+  } catch (error) {
+    runtimeLog("startupIconUnavailable", {
+      iconPath,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return undefined
+  }
+}
+
+runtimeLog("mainLoaded", { argv: process.argv })
+
+function loadDesktopUnreadImage(assetPath: string | undefined, asset: string) {
+  if (!assetPath) return null
+  const image = nativeImage.createFromPath(assetPath)
+  if (!image.isEmpty()) return image
+  runtimeLog("unreadIndicatorAssetUnavailable", { asset, assetPath })
+  return null
+}
+
+function initializeDesktopUnreadAssets(): void {
+  const paths = desktopUnreadAssetPaths({
+    platform: process.platform,
+    dirname,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  })
+  desktopUnreadOverlayIcon = loadDesktopUnreadImage(paths.overlay, "overlay")
+  desktopUnreadTrayIcon = loadDesktopUnreadImage(paths.trayUnread, "tray")
+}
+
+function applyDesktopUnreadState(): void {
+  const presentation = desktopUnreadPresentation(
+    process.platform,
+    unreadCompletionCount,
+    desktopWindowTitle(desktopChannel(app.isPackaged)),
+  )
+  if (presentation.dockBadge !== undefined) app.dock?.setBadge(presentation.dockBadge)
+  if (process.platform === "win32" && mainWindow && !mainWindow.isDestroyed()) {
+    const overlay = presentation.overlayVisible ? desktopUnreadOverlayIcon : null
+    mainWindow.setOverlayIcon(overlay, presentation.overlayDescription)
+  }
+  if (presentation.launcherBadgeCount !== undefined) {
+    app.setBadgeCount(presentation.launcherBadgeCount)
+  }
+  if (desktopTray) {
+    const image = presentation.trayUnread ? desktopUnreadTrayIcon : desktopTrayDefaultIcon
+    if (image) desktopTray.setImage(image)
+    desktopTray.setToolTip(presentation.trayTooltip)
+  }
+}
+
+function setDesktopUnreadCount(count: number): void {
+  unreadCompletionCount = count
+  applyDesktopUnreadState()
+}
+
+async function createWindow() {
+  const channel = desktopChannel(app.isPackaged)
+  const mode = desktopServerMode(channel)
+  serverManager ??= new DesktopServerManager({
+    channel,
+    mode,
+    resourcesPath: process.resourcesPath,
+    logDir: desktopLogDir(),
+    userDataPath: app.getPath("userData"),
+    externalUrl: process.env.SYNERGY_DESKTOP_APP_URL,
+    onStartupStatus: (status) => {
+      void setStartupStatus(status)
+    },
+  })
+  if (!updater) {
+    updater = new DesktopUpdater({
+      channel,
+      currentVersion: app.getVersion(),
+      userDataDir: app.getPath("userData"),
+      stopServer: async () => {
+        await stopLocalBrowserBroker()
+        await stopLocalComputerBroker()
+        await serverManager?.stop()
+      },
+      restartServer: async () => {
+        if (!serverManager) return
+        const url = await serverManager.start()
+        currentAppURL = url
+        await syncLocalBrowserBroker(true)
+        await syncLocalComputerBroker(true)
+        await mainWindow?.loadURL(url)
+      },
+    })
+    updater.onEvent((event) => {
+      isUpdateQuit = desktopUpdateInstallActive(isUpdateQuit, event.status)
+      mainRendererDelivery?.sendLatest("desktop-update", "desktop-update:event", event)
+    })
+    await updater.init()
+  }
+
+  const windowState = await loadWindowState(app.getPath("userData"))
+  const startupIconDataUrl = await loadStartupIconDataURL(
+    desktopStartupIconPath({
+      platform: process.platform,
+      dirname,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
+  )
+  const preloadPath = path.join(dirname, "preload.cjs")
+  const theme = getDesktopThemeSnapshot()
+  const windowOptions: BrowserWindowConstructorOptions = {
+    show: false,
+    width: windowState.width,
+    height: windowState.height,
+    title: desktopWindowTitle(channel),
+    backgroundColor: desktopThemeBackground(theme),
+    ...desktopWindowChromeOptions({
+      platform: process.platform,
+      dirname,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      zoomFactor: currentDesktopZoomFactor,
+    },
+  }
+  if (windowState.x !== undefined && windowState.y !== undefined) {
+    windowOptions.x = windowState.x
+    windowOptions.y = windowState.y
+  }
+
+  mainWindow = new BrowserWindow(windowOptions)
+  mainWindow.webContents.on("did-start-navigation", (event) => {
+    if (event.isMainFrame && !event.isSameDocument) serverDocumentGeneration++
+  })
+  applyDesktopZoom()
+  mainWindow.webContents.on("did-finish-load", () => applyDesktopZoom())
+  applyDesktopUnreadState()
+  const rendererDelivery = new DesktopRendererDelivery(mainWindow.webContents)
+  mainRendererDelivery = rendererDelivery
+  runtimeLog("createWindow", { mode, show: process.env.SYNERGY_DESKTOP_SHOW !== "0" })
+  if (process.platform !== "darwin") {
+    mainWindow.setMenuBarVisibility(false)
+  }
+  nativePagePool ??= new BrowserNativePagePool({
+    captureWindow: () => mainWindow,
+    backgroundColor: () => desktopThemeBackground(getDesktopThemeSnapshot()),
+    onVisit: (partition, url, title) => localBrowserData().visit(partition, url, title),
+  })
+  nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool, (event) => {
+    rendererDelivery.send("browser-native:event", event)
+  })
+  installWindowSecurity(mainWindow, () => currentAppURL)
+  enforceProductionLoading(mainWindow.webContents, () => currentAppURL)
+  scheduleWindowStatePersistence(mainWindow, app.getPath("userData"))
+  installWindowInputShortcuts(mainWindow, isDebugEnabled(channel))
+  const windowStateEvents = desktopEmitsWindowStateEvents(process.platform)
+    ? installDesktopWindowStateEvents(mainWindow)
+    : null
+  emitDesktopWindowState = windowStateEvents?.emit ?? null
+  installWindowCloseBehavior(mainWindow)
+
+  if (windowState.maximized) mainWindow.maximize()
+  startupOverlay = new DesktopStartupOverlay({
+    window: mainWindow,
+    preloadPath,
+    chrome: process.platform === "darwin" ? "native" : "custom",
+    iconDataUrl: startupIconDataUrl,
+    theme,
+  })
+  await startupOverlay.load()
+  startupOverlay.attach()
+  if (process.env.SYNERGY_DESKTOP_SHOW !== "0") {
+    mainWindow.show()
+  }
+
+  mainWindow.on("closed", () => {
+    windowStateEvents?.dispose()
+    if (emitDesktopWindowState === windowStateEvents?.emit) emitDesktopWindowState = null
+    rendererDelivery.dispose()
+    if (mainRendererDelivery === rendererDelivery) mainRendererDelivery = null
+    startupOverlay?.destroy()
+    startupOverlay = null
+    nativeViews?.destroy()
+    nativeViews = null
+    mainWindow = null
+  })
+
+  await setStartupStatus({
+    title: mode === "external" ? "Connecting to Synergy" : "Starting local runtime",
+    detail:
+      mode === "external"
+        ? "Opening the configured desktop app surface."
+        : "Synergy is opening the local server and workspace.",
+  })
+
+  const targetURL = await resolveAppURL()
+  await syncLocalBrowserBroker()
+  await syncLocalComputerBroker()
+  await setStartupStatus({
+    title: currentAppURL ? "Loading workspace" : "Startup needs attention",
+    phase: currentAppURL ? "starting" : undefined,
+    detail: currentAppURL
+      ? "Connecting to the local app surface."
+      : "Synergy could not start the local runtime. Opening diagnostics.",
+  })
+  try {
+    await mainWindow.loadURL(targetURL)
+  } catch (error) {
+    await dismissStartupOverlay()
+    throw error
+  }
+  await dismissStartupOverlay()
+  runtimeLog("windowLoaded", { url: mainWindow.webContents.getURL() })
+}
+
+async function initializeDesktopTheme(): Promise<void> {
+  const state = await loadDesktopSkinState(app.getPath("userData"))
+  updateDesktopThemeSnapshot(snapshotDesktopTheme(state), { broadcast: false })
+}
+async function initializeDesktopZoom(): Promise<void> {
+  currentDesktopZoomFactor = (await loadDesktopZoom(app.getPath("userData"))).zoomFactor
+}
+
+function applyDesktopZoom(): void {
+  if (!mainWindow) return
+  applyDesktopZoomToWindow(mainWindow, { version: 1, zoomFactor: currentDesktopZoomFactor })
+}
+
+function scheduleDesktopZoomPersist(): void {
+  const factor = currentDesktopZoomFactor
+  zoomWriteQueue = zoomWriteQueue
+    .catch(() => undefined)
+    .then(() => saveDesktopZoom(app.getPath("userData"), { version: 1, zoomFactor: factor }))
+}
+
+function updateDesktopZoomFactor(zoomFactor: number): void {
+  currentDesktopZoomFactor = zoomFactor
+  applyDesktopZoom()
+  scheduleDesktopZoomPersist()
+}
+
+function setDesktopZoomFactor(input: unknown): number {
+  updateDesktopZoomFactor(parseDesktopZoomFactor(input))
+  return currentDesktopZoomFactor
+}
+
+function desktopPowerSnapshot(): DesktopPowerSnapshot {
+  return { keepAwakeWhileRunning, active: desktopPowerGuard?.active() ?? false }
+}
+
+function broadcastDesktopPower(): void {
+  mainRendererDelivery?.sendLatest("desktop-power", "desktop-power:event", {
+    type: "power",
+    snapshot: desktopPowerSnapshot(),
+  })
+}
+
+function setDesktopPowerActive(active: boolean): void {
+  desktopPowerGuard?.apply(keepAwakeWhileRunning && active)
+  broadcastDesktopPower()
+}
+
+function resolveDesktopPowerBaseUrl(): string | null {
+  if (!serverManager) return null
+  const status = serverManager.status()
+  if (status.mode === "external") return status.url
+  return status.state === "running" ? status.url : null
+}
+
+async function fetchDesktopActivity(url: string, signal: AbortSignal): Promise<unknown> {
+  const response = await fetch(url, { signal, cache: "no-store" })
+  if (!response.ok) throw new Error(`activity responded ${response.status}`)
+  return await response.json()
+}
+
+async function initializeDesktopPower(): Promise<void> {
+  keepAwakeWhileRunning = (await loadDesktopPower(app.getPath("userData"))).keepAwakeWhileRunning
+  desktopPowerGuard = createDesktopPowerGuard(powerSaveBlocker)
+  desktopActivityWatcher = createDesktopActivityWatcher({
+    intervalMs: ACTIVITY_POLL_MS,
+    failureGraceMs: ACTIVITY_FAILURE_GRACE_MS,
+    releaseDebounceMs: RELEASE_DEBOUNCE_MS,
+    resolveBaseUrl: resolveDesktopPowerBaseUrl,
+    fetchActivity: fetchDesktopActivity,
+    onDesiredChange: (desired) => setDesktopPowerActive(desired),
+    onError: (error) => {
+      runtimeLog("activityProbeFailed", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    },
+  })
+  if (keepAwakeWhileRunning) desktopActivityWatcher.start()
+  powerMonitor.on("resume", () => desktopActivityWatcher?.recheck())
+}
+
+function scheduleDesktopPowerPersist(): void {
+  const keep = keepAwakeWhileRunning
+  desktopPowerWriteQueue = desktopPowerWriteQueue
+    .catch(() => undefined)
+    .then(() => saveDesktopPower(app.getPath("userData"), { version: 1, keepAwakeWhileRunning: keep }))
+    .catch((error) => {
+      runtimeLog("powerPersistFailed", { error: error instanceof Error ? error.message : String(error) })
+    })
+}
+
+async function setDesktopPower(input: unknown): Promise<DesktopPowerSnapshot> {
+  if (isQuitting) throw new Error("Desktop is shutting down")
+  const update = parseDesktopPowerUpdate(input)
+  keepAwakeWhileRunning = update.keepAwakeWhileRunning
+  scheduleDesktopPowerPersist()
+  if (keepAwakeWhileRunning) {
+    desktopActivityWatcher?.start()
+    desktopActivityWatcher?.recheck()
+  } else {
+    desktopActivityWatcher?.stop()
+    setDesktopPowerActive(false)
+  }
+  broadcastDesktopPower()
+  return desktopPowerSnapshot()
+}
+
+function releaseDesktopPower(): void {
+  desktopActivityWatcher?.stop()
+  desktopActivityWatcher = null
+  desktopPowerGuard?.release()
+  desktopPowerGuard = null
+}
+
+function getDesktopThemeSnapshot(): DesktopThemeSnapshot {
+  currentDesktopTheme ??= snapshotDesktopTheme(defaultDesktopSkinState())
+  return currentDesktopTheme
+}
+
+function updateDesktopThemeSnapshot(
+  snapshot: DesktopThemeSnapshot,
+  options: { broadcast?: boolean } = {},
+): DesktopThemeSnapshot {
+  currentDesktopTheme = snapshot
+  nativeTheme.themeSource = snapshot.source
+  if (mainWindow) applyDesktopThemeToWindow(mainWindow, snapshot)
+  startupOverlay?.setTheme(snapshot)
+  browserBroker?.setTheme(snapshot)
+  nativePagePool?.refreshTheme()
+  if (options.broadcast !== false) broadcastDesktopTheme(snapshot)
+  return snapshot
+}
+
+function broadcastDesktopTheme(snapshot: DesktopThemeSnapshot): void {
+  mainRendererDelivery?.sendLatest("desktop-theme", "desktop-theme:event", { type: "theme", snapshot })
+}
+
+async function setDesktopThemeSource(input: unknown): Promise<DesktopThemeSnapshot> {
+  const source = parseDesktopThemeSource(input)
+  const current = desktopSkinState(getDesktopThemeSnapshot())
+  const state = { ...current, source }
+  await saveDesktopSkinState(app.getPath("userData"), state)
+  return updateDesktopThemeSnapshot(snapshotDesktopTheme(state))
+}
+
+async function setDesktopSkin(input: unknown): Promise<DesktopThemeSnapshot> {
+  const update = parseDesktopSkinUpdate(input)
+  const state: DesktopSkinStateV2 = { version: 2, ...update }
+  await saveDesktopSkinState(app.getPath("userData"), state)
+  return updateDesktopThemeSnapshot(snapshotDesktopTheme(state))
+}
+
+function installDesktopThemeNativeListener(): void {
+  nativeTheme.on("updated", () => {
+    const snapshot = getDesktopThemeSnapshot()
+    if (snapshot.source !== "system") return
+    updateDesktopThemeSnapshot(snapshotDesktopTheme(desktopSkinState(snapshot)))
+  })
+}
+
+function snapshotDesktopTheme(state: DesktopSkinStateV2): DesktopThemeSnapshot {
+  return desktopThemeSnapshot(state, nativeTheme.shouldUseDarkColors)
+}
+
+function desktopSkinState(snapshot: DesktopThemeSnapshot): DesktopSkinStateV2 {
+  return {
+    version: 2,
+    source: snapshot.source,
+    themeId: snapshot.themeId,
+    light: snapshot.light,
+    dark: snapshot.dark,
+  }
+}
+
+async function setStartupStatus(status: DesktopStartupStatus): Promise<void> {
+  await startupOverlay?.setStatus(status)
+}
+
+async function dismissStartupOverlay(): Promise<void> {
+  const overlay = startupOverlay
+  if (!overlay) return
+  await overlay.dismiss()
+  if (startupOverlay === overlay) startupOverlay = null
+}
+
+async function ensureMainWindow() {
+  if (mainWindow) return
+  pendingCreateWindow ??= createWindow().finally(() => {
+    pendingCreateWindow = null
+  })
+  await pendingCreateWindow
+}
+
+async function resolveAppURL(): Promise<string> {
+  if (!serverManager) throw new Error("Desktop server manager is not initialized")
+  try {
+    const url = await serverManager.start()
+    currentAppURL = url
+    return url
+  } catch (error) {
+    currentAppURL = null
+    const details = error instanceof Error ? error.stack || error.message : String(error)
+    recoveryURL = desktopErrorPage("Synergy server failed to start", details, getDesktopThemeSnapshot())
+    return recoveryURL
+  }
+}
+
+async function syncLocalBrowserBroker(force = false): Promise<void> {
+  if (!nativePagePool) return
+  const serverUrl =
+    process.env.SYNERGY_BROWSER_BROKER_SERVER_URL ??
+    (serverManager?.status().mode === "managed" ? serverManager.status().url : null)
+  const token = process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET
+  const nextOrigin = serverUrl ? new URL(serverUrl).origin : null
+  if (!force && browserBroker && nextOrigin === browserBrokerOrigin) return
+  await stopLocalBrowserBroker()
+  if (!serverUrl || !token || !nextOrigin) {
+    browserBrokerStatus = "failed"
+    return
+  }
+  browserBrokerOrigin = nextOrigin
+  browserBrokerStatus = "connecting"
+  browserBroker = new BrowserHostBrokerClient({
+    dataContexts: browserDataContexts,
+    clearSavedData: (partition) => localBrowserData().clear(partition),
+    serverUrl,
+    token,
+    nativePool: nativePagePool,
+    theme: getDesktopThemeSnapshot(),
+    onStatus(status) {
+      browserBrokerStatus = status
+    },
+  })
+  browserBroker.connect()
+}
+
+async function stopLocalBrowserBroker(): Promise<void> {
+  browserBrokerStatus = "restarting"
+  const previous = browserBroker
+  browserBroker = null
+  browserBrokerOrigin = null
+  await previous?.close()
+}
+
+async function stopLocalComputerBroker() {
+  const previous = computerBroker
+  computerBroker = null
+  computerBrokerOrigin = null
+  await previous?.close()
+}
+
+async function syncLocalComputerBroker(force = false) {
+  const serverUrl =
+    process.env.SYNERGY_COMPUTER_BROKER_SERVER_URL ??
+    (serverManager?.status().mode === "managed" ? serverManager.status().url : null)
+  const origin = serverUrl ? new URL(serverUrl).origin : null
+  if (!force && computerBroker && computerBrokerOrigin === origin) return
+  await stopLocalComputerBroker()
+  if (!serverUrl || !origin) return
+  computerBrokerOrigin = origin
+  computerBroker = new ComputerBrokerClient({
+    serverUrl,
+    token: process.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET!,
+    executable:
+      process.env.SYNERGY_COMPUTER_DRIVER_PATH ??
+      path.join(app.isPackaged ? process.resourcesPath : path.resolve(dirname, "../build"), "computer", "cua-driver"),
+    checkPermissions() {
+      if (process.platform !== "darwin") return
+      return {
+        accessibility: systemPreferences.isTrustedAccessibilityClient(false),
+        screen: systemPreferences.getMediaAccessStatus("screen") === "granted",
+      }
+    },
+  })
+  computerBroker.connect()
+}
+
+function registerIpcHandlers() {
+  registerNativeViewHandlers("browserNative.fileAction", async (input) => {
+    const request = BrowserFileActionSchema.parse(input)
+    if (request.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(request.data))
+      throw new Error("File data is invalid.")
+    const data = Buffer.from(request.data, "base64")
+    if (data.length > BROWSER_MAX_DOWNLOAD_BYTES) throw new Error("File exceeds the supported size.")
+    if (request.operation === "copyImage") {
+      if (request.mime !== "image/png") throw new Error("Only PNG images can be copied.")
+      const image = nativeImage.createFromBuffer(data)
+      if (image.isEmpty()) throw new Error("Image could not be read.")
+      await clipboard.write([
+        new ClipboardItem({ "image/png": new Blob([new Uint8Array(image.toPNG())], { type: "image/png" }) }),
+      ])
+      return { cancelled: false }
+    }
+    const filename = sanitizeBrowserFilename(request.filename, "download")
+    const selected = await dialog.showSaveDialog(mainWindow!, {
+      defaultPath: path.join(app.getPath("downloads"), filename),
+    })
+    if (selected.canceled || !selected.filePath) return { cancelled: true }
+    await writeFile(selected.filePath, data)
+    if (request.operation === "open") {
+      if (/\.(app|bat|cmd|com|dmg|exe|msi|pkg|ps1|scr|sh|vbs)$/i.test(selected.filePath))
+        throw new Error("Saved. Open this file manually from your file manager.")
+      const error = await shell.openPath(selected.filePath)
+      if (error) throw new Error("Saved, but the file could not be opened. Open it from your file manager.")
+    }
+    return { cancelled: false }
+  })
+  const dataActions = () => {
+    browserDataActions ??= new BrowserDataActions({
+      store: localBrowserData(),
+      sources: new BrowserImportSources({ log: createBrowserImportLogger(desktopLogDir()) }),
+      profileTarget: (contextId) => browserDataContexts.target(contextId),
+      closeProfileContext: (contextId) => browserDataContexts.close(contextId),
+      target(ownerKey, pageId) {
+        const page = nativePagePool?.find(ownerKey, pageId)
+        if (!page || page.failed || page.closing) throw new Error("Page is unavailable. Resume it and retry.")
+        return { partition: page.input.profile.partition, contents: page.generation.contents }
+      },
+      async chooseFile(kind) {
+        const result = await dialog.showOpenDialog(mainWindow!, {
+          properties: ["openFile"],
+          filters: [
+            {
+              name: kind === "passwords" ? "CSV / Safari ZIP" : "Cookie JSON",
+              extensions: kind === "passwords" ? ["csv", "zip"] : ["json"],
+            },
+          ],
+        })
+        return result.canceled ? undefined : result.filePaths[0]
+      },
+    })
+    return browserDataActions
+  }
+  registerNativeViewHandlers("browserNative.dataAction", (input) => {
+    return dataActions().execute(input as import("@ericsanchezok/synergy-browser-core").BrowserDataRequest)
+  })
+  registerNativeViewHandlers("browserNative.profileDataAction", (input) => {
+    return dataActions().executeProfile(
+      input as import("@ericsanchezok/synergy-browser-core").BrowserProfileDataRequest,
+    )
+  })
+  registerNativeViewHandlers("browserNative.pageAction", async (input) => {
+    const request = BrowserPageActionRequestSchema.parse(input)
+    const page = nativePagePool?.find(request.ownerKey, request.pageId)
+    if (!page || page.failed || page.closing) throw new Error("Page is unavailable. Resume it and retry.")
+    if (request.action.type === "capture") {
+      const contents = page.generation.contents
+      const url = contents.getURL(),
+        title = contents.getTitle()
+      let navigated = false
+      const changed = () => {
+        navigated = true
+      }
+      contents.on("did-start-navigation", changed)
+      let capture
+      try {
+        capture = await page.execute({ type: "screenshot", ...(request.action.fullPage ? { fullPage: true } : {}) })
+      } finally {
+        contents.off("did-start-navigation", changed)
+      }
+      if (
+        navigated ||
+        capture.type !== "screenshot" ||
+        contents !== page.generation.contents ||
+        contents.getURL() !== url
+      )
+        throw new Error("Page changed during capture. Retry the screenshot.")
+      return { ...capture, type: "capture", url, title, capturedAt: Date.now() }
+    }
+    if (["zoom", "find", "stopFind"].includes(request.action.type)) page.generation.control.noteHumanPageChange()
+    return runBrowserPageAction(page.generation.contents, request.action, async (data) => {
+      const selected = await dialog.showSaveDialog(mainWindow!, {
+        defaultPath: path.join(app.getPath("downloads"), "page.pdf"),
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      })
+      if (selected.canceled || !selected.filePath) return false
+      await writeFile(selected.filePath, data)
+      return true
+    })
+  })
+  registerNativeViewHandlers("browserNative.attach", async (input) => {
+    await nativeViews?.attach(parseBrowserNativeAttach(input))
+  })
+  registerNativeViewHandlers("browserNative.detach", (input) => {
+    const { ownerKey, pageId } = parseBrowserNativePage(input)
+    nativeViews?.detach(ownerKey, pageId)
+  })
+  registerNativeViewHandlers("browserNative.focus", (input) => {
+    const { ownerKey, pageId } = parseBrowserNativePage(input)
+    nativeViews?.focus(ownerKey, pageId)
+  })
+  registerNativeViewHandlers("browserNative.resize", (input) => {
+    const { ownerKey, pageId, bounds } = parseBrowserNativeResize(input)
+    nativeViews?.resize(ownerKey, pageId, bounds)
+  })
+  registerNativeViewHandlers("browserNative.retry", async (input) => {
+    const { ownerKey, pageId } = parseBrowserNativePage(input)
+    await nativePagePool?.retry(ownerKey, pageId)
+  })
+  ipcMain.handle("browserNative.presentationCapability", (event, input: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) {
+      return {
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        managedLocal: false,
+        status: "failed",
+        error: nativePresentationError(
+          "browser_native_sender_rejected",
+          "The Browser native capability request was rejected.",
+          false,
+        ),
+      }
+    }
+    try {
+      const request = parseBrowserNativePresentationCapability(input)
+      const origin = new URL(request.serverUrl).origin
+      const managedLocal = Boolean(browserBrokerOrigin && origin === browserBrokerOrigin)
+      return {
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        managedLocal,
+        status: managedLocal ? browserBrokerStatus : "failed",
+      }
+    } catch {
+      return {
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        managedLocal: false,
+        status: "failed",
+        error: nativePresentationError(
+          "browser_native_ticket_rejected",
+          "The Browser native capability request was invalid.",
+          false,
+        ),
+      }
+    }
+  })
+  ipcMain.handle("browserNative.presentationTicket", (event, input: unknown): BrowserNativePresentationTicketResult => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) {
+      return nativeTicketFailure(
+        "browser_native_sender_rejected",
+        "The Browser native ticket request was rejected.",
+        false,
+      )
+    }
+    let request: BrowserNativePresentationTicketRequest
+    try {
+      request = parseBrowserNativePresentationTicket(input)
+    } catch {
+      return nativeTicketFailure(
+        "browser_native_ticket_rejected",
+        "The Browser native ticket request was invalid.",
+        false,
+      )
+    }
+    const origin = new URL(request.serverUrl).origin
+    if (!browserBrokerOrigin || origin !== browserBrokerOrigin) {
+      return nativeTicketFailure(
+        "browser_native_origin_mismatch",
+        "The connected server is not owned by this Desktop Browser Host.",
+        true,
+      )
+    }
+    if (browserBrokerStatus !== "ready") {
+      return nativeTicketFailure(
+        "browser_native_host_connecting",
+        "The Desktop Browser Host is still connecting.",
+        true,
+      )
+    }
+    try {
+      return {
+        ok: true,
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ticket: BrowserNativeLease.issue(process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET!, {
+          ownerKey: request.ownerKey,
+          serverOrigin: origin,
+        }),
+      }
+    } catch {
+      return nativeTicketFailure(
+        "browser_native_signing_failed",
+        "The Desktop Browser Host could not sign a presentation ticket.",
+        true,
+      )
+    }
+  })
+
+  const trustedServerSender = (event: Electron.IpcMainInvokeEvent) => {
+    if (!trustedServerFrame(event, mainWindow?.webContents, currentAppURL, recoveryURL))
+      throw new Error("Desktop server IPC sender is not trusted")
+  }
+  const reloadManagedServer = (action: "restart" | "maintenance", operation?: "format" | "prune") =>
+    serverActions.run(action, async () => {
+      if (!serverManager) throw new Error("Desktop server manager is not initialized")
+      const window = mainWindow
+      const generation = serverDocumentGeneration
+      try {
+        const url = await (action === "maintenance"
+          ? serverManager.runMaintenance(operation)
+          : serverManager.status().mode === "external"
+            ? serverManager.start()
+            : serverManager.restart())
+        currentAppURL = url
+        recoveryURL = null
+        await syncLocalBrowserBroker(true)
+        await syncLocalComputerBroker(true)
+        if (window && !window.isDestroyed() && mainWindow === window && serverDocumentGeneration === generation)
+          await window.loadURL(url)
+        return serverManager.status()
+      } catch (error) {
+        if (
+          !cancellingMaintenance &&
+          serverManager.status().state === "failed" &&
+          window &&
+          !window.isDestroyed() &&
+          mainWindow === window &&
+          serverDocumentGeneration === generation
+        ) {
+          currentAppURL = null
+          recoveryURL = desktopErrorPage(
+            "Synergy needs attention",
+            error instanceof Error ? error.message : String(error),
+            getDesktopThemeSnapshot(),
+          )
+          await window.loadURL(recoveryURL)
+        }
+        throw error
+      }
+    })
+  ipcMain.handle("desktop.server.status", (event) => {
+    trustedServerSender(event)
+    return serverManager?.status() ?? null
+  })
+  ipcMain.handle("desktop.server.restart", (event) => {
+    trustedServerSender(event)
+    return reloadManagedServer("restart")
+  })
+  ipcMain.handle("desktop.server.maintenance", (event, operation?: unknown) => {
+    trustedServerSender(event)
+    if (operation !== undefined && operation !== "format" && operation !== "prune")
+      throw new Error("Unknown storage maintenance operation")
+    return reloadManagedServer("maintenance", operation)
+  })
+  ipcMain.handle("desktop.server.cancelMaintenance", async (event) => {
+    trustedServerSender(event)
+    if (!serverManager) throw new Error("Desktop server manager is not initialized")
+    if (cancellingMaintenance) throw new Error("Storage maintenance is stopping")
+    cancellingMaintenance = true
+    try {
+      await serverManager.cancelMaintenance()
+      await serverActions.settle()
+      return await reloadManagedServer("restart")
+    } finally {
+      cancellingMaintenance = false
+    }
+  })
+  ipcMain.handle("desktop.server.diagnostics", async (event) => {
+    trustedServerSender(event)
+    if (!serverManager) throw new Error("Desktop server manager is not initialized")
+    const output = await serverManager.createDiagnostics()
+    shell.showItemInFolder(output)
+    return output
+  })
+  ipcMain.handle("desktop.update.status", () => updater?.getStatus() ?? null)
+  ipcMain.handle("desktop.update.setMode", (_event, input: unknown) => {
+    const mode = DesktopUpdateMode.parse(input)
+    return updater?.setMode(mode)
+  })
+  ipcMain.handle("desktop.update.check", (_event, input: unknown) => {
+    const manual = typeof input === "object" && input !== null && (input as { manual?: unknown }).manual === true
+    return updater?.check({ manual })
+  })
+  ipcMain.handle("desktop.update.download", () => updater?.download())
+  ipcMain.handle("desktop.update.installAndRestart", () => updater?.installAndRestart())
+  ipcMain.handle("desktop.badge.setState", (event, input: unknown) => {
+    applyDesktopUnreadUpdate({
+      mainWindow,
+      sender: event.sender,
+      rawState: input,
+      setCount: setDesktopUnreadCount,
+    })
+  })
+  ipcMain.handle("desktop.power.get", () => desktopPowerSnapshot())
+  ipcMain.handle("desktop.power.set", (_event, input: unknown) => setDesktopPower(input))
+  ipcMain.handle("desktop.power.activityChanged", (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return
+    desktopActivityWatcher?.recheck()
+  })
+  ipcMain.handle("desktop.shell.openExternal", async (_event, input: unknown) => {
+    const url = parseExternalUrl(input)
+    await shell.openExternal(url)
+  })
+  ipcMain.handle("desktop.clipboard.writeText", async (_event, input: unknown) => {
+    const text = parseClipboardWriteText(input)
+    await clipboard.writeText(text)
+    return true
+  })
+  ipcMain.handle("dialog:select-directory", async (event, input: unknown) => {
+    return selectDirectoryWithNativeDialog({
+      mainWindow,
+      sender: event.sender,
+      serverStatus: serverManager?.status(),
+      showOpenDialog: dialog.showOpenDialog.bind(dialog),
+      rawRequest: input,
+    })
+  })
+  ipcMain.handle("desktop.startup.appReady", async (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false
+    const delivery = mainRendererDelivery
+    if (!delivery?.markReady(event.senderFrame)) return false
+    emitDesktopWindowState?.()
+    delivery.sendLatest("desktop-theme", "desktop-theme:event", {
+      type: "theme",
+      snapshot: getDesktopThemeSnapshot(),
+    })
+    const updateStatus = updater?.getStatus()
+    if (updateStatus) {
+      delivery.sendLatest("desktop-update", "desktop-update:event", { type: "status", status: updateStatus })
+    }
+    await dismissStartupOverlay()
+    return true
+  })
+  ipcMain.handle("desktop.theme.get", () => getDesktopThemeSnapshot())
+  ipcMain.handle("desktop.theme.set", (_event, input: unknown) => setDesktopSkin(input))
+  ipcMain.handle("desktop.theme.setSource", (_event, input: unknown) => setDesktopThemeSource(input))
+  ipcMain.handle("desktop.zoom.get", () => currentDesktopZoomFactor)
+  ipcMain.handle("desktop.zoom.set", (_event, input: unknown) => setDesktopZoomFactor(input))
+  ipcMain.handle("desktop.window.minimize", () => {
+    mainWindow?.minimize()
+  })
+  ipcMain.handle("desktop.window.toggleMaximize", () => {
+    if (!mainWindow) return null
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+    return desktopWindowState(mainWindow)
+  })
+  ipcMain.handle("desktop.window.close", () => {
+    mainWindow?.close()
+  })
+  ipcMain.handle("desktop.window.state", () => (mainWindow ? desktopWindowState(mainWindow) : null))
+}
+
+function nativePresentationError(
+  code: BrowserNativePresentationIPCError["code"],
+  message: string,
+  retryable: boolean,
+): BrowserNativePresentationIPCError {
+  return { code, message, retryable }
+}
+
+function nativeTicketFailure(
+  code: BrowserNativePresentationIPCError["code"],
+  message: string,
+  retryable: boolean,
+): BrowserNativePresentationTicketResult {
+  return {
+    ok: false,
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
+    error: nativePresentationError(code, message, retryable),
+  }
+}
+
+function registerNativeViewHandlers(channel: string, handler: (input: unknown) => unknown | Promise<unknown>) {
+  ipcMain.handle(channel, async (event, input: unknown) => {
+    if (!trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null))
+      throw new Error("Browser native IPC sender is not trusted.")
+    return handler(input)
+  })
+}
+
+function registerProtocolHandler() {
+  if (!app.isPackaged && process.env.SYNERGY_DESKTOP_REGISTER_PROTOCOL !== "1") return
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(DESKTOP_PROTOCOL)
+    return
+  }
+  app.setAsDefaultProtocolClient(DESKTOP_PROTOCOL, process.execPath, [process.argv[1] ?? path.join(dirname, "main.js")])
+}
+
+function focusMainWindow() {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function showMainWindow() {
+  void (async () => {
+    await ensureMainWindow()
+    focusMainWindow()
+  })().catch((error) => {
+    console.error(error)
+  })
+}
+
+function installDesktopTray(channel: DesktopChannel): void {
+  if (!desktopUsesSystemTray(process.platform)) return
+  if (desktopTray) return
+
+  const iconPath = desktopIconPath({
+    platform: process.platform,
+    dirname,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  })
+  if (!iconPath) return
+
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) {
+    runtimeLog("trayIconUnavailable", { iconPath })
+    return
+  }
+
+  desktopTrayDefaultIcon = icon
+  desktopTray = new Tray(icon)
+  desktopTray.setToolTip(desktopWindowTitle(channel))
+  applyDesktopUnreadState()
+  desktopTray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open Synergy", click: showMainWindow },
+      { label: "Quit Synergy", click: () => app.quit() },
+    ]),
+  )
+  desktopTray.on("click", showMainWindow)
+  desktopTray.on("double-click", showMainWindow)
+}
+
+function installWindowCloseBehavior(window: BrowserWindow): void {
+  window.on("close", (event) => {
+    if (
+      !desktopShouldHideToTray({
+        platform: process.platform,
+        trayAvailable: desktopTray !== null,
+        isQuitting,
+        isUpdateQuit,
+      })
+    ) {
+      return
+    }
+
+    event.preventDefault()
+    window.hide()
+  })
+}
+
+function installWindowInputShortcuts(window: BrowserWindow, debug: boolean): void {
+  if (!debug) return
+  window.webContents.on("before-input-event", (event, input) => {
+    const key = input.key.toLowerCase()
+    const command = input.control || input.meta
+    if (command && key === "r") {
+      event.preventDefault()
+      window.webContents.reload()
+      return
+    }
+    const devtoolsShortcut =
+      (command && input.shift && key === "i") ||
+      (process.platform === "darwin" && input.meta && input.alt && key === "i")
+    if (!devtoolsShortcut) return
+    event.preventDefault()
+    window.webContents.toggleDevTools()
+  })
+}
+
+function installDesktopWindowStateEvents(window: BrowserWindow): { emit: () => void; dispose: () => void } {
+  const emit = () => {
+    if (window.isDestroyed()) return
+    const state = desktopWindowState(window)
+    startupOverlay?.setWindowState(state)
+    mainRendererDelivery?.sendLatest("desktop-window-state", "desktop-window:event", {
+      type: "state",
+      state,
+    })
+  }
+  window.on("maximize", emit)
+  window.on("unmaximize", emit)
+  window.on("enter-full-screen", emit)
+  window.on("leave-full-screen", emit)
+  window.on("focus", emit)
+  window.on("blur", emit)
+  return {
+    emit,
+    dispose() {
+      window.off("maximize", emit)
+      window.off("unmaximize", emit)
+      window.off("enter-full-screen", emit)
+      window.off("leave-full-screen", emit)
+      window.off("focus", emit)
+      window.off("blur", emit)
+    },
+  }
+}
+
+function desktopLogDir(): string {
+  return process.env.SYNERGY_DESKTOP_LOG_DIR ?? path.join(app.getPath("logs"), "desktop")
+}
+
+function findDeepLinks(argv: string[]): string[] {
+  return argv.filter((arg) => arg.startsWith(`${DESKTOP_PROTOCOL}://`))
+}
+
+function handleDeepLinks(urls: string[]) {
+  if (!urls.length) return
+  focusMainWindow()
+  for (const url of urls) mainRendererDelivery?.enqueue("desktop.deepLink", url)
+}
+
+app.on("second-instance", (_event, argv) => {
+  handleDeepLinks(findDeepLinks(argv))
+  focusMainWindow()
+})
+
+app.on("open-url", (event, url) => {
+  event.preventDefault()
+  handleDeepLinks([url])
+})
+
+app.on("window-all-closed", () => {
+  if (desktopUsesSystemTray(process.platform) && desktopTray) return
+  if (process.platform !== "darwin") app.quit()
+})
+
+app.on("activate", () => {
+  if (!mainWindow) void createWindow()
+})
+
+updateQuitApp.on("before-quit-for-update", () => {
+  isUpdateQuit = true
+  isQuitting = true
+  setDesktopUnreadCount(0)
+  releaseDesktopPower()
+})
+
+app.on("will-quit", () => {
+  releaseDesktopPower()
+})
+
+app.on("before-quit", (event) => {
+  setDesktopUnreadCount(0)
+  releaseDesktopPower()
+  if (isUpdateQuit) return
+  if (isQuitting) return
+  event.preventDefault()
+  isQuitting = true
+  void (async () => {
+    const results = await Promise.allSettled([
+      browserBroker?.close() ?? Promise.resolve(),
+      stopLocalComputerBroker(),
+      serverManager?.stop() ?? Promise.resolve(),
+      zoomWriteQueue,
+      desktopPowerWriteQueue,
+    ])
+    results.push(...(await Promise.allSettled([nativePagePool?.destroy() ?? Promise.resolve()])))
+    const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (failures.length) {
+      runtimeLog("shutdownIncomplete", {
+        errors: failures.map((error) => (error instanceof Error ? error.message : String(error))),
+      })
+    }
+    browserBroker = null
+    browserBrokerOrigin = null
+    app.exit(failures.length ? 1 : 0)
+  })()
+})
+
+async function start() {
+  if (!shouldStart) return
+  await app.whenReady()
+  await initializeDesktopTheme()
+  await initializeDesktopZoom()
+  await initializeDesktopPower()
+  initializeDesktopUnreadAssets()
+  installDesktopThemeNativeListener()
+  runtimeLog("appReady", { mode: process.env.SYNERGY_DESKTOP_MODE ?? "desktop" })
+  const dockIconPath = desktopDevDockIconPath({
+    platform: process.platform,
+    dirname,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  })
+  if (dockIconPath) app.dock?.setIcon(dockIconPath)
+
+  const channel = desktopChannel(app.isPackaged)
+  installSessionSecurity(
+    () => mainWindow?.webContents,
+    () => currentAppURL,
+  )
+  installAppMenu({
+    channel,
+    debug: isDebugEnabled(channel),
+    getMainWindow: () => mainWindow,
+    getZoomFactor: () => currentDesktopZoomFactor,
+    setZoomFactor: (factor) => updateDesktopZoomFactor(factor),
+  })
+  installDesktopTray(channel)
+  registerProtocolHandler()
+  registerIpcHandlers()
+  await ensureMainWindow()
+}
+
+void start().catch((error) => {
+  console.error(error)
+  app.exit(1)
+})

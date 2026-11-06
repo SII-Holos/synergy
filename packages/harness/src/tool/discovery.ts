@@ -1,0 +1,217 @@
+import type { Agent } from "../agent/agent"
+import { PermissionNext } from "../permission/next"
+import type { Provider } from "../provider/provider"
+import { SessionModePolicy } from "../session/tool-mode-policy"
+import type { Info as SessionInfo } from "../session/types"
+import type { ToolDiagnostic } from "./diagnostic"
+import { ToolExposure } from "./exposure"
+import { ToolMcpSource } from "./mcp-source"
+import { ToolPolicySource } from "./policy-source"
+import { imageToolEligibility } from "./modality"
+
+export namespace ToolDiscovery {
+  export interface Entry {
+    id: string
+    title: string
+    description: string
+    exposure: ToolExposure.Info
+    group?: string
+    groupTitle?: string
+    keywords?: string[]
+    source: "tool" | "mcp"
+  }
+
+  export interface Catalog {
+    groups: ToolExposure.GroupInfo[]
+    tools: Entry[]
+    state: Required<ToolExposure.ToolState>
+    disabled: Set<string>
+    diagnostics: Map<string, ToolDiagnostic>
+  }
+
+  export async function collect(input: {
+    providerID: string
+    model?: Provider.Model
+    agent: Agent.Info
+    session?: SessionInfo
+    includeMCP?: boolean
+    userTools?: Record<string, boolean>
+  }): Promise<Catalog> {
+    const { ToolRegistry } = await import("./registry")
+    const tools: Entry[] = []
+    const imageTools = await imageToolEligibility(input.model)
+
+    for (const item of await ToolRegistry.catalog(
+      input.providerID,
+      input.agent,
+      input.session?.workspaceID,
+      input.model ? { providerID: input.model.providerID, modelID: input.model.id } : undefined,
+    )) {
+      if ((item.id === "view_image" || item.id === "look_at") && !imageTools.has(item.id)) continue
+      const exposure = ToolExposure.normalize(item.id, item.exposure)
+      const group = ToolExposure.groupInfoFromExposure(item.id, exposure)
+      tools.push({
+        id: item.id,
+        title: titleForTool(item.id, exposure),
+        description: item.description,
+        exposure,
+        group: exposure.mode === "group" ? exposure.group : undefined,
+        groupTitle: group?.title,
+        keywords: exposure.keywords,
+        source: "tool",
+      })
+    }
+
+    if (input.includeMCP !== false) {
+      const mcpExposure = await ToolMcpSource.get()?.exposureConfiguration()
+      const entries = (await ToolMcpSource.get()?.toolEntries()) ?? []
+      for (const entry of entries) {
+        const exposure =
+          entry.presentation?.exposure ??
+          ToolExposure.mcpExposure(entry.serverName, mcpExposure?.expandByDefault(entry.serverName) ?? false)
+        const group = ToolExposure.groupInfoFromExposure(entry.id, exposure)
+        tools.push({
+          id: entry.id,
+          title: entry.presentation?.title ?? entry.toolName,
+          description:
+            entry.presentation?.description ??
+            (typeof entry.tool.description === "function"
+              ? entry.tool.description({ context: {} })
+              : entry.tool.description) ??
+            "",
+          exposure,
+          group: exposure.mode === "group" ? exposure.group : undefined,
+          groupTitle: group?.title,
+          keywords: exposure.keywords,
+          source: "mcp",
+        })
+      }
+    }
+
+    const permissionDisabled = PermissionNext.disabled(
+      tools.map((tool) => tool.id),
+      PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
+    )
+    const disabled = new Set<string>()
+    const diagnostics = new Map<string, ToolDiagnostic>()
+    const selected = new Set(
+      await ToolPolicySource.selectDiscovery({
+        session: input.session,
+        agent: input.agent,
+        model: input.model,
+        toolIDs: tools.map((tool) => tool.id),
+      }),
+    )
+    for (const tool of tools) {
+      const modeDiagnostic = SessionModePolicy.visibility({ toolName: tool.id, session: input.session })
+      if (modeDiagnostic) {
+        disabled.add(tool.id)
+        diagnostics.set(tool.id, modeDiagnostic)
+        continue
+      }
+      if (permissionDisabled.has(tool.id) || !selected.has(tool.id)) {
+        disabled.add(tool.id)
+        diagnostics.set(
+          tool.id,
+          SessionModePolicy.unavailable({ toolName: tool.id, reason: "permission", session: input.session }),
+        )
+        continue
+      }
+      if (!ToolExposure.userAllows(tool.id, input.userTools)) {
+        disabled.add(tool.id)
+        diagnostics.set(
+          tool.id,
+          SessionModePolicy.unavailable({ toolName: tool.id, reason: "user_disabled", session: input.session }),
+        )
+        continue
+      }
+    }
+
+    const available = ToolExposure.resolveVisibility(
+      tools.filter((tool) => !disabled.has(tool.id)),
+      input.session?.toolState,
+    ).available
+    for (const tool of tools) {
+      if (available.has(tool.id) || disabled.has(tool.id)) continue
+      disabled.add(tool.id)
+      diagnostics.set(
+        tool.id,
+        SessionModePolicy.unavailable({
+          toolName: tool.id,
+          reason: "permission",
+          session: input.session,
+        }),
+      )
+    }
+
+    return {
+      groups: ToolExposure.availableGroups(tools.filter((tool) => !disabled.has(tool.id))),
+      tools,
+      state: ToolExposure.state(input.session?.toolState),
+      disabled,
+      diagnostics,
+    }
+  }
+
+  export function availableGroups(catalog: Catalog): ToolExposure.GroupInfo[] {
+    const available = new Set(catalog.tools.filter((tool) => !catalog.disabled.has(tool.id)).map((tool) => tool.id))
+    return catalog.groups
+      .map((group) => ({ ...group, tools: group.tools.filter((toolID) => available.has(toolID)) }))
+      .filter((group) => group.tools.length > 0)
+  }
+
+  export function nonResidentEntries(catalog: Catalog): ToolExposure.SearchEntry[] {
+    const activeGroups = new Set(catalog.state.expandedGroups)
+    const activeTools = new Set(visibleTools(catalog))
+    const groups = availableGroups(catalog).map((group): ToolExposure.SearchEntry => ({
+      type: "group",
+      id: group.id,
+      title: group.title,
+      description: group.description,
+      group: group.id,
+      active: activeGroups.has(group.id),
+      tools: group.tools,
+      keywords: group.keywords,
+    }))
+
+    const tools = catalog.tools
+      .filter((tool) => !catalog.disabled.has(tool.id))
+      .filter((tool) => tool.exposure.mode !== "resident" && tool.exposure.mode !== "internal")
+      .map((tool): ToolExposure.SearchEntry => ({
+        type: "tool",
+        id: tool.id,
+        title: tool.title,
+        description: tool.description,
+        group: tool.group,
+        groupTitle: tool.groupTitle,
+        keywords: tool.keywords,
+        active: activeTools.has(tool.id),
+      }))
+
+    return [...groups, ...tools]
+  }
+
+  export function visibleTools(catalog: Catalog, forcedGroups?: Iterable<string>, forcedTools?: Iterable<string>) {
+    return [
+      ...ToolExposure.resolveVisibility(
+        catalog.tools.filter((tool) => !catalog.disabled.has(tool.id)),
+        catalog.state,
+        { forcedGroups, forcedTools },
+      ).visible,
+    ].sort()
+  }
+
+  function titleForTool(toolID: string, exposure: ToolExposure.Info) {
+    if (exposure.mode === "search" && exposure.title) return exposure.title
+    if (exposure.mode === "group" && exposure.title) return exposure.title
+    return toolID
+      .split(/[_-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  }
+
+  export function providerIDFromModel(model?: Provider.Model) {
+    return model?.providerID ?? "default"
+  }
+}

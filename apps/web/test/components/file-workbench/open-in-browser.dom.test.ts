@@ -1,0 +1,238 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { chromium, type Browser, type Page } from "playwright"
+import { createServer, type ViteDevServer } from "vite"
+import solidPlugin from "vite-plugin-solid"
+
+let browser: Browser
+let page: Page
+let server: ViteDevServer
+let fixtureDirectory: string
+let baseUrl: string
+const pageErrors: Error[] = []
+
+const componentPath = path.resolve(import.meta.dir, "../../../src/components/file-workbench/content.tsx")
+const appSrc = path.resolve(import.meta.dir, "../../../src")
+
+beforeAll(async () => {
+  fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".open-in-browser-fixture-"))
+  const fileStubPath = path.join(fixtureDirectory, "file-stub.ts")
+  const promptStubPath = path.join(fixtureDirectory, "prompt-stub.ts")
+  const platformStubPath = path.join(fixtureDirectory, "platform-stub.ts")
+  const sdkStubPath = path.join(fixtureDirectory, "sdk-stub.ts")
+  const localeStubPath = path.join(fixtureDirectory, "locale-stub.ts")
+
+  await Promise.all([
+    Bun.write(
+      path.join(fixtureDirectory, "index.html"),
+      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    ),
+    Bun.write(
+      fileStubPath,
+      `
+        export const FileWorkspaceProvider = (props) => props.children
+        export const useProjectFiles = () => ({ roots: () => [], search: async () => [], open: async () => {} })
+        export const useFile = () => ({
+          draft: { backupUnavailable: () => false, get: () => undefined, dirty: () => false, begin() {}, discard() {} },
+          workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" },
+          reference: () => ({ workspaceID: "wsp_demo", workspaceGeneration: 1 }),
+          resourceKey: "demo",
+          get: () => ({ loading: true, content: undefined }),
+          load: async () => {},
+          save: async () => {},
+          normalize: (value) => value,
+          openWorkspaceFile: async () => {},
+          view: {
+            mode: () => undefined,
+            setMode: () => {},
+            wordWrap: () => true,
+            setWordWrap: () => {},
+            selectedLines: () => undefined,
+            imageScaleMode: () => "fit",
+            setImageScaleMode: () => {},
+          },
+          pdf: { get: () => undefined, load: async () => {} },
+          explorer: { open: () => false, width: () => 260, setWidth() {}, setOpen: () => {}, reveal: async () => {} },
+        })
+      `,
+    ),
+    Bun.write(promptStubPath, `export const usePrompt = () => ({ context: { add: () => {} } })`),
+    Bun.write(
+      platformStubPath,
+      `
+        export const usePlatform = () => ({
+          platform: "web",
+          openLink: (url) => {
+            window.__openedUrls = window.__openedUrls ?? []
+            window.__openedUrls.push(url)
+          },
+        })
+      `,
+    ),
+    Bun.write(
+      sdkStubPath,
+      `export const useSDK = () => ({ url: "http://127.0.0.1:4096", scopeID: "project", directory: "/workspace/demo" })`,
+    ),
+    Bun.write(
+      localeStubPath,
+      `
+        export const useLocale = () => ({ i18n: {}, fmt: { number: (value) => String(value) } })
+      `,
+    ),
+    Bun.write(
+      path.join(fixtureDirectory, "main.tsx"),
+      `
+        import { createComponent } from "solid-js"
+        import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+        import { render } from "solid-js/web"
+        import { setupI18n } from "@lingui/core"
+        import { I18nProvider } from "@lingui/solid"
+        import { FileWorkbenchContent } from ${JSON.stringify(`/@fs/${componentPath}`)}
+
+        const i18n = setupI18n({ locale: "en" })
+        const file = new URLSearchParams(location.search).get("path") ?? ""
+        render(
+          () =>
+            createComponent(I18nProvider, {
+              i18n,
+              children: () =>
+                createComponent(DialogProvider, {
+                  get children() {
+                    return createComponent(FileWorkbenchContent, {
+                      tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" } } },
+                      onRequestClose: () => {},
+                    })
+                  },
+                }),
+            }),
+          document.querySelector("#root"),
+        )
+      `,
+    ),
+  ])
+
+  server = await createServer({
+    configFile: false,
+    root: fixtureDirectory,
+    plugins: [solidPlugin()],
+    resolve: {
+      alias: [
+        { find: /^@\/context\/file$/, replacement: fileStubPath },
+        { find: /^@\/context\/prompt$/, replacement: promptStubPath },
+        { find: /^@\/context\/platform$/, replacement: platformStubPath },
+        { find: /^@\/context\/sdk$/, replacement: sdkStubPath },
+        { find: /^@\/context\/locale$/, replacement: localeStubPath },
+        // The plugin package's exports map serves "import" from its
+        // gitignored dist/theme/index.js, which a fresh checkout lacks (the
+        // Coverage job runs no build step). Resolve the theme entry to source
+        // so the fixture is hermetic on any checkout.
+        {
+          find: "@ericsanchezok/synergy-plugin/theme",
+          replacement: path.resolve(import.meta.dir, "../../../../..", "packages/plugin/src/theme/index.ts"),
+        },
+        { find: "@", replacement: appSrc },
+      ],
+    },
+    // Pre-bundle the Solid runtime, JSX runtime, and zod at server startup so
+    // the optimizer never re-runs mid-load (which reloads the page and 500s
+    // on slow cold Coverage CI starts). The cache is scoped to this fixture
+    // because sibling Playwright servers share apps/web/node_modules/.vite
+    // and invalidate each other's cache.
+    optimizeDeps: {
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/store",
+        "solid-js/jsx-runtime",
+        "@lingui/core",
+        "@lingui/solid",
+        "zod",
+      ],
+      noDiscovery: true,
+    },
+    cacheDir: path.join(fixtureDirectory, ".vite"),
+    server: {
+      host: "127.0.0.1",
+      port: 5216,
+      strictPort: true,
+      fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
+    },
+  })
+  await server.listen()
+  // Transform the whole fixture module graph server-side before the browser
+  // connects so transform errors surface here instead of a browser 500.
+  await server.warmupRequest("/main.tsx")
+
+  const resolved = server.resolvedUrls?.local[0]
+  if (!resolved) throw new Error("Expected Vite test server URL")
+  baseUrl = resolved
+
+  browser = await chromium.launch({ headless: true })
+  page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+  page.on("pageerror", (error) => pageErrors.push(error))
+  page.on("console", (message) => {
+    if (message.type() === "error") pageErrors.push(new Error(message.text()))
+  })
+  page.on("response", (response) => {
+    if (response.status() >= 400) pageErrors.push(new Error(`HTTP ${response.status()} for ${response.url()}`))
+  })
+  // Smoke the fixture once before the cases run so a broken module graph
+  // fails here with page errors attached instead of three 30s timeouts.
+  try {
+    await page.goto(`${baseUrl}?path=README.md`)
+    await page.getByRole("button", { name: "Workspace: demo", exact: true }).waitFor({ state: "visible" })
+    await page.waitForSelector(".file-workbench-toolbar", { timeout: 30000 })
+  } catch (error) {
+    const pageError = pageErrors[0]
+    if (pageError) throw new Error(`file workbench fixture page failed to render: ${pageError.stack}`, { cause: error })
+    throw error
+  }
+}, 30_000)
+
+afterAll(async () => {
+  await page?.close()
+  await browser?.close()
+  await server?.close()
+  if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
+})
+
+describe("file workbench open-in-browser action", () => {
+  test("the origin picker identifies its captured owning Workspace", async () => {
+    await page.goto(`${baseUrl}?path=README.md`)
+    const owner = page.getByRole("button", { name: "Workspace: demo", exact: true })
+    expect(await owner.isVisible()).toBe(true)
+    expect(await owner.textContent()).toBe("demo")
+    await owner.click()
+    expect(await page.getByRole("option", { name: "/workspace/demo", exact: true }).getAttribute("aria-selected")).toBe(
+      "true",
+    )
+  }, 60000)
+
+  test("renders the menu action for an HTML file and opens the raw content URL", async () => {
+    await page.goto(`${baseUrl}?path=docs%2Findex.html`)
+    await page.getByRole("button", { name: "File options" }).click()
+    const button = page.getByRole("menuitem", { name: "Open in browser" })
+    await button.waitFor({ state: "visible", timeout: 30000 })
+    await button.click()
+    await page.waitForFunction(() => ((window as any).__openedUrls?.length ?? 0) > 0)
+    const urls = await page.evaluate(() => (window as any).__openedUrls as string[])
+    expect(urls).toEqual(["http://127.0.0.1:4096/workspace/files/raw/cHJvamVjdA/wsp_demo/1/docs/index.html"])
+  }, 60000)
+
+  test("treats .htm files as HTML too", async () => {
+    await page.goto(`${baseUrl}?path=index.htm`)
+    await page.getByRole("button", { name: "File options" }).click()
+    const button = page.getByRole("menuitem", { name: "Open in browser" })
+    await button.waitFor({ state: "visible", timeout: 30000 })
+  }, 60000)
+
+  test("hides the menu action for non-HTML files", async () => {
+    await page.goto(`${baseUrl}?path=README.md`)
+    await page.waitForSelector(".file-workbench-toolbar", { timeout: 30000 })
+    await page.waitForTimeout(300)
+    await page.getByRole("button", { name: "File options" }).click()
+    const count = await page.getByRole("menuitem", { name: "Open in browser" }).count()
+    expect(count).toBe(0)
+  }, 60000)
+})

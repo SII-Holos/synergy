@@ -2,9 +2,4 @@
 set -e
 
 bun script/check-bun-version.ts
-bun run format:check
-bun run lint
-bun run typecheck
-bun run monorepo:check
-bun run doc:check
-bun run decision:check
+bun run verify pre-push

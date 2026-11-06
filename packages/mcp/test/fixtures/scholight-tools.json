@@ -1,0 +1,203 @@
+[
+  {
+    "name": "search_papers",
+    "description": "Find ranked AI research papers relevant to a natural-language question or topic. Use this tool for literature discovery, related-work research, method comparisons, and author, category, or date-filtered research. Results include titles, authors, abstracts, dates, categories, and paper and PDF links. Preserve the returned rank order. Standard searches paper titles and abstracts. Thorough also recalls full-text passages when enabled; preserve the requested search mode.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "A focused natural-language research question or topic. Include the task, method, domain, or comparison that matters; avoid a loose list of unrelated keywords.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "strength": {
+          "default": "standard",
+          "description": "Standard searches abstracts; Thorough also searches full text when available.",
+          "enum": ["standard", "thorough"],
+          "title": "Strength",
+          "type": "string"
+        },
+        "limit": {
+          "default": 5,
+          "description": "Maximum number of ranked papers to return. Use 5 for a focused answer and increase only when the user needs broader coverage.",
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "categories": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional exact subject category codes such as cs.AI or cs.CL. Multiple values match papers in any listed category. Use only when requested or known with confidence.",
+          "title": "Categories"
+        },
+        "authors": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional exact author names. Multiple values match papers containing any listed author. Use only when the user asks for specific authors; otherwise omit.",
+          "title": "Authors"
+        },
+        "date_from": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional inclusive earliest submission date in YYYY-MM-DD format. Omit when the user did not request a lower time boundary.",
+          "title": "Date From"
+        },
+        "date_to": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional inclusive latest submission date in YYYY-MM-DD format. Omit when the user did not request an upper time boundary.",
+          "title": "Date To"
+        }
+      },
+      "required": ["query"],
+      "title": "search_papersArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "extract_url",
+    "description": "Fetch an HTTP or HTTPS URL and return readable Markdown, text, or raw HTML. Supports ordinary pages, JavaScript-rendered sites, JSON, XML, PDFs, custom target headers, stateless cookies, public non-default ports, and opaque cursor pagination. Use this after search_papers or whenever source content must be read. Rendered pages may issue same-origin POST requests. Requires a Scholight Access Key.",
+    "inputSchema": {
+      "properties": {
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "HTTP or HTTPS URL to fetch and extract. Public hosts and arbitrary public ports are supported. Omit when continuing with cursor.",
+          "title": "Url"
+        },
+        "render": {
+          "default": "auto",
+          "description": "Rendering policy: auto uses Chromium only when static content is insufficient; never disables JavaScript rendering; always forces Chromium.",
+          "enum": ["auto", "never", "always"],
+          "title": "Render",
+          "type": "string"
+        },
+        "output": {
+          "default": "main_markdown",
+          "description": "Content representation to return. main_markdown is the recommended default.",
+          "enum": ["main_markdown", "full_markdown", "text", "raw_html"],
+          "title": "Output",
+          "type": "string"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "maxProperties": 32,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional target request headers. Transport-managed headers are rejected.",
+          "title": "Headers"
+        },
+        "cookies": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "maxProperties": 64,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stateless cookies sent only for this extraction.",
+          "title": "Cookies"
+        },
+        "max_chars": {
+          "default": 20000,
+          "description": "Maximum content characters in this response page.",
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Chars",
+          "type": "integer"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Opaque next_cursor from a previous call. Omit all extraction options when set.",
+          "title": "Cursor"
+        }
+      },
+      "title": "extract_urlArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  }
+]

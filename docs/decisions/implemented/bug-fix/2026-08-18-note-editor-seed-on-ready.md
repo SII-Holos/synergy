@@ -17,7 +17,7 @@ List cards stayed correct because they render server-derived `previewHtml` from 
 
 Keep list previews on `previewHtml`, and make the open editor resilient to the snapshot/editor race and flex layout:
 
-- Add `isEmptyEditorDoc()` in `packages/app/src/components/note/note-sync.ts` so a blank starter TipTap doc can be distinguished from real content.
+- Add `isEmptyEditorDoc()` in `apps/web/src/components/note/note-sync.ts` so a blank starter TipTap doc can be distinguished from real content.
 - In `NoteEditor`, seed the loaded snapshot from `onEditorReady` via `handleEditorReady` / `seedEditorFromSnapshot`. If TipTap mounts after `applySnapshot`, the ready callback still installs the saved document without marking dirty or emitting an autosave update.
 - Split the open-note shell into a non-scrolling flex column: fixed title, `min-h-0 flex-1` editor host, fixed tags. Scrolling stays inside TipTap’s own `h-full overflow-y-auto` surface.
 - Cover empty-doc detection and TipTap acceptance of blockId-bearing note JSON with focused App tests.

@@ -2,13 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { JSDOM } from "jsdom"
 import { Marked } from "marked"
 import markedKatex from "marked-katex-extension"
-import {
-  markGeneratedKatex,
-  getGeneratedKatexSource,
-  markedLatex,
-  prepareMarkdownMath,
-  stripGeneratedKatexMarker,
-} from "../src/context/marked-math"
+import { markGeneratedKatex, markedLatex, prepareMarkdownMath } from "../src/context/marked-math"
+import { getGeneratedKatexSource, stripGeneratedKatexMarker } from "../src/context/markdown-math-source"
 
 function createParser() {
   const parser = new Marked()

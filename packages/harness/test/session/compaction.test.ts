@@ -1,0 +1,1237 @@
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
+import { describe, expect, mock, spyOn, test } from "bun:test"
+import { Token } from "../../src/util/token"
+import { Log } from "../../src/util/log"
+import { Session } from "../../src/session"
+import { SessionCompaction } from "../../src/session/compaction"
+import { MessageV2 } from "../../src/session/message-v2"
+import { Config } from "../../src/config/config"
+import { Provider } from "../../src/provider/provider"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import type { ModelMessage } from "ai"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+runtime.run(() => Log.init({ print: false }))
+
+function createModel(opts: { context: number; output: number; cost?: Provider.Model["cost"] }): Provider.Model {
+  return {
+    id: "test-model",
+    providerID: "test",
+    name: "Test",
+    limit: {
+      context: opts.context,
+      output: opts.output,
+    },
+    cost: opts.cost ?? { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    capabilities: {
+      toolcall: true,
+      attachment: false,
+      reasoning: false,
+      temperature: true,
+      input: { text: true, image: false, audio: false, video: false },
+      output: { text: true, image: false, audio: false, video: false },
+    },
+    api: { npm: "@ai-sdk/anthropic" },
+    options: {},
+  } as Provider.Model
+}
+
+// Preflight compaction triggering now lives in session/invoke.ts via PromptBudgeter;
+// isContextExceeded and Token.estimateJSON are tested below.
+
+describe("Codex remote compaction replay identity", () => {
+  test("requires resolved matching profile and wire model, including named connections", () =>
+    runtime.run(async () => {
+      const originalConfig = Config.current
+      const originalProvider = Provider.getProvider
+      const originalModel = Provider.getModel
+      const summary = {
+        info: {
+          id: "summary",
+          role: "assistant",
+          providerID: "codex-work",
+          modelID: "alias",
+          summary: true,
+          compaction: { coveredThrough: { created: 1, messageID: "msg_covered" } },
+          finish: "stop",
+          metadata: {
+            remoteCompaction: {
+              version: 3,
+              coveredThrough: { created: 1, messageID: "msg_covered" },
+              provider: "openai-responses-compaction",
+              implementation: "responses_compaction_v2",
+              modelKey: "codex-work/alias",
+              providerID: "codex-work",
+              modelID: "alias",
+              profileID: "openai-codex",
+              apiModelID: "gpt-5",
+              summaryText: "summary",
+              replacementHistory: [{ type: "compaction", encrypted_content: "opaque" }],
+            },
+          },
+        },
+        parts: [],
+      } as unknown as MessageV2.WithParts
+      try {
+        Config.current = mock(async () => ({ compaction: { codexRemote: true } })) as typeof Config.current
+        Provider.getProvider = mock(async (id: string) => ({
+          profileID: id === "openai" ? "openai" : "openai-codex",
+        })) as unknown as typeof Provider.getProvider
+        Provider.getModel = mock(async (_providerID: string, modelID: string) => ({
+          api: { id: modelID === "other" ? "gpt-5-mini" : "gpt-5" },
+        })) as unknown as typeof Provider.getModel
+        const plan = (providerID: string, modelID: string, profileID = "openai-codex", apiModelID = "gpt-5") =>
+          SessionCompaction.codexReplayPlan({ messages: [summary], providerID, modelID, profileID, apiModelID })
+        expect(await plan("codex-work", "alias")).toMatchObject({ summaryText: "summary" })
+        expect(await plan("codex-work", "compatible-alias")).toMatchObject({ summaryText: "summary" })
+        expect(await plan("codex-other", "alias")).toBeUndefined()
+        expect(await plan("codex-work", "other")).toBeUndefined()
+        expect(await plan("openai", "alias")).toBeUndefined()
+        expect(await plan("codex-work", "alias", "openai", "gpt-5")).toBeUndefined()
+        expect(await plan("codex-work", "alias", "openai-codex", "gpt-5-mini")).toBeUndefined()
+        expect(
+          await SessionCompaction.codexReplayPlan({ messages: [summary], providerID: "codex-work", modelID: "alias" }),
+        ).toBeUndefined()
+        const remote =
+          summary.info.role === "assistant" ? (summary.info.metadata!.remoteCompaction as Record<string, unknown>) : {}
+        delete remote.apiModelID
+        expect(await plan("codex-work", "alias")).toBeUndefined()
+        remote.apiModelID = "gpt-5"
+        delete remote.profileID
+        expect(await plan("codex-work", "alias")).toBeUndefined()
+        remote.profileID = "openai-codex"
+        Provider.getProvider = mock(async () => {
+          throw new Error("unavailable")
+        }) as typeof Provider.getProvider
+        expect(await plan("codex-work", "alias")).toBeUndefined()
+        Provider.getProvider = mock(async () => ({
+          profileID: "openai-codex",
+        })) as unknown as typeof Provider.getProvider
+        Provider.getModel = mock(async () => {
+          throw new Error("unavailable")
+        }) as typeof Provider.getModel
+        expect(await plan("codex-work", "alias")).toBeUndefined()
+      } finally {
+        Config.current = originalConfig
+        Provider.getProvider = originalProvider
+        Provider.getModel = originalModel
+      }
+    }))
+})
+describe("util.token.estimate", () => {
+  test("estimates tokens from text (4 chars per token)", () =>
+    runtime.run(() => {
+      const text = "x".repeat(4000)
+      expect(Token.estimate(text)).toBe(1000)
+    }))
+
+  test("estimates tokens from larger text", () =>
+    runtime.run(() => {
+      const text = "y".repeat(20_000)
+      expect(Token.estimate(text)).toBe(5000)
+    }))
+
+  test("returns 0 for empty string", () =>
+    runtime.run(() => {
+      expect(Token.estimate("")).toBe(0)
+    }))
+})
+
+describe("session.getUsage", () => {
+  test("does not bill reasoning tokens twice when they are included in output", () =>
+    runtime.run(() => {
+      const model = createModel({
+        context: 100_000,
+        output: 32_000,
+        cost: { input: 3, output: 15, cache: { read: 0, write: 0 } },
+      })
+      model.api.npm = "@ai-sdk/openai"
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: 100 },
+        },
+      })
+
+      expect(result.tokens.output).toBe(500)
+      expect(result.tokens.reasoning).toBe(100)
+      expect(result.cost).toBe(0.0105)
+    }))
+
+  test("uses Google output totals that already include reasoning", () =>
+    runtime.run(() => {
+      const model = createModel({
+        context: 100_000,
+        output: 32_000,
+        cost: { input: 3, output: 15, cache: { read: 0, write: 0 } },
+      })
+      model.api.npm = "@ai-sdk/google"
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: 100 },
+        },
+      })
+
+      expect(result.tokens.output).toBe(500)
+      expect(result.tokens.reasoning).toBe(100)
+      expect(result.cost).toBe(0.0105)
+    }))
+
+  test("ModelLimit.usableInput uses full context for shared-context models", () =>
+    runtime.run(() => {
+      expect(ModelLimit.usableInput({ context: 202_752, output: 32_768 })).toBe(202_752)
+    }))
+
+  test("ModelLimit.usableInput uses input cap directly without buffer by default", () =>
+    runtime.run(() => {
+      expect(ModelLimit.usableInput({ context: 400_000, input: 272_000, output: 128_000 })).toBe(272_000)
+    }))
+
+  test("normalizes standard usage to token format", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+      })
+
+      expect(result.tokens.input).toBe(1000)
+      expect(result.tokens.output).toBe(500)
+      expect(result.tokens.reasoning).toBe(0)
+      expect(result.tokens.cache.read).toBe(0)
+      expect(result.tokens.cache.write).toBe(0)
+    }))
+
+  test("extracts cached tokens to cache.read", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 200, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+      })
+
+      expect(result.tokens.input).toBe(800)
+      expect(result.tokens.cache.read).toBe(200)
+    }))
+
+  test("extracts DeepSeek prompt cache metadata", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+        metadata: {
+          openaiCompatible: {
+            prompt_cache_hit_tokens: 256,
+            prompt_cache_miss_tokens: 744,
+          },
+        },
+      })
+
+      expect(result.tokens.input).toBe(744)
+      expect(result.tokens.cache.read).toBe(256)
+    }))
+
+  test("extracts DeepSeek prompt cache tokens from usage fields", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          prompt_cache_hit_tokens: 384,
+          prompt_cache_miss_tokens: 616,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        } as Parameters<typeof Session.getUsage>[0]["usage"],
+      })
+
+      expect(result.tokens.input).toBe(616)
+      expect(result.tokens.cache.read).toBe(384)
+    }))
+
+  test("extracts OpenAI prompt cache hit and miss metadata", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+        metadata: {
+          openai: {
+            prompt_cache_hit_tokens: 300,
+            prompt_cache_miss_tokens: 700,
+          },
+        },
+      })
+
+      expect(result.tokens.input).toBe(700)
+      expect(result.tokens.cache.read).toBe(300)
+    }))
+
+  test("extracts DeepSeek prompt cache metadata from provider namespace", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+        metadata: {
+          deepseek: {
+            prompt_cache_hit_tokens: 128,
+            prompt_cache_miss_tokens: 872,
+          },
+        },
+      })
+
+      expect(result.tokens.input).toBe(872)
+      expect(result.tokens.cache.read).toBe(128)
+    }))
+
+  test("extracts hyphenated openai-compatible prompt cache metadata", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+        metadata: {
+          "openai-compatible": {
+            prompt_cache_hit_tokens: 64,
+            prompt_cache_miss_tokens: 936,
+          },
+        },
+      })
+
+      expect(result.tokens.input).toBe(936)
+      expect(result.tokens.cache.read).toBe(64)
+    }))
+
+  test("subtracts Bedrock cache reads and writes from the inclusive SDK input", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 150, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+        metadata: {
+          bedrock: {
+            usage: {
+              cacheWriteInputTokens: 225,
+            },
+          },
+        },
+      })
+
+      expect(result.tokens.input).toBe(625)
+      expect(result.tokens.cache.read).toBe(150)
+      expect(result.tokens.cache.write).toBe(225)
+    }))
+
+  test("handles anthropic cache write metadata", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+        metadata: {
+          anthropic: {
+            cacheCreationInputTokens: 300,
+          },
+        },
+      })
+
+      expect(result.tokens.cache.write).toBe(300)
+    }))
+
+  test("subtracts Anthropic cache reads from the inclusive SDK input", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 200, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+        metadata: {
+          anthropic: {},
+        },
+      })
+
+      expect(result.tokens.input).toBe(800)
+      expect(result.tokens.cache.read).toBe(200)
+    }))
+
+  test("handles reasoning tokens", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: 100 },
+        },
+      })
+
+      expect(result.tokens.reasoning).toBe(100)
+    }))
+
+  test("handles undefined optional values gracefully", () =>
+    runtime.run(() => {
+      const model = createModel({ context: 100_000, output: 32_000 })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+      })
+
+      expect(result.tokens.input).toBe(0)
+      expect(result.tokens.output).toBe(0)
+      expect(result.tokens.reasoning).toBe(0)
+      expect(result.tokens.cache.read).toBe(0)
+      expect(result.tokens.cache.write).toBe(0)
+      expect(Number.isNaN(result.cost)).toBe(false)
+    }))
+
+  test("calculates cost correctly", () =>
+    runtime.run(() => {
+      const model = createModel({
+        context: 100_000,
+        output: 32_000,
+        cost: {
+          input: 3,
+          output: 15,
+          cache: { read: 0.3, write: 3.75 },
+        },
+      })
+      const result = Session.getUsage({
+        model,
+        usage: {
+          inputTokens: 1_000_000,
+          outputTokens: 100_000,
+          totalTokens: 1_100_000,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        },
+      })
+
+      expect(result.cost).toBe(3 + 1.5)
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// Token.estimateJSON
+// ---------------------------------------------------------------------------
+
+describe("util.token.estimateJSON", () => {
+  test("estimates a plain string like Token.estimate", () =>
+    runtime.run(() => {
+      const text = "hello world"
+      expect(Token.estimateJSON(text)).toBe(Token.estimate(text))
+    }))
+
+  test("estimates an object via JSON serialization", () =>
+    runtime.run(() => {
+      const obj = { role: "user", content: "hi" }
+      expect(Token.estimateJSON(obj)).toBe(Token.estimate(JSON.stringify(obj)))
+    }))
+
+  test("returns 0 for circular references", () =>
+    runtime.run(() => {
+      const a: any = {}
+      a.self = a
+      expect(Token.estimateJSON(a)).toBe(0)
+    }))
+
+  test("returns 0 for undefined", () =>
+    runtime.run(() => {
+      expect(Token.estimateJSON(undefined)).toBe(0)
+    }))
+
+  test("estimates arrays", () =>
+    runtime.run(() => {
+      const arr = [1, 2, 3]
+      expect(Token.estimateJSON(arr)).toBe(Token.estimate(JSON.stringify(arr)))
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.isContextExceeded
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.isContextExceeded", () => {
+  function apiError(message: string, opts?: { statusCode?: number; responseBody?: string }) {
+    return {
+      name: "APIError",
+      data: {
+        message,
+        statusCode: opts?.statusCode ?? 400,
+        isRetryable: false,
+        responseBody: opts?.responseBody,
+      },
+    }
+  }
+
+  test("detects OpenAI context_length_exceeded", () =>
+    runtime.run(() => {
+      expect(
+        SessionCompaction.isContextExceeded(
+          apiError(
+            "This model's maximum context length is 128000 tokens. However, your messages resulted in 150000 tokens.",
+          ),
+        ),
+      ).toBe(true)
+    }))
+
+  test("detects error code in message", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded(apiError("context_length_exceeded"))).toBe(true)
+    }))
+
+  test("detects Anthropic-style message", () =>
+    runtime.run(() => {
+      expect(
+        SessionCompaction.isContextExceeded(apiError("Your request exceeds the maximum number of tokens allowed.")),
+      ).toBe(true)
+    }))
+
+  test("does not treat an output token limit as a context overflow", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded(apiError("max_tokens: limit reached for this request"))).toBe(false)
+      expect(SessionCompaction.isContextExceeded(apiError("max_tokens exceeds the model output limit"))).toBe(false)
+      expect(
+        SessionCompaction.isContextExceeded(apiError("This request's max_tokens exceeds the output token limit")),
+      ).toBe(false)
+    }))
+
+  test("detects context exceeded in responseBody when message is generic", () =>
+    runtime.run(() => {
+      expect(
+        SessionCompaction.isContextExceeded(
+          apiError("Bad Request", {
+            responseBody: '{"error":{"type":"context_length_exceeded","message":"too many tokens"}}',
+          }),
+        ),
+      ).toBe(true)
+    }))
+
+  test("rejects unrelated 400 errors", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded(apiError("Invalid model specified"))).toBe(false)
+    }))
+
+  test("rejects rate limit errors", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded(apiError("Rate limit exceeded. Please retry later."))).toBe(false)
+    }))
+
+  test("rejects non-APIError objects", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded({ name: "AuthError", data: { message: "bad key" } })).toBe(false)
+    }))
+
+  test("rejects null / undefined", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded(null)).toBe(false)
+      expect(SessionCompaction.isContextExceeded(undefined)).toBe(false)
+    }))
+
+  test("rejects primitive values", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded("context_length_exceeded")).toBe(false)
+      expect(SessionCompaction.isContextExceeded(42)).toBe(false)
+    }))
+
+  test("detects 'request too large' with token mention", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded(apiError("request too large: total token count exceeds limit"))).toBe(
+        true,
+      )
+    }))
+
+  // issue #321: recognize the context-window signal even when the error was
+  // wrapped or normalized to a shape other than APIError.
+  test("detects a wrapped/plain error via top-level message", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded({ name: "Error", message: "context_length_exceeded" })).toBe(true)
+    }))
+
+  test("detects a nested error code when the shape was rewritten", () =>
+    runtime.run(() => {
+      expect(
+        SessionCompaction.isContextExceeded({
+          name: "ProviderError",
+          data: { error: { type: "invalid_request_error", code: "context_length_exceeded" } },
+        }),
+      ).toBe(true)
+    }))
+
+  test("still rejects unrelated wrapped errors", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded({ name: "Error", message: "network timeout" })).toBe(false)
+    }))
+
+  test("detects Model Studio input-length overflow", () =>
+    runtime.run(() => {
+      expect(
+        SessionCompaction.isContextExceeded(
+          apiError("Range of input length should be [1, 1000000]", {
+            responseBody:
+              '{"error":{"code":"InvalidParameter","message":"Range of input length should be [1, 1000000]"}}',
+          }),
+        ),
+      ).toBe(true)
+    }))
+
+  test("detects a bare input-length overflow phrase", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.isContextExceeded(apiError("input length exceeds the model limit"))).toBe(true)
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.hasPendingCompaction (issue #321)
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.hasPendingCompaction", () => {
+  const rootID = "msg_root"
+  const compactionPart = () => ({ type: "compaction" }) as any
+  const textPart = () => ({ type: "text", text: "hi" }) as any
+  const summary = (parentID = rootID) =>
+    ({ info: { role: "assistant", summary: true, finish: "stop", parentID }, parts: [] }) as any
+  const assistant = () => ({ info: { role: "assistant", finish: "stop" }, parts: [] }) as any
+
+  test("no compaction part → not pending", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.hasPendingCompaction([textPart()], [assistant()], rootID)).toBe(false)
+    }))
+
+  test("one compaction part, no summary yet → pending", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.hasPendingCompaction([compactionPart()], [assistant()], rootID)).toBe(true)
+    }))
+
+  test("one compaction part fulfilled by a summary → not pending (task resumes)", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.hasPendingCompaction([compactionPart()], [summary()], rootID)).toBe(false)
+    }))
+
+  test("second compaction request after a fulfilled first → pending again (repeatable)", () =>
+    runtime.run(() => {
+      // Two compaction parts on R but only one completed summary so far.
+      expect(
+        SessionCompaction.hasPendingCompaction([compactionPart(), compactionPart()], [summary(), assistant()], rootID),
+      ).toBe(true)
+    }))
+
+  test("a summary anchored on a different root does not count", () =>
+    runtime.run(() => {
+      expect(SessionCompaction.hasPendingCompaction([compactionPart()], [summary("msg_other")], rootID)).toBe(true)
+    }))
+
+  test("no-op requests and completed summaries settle distinct parts without counting empty attempts", () =>
+    runtime.run(() => {
+      const root: MessageV2.WithParts = {
+        info: {
+          id: rootID,
+          sessionID: "session-root",
+          role: "user",
+          time: { created: 1 },
+          agent: "fixture",
+          model: { providerID: "fixture", modelID: "fixture" },
+          metadata: { compactionNoopRequests: ["part_noop"] },
+        },
+        parts: [],
+      }
+      const parts = ["part_noop", "part_summarized", "part_pending"].map((id) => ({ ...compactionPart(), id }))
+      const empty = assistant()
+      empty.info.parentID = rootID
+      empty.info.metadata = { compactionAttempt: { state: "empty", reason: "no-history" } }
+      const messages = [root, summary(), empty]
+      expect(SessionCompaction.hasPendingCompaction(parts.slice(0, 2), messages, rootID)).toBe(false)
+      expect(SessionCompaction.hasPendingCompaction(parts, messages, rootID)).toBe(true)
+      root.info.metadata!.compactionNoopRequests = ["part_noop", "part_pending"]
+      expect(SessionCompaction.hasPendingCompaction(parts, messages, rootID)).toBe(false)
+      expect(
+        SessionCompaction.hasPendingCompaction([...parts, { ...compactionPart(), id: "part_next" }], messages, rootID),
+      ).toBe(true)
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.buildAnchor
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.buildAnchor", () => {
+  const now = Date.now()
+
+  function userMsg(
+    id: string,
+    parts: Array<{ text: string; synthetic?: boolean }>,
+    metadata?: Record<string, any>,
+  ): MessageV2.WithParts {
+    return {
+      info: {
+        id,
+        role: "user",
+        sessionID: "test-session",
+        time: { created: now },
+        agent: PrimaryAgentIdentity.names.general,
+        model: { providerID: "test", modelID: "test-model" },
+        ...(metadata ? { metadata } : {}),
+      },
+      parts: parts.map((part, index) => ({
+        id: `text-${id}-${index}`,
+        sessionID: "test-session",
+        messageID: id,
+        type: "text",
+        text: part.text,
+        ...(part.synthetic ? { synthetic: true } : {}),
+      })),
+    }
+  }
+
+  test("anchors the active parent user request when it has real text", () =>
+    runtime.run(() => {
+      const messages = [
+        userMsg("previous", [{ text: "will gh pr create be blocked?" }]),
+        userMsg("active", [{ text: "allow ordinary branch push and gh pr create in autonomous mode" }]),
+      ]
+
+      const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+      expect(anchor).toContain("allow ordinary branch push and gh pr create in autonomous mode")
+      expect(anchor).not.toContain("will gh pr create be blocked?")
+    }))
+
+  test("anchors the root by parentID, not a later synthetic continue", () =>
+    runtime.run(() => {
+      // The loop always passes the task root R as parentID (issue #281 §7), so
+      // the anchor is R's text regardless of any later synthetic/steer messages.
+      const messages = [
+        userMsg("active", [{ text: "keep this active request across compaction" }]),
+        userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
+      ]
+
+      const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+      expect(anchor).toContain("keep this active request across compaction")
+      expect(anchor).not.toContain("Continue if you have next steps")
+    }))
+
+  test("anchors the root by parentID, not a later guided steer", () =>
+    runtime.run(() => {
+      const messages = [
+        userMsg("active", [{ text: "implement the active task" }]),
+        userMsg("guided", [{ text: "temporary steering context" }], { guided: true }),
+      ]
+
+      const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+      expect(anchor).toContain("implement the active task")
+      expect(anchor).not.toContain("temporary steering context")
+    }))
+
+  test("resolves the root by id in O(1) without scanning neighbours", () =>
+    runtime.run(() => {
+      const messages = [
+        userMsg("earlier", [{ text: "an earlier request" }]),
+        userMsg("active", [{ text: "the current root request" }]),
+        userMsg("guided", [{ text: "some steering context" }], { guided: true }),
+      ]
+
+      const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+      expect(anchor).toContain("the current root request")
+      expect(anchor).not.toContain("an earlier request")
+      expect(anchor).not.toContain("some steering context")
+    }))
+
+  test("ignores system-origin text parts when extracting anchor text", () =>
+    runtime.run(() => {
+      const messages = [
+        userMsg("active", [{ text: "hidden synthetic text", synthetic: true }, { text: "visible active request" }]),
+      ]
+
+      const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+      expect(anchor).toContain("visible active request")
+      expect(anchor).not.toContain("hidden synthetic text")
+    }))
+
+  test("falls back to the root summary title when it has no user-authored text", () =>
+    runtime.run(() => {
+      const messages = [
+        userMsg("active", [{ text: "only synthetic content", synthetic: true }], {
+          summary: { title: "Scheduled task", diffs: [] },
+        }),
+      ]
+      // summary lives on info, not metadata — attach it directly
+      ;(messages[0].info as MessageV2.User).summary = { title: "Scheduled task", diffs: [] }
+
+      const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+      expect(anchor).toContain("Scheduled task")
+    }))
+
+  test("returns undefined when the root is missing", () =>
+    runtime.run(() => {
+      const messages = [userMsg("active", [{ text: "a request" }])]
+
+      expect(SessionCompaction.buildAnchor(messages, "does-not-exist")).toBeUndefined()
+    }))
+})
+
+describe("session.compaction.buildRecoveryHint", () => {
+  test("points the continuation at durable history around the compaction boundary", () =>
+    runtime.run(() => {
+      const hint = SessionCompaction.buildRecoveryHint({
+        sessionID: "ses_test",
+        summaryMessageID: "msg_summary",
+      })
+
+      expect(hint).toContain("<recovery-hint>")
+      expect(hint).toContain("Do not read the earlier history unless the continuation summary is insufficient")
+      expect(hint).toContain('expand the "session" tool group')
+      expect(hint).toContain('target session "ses_test"')
+      expect(hint).toContain('around message "msg_summary"')
+      expect(hint).toContain("limit 50")
+      expect(hint).toContain("</recovery-hint>")
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// Token.encodingForModelID
+// ---------------------------------------------------------------------------
+
+describe("util.token.encodingForModelID", () => {
+  test("maps o200k models", () =>
+    runtime.run(() => {
+      for (const id of [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.5-preview",
+        "gpt-5",
+        "o1",
+        "o3-mini",
+        "o4-mini",
+        "chatgpt-4o-latest",
+      ]) {
+        expect(Token.encodingForModelID(id)).toBe("o200k_base")
+      }
+    }))
+
+  test("maps cl100k models", () =>
+    runtime.run(() => {
+      for (const id of ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]) {
+        expect(Token.encodingForModelID(id)).toBe("cl100k_base")
+      }
+    }))
+
+  test("defaults non-OpenAI models to o200k_base", () =>
+    runtime.run(() => {
+      for (const id of [
+        "claude-3-opus-20240229",
+        "gemini-1.5-pro",
+        "qwen-72b",
+        "deepseek-v3",
+        "glm-4",
+        "mistral-large",
+      ]) {
+        expect(Token.encodingForModelID(id)).toBe("o200k_base")
+      }
+    }))
+
+  test("defaults unknown OpenAI-ish models to o200k", () =>
+    runtime.run(() => {
+      expect(Token.encodingForModelID("gpt-99-turbo")).toBe("o200k_base")
+      expect(Token.encodingForModelID("o99")).toBe("o200k_base")
+    }))
+
+  test("defaults completely unknown models to o200k_base", () =>
+    runtime.run(() => {
+      expect(Token.encodingForModelID("some-random-model")).toBe("o200k_base")
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// Token.estimateModel (async)
+// ---------------------------------------------------------------------------
+
+describe("util.token.estimateModel", () => {
+  const cjk = "这是一个中文测试"
+  const heuristic = Token.estimate(cjk)
+
+  test("returns accurate count for known OpenAI model", () =>
+    runtime.run(async () => {
+      const count = await Token.estimateModel("gpt-4o", cjk)
+      expect(count).toBeGreaterThan(heuristic)
+    }))
+
+  test("returns o200k-based count for non-OpenAI model", () =>
+    runtime.run(async () => {
+      const count = await Token.estimateModel("claude-3-opus-20240229", cjk)
+      expect(count).toBeGreaterThan(heuristic)
+    }))
+
+  test("returns 0 for empty string", () =>
+    runtime.run(async () => {
+      expect(await Token.estimateModel("gpt-4o", "")).toBe(0)
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// Token.estimateModelSync
+// ---------------------------------------------------------------------------
+
+describe("util.token.estimateModelSync", () => {
+  const cjk = "这是一个中文测试"
+  const heuristic = Token.estimate(cjk)
+
+  test("returns accurate count after warmup", () =>
+    runtime.run(async () => {
+      await Token.warmup("gpt-4o")
+      const count = Token.estimateModelSync("gpt-4o", cjk)
+      expect(count).toBeGreaterThan(heuristic)
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// Token.warmup
+// ---------------------------------------------------------------------------
+
+describe("util.token.warmup", () => {
+  test("completes without error for known model", () =>
+    runtime.run(async () => {
+      await Token.warmup("gpt-4o")
+    }))
+
+  test("completes without error for unknown model", () =>
+    runtime.run(async () => {
+      await Token.warmup("some-random-model")
+    }))
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.selectPartsToPrune — regression tests
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.selectPartsToPrune", () => {
+  const now = Date.now()
+
+  function toolPart(opts: { id?: string; tool?: string; output?: string; compacted?: number }): MessageV2.ToolPart {
+    return {
+      id: opts.id ?? `part-${Math.random().toString(36).slice(2, 8)}`,
+      sessionID: "test-session",
+      messageID: "msg-assistant",
+      type: "tool",
+      callID: `call-${Math.random().toString(36).slice(2, 8)}`,
+      tool: opts.tool ?? "bash",
+      state: {
+        status: "completed",
+        input: {},
+        output: opts.output ?? "",
+        title: "test",
+        metadata: {},
+        time: {
+          start: now - 1000,
+          end: now,
+          ...(opts.compacted ? { compacted: opts.compacted } : {}),
+        },
+      },
+    }
+  }
+
+  function userMsg(id: string): MessageV2.WithParts {
+    return {
+      info: {
+        id,
+        role: "user",
+        sessionID: "test-session",
+        rootID: id,
+        isRoot: true,
+        visible: true,
+        includeInContext: true,
+        origin: { type: "user" },
+        time: { created: now },
+        agent: PrimaryAgentIdentity.names.general,
+        model: { providerID: "test", modelID: "test-model" },
+      },
+      parts: [{ id: `text-${id}`, sessionID: "test-session", messageID: id, type: "text", text: "hello" }],
+    }
+  }
+
+  function assistantMsg(id: string, parts: MessageV2.Part[]): MessageV2.WithParts {
+    return {
+      info: {
+        id,
+        role: "assistant",
+        sessionID: "test-session",
+        time: { created: now },
+        parentID: "msg-user",
+        modelID: "test-model",
+        providerID: "test",
+        mode: "default",
+        agent: PrimaryAgentIdentity.names.general,
+        path: { cwd: "/", root: "/" },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+      parts,
+    }
+  }
+
+  test("skips already-compacted parts and continues scanning earlier messages", () =>
+    runtime.run(() => {
+      // Regression: old code did `break loop` on compacted parts, stopping the
+      // entire backward scan. This meant that once any tool part was compacted,
+      // all earlier parts became invisible to pruning — even if they had huge
+      // output that should be pruned.
+      //
+      // Layout (oldest → newest):
+      //   [user0, asst0(tool: 50K tokens, not compacted), user1, asst1(tool: already compacted), user2, asst2(tool: recent)]
+      //
+      // After the fix (continue instead of break), the scanner should skip the
+      // compacted part in asst1 and still find the large part in asst0.
+
+      const bigOutput = "x".repeat(50_000 * 4) // ~50K tokens (4 chars/token)
+
+      const msgs: MessageV2.WithParts[] = [
+        userMsg("u0"),
+        assistantMsg("a0", [toolPart({ id: "old-big-tool", output: bigOutput })]),
+        userMsg("u1"),
+        assistantMsg("a1", [toolPart({ id: "mid-compacted-tool", output: "small", compacted: now - 500 })]),
+        userMsg("u2"),
+        assistantMsg("a2", [toolPart({ id: "recent-tool", output: "small" })]),
+      ]
+
+      const result = SessionCompaction.selectPartsToPrune(msgs)
+
+      // The old-big-tool in a0 should be found and eligible for pruning
+      // (it exceeds PRUNE_PROTECT=40K and the pruned total exceeds PRUNE_MINIMUM=20K)
+      expect(result.some((p) => p.id === "old-big-tool")).toBe(true)
+    }))
+
+  test("scans past an unfinished legacy compaction summary", () =>
+    runtime.run(() => {
+      const bigOutput = "x".repeat(50_000 * 4)
+      const ghost = assistantMsg("ghost-summary", [])
+      if (ghost.info.role !== "assistant") throw new Error("expected assistant fixture")
+      ghost.info.summary = true
+
+      const msgs: MessageV2.WithParts[] = [
+        userMsg("u0"),
+        assistantMsg("a0", [toolPart({ id: "old-big-tool", output: bigOutput })]),
+        ghost,
+        userMsg("u1"),
+        assistantMsg("a1", []),
+        userMsg("u2"),
+        assistantMsg("a2", []),
+      ]
+
+      const result = SessionCompaction.selectPartsToPrune(msgs)
+
+      expect(result.some((part) => part.id === "old-big-tool")).toBe(true)
+    }))
+
+  test("returns empty when total output is below PRUNE_MINIMUM", () =>
+    runtime.run(() => {
+      const smallOutput = "x".repeat(100)
+      const msgs: MessageV2.WithParts[] = [
+        userMsg("u0"),
+        assistantMsg("a0", [toolPart({ output: smallOutput })]),
+        userMsg("u1"),
+        assistantMsg("a1", [toolPart({ output: smallOutput })]),
+      ]
+
+      const result = SessionCompaction.selectPartsToPrune(msgs)
+      expect(result).toHaveLength(0)
+    }))
+
+  test("protects the two most recent task roots from pruning", () =>
+    runtime.run(() => {
+      const bigOutput = "x".repeat(50_000 * 4) // ~50K tokens
+
+      const msgs: MessageV2.WithParts[] = [
+        userMsg("u0"),
+        assistantMsg("a0", [toolPart({ id: "old-tool", output: bigOutput })]),
+        userMsg("u1"),
+        assistantMsg("a1", [toolPart({ id: "recent-tool", output: bigOutput })]),
+        userMsg("u2"),
+        assistantMsg("a2", [toolPart({ id: "newest-tool", output: "small" })]),
+      ]
+
+      const result = SessionCompaction.selectPartsToPrune(msgs)
+
+      // "old-tool" (before the protect boundary) should be prunable,
+      // "recent-tool" (within the protected zone) should not appear.
+      expect(result.some((p) => p.id === "old-tool")).toBe(true)
+      expect(result.some((p) => p.id === "recent-tool")).toBe(false)
+    }))
+
+  test("completion notices and steer input do not age the current task's evidence", () =>
+    runtime.run(() => {
+      const root = userMsg("root")
+      const continuation = (id: string, cortex: boolean): MessageV2.WithParts => {
+        const message = userMsg(id)
+        if (message.info.role !== "user") throw new Error("expected user fixture")
+        message.info.rootID = root.info.id
+        message.info.isRoot = false
+        if (cortex) message.info.origin = { type: "cortex", taskID: id }
+        return message
+      }
+      const evidence = toolPart({ id: "current-evidence", output: "x".repeat(300_000) })
+      const messages = [
+        root,
+        assistantMsg("work", [evidence]),
+        continuation("completion-a", true),
+        continuation("completion-b", true),
+        continuation("steer", false),
+      ]
+
+      expect(SessionCompaction.selectPartsToPrune(messages)).toEqual([])
+      expect(
+        SessionCompaction.selectPartsToPrune([...messages, userMsg("next-task"), assistantMsg("next-work", [])]),
+      ).toEqual([])
+      expect(
+        SessionCompaction.selectPartsToPrune([...messages, userMsg("next-task"), userMsg("third-task")]).map(
+          (part) => part.id,
+        ),
+      ).toEqual([evidence.id])
+    }))
+
+  test("skips protected tools like skill", () =>
+    runtime.run(() => {
+      const bigOutput = "x".repeat(50_000 * 4)
+
+      const msgs: MessageV2.WithParts[] = [
+        userMsg("u0"),
+        assistantMsg("a0", [toolPart({ id: "skill-tool", tool: "skill", output: bigOutput })]),
+        userMsg("u1"),
+        assistantMsg("a1", []),
+      ]
+
+      const result = SessionCompaction.selectPartsToPrune(msgs)
+      expect(result).toHaveLength(0)
+    }))
+
+  test("accepts optional modelID parameter", () =>
+    runtime.run(() => {
+      // Verify that selectPartsToPrune accepts and uses modelID without error.
+      // Use a small output string — the plumbing test doesn't need large data.
+      // Other tests already cover the threshold logic with heuristic estimation.
+      const output = "x".repeat(400)
+      const msgs: MessageV2.WithParts[] = [
+        userMsg("u0"),
+        assistantMsg("a0", [toolPart({ id: "old-tool", output })]),
+        userMsg("u1"),
+        assistantMsg("a1", [toolPart({ id: "mid-tool", output: "small" })]),
+        userMsg("u2"),
+        assistantMsg("a2", [toolPart({ id: "recent-tool", output: "small" })]),
+      ]
+
+      // Should not throw with modelID — both return empty since output is small
+      const withoutModel = SessionCompaction.selectPartsToPrune(msgs)
+      const withModel = SessionCompaction.selectPartsToPrune(msgs, "gpt-4o")
+
+      expect(withoutModel).toHaveLength(0)
+      expect(withModel).toHaveLength(0)
+    }))
+
+  test("cancels pruning before writes when configuration preparation is interrupted", () =>
+    runtime.run(async () => {
+      const controller = new AbortController()
+      const oldPart = toolPart({ id: "old-tool", output: "x".repeat(300_000) })
+      const originalConfigCurrent = Config.current
+      const update = spyOn(Session, "updatePart")
+      Config.current = mock(async () => {
+        controller.abort(new DOMException("Stopped", "AbortError"))
+        return { compaction: {} }
+      }) as typeof Config.current
+      try {
+        await expect(
+          SessionCompaction.prune({
+            sessionID: "test-session",
+            messages: [userMsg("old"), assistantMsg("work", [oldPart]), userMsg("previous"), userMsg("current")],
+            abort: controller.signal,
+          }),
+        ).rejects.toMatchObject({ name: "AbortError" })
+        expect(update).not.toHaveBeenCalled()
+        expect(oldPart.state.status === "completed" && oldPart.state.time.compacted).toBeUndefined()
+      } finally {
+        Config.current = originalConfigCurrent
+        update.mockRestore()
+      }
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

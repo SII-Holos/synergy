@@ -1,0 +1,37 @@
+# Provenance: https://github.com/YourTongji/YourTJ-Hub/tree/4ec17d4ddf9910b59c9f67442f2bbc35f0b9d1e4/.github
+# Local adaptation: run Oryn in Synergy Actions with Bun workspace validation and repository-scoped App tokens.
+name: Set up pinned Oryn
+description: Fetch the trusted Oryn runtime and apply this repository's operator policy.
+inputs:
+  client-id:
+    required: true
+    description: GitHub App client ID
+  private-key:
+    required: true
+    description: GitHub App private key
+runs:
+  using: composite
+  steps:
+    - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      id: source
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: yzxoi
+        repositories: oryn-mini
+        permission-contents: read
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: yzxoi/oryn-mini
+        ref: 9803b502d172426d898bcd34a0abff17284b853a
+        token: ${{ steps.source.outputs.token }}
+        path: .oryn-runtime
+        persist-credentials: false
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version: 1.4.3
+    - shell: bash
+      working-directory: .oryn-runtime
+      run: |
+        cp ../.github/oryn/repositories.json config/repositories.json
+        bun install --frozen-lockfile

@@ -1,18 +1,22 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
-import path from "node:path"
-import { pathToFileURL } from "node:url"
 import { JSDOM } from "jsdom"
-import { build } from "vite"
-import solidPlugin from "vite-plugin-solid"
+import { domFixture } from "../support/dom-fixtures"
 
 // The fixture compiles a real Solid bundle through Vite before exercising the
 // lifecycle, matching the message-part-error-boundary DOM harness. Keep this
 // hook well above the default test timeout so cold caches do not fail it.
-const TRANSITION_MS = 160
+const TRANSITION_MS = 180
 const TRANSITION_SETTLE_MS = TRANSITION_MS + 80
 
 interface ActivityDomHarness {
+  setFeatures(features: string[] | undefined): void
+  setLatePartsLoaded(loaded: boolean): void
+  setSessionPaused: (paused: boolean) => void
+  setBatchPending: (count: number) => void
+  setBatchLive: (live: boolean) => void
+  setApproval: (enabled: boolean) => void
+  getPermissionCalls: () => unknown[]
+  finishPermission: (failed: boolean) => void
   resetCount: (identity: string, value: number) => void
   setCountValue: (value: number) => void
   setSummaryCompleted: (completed: boolean) => void
@@ -21,12 +25,134 @@ interface ActivityDomHarness {
   getNavigateCalls: () => string[]
 }
 
-let fixtureDirectory: string
 let dom: JSDOM
 let harness: ActivityDomHarness
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+async function rendered(target: string | (() => boolean)) {
+  const present = typeof target === "string" ? () => !!document.querySelector(target) : target
+  const deadline = Date.now() + 2000
+  while (!present() && Date.now() < deadline) await wait(5)
+  expect(present()).toBe(true)
+}
 const reducedMotion = { current: false }
+
+test("partial patches show only observed diffs and keep operation details out of the result", async () => {
+  for (const outcome of ["partial", "unresolved"]) {
+    await rendered(`#patch-${outcome} [data-component="tool-patch-preview"]`)
+    const host = document.getElementById(`patch-${outcome}`)!
+    expect(host.textContent).toContain("source.ts")
+    expect(host.textContent).not.toContain("destination.ts")
+    expect(host.textContent).not.toContain("move failed")
+    expect(host.textContent).not.toContain("move unconfirmed")
+    expect(host.querySelector("[data-phase]")).toBeNull()
+    expect(host.textContent).not.toContain("later.ts")
+    expect(host.textContent).not.toContain("Not created")
+    expect(host.textContent).not.toContain("@@")
+    expect(host.textContent).not.toContain("Stopped after a committed write")
+    expect(host.querySelector('[data-component="tool-output-text"]')).toBeNull()
+    expect(host.textContent).not.toContain("Raw patch ledger")
+    expect(host.textContent).not.toContain("Committed")
+  }
+})
+
+test("successful patches present one result without repeating the model output", async () => {
+  await rendered('#patch-applied [data-component="tool-patch-preview"]')
+  const host = document.getElementById("patch-applied")!
+  expect(host.textContent).toContain("added.ts")
+  expect(host.textContent).not.toContain("Created")
+  expect(host.textContent).not.toContain("@@")
+  expect(host.querySelector('[data-component="diff-patch"]')).not.toBeNull()
+  expect(host.querySelector('[data-component="tool-output-text"]')).toBeNull()
+  expect(host.textContent).not.toContain("Patch applied.")
+})
+
+function patchPreviews(host: Element) {
+  return Array.from(host.querySelectorAll('[data-component="tool-patch-preview"]'), (preview) => {
+    const highlighted = preview
+      .querySelector("diffs-container")
+      ?.shadowRoot?.querySelectorAll("[data-line][data-line-type]")
+    return {
+      path: preview.querySelector('[data-slot="tool-patch-path"]')?.textContent?.replaceAll("\u200e", ""),
+      rows: highlighted?.length
+        ? Array.from(highlighted, (row) => {
+            const kind = row.getAttribute("data-line-type")
+            return {
+              kind: kind === "change-addition" ? "add" : kind === "change-deletion" ? "delete" : kind,
+              text: row.textContent,
+            }
+          })
+        : Array.from(preview.querySelectorAll('[data-slot="tool-patch-line"]'), (row) => ({
+            kind: row.getAttribute("data-kind"),
+            text: row.querySelector("code")?.textContent,
+          })),
+    }
+  })
+}
+
+test("successful Moves render exactly the recorded destination replacement and source deletion", async () => {
+  const host = document.getElementById("patch-move-applied")!
+  await rendered(() => {
+    const previews = patchPreviews(host)
+    return previews.length === 2 && previews.every((preview) => preview.rows.length > 0)
+  })
+  expect(host.querySelectorAll('[data-component="diff-patch"]')).toHaveLength(2)
+  expect(patchPreviews(host)).toEqual([
+    {
+      path: "nested/destination.ts",
+      rows: [
+        { kind: "delete", text: 'export const destination = "before";' },
+        { kind: "add", text: 'export const moved = "after";' },
+      ],
+    },
+    {
+      path: "source.ts",
+      rows: [{ kind: "delete", text: 'export const moved = "before";' }],
+    },
+  ])
+})
+
+test("partial Moves with failed source removal render only the recorded destination diff", async () => {
+  const host = document.getElementById("patch-move-partial")!
+  await rendered(() => {
+    const previews = patchPreviews(host)
+    return previews.length === 1 && previews[0].rows.length > 0
+  })
+  expect(patchPreviews(host)).toEqual([
+    {
+      path: "nested/destination.ts",
+      rows: [
+        { kind: "delete", text: 'export const destination = "before";' },
+        { kind: "add", text: 'export const moved = "after";' },
+      ],
+    },
+  ])
+  expect(host.textContent).not.toContain("source.ts")
+  expect(host.textContent).not.toContain('export const moved = "before";')
+})
+
+test("unconfirmed Moves with authoritative empty files suppress legacy diff and observedPath previews", async () => {
+  await rendered('#patch-move-unresolved [data-component="patch-result"]')
+  const host = document.getElementById("patch-move-unresolved")!
+  expect(patchPreviews(host)).toEqual([])
+  expect(host.querySelector('[data-component="diff-patch"]')).toBeNull()
+  expect(host.textContent).not.toContain("source.ts")
+  expect(host.textContent).not.toContain("destination.ts")
+  expect(host.textContent).not.toContain('export const moved = "before";')
+})
+
+test("edit and multi-file revise results share file diff cards without operation summaries", async () => {
+  for (const tool of ["edit", "revise_file"]) {
+    await rendered(`#result-${tool} [data-component="tool-patch-preview"]`)
+    const host = document.getElementById(`result-${tool}`)!
+    expect(host.querySelectorAll('[data-component="tool-patch-preview"]').length).toBe(tool === "edit" ? 1 : 2)
+    expect(host.textContent).toContain("example.ts")
+    expect(host.textContent).not.toContain("@@")
+    expect(host.textContent).not.toContain("SWAP")
+    expect(host.textContent).not.toContain("private diagnostic")
+    expect(host.querySelector('[data-component="diff-patch"]')).not.toBeNull()
+  }
+})
 
 function countRoot(): HTMLElement {
   return document.querySelector('#count-host [data-component="animated-activity-count"]') as HTMLElement
@@ -41,423 +167,7 @@ function countOldSlots(): NodeListOf<Element> {
 }
 
 beforeAll(async () => {
-  fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".activity-trace-dom-fixture-"))
-  const componentPath = path.resolve(import.meta.dir, "../../src/components/activity-trace.tsx")
-  const i18nPath = path.resolve(import.meta.dir, "../../src/testing/i18n.tsx")
-  const toolRendersPath = path.resolve(import.meta.dir, "../../src/components/tool-renders.tsx")
-  const codeContextPath = path.resolve(import.meta.dir, "../../src/context/code.tsx")
-  const dataContextPath = path.resolve(import.meta.dir, "../../src/context/data.tsx")
-  const pluginThemePath = path.resolve(import.meta.dir, "../../../plugin/src/theme/index.ts")
-  const entry = path.join(fixtureDirectory, "main.tsx")
-
-  await Bun.write(
-    entry,
-    `
-      import { batch, createSignal } from "solid-js"
-      import { render } from "solid-js/web"
-      import { I18nProvider } from "@lingui/solid"
-      import { setupI18n } from ${JSON.stringify(i18nPath)}
-      import { CodeComponentProvider } from ${JSON.stringify(codeContextPath)}
-      import { DataProvider } from ${JSON.stringify(dataContextPath)}
-      import ${JSON.stringify(toolRendersPath)}
-      import { ActivityReasoningSummary, ActivityReceipt, ActivityTrace, AnimatedActivityCount, MinimalActivitySummary } from ${JSON.stringify(componentPath)}
-
-      const [countValue, setCountValue] = createSignal(9)
-      const [countIdentity, setCountIdentity] = createSignal("turn-a")
-      const [summaryCompleted, setSummaryCompleted] = createSignal(false)
-      const [railState, setRailState] = createSignal<"running" | "done">("running")
-
-      const resetCount = (identity: string, value: number) => {
-        batch(() => {
-          setCountIdentity(identity)
-          setCountValue(value)
-        })
-      }
-
-      const message = { id: "m1", sessionID: "s", role: "assistant", time: { created: 1 } }
-      const group = {
-        kind: "activity-group",
-        key: "group-a",
-        message,
-        family: "modify-files",
-        scopeKey: "scope-a",
-        state: "waiting-approval",
-        steps: [
-          {
-            part: {
-              id: "p1",
-              tool: "save_file",
-              state: {
-                status: "completed",
-                input: { filePath: "/workspace/packages/ui/src/components/activity-trace.tsx" },
-                output: "saved",
-                metadata: {
-                  filediff: {
-                    file: "packages/ui/src/components/activity-trace.tsx",
-                    additions: 2,
-                    deletions: 1,
-                    preview: "old activity trace\\nnew activity trace",
-                  },
-                },
-              },
-            },
-            family: "modify-files",
-            scopeKey: "scope-a",
-            icon: "file-pen",
-            title: "Edit activity-trace",
-            state: "waiting-approval",
-          },
-          {
-            part: {
-              id: "p2",
-              tool: "websearch",
-              state: { status: "completed", input: { query: "activity topic grouping" }, output: "found", metadata: {} },
-            },
-            family: "research-web",
-            scopeKey: "activity-topic",
-            icon: "globe",
-            title: "Search activity topic grouping",
-            state: "done",
-          },
-        ],
-        receipt: false,
-        topic: { state: "stable", text: "Updated the activity presentation" },
-      }
-      const [activityGroup, setActivityGroup] = createSignal(group)
-      const railGroup = (state: "running" | "done", key: string) => ({
-        ...group,
-        key,
-        state,
-        scopeKey: key,
-        steps: [{ ...group.steps[1], part: { ...group.steps[1].part, id: key }, scopeKey: key, state }],
-        topic: { state: state === "done" ? "stable" : "live", text: state === "done" ? "Finished rail work" : "Working through rail steps" },
-      })
-      const viewFileGroup = {
-        ...group,
-        key: "group-view-file",
-        family: "inspect-local",
-        scopeKey: "activity-trace.tsx",
-        state: "done",
-        steps: [
-          {
-            part: {
-              id: "view-file",
-              tool: "view_file",
-              state: {
-                status: "completed",
-                input: { filePath: "/workspace/packages/ui/src/components/activity-trace.tsx" },
-                output: "[activity-trace.tsx#TEST]\\n1:const parity = true",
-                metadata: {
-                  filepath: "/workspace/packages/ui/src/components/activity-trace.tsx",
-                  content: "const parity = true",
-                  tag: "TEST",
-                  totalLines: 1,
-                  offset: 0,
-                  limit: 1,
-                  ranges: [],
-                },
-              },
-            },
-            family: "inspect-local",
-            scopeKey: "activity-trace.tsx",
-            icon: "glasses",
-            title: "View activity-trace.tsx",
-            state: "done",
-          },
-        ],
-        topic: { state: "stable", text: "Read the Activity Trace source" },
-      }
-      const errorGroup = {
-        kind: "activity-group",
-        key: "group-error",
-        message,
-        family: "execute",
-        scopeKey: "build.sh",
-        state: "error",
-        steps: [
-          {
-            part: {
-              id: "p-error",
-              tool: "bash",
-              state: {
-                status: "error",
-                input: { command: "bash build.sh" },
-                error: "bash: build.sh: command not found\\nexit code 127",
-                metadata: {
-                  approval: {
-                    status: "auto_allowed",
-                    mode: "autonomous",
-                    risk: "medium",
-                    audit: { visible: true },
-                  },
-                },
-                time: { start: 1, end: 2 },
-              },
-            },
-            family: "execute",
-            scopeKey: "build.sh",
-            icon: "terminal",
-            title: "Run build.sh",
-            subtitle: "build.sh",
-            state: "error",
-          },
-        ],
-        receipt: false,
-      }
-      const delegateGroup = {
-        kind: "activity-group",
-        key: "group-delegate",
-        message,
-        family: "delegate",
-        scopeKey: "task:child-1",
-        state: "done",
-        steps: [
-          {
-            part: {
-              id: "p-task",
-              tool: "task",
-              state: {
-                status: "completed",
-                input: { subagent_type: "explore", description: "Inspect the registry" },
-                output: "done",
-                metadata: {
-                  sessionId: "child-1",
-                  background: false,
-                  summary: [
-                    { id: "c1", tool: "bash", state: { status: "completed", title: "Ran tests" } },
-                    { id: "c2", tool: "read", state: { status: "running" } },
-                    { id: "c3", tool: "grep", state: { status: "generating" } },
-                  ],
-                },
-              },
-            },
-            family: "delegate",
-            scopeKey: "task:child-1",
-            icon: "list-todo",
-            title: "Call subagent",
-            subtitle: "Inspect the registry",
-            state: "done",
-          },
-        ],
-        receipt: false,
-      }
-      const delegateBackgroundGroup = {
-        ...delegateGroup,
-        key: "group-delegate-bg",
-        scopeKey: "task:child-2",
-        steps: [
-          {
-            ...delegateGroup.steps[0],
-            part: {
-              ...delegateGroup.steps[0].part,
-              id: "p-task-bg",
-              state: {
-                ...delegateGroup.steps[0].part.state,
-                status: "completed",
-                metadata: { sessionId: "child-2", background: true, summary: [] },
-              },
-            },
-            scopeKey: "task:child-2",
-            state: "done",
-          },
-        ],
-      }
-      const taskReceipt = {
-        kind: "activity-receipt",
-        key: "receipt-task",
-        message,
-        group: {
-          ...delegateGroup,
-          key: "group-delegate-receipt",
-          state: "error",
-          receipt: true,
-          steps: [
-            {
-              ...delegateGroup.steps[0],
-              part: {
-                ...delegateGroup.steps[0].part,
-                id: "p-task-err",
-                state: {
-                  status: "error",
-                  input: { subagent_type: "explore", description: "Inspect the registry" },
-                  error: "Agent type scout is not visible to synergy",
-                  metadata: { sessionId: "child-3", background: false, summary: [] },
-                },
-              },
-              state: "error",
-            },
-          ],
-        },
-      }
-      function CodeFixture(props: { file: { contents: string } }) {
-        return <pre data-component="code-fixture">{props.file.contents}</pre>
-      }
-      const dagReceipt = {
-        kind: "activity-receipt",
-        key: "receipt-dag",
-        message,
-        group: {
-          kind: "activity-group",
-          key: "group-dag",
-          message,
-          family: "coordination",
-          scopeKey: "",
-          state: "done",
-          steps: [
-            {
-              part: {
-                id: "dag-read",
-                tool: "dagread",
-                state: {
-                  status: "completed",
-                  input: {},
-                  output: "",
-                  metadata: {
-                    nodes: [{ id: "inspect", content: "Inspect activity projection", status: "completed", deps: [] }],
-                    ready: [],
-                  },
-                },
-              },
-              family: "coordination",
-              scopeKey: "",
-              icon: "list-checks",
-              title: "Read DAG",
-              subtitle: "DAG snapshot",
-              state: "done",
-            },
-          ],
-          receipt: true,
-        },
-      }
-
-      const i18n = setupI18n()
-      const navigateCalls: string[] = []
-      const data = {
-        session: [],
-        session_status: {},
-        session_diff: {},
-        permission: {},
-        message: {},
-        part: {},
-      }
-      const root = document.querySelector("#root")!
-      render(
-        () => (
-          <I18nProvider i18n={i18n}>
-            <DataProvider data={data} directory="/workspace" serverUrl="http://localhost" onNavigateToSession={(id) => navigateCalls.push(id)}>
-
-            <CodeComponentProvider component={CodeFixture}>
-              <div id="count-host">
-                <AnimatedActivityCount value={countValue()} identity={countIdentity()} />
-              </div>
-              <MinimalActivitySummary
-                item={{
-                  kind: "activity-summary",
-                  key: "summary-a",
-                  message: { id: "m1", sessionID: "s", role: "assistant", time: { created: 1 } },
-                  total: 9,
-                  facts: [{ family: "modify-files", count: 3 }],
-                  completed: summaryCompleted(),
-                  now: { text: "Verifying compressed activity", source: "reasoning", updatedAt: 10 },
-                }}
-              />
-              <div id="activity-main-host">
-                <ActivityTrace group={activityGroup()} serverUrl="http://localhost" />
-              </div>
-              <div id="activity-rail-host">
-                <div data-slot="session-turn-timeline-item" data-kind="activity-group" data-activity-continues="">
-                  <ActivityTrace group={railGroup(railState(), "rail-running")} serverUrl="http://localhost" />
-                </div>
-                <div data-slot="session-turn-timeline-item" data-kind="activity-group">
-                  <ActivityTrace group={railGroup("done", "rail-done")} serverUrl="http://localhost" />
-                </div>
-              </div>
-              <div id="view-file-host">
-                <ActivityTrace group={viewFileGroup} serverUrl="http://localhost" />
-              </div>
-              <div id="error-host">
-                <ActivityTrace group={errorGroup} serverUrl="http://localhost" />
-              </div>
-              <div id="delegate-host">
-                <ActivityTrace group={delegateGroup} serverUrl="http://localhost" />
-              </div>
-              <div id="delegate-bg-host">
-                <ActivityTrace group={delegateBackgroundGroup} serverUrl="http://localhost" />
-              </div>
-              <div id="task-receipt-host">
-                <ActivityReceipt item={taskReceipt} serverUrl="http://localhost" />
-              </div>
-              <div id="dag-receipt-host">
-                <ActivityReceipt item={dagReceipt} serverUrl="http://localhost" />
-              </div>
-              <div id="reasoning-summary-host">
-                <ActivityReasoningSummary
-                  item={{ kind: "activity-reasoning-summary", key: "reasoning-pending", message: group.message, partID: "rp", state: "pending" }}
-                />
-                <ActivityReasoningSummary
-                  item={{ kind: "activity-reasoning-summary", key: "reasoning-live", message: group.message, partID: "rl", state: "live", text: "Tracing the message flow", source: "nano" }}
-                />
-                <ActivityReasoningSummary
-                  item={{ kind: "activity-reasoning-summary", key: "reasoning-stable", message: group.message, partID: "rs", state: "stable", text: "Mapped the message flow", source: "nano" }}
-                />
-                <ActivityReasoningSummary
-                  item={{ kind: "activity-reasoning-summary", key: "reasoning-fallback", message: group.message, partID: "rf", state: "fallback" }}
-                />
-              </div>
-            </CodeComponentProvider>
-            </DataProvider>
-          </I18nProvider>
-        ),
-        root,
-      )
-
-      ;(globalThis as unknown as { __activityDomHarness: unknown }).__activityDomHarness = {
-        resetCount: (identity: string, value: number) => resetCount(identity, value),
-        setCountValue: (value: number) => setCountValue(value),
-        setSummaryCompleted: (completed: boolean) => setSummaryCompleted(completed),
-        setRailState: (state: "running" | "done") => setRailState(state),
-        getNavigateCalls: () => navigateCalls.slice(),
-
-        refreshActivityGroup: () =>
-          setActivityGroup((current) => ({
-            ...current,
-            steps: current.steps.map((step) => ({
-              ...step,
-              part: { ...step.part, state: { ...step.part.state } },
-            })),
-          })),
-      }
-    `,
-  )
-
-  await build({
-    configFile: false,
-    logLevel: "silent",
-    plugins: [solidPlugin()],
-    resolve: {
-      // Vite resolves @ericsanchezok/synergy-plugin/* through the exports map's
-      // "import" condition, which points at dist/ artifacts that only exist
-      // after the plugin package is built. CI checks out a clean tree, so
-      // point the theme subpath at the plugin sources like the other fixture
-      // tests do.
-      alias: { "@ericsanchezok/synergy-plugin/theme": pluginThemePath },
-    },
-    worker: { format: "es" },
-    build: {
-      outDir: path.join(fixtureDirectory, "dist"),
-      emptyOutDir: true,
-      minify: false,
-      lib: {
-        entry,
-        formats: ["es"],
-        fileName: "fixture",
-      },
-      rollupOptions: {
-        output: { inlineDynamicImports: true },
-      },
-    },
-  })
-
+  const entry = await domFixture("activity-trace.dom")
   dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: "http://localhost/",
   })
@@ -491,11 +201,17 @@ beforeAll(async () => {
     document: window.document,
     navigator: window.navigator,
     Node: window.Node,
+    NodeFilter: window.NodeFilter,
+    Event: window.Event,
+    CustomEvent: window.CustomEvent,
+    HTMLInputElement: window.HTMLInputElement,
+    HTMLTextAreaElement: window.HTMLTextAreaElement,
     Element: window.Element,
     HTMLElement: window.HTMLElement,
     HTMLHeadElement: window.HTMLHeadElement,
     SVGElement: window.SVGElement,
     customElements: window.customElements,
+    CSSStyleSheet: window.CSSStyleSheet,
     MutationObserver: window.MutationObserver,
     ResizeObserver: window.ResizeObserver,
     getComputedStyle: window.getComputedStyle.bind(window),
@@ -503,16 +219,48 @@ beforeAll(async () => {
     cancelAnimationFrame: (id: number) => clearTimeout(id),
   })
 
-  await import(`${pathToFileURL(path.join(fixtureDirectory, "dist", "fixture.js")).href}?test=${Date.now()}`)
+  await import(entry)
   harness = (globalThis as unknown as { __activityDomHarness: ActivityDomHarness }).__activityDomHarness
 }, 60000)
 
 afterAll(async () => {
   dom?.window.close()
-  if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
 })
 
+function closeResult() {
+  document.querySelector<HTMLButtonElement>('[role="dialog"] [data-slot="dialog-close-button"]')?.click()
+}
+
 describe("AnimatedActivityCount DOM behavior", () => {
+  test("canonical pause stops stale tool animation and resuming restores the recorded running state", async () => {
+    const selector = '#activity-rail-host [data-slot="activity-step"][data-state="running"]'
+    const step = document.querySelector(selector)!
+    expect(step).not.toBeNull()
+    harness.setSessionPaused(true)
+    await wait(0)
+    expect(step.querySelector('[data-component="spinner"]')).toBeNull()
+    expect(step.textContent).toContain("Paused")
+    expect(step.hasAttribute("data-working")).toBe(false)
+    harness.setSessionPaused(false)
+    await wait(0)
+    expect(document.querySelector(selector)).toBe(step)
+    expect(step.querySelector('[data-component="spinner"]')).not.toBeNull()
+  })
+  test("a visible pending total survives facts catching up across activity phases", async () => {
+    harness.resetCount("pending-total", 24)
+    harness.setBatchLive(false)
+    harness.setBatchPending(1)
+    await wait(20)
+    const total = document.querySelector('#batch-count-host [data-activity-fact="total"]')
+    expect(total).not.toBeNull()
+    harness.setCountValue(25)
+    harness.setBatchPending(0)
+    harness.setBatchLive(true)
+    await wait(20)
+    expect(document.querySelector('#batch-count-host [data-activity-fact="total"]')).toBe(total)
+    expect(total?.textContent).toContain("25")
+    harness.resetCount("after-pending", 9)
+  })
   test("first mount snaps to the initial value without a transition", () => {
     expect(countSlot("activity-count-new")?.textContent).toBe("9")
     expect(countSlot("activity-count-old")).toBeNull()
@@ -523,6 +271,7 @@ describe("AnimatedActivityCount DOM behavior", () => {
   test.each([
     [9, 10],
     [20, 21],
+    [24, 25],
     [99, 100],
   ])("%i to %i keeps exactly one old/new transition then settles", async (before, after) => {
     harness.resetCount(`trans-${after}`, before)
@@ -562,6 +311,35 @@ describe("AnimatedActivityCount DOM behavior", () => {
     expect(countRoot().hasAttribute("data-animating")).toBe(false)
     expect(countSlot("activity-count-old")).toBeNull()
     expect(countSlot("activity-count-new")?.textContent).toBe("12")
+  })
+
+  test("batch labels retain the numeric node while its value and plural grammar change", async () => {
+    harness.resetCount("batch", 1)
+    await wait(0)
+    const number = document.querySelector('#batch-count-host [data-component="animated-activity-count"]')
+    expect(number).not.toBeNull()
+    expect(document.querySelector("#batch-count-host")?.textContent).toContain("command")
+    harness.setCountValue(2)
+    await wait(0)
+    expect(document.querySelector('#batch-count-host [data-component="animated-activity-count"]')).toBe(number)
+    expect(number?.hasAttribute("data-animating")).toBe(true)
+    await wait(TRANSITION_SETTLE_MS)
+    expect(document.querySelector("#batch-count-host")?.textContent).toBe("Ran 2 commands")
+  })
+
+  test("unrelated projection updates cannot restart an unchanged count transition", async () => {
+    harness.resetCount("stable-count-timer", 9)
+    await wait(0)
+    harness.setCountValue(10)
+    await wait(100)
+    harness.setBatchPending(1)
+    await wait(120)
+    const number = document.querySelector(
+      '#batch-count-host [data-activity-fact="execute"] [data-component="animated-activity-count"]',
+    )!
+    expect(number.hasAttribute("data-animating")).toBe(false)
+    expect(number.getAttribute("aria-label")).toBe("10")
+    harness.setBatchPending(0)
   })
 
   test("decrease and identity reset snap without a transition", async () => {
@@ -660,8 +438,7 @@ describe("Activity summary DOM behavior", () => {
   test("renders minimal summaries without a nano topic parent row", () => {
     expect(document.querySelector('#activity-main-host [data-slot="activity-trace-title"]')).toBeNull()
     const now = document.querySelector('[data-slot="minimal-activity-now"]')
-    expect(now?.textContent).toBe("Verifying compressed activity")
-    expect(now?.getAttribute("aria-hidden")).toBe("true")
+    expect(now).toBeNull()
   })
 })
 
@@ -687,7 +464,7 @@ describe("ActivityTrace DOM behavior", () => {
     ])
     expect(
       Array.from(list?.querySelectorAll('[data-slot="activity-step-family"]') ?? []).map((item) => item.textContent),
-    ).toEqual(["Changed", "Researched"])
+    ).toEqual([])
     expect(list?.querySelector('[data-slot="activity-step-branch"]')).toBeNull()
   })
 
@@ -697,44 +474,19 @@ describe("ActivityTrace DOM behavior", () => {
     expect(title?.getAttribute("title")).toBe("Edit activity-trace")
   })
 
-  test("exposes the full step subtitle to hover when narrow layouts truncate it", () => {
-    const subtitle = document.querySelector('#error-host [data-slot="activity-step-subtitle"]')
-    expect(subtitle?.textContent).toBe("build.sh")
-    expect(subtitle?.getAttribute("title")).toBe("build.sh")
+  test("keeps the action and object together without repeating the object", () => {
+    const subtitle = document.querySelector('#error-host [data-slot="activity-step-title"]')
+    expect(subtitle?.textContent).toBe("Run build.sh")
+    expect(subtitle?.getAttribute("title")).toBe("Run build.sh")
   })
 
-  test("each child activity is a keyboard-accessible result toggle", async () => {
+  test("tool rows select a result without disclosure semantics", async () => {
     const triggers = stepTriggers()
-    expect(triggers).toHaveLength(8)
+    expect(triggers).toHaveLength(9)
     expect(triggers[0]?.tagName).toBe("BUTTON")
     expect(triggers[0]?.getAttribute("type")).toBe("button")
-    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
-
-    triggers[0]?.click()
-    await wait(0)
-    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("true")
-
-    triggers[0]?.click()
-    await wait(0)
-    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
-  })
-
-  test("preserves an expanded child when streaming replaces activity projections", async () => {
-    const host = document.querySelector("#activity-main-host") as HTMLElement
-    let trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
-
-    trigger.click()
-    await wait(0)
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-
-    harness.refreshActivityGroup()
-    await wait(0)
-
-    trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-
-    trigger.click()
-    await wait(0)
+    expect(triggers[0]?.hasAttribute("aria-expanded")).toBe(false)
+    expect(triggers[0]?.closest('[data-component="collapsible"]')).toBeNull()
   })
 
   test("renders the waiting approval state once within its child activity", () => {
@@ -750,10 +502,10 @@ describe("ActivityTrace DOM behavior", () => {
     firstTrigger.click()
     await wait(0)
 
-    const fileStep = document.querySelector('#activity-main-host [data-slot="activity-step"]')
-    expect(fileStep?.querySelector('[data-component="diff-preview"], [data-component="diff-patch"]')).not.toBeNull()
+    const fileStep = document.querySelector('[role="dialog"]')
+    expect(fileStep?.querySelector('[data-component="tool-patch-preview"]')).not.toBeNull()
 
-    firstTrigger.click()
+    closeResult()
     await wait(0)
   })
   test("updates flat tool state without rendering a progress rail or checkbox", async () => {
@@ -776,7 +528,7 @@ describe("ActivityTrace DOM behavior", () => {
       '[data-component="activity-trace"] [data-slot="activity-step"]',
     ) as HTMLElement
     expect(updatedStep.getAttribute("data-state")).toBe("done")
-    expect(updatedStep.textContent).toContain("Done")
+    expect(updatedStep.querySelector('[data-slot="activity-state"]')).toBeNull()
   })
 
   test("renders view_file through the Full-mode renderer body without a nested tool card", async () => {
@@ -785,27 +537,38 @@ describe("ActivityTrace DOM behavior", () => {
     viewTrigger.click()
     await wait(0)
 
-    expect(viewHost.querySelector('[data-component="tool-result-body"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="anchored-summary"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="view-content"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="code-fixture"]')?.textContent).toBe("const parity = true")
-    expect(viewHost.querySelector('[data-component="tool-output-text"]')).toBeNull()
-    expect(viewHost.querySelector('[data-component="collapsible"][data-variant="tool"]')).toBeNull()
+    const result = document.querySelector('[role="dialog"]')!
+    expect(result.querySelector('[data-component="tool-result-body"]')).not.toBeNull()
+    expect(result.querySelector('[data-component="anchored-summary"]')).not.toBeNull()
+    expect(result.querySelector('[data-component="tool-content-preview"]')).not.toBeNull()
+    expect(result.querySelector('[data-component="code-fixture"]')).toBeNull()
+    expect(result.querySelector('[data-component="tool-output-text"]')?.textContent).toBe("const parity = true")
+    expect(result.querySelector('[data-component="collapsible"][data-variant="tool"]')).toBeNull()
+    closeResult()
+    await wait(0)
   })
 
-  test("keeps a failed step collapsed by default and reveals the full error inline after one click", async () => {
+  test("keeps a failed tool as a selection and displays its error without parameter disclosure", async () => {
     const host = document.querySelector("#error-host") as HTMLElement
     const trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
-    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+    expect(trigger.hasAttribute("aria-expanded")).toBe(false)
     expect(host.querySelector('[data-component="error-card"]')).toBeNull()
+    expect(trigger.querySelector('[data-slot="activity-state"]')).toBeNull()
+    expect(trigger.getAttribute("aria-label")).toContain("Failed")
 
     trigger.click()
     await wait(0)
 
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-    expect(host.querySelector('[data-component="error-card"]')).not.toBeNull()
-    expect(host.textContent).toContain("command not found")
-    expect(host.textContent).toContain("exit code 127")
+    expect(trigger.hasAttribute("aria-expanded")).toBe(false)
+    const result = document.querySelector('[role="dialog"]')!
+    expect(result.querySelector('[data-component="error-card"]')).toBeNull()
+    expect(result.querySelector('[data-slot="tool-result-error"][role="status"]')).not.toBeNull()
+    expect(result.querySelector('[data-component="collapsible"]')).toBeNull()
+    expect(result.textContent).not.toContain("Tool input")
+    expect(result.textContent).toContain("command not found")
+    expect(result.textContent).toContain("exit code 127")
+    closeResult()
+    await wait(0)
   })
 
   test("renders the approval audit icon for an auto-allowed step", () => {
@@ -823,24 +586,25 @@ describe("Delegated subagent activity DOM behavior", () => {
     trigger.click()
     await wait(0)
 
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    expect(trigger.hasAttribute("aria-expanded")).toBe(false)
+    const result = document.querySelector('[role="dialog"]')!
     expect(
-      host.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
+      result.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
     ).not.toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
-    expect(host.querySelector('[data-slot="task-subagent-description"]')?.textContent).toBe("Inspect the registry")
-    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(3)
+    expect(result.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
+    expect(result.querySelector('[data-slot="task-subagent-description"]')?.textContent).toBe("Inspect the registry")
+    expect(result.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(3)
     expect(
-      host.querySelector('[data-slot="task-tool-item"][data-state="running"] [data-slot="task-tool-status"]'),
+      result.querySelector('[data-slot="task-tool-item"][data-state="running"] [data-slot="task-tool-status"]'),
     ).not.toBeNull()
 
-    const open = host.querySelector('[data-slot="task-subagent-open"]') as HTMLButtonElement
+    const open = result.querySelector('[data-slot="task-subagent-open"]') as HTMLButtonElement
     expect(open?.tagName).toBe("BUTTON")
     open?.click()
     await wait(0)
     expect(harness.getNavigateCalls()).toEqual(["child-1"])
 
-    trigger.click()
+    closeResult()
     await wait(0)
   })
 
@@ -849,18 +613,21 @@ describe("Delegated subagent activity DOM behavior", () => {
     const trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
     trigger.click()
     await wait(0)
+    const result = document.querySelector('[role="dialog"]')!
 
     expect(
-      host.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
+      result.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
     ).not.toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
-    expect(host.querySelector('[data-slot="task-subagent-mode"]')?.textContent).toBe("background")
-    const state = host.querySelector('[data-slot="task-subagent-state"]') as HTMLElement
+    expect(result.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
+    expect(result.querySelector('[data-slot="task-subagent-mode"]')?.textContent).toBe("background")
+    const state = result.querySelector('[data-slot="task-subagent-state"]') as HTMLElement
     expect(state?.textContent).toContain("Running")
-    expect(host.querySelector('[data-slot="task-subagent-state-dot"]')).not.toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-empty"]')).toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-open"]')).not.toBeNull()
-    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
+    expect(result.querySelector('[data-slot="task-subagent-state-dot"]')).not.toBeNull()
+    expect(result.querySelector('[data-slot="task-subagent-empty"]')).toBeNull()
+    expect(result.querySelector('[data-slot="task-subagent-open"]')).not.toBeNull()
+    expect(result.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
+    closeResult()
+    await wait(0)
   })
 })
 
@@ -875,7 +642,7 @@ describe("ActivityReceipt DOM behavior", () => {
     expect(document.querySelector('#dag-receipt-host [data-component="dag-graph"]')).toBeNull()
 
     trigger().click()
-    await wait(0)
+    await rendered('#dag-receipt-host [data-component="dag-graph"]')
 
     expect(trigger().getAttribute("aria-expanded")).toBe("true")
     expect(document.querySelector('#dag-receipt-host [data-component="dag-graph"]')).not.toBeNull()
@@ -901,7 +668,7 @@ describe("ActivityReceipt DOM behavior", () => {
     expect(host.querySelector('[data-component="task-subagent-detail"]')).toBeNull()
 
     receiptTrigger.click()
-    await wait(0)
+    await rendered('#task-receipt-host [data-component="task-subagent-detail"]')
 
     expect(receiptTrigger.getAttribute("aria-expanded")).toBe("true")
     expect(host.querySelector('[data-component="task-subagent-detail"]')).not.toBeNull()
@@ -911,4 +678,113 @@ describe("ActivityReceipt DOM behavior", () => {
     expect(host.querySelector('[data-slot="task-subagent-empty"]')).toBeNull()
     expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
   })
+})
+
+test("inline approval locks duplicate clicks and keeps a failed response retryable", async () => {
+  harness.setApproval(true)
+  await wait(0)
+  const approve = document.querySelector('[data-slot="activity-approval-actions"] button') as HTMLButtonElement
+  expect(approve).not.toBeNull()
+  const before = harness.getPermissionCalls().length
+  approve.click()
+  approve.click()
+  await wait(0)
+  expect(harness.getPermissionCalls()).toHaveLength(before + 1)
+  expect(approve.disabled).toBe(true)
+  harness.finishPermission(true)
+  await wait(0)
+  expect(document.querySelector('[data-slot="activity-approval-actions"] [role="alert"]')?.textContent).toContain(
+    "Approval unavailable",
+  )
+  expect(approve.disabled).toBe(false)
+  approve.click()
+  await wait(0)
+  expect(harness.getPermissionCalls()).toHaveLength(before + 2)
+  harness.finishPermission(false)
+  harness.setApproval(false)
+  await wait(0)
+})
+
+test("removing a tool capability replaces its historical card with retained generic output", async () => {
+  const selector = '#optional-tool-host [data-component="tool-object-result"]'
+  expect(document.querySelector(selector)).toBeNull()
+  harness.setFeatures(undefined)
+  await rendered(selector)
+  expect(document.querySelector("#optional-tool-host")?.textContent).toContain("Retained historical note text")
+  expect(document.querySelector("#optional-tool-host")?.textContent).not.toContain("Created")
+  expect(document.querySelector("#optional-structured-tool-host")?.textContent).not.toContain("hidden-control-id")
+  harness.setFeatures([])
+  await wait(0)
+  expect(document.querySelector(selector)).not.toBeNull()
+  harness.setFeatures(["note"])
+  await wait(0)
+  expect(document.querySelector(selector)).toBeNull()
+})
+
+test("special workflow bubbles admit late attachment content and preserve it when their source disappears", async () => {
+  const hosts = ["late-blueprint-start", "late-workflow-request", "late-workflow-control"]
+  harness.setFeatures(["blueprint", "lattice"])
+  await wait(0)
+  for (const id of hosts) expect(document.getElementById(id)?.textContent).not.toContain("retained-request.txt")
+  harness.setLatePartsLoaded(true)
+  await wait(0)
+  for (const id of hosts) expect(document.getElementById(id)?.textContent).toContain("retained-request.txt")
+  for (const features of [undefined, ["blueprint"], ["blueprint", "lattice"]]) {
+    harness.setFeatures(features)
+    await wait(0)
+    for (const id of hosts) expect(document.getElementById(id)?.textContent).toContain("retained-request.txt")
+  }
+  harness.setFeatures(["note"])
+})
+
+test("missing workflow owners hide historical badges and control messages while preserving user requests", async () => {
+  harness.setFeatures(["blueprint"])
+  await wait(0)
+  expect(document.querySelector('#optional-workflow-request [data-slot="special-message-badge"]')).not.toBeNull()
+  expect(document.querySelector('#optional-blueprint-control [data-component="special-user-message"]')).not.toBeNull()
+  harness.setFeatures([])
+  await wait(0)
+  expect(document.querySelector('#optional-workflow-request [data-slot="special-message-badge"]')).toBeNull()
+  expect(document.querySelector("#optional-workflow-request")?.textContent).toContain("Keep my original request")
+  expect(document.querySelector("#optional-blueprint-control")?.textContent).toBe("")
+  expect(document.querySelector("#optional-blueprint-start")?.textContent).toContain("Keep my Blueprint request")
+  expect(document.querySelector("#optional-blueprint-start")?.textContent).not.toContain("Internal Blueprint")
+  harness.setFeatures(["note"])
+})
+
+test("removed tool owners hide timeline controls and keep only their ordinary output", async () => {
+  harness.setFeatures(["note"])
+  await wait(0)
+  expect(document.querySelector('#optional-trace-host [data-slot="activity-step-trigger"]')).not.toBeNull()
+  harness.setFeatures([])
+  await wait(0)
+  expect(document.querySelector('#optional-trace-host [data-slot="activity-step-trigger"]')).toBeNull()
+  expect(document.querySelector("#optional-trace-host")?.textContent).not.toContain("Created private Note")
+  expect(document.querySelector("#optional-trace-host")?.textContent).toContain("Retained timeline output")
+  harness.setFeatures(["note"])
+})
+
+test("removing a Blueprint source hides its historical controls while preserving the request and sent attachments", async () => {
+  harness.setFeatures(["blueprint", "lattice"])
+  await rendered('#source-blueprint-control [data-component="special-user-message"]')
+  expect(document.querySelector('#source-blueprint-start [data-slot="special-message-badge"]')).not.toBeNull()
+  expect(document.querySelector("#source-blueprint-start")?.textContent).toContain("retained-request.txt")
+  for (const features of [["blueprint"], undefined, ["lattice"]]) {
+    harness.setFeatures(features)
+    await wait(0)
+    expect(document.querySelector("#source-blueprint-control")?.textContent).toBe("")
+    expect(document.querySelector('#source-blueprint-start [data-slot="special-message-badge"]')).toBeNull()
+    expect(document.querySelector("#source-blueprint-start")?.textContent).toContain("Keep my Blueprint request")
+    expect(document.querySelector("#source-blueprint-start")?.textContent).toContain("retained-request.txt")
+    expect(document.querySelector("#source-blueprint-tool")?.textContent).not.toContain("source-control-id")
+    expect(document.querySelector("#source-blueprint-tool")?.textContent).not.toContain("Lattice Blueprint approved")
+    expect(document.querySelector("#source-blueprint-tool")?.textContent).toContain("retained-request.txt")
+  }
+  harness.setFeatures(["blueprint"])
+  await wait(0)
+  expect(document.querySelector('#optional-blueprint-control [data-component="special-user-message"]')).not.toBeNull()
+  harness.setFeatures(["blueprint", "lattice"])
+  await rendered('#source-blueprint-control [data-component="special-user-message"]')
+  expect(document.querySelector("#source-blueprint-start")?.textContent).toContain("retained-request.txt")
+  harness.setFeatures(["note"])
 })

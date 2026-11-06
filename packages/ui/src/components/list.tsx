@@ -1,7 +1,7 @@
 import { LIST_DESC } from "./tool-title-descriptors"
 
 import { type FilteredListProps, useFilteredList } from "../hooks"
-import { createEffect, createSignal, For, onCleanup, onMount, type JSX, on, Show } from "solid-js"
+import { batch, createEffect, createSignal, For, onCleanup, onMount, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Icon, type IconProps, type IconName } from "./icon"
@@ -14,6 +14,7 @@ const listNoResultsDescriptor = { id: "ui.list.noResults", message: "No results"
 export interface ListSearchProps {
   placeholder?: string
   autofocus?: boolean
+  onChange?: (value: string) => void
 }
 
 export interface ListProps<T> extends FilteredListProps<T> {
@@ -21,6 +22,9 @@ export interface ListProps<T> extends FilteredListProps<T> {
   children: (item: T) => JSX.Element
   emptyMessage?: string
   interactive?: boolean
+  selectOnTab?: boolean
+  selectionKey?: (item: T) => string
+  groupLabel?: (group: { category: string; items: T[] }) => string
   onKeyEvent?: (event: KeyboardEvent, item: T | undefined) => void
   onMove?: (item: T | undefined) => void
   activeIcon?: IconName
@@ -44,7 +48,17 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   const { filter, grouped, flat, active, setActive, onKeyDown, onInput } = useFilteredList<T>(props)
 
   const searchProps = () => (typeof props.search === "object" ? props.search : {})
+  const changeFilter = (value: string) => {
+    batch(() => {
+      setInternalFilter(value)
+      searchProps().onChange?.(value)
+    })
+  }
   const interactive = () => props.interactive ?? true
+  const isSelected = (item: T) => {
+    const key = props.selectionKey ?? props.key
+    return props.current !== undefined && key(item) === key(props.current)
+  }
   let searchContainerRef: HTMLDivElement | undefined
 
   onMount(() => {
@@ -94,19 +108,21 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     if (!scrollRef()) return
     if (!props.current) return
     const key = props.key(props.current)
-    requestAnimationFrame(() => {
-      scrollToItem(scrollRef()!.querySelector(`[data-key="${key}"]`))
+    const frame = requestAnimationFrame(() => {
+      scrollToItem(scrollRef()?.querySelector(`[data-key="${CSS.escape(key)}"]`))
     })
+    onCleanup(() => cancelAnimationFrame(frame))
   })
 
   createEffect(() => {
     const all = flat()
-    if (store.mouseActive || all.length === 0) return
-    if (active() === props.key(all[0])) {
+    const key = active()
+    if (store.mouseActive || all.length === 0 || key === null || key === undefined) return
+    if (key === props.key(all[0])) {
       scrollRef()?.scrollTo(0, 0)
       return
     }
-    scrollToItem(scrollRef()?.querySelector(`[data-key="${active()}"]`), "smooth")
+    scrollToItem(scrollRef()?.querySelector(`[data-key="${CSS.escape(key)}"]`), "smooth")
   })
 
   createEffect(() => {
@@ -123,6 +139,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   const handleKey = (e: KeyboardEvent) => {
     setStore("mouseActive", false)
     if (e.key === "Escape") return
+    if (e.key === "Tab" && props.selectOnTab === false) return
 
     const all = flat()
     const selected = all.find((x) => props.key(x) === active())
@@ -174,7 +191,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     return (
       <>
         {props.children(row.item)}
-        <Show when={interactive() && row.item === props.current}>
+        <Show when={interactive() && isSelected(row.item)}>
           <span data-slot="list-item-selected-icon">
             <Icon name="check" />
           </span>
@@ -201,9 +218,10 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
               data-slot="list-search-input"
               type="text"
               value={internalFilter()}
-              onChange={setInternalFilter}
+              onChange={changeFilter}
               onKeyDown={handleKey}
               placeholder={searchProps().placeholder}
+              aria-label={searchProps().placeholder}
               spellcheck={false}
               autocorrect="off"
               autocomplete="off"
@@ -211,7 +229,12 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
             />
           </div>
           <Show when={internalFilter()}>
-            <IconButton icon="circle-x" variant="ghost" onClick={() => setInternalFilter("")} />
+            <IconButton
+              icon="circle-x"
+              variant="ghost"
+              aria-label={_({ id: "ui.list.clearSearch", message: "Clear search" })}
+              onClick={() => changeFilter("")}
+            />
           </Show>
         </div>
       </Show>
@@ -231,7 +254,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
             {(group) => (
               <div data-slot="list-group">
                 <Show when={group.category}>
-                  <GroupHeader category={group.category} />
+                  <GroupHeader category={props.groupLabel?.(group) ?? group.category} />
                 </Show>
                 <div data-slot="list-items">
                   <For each={group.items}>
@@ -253,7 +276,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                           data-slot="list-item"
                           data-key={props.key(item)}
                           data-active={props.key(item) === active()}
-                          data-selected={item === props.current}
+                          data-selected={isSelected(item)}
                           data-interactive="true"
                           onClick={() => handleSelect(item, i())}
                           type="button"

@@ -49,6 +49,8 @@ Strict manifests accept this field set and reject unknown fields.
 
 The runtime record stores normalized fields only: `name`, `description`, `declaredLicense`, `declaredCompatibility`, `invocation`, `origin`, `backing`, and `diagnostics`. It does not preserve raw frontmatter, arbitrary vendor fields, `allowed-tools`, or `metadata` as runtime authorization state.
 
+The model catalog shows each accessible, model-invocable Skill's full declared `description`, collapsing whitespace onto one line without cutting content. Descriptions carry purpose, selection triggers, and exclusions; bodies carry execution steps, next-reference routing, and authorization or safety guards rather than repeating the selection prose.
+
 `allowed-tools` is descriptive metadata only. Tool visibility and execution still come from the active agent, tool resolver, control profile, permission rules, Scope/workspace boundary, and sandbox. A Skill can ask the model to use a tool, but it cannot authorize that tool.
 
 ## Source Profiles and Roots
@@ -195,10 +197,14 @@ Export writes one top-level directory named after the Skill and preserves regula
 
 The runtime file watcher detects Skill changes when a changed file matches an accepted entry name inside a live Skill root. Canonical strict entries use `SKILL.md`; the Synergy and Agent Skills compatibility shims also watch legacy `Skill.md`, as do lenient roots. Detection assigns project or global scope from the root location, debounces by scope, and reloads the union of affected targets.
 
-Editing built-in source files under `packages/synergy/src` still requires restarting the backend process. Runtime reload refreshes runtime state; it does not reload already-imported module code.
+Editing built-in source files under a workspace package’s `src/` directory still requires restarting the backend process. Runtime reload refreshes runtime state; it does not reload already-imported module code.
 
 ## Compatibility Commitment
 
 Synergy preserves discovery of existing Synergy, Claude, Codex, OpenClaw, and pre-standardization `.agents/skills` entries with their previously accepted entry names. Compatibility Skills load through the same catalog and `skill` tool as native Skills, with diagnostics for fields or legacy normalization Synergy ignores.
 
 Compatibility does not create a second Skill system. The canonical runtime record, invocation flags, permission boundary, resource lookup, import/export validation, reload target, and precedence rules above are the supported Skill contract.
+
+## Host composition
+
+A separately composed runtime can call the public local-runtime `SkillSelection.select({ builtins, filesystem })` before catalog initialization. Omitting this selection retains local-product discovery. Product-owned in-memory entries use the public Harness `SkillSourceProviders` registry. Selection is Runtime scoped and cannot change after discovery.

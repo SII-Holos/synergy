@@ -5,12 +5,11 @@ import path from "node:path"
 import {
   desktopChecksumsName,
   desktopPortableArtifactNames,
-  expectedBrowserHostArtifacts,
-  expectedChromiumManifestArtifacts,
   expectedDesktopPrimaryArtifacts,
-} from "../../../packages/desktop/src/release-assets"
+} from "../../../apps/desktop/src/release-assets"
 import { downloadReleaseAsset, viewRelease } from "../shared/github"
 import type { ReleaseState } from "../shared/packages"
+import { assertDesktopUpgradeReceipt, DESKTOP_UPGRADE_RECEIPT } from "../shared/desktop-app-package"
 
 export const EXPECTED_UPDATE_METADATA = ["latest-mac.yml", "latest.yml", "latest-linux.yml", "latest-linux-arm64.yml"]
 
@@ -37,16 +36,6 @@ export function assertDesktopAssetNames(version: string, names: ReadonlySet<stri
       throw new Error(`missing desktop portable asset ${assetName}`)
     }
   }
-  for (const assetName of expectedBrowserHostArtifacts(version)) {
-    if (!names.has(assetName)) {
-      throw new Error(`missing Browser Host release asset ${assetName}`)
-    }
-  }
-  for (const assetName of expectedChromiumManifestArtifacts(version)) {
-    if (!names.has(assetName)) {
-      throw new Error(`missing Chromium manifest release asset ${assetName}`)
-    }
-  }
   const checksums = desktopChecksumsName(version)
   if (!names.has(checksums)) {
     throw new Error(`missing desktop checksum asset ${checksums}`)
@@ -56,14 +45,13 @@ export function assertDesktopAssetNames(version: string, names: ReadonlySet<stri
       throw new Error(`missing desktop updater metadata ${metadata}`)
     }
   }
+  if (!names.has(DESKTOP_UPGRADE_RECEIPT)) throw new Error("missing final Desktop upgrade receipt")
 }
 
 export function expectedDesktopChecksumAssetNames(version: string): string[] {
   return [
     ...expectedDesktopPrimaryArtifacts(version),
     ...desktopPortableArtifactNames(version),
-    ...expectedBrowserHostArtifacts(version),
-    ...expectedChromiumManifestArtifacts(version),
     ...EXPECTED_UPDATE_METADATA,
   ]
 }
@@ -119,6 +107,9 @@ export async function verifyPublishedDesktopChecksums(
       }),
     )
     assertDesktopAssetChecksums(await fs.readFile(checksumPath, "utf8"), hashes, expectedNames, uploadedNames)
+    const receipt = path.join(directory, DESKTOP_UPGRADE_RECEIPT)
+    await download(state.releaseTag, DESKTOP_UPGRADE_RECEIPT, receipt)
+    assertDesktopUpgradeReceipt(await Bun.file(receipt).json(), state.version, hashes)
   } finally {
     await fs.rm(directory, { recursive: true, force: true })
   }

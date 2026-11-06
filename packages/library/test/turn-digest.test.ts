@@ -1,0 +1,319 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
+import { describe, expect, test } from "bun:test"
+import type { Session } from "@ericsanchezok/synergy-harness/session"
+import { TurnDigest } from "../src/turn-digest"
+import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import type { Turn } from "@ericsanchezok/synergy-harness/session/turn"
+
+// ---------------------------------------------------------------------------
+// Test data builders — minimal objects that satisfy the type constraints
+// ---------------------------------------------------------------------------
+
+const partBase = { id: "p1", sessionID: "ses_1", messageID: "msg_1" }
+
+function userMsg(id: string, parts: MessageV2.Part[]): MessageV2.WithParts {
+  return {
+    info: {
+      id,
+      sessionID: "ses_1",
+      role: "user" as const,
+      time: { created: 1 },
+      agent: PrimaryAgentIdentity.names.general,
+      model: { providerID: "p", modelID: "m" },
+    },
+    parts,
+  }
+}
+
+function assistantMsg(parentID: string, parts: MessageV2.Part[]): MessageV2.WithParts {
+  return {
+    info: {
+      id: `ast_${parentID}`,
+      sessionID: "ses_1",
+      role: "assistant" as const,
+      time: { created: 2 },
+      parentID,
+      modelID: "m",
+      providerID: "p",
+      mode: "",
+      agent: PrimaryAgentIdentity.names.general,
+      path: { cwd: "/", root: "/" },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    },
+    parts,
+  }
+}
+
+function textPart(text: string, opts?: { synthetic?: boolean }): MessageV2.TextPart {
+  return { ...partBase, type: "text", text, synthetic: opts?.synthetic }
+}
+
+function completedTool(tool: string, title: string): MessageV2.ToolPart {
+  return {
+    ...partBase,
+    type: "tool",
+    callID: "c1",
+    tool,
+    state: {
+      status: "completed",
+      input: {},
+      output: "ok",
+      title,
+      metadata: {},
+      time: { start: 1, end: 2 },
+    },
+  }
+}
+
+function errorTool(tool: string): MessageV2.ToolPart {
+  return {
+    ...partBase,
+    type: "tool",
+    callID: "c2",
+    tool,
+    state: {
+      status: "error",
+      input: {},
+      error: "fail",
+      time: { start: 1, end: 2 },
+    },
+  }
+}
+
+function pendingTool(tool: string): MessageV2.ToolPart {
+  return {
+    ...partBase,
+    type: "tool",
+    callID: "c3",
+    tool,
+    state: { status: "pending", input: {}, raw: "" },
+  }
+}
+
+function reasoningPart(text: string): MessageV2.ReasoningPart {
+  return { ...partBase, type: "reasoning", text, time: { start: 1 } }
+}
+
+function patchPart(files: string[]): MessageV2.PatchPart {
+  return { ...partBase, type: "patch", hash: "abc", files }
+}
+
+function turn(user: MessageV2.WithParts, assistants: MessageV2.WithParts[]): Turn.Raw {
+  return { user, assistants }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("TurnDigest.summarizeTurn", () => {
+  test("retains a complete experience trajectory across hidden advisory observations", () => {
+    const root = userMsg("u1", [textPart("Inspect and fix the calculation")])
+    const advisory = (id: string) => {
+      const message = userMsg(id, [{ ...textPart("Historical advisory state"), origin: "system" }])
+      if (message.info.role !== "user") throw new Error("Expected a user-role observation")
+      message.info = {
+        ...message.info,
+        isRoot: false,
+        rootID: root.info.id,
+        visible: false,
+        includeInContext: true,
+        origin: { type: "system", detail: "runtime-context" },
+      }
+      return message
+    }
+    const inspected = assistantMsg("u1", [completedTool("read", "Read the calculation")])
+    const completed = assistantMsg("u1", [textPart("Fixed and verified the calculation")])
+    completed.info.id = "ast_completed"
+    const next = userMsg("u2", [textPart("A separate task")])
+    const nextReply = assistantMsg("u2", [textPart("Unrelated output")])
+    const messages = [root, advisory("context_1"), inspected, advisory("context_2"), completed, next, nextReply]
+    const session: Session.Info = {
+      id: "ses_1",
+      title: "Inspect calculation",
+      version: "1",
+      scope: { type: "home", id: "home", local: null },
+      workspace: null,
+      tags: [],
+      completionNotice: { unread: false, unreadCount: 0, silent: false },
+      time: { created: 1, updated: 2 },
+    }
+
+    const extracted = TurnDigest.extractSingle(session, messages, root.info.id)
+
+    expect(extracted).toBeDefined()
+    expect(extracted?.turn.assistants).toEqual([inspected, completed])
+    expect(TurnDigest.summarizeTurn(extracted!.turn, messages)).toEqual({
+      user: "Inspect and fix the calculation",
+      assistant: "[Tool: read] Read the calculation\nFixed and verified the calculation",
+    })
+  })
+
+  test("extracts user text and assistant text from a simple turn", () => {
+    const u = userMsg("u1", [textPart("What is 1+1?")])
+    const a = assistantMsg("u1", [textPart("The answer is 2.")])
+    const msgs = [u, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a]), msgs)
+
+    expect(result.user).toBe("What is 1+1?")
+    expect(result.assistant).toBe("The answer is 2.")
+  })
+
+  test("retains purpose and native array input in a tool digest", () => {
+    const u = userMsg("u1", [textPart("Inspect labels")])
+    const tool = completedTool("mcp_labels", "labels")
+    tool.inputShape = "envelope"
+    tool.workBrief = "Inspect the task labels"
+    tool.state.input = ["one", "two"]
+    const a = assistantMsg("u1", [tool])
+    const session: Session.Info = {
+      id: "ses_1",
+      title: "Inspect labels",
+      version: "1",
+      scope: { type: "home", id: "home", local: null },
+      workspace: null,
+      tags: [],
+      completionNotice: { unread: false, unreadCount: 0, silent: false },
+      time: { created: 1, updated: 2 },
+    }
+    const result = TurnDigest.extractSingle(session, [u, a], "u1")
+    expect(result?.digest.segments.find((segment) => segment.type === "tool")).toMatchObject({
+      input: { workBrief: "Inspect the task labels", toolInput: ["one", "two"] },
+    })
+  })
+
+  test("includes completed tool labels", () => {
+    const u = userMsg("u1", [textPart("Run tests")])
+    const a = assistantMsg("u1", [completedTool("bash", "Run unit tests"), textPart("All passed.")])
+    const msgs = [u, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a]), msgs)
+
+    expect(result.assistant).toBe("[Tool: bash] Run unit tests\nAll passed.")
+  })
+
+  test("includes error tool labels", () => {
+    const u = userMsg("u1", [textPart("Deploy")])
+    const a = assistantMsg("u1", [errorTool("bash"), textPart("Deployment failed.")])
+    const msgs = [u, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a]), msgs)
+
+    expect(result.assistant).toBe("[Tool: bash] (error)\nDeployment failed.")
+  })
+
+  test("ignores pending tools", () => {
+    const u = userMsg("u1", [textPart("Do something")])
+    const a = assistantMsg("u1", [pendingTool("bash"), textPart("Working on it.")])
+    const msgs = [u, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a]), msgs)
+
+    expect(result.assistant).toBe("Working on it.")
+  })
+
+  test("filters out synthetic text parts", () => {
+    const u = userMsg("u1", [textPart("Real question"), textPart("[injected context]", { synthetic: true })])
+    const a = assistantMsg("u1", [textPart("Real answer"), textPart("[system note]", { synthetic: true })])
+    const msgs = [u, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a]), msgs)
+
+    expect(result.user).toBe("Real question")
+    expect(result.assistant).toBe("Real answer")
+  })
+
+  test("ignores reasoning, patch, and other non-text/tool parts", () => {
+    const u = userMsg("u1", [textPart("Question")])
+    const a = assistantMsg("u1", [
+      reasoningPart("Let me think..."),
+      textPart("Here's the answer."),
+      patchPart(["src/foo.ts"]),
+    ])
+    const msgs = [u, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a]), msgs)
+
+    expect(result.assistant).toBe("Here's the answer.")
+    expect(result.assistant).not.toContain("think")
+    expect(result.assistant).not.toContain("foo.ts")
+  })
+
+  test("handles turn with no assistant text", () => {
+    const u = userMsg("u1", [textPart("Check status")])
+    const a = assistantMsg("u1", [completedTool("bash", "Show git status")])
+    const msgs = [u, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a]), msgs)
+
+    expect(result.user).toBe("Check status")
+    expect(result.assistant).toBe("[Tool: bash] Show git status")
+  })
+
+  test("handles turn with no assistant messages", () => {
+    const u = userMsg("u1", [textPart("Hello")])
+    const msgs = [u]
+
+    const result = TurnDigest.summarizeTurn(turn(u, []), msgs)
+
+    expect(result.user).toBe("Hello")
+    expect(result.assistant).toBe("")
+  })
+
+  test("skips empty/whitespace-only text parts", () => {
+    const u = userMsg("u1", [textPart("Q")])
+    const a = assistantMsg("u1", [textPart("  \n  "), textPart("Real content")])
+    const msgs = [u, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a]), msgs)
+
+    expect(result.assistant).toBe("Real content")
+  })
+
+  test("aggregates text across multiple assistant messages in a turn", () => {
+    const u = userMsg("u1", [textPart("Complex task")])
+    const a1 = assistantMsg("u1", [textPart("Step 1 done."), completedTool("edit", "Update config")])
+    const a2 = assistantMsg("u1", [completedTool("bash", "Run tests"), textPart("All tests pass.")])
+    const msgs = [u, a1, a2]
+
+    const result = TurnDigest.summarizeTurn(turn(u, [a1, a2]), msgs)
+
+    expect(result.assistant).toBe("Step 1 done.\n[Tool: edit] Update config\n[Tool: bash] Run tests\nAll tests pass.")
+  })
+
+  test("resolves user text across consecutive user messages (compaction boundary)", () => {
+    const u1 = userMsg("u1", [textPart("First part")])
+    const u2 = userMsg("u2", [textPart("Second part")])
+    const a = assistantMsg("u2", [textPart("Answer")])
+    const msgs = [u1, u2, a]
+
+    const result = TurnDigest.summarizeTurn(turn(u2, [a]), msgs)
+
+    // resolveUserText backtracks and merges consecutive user messages
+    expect(result.user).toContain("Second part")
+  })
+})
+
+describe("TurnDigest.userTextFromRendered", () => {
+  test("recovers user input from a canonical rendered digest", () => {
+    const raw = "### User\nRun the focused tests\n\n### Response\nAll focused tests passed.\n\n### Summary\nVerified."
+
+    expect(TurnDigest.userTextFromRendered(raw)).toBe("Run the focused tests")
+  })
+
+  test("rejects a rendered digest when a user request contains a section heading", () => {
+    const raw =
+      "### User\nKeep this literal:\n\n### Response\ninside my request\n\n### Response\nThe request was completed."
+
+    expect(TurnDigest.userTextFromRendered(raw)).toBeUndefined()
+  })
+
+  test("rejects missing or reordered canonical sections", () => {
+    expect(TurnDigest.userTextFromRendered("prefix\n### User\nRequest\n\n### Response\nDone.")).toBeUndefined()
+    expect(
+      TurnDigest.userTextFromRendered("### User\nRequest\n\n### Changes\nNone.\n\n### Response\nDone."),
+    ).toBeUndefined()
+  })
+})

@@ -37,6 +37,14 @@ export default definePlugin({
       expect(await buildPluginProject(root)).toBe(true)
       expect(fs.readFileSync(path.join(root, "dist", "runtime", "prompts", "method.md"), "utf8")).toBe("first prompt")
       const first = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
+      expect(JSON.parse(fs.readFileSync(path.join(root, "dist", "package.json"), "utf8")).synergy).toEqual({
+        formatVersion: 1,
+        kind: "plugin",
+        id: first.id,
+        version: first.version,
+        compatibility: first.compatibility,
+        manifest: "./plugin.json",
+      })
 
       fs.writeFileSync(path.join(root, "src", "prompts", "method.md"), "second prompt")
       expect(await buildPluginProject(root)).toBe(true)
@@ -104,7 +112,11 @@ export default definePlugin({
       expect(() => ajv.compile(eventContribution.payload)).not.toThrow()
       expect(() => ajv.compile(toolContribution.input)).not.toThrow()
       expect(operationContribution.input).toMatchObject({ type: "object" })
-      expect(JSON.stringify(operationContribution.input)).toContain('"anyOf"')
+      const validate = ajv.compile(operationContribution.input)
+      expect(validate({ mode: { kind: "text", value: "hello" }, tag: "label" })).toBe(true)
+      expect(validate({ mode: { kind: "count", value: 3 }, tag: 1 })).toBe(true)
+      expect(validate({ mode: { kind: "count", value: "wrong" }, tag: 1 })).toBe(false)
+      expect(validate({ mode: { kind: "unknown", value: 3 }, tag: 1 })).toBe(false)
       expect(JSON.stringify(operationContribution.input)).toContain('"default":"fallback"')
       expect(JSON.stringify(manifest.contributions)).not.toContain('"type":"union"')
     } finally {

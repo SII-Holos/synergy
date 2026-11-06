@@ -10,6 +10,14 @@ import {
 } from "../../src/components/user-message-utils"
 
 describe("user message display helpers", () => {
+  test("a grouped user message retains every authored text Part in order", () => {
+    const parts = [
+      { type: "text", text: "First", origin: "user" },
+      { type: "text", text: "System", origin: "system" },
+      { type: "text", text: "Second", origin: "user" },
+    ] as PartType[]
+    expect(visibleUserMessageText(parts)).toBe("First\n\nSecond")
+  })
   test("collapses only long or many-line messages", () => {
     expect(shouldCollapseUserMessage("short message")).toBe(false)
     expect(shouldCollapseUserMessage("x".repeat(USER_MESSAGE_COLLAPSE_LENGTH))).toBe(false)

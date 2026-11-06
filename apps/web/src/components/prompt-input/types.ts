@@ -1,0 +1,109 @@
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import type { ControlProfileId } from "@/context/input"
+import type { MessageDescriptor } from "@lingui/core"
+import type {
+  SessionWorkspaceTransitionRequest,
+  NewSessionWorkspaceSelection,
+} from "@/components/session/worktree-session"
+import type {
+  SessionTransitionActions,
+  SessionTransitionProgress,
+} from "@/components/session/session-transition-progress"
+import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
+import type { JSX } from "solid-js"
+
+export type { SessionDragData as DroppedSessionData } from "@/utils/session-drag"
+
+export type BlueprintSlot =
+  | {
+      type: "pending"
+      noteID: string
+      title: string
+      runMode: "current" | "new" | "worktree"
+    }
+  | {
+      type: "loop"
+      loopID: string
+      source?: "user" | "lattice" | "plugin"
+      noteID: string
+      title: string
+      runMode: "current" | "new" | "worktree"
+    }
+
+export type DroppedBlueprintData = {
+  noteID: string
+  title: string
+}
+
+export type PromptInputMode = "normal" | "shell"
+
+export type PromptInputStore = {
+  popover: PromptPopoverMode
+  historyIndex: number
+  savedPrompt: import("./history").PromptHistoryEntry | null
+  dragging: boolean
+  mode: PromptInputMode
+  applyingHistory: boolean
+  switchingProfile: boolean
+}
+
+export interface PromptInputProps {
+  projectDirectories?: import("@ericsanchezok/synergy-sdk/client").ProjectDirectories
+  projectDirectoryError?: string
+  onProjectDirectoriesRefresh?: () => void | Promise<void>
+  onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
+  readOnly?: boolean
+  locationPending?: boolean
+  onValidateLocation?: () => Promise<void>
+  class?: string
+  ref?: (el: HTMLDivElement) => void
+  newSessionEnvironmentID?: string | null
+  newSessionEnvironmentProfile?: string | null
+  onNewSessionEnvironmentProfileChange?: (profile: string | null | undefined) => void
+  newSessionWorkspaceSelection?: NewSessionWorkspaceSelection
+  newSessionWorkspaceSelectionKey?: string
+  newSessionCanonicalDirectory?: string
+  newSessionCurrentDirectory?: string
+  newSessionCanCreateWorktree?: boolean
+  onNewSessionEnvironmentChange?: (environmentID: string | null | undefined) => void
+  onNewSessionWorkspaceSelectionChange?: (selection: NewSessionWorkspaceSelection) => void
+  onNewSessionWorkspaceSelectionReset?: () => void
+  onNewSessionTransitionChange?: (input: {
+    sessionID: string
+    progress: SessionTransitionProgress | null
+    actions?: SessionTransitionActions
+    handoff?: SessionTransitionHandoff
+  }) => void
+  sessionTransitionPending?: boolean
+  sessionTransitionError?: boolean
+  hideAgentSelector?: boolean
+  onPriorityControlChange?: (control: JSX.Element | undefined) => void
+}
+
+export interface SlashCommand {
+  id: string
+  trigger: string
+  title: string
+  description?: string
+  keybind?: string
+  type: "builtin" | "custom"
+  kind?: "prompt" | "action"
+}
+
+export type AtOption = {
+  workspace: ResourceReference.Workspace
+  type: "file"
+  path: string
+  display: string
+}
+
+export type PromptPopoverMode = "at" | "slash" | null
+
+export type PermissionModeVisual = {
+  id: ControlProfileId
+  label: MessageDescriptor
+  shortLabel: MessageDescriptor
+  description: MessageDescriptor
+  icon: import("@ericsanchezok/synergy-ui/semantic-icon").SemanticIconTokenName
+  iconClass: string
+}

@@ -1,0 +1,70 @@
+import { Log } from "../util/log"
+import { SessionManager } from "./manager"
+import type { Info, StatusInfo, WorkingInfo } from "./types"
+
+const log = Log.create({ service: "session.working" })
+
+/**
+ * The runtime projection of a session's status.
+ *
+ * Sources in priority order:
+ *
+ * 1. The live turn — `busy` or `retry`, owned by the runtime.
+ * 2. The persisted pause latch — a session stopped mid-work that will stay
+ *    stopped until the user acts.
+ * 3. A committed recovery request waiting for its execution lease.
+ *
+ * Anything else is idle. Notably absent is any inference from persisted
+ * workflow state: a stored `active` loop is a record of intent, not evidence
+ * that a turn is running, and projecting it as work is what let a dead process
+ * pin a session in a state no control could clear.
+ */
+export async function resolve(
+  sessionID: string,
+  stored?: Pick<Info, "paused" | "resume">,
+): Promise<WorkingInfo | undefined> {
+  if (SessionManager.isRunning(sessionID)) {
+    const runtime = SessionManager.getRuntime(sessionID)
+    const status = runtime?.status
+    if (status?.type === "busy") return { status: "busy", description: status.description, activity: status.activity }
+    if (status?.type === "retry") {
+      const { type, ...retry } = status
+      return { status: type, ...retry }
+    }
+  }
+
+  const session = stored ?? (await SessionManager.getSession(sessionID))
+  if (!session?.paused) {
+    if (session?.resume?.state === "queued")
+      return {
+        status: "busy",
+        activity: { phase: "queued_agent", startedAt: session.resume.created, rootID: session.resume.rootID },
+      }
+    return undefined
+  }
+  log.info("resolved paused session", { sessionID, reason: session.paused.reason })
+  return {
+    status: "paused",
+    reason: session.paused.reason,
+    ...(session.paused.description ? { description: session.paused.description } : {}),
+    since: session.paused.since,
+  }
+}
+
+export function toStatus(working: WorkingInfo): StatusInfo {
+  switch (working.status) {
+    case "busy":
+      return { type: "busy", description: working.description, activity: working.activity }
+    case "retry": {
+      const { status, ...retry } = working
+      return { type: status, ...retry }
+    }
+    case "paused":
+      return {
+        type: "paused",
+        reason: working.reason,
+        ...(working.description ? { description: working.description } : {}),
+        since: working.since,
+      }
+  }
+}

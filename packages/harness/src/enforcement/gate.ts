@@ -1,0 +1,1168 @@
+export interface ApprovalCacheEntry {
+  decision: "approved_for_session" | "denied"
+  timestamp: number
+}
+
+export class ApprovalCache {
+  private cache = new Map<string, ApprovalCacheEntry>()
+
+  get(capabilityKey: string): "approved_for_session" | "denied" | null {
+    const entry = this.cache.get(capabilityKey)
+    if (!entry) return null
+    return entry.decision
+  }
+
+  put(capabilityKey: string, decision: "approved_for_session" | "denied"): void {
+    this.cache.set(capabilityKey, { decision, timestamp: Date.now() })
+  }
+
+  clear(): void {
+    this.cache.clear()
+  }
+}
+
+import { worktreeSandboxReadGrants } from "../sandbox/policy"
+import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
+import { Filesystem } from "../util/filesystem"
+
+import { PathClassifier, checkProtectedPath } from "./classify"
+import { ShellSafety, PROTECTED_PUSH_TARGETS } from "./shell-safety"
+import { ControlProfileCompiler } from "../control-profile/compiler"
+import { generateAmendmentForCapability, type ExecPolicyAmendment } from "./exec-policy"
+import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
+import { PluginToolId } from "@ericsanchezok/synergy-util/plugin-ids"
+import { controlProfileCapability, hasControlProfileCapability } from "../control-profile/host-capability"
+import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
+import { ObservabilityMetrics } from "../observability/metrics"
+import { PolicyWorker } from "./policy-worker"
+
+export interface Capability {
+  class: string
+  nonBypassable: boolean
+  opaque?: boolean
+  approved?: boolean
+  paths?: string[]
+  /** Human-readable explanation of why this capability was flagged. */
+  reason?: string
+  /** Structured metadata about the match (e.g. matched pattern source). */
+  metadata?: Record<string, unknown>
+}
+
+export interface ClassifyResult {
+  capabilities: Capability[]
+}
+
+export interface PluginToolCapabilityMap {
+  /** Plugin Host Service capability IDs declared by the tool contribution. */
+  capabilities: string[]
+}
+
+export interface AuditRecord {
+  tool: string
+  capabilities: Capability[]
+  timestamp: number
+}
+
+/**
+ * Execution-time containment verdict for a call an OS sandbox may wrap.
+ *
+ * Authorization follows containment: the verdict is produced by the same host
+ * preparation the execution uses, so the decision cannot assume containment it
+ * will not get. `shell` is the only capability an OS sandbox can satisfy —
+ * filesystem reach — because every other shell capability (destruction,
+ * privilege escalation, remote mutation) is inexpressible to it.
+ */
+export interface SandboxContainment {
+  /** True when the sandbox will actually wrap the command. */
+  contained: boolean
+  /** Why the sandbox cannot contain the call, when the host reported one. */
+  skipReason?: string
+}
+
+export interface Envelope {
+  decision: "allow" | "ask" | "deny"
+  profileId: string
+  opaque: boolean
+  capabilities: Capability[]
+  /** Execution-time containment verdict this decision was made against. */
+  containment?: SandboxContainment
+  /** Populated when decision is "deny" — explains why and whether retrying would help */
+  refusal?: {
+    reason: string
+    permanent: boolean
+    matchedPermission: string
+    guidance?: string
+    amendment?: ExecPolicyAmendment
+  }
+  /** Populated when execPolicy generates an amendment for "ask" decisions */
+  amendment?: ExecPolicyAmendment
+}
+
+/** Narrow approval-record view the gate consumes: only the approved
+ * capability list matters for classification. The index signature keeps
+ * full approval records assignable from callers and tests. */
+export interface PluginApprovalCapabilities {
+  approvedCapabilities: string[]
+  [key: string]: unknown
+}
+
+export interface GateOptions {
+  pathMode?: PathClassifier.Options["pathMode"]
+  activeWorkspace: string | null
+  /** Logical file-tool namespace. Shell commands retain their physical Workspace boundary. */
+  virtualRoot?: string
+  workspaceType: string
+  profileId?: ProfileIdInput
+  registeredMcpTools?: Set<string>
+  registeredPluginTools?: Set<string>
+  /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
+  pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
+  /** Pre-loaded approval records keyed by plugin ID. If absent, no approval check is performed. */
+  pluginApprovals?: Record<string, PluginApprovalCapabilities>
+  /** Session-scoped isolation key for the controlled temporary root (autonomous profile). */
+  sessionKey?: string
+  originalCheckout?: string
+  /** Additional directories where read-only access is treated as inside-workspace.
+   *  Write operations are never allowed through readRoots. */
+  readRoots?: string[]
+  /** User-trusted local code roots treated like the active workspace for reads and writes. */
+  trustedRoots?: string[]
+  synergyRoot?: string
+}
+
+const SESSION_STATE_TOOLS = new Set(["dagwrite", "dagpatch", "todowrite", "task", "task_cancel"])
+const NETWORK_READ_TOOLS = new Set(["webfetch"])
+
+const AGENT_ORCHESTRATION_TOOLS = new Set([
+  "runtime_reload",
+  "session_control",
+  "agenda_schedule",
+  "agenda_watch",
+  "agenda_update",
+  "agenda_cancel",
+  "agenda_trigger",
+])
+
+function stringPathArgs(value: unknown): string[] {
+  if (typeof value === "string") return value.length > 0 ? [value] : []
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0)
+}
+
+function pathArgs(args: Record<string, any>): string[] {
+  return [args.path, args.file_path, args.filePath, args.output_path, args.outputPath]
+    .flatMap(stringPathArgs)
+    .filter((item, index, paths) => paths.indexOf(item) === index)
+}
+function imagePathArgs(args: Record<string, any>): { read: string[]; write: string[] } {
+  const write = [...stringPathArgs(args.output_path), ...stringPathArgs(args.outputPath)]
+  return { read: stringPathArgs(args.input_paths), write: [...new Set(write)] }
+}
+function pathFromHashlinePatch(input: unknown): string | undefined {
+  if (typeof input !== "string") return undefined
+  const header = input.replace(/^\s+/, "").split("\n", 1)[0]?.trimEnd()
+  const match = header?.match(/^\[([^#\]\n]+)#[0-9A-Fa-f]{4}\]$/)
+  return match?.[1]
+}
+
+function allPathsFromMultiSectionPatch(input: unknown): string[] {
+  if (typeof input !== "string") return []
+  const headerPattern = /^\[([^#\]\n]+)#[0-9A-Fa-f]{4}\]$/gm
+  const paths: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = headerPattern.exec(input)) !== null) {
+    const p = m[1]
+    if (p && !paths.includes(p)) paths.push(p)
+  }
+  return paths
+}
+
+function uniqueCapability(caps: Capability[], cap: Capability) {
+  const existing = caps.find((item) => item.class === cap.class && item.nonBypassable === cap.nonBypassable)
+  if (existing) {
+    if (cap.paths?.length) existing.paths = [...new Set([...(existing.paths ?? []), ...cap.paths])]
+    return
+  }
+  caps.push(cap)
+}
+
+function isTrustedPath(
+  pathInput: string,
+  roots: string[] | undefined,
+  options?: { followFinalSymlink?: boolean },
+): boolean {
+  return roots?.some((root) => Filesystem.contains(root, pathInput, options)) ?? false
+}
+
+function classifyPathCapability(
+  caps: Capability[],
+  pathInput: string,
+  options: {
+    activeWorkspace: string | null
+    pathMode?: PathClassifier.Options["pathMode"]
+    virtualRoot?: string
+    originalCheckout?: string
+    write?: boolean
+    readRoots?: string[]
+    trustedRoots?: string[]
+    /**
+     * When false, a symlink in the final component is judged as the directory
+     * entry itself (rm/mv/ln semantics) instead of followed. External links
+     * pointing into the workspace then classify as external writes instead of
+     * ordinary workspace writes.
+     */
+    followFinalSymlink?: boolean
+  },
+) {
+  const containmentOptions =
+    options.followFinalSymlink === undefined ? undefined : { followFinalSymlink: options.followFinalSymlink }
+  const classification = PathClassifier.classifyPath(pathInput, {
+    workspace: options.activeWorkspace,
+    pathMode: options.pathMode,
+    virtualRoot: options.virtualRoot,
+    originalCheckout: options.originalCheckout,
+    followFinalSymlink: options.followFinalSymlink,
+  })
+
+  if (classification.boundary === "inside" || isTrustedPath(pathInput, options.trustedRoots, containmentOptions)) {
+    uniqueCapability(caps, {
+      class: options.write ? "file_write" : "file_read",
+      nonBypassable: false,
+      paths: [pathInput],
+    })
+  } else if (!options.write && isTrustedPath(pathInput, options.readRoots)) {
+    uniqueCapability(caps, {
+      class: "file_read",
+      nonBypassable: false,
+      paths: [pathInput],
+    })
+  } else {
+    uniqueCapability(caps, {
+      class: options.write ? "file_external_write" : "file_external_read",
+      nonBypassable: options.write === true,
+      paths: [pathInput],
+    })
+  }
+}
+
+function classifyProtectedPathCapability(
+  caps: Capability[],
+  pathInput: string,
+  mode: "read" | "write",
+  options: { activeWorkspace?: string | null; originalCheckout?: string; synergyRoot?: string } = {},
+) {
+  const protectedMatch = checkProtectedPath(pathInput, mode, {
+    workspaceRoot: options.activeWorkspace ?? undefined,
+    originalCheckout: options.originalCheckout,
+    synergyRoot: options.synergyRoot,
+  })
+  if (!protectedMatch.matched) return
+  const capabilityClass =
+    protectedMatch.category === "secrets" || protectedMatch.exactSecretRoot ? "secrets" : "protected_op"
+  uniqueCapability(caps, {
+    class: capabilityClass,
+    nonBypassable: protectedMatch.smartAllowEligible !== true,
+    opaque: protectedMatch.exactSecretRoot === true,
+    reason: protectedMatch.reason,
+    metadata: {
+      protectedCategory: protectedMatch.category,
+      smartAllowEligible: protectedMatch.smartAllowEligible === true,
+      exactSecretRoot: protectedMatch.exactSecretRoot === true,
+      redactedEvidenceRequired: protectedMatch.category === "secrets",
+    },
+  })
+}
+
+function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: ProfileRule["action"]): ProfileRule {
+  for (const rule of rules) {
+    if (rule.permission === cap.class) return rule
+  }
+  return { permission: cap.class, pattern: "*", action: unmatchedAction }
+}
+
+export namespace EnforcementGate {
+  export async function create(options: GateOptions) {
+    const {
+      activeWorkspace,
+      pathMode,
+      virtualRoot,
+      workspaceType,
+      profileId: rawProfileId = "guarded",
+      registeredMcpTools = new Set<string>(),
+      registeredPluginTools = new Set<string>(),
+      pluginToolCapabilities = {},
+      pluginApprovals,
+      originalCheckout,
+      readRoots,
+      trustedRoots,
+      synergyRoot,
+      sessionKey,
+    } = options
+    const profileId = ControlProfileCompiler.normalize(rawProfileId)
+    const trustedRootList = trustedRoots ?? []
+
+    const resolved = await ControlProfileCompiler.resolve(profileId, {
+      workspace: activeWorkspace,
+      workspaceType,
+      trustedRoots: trustedRootList,
+      sessionKey,
+    })
+
+    if (!resolved.valid) {
+      throw new Error(resolved.reason ?? "Invalid profile for this context")
+    }
+    const auditRecords: AuditRecord[] = []
+    const pendingCapabilities = new Set<string>()
+    // Accumulated sandbox-approved paths across all evaluate() calls.
+    // The write seed includes the profile's own writable roots (workspace,
+    // trusted roots, and the autonomous controlled temporary root), so the
+    // sandbox permission profile permits the same write set the profile
+    // boundary declares.
+    const approvedReadPaths = new Set<string>(trustedRootList)
+    const approvedWritePaths = new Set<string>([...trustedRootList, ...(resolved.filesystem.writeRoots ?? [])])
+    if (activeWorkspace && workspaceType === "worktree") {
+      for (const grant of worktreeSandboxReadGrants(activeWorkspace, originalCheckout)) {
+        approvedReadPaths.add(grant)
+      }
+    }
+    const pathOptions = { activeWorkspace, pathMode, virtualRoot, originalCheckout, readRoots, trustedRoots }
+    let approvedNetwork = false
+    const approvalCache = new ApprovalCache()
+
+    function classify(toolName: string, args: Record<string, any>): ClassifyResult {
+      const caps: Capability[] = []
+
+      if (["computer_apps", "computer_observe", "computer_action"].includes(toolName)) {
+        caps.push({
+          class:
+            toolName === "computer_apps" || (toolName === "computer_observe" && args.foreground !== true)
+              ? "computer_observe"
+              : "computer_interact",
+          nonBypassable: true,
+        })
+      }
+
+      // Sensitive path candidates are classified before generic path ownership
+      // so secret roots/candidates get profile-aware handling instead of a
+      // blanket .synergy/.env hard boundary.
+      if (toolName !== "openai_image_gen" && toolName !== "openai_image_edit") {
+        const mode =
+          toolName === "write" ||
+          toolName === "edit" ||
+          toolName === "revise_file" ||
+          toolName === "resolve_conflicts" ||
+          toolName === "save_file"
+            ? "write"
+            : "read"
+        for (const pathArg of pathArgs(args)) {
+          classifyProtectedPathCapability(caps, pathArg, mode, { activeWorkspace, originalCheckout, synergyRoot })
+        }
+      }
+
+      // MCP tools: mcp__server__tool
+      if (toolName.startsWith("mcp__")) {
+        const opaque = !registeredMcpTools.has(toolName)
+        caps.push({ class: "mcp_invoke", nonBypassable: true, opaque })
+        return { capabilities: caps }
+      }
+
+      // Local tools: local__fileName__exportName
+      if (toolName.startsWith("local__")) {
+        caps.push({
+          class: "protected_op",
+          nonBypassable: true,
+          opaque: true,
+          reason: "local custom tool",
+        })
+        return { capabilities: caps }
+      }
+
+      // Plugin tools: plugin__pluginId__toolId
+      if (PluginToolId.is(toolName)) {
+        const entry = pluginToolCapabilities[toolName]
+        const known = registeredPluginTools.has(toolName) || !!entry
+        if (!known) {
+          caps.push({
+            class: "protected_op",
+            nonBypassable: true,
+            opaque: true,
+            reason: "unknown plugin tool",
+          })
+          return { capabilities: caps }
+        }
+
+        if (entry) {
+          const parsed = PluginToolId.parse(toolName)
+          const approvedSet = parsed
+            ? new Set(pluginApprovals?.[parsed.pluginId]?.approvedCapabilities ?? [])
+            : undefined
+          for (const hostCapability of entry.capabilities) {
+            const capabilityClass = controlProfileCapability(hostCapability)
+            const mapped = hasControlProfileCapability(hostCapability)
+            const approved = pluginApprovals ? approvedSet?.has(hostCapability) === true : undefined
+            const existing = caps.find((capability) => capability.class === capabilityClass)
+            if (existing) {
+              existing.nonBypassable ||= !mapped || capabilityNonBypassable(capabilityClass)
+              if (!mapped) {
+                existing.opaque = true
+                existing.reason ??= "unmapped Host Service capability"
+              }
+              if (approved === false) {
+                existing.opaque = true
+                existing.approved = false
+                existing.reason = "unapproved"
+              }
+              continue
+            }
+            caps.push({
+              class: capabilityClass,
+              nonBypassable: !mapped || capabilityNonBypassable(capabilityClass),
+              ...(approved === undefined ? {} : { approved }),
+              ...(!mapped ? { opaque: true, reason: "unmapped Host Service capability" } : {}),
+              ...(approved === false ? { opaque: true, reason: "unapproved" } : {}),
+            })
+          }
+        }
+
+        return { capabilities: caps }
+      }
+
+      // File read operations
+      if (
+        toolName === "read" ||
+        toolName === "glob" ||
+        toolName === "grep" ||
+        toolName === "file_search" ||
+        toolName === "view_file" ||
+        toolName === "scan_files" ||
+        toolName === "parse_code"
+      ) {
+        const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
+        if (filePath) {
+          classifyPathCapability(caps, filePath, pathOptions)
+        }
+        return { capabilities: caps }
+      }
+
+      // File write operations
+      if (toolName === "apply_patch") {
+        for (const target of FilePatch.paths(args.patch)) {
+          classifyProtectedPathCapability(caps, target, "write", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, target, { ...pathOptions, write: true })
+        }
+        return { capabilities: caps }
+      }
+
+      if (
+        toolName === "write" ||
+        toolName === "edit" ||
+        toolName === "revise_file" ||
+        toolName === "resolve_conflicts" ||
+        toolName === "save_file"
+      ) {
+        if (toolName === "revise_file") {
+          const multiPaths = allPathsFromMultiSectionPatch(args.input)
+          const paths =
+            multiPaths.length > 0 ? multiPaths : ([pathFromHashlinePatch(args.input)].filter(Boolean) as string[])
+          for (const p of paths) {
+            classifyProtectedPathCapability(caps, p, "write", { activeWorkspace, originalCheckout, synergyRoot })
+            classifyPathCapability(caps, p, { ...pathOptions, write: true })
+          }
+        } else {
+          for (const filePath of pathArgs(args)) {
+            classifyProtectedPathCapability(caps, filePath, "write", { activeWorkspace, originalCheckout, synergyRoot })
+            classifyPathCapability(caps, filePath, { ...pathOptions, write: true })
+          }
+        }
+        return { capabilities: caps }
+      }
+
+      // Document / attachment tools
+      if (
+        toolName === "scan_document" ||
+        toolName === "look_at" ||
+        toolName === "view_image" ||
+        toolName === "attach"
+      ) {
+        for (const filePath of pathArgs(args)) {
+          classifyPathCapability(caps, filePath, pathOptions)
+        }
+        return { capabilities: caps }
+      }
+
+      // Shell operations
+      if (toolName === "bash") {
+        const command: string = args.command ?? ""
+        let risk = ShellSafety.classifyBashRisk(command)
+
+        // Runtime reclassification: bare git push on a protected branch.
+        // classifyBashRisk is pure string analysis — it cannot see the current
+        // branch. Bare push uses push.default to select the destination at
+        // runtime, so a bare push from "main" effectively pushes to origin/main.
+        if (risk === "shell_remote_publish" && ShellSafety.isBarePush(command)) {
+          try {
+            const proc = Bun.spawnSync(["git", "branch", "--show-current"], {
+              cwd: activeWorkspace ?? undefined,
+              stdout: "pipe",
+              stderr: "pipe",
+            })
+            const branch = new TextDecoder().decode(proc.stdout).trim()
+            if (branch && PROTECTED_PUSH_TARGETS.has(branch)) {
+              risk = "shell_remote_write"
+            }
+          } catch {
+            // If we can't determine the branch, trust the static classification.
+          }
+        }
+
+        // ── Worktree-aware reclassifications ──────────────────
+        // git checkout / git switch on the main checkout corrupts every
+        // concurrent session. Downgrade to plain shell inside worktrees
+        // where each has its own index and working directory.
+        if (risk === "shell_branch_mutation" && workspaceType === "worktree") {
+          risk = "shell"
+        }
+
+        if (risk === "shell_hardline") {
+          caps.push({
+            class: "shell_hardline",
+            nonBypassable: true,
+            reason: `hardline rule matched: ${command.slice(0, 200)}`,
+          })
+          return { capabilities: caps }
+        }
+        // shell_destructive is high-risk by definition; it must always be a hard
+        // boundary so Smart allow can never bypass a profile deny on it.
+        // shell_remote_publish covers ordinary branch push and PR creation.
+        // shell_remote_write is broader remote mutation and stays Smart allow eligible.
+        // The classifier is the single owner of every shell risk: it decides
+        // host-level destruction, irreversibility, privilege escalation, and
+        // remote mutation by tokenizing the command, so no substring
+        // second-opinion layer runs here.
+        caps.push({
+          class: risk,
+          nonBypassable: risk === "shell_destructive",
+          ...(risk === "shell_destructive" ? { reason: `destructive shell command: ${command.slice(0, 200)}` } : {}),
+        })
+        // Check for network activity
+        if (ShellSafety.reachesNetwork(command)) {
+          caps.push({ class: "network_request", nonBypassable: true })
+        }
+
+        return { capabilities: caps }
+      }
+
+      // Read-only network search tools — browsing/searching, no stateful side effects
+      if (NETWORK_READ_TOOLS.has(toolName)) {
+        caps.push({ class: "network_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Email read/write both cross the user's communication boundary.
+      if (toolName === "email_read" || toolName === "email_send") {
+        caps.push({ class: "communication_email", nonBypassable: true })
+        return { capabilities: caps }
+      }
+
+      // SII Inspire tools call external compute infrastructure.
+      if (toolName.startsWith("inspire_")) {
+        caps.push({ class: "network_request", nonBypassable: true })
+        return { capabilities: caps }
+      }
+
+      // Agent configuration tool — writes agent definitions, permissions,
+      // control profiles, and the global default agent; classify by action so
+      // reads stay free while writes surface as protected configuration
+      // changes.
+      if (toolName === "agent_config") {
+        const action = (args.input as { action?: string } | undefined)?.action ?? args.action
+        if (action === "list" || action === "describe") {
+          caps.push({ class: "config:read", nonBypassable: false })
+        } else {
+          caps.push({ class: "config:write", nonBypassable: true })
+        }
+        return { capabilities: caps }
+      }
+
+      if (AGENT_ORCHESTRATION_TOOLS.has(toolName)) {
+        caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // session_send only supports actionable user delivery. Unsupported roles
+      // are left to schema validation so they fail before an approval request.
+      if (toolName === "session_send") {
+        if (args.role === undefined || args.role === "user") {
+          caps.push({ class: "identity_act", nonBypassable: true })
+        }
+        return { capabilities: caps }
+      }
+
+      // Session query tools (read-only)
+      if (toolName === "session_list" || toolName === "session_search" || toolName === "session_read") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Note query tools (read-only)
+      if (toolName === "note_list" || toolName === "note_search" || toolName === "note_read") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Note write tools
+      if (
+        toolName === "note_write" ||
+        toolName === "note_edit" ||
+        toolName === "note_archive" ||
+        toolName === "note_delete"
+      ) {
+        caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Memory query tools (read-only)
+      if (toolName === "memory_search" || toolName === "memory_get") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Memory write tools
+      if (toolName === "memory_write" || toolName === "memory_edit") {
+        caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Worktree tools
+      if (toolName === "worktree_list") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "worktree_enter" || toolName === "worktree_leave" || toolName === "worktree_archive") {
+        caps.push({ class: "file_write", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Read-only orchestration tools — internal agent coordination, no side effects
+      if (toolName === "dagread" || toolName === "todoread" || toolName === "task_list" || toolName === "task_output") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Lightweight session state tools — mutate internal coordination state,
+      // no filesystem or network side effects
+      if (SESSION_STATE_TOOLS.has(toolName)) {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Internal communication / knowledge tools — read-only user/model interactions
+      if (toolName === "question" || toolName === "skill" || toolName === "render") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Agenda read tools
+      if (toolName === "agenda_list" || toolName === "agenda_logs") {
+        caps.push({ class: "file_read", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Filesystem listing / AST-aware search — file_read with path classification
+      if (toolName === "list" || toolName === "ast_grep" || toolName === "lsp") {
+        if (toolName === "ast_grep") {
+          const paths: string[] = Array.isArray(args.paths) ? args.paths : []
+          for (const p of paths) {
+            classifyPathCapability(caps, p, pathOptions)
+          }
+          if (paths.length === 0) {
+            caps.push({ class: "file_read", nonBypassable: false })
+          }
+        } else {
+          const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
+          if (filePath) {
+            classifyPathCapability(caps, filePath, pathOptions)
+          } else {
+            caps.push({ class: "file_read", nonBypassable: false })
+          }
+        }
+        return { capabilities: caps }
+      }
+
+      // Process management — action-based classification
+      if (toolName === "process") {
+        const action = args.action ?? ""
+        if (
+          action === "write" ||
+          action === "send-keys" ||
+          action === "kill" ||
+          action === "clear" ||
+          action === "remove"
+        ) {
+          caps.push({ class: "shell", nonBypassable: false })
+        } else {
+          caps.push({ class: "file_read", nonBypassable: false })
+        }
+        return { capabilities: caps }
+      }
+
+      // Browser tools
+      if (toolName === "browser_action") {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        const action = typeof args.action === "object" && args.action !== null ? args.action : {}
+        const targets = [action.target, action.from, action.to]
+        if (targets.some((target) => typeof target === "object" && target !== null && target.kind === "point")) {
+          caps.push({ class: "browser_coordinate", nonBypassable: false })
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_emulate") {
+        caps.push({ class: "browser_emulation", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (
+        toolName === "browser_snapshot" ||
+        toolName === "browser_screenshot" ||
+        toolName === "browser_inspect" ||
+        toolName === "browser_wait" ||
+        toolName === "browser_read" ||
+        toolName === "browser_console" ||
+        toolName === "browser_network" ||
+        toolName === "browser_audit"
+      ) {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        if (toolName === "browser_network" && args.includeSensitive === true) {
+          caps.push({ class: "secrets", nonBypassable: true })
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_downloads") {
+        caps.push({ class: "browser_download", nonBypassable: false })
+        if (args.action === "export" && typeof args.path === "string") {
+          classifyPathCapability(caps, args.path, { ...pathOptions, write: true })
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_annotate") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_navigation") {
+        caps.push({
+          class: args.action === "current" || args.action === "list" ? "browser_inspect" : "browser_interact",
+          nonBypassable: false,
+        })
+        if (args.action === "goto" || args.action === "open") {
+          caps.push({ class: "network_request", nonBypassable: false })
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_assets") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        if (args.action === "export" && typeof args.outputDir === "string") {
+          caps.push({ class: "browser_download", nonBypassable: false })
+          classifyPathCapability(caps, args.outputDir, { ...pathOptions, write: true })
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_eval") {
+        caps.push({
+          class: args.mode === "trusted" ? "browser_eval_trusted" : "browser_eval_readonly",
+          nonBypassable: args.mode === "trusted",
+        })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_clipboard") {
+        caps.push({ class: "browser_clipboard", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_upload") {
+        caps.push({ class: "browser_upload", nonBypassable: true })
+        for (const filePath of Array.isArray(args.paths) ? args.paths : []) {
+          if (typeof filePath === "string") classifyPathCapability(caps, filePath, pathOptions)
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_dialog") {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_performance") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        if (args.action === "stopTrace" && typeof args.exportPath === "string") {
+          classifyPathCapability(caps, args.exportPath, { ...pathOptions, write: true })
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "workbench_view") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        const command = args.input
+        if (command?.action === "open" && command.target?.kind === "workspace-file") {
+          const target = command.target.path
+          if (typeof target === "string") {
+            classifyProtectedPathCapability(caps, target, "read", { activeWorkspace, originalCheckout, synergyRoot })
+            classifyPathCapability(caps, target, pathOptions)
+          }
+        }
+        return { capabilities: caps }
+      }
+
+      if (toolName === "openai_image_gen" || toolName === "openai_image_edit") {
+        const imagePaths = imagePathArgs(args)
+        for (const inputPath of imagePaths.read) {
+          classifyProtectedPathCapability(caps, inputPath, "read", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, inputPath, pathOptions)
+        }
+        for (const outputPath of imagePaths.write) {
+          classifyProtectedPathCapability(caps, outputPath, "write", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, outputPath, { ...pathOptions, write: true })
+        }
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // speak calls the configured TTS provider (network side effect, no
+      // workspace mutation) — same class as image generation.
+      if (toolName === "speak") {
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Blueprint loop management tools — session state coordination
+      if (
+        toolName === "blueprint_loop_stop" ||
+        toolName === "blueprint_loop_approve" ||
+        toolName === "blueprint_loop_reject"
+      ) {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Light Loop completion — session state coordination
+      if (toolName === "loop_stop") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      // GitHub fix delivery — pushes a branch and opens a pull request through
+      // the provider's installation token (external platform write).
+      if (toolName === "github_deliver_fix") {
+        caps.push({ class: "platform_control", nonBypassable: true })
+        caps.push({ class: "network_request", nonBypassable: true })
+        return { capabilities: caps }
+      }
+      // Default: unknown tool, no capabilities
+      return { capabilities: caps }
+    }
+
+    function buildCapabilityKey(caps: Capability[]): string {
+      const classes = [...new Set(caps.filter((c) => c.class !== "file_read").map((c) => c.class))].sort()
+      return classes.join("|") || "file_read"
+    }
+
+    function evaluateClassified(
+      toolName: string,
+      args: Record<string, any>,
+      classification: ClassifyResult,
+      policyFailure?: string,
+      containment?: SandboxContainment,
+    ): Envelope {
+      const perfStart = performance.now()
+      let amendment: ExecPolicyAmendment | undefined
+
+      const { capabilities } = classification
+
+      // Authorization follows containment. A call an OS sandbox will wrap has
+      // its one sandbox-owned capability — `shell`, filesystem reach — satisfied
+      // by the kernel, so it drops out of the decision. Every other shell
+      // capability (destruction, privilege escalation, remote mutation) is
+      // inexpressible to the sandbox and stays decided here.
+      const contained = containment?.contained === true
+      const decidedCapabilities = contained ? capabilities.filter((cap) => cap.class !== "shell") : capabilities
+      // A call that required the sandbox and did not get it is an authorization
+      // fact, not an after-the-fact warning: under a `deny` fallback the profile
+      // refuses instead of running the command outside the workspace silently.
+      const sandboxUnavailable = containment !== undefined && !contained
+
+      let decision: "allow" | "ask" | "deny" = "allow"
+      const rules = resolved.ruleset
+
+      let deniedCapClass: string | undefined
+      for (const cap of decidedCapabilities) {
+        const rule = matchRule(cap, rules, resolved.approval.highRisk)
+
+        if (rule.action === "deny") {
+          decision = "deny"
+          deniedCapClass = cap.class
+          break // deny is final
+        }
+
+        if (rule.action === "ask") {
+          decision = "ask"
+          continue // Keep checking — a later deny overrides
+        }
+      }
+
+      // A profile whose fallback is `deny` promises not to run shell commands
+      // outside its sandbox. When the sandbox cannot contain this call, that
+      // promise is an authorization fact: refuse here instead of letting the
+      // execution layer fail afterwards, or worse, run unsandboxed.
+      const sandboxDenied = sandboxUnavailable && resolved.sandbox.fallback === "deny" && profileId !== "full_access"
+      if (sandboxDenied) {
+        decision = "deny"
+        deniedCapClass = "shell"
+        amendment = undefined
+      }
+
+      const opaque = capabilities.some((c) => c.opaque === true)
+
+      if (opaque && decision === "allow") {
+        decision = resolved.approval.highRisk
+        deniedCapClass = capabilities.find((c) => c.opaque)?.class ?? deniedCapClass
+      }
+
+      if (profileId === "full_access") {
+        decision = "allow"
+        deniedCapClass = undefined
+      }
+
+      if (profileId === "autonomous" && decision === "ask") {
+        decision = "deny"
+        deniedCapClass = deniedCapClass ?? capabilities.find((c) => c.class !== "file_read")?.class ?? "tool_request"
+      }
+
+      if (policyFailure && profileId !== "full_access") {
+        decision = "deny"
+        deniedCapClass = "protected_op"
+        amendment = undefined
+      }
+
+      const computerDenied =
+        profileId !== "full_access" &&
+        capabilities.some((cap) => cap.class === "computer_observe" || cap.class === "computer_interact")
+      if (computerDenied) {
+        decision = "deny"
+        deniedCapClass = capabilities.find((cap) => cap.class.startsWith("computer_"))?.class
+        amendment = undefined
+      }
+
+      // Approval cache: if the profile says "ask" but the capability was
+      // previously approved for this session, skip the prompt.
+      if (decision === "ask") {
+        const key = buildCapabilityKey(capabilities)
+        const cached = approvalCache.get(key)
+        if (cached === "approved_for_session") {
+          decision = "allow"
+        }
+      }
+
+      // Populate refusal info for deny decisions
+      let refusal: Envelope["refusal"]
+      if (policyFailure && profileId !== "full_access") {
+        refusal = {
+          reason: `Policy classification is unavailable (${policyFailure}); the operation was not executed`,
+          permanent: false,
+          matchedPermission: "protected_op",
+          guidance: "Retry after the Policy worker has recovered.",
+        }
+      } else if (computerDenied) {
+        refusal = {
+          reason: "Computer Use requires Full Access mode.",
+          permanent: true,
+          matchedPermission: deniedCapClass ?? "computer_interact",
+          guidance: "Enable Full Access for this task before using Computer Use.",
+        }
+      } else if (sandboxDenied) {
+        refusal = {
+          reason: `The OS sandbox cannot contain this command (${containment?.skipReason ?? "sandbox unavailable"}), and profile "${profileId}" does not run shell commands outside its sandbox.`,
+          permanent: true,
+          matchedPermission: "shell",
+          guidance:
+            "Install or repair the platform sandbox helper, or run the command under a profile that permits unsandboxed execution.",
+        }
+      } else if (decision === "deny") {
+        const isAutonomous = profileId === "autonomous"
+        const diagnosticReasons = capabilities
+          .filter((c) => c.reason)
+          .map((c) => c.reason)
+          .join("; ")
+
+        refusal = {
+          reason: diagnosticReasons
+            ? `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}" — ${diagnosticReasons}`
+            : `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
+          permanent: true,
+          matchedPermission: deniedCapClass ?? "unknown",
+          guidance:
+            diagnosticReasons || (isAutonomous ? "Switch to guarded profile to approve this operation." : undefined),
+          amendment: isAutonomous && deniedCapClass ? generateAmendmentForCapability(deniedCapClass) : undefined,
+        }
+      }
+
+      // Accumulate sandbox-approved paths when the profile auto-allows
+      if (decision === "allow") {
+        for (const cap of capabilities) {
+          if (cap.paths?.length) {
+            if (cap.class === "file_read" || cap.class === "file_external_read") {
+              for (const p of cap.paths) approvedReadPaths.add(p)
+            } else if (cap.class === "file_write") {
+              for (const p of cap.paths) approvedWritePaths.add(p)
+            }
+          }
+          if (cap.class === "network_request") {
+            approvedNetwork = true
+          }
+        }
+      }
+
+      // Track pending capabilities
+      for (const cap of capabilities) {
+        pendingCapabilities.add(cap.class)
+      }
+
+      // Audit
+      auditRecords.push({
+        tool: toolName,
+        capabilities,
+        timestamp: Date.now(),
+      })
+
+      const envelope = {
+        decision,
+        profileId,
+        opaque,
+        capabilities,
+        containment,
+        refusal,
+        amendment,
+      }
+      ObservabilityMetrics.record({
+        name: "enforcement.gate.duration",
+        value: performance.now() - perfStart,
+        unit: "ms",
+        module: "enforcement",
+        labels: {
+          tool: toolName,
+          decision,
+          capabilityCount: capabilities.length,
+          opaque,
+        },
+      })
+      return envelope
+    }
+
+    function evaluate(toolName: string, args: Record<string, any>): Envelope {
+      return evaluateClassified(toolName, args, classify(toolName, args))
+    }
+
+    async function evaluateIsolated(
+      toolName: string,
+      args: Record<string, any>,
+      signal?: AbortSignal,
+      containment?: SandboxContainment,
+    ): Promise<Envelope> {
+      let classification: ClassifyResult
+      try {
+        classification = await PolicyWorker.classify({
+          context: PolicyWorker.context(options),
+          toolName,
+          args,
+          signal,
+        })
+      } catch (error) {
+        if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error
+        const name = error instanceof Error && error.name ? error.name : "Error"
+        const classification = {
+          capabilities: [
+            {
+              class: "protected_op",
+              nonBypassable: true,
+              opaque: true,
+              reason: "policy classification unavailable",
+              metadata: { failure: name },
+            },
+          ],
+        }
+        ObservabilityMetrics.record({
+          name: "enforcement.policy.fallback",
+          value: 1,
+          unit: "count",
+          module: "enforcement",
+          labels: { tool: toolName, failure: name },
+        })
+        return evaluateClassified(toolName, args, classification, name, containment)
+      }
+      return evaluateClassified(toolName, args, classification, undefined, containment)
+    }
+
+    return {
+      classify,
+      evaluate,
+      evaluateIsolated,
+      getSandbox(): ProfileSandbox {
+        return resolved.sandbox
+      },
+      getWorkspace(): string | null {
+        return activeWorkspace
+      },
+      getProfileInfo() {
+        return {
+          profileId,
+          sandbox: resolved.sandbox,
+          ruleset: resolved.ruleset,
+          approval: resolved.approval,
+          summary: resolved.summary,
+        }
+      },
+      clearAudit() {
+        auditRecords.length = 0
+      },
+      getAuditRecords() {
+        return auditRecords
+      },
+      hasPendingCapability(className: string) {
+        return pendingCapabilities.has(className)
+      },
+      resolveCapability(className: string) {
+        pendingCapabilities.delete(className)
+      },
+      /** Register approval-granted external paths from outside the gate (e.g. tool-resolver). */
+      registerApprovedPaths(readPaths: string[], writePaths: string[], network: boolean) {
+        for (const p of readPaths) approvedReadPaths.add(p)
+        for (const p of writePaths) approvedWritePaths.add(p)
+        if (network) approvedNetwork = true
+      },
+      /**
+       * Build the aggregated sandbox permission profile from all accumulated
+       * approved paths. Returns null when sandbox is disabled.
+       */
+      getSandboxPolicy(): SynergySandboxPermissionProfile | null {
+        const sandbox = resolved.sandbox
+        if (!activeWorkspace || sandbox.mode === "none") return null
+        return buildPermissionProfile({
+          workspace: activeWorkspace,
+          executionCwd: activeWorkspace,
+          sandboxMode: sandbox.mode,
+          approvedReadPaths: [...approvedReadPaths],
+          approvedWritePaths: [...approvedWritePaths],
+          approvedNetwork,
+          approvedUnixSockets: [],
+        })
+      },
+      /** Record a session-level approval for the capability classes in this envelope. */
+      approveCapability(capabilities: Capability[]) {
+        const key = buildCapabilityKey(capabilities)
+        approvalCache.put(key, "approved_for_session")
+      },
+      /** Record a session-level denial for the capability classes in this envelope. */
+      denyCapability(capabilities: Capability[]) {
+        const key = buildCapabilityKey(capabilities)
+        approvalCache.put(key, "denied")
+      },
+      /** Clear all session-level approval cache entries. */
+      clearApprovalCache() {
+        approvalCache.clear()
+      },
+    }
+  }
+}
+import { FilePatch } from "@ericsanchezok/synergy-util/file-patch"

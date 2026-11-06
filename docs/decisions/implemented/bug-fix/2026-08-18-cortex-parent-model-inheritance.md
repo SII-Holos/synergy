@@ -16,7 +16,7 @@ A custom subagent without a `model`/`modelRole` (e.g. a user-configured `reviewe
 model ?? Agent.getAvailableModel(agent) ?? lastModel(task.parentSessionID)
 ```
 
-`lastModel` (from `session/input.ts`) returns the last user-anchor model in the parent session, falling back to `Provider.defaultModel()`. This makes Cortex task model resolution consistent with the rest of the codebase and lets subagents without an explicit model inherit the calling session's model instead of failing.
+`lastModel` (from `session/input.ts`) returns the last user-anchor model in the parent session, falling back to `Provider.defaultModel()`. This supplies the shared manager fallback and lets subagents without an explicit model inherit the calling session's model instead of failing.
 
 ## Alternatives considered
 
@@ -25,4 +25,6 @@ model ?? Agent.getAvailableModel(agent) ?? lastModel(task.parentSessionID)
 
 ## Consequences
 
-Cortex tasks now behave like every other delegation path: explicit task model wins, then the agent's configured/role model, then the parent session model, then the provider default. The `No model configured for agent` error remains only for environments with no providers configured at all. The behavioral contract is covered by a regression test in `test/cortex/manager.test.ts` that forces `Agent.getAvailableModel` to return `undefined` and asserts the task receives the parent session model.
+Within the shared Cortex manager: explicit task model wins, then the agent's configured/role model, then the parent session model, then the provider default. The `No model configured for agent` error remains only for environments with no providers configured at all. The behavioral contract is covered by a regression test in `test/cortex/manager.test.ts` that forces `Agent.getAvailableModel` to return `undefined` and asserts the task receives the parent session model.
+
+The native `task` caller now supplies an available parent assistant model before this shared fallback, as recorded in [Delegated sessions inherit the parent session model](2026-09-10-delegation-inherits-parent-model.md). This record continues to govern callers that omit an explicit task model, including workflow reviewers.

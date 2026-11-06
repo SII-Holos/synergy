@@ -1,0 +1,357 @@
+import json
+from pathlib import Path
+
+from synergy_bench.evidence import collect_evidence
+
+
+def test_missing_trace_is_independent_of_execution_and_reward(tmp_path: Path) -> None:
+    (tmp_path / "agent").mkdir()
+    (tmp_path / "agent" / "execution.json").write_text(json.dumps({"exit_code": 0, "outcome": "completed"}))
+    result = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0.0}}})
+    assert result["execution"]["outcome"] == "completed"
+    assert result["verifier"]["rewards"] == {"reward": 0.0}
+    assert result["evidence"]["valid"] is False
+    assert result["accounting"] is None
+
+
+def test_evidence_preserves_raw_accounting_and_hashes(tmp_path: Path) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    accounting = {"cost": {"status": "unavailable"}, "cacheReadTokens": 17}
+    (agent / "execution.json").write_text(json.dumps({"outcome": "failed", "exit_code": 2}))
+    (agent / "accounting.json").write_text(json.dumps(accounting))
+    result = collect_evidence(tmp_path, {})
+    assert result["accounting"] == accounting
+    assert len(result["files"]["agent/accounting.json"]["sha256"]) == 64
+
+
+def test_truncated_execution_does_not_discard_verifier_result(tmp_path: Path) -> None:
+    (tmp_path / "agent").mkdir()
+    (tmp_path / "agent/execution.json").write_text('{"exit_code":')
+    result = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 1.0}}})
+    assert result["execution"] is None
+    assert result["verifier"]["rewards"]["reward"] == 1.0
+    assert "execution_invalid" in result["evidence"]["issues"]
+
+
+def test_unreadable_payload_keeps_scoring_and_marks_evidence_failure(tmp_path: Path, monkeypatch) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    payload = agent / "rollout.zip"
+    payload.write_bytes(b"retained bytes")
+    original = Path.open
+
+    def opened(self, *args, **kwargs):
+        if self == payload:
+            raise PermissionError("injected read failure")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", opened)
+    result = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0.0}}})
+    assert result["verifier"]["rewards"]["reward"] == 0.0
+    assert "file_unreadable:agent/rollout.zip" in result["evidence"]["issues"]
+
+
+def test_summary_reports_wrong_answers_as_task_failures_without_infrastructure_failure(tmp_path: Path) -> None:
+    from synergy_bench.evidence import summarize
+
+    (tmp_path / "plan.json").write_text(
+        json.dumps({"version": 4, "result_version": 5, "schedule": [{"variant": "a", "task": "t"}]})
+    )
+    attempt = tmp_path / "trials/0000/attempt-001"
+    attempt.mkdir(parents=True)
+    (attempt / "evidence.json").write_text(
+        json.dumps(
+            {
+                "version": 5,
+                "execution": {"outcome": "completed"},
+                "verifier": {"rewards": {"reward": 0.0}},
+                "evidence": {"valid": True},
+            }
+        )
+    )
+    result = summarize(tmp_path)
+    assert result["task_failures"] == 1
+    assert result["exit_code"] == 0
+
+
+def test_reward_alone_does_not_claim_functional_tests_started(tmp_path):
+    (tmp_path / "agent").mkdir()
+    value = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 1.0}}})
+    assert value["grading"]["functional_tests"] == "unknown"
+    assert value["grading"]["raw_rewards"] == {"reward": 1.0}
+
+
+def test_junit_start_evidence_is_independent_of_native_score(tmp_path):
+    (tmp_path / "agent").mkdir()
+    (tmp_path / "verifier").mkdir()
+    (tmp_path / "verifier/results.xml").write_text(
+        '<testsuite tests="3" failures="2"><testcase name="real"/></testsuite>'
+    )
+    value = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0.0}}})
+    assert value["grading"]["functional_tests"] == "started"
+    assert value["grading"]["test_count"] == 1
+
+
+def test_skipped_junit_case_is_not_a_pass_or_proof_of_execution(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {
+                        "name": "[p2p] suite.test_rule[ruleset1-case]",
+                        "status": "failed",
+                        "message": "missing from report (test did not run)",
+                    }
+                ]
+            }
+        },
+    )
+    (tmp_path / "verifier/results.xml").write_text(
+        '<testsuite tests="1" skipped="1"><testcase classname="suite" name="test_rule[ruleset2-case]">'
+        '<skipped message="dependency unavailable"/></testcase></testsuite>'
+    )
+    result = grading_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0}}})
+    assert result["test_reconciliation"]["renumbered"] == [
+        {
+            "expected": "[p2p] suite.test_rule[ruleset1-case]",
+            "observed": "suite.test_rule[ruleset2-case]",
+            "status": "skipped",
+        }
+    ]
+    assert result["functional_tests"] == "unknown"
+    assert result["test_count"] is None
+    assert result["raw_rewards"] == {"reward": 0}
+
+
+def test_native_archive_hash_alone_does_not_prove_a_readable_archive(tmp_path):
+    import hashlib
+
+    from synergy_bench.storage import atomic_json
+
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    payload = b"not a gzip or native archive"
+    (agent / "rollout.tar.gz").write_bytes(payload)
+    atomic_json(agent / "execution.json", {"harness": "opencode", "outcome": "completed"})
+    atomic_json(
+        agent / "archive.json",
+        {"valid": True, "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload), "recording": "complete"},
+    )
+    result = collect_evidence(tmp_path, {})
+    assert result["evidence"]["archive_valid"] is False
+
+
+def test_collected_tests_and_reward_do_not_establish_execution(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+
+    (tmp_path / "verifier").mkdir()
+    (tmp_path / "verifier/test-stdout.txt").write_text("collected 18 items\ninternal error before execution\n")
+    assert grading_evidence(tmp_path, {})["functional_tests"] == "unknown"
+
+
+def test_ctrf_and_go_test_events_provide_independent_execution_evidence(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tool": {"name": "fixture"},
+                "tests": [
+                    {"name": "a", "status": "passed"},
+                    {"name": "b", "status": "failed"},
+                    {"name": "c", "status": "skipped"},
+                ],
+            }
+        },
+    )
+    (tmp_path / "verifier/run.log").write_text(
+        '{"Action":"run","Package":"pkg","Test":"TestA"}\n{"Action":"run","Package":"pkg","Test":"TestA"}\n'
+    )
+    result = grading_evidence(tmp_path, {})
+    assert result["functional_tests"] == "started"
+    assert result["test_count"] == 2
+    assert len(result["observations"]) == 2
+    assert result["test_count_semantics"] == "maximum_observed_count_across_overlapping_reports"
+
+
+def test_synthesized_missing_results_do_not_establish_test_execution(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {
+                        "name": "[f2p] expected-test",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    }
+                ]
+            }
+        },
+    )
+    result = grading_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0}}})
+    assert result["functional_tests"] == "unknown"
+    assert result["test_count"] is None
+    assert result["raw_rewards"] == {"reward": 0}
+    assert result["missing_results"] == [{"source": "verifier/ctrf.json", "count": 1}]
+
+
+def test_partial_suite_keeps_actual_starts_separate_from_missing_results(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {"name": "finished", "status": "passed"},
+                    {
+                        "name": "unfinished",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    },
+                    {"name": "assertion", "status": "failed", "message": "expected true, received false"},
+                ]
+            }
+        },
+    )
+    (tmp_path / "verifier/run.log").write_text(
+        "\n".join('{"Action":"run","Package":"pkg","Test":"' + name + '"}' for name in ["a", "b", "c"])
+    )
+    result = grading_evidence(tmp_path, {})
+    assert result["functional_tests"] == "started"
+    assert result["test_count"] == 3
+    assert next(row for row in result["observations"] if row["format"] == "ctrf")["count"] == 2
+    assert result["missing_results"] == [{"source": "verifier/ctrf.json", "count": 1}]
+
+
+def test_numbered_case_drift_and_timeout_placeholders_are_reconciled_without_changing_reward(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {
+                        "name": "[p2p] suite.test_rule[ruleset321-same-case]",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    },
+                    {
+                        "name": "[f2p] pkg.TestSlow",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    },
+                    {"name": "[f2p] pkg.TestActual", "status": "failed", "message": "assertion failed"},
+                ]
+            }
+        },
+    )
+    reports = tmp_path / "verifier/reports"
+    reports.mkdir()
+    (reports / "base.xml").write_text(
+        '<testsuite tests="1"><testcase classname="suite" name="test_rule[ruleset337-same-case]"/></testsuite>'
+    )
+    (tmp_path / "verifier/run.log").write_text(
+        '{"Action":"run","Package":"pkg","Test":"TestSlow"}\n'
+        '{"Action":"output","Package":"pkg","Test":"TestSlow","Output":"panic: test timed out after 3m0s\\n"}\n'
+    )
+    result = grading_evidence(
+        tmp_path,
+        {
+            "exception_info": {"exception_type": "VerifierTimeoutError"},
+            "verifier_result": {"rewards": {"reward": 0}},
+        },
+    )
+    reconciliation = result["test_reconciliation"]
+    assert result["raw_rewards"] == {"reward": 0}
+    assert reconciliation["actual_failed"] == ["[f2p] pkg.TestActual"]
+    assert reconciliation["renumbered"] == [
+        {
+            "expected": "[p2p] suite.test_rule[ruleset321-same-case]",
+            "observed": "suite.test_rule[ruleset337-same-case]",
+            "status": "passed",
+        }
+    ]
+    assert reconciliation["unresolved_missing"] == ["[f2p] pkg.TestSlow"]
+    assert reconciliation["started_without_result"] == ["[f2p] pkg.TestSlow"]
+    assert reconciliation["not_started"] == []
+    assert reconciliation["timed_out_tests"] == ["pkg.TestSlow"]
+    assert reconciliation["verifier_timed_out"] is True
+
+
+def test_private_runtime_home_is_not_public_evidence(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "agent/home"
+    vault = home / ".synergy/data/auth/secret-vault.json"
+    vault.parent.mkdir(parents=True)
+    vault.write_text('{"private": "fixture-credential"}')
+    public = tmp_path / "agent/events.jsonl"
+    public.write_text('{"type": "completed"}\n')
+    original = Path.open
+
+    def opened(self, *args, **kwargs):
+        if self.is_relative_to(home):
+            raise AssertionError("Private runtime home was read as public evidence")
+        return original(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", opened)
+        result = collect_evidence(tmp_path, {})
+    assert "agent/events.jsonl" in result["files"]
+    assert not any(name.startswith("agent/home/") for name in result["files"])
+    assert "fixture-credential" in vault.read_text()
+
+
+def test_evidence_does_not_follow_directory_symlinks(tmp_path: Path) -> None:
+    private = tmp_path / "agent/home"
+    private.mkdir(parents=True)
+    (private / "credentials.json").write_text("fixture-credential")
+    (tmp_path / "linked-home").symlink_to(private, target_is_directory=True)
+    result = collect_evidence(tmp_path, {})
+    assert not any(name.startswith("linked-home/") for name in result["files"])
+
+
+def test_session_export_release_keeps_native_home_archive_distinct_from_rollout(tmp_path):
+    import hashlib
+    import tarfile
+
+    from synergy_bench.storage import atomic_json
+
+    agent = tmp_path / "agent"
+    (agent / "home").mkdir(parents=True)
+    (agent / "events.jsonl").write_text('{"type":"step_finish","part":{"reason":"stop"}}\n')
+    (agent / "stderr.log").write_text("")
+    atomic_json(
+        agent / "execution.json",
+        {"harness": "synergy", "runtime_protocol": "synergy-session-v1", "outcome": "completed"},
+    )
+    with tarfile.open(agent / "rollout.tar.gz", "w:gz") as archive:
+        for name in ["home", "events.jsonl", "stderr.log", "execution.json"]:
+            archive.add(agent / name, arcname=name)
+    payload = (agent / "rollout.tar.gz").read_bytes()
+    atomic_json(
+        agent / "archive.json",
+        {
+            "format": "native-home-tar-v1",
+            "valid": True,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "bytes": len(payload),
+            "recording": "complete",
+        },
+    )
+    result = collect_evidence(tmp_path, {})
+    assert result["evidence"]["archive_valid"] is True
+    assert result["evidence"]["recording"] == "complete"

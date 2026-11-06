@@ -1,0 +1,12 @@
+Reads text and supported document content through the selected Workspace, subject to its availability and file permissions. Missing or inaccessible files return an error.
+
+Usage:
+- Relative filePath values resolve within the selected Workspace. Absolute paths remain subject to the selected view and permissions; do not invent local machine paths for remote Workspace files.
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- Use offset/limit for a known target. Read enough surrounding code to understand dependencies; omit them when an overview or the whole small file is needed.
+- Explicit limits are honored; there is no minimum reading window. Output shares a 50 KiB UTF-8 budget.
+- Complete lines are retained within the byte budget. A line larger than the budget requires a bounded shell inspection.
+- Results are returned using cat -n format, with line numbers starting at 1
+- Batch independent reads when the files are known to be relevant. Avoid speculative whole-file reads.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
+- Use this tool for text files and formats supported by the registered document extractors. For image visual inspection, discover an available image tool in the current catalog.

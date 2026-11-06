@@ -1,0 +1,59 @@
+# Decision Record: Pack Agent evidence and legacy recovery bytes
+
+Status: implemented
+
+## Problem
+
+Rollout checkpoints preserve small binary fragments, chunk references and journal observations. Millions of independently allocated files consume much more space than their content. A file-for-file backup repeats that allocation overhead, and a per-file SQL import ledger adds another large index before originals can be retired. The transactional authority decision remains applicable; migration and binary storage need bounded physical representations without discarding historical evidence.
+
+## Decision
+
+Keep transactional SQL authority and independently addressable records. Namespace format 2 optionally compresses larger record bodies and batches records with their import checkpoint. Generic rowid tables and existing key/index definitions remain intact. Binary evidence moves into immutable raw/gzip blocks with SQL locators, bounded per-owner append packs and hash verification. Bytes become durable before references; deletion intents and startup orphan discovery collect whole unreferenced packs. A filesystem lease protects verification snapshots from collection.
+
+Bulk record statements stop at 64 records or 8 MiB of encoded SQL parameters. A larger individual record uses its own statement under the existing engine admission limit. The transaction still commits all statements and the import checkpoint together. Record count alone allowed several individually valid historical records to exceed the SQLite driver’s 32 MiB queue budget; a real-engine regression now covers successful byte-bounded writes and rollback after multiple statements.
+
+Legacy backup format 2 groups at most 1,024 files or approximately 4 MiB of logical content and metadata. Each group contains a compressed inventory and independently encoded file bodies, with streamed raw files above 2 MiB. A durable descriptor follows each chunk; the final manifest seals descriptor hashes and totals. An import checkpoint covers up to 256 entries and commits with records and locators. Immutable backup chunks are hard-linked into canonical artifact storage on the same filesystem, avoiding another byte copy. Original authority files are retired only after database and artifact verification. Interrupted version 1 imports retain their importer, then run the registered binary migration.
+
+Binary evidence has no new 32 MiB product limit: historical writers accepted larger objects. Only compressed blocks carry that bound; larger writes and legacy blobs use raw blocks with safe byte offsets and streaming verification. A single raw object may exceed the 64 MiB pack rotation target. Quarantining otherwise valid large evidence would silently reduce the available history, so both JSON-authority and existing-SQL upgrades preserve and independently restore these objects.
+
+The record codec follows the same compatibility rule: the 128 MiB bound limits compressed expansion, while larger JSON bodies keep their plain representation and remain subject to existing engine admission limits. Adding compression must not reject an otherwise accepted plain record.
+
+Backup resumption still hashes every original file, and retirement hashes it again before deletion. Files up to 2 MiB use a bounded read of the expected length plus one byte; larger files remain streamed. Growth or truncation stops verification. An alternating read experiment over the same 10,000 small source files preserved every SHA-256 digest: warm bounded reads took approximately 0.40 seconds versus 0.83 seconds for per-file streams; a colder stream pass took 1.92 seconds. This measures read/hash overhead on one machine, not total migration throughput.
+
+The capacity budget includes backup content and metadata, SQL overhead, journals, owner migrations and recovery reserve without crediting future deletion. Phase checks stop before consuming the reserve. The SQL per-record allowances are estimates to calibrate against actual data, not guaranteed upper bounds. Measurements distinguish logical bytes, allocated blocks and unique file identities. Restoration verifies into a new staged Home and publishes only after the final inventory validates.
+
+## Alternatives considered
+
+**Keep loose evidence and per-file backups.** This preserves simple file inspection but repeats minimum filesystem allocation and requires millions of durable publications and ledger rows.
+
+**Store binary bodies in the authority database.** This would avoid artifact files but inflate engine backup, transfer and journal work, and couple large evidence lifetime to the record engine. Dedicated locators keep both SQLite and PostgreSQL on the same logical model.
+
+**Compress each backup group as one stream.** A small artifact read would repeatedly decode the whole group. Independent frames preserve bounded direct reads while sharing group metadata and allocation.
+
+**Rewrite every SQL table with WITHOUT ROWID and shorter keys.** A synthetic 49,700-record layout experiment increased a vacuumed database from 123,367,424 to 187,547,648 bytes when both generic tables used WITHOUT ROWID, because large record bodies needed overflow pages. Compact nodes, shorter hashes and sparse indexes showed separate benefits but require their own migration and query analysis. They are excluded from this change; their experimental sizes are not claimed as deployed savings.
+
+**Delete evidence during import or vacuum during the migration peak.** Early deletion weakens independent recovery; full-database rewriting adds another large temporary allocation. The importer retains originals until activation and does not require vacuum.
+
+## Consequences
+
+Small files share allocation and backup descriptors, while Rollout journals and retained snapshots preserve their content. SQL format 1 remains upgrade input and plain JSON remains a valid format 2 encoding; older writers cannot reopen the upgraded namespace. Portable version 2 carries locators and version 1 remains readable. Normal binary operations have one current path.
+
+Compression adds CPU work. Partially live packs retain dead ranges, and a retained backup continues to hold shared chunks after canonical references disappear. Backups therefore need an explicit retention policy rather than automatic deletion during migration. Corruption stops activation or restore and remains visible. The storage, transfer, long-stream and released-upgrade suites exercise resumability, deletion fencing, corruption, SQLite/PostgreSQL parity and byte reconstruction.
+
+Artifact replacement and owner deletion probes use the existing namespace/key and namespace/owner indexes. In an unanalyzed SQLite namespace, adding `DISTINCT` to the old-pack lookup caused a namespace-wide scan through the pack index for every batch, making a large import progressively slower. The collection-intent primary key already deduplicates packs through `ON CONFLICT DO NOTHING`; removing the redundant query-level deduplication restores targeted seeks without another index. The query-plan regression executes the public replacement and deletion paths and checks shared-pack collection semantics.
+
+Logical index validation joins nodes within each existing 256-record page. A final namespace-wide count previously repeated the join without a page bound and used the ordinary statement deadline even on a large Home. Verification and export now reject missing or mismatched nodes and invalid revisions before yielding that page's records. Query-plan tests exercise the actual verification path, and corruption after the first page remains fatal for both operations.
+
+The implemented schema uses 88,641,536 bytes after vacuum on the same synthetic layout fixture, with an identical logical key/value/revision digest. A separate private-data pilot of 11 Session aggregates migrated 102,905 files, including 24,100 binary artifacts, in 76 seconds. With the complete recovery backup retained and hard links counted once, allocated bytes fell from 626,978,816 to 425,304,064; sampled additional allocation peaked at 425,271,296 bytes. These local macOS measurements establish the tested implementation's behavior, not a universal compression ratio or a full-Home capacity guarantee.
+
+See [Agent storage](../../../architecture/agent-storage.md) and the [transactional authority decision](2026-09-14-transactional-agent-authority.md) for the underlying transaction and ownership model.
+
+Prefix scan and list operations drive both recursive expansion and the final record lookup from the selected frontier. The final SQLite join could otherwise choose a namespace-wide record scan even for an absent recovery root, exceeding the ordinary operation deadline after a large import. The existing primary index provides each descendant lookup; no additional index, statistics rewrite or timeout increase is required. Real query-plan tests cover populated, absent and foreign-only prefixes with deletion filtering. Closing an already closed driver still releases resources without masking the original operation failure; a real-driver shutdown and reopen regression preserves the committed record.
+
+Immediate-child enumeration uses a correlated recursive existence probe, stopping at the first live record in each child. A full descendant walk followed by DISTINCT still traversed all Rollout history merely to enumerate Session Scopes, exceeding the ordinary deadline during index reconstruction. The existing node-parent and record-primary indexes suffice; tombstone-only children remain hidden and namespace isolation is unchanged. List operations still enumerate their requested records, while scan only establishes child visibility. A populated-tree query-plan regression requires short-circuit existence without a temporary deduplication tree.
+
+Session index reconstruction retains archived records whose retired endpoint was deliberately preserved by the earlier archival migration. Only the derived projection omits that retired routing identity; the canonical endpoint and unrelated historical metadata remain byte-for-byte equivalent as JSON values. An active retired endpoint remains an integrity error. Startup-runner tests cover archived history, nullable Channel metadata, repeat execution and transaction rollback without broadening the current public endpoint schema.
+
+Full SQLite integrity verification retains `PRAGMA integrity_check`, including index/table consistency. Its index checks scale with the whole database ([SQLite PRAGMA documentation](https://www.sqlite.org/pragma.html#pragma_integrity_check)); a fixed ten-minute maintenance deadline killed valid large-database work. The driver now reads page count and page size on the same connection/snapshot, including uncheckpointed WAL growth, and grants ten minutes plus one second per MiB, capped at the platform timer limit. This is a conservative finite operation budget, not a throughput guarantee or progress estimate. Ordinary requests remain bounded at thirty seconds. A real SQLite regression grows a database without reopening its driver, verifies both query and transactional maintenance paths, and confirms ordinary deadlines stay unchanged.
+
+Desktop receives the physical verification deadline through the aggregate startup protocol, before the statement runs. A distinct engine-verification stage carries a positive bounded timeout and zero item counts; other stages cannot supply a timeout. Repeated announcements cannot renew that deadline, and subsequent logical verification restores the normal inactivity policy. The driver reports its current-snapshot budget in process, while the transaction observer keeps transport emission outside retryable callbacks. Fake-clock deadline tests, real database budget growth, protocol validation and an Electron DOM check cover the complete contract.

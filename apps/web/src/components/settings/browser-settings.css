@@ -1,0 +1,38 @@
+.settings-panel-frame .browser-settings-action[data-component="button"] {
+  width: 100%;
+  height: auto;
+  min-height: 64px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  text-align: start;
+  white-space: normal;
+  cursor: pointer;
+}
+.browser-settings-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.browser-settings-action-title {
+  color: var(--text-base);
+  font-size: var(--settings-type-row-title-size, 14px);
+  line-height: var(--settings-type-row-title-line-height, 20px);
+}
+.browser-settings-action-hint {
+  color: var(--text-weak);
+  font-size: var(--settings-type-body-size, 13px);
+  line-height: var(--settings-type-body-line-height, 18px);
+  font-weight: var(--font-weight-regular);
+}
+.browser-settings-action-trailing {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  color: var(--text-weak);
+}
+.browser-settings-action:dir(rtl) .browser-settings-action-trailing [data-component="icon"] {
+  transform: scaleX(-1);
+}

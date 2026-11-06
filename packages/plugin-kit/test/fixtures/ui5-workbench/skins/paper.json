@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "id": "paper",
+  "assets": {
+    "font": {
+      "kind": "font",
+      "path": "assets/inter.woff2"
+    },
+    "paper": {
+      "kind": "image",
+      "path": "assets/paper.svg"
+    }
+  },
+  "light": {
+    "density": "comfortable",
+    "typography": {
+      "sans": "font"
+    },
+    "parts": {
+      "workbench": {
+        "background": {
+          "asset": "paper",
+          "fit": "auto",
+          "repeat": "repeat",
+          "opacity": 0.35
+        }
+      },
+      "composer": {
+        "radius": 24,
+        "borderWidth": 1,
+        "shadow": "soft"
+      },
+      "resource-panel": {
+        "radius": 16,
+        "borderWidth": 1
+      }
+    }
+  },
+  "dark": {
+    "density": "comfortable",
+    "typography": {
+      "sans": "font"
+    },
+    "parts": {
+      "workbench": {
+        "background": {
+          "asset": "paper",
+          "fit": "auto",
+          "repeat": "repeat",
+          "opacity": 0.22
+        }
+      },
+      "composer": {
+        "radius": 24,
+        "borderWidth": 1,
+        "shadow": "soft"
+      },
+      "resource-panel": {
+        "radius": 16,
+        "borderWidth": 1
+      }
+    }
+  },
+  "narrow": {
+    "density": "compact",
+    "parts": {
+      "composer": {
+        "radius": 8
+      }
+    }
+  },
+  "reducedMotion": {
+    "decorations": "hide"
+  }
+}

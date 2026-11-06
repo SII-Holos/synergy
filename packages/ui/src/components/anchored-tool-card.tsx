@@ -1,17 +1,15 @@
+import { getToolIcon } from "./tool/icons"
 import { ANCHORED_CHIP_DESC } from "./tool-title-descriptors"
 
 import { createMemo, For, Show } from "solid-js"
-import { Dynamic } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
-import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { useCodeComponent } from "../context/code"
-import { BasicTool } from "./basic-tool"
+import { BasicTool, useToolResultPresentation } from "./basic-tool"
 import { ToolTextOutput } from "./tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "./message-part"
-import { ToolDiffPreview, type ToolDiffPreviewFileDiff } from "./tool/diff-preview"
+import { type ToolDiffPreviewFileDiff } from "./tool/diff-preview"
 import { hasSaveFileContentInput, saveFilePreviewDiff } from "./tool/save-file-preview"
-import { DiffPatchGate } from "./diff-patch"
+import { ToolFilePreview, ToolPatchPreview } from "./tool/content-preview"
 
 type FileDiff = ToolDiffPreviewFileDiff
 
@@ -222,7 +220,6 @@ function operationCounts(operations: string[]): string[] {
 
 export function AnchoredViewTool(props: ToolProps) {
   const { _ } = useLingui()
-  const codeComponent = useCodeComponent()
   const ranges = () => (props.metadata?.ranges ?? []) as RangeInfo[]
   const primaryRange = () => {
     if (ranges().length > 0) return undefined
@@ -241,20 +238,15 @@ export function AnchoredViewTool(props: ToolProps) {
   ]
 
   // Full contents are only available when the file fits the snapshot cap;
-  // oversized/binary files keep the raw text output fallback.
+  // oversized/binary files preview the recorded tool output.
   const content = () => props.metadata?.content as string | undefined
   const hasContent = () => typeof content() === "string" && content()!.length > 0
-  const file = () => ({
-    name: pathFromProps(props) || "file",
-    contents: content() ?? "",
-    cacheKey: (props.metadata?.tag as string | undefined) || checksum(content() ?? ""),
-  })
 
   return (
     <BasicTool
       {...props}
       trigger={{
-        icon: "scan-eye",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: _(viewFileTitleDescriptor),
         subtitlePath: pathFromProps(props),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
@@ -275,40 +267,28 @@ export function AnchoredViewTool(props: ToolProps) {
           { label: _(summaryLabelTagDescriptor), value: props.metadata?.tag },
         ]}
       />
-      <Show when={hasContent()} fallback={<RawOutput output={props.output} />}>
-        <Show when={ranges().length > 0}>
-          <For each={ranges()}>
+      <Show when={hasContent()} fallback={<ToolFilePreview path={pathFromProps(props)} content={props.output ?? ""} />}>
+        <Show
+          when={ranges().length > 0}
+          fallback={
+            <ToolFilePreview
+              path={pathFromProps(props)}
+              content={content()!}
+              offset={props.metadata?.offset}
+              limit={props.metadata?.limit}
+            />
+          }
+        >
+          <For each={ranges().slice(0, 3)}>
             {(range) => (
-              <div data-component="view-content">
-                <Dynamic
-                  component={codeComponent}
-                  file={file()}
-                  renderRange={{
-                    startingLine: range.offset ?? 0,
-                    totalLines: range.limit ?? Infinity,
-                    bufferBefore: 0,
-                    bufferAfter: 0,
-                  }}
-                  overflow="scroll"
-                />
-              </div>
+              <ToolFilePreview
+                path={pathFromProps(props)}
+                content={content()!}
+                offset={range.offset}
+                limit={range.limit}
+              />
             )}
           </For>
-        </Show>
-        <Show when={ranges().length === 0}>
-          <div data-component="view-content">
-            <Dynamic
-              component={codeComponent}
-              file={file()}
-              renderRange={{
-                startingLine: (props.metadata?.offset as number | undefined) ?? 0,
-                totalLines: (props.metadata?.limit as number | undefined) ?? Infinity,
-                bufferBefore: 0,
-                bufferAfter: 0,
-              }}
-              overflow="scroll"
-            />
-          </div>
         </Show>
       </Show>
     </BasicTool>
@@ -336,7 +316,7 @@ export function AnchoredSearchTool(props: ToolProps & { mode: "text" | "ast" }) 
     <BasicTool
       {...props}
       trigger={{
-        icon: props.mode === "ast" ? "braces" : "scan-search",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: title(),
         subtitle: subtitle(),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
@@ -376,8 +356,29 @@ export function AnchoredParseCodeTool(props: ToolProps) {
 
 export function AnchoredReviseTool(props: ToolProps) {
   const { _ } = useLingui()
+  const resultOnly = useToolResultPresentation()
   const filePath = () => pathFromProps(props)
   const filediff = () => props.metadata?.filediff as FileDiff | undefined
+  const sections = createMemo(() => {
+    const value: unknown = props.metadata?.sections
+    if (!Array.isArray(value)) return []
+    return value.flatMap((section: unknown) => {
+      if (!section || typeof section !== "object" || !("filediff" in section)) return []
+      const diff = section.filediff
+      if (
+        !diff ||
+        typeof diff !== "object" ||
+        !("file" in diff) ||
+        typeof diff.file !== "string" ||
+        !("preview" in diff) ||
+        typeof diff.preview !== "string"
+      )
+        return []
+      return [
+        { path: diff.file, patch: "diff" in section && typeof section.diff === "string" ? section.diff : diff.preview },
+      ]
+    })
+  })
   const operations = () => (props.metadata?.operationSummary ?? []) as string[]
   const diagnostics = () => diagnosticCount(props.metadata)
   const chips = () => [
@@ -391,28 +392,41 @@ export function AnchoredReviseTool(props: ToolProps) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "file-pen",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: _(reviseFileTitleDescriptor),
         subtitlePath: filePath(),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
         changes: changeSummary(props),
       }}
     >
-      <WarningPanel metadata={props.metadata} />
-      <SummaryGrid
-        rows={[
-          { label: _(summaryLabelOperationsDescriptor), value: operations().join(" · ") },
-          props.metadata?.recovered
-            ? { label: _(summaryLabelRecoveryDescriptor), value: _(recoverySafelyMappedDescriptor) }
-            : undefined,
-        ]}
-      />
-      <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
-      <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
-        {(diff) => {
-          const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={diff()} />} />
-        }}
+      <Show when={!resultOnly}>
+        <WarningPanel metadata={props.metadata} />
+        <SummaryGrid
+          rows={[
+            { label: _(summaryLabelOperationsDescriptor), value: operations().join(" · ") },
+            props.metadata?.recovered
+              ? { label: _(summaryLabelRecoveryDescriptor), value: _(recoverySafelyMappedDescriptor) }
+              : undefined,
+          ]}
+        />
+        <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
+      </Show>
+      <Show
+        when={sections().length}
+        fallback={
+          <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
+            {(diff) => {
+              const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
+              return <ToolPatchPreview tool={props} path={filePath()} patch={patch()} />
+            }}
+          </Show>
+        }
+      >
+        <div class="flex flex-col gap-4">
+          <For each={sections()}>
+            {(section) => <ToolPatchPreview tool={props} path={section.path} patch={section.patch} />}
+          </For>
+        </div>
       </Show>
     </BasicTool>
   )
@@ -438,7 +452,7 @@ export function AnchoredResolveConflictsTool(props: ToolProps) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "file-pen",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: _(resolveConflictsTitleDescriptor),
         subtitlePath: filePath(),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
@@ -457,7 +471,7 @@ export function AnchoredResolveConflictsTool(props: ToolProps) {
       <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
         {(diff) => {
           const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={diff()} />} />
+          return <ToolPatchPreview tool={props} path={filePath()} patch={patch()} />
         }}
       </Show>
     </BasicTool>
@@ -466,7 +480,6 @@ export function AnchoredResolveConflictsTool(props: ToolProps) {
 
 export function AnchoredSaveTool(props: ToolProps) {
   const { _ } = useLingui()
-  const codeComponent = useCodeComponent()
   const filePath = () => pathFromProps(props)
   const content = () => (props.input.content ?? "") as string
   const isOverwrite = () => props.metadata?.exists === true
@@ -484,7 +497,7 @@ export function AnchoredSaveTool(props: ToolProps) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "text-select",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: _(isOverwrite() ? saveFileTitleDescriptor : createFileTitleDescriptor),
         subtitlePath: filePath(),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
@@ -506,18 +519,14 @@ export function AnchoredSaveTool(props: ToolProps) {
         fallback={
           <Show when={hasContentInput()} fallback={<RawOutput output={props.output} />}>
             <div data-component="write-content">
-              <Dynamic
-                component={codeComponent}
-                file={{ name: filePath() || "file", contents: content(), cacheKey: checksum(content()) }}
-                overflow="scroll"
-              />
+              <ToolFilePreview path={filePath()} content={content()} />
             </div>
           </Show>
         }
       >
         {(diff) => {
           const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={diff()} />} />
+          return <ToolPatchPreview tool={props} path={filePath()} patch={patch()} />
         }}
       </Show>
     </BasicTool>

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { findMisplacedTestFiles } from "../../script/test-layout-check"
 
-const packageRoots = ["packages/app", "packages/sdk/js", "packages/ui"]
+const packageRoots = ["apps/web", "packages/sdk/js", "packages/ui"]
 
 describe("test layout check", () => {
   test("accepts tests in the owning package test directory", () => {
@@ -9,10 +9,10 @@ describe("test layout check", () => {
       findMisplacedTestFiles(
         [
           "test/script/root.test.ts",
-          "packages/app/test/components/button.test.tsx",
+          "apps/web/test/components/button.test.tsx",
           "packages/sdk/js/test/client.test.ts",
           "packages/ui/test/components/card.spec.tsx",
-          "packages/app/src/components/button.tsx",
+          "apps/web/src/components/button.tsx",
         ],
         packageRoots,
       ),
@@ -24,15 +24,15 @@ describe("test layout check", () => {
       findMisplacedTestFiles(
         [
           "script/release.test.ts",
-          "packages/app/src/components/button.test.tsx",
-          "packages/app/script/i18n.test.ts",
+          "apps/web/src/components/button.test.tsx",
+          "apps/web/script/i18n.test.ts",
           "packages/sdk/js/src/client.spec.ts",
         ],
         packageRoots,
       ),
     ).toEqual([
-      "packages/app/script/i18n.test.ts",
-      "packages/app/src/components/button.test.tsx",
+      "apps/web/script/i18n.test.ts",
+      "apps/web/src/components/button.test.tsx",
       "packages/sdk/js/src/client.spec.ts",
       "script/release.test.ts",
     ])
@@ -41,7 +41,7 @@ describe("test layout check", () => {
   test("does not classify non-test source filenames as tests", () => {
     expect(
       findMisplacedTestFiles(
-        ["packages/app/src/testing/helpers.ts", "packages/ui/src/components/test-card.tsx", "script/test-runner.ts"],
+        ["apps/web/src/testing/helpers.ts", "packages/ui/src/components/test-card.tsx", "script/test-runner.ts"],
         packageRoots,
       ),
     ).toEqual([])

@@ -1,0 +1,2197 @@
+import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
+import { ProjectionPatch } from "@ericsanchezok/synergy-util/projection-patch"
+import { projectionContent } from "./projection-content"
+import {
+  createViewProjection,
+  ViewInterests,
+  projectViewReplay,
+  type ViewEvent,
+  type ViewProjectionContribution as ProjectionContribution,
+} from "./view-projection"
+import { SessionLocationError } from "@ericsanchezok/synergy-local-runtime/session-api"
+import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { WorkflowKindRegistry } from "@ericsanchezok/synergy-harness/session/workflow-kind-registry"
+import { WorkflowRoute } from "./routes/workflow"
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { timingSafeEqual } from "node:crypto"
+import { SessionPreparingError } from "@ericsanchezok/synergy-harness/persistence"
+import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
+import { EventWire } from "./event-wire"
+import { GlobalEventClients } from "./global-event-clients"
+import { createEventProjection, ContentInterests, projectReplayEvent } from "./event-projection"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { describeRoute, generateSpecs, validator, resolver } from "hono-openapi"
+import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
+import { compress } from "hono/compress"
+import { cors } from "hono/cors"
+import { streamSSE } from "hono/streaming"
+import z from "zod"
+import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { ConfigImport } from "@ericsanchezok/synergy-harness/config/import"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
+import { Command } from "@ericsanchezok/synergy-local-runtime/command/command"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { createScopeRoute } from "./scope"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { zodToJsonSchema } from "zod-to-json-schema"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import type { ContentfulStatusCode } from "hono/utils/http-status"
+import { upgradeWebSocket, websocket } from "hono/bun"
+import { errors, RuntimeShuttingDownError, StorageServiceError } from "./error"
+import { QuestionRoute } from "./question"
+import { SessionTransferRoute } from "./session-transfer"
+import { HostConnectionRoute } from "./host-connection"
+import { SessionExportRoute } from "./session-export"
+import { CortexRoute } from "./cortex"
+import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
+import { MDNS } from "./mdns"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
+import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
+import { MaintenanceAdmissionRoute } from "./maintenance-admission"
+import { SessionRoute } from "./session"
+import { PtyRoute } from "./pty"
+import { createProviderRoute } from "./provider"
+import { PermissionRoute } from "./permission"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { ScopePath } from "./scope-path"
+import { WorkspaceFilesRoute } from "./workspace-files"
+import { WorkspacesRoute } from "./workspaces"
+import { EnvironmentsRoute } from "./environments"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { File as SynergyFile } from "@ericsanchezok/synergy-local-runtime/file"
+import { ConfigRoute } from "./config-route"
+import { SecretsRoute } from "./secrets-route"
+import { AssetRoute } from "./asset"
+import { SkillRoute } from "./skill-route"
+import { RuntimeRoute } from "./runtime-route"
+import { GlobalSessionRoute } from "./global-session"
+import { GlobalActivityRoute } from "./global-activity"
+import { SessionNavRoute } from "./session-nav"
+import { ControlProfileRoute } from "./control-profile-route"
+import { SandboxReadinessRoute } from "./sandbox-readiness-route"
+import { GlobalStorageRoute } from "./storage-route"
+import { ObservabilityRoute } from "./observability-route"
+import { Observability } from "@ericsanchezok/synergy-harness/observability"
+import { ObservabilityIssues } from "@ericsanchezok/synergy-harness/observability/issues"
+import { ServerSseMetrics } from "./sse-metrics"
+import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
+import { ObservabilitySpans } from "@ericsanchezok/synergy-harness/observability/spans"
+import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
+import {
+  DEFAULT_SERVER_HOST,
+  DEFAULT_SERVER_PORT,
+  DEFAULT_SERVER_URL,
+} from "@ericsanchezok/synergy-harness/util/server-defaults"
+import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
+import { ObservabilityContext } from "@ericsanchezok/synergy-harness/observability/context"
+import { UpdateRoute } from "./update-route"
+import { createScopeBootstrapRoute, type BootstrapContributions } from "./scope-bootstrap-route"
+import { SessionVolatileBatchRoute } from "./session-volatile-batch-route"
+
+// @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
+globalThis.AI_SDK_LOG_WARNINGS = false
+
+export namespace Server {
+  export const DEFAULT_PORT = DEFAULT_SERVER_PORT
+  export const DEFAULT_HOST = DEFAULT_SERVER_HOST
+  export const DEFAULT_URL = DEFAULT_SERVER_URL
+
+  const log = Log.create({ service: "server" })
+  const closedHandlers = {
+    fetch: () => new Response(null, { status: 503 }),
+    websocket: { message() {}, open() {}, close() {} },
+  }
+  // Bound on how long /global/health waits for the provider state build.
+  // The daemon readiness probe aborts after 1200ms and the CLI probe after 3s,
+  // so a slow build must never hold the health response past this window.
+  const HEALTH_PROVIDER_WAIT_MS = 1000
+  /**
+   * Decide modelReady for the global health handler within a bounded wait.
+   * Races the provider-state build against `waitMs`; on timeout or build
+   * error it falls back to the last settled provider state instead of
+   * reporting ready optimistically. Pure function for direct testing.
+   */
+  export async function resolveHealthModelReady(input: {
+    list: () => Promise<Record<string, Provider.Info>>
+    listSettled: () => Record<string, Provider.Info>
+    waitMs?: number
+    onError?: (error: unknown) => void
+  }): Promise<boolean> {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      const providers = await Promise.race([
+        input.list().catch((error) => {
+          input.onError?.(error)
+          return undefined as Record<string, Provider.Info> | undefined
+        }),
+        new Promise<Record<string, Provider.Info> | undefined>((resolve) => {
+          timeout = setTimeout(() => resolve(undefined), input.waitMs ?? HEALTH_PROVIDER_WAIT_MS)
+        }),
+      ])
+      return Object.keys(providers ?? input.listSettled()).length > 0
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  // Baseline Content-Security-Policy for SPA responses.
+  // script-src 'unsafe-inline' and style-src 'unsafe-inline' are required for:
+  //   - Solid's reactive CSS-in-JS <style> injection
+  //   - Ghostty Web WASM terminal (creates scripts dynamically)
+  //   - the theme preloader and route-tag inline scripts in index.html
+  // Hash/nonce are deliberately NOT used in script-src because CSP Level 2
+  // dictates that browsers ignore 'unsafe-inline' when hash or nonce is present.
+  const CSP_BASELINE =
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: https: blob:; " +
+    "font-src 'self' data:; " +
+    "connect-src 'self' ws: wss: blob: data:; " +
+    "frame-src 'self'; " +
+    "media-src 'self'; " +
+    "object-src 'none'; " +
+    "base-uri 'self'; " +
+    "form-action 'self'"
+
+  // script-src uses 'unsafe-inline' in the baseline — see CSP_BASELINE.
+  // Hash and nonce are NOT added to script-src because browsers ignore
+  // 'unsafe-inline' when either is present (CSP Level 2), which would break
+  // third-party components that dynamically create scripts (e.g., Ghostty Web).
+
+  export function spaCsp(_nonce?: string): string {
+    return CSP_BASELINE
+  }
+
+  export function cspMiddleware(): MiddlewareHandler {
+    return async (c, next) => {
+      await next()
+      if (!c.res.headers.get("Content-Security-Policy")) {
+        c.res.headers.set("Content-Security-Policy", CSP_BASELINE)
+      }
+      if (!c.res.headers.get("X-Frame-Options")) {
+        c.res.headers.set("X-Frame-Options", "DENY")
+      }
+    }
+  }
+
+  const runtimeState = RuntimeContext.state(() => ({
+    _url: undefined as URL | undefined,
+    _corsWhitelist: new Set<string>(),
+    _appMounted: false,
+    _globalEventBroadcastOff: undefined as (() => void) | undefined,
+    _globalEventHeartbeatInterval: undefined as ReturnType<typeof setInterval> | undefined,
+    _globalEventClients: undefined as ReturnType<typeof GlobalEventClients.createRegistry> | undefined,
+    _shuttingDown: false,
+    mutations: 0,
+    maintenance: undefined as { token: string; expiresAt: number; timer: ReturnType<typeof setTimeout> } | undefined,
+    requests: new Set<Promise<unknown>>(),
+    contributions: undefined as Contributions | undefined,
+    contributionOwners: new Map<string, Contributions>(),
+    appInitialized: false,
+    app: new Hono(),
+    _openapiSpecs: undefined as Promise<OpenAPISpecs> | undefined,
+  }))
+
+  export function beginShutdown(): void {
+    const instanceState = runtimeState()
+
+    instanceState._shuttingDown = true
+    if (instanceState.maintenance) clearTimeout(instanceState.maintenance.timer)
+    instanceState.maintenance = undefined
+  }
+
+  export function resumeRequests(): void {
+    const instanceState = runtimeState()
+
+    instanceState._shuttingDown = false
+  }
+
+  function releaseMaintenance(token: string): boolean {
+    const state = runtimeState()
+    if (state.maintenance?.token !== token) return false
+    clearTimeout(state.maintenance.timer)
+    state.maintenance = undefined
+    if (!state._shuttingDown) SessionManager.openAdmission()
+    return true
+  }
+
+  function prepareMaintenance() {
+    const state = runtimeState()
+    if (
+      state.maintenance ||
+      state._shuttingDown ||
+      state.mutations > 1 ||
+      SessionManager.activeRuntimeCount() > 0 ||
+      SessionManager.hasPendingWake() ||
+      LoopJob.activeBackgroundCount() > 0
+    )
+      return
+    const token = crypto.randomUUID()
+    const expiresAt = Date.now() + 30_000
+    SessionManager.closeAdmission()
+    const timer = setTimeout(() => releaseMaintenance(token), 30_000)
+    timer.unref()
+    state.maintenance = { token, expiresAt, timer }
+    return { token, expiresAt }
+  }
+
+  function isLoopbackOrigin(input: string) {
+    try {
+      const url = new URL(input)
+      if (url.protocol !== "http:" && url.protocol !== "https:") return false
+      return (
+        url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname === "::1" ||
+        url.hostname === "0.0.0.0"
+      )
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Normalize a configured CORS/WS allowlist entry to the canonical origin
+   * form browsers send in the Origin header (lowercased host, default port
+   * stripped). Without this, `--cors https://EXAMPLE.com:443` would be stored
+   * verbatim and silently never match the normalized `https://example.com`
+   * the browser sends.
+   */
+  export function normalizeCorsOrigin(input: string): string | undefined {
+    try {
+      const url = new URL(input)
+      if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+      return url.origin
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * The global event stream carries full session traffic. Accept only clients
+   * whose Origin matches the server's own scheme+host (the Synergy SPA on web
+   * and Desktop), a loopback peer, or an origin on the same allowlist the CORS
+   * middleware enforces — never opaque origins such as sandboxed attachment
+   * pages (`Origin: null`) or cross-origin web pages. WebSocket is not covered
+   * by CORS, so the check must live here at the route.
+   */
+  export function globalEventOriginAllowed(
+    origin: string | undefined,
+    requestURL: string,
+    extraAllows: readonly string[] = [...runtimeState()._corsWhitelist],
+  ): boolean {
+    const instanceState = runtimeState()
+
+    if (!origin) return false
+    try {
+      const parsed = new URL(origin)
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false
+      const request = new URL(requestURL)
+      // The request URL must itself be part of the {http,https,ws,wss} scheme
+      // family; anything else never represents a real upgrade and must not be
+      // accepted by the host comparison below.
+      if (
+        request.protocol !== "http:" &&
+        request.protocol !== "https:" &&
+        request.protocol !== "ws:" &&
+        request.protocol !== "wss:"
+      ) {
+        return false
+      }
+      // Behind a TLS-terminating reverse proxy the browser's Origin is https:
+      // while the upgrade request arrives as ws:; compare host+port and treat
+      // the {http,https,ws,wss} scheme family as equivalent for the same
+      // origin, per RFC 6455 §4 and RFC 9110 §4.2.2.
+      if (parsed.host === request.host) return true
+      if (extraAllows.includes(parsed.origin)) return true
+      const requestOrigin = request.origin.replace(/^ws:/, "http:").replace(/^wss:/, "https:")
+      return isLoopbackOrigin(parsed.origin) && isLoopbackOrigin(requestOrigin)
+    } catch {
+      return false
+    }
+  }
+
+  function isGlobalRoute(pathname: string) {
+    const instanceState = runtimeState()
+
+    return (
+      instanceState.contributions?.isGlobalRoute?.(pathname) === true ||
+      pathname === "/" ||
+      pathname === "/doc" ||
+      pathname === "/log" ||
+      pathname.startsWith("/assets/") ||
+      pathname === "/global" ||
+      pathname.startsWith("/global/") ||
+      pathname === "/asset" ||
+      pathname.startsWith("/asset/") ||
+      pathname === "/scope" ||
+      pathname === "/scope/index" ||
+      pathname === "/auth" ||
+      pathname.startsWith("/auth/")
+    )
+  }
+
+  function isScopeRequiredRoute(pathname: string) {
+    const instanceState = runtimeState()
+
+    return (
+      instanceState.contributions?.isScopeRequiredRoute?.(pathname) === true ||
+      pathname === "/git" ||
+      pathname.startsWith("/git/") ||
+      pathname === "/pty" ||
+      pathname.startsWith("/pty/") ||
+      pathname === "/path" ||
+      pathname.startsWith("/path/") ||
+      pathname === "/experimental/worktree" ||
+      pathname.startsWith("/experimental/worktree/") ||
+      pathname === "/workspace" ||
+      pathname.startsWith("/workspace/")
+    )
+  }
+
+  function requestDirectory(c: Context) {
+    const directory = c.req.query("directory") || c.req.header("x-synergy-directory")
+    if (!directory) return undefined
+    try {
+      return decodeURIComponent(directory)
+    } catch {
+      return directory
+    }
+  }
+
+  function requestScopeID(c: Context) {
+    const target =
+      c.req.method === "PATCH" || c.req.method === "DELETE" ? /^\/scope\/([^/]+)\/?$/.exec(c.req.path)?.[1] : undefined
+    const scopeID = target || c.req.query("scopeID") || c.req.header("x-synergy-scope-id")
+    if (!scopeID) return undefined
+    try {
+      return decodeURIComponent(scopeID)
+    } catch {
+      return scopeID
+    }
+  }
+
+  const RawHtmlScopePattern = /^\/workspace\/files\/raw\/([^/]+)\//
+
+  function rawHtmlScope(c: Context): { scopeID: string } | undefined {
+    const token = RawHtmlScopePattern.exec(c.req.path)?.[1]
+    if (!token) return undefined
+    if (token === "home") return { scopeID: "home" }
+    try {
+      const scopeID = Buffer.from(token, "base64url").toString("utf-8")
+      if (!scopeID || Buffer.from(scopeID).toString("base64url") !== token) throw new Error("Invalid Scope token")
+      return { scopeID }
+    } catch {
+      throw new Scope.RequiredError({ message: "A valid Scope token is required for a Workspace file URL" })
+    }
+  }
+
+  function safeHeaderId(value: string | undefined) {
+    if (!value) return undefined
+    const trimmed = value.trim()
+    if (!trimmed || trimmed.length > 128) {
+      log.debug("safeHeaderId rejected: value too long or empty", { trimmed: trimmed.slice(0, 64) })
+      return undefined
+    }
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(trimmed)) {
+      log.debug("safeHeaderId rejected: invalid characters", { trimmed: trimmed.slice(0, 64) })
+      return undefined
+    }
+    return trimmed
+  }
+
+  function assertWorktreeSessionIdle(sessionID: string | undefined) {
+    if (!sessionID) return
+    if (!SessionManager.isRunning(sessionID)) return
+    throw new Worktree.SessionBusyError({
+      sessionID,
+      message: "Stop the session before changing worktree.",
+    })
+  }
+
+  async function provideRequestScope(c: Context, next: Next) {
+    const directory = requestDirectory(c)
+    const scopeID = requestScopeID(c)
+    const rawScope = rawHtmlScope(c)
+    const scope =
+      isGlobalRoute(c.req.path) || (!directory && !scopeID && !rawScope && !isScopeRequiredRoute(c.req.path))
+        ? Scope.home()
+        : await Scope.resolve({
+            scopeID: rawScope?.scopeID ?? scopeID,
+            directory: rawScope ? undefined : directory,
+          })
+    return ScopeContext.provide({
+      scope,
+      workspace: c.req.path === "/workspace" || c.req.path.startsWith("/workspace/") ? null : undefined,
+      async fn() {
+        // Snapshot watermark: capture the scope's event seq before the handler
+        // reads data, then advertise it as a response header. It is a
+        // conservative lower bound on the snapshot's freshness, so the client
+        // apply-gate never rejects a newer event as stale (frontend sync gate).
+        const stampSeq = c.req.method === "GET" ? Bus.currentSeq() : undefined
+        const stampEpoch = stampSeq !== undefined ? Bus.epoch() : undefined
+        await next()
+        if (stampSeq !== undefined && c.res) {
+          if (!c.res.headers.has("x-synergy-seq")) c.res.headers.set("x-synergy-seq", String(stampSeq))
+          if (stampEpoch && !c.res.headers.has("x-synergy-epoch")) c.res.headers.set("x-synergy-epoch", stampEpoch)
+        }
+      },
+    })
+  }
+
+  export function url(): URL {
+    const instanceState = runtimeState()
+
+    return instanceState._url ?? new URL(DEFAULT_URL)
+  }
+
+  export const Event = {
+    Cursor: BusEvent.define(
+      "server.cursor",
+      z.object({ epoch: z.string(), fromSeq: z.number().int().nonnegative(), toSeq: z.number().int().nonnegative() }),
+    ),
+    ProjectionReset: BusEvent.define("server.projection.reset", z.object({ eventType: z.string() })),
+    ViewPatch: BusEvent.define(
+      "server.view.patch",
+      z.object({
+        kind: z.string(),
+        sessionID: z.string(),
+        generation: z.number().int().nonnegative(),
+        revision: z.number().int().nonnegative(),
+        previousRevision: z.number().int().nonnegative(),
+        patches: ProjectionPatch.array(),
+        snapshot: z.string().optional(),
+      }),
+    ),
+    Connected: BusEvent.define("server.connected", z.object({})),
+    Disposed: BusEvent.define("global.disposed", z.object({})),
+  }
+
+  export type RouteStage =
+    | "global-tools"
+    | "global-performance"
+    | "global-services"
+    | "global-navigation"
+    | "scoped-version-control"
+    | "scoped-before-assets"
+    | "scoped-after-assets"
+    | "scoped-integrations"
+
+  export type ViewProjectionContribution = ProjectionContribution
+  export type EventClientActive = { scopeID: string; sessionID: string; generation: number }
+  export type EventClientFrame = {
+    scopeID: string | null
+    payload: { type: string; properties: Record<string, unknown> }
+  }
+  export interface EventClientConnection {
+    receive(payload: unknown): void
+    active(active: EventClientActive | undefined): void
+    dispose(): void
+  }
+  export interface EventClientContribution {
+    connect(client: { clientId: string; send(frame: EventClientFrame): boolean }): EventClientConnection
+  }
+  export interface Contributions {
+    features?: readonly string[]
+    projections?: ViewProjectionContribution[]
+    eventClients?: EventClientContribution[]
+    routes?: Partial<Record<RouteStage, Hono>>
+    providerRoutes?: Hono
+    bootstrap?: BootstrapContributions
+    scopeConflictSchema?: z.ZodType
+    isGlobalRoute?: (pathname: string) => boolean
+    isScopeRequiredRoute?: (pathname: string) => boolean
+    errorStatus?: (error: NamedError) => ContentfulStatusCode | undefined
+    mountApp?: (app: Hono) => void
+    configureOrigins?: (origins: string[]) => void
+    listening?: (url: URL) => void
+  }
+
+  export function registerContributions(value: Contributions, owner = "application") {
+    const instanceState = runtimeState()
+
+    if (instanceState.contributionOwners.get(owner) === value) return
+    RuntimeContext.assertCompositionOpen("Server contributions")
+    if (instanceState.contributionOwners.has(owner))
+      throw new Error(`Server contributions are already registered for ${owner}`)
+    if (instanceState.appInitialized)
+      throw new Error("Server contributions must be registered before constructing the application")
+    const contributions = [...instanceState.contributionOwners.values(), value]
+    const routes: Partial<Record<RouteStage, Hono>> = {}
+    const bootstrap: BootstrapContributions = {}
+    const providerRoutes = new Hono()
+    const conflicts: z.ZodType[] = []
+    for (const contribution of contributions) {
+      for (const [stage, route] of Object.entries(contribution.routes ?? {})) {
+        const key = stage as RouteStage
+        ;(routes[key] ??= new Hono()).route("", route)
+      }
+      for (const key of Object.keys(contribution.bootstrap ?? {})) {
+        if (key in bootstrap) throw new Error(`Duplicate bootstrap contribution: ${key}`)
+      }
+      Object.assign(bootstrap, contribution.bootstrap)
+      if (contribution.providerRoutes) providerRoutes.route("", contribution.providerRoutes)
+      if (contribution.scopeConflictSchema) conflicts.push(contribution.scopeConflictSchema)
+    }
+    const applications = contributions.filter((contribution) => contribution.mountApp)
+    if (applications.length > 1) throw new Error("Multiple application asset owners")
+    instanceState.contributions = {
+      routes,
+      projections: contributions.flatMap((contribution) => contribution.projections ?? []),
+      eventClients: contributions.flatMap((contribution) => contribution.eventClients ?? []),
+      bootstrap,
+      providerRoutes,
+      scopeConflictSchema: conflicts.length > 1 ? z.union(conflicts) : conflicts[0],
+      isGlobalRoute: (pathname) => contributions.some((contribution) => contribution.isGlobalRoute?.(pathname)),
+      isScopeRequiredRoute: (pathname) =>
+        contributions.some((contribution) => contribution.isScopeRequiredRoute?.(pathname)),
+      errorStatus: (error) => {
+        for (const contribution of contributions) {
+          const status = contribution.errorStatus?.(error)
+          if (status !== undefined) return status
+        }
+      },
+      mountApp: applications[0]?.mountApp,
+      configureOrigins: (origins) => contributions.forEach((contribution) => contribution.configureOrigins?.(origins)),
+      listening: (url) => contributions.forEach((contribution) => contribution.listening?.(url)),
+    }
+    instanceState.contributionOwners.set(owner, value)
+  }
+
+  export function features(): string[] {
+    const selected = new Set(RuntimeComponents.selected().map((component) => component.id))
+    return [
+      ...new Set(
+        [...runtimeState().contributionOwners].flatMap(([owner, contribution]) =>
+          selected.has(owner) ? (contribution.features ?? []).filter((id) => Features.enabled(id)) : [],
+        ),
+      ),
+    ].sort()
+  }
+
+  function contributionRoutes(stage: RouteStage): Hono {
+    const instanceState = runtimeState()
+
+    return instanceState.contributions?.routes?.[stage] ?? new Hono()
+  }
+
+  export function App(): Hono {
+    const instanceState = runtimeState()
+
+    const owner = RuntimeContext.current()
+    if (instanceState.appInitialized) return instanceState.app
+    instanceState.appInitialized = true
+    return instanceState.app
+      .use("*", (c, next) =>
+        owner.run(async () => {
+          const mutation = !["GET", "HEAD", "OPTIONS"].includes(c.req.method)
+          if (mutation) instanceState.mutations++
+          const task = next()
+          instanceState.requests.add(task)
+          try {
+            await task
+          } finally {
+            instanceState.requests.delete(task)
+            if (mutation) instanceState.mutations--
+          }
+        }),
+      )
+      .onError((err, c) => {
+        const instanceState = runtimeState()
+
+        if (err instanceof BusyError || err instanceof WorkspaceAccess.BusyError)
+          return c.json({ name: err.name, data: { message: err.message } }, 409)
+        if (err instanceof Storage.BusyError || err instanceof Storage.UnavailableError) {
+          const state = err instanceof Storage.UnavailableError ? "unavailable" : "busy"
+          log.warn("storage request unavailable", { state, error: err })
+          const retryAfterMs = state === "unavailable" ? 5_000 : 1_000
+          c.header("Retry-After", String(Math.ceil(retryAfterMs / 1_000)))
+          return c.json(
+            new StorageServiceError({
+              message:
+                state === "unavailable"
+                  ? "Authoritative storage is recovering; retry shortly"
+                  : "Authoritative storage is busy; retry shortly",
+              state,
+              retryAfterMs,
+            }).toObject(),
+            503,
+          )
+        }
+        if (err instanceof Scope.NotFoundError) return c.json(err.toObject(), { status: 404 })
+        if (err instanceof SessionPreparingError) {
+          c.header("Retry-After", "2")
+          return c.json(err.toObject(), 409)
+        }
+        if (err instanceof Storage.NotFoundError) return c.json(err.toObject(), { status: 404 })
+        if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
+          return c.json(new Storage.NotFoundError({ message: "Resource not found" }).toObject(), { status: 404 })
+        }
+        log.error("failed", {
+          method: c.req.method,
+          route: ObservabilityRedaction.routePath(c.req.path),
+          error: err,
+        })
+        if (err instanceof NamedError) {
+          let status: ContentfulStatusCode
+          const contributedStatus = instanceState.contributions?.errorStatus?.(err)
+          if (contributedStatus !== undefined) status = contributedStatus
+          else if (
+            err instanceof ConfigImport.RevisionConflictError ||
+            err instanceof ConfigImport.LockedError ||
+            err instanceof Worktree.UnavailableError ||
+            err instanceof WorkspaceCatalog.Unavailable ||
+            err instanceof WorkspaceCatalog.BindingChanged ||
+            err instanceof Environment.Busy ||
+            err instanceof Environment.Stale ||
+            err instanceof Scope.WorkspaceUnavailableError ||
+            err instanceof Session.ForkPointMissingError ||
+            err.name === "SessionModelSelectionConflictError" ||
+            err.name === "SessionTransferBlocked" ||
+            err.name === "SessionTransferRejected" ||
+            err.name === "HostConnectionRejected" ||
+            err instanceof SessionExecutionOwners.UnavailableError
+          )
+            status = 409
+          else if (err instanceof Environment.Unavailable) status = 503
+          else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
+          else if (
+            err instanceof SessionLocationError ||
+            err instanceof WorkspaceCatalog.Invalid ||
+            err instanceof Scope.RequiredError ||
+            err instanceof Scope.WorkspaceRequiredError ||
+            err instanceof ConfigImport.ProjectScopeRequiredError ||
+            err instanceof ConfigImport.SourceParseError ||
+            err instanceof ConfigImport.SourceFetchError ||
+            err instanceof Config.InvalidError ||
+            err instanceof Provider.ModelNotFoundError
+          )
+            status = 400
+          else if (
+            err.name.startsWith("Worktree") ||
+            err.name.startsWith("Command") ||
+            [
+              "SessionThinkingUnavailableError",
+              "SessionModelSelectionUnavailableError",
+              "ProviderModelVariantUnavailableError",
+            ].includes(err.name)
+          )
+            status = 400
+          else if (err.name.startsWith("ProviderAuth")) status = 400
+          else status = 500
+          return c.json(err.toObject(), { status })
+        }
+        return c.json(new NamedError.Unknown({ message: "Internal server error" }).toObject(), {
+          status: 500,
+        })
+      })
+      .use(
+        cors({
+          origin(input) {
+            const instanceState = runtimeState()
+
+            if (!input) return
+
+            if (isLoopbackOrigin(input)) return input
+
+            if (instanceState._corsWhitelist.has(input)) {
+              return input
+            }
+
+            return
+          },
+          // Expose the snapshot sync watermark so the client apply-gate can
+          // read it cross-origin (frontend sync redesign).
+          exposeHeaders: ["x-synergy-seq", "x-synergy-epoch"],
+          maxAge: 600,
+        }),
+      )
+      .use(async (c, next) => {
+        const token = RuntimeContext.current().host.env.SYNERGY_SERVER_TOKEN
+        if (token && !c.req.path.startsWith("/host-connection/gateway/")) {
+          const expected = Buffer.from(`Bearer ${token}`)
+          const actual = Buffer.from(c.req.header("authorization") ?? "")
+          if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
+            return c.json({ name: "Unauthorized", data: { message: "Runtime credentials are required" } }, 401)
+        }
+        if (instanceState._shuttingDown)
+          return c.json({ name: "RuntimeShuttingDown", data: { message: "Synergy runtime is shutting down" } }, 503)
+        if (
+          instanceState.maintenance &&
+          !["GET", "HEAD", "OPTIONS"].includes(c.req.method) &&
+          !["/global/maintenance/prepare", "/global/maintenance/release"].includes(c.req.path)
+        )
+          return c.json(
+            { name: "RuntimeMaintenance", data: { message: "Storage maintenance is preparing; retry shortly" } },
+            503,
+          )
+        await next()
+      })
+      .use(async (c, next) => {
+        const reqPath = c.req.path
+        const routePath = ObservabilityRedaction.routePath(reqPath)
+        const skipLogging =
+          reqPath === "/log" ||
+          reqPath === "/global/health" ||
+          reqPath === "/global/activity" ||
+          reqPath.startsWith("/assets/")
+        const skipPerformance = skipLogging || reqPath.startsWith("/global/performance/")
+        const start = Date.now()
+        const requestId = crypto.randomUUID().slice(0, 8)
+        const incomingCorrelationId = safeHeaderId(c.req.header("x-synergy-correlation-id"))
+        const incomingTraceId = safeHeaderId(c.req.header("x-synergy-trace-id"))
+        const correlationId = incomingCorrelationId ?? `corr_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+        const rootTraceId = `http_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+
+        return ObservabilityContext.withContextAsync(
+          {
+            correlationId,
+            traceId: rootTraceId,
+            rid: requestId,
+            source: "backend",
+            module: "server",
+          },
+          async () => {
+            const span = skipPerformance
+              ? undefined
+              : ObservabilitySpans.start({
+                  name: "http.request",
+                  module: "server",
+                  rid: requestId,
+                  attributes: { method: c.req.method, route: routePath, externalTraceId: incomingTraceId },
+                })
+            const traceId = span?.traceId ?? rootTraceId
+            c.header("x-synergy-correlation-id", correlationId)
+            c.header("x-synergy-trace-id", traceId)
+            c.header("x-synergy-request-id", requestId)
+
+            const requestLength = Number(c.req.header("content-length") ?? 0)
+            if (span && Number.isFinite(requestLength) && requestLength > 0) {
+              ObservabilityMetrics.record({
+                name: "http.request.size",
+                value: requestLength,
+                unit: "bytes",
+                module: "server",
+                rid: requestId,
+                labels: { method: c.req.method, route: routePath },
+              })
+            }
+            try {
+              await next()
+            } finally {
+              const duration = Date.now() - start
+              const status = c.res.status
+              if (span) {
+                ObservabilitySpans.end(span, {
+                  status: status >= 500 ? "error" : "ok",
+                  attributes: { method: c.req.method, route: routePath, status, externalTraceId: incomingTraceId },
+                })
+              }
+              const responseLength = Number(c.res.headers.get("content-length") ?? 0)
+              if (span && Number.isFinite(responseLength) && responseLength > 0) {
+                ObservabilityMetrics.record({
+                  name: "http.response.size",
+                  value: responseLength,
+                  unit: "bytes",
+                  module: "server",
+                  traceId: span.traceId,
+                  spanId: span.spanId,
+                  rid: requestId,
+                  labels: { method: c.req.method, route: routePath, status },
+                })
+              }
+              if (span && (status >= 500 || duration >= 1000)) {
+                ObservabilityIssues.raise({
+                  code: status >= 500 ? "PERF_HTTP_ERROR" : "PERF_HTTP_SLOW_REQUEST",
+                  severity: status >= 500 ? "error" : "warning",
+                  module: "server",
+                  title: status >= 500 ? "HTTP request failed" : "Slow HTTP request",
+                  message: `${c.req.method} ${routePath} returned ${status} in ${duration}ms`,
+                  recommendation: "Open the trace detail to identify the owning server route or downstream module.",
+                  traceId: span.traceId,
+                  spanId: span.spanId,
+                  rid: requestId,
+                  evidence: {
+                    method: c.req.method,
+                    route: routePath,
+                    status,
+                    durationMs: duration,
+                    externalTraceId: incomingTraceId,
+                  },
+                })
+              }
+              if (!skipLogging) {
+                log.info("request", {
+                  rid: requestId,
+                  method: c.req.method,
+                  route: routePath,
+                  status,
+                  duration,
+                })
+                void Observability.emit("http.request", {
+                  rid: requestId,
+                  traceId: span?.traceId,
+                  level: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
+                  data: {
+                    externalTraceId: incomingTraceId,
+                    method: c.req.method,
+                    route: routePath,
+                    status,
+                    duration,
+                  },
+                })
+              }
+            }
+          },
+        )
+      })
+      .route(
+        "/host-connection",
+        HostConnectionRoute({
+          forward: async (request, env) => App().fetch(request, env),
+          originAllowed: (origin, url) => globalEventOriginAllowed(origin, url, [...instanceState._corsWhitelist]),
+        }),
+      )
+      .use(compress({ encoding: "gzip" }))
+      .use(provideRequestScope)
+      .use(cspMiddleware())
+      .get(
+        "/global/features",
+        describeRoute({
+          summary: "Get feature catalog",
+          description:
+            "List feature declarations, saved opt-ins, active state and restart requirements for this instance.",
+          operationId: "global.features",
+          responses: {
+            200: {
+              description: "Runtime feature catalog",
+              content: { "application/json": { schema: resolver(z.array(Features.Status)) } },
+            },
+            503: {
+              description: "Runtime services are still starting or shutting down",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.union([
+                      z.object({ error: z.string() }).meta({ ref: "RuntimeNotReadyError" }),
+                      RuntimeShuttingDownError,
+                    ]),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          if (!RuntimeContext.isReady()) return c.json({ error: "Runtime services are not ready" }, 503)
+          return c.json(Features.catalog((await Config.global()).features?.optIn ?? []))
+        },
+      )
+      .get(
+        "/global/capabilities",
+        describeRoute({
+          summary: "Get runtime capabilities",
+          description:
+            "List active services with HTTP adapters and selected components. Installed changes apply after restart.",
+          operationId: "global.capabilities",
+          responses: {
+            200: {
+              description: "Active runtime composition",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .object({
+                        apiVersion: z.literal(1),
+                        hostVersion: z.string(),
+                        components: z.array(RuntimeComponents.Info),
+                        features: z.array(z.string()),
+                        transports: z
+                          .object({
+                            displayManifest: z.literal(1),
+                            projection: z.literal("projection-v2").optional(),
+                            viewDemand: z.literal(1).optional(),
+                          })
+                          .optional(),
+                      })
+                      .meta({ ref: "RuntimeCapabilities" }),
+                  ),
+                },
+              },
+            },
+            503: {
+              description: "Runtime services are still starting or shutting down",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.union([
+                      z.object({ error: z.string() }).meta({ ref: "RuntimeNotReadyError" }),
+                      RuntimeShuttingDownError,
+                    ]),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        (c) => {
+          if (!RuntimeContext.isReady()) return c.json({ error: "Runtime services are not ready" }, 503)
+          return c.json({
+            apiVersion: 1 as const,
+            hostVersion: Installation.VERSION,
+            components: RuntimeComponents.selected(),
+            features: features(),
+            transports: { displayManifest: 1 as const, projection: "projection-v2" as const, viewDemand: 1 as const },
+          })
+        },
+      )
+      .get(
+        "/global/health",
+        describeRoute({
+          summary: "Get health",
+          description: "Get health information about the Synergy server.",
+          operationId: "global.health",
+          responses: {
+            200: {
+              description: "Health information",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      healthy: z.literal(true),
+                      version: z.string(),
+                      modelReady: z.boolean().meta({
+                        description: "Whether at least one AI provider with a usable model is configured",
+                      }),
+                      storage: z.object({ readerReady: z.boolean(), writerReady: z.boolean() }),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          // Bound the wait for the provider state build so a slow build can
+          // never stall the readiness probe (daemon 1.2s / CLI 3s windows).
+          // On timeout or build error, answer from the last settled provider
+          // state; never report ready optimistically when nothing has
+          // settled yet.
+          const modelReady = await resolveHealthModelReady({
+            list: () => Provider.list(),
+            listSettled: () => Provider.listSettled(),
+            onError: (error) => {
+              log.warn("failed to load providers for global health", {
+                error: error instanceof Error ? error : new Error(String(error)),
+              })
+            },
+          })
+          const storage = Storage.available()
+            ? Storage.current().store.readiness
+            : { readerReady: false, writerReady: false }
+          return c.json({ healthy: true, version: Installation.VERSION, modelReady, storage })
+        },
+      )
+      .get(
+        "/global/paths",
+        describeRoute({
+          summary: "Get global server paths",
+          description: "Retrieve process-level Synergy paths that do not require a scope context.",
+          operationId: "global.paths.get",
+          responses: {
+            200: {
+              description: "Global paths",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .object({
+                        home: z.string(),
+                        root: z.string(),
+                        data: z.string(),
+                        config: z.string(),
+                        state: z.string(),
+                        cache: z.string(),
+                        log: z.string(),
+                      })
+                      .meta({ ref: "GlobalPaths" }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json({
+            home: Global.Path.home,
+            root: Global.Path.root,
+            data: Global.Path.data,
+            config: Global.Path.config,
+            state: Global.Path.state,
+            cache: Global.Path.cache,
+            log: Global.Path.log,
+          })
+        },
+      )
+      .get(
+        "/global/filesystem/directories",
+        describeRoute({
+          summary: "List server directory children",
+          operationId: "global.filesystem.directories",
+          responses: {
+            200: {
+              description: "Directory page",
+              content: { "application/json": { schema: resolver(SynergyFile.DirectoryPage) } },
+            },
+            400: {
+              description: "Directory could not be listed",
+              content: { "application/json": { schema: resolver(SynergyFile.DirectoryError.Schema) } },
+            },
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            path: z.string(),
+            hidden: z.preprocess((value) => (value === "false" ? false : value), z.coerce.boolean()).optional(),
+            cursor: z.string().optional(),
+            limit: z.coerce.number().int().min(1).max(200).optional(),
+          }),
+        ),
+        async (c) => {
+          try {
+            return c.json(await SynergyFile.directories(c.req.valid("query")))
+          } catch (error) {
+            if (error instanceof SynergyFile.DirectoryError) return c.json(error.toObject(), 400)
+            throw error
+          }
+        },
+      )
+      .get(
+        "/global/filesystem/browse",
+        describeRoute({
+          summary: "Browse server directories",
+          description: "Browse filesystem directories by path with optional fuzzy search. Returns absolute paths.",
+          operationId: "global.filesystem.browse",
+          responses: {
+            200: {
+              description: "Directory paths",
+              content: {
+                "application/json": {
+                  schema: resolver(z.string().array()),
+                },
+              },
+            },
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            path: z.string(),
+            query: z.string().optional(),
+            limit: z.coerce.number().int().min(1).max(200).optional(),
+            depth: z.coerce.number().int().min(1).max(10).optional(),
+          }),
+        ),
+        async (c) => {
+          const { path, query, limit, depth } = c.req.valid("query")
+          const results = await SynergyFile.browse({ path, query, limit: limit ?? 50, depth: depth ?? 4 })
+          return c.json(results)
+        },
+      )
+      .route("", contributionRoutes("global-tools"))
+      .route("/global/update", UpdateRoute())
+      .route("/global", ObservabilityRoute())
+      .route("", contributionRoutes("global-performance"))
+      .route("/global/storage", GlobalStorageRoute())
+      .get(
+        "/global/event/ws",
+        (() => {
+          const instanceState = runtimeState()
+
+          // Track clients by stable raw socket identity. Hono's Bun adapter
+          // constructs a fresh WSContext wrapper per callback, so Map keys based
+          // on the wrapper leak across reconnects (#551). The registry also
+          // applies send backpressure limits so a slow UI cannot hard-stall the
+          // event loop (#524).
+          const globalEventClients = GlobalEventClients.createRegistry({
+            onRemove(key) {
+              const connection = eventClients.get(key)
+              eventClients.delete(key)
+              for (const handler of connection?.handlers ?? []) {
+                try {
+                  handler.dispose()
+                } catch (error) {
+                  log.warn("event client disposal failed", { error })
+                }
+              }
+              for (const release of legacy.get(key) ?? []) release()
+              legacy.delete(key)
+              views.get(key)?.dispose()
+              views.delete(key)
+              projections.get(key)?.dispose()
+              projections.delete(key)
+            },
+          })
+          // One encoder shared by all delta clients on this route: they receive
+          // identical frames, so the checkpoint throttle is shared correctly.
+          const wire = EventWire.createEncoder()
+          const projections = new Map<unknown, ReturnType<typeof createEventProjection>>()
+          const legacy = new Map<unknown, Array<() => void>>()
+          const views = new Map<unknown, ReturnType<typeof createViewProjection>>()
+          const eventClients = new Map<unknown, { generation: number; handlers: EventClientConnection[] }>()
+          const broadcastHandler = (event: ViewEvent) => {
+            let summary: MessageV2.PartSummary | undefined
+            let header: ReturnType<typeof SessionHistory.summarizeMessage> | undefined
+            const result = globalEventClients.broadcast(
+              (mode) => {
+                if (mode === "full") return JSON.stringify(event)
+                const dp = wire.deltaPayload(event.payload)
+                return dp === event.payload
+                  ? JSON.stringify(event)
+                  : JSON.stringify({ scopeID: event.scopeID, payload: dp })
+              },
+              (client) => {
+                if (client.mode === "projection-v2") {
+                  const frame = views.get(GlobalEventClients.connectionKey(client.ws))?.project(event)
+                  return frame ? JSON.stringify(frame) : null
+                }
+                if (client.mode !== "projection") return
+                if (event.payload.type === "message.part.updated")
+                  summary ??= MessageV2.summarizePart(event.payload.properties.part as MessageV2.Part)
+                if (event.payload.type === "message.updated")
+                  header ??= SessionHistory.summarizeMessage(event.payload.properties.info as MessageV2.Info)
+                if (summary)
+                  return JSON.stringify(
+                    projections.get(GlobalEventClients.connectionKey(client.ws))!.project(event, summary),
+                  )
+                if (header)
+                  return JSON.stringify({
+                    ...event,
+                    payload: { ...event.payload, properties: { info: header.info, content: header.content } },
+                  })
+                return JSON.stringify(event)
+              },
+            )
+            const live = new Set(
+              [...globalEventClients.clients()].map((client) => GlobalEventClients.connectionKey(client.ws)),
+            )
+            for (const [key, projection] of projections)
+              if (!live.has(key)) {
+                projection.dispose()
+                projections.delete(key)
+              }
+            for (const [key, view] of views)
+              if (!live.has(key)) {
+                view.dispose()
+                views.delete(key)
+              }
+            for (const [key, releases] of legacy)
+              if (!live.has(key)) {
+                for (const release of releases) release()
+                legacy.delete(key)
+              }
+            const payload = event?.payload
+            const part = payload?.properties?.part as MessageV2.Part | undefined
+            if (result.dropped > 0 && payload?.type === "message.part.updated" && part?.type === "tool") {
+              log.warn("global event ws tool part send failed", {
+                sessionID: part.sessionID,
+                messageID: part.messageID,
+                partID: part.id,
+                callID: part.callID,
+                tool: part.tool,
+                status: part.state?.status,
+                dropped: result.dropped,
+                removed: result.removed,
+                clients: result.clients,
+              })
+            }
+          }
+          GlobalBus().on("event", broadcastHandler)
+          instanceState._globalEventBroadcastOff = () => {
+            GlobalBus().off("event", broadcastHandler)
+            for (const projection of projections.values()) projection.dispose()
+            projections.clear()
+            for (const view of views.values()) view.dispose()
+            views.clear()
+            for (const releases of legacy.values()) for (const release of releases) release()
+            legacy.clear()
+          }
+          const heartbeatData = JSON.stringify({
+            scopeID: null,
+            payload: {
+              type: "server.heartbeat",
+              properties: {},
+            },
+          })
+          const heartbeat = setInterval(() => {
+            globalEventClients.heartbeat(heartbeatData)
+          }, 30000)
+          instanceState._globalEventHeartbeatInterval = heartbeat
+          instanceState._globalEventClients = globalEventClients
+          return upgradeWebSocket((c) => {
+            const instanceState = runtimeState()
+
+            if (!globalEventOriginAllowed(c.req.header("origin"), c.req.url, [...instanceState._corsWhitelist])) {
+              log.warn("global event ws rejected", { origin: c.req.header("origin") })
+              return {
+                onOpen(_event, ws) {
+                  ws.close(1008, "Origin not allowed")
+                },
+                onMessage() {},
+                onClose() {},
+                onError() {},
+              }
+            }
+            const streamMode = c.req.query("stream")
+            const mode: GlobalEventClients.Mode =
+              streamMode === "projection-v2"
+                ? "projection-v2"
+                : streamMode === "projection"
+                  ? "projection"
+                  : streamMode === "delta"
+                    ? "delta"
+                    : "full"
+            return {
+              onOpen(_event, ws) {
+                log.info("global event ws connected", { mode })
+                globalEventClients.add(ws, mode)
+                const key = GlobalEventClients.connectionKey(ws)
+                const connection = { generation: -1, handlers: [] as EventClientConnection[] }
+                eventClients.set(key, connection)
+                const clientId = crypto.randomUUID()
+                try {
+                  for (const contribution of instanceState.contributions?.eventClients ?? []) {
+                    const handler = contribution.connect({
+                      clientId,
+                      send: (frame) =>
+                        eventClients.get(key) === connection &&
+                        globalEventClients.reply(ws, JSON.stringify(frame)) === "sent",
+                    })
+                    if (eventClients.get(key) !== connection) {
+                      handler.dispose()
+                      return
+                    }
+                    connection.handlers.push(handler)
+                  }
+                } catch (error) {
+                  log.warn("event client connection failed", { error })
+                  globalEventClients.remove(ws)
+                  return
+                }
+                if (mode !== "projection-v2")
+                  legacy.set(
+                    GlobalEventClients.connectionKey(ws),
+                    instanceState.contributions?.projections?.flatMap((contribution) =>
+                      contribution.legacy ? [contribution.legacy()] : [],
+                    ) ?? [],
+                  )
+                if (mode === "projection-v2")
+                  views.set(
+                    GlobalEventClients.connectionKey(ws),
+                    createViewProjection(
+                      (frame) => {
+                        globalEventClients.stream(ws, JSON.stringify(frame))
+                      },
+                      instanceState.contributions?.projections,
+                      projectionContent(),
+                    ),
+                  )
+                if (mode === "projection")
+                  projections.set(
+                    GlobalEventClients.connectionKey(ws),
+                    createEventProjection((frame) => {
+                      globalEventClients.reply(ws, JSON.stringify(frame))
+                    }),
+                  )
+                globalEventClients.reply(
+                  ws,
+                  JSON.stringify({
+                    scopeID: null,
+                    payload: {
+                      type: "server.connected",
+                      properties: {},
+                    },
+                  }),
+                )
+              },
+              onClose(_event, ws) {
+                globalEventClients.remove(ws)
+                log.info("global event ws disconnected")
+              },
+              onError(_event, ws) {
+                globalEventClients.remove(ws)
+              },
+              onMessage(_event, ws) {
+                try {
+                  if (typeof _event.data !== "string") return
+                  const data = JSON.parse(_event.data)
+                  if (
+                    (data?.payload?.type === "client.content.interests" && mode === "projection") ||
+                    (data?.payload?.type === "client.view.interests" && mode === "projection-v2")
+                  ) {
+                    const interests =
+                      mode === "projection-v2"
+                        ? ViewInterests.parse(data.payload.properties)
+                        : ContentInterests.parse(data.payload.properties)
+                    if (mode === "projection-v2") {
+                      const publication = ViewInterests.parse(interests)
+                      const connection = eventClients.get(GlobalEventClients.connectionKey(ws))
+                      if (!connection || publication.generation <= connection.generation) return
+                      connection.generation = publication.generation
+                      for (const handler of connection.handlers) handler.active(publication.active)
+                    }
+                    const read = async (interest: z.infer<typeof ContentInterests>["parts"][number]) => {
+                      const session = await SessionManager.requireSession(interest.sessionID)
+                      if (session.scope.id !== interest.scopeID)
+                        throw new Error("Content interest belongs to another Scope")
+                      const scope = await Scope.resolve({ scopeID: interest.scopeID })
+                      return ScopeContext.provide({
+                        scope,
+                        workspace: null,
+                        fn: async () => {
+                          const epoch = Bus.epoch(),
+                            seq = Bus.currentSeq()
+                          await Session.flushPartWrites(interest.sessionID)
+                          const result = await SessionHistory.partContent({
+                            sessionID: interest.sessionID,
+                            messageID: interest.messageID,
+                            partID: interest.partID,
+                          })
+                          return { part: result.part, epoch, seq }
+                        },
+                      })
+                    }
+                    if (mode === "projection-v2")
+                      void views
+                        .get(GlobalEventClients.connectionKey(ws))
+                        ?.interests(ViewInterests.parse(interests), read)
+                        .catch((error) => log.warn("view interests failed", { error }))
+                    else void projections.get(GlobalEventClients.connectionKey(ws))?.interests(interests, read)
+                    return
+                  }
+                  if (data?.payload?.type === "client.ping") {
+                    globalEventClients.reply(
+                      ws,
+                      JSON.stringify({
+                        scopeID: null,
+                        payload: {
+                          type: "server.pong",
+                          properties: {},
+                        },
+                      }),
+                    )
+                    return
+                  }
+                  for (const handler of eventClients.get(GlobalEventClients.connectionKey(ws))?.handlers ?? [])
+                    handler.receive(data?.payload)
+                } catch {}
+              },
+            }
+          })
+        })(),
+      )
+      .post(
+        "/global/dispose",
+        describeRoute({
+          summary: "Dispose scope runtimes",
+          description: "Clean up and dispose all scope runtimes, releasing all scoped resources.",
+          operationId: "global.dispose",
+          responses: {
+            200: {
+              description: "Global disposed",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          await ScopeRuntime.disposeAll()
+          GlobalBus().emit("event", {
+            scopeID: null,
+            payload: {
+              type: Event.Disposed.type,
+              properties: {},
+            },
+          })
+          return c.json(true)
+        },
+      )
+      .route("", contributionRoutes("global-services"))
+      .route("/global/activity", GlobalActivityRoute())
+      .route(
+        "/global/maintenance",
+        MaintenanceAdmissionRoute({ prepare: prepareMaintenance, release: releaseMaintenance }),
+      )
+      .route("/global/session", GlobalSessionRoute())
+      .route("", contributionRoutes("global-navigation"))
+      .get("/doc", async (c) => c.json(await openapi()))
+      .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
+
+      .route("/scope", createScopeRoute(instanceState.contributions?.scopeConflictSchema))
+      .route("/workflow", WorkflowKindRegistry.ids().length ? WorkflowRoute() : new Hono())
+      .route("/scope", createScopeBootstrapRoute(instanceState.contributions?.bootstrap))
+      .route("/pty", PtyRoute())
+      .route("/config", ConfigRoute())
+      .route("/secrets", SecretsRoute())
+      .route("/runtime", RuntimeRoute())
+      .route("", ControlProfileRoute())
+      .route("", SandboxReadinessRoute())
+      .get(
+        "/experimental/tool/ids",
+        describeRoute({
+          summary: "List tool IDs",
+          description:
+            "Get a list of all available tool IDs, including both built-in tools and dynamically registered tools.",
+          operationId: "tool.ids",
+          responses: {
+            200: {
+              description: "Tool IDs",
+              content: {
+                "application/json": {
+                  schema: resolver(z.array(z.string()).meta({ ref: "ToolIDs" })),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        async (c) => {
+          return c.json(await ToolRegistry.ids())
+        },
+      )
+      .get(
+        "/experimental/tool",
+        describeRoute({
+          summary: "List tools",
+          description:
+            "Get a list of available tools with their JSON schema parameters for a specific provider and model combination.",
+          operationId: "tool.list",
+          responses: {
+            200: {
+              description: "Tools",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .array(
+                        z
+                          .object({
+                            id: z.string(),
+                            description: z.string(),
+                            parameters: z.any(),
+                          })
+                          .meta({ ref: "ToolListItem" }),
+                      )
+                      .meta({ ref: "ToolList" }),
+                  ),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            provider: z.string(),
+            model: z.string(),
+          }),
+        ),
+        async (c) => {
+          const { provider } = c.req.valid("query")
+          const tools = await ToolRegistry.tools(provider)
+          return c.json(
+            tools.map((t) => ({
+              id: t.id,
+              description: t.description,
+              // Handle both Zod schemas and plain JSON schemas
+              parameters: (t.parameters as any)?._def ? zodToJsonSchema(t.parameters as any) : t.parameters,
+            })),
+          )
+        },
+      )
+      .post(
+        "/scope/runtime/dispose",
+        describeRoute({
+          summary: "Dispose scope runtime",
+          description: "Clean up and dispose the current scope runtime, releasing scoped resources.",
+          operationId: "scope.runtime.dispose",
+          responses: {
+            200: {
+              description: "Scope runtime disposed",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          await ScopeRuntime.dispose()
+          return c.json(true)
+        },
+      )
+      .get(
+        "/path",
+        describeRoute({
+          summary: "Get paths",
+          description:
+            "Retrieve the current working directory and related path information for the active scope context.",
+          operationId: "path.get",
+          responses: {
+            200: {
+              description: "Path",
+              content: {
+                "application/json": {
+                  schema: resolver(ScopePath.Schema),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json(ScopePath.current())
+        },
+      )
+      .post(
+        "/experimental/worktree",
+        describeRoute({
+          summary: "Create worktree",
+          description: "Create a new git worktree for the current project.",
+          operationId: "worktree.create",
+          responses: {
+            200: {
+              description: "Worktree created",
+              content: {
+                "application/json": {
+                  schema: resolver(Worktree.Info),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator("json", Worktree.PublicCreateInput),
+        async (c) => {
+          const body = c.req.valid("json")
+          if (body.bind !== false) assertWorktreeSessionIdle(body.sessionID)
+          const worktree = await Worktree.create(body)
+          return c.json(worktree)
+        },
+      )
+      .get(
+        "/experimental/worktree",
+        describeRoute({
+          summary: "List worktrees",
+          description:
+            "List git worktrees for the current project, combining git worktree state with Synergy metadata.",
+          operationId: "worktree.list",
+          responses: {
+            200: {
+              description: "List of git worktrees",
+              content: {
+                "application/json": {
+                  schema: resolver(Worktree.Info.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const worktrees = await Worktree.list()
+          return c.json(worktrees)
+        },
+      )
+      .post(
+        "/experimental/worktree/session/:sessionID/enter",
+        describeRoute({
+          summary: "Enter worktree",
+          description: "Bind an existing git worktree to a session.",
+          operationId: "worktree.enter",
+          responses: {
+            200: {
+              description: "Session moved to worktree",
+              content: {
+                "application/json": {
+                  schema: resolver(Session.Info),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            sessionID: z.string(),
+          }),
+        ),
+        validator(
+          "json",
+          z
+            .object({
+              target: z.string().min(1),
+              force: z.boolean().optional().default(false),
+            })
+            .meta({ ref: "WorktreeEnterInput" }),
+        ),
+        async (c) => {
+          const sessionID = c.req.valid("param").sessionID
+          const body = c.req.valid("json")
+          const existing = await Session.get(sessionID)
+          if (!existing) {
+            return c.json({ name: "SessionNotFound", data: { message: `Session not found: ${sessionID}` } }, 404)
+          }
+          assertWorktreeSessionIdle(sessionID)
+          await Worktree.enter({ sessionID, target: body.target, force: body.force })
+          const session = await Session.get(sessionID)
+          return c.json(Session.publicInfo(session))
+        },
+      )
+      .post(
+        "/experimental/worktree/session/:sessionID/leave",
+        describeRoute({
+          summary: "Leave worktree",
+          description: "Leave the current git worktree for a session and return it to the main checkout.",
+          operationId: "worktree.leave",
+          responses: {
+            200: {
+              description: "Session returned to main checkout",
+              content: {
+                "application/json": {
+                  schema: resolver(Session.Info),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            sessionID: z.string(),
+          }),
+        ),
+        async (c) => {
+          const sessionID = c.req.valid("param").sessionID
+          assertWorktreeSessionIdle(sessionID)
+          const session = await Worktree.leave(sessionID)
+          return c.json(Session.publicInfo(session))
+        },
+      )
+      .post(
+        "/experimental/worktree/remove",
+        describeRoute({
+          summary: "Remove worktree",
+          description: "Remove a git worktree after leaving every bound session. Dirty worktrees require force=true.",
+          operationId: "worktree.remove",
+          responses: {
+            200: {
+              description: "Worktree removed",
+              content: {
+                "application/json": {
+                  schema: resolver(Worktree.Info),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator("json", Worktree.RemoveInput),
+        async (c) => {
+          const body = c.req.valid("json")
+          const worktree = await Worktree.remove(body)
+          return c.json(worktree)
+        },
+      )
+      .route("", contributionRoutes("scoped-version-control"))
+      .route("/session", SessionNavRoute())
+      .route("/session", SessionRoute())
+      .route("/session", SessionVolatileBatchRoute())
+      .route("", PermissionRoute())
+      .route("/question", QuestionRoute())
+      .route("/session", SessionExportRoute())
+      .route("/session-transfer", SessionTransferRoute())
+      .route("/cortex/tasks", CortexRoute())
+
+      .get(
+        "/command",
+        describeRoute({
+          summary: "List commands",
+          description: "Get a list of all available commands in the Synergy system.",
+          operationId: "command.list",
+          responses: {
+            200: {
+              description: "List of commands",
+              content: {
+                "application/json": {
+                  schema: resolver(Command.Summary.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const commands = await Command.summaries()
+          return c.json(commands)
+        },
+      )
+
+      .route("/provider", createProviderRoute(instanceState.contributions?.providerRoutes))
+      .route("/skill", SkillRoute())
+      .route("/workspace/files", WorkspaceFilesRoute())
+      .route("/workspace", WorkspacesRoute())
+      .route("/environment", EnvironmentsRoute())
+      .route("", contributionRoutes("scoped-before-assets"))
+      .route("/asset", AssetRoute())
+      .route("", contributionRoutes("scoped-after-assets"))
+      .post(
+        "/log",
+        describeRoute({
+          summary: "Write log",
+          description: "Write a log entry to the server logs with specified level and metadata.",
+          operationId: "app.log",
+          responses: {
+            200: {
+              description: "Log entry written successfully",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "json",
+          z.object({
+            service: z.string().max(64).meta({ description: "Service name for the log entry" }),
+            level: z.enum(["debug", "info", "error", "warn"]).meta({ description: "Log level" }),
+            message: z.string().max(4096).meta({ description: "Log message" }),
+            extra: z
+              .record(z.string(), z.any())
+              .optional()
+              .meta({ description: "Additional metadata for the log entry" }),
+          }),
+        ),
+        async (c) => {
+          const { service, level, message, extra } = c.req.valid("json")
+          const safeExtra = extra ? Object.fromEntries(Object.entries(extra).slice(0, 20)) : undefined
+          const logger = Log.create({ service: `client.${service}` })
+
+          switch (level) {
+            case "debug":
+              logger.debug(message, safeExtra)
+              break
+            case "info":
+              logger.info(message, safeExtra)
+              break
+            case "error":
+              logger.error(message, safeExtra)
+              break
+            case "warn":
+              logger.warn(message, safeExtra)
+              break
+          }
+
+          return c.json(true)
+        },
+      )
+      .get(
+        "/agent",
+        describeRoute({
+          summary: "List agents",
+          description: "Get a list of all available AI agents in the Synergy system.",
+          operationId: "app.agents",
+          responses: {
+            200: {
+              description: "List of agents",
+              content: {
+                "application/json": {
+                  schema: resolver(Agent.Info.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const modes = await Agent.list()
+          return c.json(modes)
+        },
+      )
+      .get(
+        "/agent/model-roles",
+        describeRoute({
+          summary: "List model role summaries",
+          description: "Get model role configuration, fallback, and usage metadata for the settings UI.",
+          operationId: "app.agentModelRoles",
+          responses: {
+            200: {
+              description: "List of model role summaries",
+              content: {
+                "application/json": {
+                  schema: resolver(Agent.ModelRoleSummary.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json(await Agent.modelRoleSummaries())
+        },
+      )
+
+      .route("", contributionRoutes("scoped-integrations"))
+      .put(
+        "/auth/:providerID",
+        describeRoute({
+          summary: "Set auth credentials",
+          description: "Set authentication credentials",
+          operationId: "auth.set",
+          responses: {
+            200: {
+              description: "Successfully set authentication credentials",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            providerID: z.string(),
+          }),
+        ),
+        validator("json", Auth.Info),
+        async (c) => {
+          const providerID = c.req.valid("param").providerID
+          const info = c.req.valid("json")
+          await Auth.set(providerID, info)
+          await Provider.reload()
+          return c.json(true)
+        },
+      )
+      .get(
+        "/event/replay",
+        describeRoute({
+          summary: "Replay missed events",
+          description:
+            "After a reconnect, return the state events published for this scope since `since`. " +
+            'Returns status "reset" when the client\'s epoch is stale or the required events have ' +
+            "aged out of the journal, in which case the client must resync from snapshots.",
+          operationId: "event.replay",
+          responses: {
+            200: { description: "Replay result" },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            since: z.coerce.number().int().min(0),
+            epoch: z.string().optional(),
+            directory: z.string().optional(),
+            scopeID: z.string().optional(),
+            mode: z.enum(["full", "projection", "projection-v2"]).optional(),
+          }),
+        ),
+        async (c) => {
+          const { since, epoch, mode } = c.req.valid("query")
+          const currentEpoch = Bus.epoch()
+          // Epoch mismatch means the runtime restarted; the seq space is
+          // unrelated, so force a full resync.
+          if (epoch && epoch !== currentEpoch) {
+            return c.json({ status: "reset" as const, epoch: currentEpoch, seq: Bus.currentSeq() })
+          }
+          const replay = Bus.replay(since)
+          return c.json(
+            mode === "projection-v2" && replay.status === "ok"
+              ? {
+                  ...replay,
+                  events: projectViewReplay(
+                    replay.events as ViewEvent["payload"][],
+                    instanceState.contributions?.projections,
+                  ),
+                }
+              : mode === "projection" && replay.status === "ok"
+                ? {
+                    ...replay,
+                    events: replay.events.map((event) => projectReplayEvent(event, SessionHistory.summarizeMessage)),
+                  }
+                : replay,
+          )
+        },
+      )
+      .get(
+        "/event",
+        describeRoute({
+          summary: "Subscribe to events",
+          description: "Get events",
+          operationId: "event.subscribe",
+          responses: {
+            200: {
+              description: "Event stream",
+              content: {
+                "text/event-stream": {
+                  schema: resolver(BusEvent.payloads()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          log.info("event connected")
+          c.header("X-Accel-Buffering", "no")
+          c.header("Cache-Control", "no-cache, no-transform")
+          // Opt-in compact streaming protocol (#350 D1). Each SSE connection
+          // owns its own encoder so its checkpoint throttle is independent.
+          const deltaMode = c.req.query("stream") === "delta"
+          const wire = deltaMode ? EventWire.createEncoder() : undefined
+          return streamSSE(c, async (stream) => {
+            const connectedAt = Date.now()
+            ServerSseMetrics.open("events")
+            stream.writeSSE({
+              data: JSON.stringify({
+                type: "server.connected",
+                properties: {},
+              }),
+            })
+            const unsub = Bus.subscribeAll(async (event) => {
+              const outbound = wire ? wire.deltaPayload(event) : event
+              await stream
+                .writeSSE({
+                  data: JSON.stringify(outbound),
+                })
+                .catch(() => {
+                  ServerSseMetrics.writeFailure("events")
+                })
+              if (event.type === Bus.ScopeRuntimeDisposed.type) {
+                stream.close()
+              }
+            })
+
+            // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
+            const heartbeat = setInterval(() => {
+              void stream
+                .writeSSE({
+                  data: JSON.stringify({
+                    type: "server.heartbeat",
+                    properties: {},
+                  }),
+                })
+                .then(() => ServerSseMetrics.heartbeat("events"))
+                .catch(() => ServerSseMetrics.writeFailure("events", "heartbeat"))
+            }, 30000)
+
+            await new Promise<void>((resolve) => {
+              stream.onAbort(() => {
+                clearInterval(heartbeat)
+                ServerSseMetrics.duration("events", connectedAt)
+                unsub()
+                resolve()
+                log.info("event disconnected")
+              })
+            })
+          })
+        },
+      ) as unknown as Hono
+  }
+
+  export function mountApp() {
+    const instanceState = runtimeState()
+
+    if (instanceState._appMounted) return
+    // Ensure API routes are registered before SPA fallback routes.
+    App()
+
+    if (!instanceState.contributions?.mountApp) return
+    instanceState.contributions?.mountApp(instanceState.app)
+    instanceState._appMounted = true
+  }
+
+  // Spec generation consumes describeRoute resolvers in one pass (hono-openapi
+  // rewrites each entry in place), so a second generation in the same process
+  // would emit $refs without components. Both /doc and the CLI share this
+  // singleton to make once-per-process the public invariant.
+  type OpenAPISpecs = Awaited<ReturnType<typeof generateSpecs>>
+
+  export function openapi(): Promise<OpenAPISpecs> {
+    const instanceState = runtimeState()
+
+    instanceState._openapiSpecs ??= buildOpenAPISpecs()
+    return instanceState._openapiSpecs
+  }
+
+  async function buildOpenAPISpecs() {
+    // Cast to break excessive type recursion from long route chains
+    const result = await generateSpecs(App() as Hono, {
+      documentation: {
+        info: {
+          title: "synergy",
+          version: "1.0.0",
+          description: "synergy api",
+        },
+        openapi: "3.1.1",
+      },
+    })
+    const shutdown = await resolver(RuntimeShuttingDownError).toOpenAPISchema()
+    result.components = {
+      ...result.components,
+      schemas: {
+        ...result.components?.schemas,
+        ...shutdown.components?.schemas,
+      },
+    }
+    const methods = ["get", "put", "post", "delete", "patch"] as const
+    for (const item of Object.values(result.paths)) {
+      if (!item) continue
+      for (const method of methods) {
+        const operation = item[method]
+        if (!operation || operation.responses?.["503"]) continue
+        operation.responses ??= {}
+        operation.responses["503"] = {
+          description: "Runtime shutting down",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/RuntimeShuttingDownError" },
+            },
+          },
+        }
+      }
+    }
+    return result
+  }
+
+  function lanOrigins(): string[] {
+    const { networkInterfaces } = require("os") as typeof import("os")
+    const nets = networkInterfaces()
+    const ips: string[] = []
+    for (const interfaces of Object.values(nets)) {
+      if (!interfaces) continue
+      for (const iface of interfaces) {
+        if (!iface.internal && iface.family === "IPv4") {
+          ips.push(iface.address)
+        }
+      }
+    }
+    const ports = [3000, 3001]
+    return ips.flatMap((ip) => ports.map((port) => `http://${ip}:${port}`))
+  }
+
+  export function listen(opts: {
+    port: number
+    hostname: string
+    mdns?: boolean
+    cors?: string[]
+    preferDefaultPort?: boolean
+  }) {
+    const instanceState = runtimeState()
+
+    const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
+    const configuredOrigins = (opts.cors ?? []).flatMap((origin) => {
+      const normalized = normalizeCorsOrigin(origin)
+      return normalized ? [normalized] : []
+    })
+    instanceState._corsWhitelist = new Set([...configuredOrigins, ...(isExternalHost ? lanOrigins() : [])])
+    instanceState.contributions?.configureOrigins?.(configuredOrigins)
+
+    const owner = RuntimeContext.current()
+    type Socket = Bun.ServerWebSocket<Parameters<typeof websocket.message>[0]["data"]>
+    const sockets = new Set<Socket>()
+    const args = {
+      hostname: opts.hostname,
+      idleTimeout: 0,
+      fetch: owner.bind(App().fetch),
+      websocket: {
+        ...websocket,
+        open: owner.bind((socket: Socket) => {
+          sockets.add(socket)
+          websocket.open?.(socket)
+        }),
+        message: owner.bind(websocket.message),
+        close: owner.bind((socket: Socket, code: number, reason: string) => {
+          sockets.delete(socket)
+          websocket.close?.(socket, code, reason)
+        }),
+      },
+    } as const
+    const tryServe = (port: number) => {
+      try {
+        return Bun.serve({ ...args, port })
+      } catch {
+        return undefined
+      }
+    }
+    const server =
+      opts.port === 0 && opts.preferDefaultPort !== false
+        ? (tryServe(DEFAULT_PORT) ?? tryServe(0))
+        : tryServe(opts.port)
+    if (!server) throw new Error(`Failed to start server on port ${opts.port}`)
+
+    instanceState._url = server.url
+    instanceState.contributions?.listening?.(server.url)
+
+    if (isExternalHost && instanceState._corsWhitelist.size > 0) {
+      log.info("cors auto-detected LAN origins", { origins: instanceState._corsWhitelist })
+    }
+
+    const shouldPublishMDNS =
+      opts.mdns &&
+      server.port &&
+      opts.hostname !== "127.0.0.1" &&
+      opts.hostname !== "localhost" &&
+      opts.hostname !== "::1"
+    if (shouldPublishMDNS) {
+      MDNS.publish(server.port!, `synergy-${server.port!}`)
+    } else if (opts.mdns) {
+      log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
+    }
+
+    const originalStop = server.stop.bind(server)
+    server.stop = async (closeActiveConnections?: boolean) => {
+      const instanceState = runtimeState()
+
+      if (shouldPublishMDNS) MDNS.unpublish()
+      instanceState._globalEventBroadcastOff?.()
+      if (instanceState._globalEventHeartbeatInterval) clearInterval(instanceState._globalEventHeartbeatInterval)
+      // Bun must enter its stopping state before terminating sockets, or its
+      // pending WebSocket count can remain nonzero after synchronous close callbacks.
+      const stopped = originalStop(closeActiveConnections)
+      instanceState._globalEventClients?.clear()
+      if (closeActiveConnections) for (const socket of sockets) socket.terminate()
+      await stopped
+      await Promise.allSettled(instanceState.requests)
+      // Bun 1.3 retains native handler contexts after stop(); release them after the final request drains.
+      // API: https://github.com/oven-sh/bun/blob/main/docs/runtime/http/server.mdx#serverreload
+      RuntimeContext.exit(() => server.reload(closedHandlers))
+    }
+
+    return server
+  }
+}

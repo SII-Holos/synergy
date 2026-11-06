@@ -52,6 +52,12 @@ export const McpLifecycleFields = {
     .optional()
     .describe("Idle time in ms after which the server is shut down"),
   toolFilter: McpToolFilterConfig.optional().describe("Filter which tools are exposed from this server"),
+  expandByDefault: z
+    .boolean()
+    .optional()
+    .describe(
+      "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+    ),
   tools: McpToolsConfig.optional().describe("Tool execution behavior config"),
   toolCache: McpToolCacheConfig.optional().describe("Tool list caching behavior"),
 } satisfies z.core.$ZodLooseShape
@@ -98,6 +104,7 @@ export const McpLocalServerConfig = z
       .record(z.string(), z.string())
       .optional()
       .describe("Environment variables to set when running the MCP server"),
+    requiresWorkspace: z.boolean().optional().describe("Whether tools require a session workspace; defaults to true"),
     timeout: LegacyTimeout,
     ...McpLifecycleFields,
   })
@@ -114,6 +121,7 @@ export const McpRemoteServerConfig = z
       .union([McpOAuthConfig, z.literal(false)])
       .optional()
       .describe("OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection."),
+    requiresWorkspace: z.boolean().optional().describe("Whether tools require a session workspace; defaults to true"),
     timeout: LegacyTimeout,
     ...McpLifecycleFields,
   })

@@ -1,0 +1,115 @@
+# Channels
+
+## Channels
+
+Channels integrate Synergy with external messaging platforms.
+
+### Setting up Feishu/Lark — step by step
+
+1. **Create a Feishu app** — Go to [Feishu Open Platform](https://open.feishu.cn/app) (China) or [Lark Developer](https://open.larksuite.com/app) (international). Create a new app and note the App ID and App Secret.
+2. **Enable bot capability** — In the app settings, enable "Robot" capability under "Application Capabilities".
+3. **Configure event subscription** — Select the long-connection (WebSocket) delivery mode and enable `im.message.receive_v1`. Synergy connects using the App ID and App Secret; this provider does not use a public webhook endpoint.
+4. **Add permissions** — Grant these scopes: `im:message`, `im:message:send_as_bot`, `im:chat:readonly`, `im:resource`. For sender name resolution: `contact:user.base:readonly`.
+5. **Publish the app** — Submit for review or use in development mode for testing.
+6. **Configure Synergy** — Add the channel config to `90-channels.jsonc` with your App ID and App Secret.
+7. **Reload** — `runtime_reload(target: "channel")`.
+
+### Feishu/Lark channel
+
+```jsonc
+{
+  "channel": {
+    "my-feishu": {
+      "type": "feishu",
+      "domain": "feishu",
+      "streaming": true,
+      "accounts": {
+        "main": {
+          "enabled": true,
+          "appId": "cli_xxx",
+          "appSecret": "xxx",
+          "domain": "feishu",
+          "allowDM": true,
+          "allowGroup": true,
+          "requireMention": true,
+          "streaming": true,
+          "streamingThrottleMs": 100,
+          "groupSessionScope": "group",
+          "inboundDebounceMs": 0,
+          "projectDir": "/home/user/projects/my-project",
+          "model": "openai/gpt-5",
+          "variant": "high",
+          "resolveSenderNames": true,
+          "replyInThread": false
+        }
+      }
+    }
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `appId` | (required) | Feishu app ID |
+| `appSecret` | (required) | Feishu app secret |
+| `domain` | auto | `"feishu"` (China) or `"lark"` (international) |
+| `botOpenId` | (none) | Bot open_id used to verify real @mentions in group chats |
+| `model` | (none) | Model override in `providerID/modelID` format (e.g. `openai/gpt-4o`) |
+| `variant` | (none) | Variant exposed by the selected account model (e.g. `low`, `high`, `max`) |
+| `enabled` | true | Enable this account |
+| `allowDM` | true | Allow direct messages |
+| `allowGroup` | true | Allow group messages |
+| `requireMention` | true | Require @mention in group chats |
+| `streaming` | true | Enable streaming card updates |
+| `streamingThrottleMs` | 100 | Min interval between streaming updates (ms) |
+| `groupSessionScope` | `"group"` | Session scoping strategy (see below) |
+| `inboundDebounceMs` | 0 | Debounce rapid-fire messages (0 = disabled) |
+| `resolveSenderNames` | true | Resolve sender names via Feishu contact API |
+| `replyInThread` | false | Reply in thread when message is part of a topic |
+| `projectDir` | (none) | Project directory whose Scope owns sessions for this account; absolute or relative to Synergy home; must exist, be readable, and resolve to a project Scope |
+
+**Group session scoping:**
+- `"group"` — one shared session per group chat
+- `"group_sender"` — separate session per sender in group
+- `"group_topic"` — separate session per thread/topic
+- `"group_topic_sender"` — separate session per thread + sender
+- `"group_thread"` — one session per Feishu thread; `thread_id` is the only continuity key, and a top-level message with no `thread_id` starts one session per message. The first response uses `reply_in_thread` and the returned `thread_id` is durably bound to the session.
+
+Top-level `domain` and `streaming` on the channel object set defaults for all accounts.
+
+### GitHub channel
+
+The GitHub channel uses a GitHub App installation to poll selected repositories. Configure `SYNERGY_GITHUB_APP_ID` and `SYNERGY_GITHUB_APP_PRIVATE_KEY` in the server environment, then the installation and repository account settings in `90-channels.jsonc`. Personal GitHub login in Settings is a separate identity and does not configure these channel credentials.
+
+Settings > Channels provides setup guidance and links to the channels domain file. Web shows the server-owned path with a copy action; supported Desktop hosts can open the file. Keep credentials in their owning channel or server environment boundary.
+
+### Reload
+
+```
+runtime_reload(target: "channel")
+```
+
+## Domain file
+
+Channel config belongs only in:
+
+```
+~/.synergy/config/synergy.d/90-channels.jsonc
+<project>/.synergy/synergy.d/90-channels.jsonc
+```
+
+Do not edit model, provider, email, or runtime domain files when importing or updating channels.
+
+---
+
+## Troubleshooting
+
+### Feishu/Lark
+
+- **Bot not responding in group chat** — check `requireMention` (default true); the bot needs to be @mentioned unless `requireMention: false`; verify the bot is added to the group; check `allowGroup` is true
+- **Bot not responding in DM** — check `allowDM` is true; verify the user has permission to message the bot
+- **Streaming not working** — check `streaming` is true; clients without streaming-card support can use `streaming: false`
+- **Sender names showing as IDs** — set `resolveSenderNames: true` and ensure the app has `contact:user.base:readonly` scope
+- **Account model ignored** — verify `model` uses `providerID/modelID`; a conversation-level `/model` command overrides the account default until a new conversation is started
+- **Effort selector missing** — the selected account model must expose variants in the active provider catalog; models without variants use provider defaults
+- **Events not arriving** — verify long-connection delivery is selected, the message event and bot permissions are enabled, and the server can establish the Feishu/Lark WebSocket connection.

@@ -1,3 +1,4 @@
+import { validateSkinAssets } from "../lib/skin-assets.js"
 import fs from "fs"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -28,6 +29,8 @@ function executableIds(definition: PluginDefinition) {
 
 function trustedComponentSources(definition: PluginDefinition) {
   return definition.contributions.flatMap((item) => {
+    if (item.kind === "ui.shell")
+      return [item.component.source, ...Object.values(item.pages ?? {}).map((component) => component.source)]
     if (item.kind === "ui.textAction" && item.presentation) return [item.presentation.component.source]
     if (!item.kind.startsWith("ui.") || !("component" in item) || !item.component) return []
     return [item.component.source]
@@ -59,6 +62,7 @@ export async function validatePluginProject(
     const { definition } = await loadPluginDefinition(pluginDir)
     results.push({ type: "pass", message: `definePlugin() descriptor valid: ${definition.id}@${definition.version}` })
     expectEqual(definition.handlerIds.slice().sort(), executableIds(definition), "descriptor handler ids", results)
+    validateSkinAssets(pluginDir, definition.contributions)
     for (const asset of validateThemeAssets(pluginDir, definition.contributions)) {
       results.push({ type: "pass", message: `source theme valid: ${asset.contribution.id}` })
     }
@@ -77,6 +81,11 @@ export async function validatePluginProject(
       return results
     }
     const manifest = PluginManifest.parse(JSON.parse(fs.readFileSync(manifestPath, "utf-8")))
+    for (const item of manifest.contributions) {
+      if (item.kind !== "ui.skin") continue
+      verifyArtifact(pluginDir, item.path, item.sha256, "Skin", results)
+      for (const asset of item.assets) verifyArtifact(pluginDir, asset.entry, asset.sha256, "Skin resource", results)
+    }
     results.push({ type: "pass", message: "generated manifest schema valid" })
     if (manifest.id !== definition.id || manifest.version !== definition.version) {
       results.push({ type: "error", message: "generated manifest identity does not match definePlugin()" })
@@ -85,6 +94,10 @@ export async function validatePluginProject(
     const ui = manifest.artifacts.ui
     if (runtime) verifyArtifact(pluginDir, runtime.entry, runtime.sha256, "runtime", results)
     if (ui) verifyArtifact(pluginDir, ui.entry, ui.sha256, "UI", results)
+    for (const resource of ui?.resources ?? []) {
+      verifyArtifact(pluginDir, resource.entry, resource.sha256, `UI resource ${resource.entry}`, results)
+    }
+    validateSkinAssets(path.join(pluginDir, "dist"), manifest.contributions)
     for (const asset of validateThemeAssets(path.join(pluginDir, "dist"), manifest.contributions)) {
       results.push({ type: "pass", message: `packaged theme valid: ${asset.contribution.id}` })
     }

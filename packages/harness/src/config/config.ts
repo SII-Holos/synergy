@@ -1,0 +1,1697 @@
+import { readFeaturePreferences } from "@ericsanchezok/synergy-util/feature-config"
+import { ConfigReferenceMigration } from "./reference-migration"
+import { upgradeImportedConfig } from "../migration/import"
+import { PrimaryAgentIdentity } from "../agent/primary-identity"
+import { Env } from "../util/env"
+import { RuntimeContext } from "../lifecycle/context"
+import { AsyncLocalStorage } from "node:async_hooks"
+import { SecretPaths } from "../secrets/path-registry"
+import { LegacyExecutionConfig } from "./legacy-execution"
+import { Experiment } from "./experiment"
+import { Log } from "../util/log"
+import path from "path"
+import os from "os"
+import z from "zod"
+import { Filesystem } from "../util/filesystem"
+import { mergeDeep, unique } from "remeda"
+import { Global } from "../global"
+import fs from "fs/promises"
+import { lazy } from "../util/lazy"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { Flag } from "../flag/flag"
+import { Auth } from "../provider/api-key"
+import { type ParseError as JsoncParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
+import { Scope } from "../scope"
+import { BusEvent } from "../bus/bus-event"
+import { ConfigMarkdown } from "./markdown"
+import { existsSync } from "fs"
+import { loadFragments } from "./fragment"
+import { DOMAIN_FRAGMENT_MODE, MalformedFragmentError, renderDomainFragment } from "./fragment-render"
+import * as Schema from "./schema"
+import { ConfigDomain } from "./domain"
+import { ConfigExtensions } from "./extensions"
+import { Lock } from "../util/lock"
+import { ConfigSource } from "./source"
+
+export namespace Config {
+  const log = Log.create({ service: "config" })
+  const strictExecution = new AsyncLocalStorage<boolean>()
+  // ── Schema re-exports from ./schema.ts ──
+
+  export const SandboxConfig = Schema.SandboxConfig
+  export type SandboxConfig = Schema.SandboxConfig
+  export const ObservabilityConfig = Schema.ObservabilityConfig
+  export type ObservabilityConfig = Schema.ObservabilityConfig
+
+  export const PermissionAction = Schema.PermissionAction
+  export type PermissionAction = Schema.PermissionAction
+  export const PermissionObject = Schema.PermissionObject
+  export type PermissionObject = Schema.PermissionObject
+  export const PermissionRule = Schema.PermissionRule
+  export type PermissionRule = Schema.PermissionRule
+  export const ControlProfileId = Schema.ControlProfileId
+  export type ControlProfileId = Schema.ControlProfileId
+
+  export const Permission = Schema.Permission
+  export type Permission = Schema.Permission
+
+  export const Command = Schema.Command
+  export type Command = Schema.Command
+  export const Agent = Schema.Agent
+  export type Agent = Schema.Agent
+
+  export const Server = Schema.Server
+  export const CategoryConfig = Schema.CategoryConfig
+  export type CategoryConfig = Schema.CategoryConfig
+
+  export const Provider = Schema.Provider
+  export type Provider = Schema.Provider
+  export const Info = Schema.Info
+  export type Info = Schema.Info
+
+  export function schema() {
+    return ConfigExtensions.resolveSchema(Info)
+  }
+
+  function storedSchema() {
+    return ConfigExtensions.persistenceSchema(Info)
+  }
+
+  function project(config: Info): Info {
+    const visible = structuredClone(config)
+    for (const key of Object.keys(visible)) {
+      if (!Object.hasOwn(schema().shape, key)) delete (visible as Record<string, unknown>)[key]
+    }
+    ConfigExtensions.project(visible)
+    return Info.parse(visible)
+  }
+
+  export function jsonSchema() {
+    const output = z.toJSONSchema(schema(), { unrepresentable: "any" })
+    if (output.properties) {
+      delete output.properties.keybinds
+      delete output.properties.experimental
+    }
+    return output
+  }
+
+  /**
+   * Normalize an MCP server config by applying defaults and legacy timeout
+   * compatibility. Callers should pass `config.mcpDefaults?.callTimeout` and
+   * `config.mcpDefaults` to fill missing timeouts.
+   */
+
+  function normalizeProviderFilters(config: Info): Info {
+    const emptyEnabled = Array.isArray(config.enabled_providers) && config.enabled_providers.length === 0
+    const emptyDisabled = Array.isArray(config.disabled_providers) && config.disabled_providers.length === 0
+    if (!emptyEnabled && !emptyDisabled) return config
+
+    const normalized = { ...config }
+    if (emptyEnabled) delete normalized.enabled_providers
+    if (emptyDisabled) delete normalized.disabled_providers
+    return normalized
+  }
+
+  // Custom merge function that concatenates array fields instead of replacing them
+  function mergeConfigConcatArrays(target: Info, source: Info): Info {
+    const normalizedTarget = normalizeProviderFilters(target)
+    const normalizedSource = normalizeProviderFilters(source)
+    const merged = mergeDeep(normalizedTarget, normalizedSource)
+    ConfigExtensions.merge(normalizedTarget, normalizedSource, merged)
+    if (normalizedTarget.instructions && normalizedSource.instructions) {
+      merged.instructions = Array.from(new Set([...normalizedTarget.instructions, ...normalizedSource.instructions]))
+    }
+    if (normalizedTarget.project_doc_fallback_filenames && normalizedSource.project_doc_fallback_filenames) {
+      merged.project_doc_fallback_filenames = Array.from(
+        new Set([
+          ...normalizedTarget.project_doc_fallback_filenames,
+          ...normalizedSource.project_doc_fallback_filenames,
+        ]),
+      )
+    }
+    return merged
+  }
+  const runtimeState = RuntimeContext.state(() => ({
+    wellKnownCache: new Map<string, { data: Info; timestamp: number }>(),
+    wellKnownRefreshInFlight: new Set<string>(),
+    lastGoodByScope: new Map<string, StateValue>(),
+    reloadHintFilesByScope: new Map<string, string[]>(),
+    commandDefinitionsByDir: new Map<string, Record<string, Command>>(),
+    agentDefinitionsByDir: new Map<string, Record<string, Agent>>(),
+    issues: [] as Issue[],
+    handledWrites: new Map<string, number>(),
+  }))
+
+  const WELL_KNOWN_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+  export const state = ScopedState.create(loadStateValue)
+
+  type StateValue = { config: Info; directories: string[]; sources?: Record<string, Experiment.Source> }
+
+  // Last-good memory per scope: when a fresh load fails, keep serving the
+  // most recently loaded configuration instead of wiping runtime state.
+
+  // Consumed synchronously by the next state load: when a reload knows the
+  // exact domain files that changed (watcher hints), the load skips the
+  // command/agent markdown scans that cannot be affected by those files.
+  // Keyed by scope id so concurrent global/project reloads cannot overwrite
+  // each other's hint.
+
+  // Cached command/agent markdown scans per directory, refreshed on full
+  // scans and reused by hinted reloads so domain-file edits never resurrect
+  // stale domain-defined entries from the previous resolved snapshot.
+
+  async function loadStateValue(): Promise<StateValue> {
+    if (ConfigSource.get()) return loadStateValueInner()
+    const instanceState = runtimeState()
+
+    const scopeKey = ScopeContext.current.scope.id
+    const files = instanceState.reloadHintFilesByScope.get(scopeKey)
+    instanceState.reloadHintFilesByScope.delete(scopeKey)
+    try {
+      const value = await loadStateValueInner(files)
+      instanceState.lastGoodByScope.set(scopeKey, value)
+      return value
+    } catch (error) {
+      const lastGood = instanceState.lastGoodByScope.get(scopeKey)
+      if (lastGood) {
+        const message = sanitizeErrorForIssue(error)
+        log.warn("config load failed, using last good config", { scope: scopeKey, error: message })
+        recordIssue({
+          path: "config",
+          error: message,
+          code: "config.load_failed",
+          quarantined: false,
+          timestamp: Date.now(),
+        })
+        return lastGood
+      }
+      throw error
+    }
+  }
+
+  async function loadStateValueInner(files?: string[]): Promise<StateValue> {
+    const source = ConfigSource.get()
+    if (source) return { config: await hostConfig(source, ScopeContext.current.scope), directories: [] }
+    const instanceState = runtimeState()
+
+    // A reload hint that names only synergy.d domain files cannot affect
+    // command/agent markdown definitions, so skip those scans entirely and
+    // reuse the previously loaded definitions instead of dropping them.
+    const skipMarkdownScan =
+      files !== undefined && files.length > 0 && files.every((file) => ConfigDomain.domainForFile(file) !== undefined)
+    const auth = await Auth.all()
+
+    // Load remote/well-known config first as the base layer (lowest precedence)
+    // This allows organizations to provide default configs that users can override
+    let result: Info = {}
+    const sources: Record<string, Experiment.Source> = {}
+    function mark(value: unknown, source: Experiment.Source, prefix = "", defaults = false) {
+      if (value === undefined) return
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        if (!defaults || sources[prefix] === undefined) sources[prefix] = source
+        return
+      }
+      for (const [key, item] of Object.entries(value)) mark(item, source, prefix ? `${prefix}.${key}` : key, defaults)
+    }
+    function merge(source: Info, layer: Experiment.Source) {
+      if (source.features && layer !== "global_config")
+        throw new Error("Experimental features configuration must be global")
+      mark(source, layer)
+      result = mergeConfigConcatArrays(result, source)
+    }
+
+    // Inject env vars synchronously (before any fetch/await)
+    for (const [key, value] of Object.entries(auth)) {
+      if (value.type !== "wellknown") continue
+      Env.set(value.key, value.token)
+    }
+
+    // Fetch well-known configs in parallel with TTL caching
+    const wellKnownEntries = Object.entries(auth).filter(([, v]) => v.type === "wellknown")
+    const fetchedConfigs = await Promise.all(
+      wellKnownEntries.map(async ([key]) => {
+        const cached = instanceState.wellKnownCache.get(key)
+        if (cached && Date.now() - cached.timestamp < WELL_KNOWN_TTL_MS) {
+          log.debug("using cached remote config", { url: key })
+          return cached.data
+        }
+        if (cached) {
+          // Stale cache: keep serving the last known config and refresh in
+          // the background so config loads never block on the network.
+          log.debug("serving stale remote config with background refresh", { url: key })
+          void refreshWellKnown(key)
+          return cached.data
+        }
+        return loadWellKnown(key)
+      }),
+    )
+
+    // Merge fetched configs as base layer (lowest precedence)
+    for (const cfg of fetchedConfigs) {
+      if (cfg) merge(cfg, "remote_base")
+    }
+
+    // Global user config overrides remote config
+    merge(strictExecution.getStore() ? await loadGlobalConfig() : await global(), "global_config")
+
+    result.agent = result.agent || {}
+
+    const scope = ScopeContext.current.scope
+    const projectDirectories = scope.local
+      ? await Array.fromAsync(
+          Filesystem.up({
+            targets: [".synergy"],
+            start: scope.local.directory,
+            stop: scope.local.directory,
+          }),
+        )
+      : []
+    const directories = [Global.Path.config, ...projectDirectories]
+
+    if (Flag.SYNERGY_CONFIG_DIR) {
+      directories.push(Flag.SYNERGY_CONFIG_DIR)
+      log.debug("loading config from SYNERGY_CONFIG_DIR", { path: Flag.SYNERGY_CONFIG_DIR })
+    }
+
+    if (scope.local) {
+      const pending = await migrateLegacyProjectConfig(scope.local.directory)
+      if (pending) merge(pending, "project_config")
+    }
+
+    for (const dir of unique(directories)) {
+      await ConfigReferenceMigration.directory(dir)
+      if (dir.endsWith(".synergy") || dir === Flag.SYNERGY_CONFIG_DIR) {
+        const fragmentDir = path.join(dir, "synergy.d")
+        const fragments = await loadFragments(fragmentDir, { strict: strictExecution.getStore() })
+        for (const fragment of fragments) {
+          merge(
+            storedSchema().parse(LegacyExecutionConfig.migrate(fragment)),
+            dir === Flag.SYNERGY_CONFIG_DIR ? "explicit_file" : "project_config",
+          )
+        }
+        // Re-apply defaults after fragment merge (fragment widens result type)
+        result.agent ??= {}
+      }
+
+      if (!skipMarkdownScan) {
+        // Full scan: refresh the cached markdown definitions and merge them.
+        const commands = await loadCommand(dir)
+        const agents = await loadAgent(dir)
+        instanceState.commandDefinitionsByDir.set(dir, commands)
+        instanceState.agentDefinitionsByDir.set(dir, agents)
+        result.command = mergeDeep(result.command ?? {}, commands)
+        result.agent = mergeDeep(result.agent, agents)
+      } else {
+        // Hinted reload: the changed files are domain files only, so the
+        // markdown definitions are unchanged. Reuse the cached scan instead
+        // of merging the whole previous snapshot, which would resurrect
+        // domain-defined entries deleted by the edit.
+        result.command = mergeDeep(
+          result.command ?? {},
+          instanceState.commandDefinitionsByDir.get(dir) ?? (await loadCommand(dir)),
+        )
+        result.agent = mergeDeep(result.agent, instanceState.agentDefinitionsByDir.get(dir) ?? (await loadAgent(dir)))
+      }
+    }
+
+    result.agent ??= {}
+
+    // Custom config path overrides global
+    if (Flag.SYNERGY_CONFIG) {
+      merge(await loadFile(Flag.SYNERGY_CONFIG), "explicit_file")
+      log.debug("loaded custom config", { path: Flag.SYNERGY_CONFIG })
+    }
+
+    // Inline config content has highest precedence
+    if (Flag.SYNERGY_CONFIG_CONTENT) {
+      const inline = Info.parse(
+        upgradeImportedConfig(LegacyExecutionConfig.migrate(JSON.parse(Flag.SYNERGY_CONFIG_CONTENT))),
+      )
+      if (inline.storage) throw new Error("Storage configuration must use the global 130-storage.jsonc domain file")
+      merge(inline, "inline_config")
+      log.debug("loaded custom config from SYNERGY_CONFIG_CONTENT")
+    }
+
+    if (Flag.SYNERGY_PERMISSION) {
+      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.SYNERGY_PERMISSION))
+    }
+
+    // Backwards compatibility: legacy top-level `tools` config
+    if (result.tools) {
+      const perms: Record<string, Config.PermissionAction> = {}
+      for (const [tool, enabled] of Object.entries(result.tools)) {
+        const action: Config.PermissionAction = enabled ? "allow" : "deny"
+        if (tool === "write" || tool === "edit" || tool === "patch" || tool === "multiedit") {
+          perms.edit = action
+          continue
+        }
+        perms[tool] = action
+      }
+      result.permission = mergeDeep(perms, result.permission ?? {})
+    }
+
+    // Apply centralized defaults for fields shown in Settings UI.
+    // These fill undefined values only — user-set values are preserved.
+    if (result.snapshot === undefined) result.snapshot = true
+    if (result.fileToolGroup === undefined) result.fileToolGroup = "replace"
+    if (result.default_agent === undefined) result.default_agent = PrimaryAgentIdentity.names.general
+    if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []
+    if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024
+    if (result.question === undefined) result.question = { timeout: 3600 }
+    else if (result.question.timeout === undefined) result.question.timeout = 3600
+    if (result.retry === undefined) {
+      result.retry = { maxAttempts: Schema.DEFAULT_SESSION_RETRY_MAX_ATTEMPTS, unlimited: false }
+    } else {
+      if (result.retry.maxAttempts === undefined) result.retry.maxAttempts = Schema.DEFAULT_SESSION_RETRY_MAX_ATTEMPTS
+      if (result.retry.unlimited === undefined) result.retry.unlimited = false
+    }
+    if (result.compaction === undefined) {
+      result.compaction = { auto: true, prune: true, overflowThreshold: 0.85, maxHistoryImages: 8, codexRemote: false }
+    } else {
+      if (result.compaction.auto === undefined) result.compaction.auto = true
+      if (result.compaction.prune === undefined) result.compaction.prune = true
+      if (result.compaction.overflowThreshold === undefined) result.compaction.overflowThreshold = 0.85
+      if (result.compaction.maxHistoryImages === undefined) result.compaction.maxHistoryImages = 8
+      if (result.compaction.codexRemote === undefined) result.compaction.codexRemote = false
+    }
+    if (result.attachment === undefined) {
+      result.attachment = { maxFiles: 20, maxFileBytes: 200 * 1024 * 1024, maxTotalBytes: 2 * 1024 * 1024 * 1024 }
+    } else {
+      if (result.attachment.maxFiles === undefined) result.attachment.maxFiles = 20
+      if (result.attachment.maxFileBytes === undefined) result.attachment.maxFileBytes = 200 * 1024 * 1024
+      if (result.attachment.maxTotalBytes === undefined) result.attachment.maxTotalBytes = 2 * 1024 * 1024 * 1024
+    }
+
+    if (!result.username) result.username = os.userInfo().username
+
+    merge(LegacyExecutionConfig.environment(), "legacy_environment")
+
+    normalizeRoleNulls(result)
+    const projected = project(result)
+    ConfigExtensions.normalize(projected)
+    const config = Info.parse(projected)
+    mark(config, "default", "", true)
+
+    return {
+      config,
+      directories,
+      sources,
+    }
+  }
+  // Role models and role_variant values accept explicit null as a stored
+  // "cleared" marker: the settings round trip needs it to survive deep merge
+  // across config layers. Strip the markers here so readers always see unset.
+  function normalizeRoleNulls(config: Info) {
+    const roleFields = [
+      "model",
+      "nano_model",
+      "mini_model",
+      "mid_model",
+      "thinking_model",
+      "long_context_model",
+      "creative_model",
+      "vision_model",
+    ] as const
+    for (const field of roleFields) {
+      if (config[field] === null) delete config[field]
+    }
+    if (config.role_variant) {
+      for (const [role, variant] of Object.entries(config.role_variant)) {
+        if (variant === null) delete config.role_variant[role]
+      }
+      if (Object.keys(config.role_variant).length === 0) delete config.role_variant
+    }
+  }
+
+  /**
+   * Fetch and parse one well-known remote config, caching the result.
+   * Returns null when the remote config is unavailable or invalid so the
+   * rest of the load continues with the local layers only.
+   */
+  async function loadWellKnown(key: string): Promise<Info | null> {
+    const instanceState = runtimeState()
+
+    log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
+
+    const remoteConfig = await fetch(`${key}/.well-known/synergy`, {
+      signal: AbortSignal.timeout(5000),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          log.warn("failed to fetch remote config, skipping", {
+            url: `${key}/.well-known/synergy`,
+            status: response.status,
+          })
+          return null
+        }
+        const wellknown = (await response.json()) as any
+        return wellknown.config ?? {}
+      })
+      .catch((err) => {
+        log.warn("failed to fetch remote config, skipping", {
+          url: `${key}/.well-known/synergy`,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return null
+      })
+
+    if (!remoteConfig) return null
+
+    if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
+    try {
+      const loaded = await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`)
+      instanceState.wellKnownCache.set(key, { data: loaded, timestamp: Date.now() })
+      log.debug("loaded remote config from well-known", { url: key })
+      return loaded
+    } catch (error) {
+      if (strictExecution.getStore()) throw error
+      log.warn("failed to parse remote config, skipping", {
+        url: key,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    }
+  }
+
+  /** Refresh a stale well-known config in the background, deduplicated per URL. */
+  function refreshWellKnown(key: string) {
+    const instanceState = runtimeState()
+
+    if (instanceState.wellKnownRefreshInFlight.has(key)) return
+    instanceState.wellKnownRefreshInFlight.add(key)
+    void loadWellKnown(key)
+      .then((loaded) => {
+        if (!loaded) return
+        // The org config changed while we were serving the stale value.
+        // Re-resolve every scope so the next Config.current() sees it —
+        // otherwise the change would only apply on some unrelated reload.
+        void state.resetAll()
+      })
+      .finally(() => instanceState.wellKnownRefreshInFlight.delete(key))
+  }
+
+  const COMMAND_GLOB = new Bun.Glob("{command,commands}/**/*.md")
+  async function loadCommand(dir: string) {
+    const result: Record<string, Command> = {}
+    if (!existsSync(dir)) return result
+
+    for await (const item of COMMAND_GLOB.scan({
+      absolute: true,
+      followSymlinks: true,
+      dot: true,
+      cwd: dir,
+    })) {
+      const normalized = item.replaceAll("\\", "/")
+      const md = await ConfigMarkdown.parse(item)
+      if (!md.data) continue
+
+      const name = (() => {
+        const patterns = ["/.synergy/command/", "/command/"]
+        const pattern = patterns.find((p) => normalized.includes(p))
+
+        if (pattern) {
+          const index = normalized.indexOf(pattern)
+          return normalized.slice(index + pattern.length, -3)
+        }
+        return path.basename(item, ".md")
+      })()
+
+      const config = {
+        name,
+        ...md.data,
+        template: md.content.trim(),
+      }
+      const parsed = Command.safeParse(config)
+      if (parsed.success) {
+        result[config.name] = parsed.data
+        continue
+      }
+      log.warn("skipping invalid command definition", { path: item, issues: parsed.error.issues })
+      continue
+    }
+    return result
+  }
+
+  const AGENT_GLOB = new Bun.Glob("{agent,agents}/**/*.md")
+  async function loadAgent(dir: string) {
+    const result: Record<string, Agent> = {}
+    if (!existsSync(dir)) return result
+
+    for await (const item of AGENT_GLOB.scan({
+      absolute: true,
+      followSymlinks: true,
+      dot: true,
+      cwd: dir,
+    })) {
+      const normalized = item.replaceAll("\\", "/")
+      const md = await ConfigMarkdown.parse(item)
+      if (!md.data) continue
+
+      // Extract relative path from agent folder for nested agents
+      let agentName = path.basename(item, ".md")
+      const agentFolderPath = normalized.includes("/.synergy/agent/")
+        ? normalized.split("/.synergy/agent/")[1]
+        : normalized.includes("/agent/")
+          ? normalized.split("/agent/")[1]
+          : agentName + ".md"
+
+      // If agent is in a subfolder, include folder path in name
+      if (agentFolderPath.includes("/")) {
+        const relativePath = agentFolderPath.replace(".md", "")
+        const pathParts = relativePath.split("/")
+        agentName = pathParts.slice(0, -1).join("/") + "/" + pathParts[pathParts.length - 1]
+      }
+
+      const config = {
+        name: agentName,
+        ...md.data,
+        prompt: md.content.trim(),
+      }
+      const parsed = Agent.safeParse(config)
+      if (parsed.success) {
+        result[config.name] = parsed.data
+        continue
+      }
+      log.warn("skipping invalid agent definition", { path: item, issues: parsed.error.issues })
+    }
+    return result
+  }
+
+  async function loadGlobalConfig() {
+    const source = ConfigSource.get()
+    if (source) return hostConfig(source, Scope.home())
+    await ConfigReferenceMigration.directory(Global.Path.config)
+    const pending = await migrateLegacyGlobalConfig()
+    return loadDomainDirectory(Global.Path.config, pending)
+  }
+
+  const globalConfig = RuntimeContext.state(() => lazy(loadGlobalConfig))
+  export const global = Object.assign(
+    () => {
+      const source = ConfigSource.get()
+      return source ? hostConfig(source, Scope.home()) : globalConfig()().then(project)
+    },
+    { reset: () => globalConfig().reset() },
+  )
+
+  async function hostConfig(source: ConfigSource.Source, scope: Scope): Promise<Info> {
+    const value = await source.resolve(Object.freeze({ scope: structuredClone(scope) }))
+    const json = z.json().parse(value)
+    if (Buffer.byteLength(JSON.stringify(json)) > 4 * 1024 * 1024)
+      throw new Error("Host configuration exceeds its bound")
+    return schema().parse(structuredClone(json))
+  }
+
+  function assertWritable() {
+    if (ConfigSource.get()) throw new Error("Host-owned configuration is read-only")
+  }
+
+  async function loadDomainDirectory(root: string, initial: Info = {}): Promise<Info> {
+    let result: Info = initial
+    for (const domain of ConfigDomain.definitions()) {
+      const filepath = ConfigDomain.filepath(domain.id, root)
+      try {
+        const fragment =
+          domain.id === "features"
+            ? (await Bun.file(filepath).exists())
+              ? { features: await readFeaturePreferences(root) }
+              : {}
+            : await loadFile(filepath, { addSchema: false })
+        ConfigDomain.validateKeys(fragment as Record<string, unknown>, domain.id, { preserveUnregistered: true })
+        if (domain.id === "storage" && fragment.storage && path.resolve(root) !== path.resolve(Global.Path.config))
+          throw new Error("Storage configuration is global and cannot be overridden by a project")
+        if (
+          domain.globalOnly &&
+          Object.keys(fragment).length &&
+          path.resolve(root) !== path.resolve(Global.Path.config)
+        )
+          throw new Error(`${domain.label} configuration must be global`)
+        result = mergeConfigConcatArrays(result, fragment as Info)
+        // A recovered file clears its historical diagnostic so the registry
+        // reflects the most recent load. Only clear when the file really
+        // exists: after quarantine the original path is gone, and clearing
+        // would hide the very issue we just recorded.
+        if (await Bun.file(filepath).exists()) {
+          clearIssueForPath(filepath)
+        }
+      } catch (error) {
+        if (domain.id === "storage" || domain.failClosed || strictExecution.getStore()) throw error
+        await quarantineDomainFile(domain.id, filepath, error)
+      }
+    }
+    return storedSchema().parse(result)
+  }
+
+  /**
+   * Rename a broken config file aside (quarantine) under the domain lock.
+   * Uses a non-blocking lock acquisition: when a write transaction already
+   * holds the domain lock (e.g. a Settings save in flight), the quarantine
+   * is skipped — that transaction will overwrite the broken file with a
+   * valid config anyway, so quarantining would both deadlock and race the
+   * rename. Returns the quarantine path, or undefined when the file is
+   * already gone, cannot be moved, or the lock is held. Never throws.
+   */
+  async function quarantineFile(filepath: string): Promise<string | undefined> {
+    const target = `${filepath}.invalid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    try {
+      using _ = await Lock.tryAcquireWrite(`config-domain:${filepath}`)
+      if (!_) return undefined
+      if (!(await Bun.file(filepath).exists())) return undefined
+      await fs.rename(filepath, target)
+      return target
+    } catch (err) {
+      log.warn("failed to quarantine config file", {
+        path: filepath,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return undefined
+    }
+  }
+
+  /**
+   * Move a broken domain config file aside so it no longer interrupts
+   * loading, then record a diagnostic. Never throws: a file that cannot be
+   * moved is only skipped, and startup continues with the remaining domains.
+   */
+  async function quarantineDomainFile(domain: ConfigDomain.Id, filepath: string, error: unknown) {
+    const message = sanitizeErrorForIssue(error)
+    const code = issueCodeForError(error)
+    const quarantinedPath = await quarantineFile(filepath)
+
+    log.warn("config domain quarantined", {
+      domain,
+      path: filepath,
+      error: message,
+      quarantined: quarantinedPath !== undefined,
+    })
+    recordIssue({
+      domain,
+      path: filepath,
+      error: message,
+      code,
+      quarantined: quarantinedPath !== undefined,
+      quarantinedPath,
+      timestamp: Date.now(),
+    })
+  }
+
+  /**
+   * Sanitize a config loading error before it reaches logs, the diagnostics
+   * registry, or HTTP responses. JsonError messages embed the full config
+   * text — including resolved {env:...}/{file:...} values that can contain
+   * real credentials — so keep only the parser-error summaries and drop the
+   * echoed source lines and caret markers. Other errors are truncated to a
+   * bounded length.
+   */
+  export function sanitizeErrorForIssue(error: unknown): string {
+    if (error instanceof JsonError && error.data.message) {
+      const errorsSection = error.data.message.split("--- Errors ---\n")[1]?.split("\n--- End ---")[0] ?? ""
+      const summaryLines = errorsSection.split("\n").filter((line: string) => {
+        const trimmed = line.trim()
+        // Keep parser error summaries ("CloseBraceExpected at line 1, column 5").
+        // Drop echoed source lines ("   Line 1: ...") and caret markers ("^").
+        return trimmed && !/^Line \d+:/.test(trimmed) && !/^[\s^]+$/.test(line)
+      })
+      if (summaryLines.length > 0) return summaryLines.join("\n")
+      return "JSON syntax error"
+    }
+    const message = error instanceof Error ? error.message : String(error)
+    return message.length > 300 ? `${message.slice(0, 300)}…` : message
+  }
+
+  function issueCodeForError(error: unknown): Issue["code"] {
+    if (error instanceof JsonError) return "config.json_syntax"
+    if (error instanceof InvalidError) {
+      const issues = error.toObject().data?.issues as Array<{ path?: (string | number)[]; code?: string }> | undefined
+      if (issues?.some((issue) => issue.path?.length === 0 && issue.code === "invalid_type")) {
+        return "config.root_type"
+      }
+      return "config.unknown_key"
+    }
+    return "config.load_failed"
+  }
+
+  function deferUnregisteredMigration(config: Info) {
+    return Object.keys(config).some((key) => !ConfigDomain.domainForKey(key))
+  }
+
+  async function migrateLegacyGlobalConfig() {
+    const domainDir = ConfigDomain.directory()
+    const existingDomainFiles = await fs
+      .readdir(domainDir)
+      .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
+      .catch(() => false)
+
+    const legacy = await findLegacyGlobalConfig()
+    if (!legacy) {
+      if (!existingDomainFiles) await ConfigDomain.ensureDir()
+      return
+    }
+
+    log.info("migrating legacy global config to domain fragments", { source: legacy.source })
+    let config: Info
+    try {
+      config = await loadFile(legacy.source, { stripUnknownKeys: false })
+    } catch (error) {
+      // Schema errors (e.g. retired keys like `identity` or
+      // `holos_friend_reply_model`) are migration signals: the migration
+      // pipeline rewrites the file before config is read. Keep throwing so
+      // ensureMigrations() can repair the file instead of quarantining it.
+      if (!(error instanceof JsonError)) throw error
+
+      // A syntactically broken legacy file must not block startup: quarantine
+      // it and let the domain fragments continue to work on their own.
+      const message = sanitizeErrorForIssue(error)
+      log.warn("legacy global config failed to parse, quarantining and skipping migration", {
+        source: legacy.source,
+        error: message,
+      })
+      const target = `${legacy.source}.invalid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      let quarantined = false
+      try {
+        await fs.rename(legacy.source, target)
+        quarantined = true
+      } catch (err) {
+        log.warn("failed to quarantine legacy global config", {
+          source: legacy.source,
+          error: sanitizeErrorForIssue(err),
+        })
+      }
+      recordIssue({
+        path: legacy.source,
+        error: message,
+        code: "config.migration_failed",
+        quarantined,
+        quarantinedPath: quarantined ? target : undefined,
+        timestamp: Date.now(),
+      })
+      return
+    }
+    if (deferUnregisteredMigration(config)) return config
+    const split = ConfigDomain.split(config)
+    const tempDir = `${domainDir}.tmp-${process.pid}-${Date.now()}`
+    await fs.rm(tempDir, { recursive: true, force: true })
+    await fs.mkdir(tempDir, { recursive: true })
+
+    try {
+      if (existingDomainFiles) {
+        await fs.cp(domainDir, tempDir, { recursive: true, force: true })
+      }
+
+      for (const domain of ConfigDomain.definitions()) {
+        const filepath = path.join(tempDir, domain.filename)
+        const existing = await loadFile(filepath, { addSchema: false })
+        const fragment = split.get(domain.id) ?? {}
+        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(fragment as Info, existing)), {
+          mode: DOMAIN_FRAGMENT_MODE,
+        })
+      }
+
+      await fs.mkdir(path.dirname(domainDir), { recursive: true })
+      await fs.rm(domainDir, { recursive: true, force: true })
+      await fs.rename(tempDir, domainDir).catch(async (err) => {
+        if (err?.code !== "EXDEV") throw err
+        await fs.cp(tempDir, domainDir, { recursive: true, force: true })
+        await fs.rm(tempDir, { recursive: true, force: true })
+      })
+
+      await archiveLegacyConfigSets()
+      await archiveLegacyGlobalFile(legacy.source)
+      await fs.rm(path.join(Global.Path.config, "config-set.json"), { force: true }).catch(() => {})
+      log.info("migrated legacy global config", { source: legacy.source, target: domainDir })
+    } catch (err) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
+      throw err
+    }
+  }
+
+  async function findLegacyGlobalConfig(): Promise<{ source: string } | undefined> {
+    const metadataPath = path.join(Global.Path.config, "config-set.json")
+    const activeName = await Bun.file(metadataPath)
+      .json()
+      .then((data) => (typeof data?.active === "string" ? data.active : "default"))
+      .catch(() => "default")
+
+    const activeSetPath =
+      activeName && activeName !== "default"
+        ? path.join(Global.Path.config, "config-sets", activeName, "synergy.jsonc")
+        : undefined
+    const candidates = [
+      activeSetPath,
+      path.join(Global.Path.config, "synergy.jsonc"),
+      path.join(Global.Path.config, "synergy.json"),
+      path.join(Global.Path.config, "config-sets", "default", "synergy.jsonc"),
+    ].filter((item): item is string => Boolean(item))
+
+    for (const candidate of candidates) {
+      if (await Bun.file(candidate).exists()) return { source: candidate }
+    }
+    return undefined
+  }
+
+  async function archiveLegacyConfigSets() {
+    const source = path.join(Global.Path.config, "config-sets")
+    if (!(await Bun.file(source).exists())) return
+    const target = path.join(Global.Path.config, "archive", "config-sets")
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await fs.cp(source, target, { recursive: true, force: true }).catch((err) => {
+      log.warn("failed to archive legacy config sets", {
+        source,
+        target,
+        error: err instanceof Error ? err.message : err,
+      })
+    })
+  }
+
+  async function archiveLegacyGlobalFile(filepath: string) {
+    if (!filepath.startsWith(Global.Path.config)) return
+    const archiveDir = path.join(Global.Path.config, "archive")
+    await fs.mkdir(archiveDir, { recursive: true })
+    const target = path.join(archiveDir, path.basename(filepath))
+    await fs.rename(filepath, target).catch((err) => {
+      log.warn("failed to archive legacy global config file", {
+        source: filepath,
+        target,
+        error: err instanceof Error ? err.message : err,
+      })
+    })
+  }
+
+  async function migrateLegacyProjectConfig(projectRoot: string) {
+    const synergyDir = path.join(projectRoot, ".synergy")
+    const domainDir = ConfigDomain.directory(synergyDir)
+    const existingDomainFiles = await fs
+      .readdir(domainDir)
+      .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
+      .catch(() => false)
+
+    const candidates = [
+      path.join(projectRoot, "synergy.jsonc"),
+      path.join(projectRoot, "synergy.json"),
+      path.join(synergyDir, "synergy.jsonc"),
+      path.join(synergyDir, "synergy.json"),
+    ]
+
+    let migrated: Info = {}
+    const sources: string[] = []
+    for (const candidate of candidates) {
+      if (!(await Bun.file(candidate).exists())) continue
+      migrated = mergeConfigConcatArrays(migrated, await loadFile(candidate, { stripUnknownKeys: false }))
+      sources.push(candidate)
+    }
+    if (sources.length === 0) return
+
+    if (deferUnregisteredMigration(migrated)) return migrated
+    if (existingDomainFiles) return migrated
+
+    log.info("migrating legacy project config to domain fragments", { sources, target: domainDir })
+    for (const [id, fragment] of ConfigDomain.split(migrated)) {
+      await writeDomainFile(id, fragment, synergyDir)
+    }
+    const archiveDir = path.join(synergyDir, "archive")
+    await fs.mkdir(archiveDir, { recursive: true })
+    for (const source of sources) {
+      const target = path.join(archiveDir, path.basename(source))
+      await fs.rename(source, target).catch((err) => {
+        log.warn("failed to archive legacy project config file", {
+          source,
+          target,
+          error: err instanceof Error ? err.message : err,
+        })
+      })
+    }
+  }
+
+  async function loadFile(
+    filepath: string,
+    options: { addSchema?: boolean; stripUnknownKeys?: boolean } = {},
+  ): Promise<Info> {
+    await ConfigReferenceMigration.file(filepath)
+    log.info("loading", { path: filepath })
+    let text = await Bun.file(filepath)
+      .text()
+      .catch((err) => {
+        if (err.code === "ENOENT") return
+        throw new JsonError({ path: filepath }, { cause: err })
+      })
+    if (!text) return {}
+    return load(text, filepath, options)
+  }
+
+  async function load(
+    text: string,
+    configFilepath: string,
+    options: { addSchema?: boolean; stripUnknownKeys?: boolean } = {},
+  ) {
+    text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
+      const value = Env.get(varName)
+      if (value === undefined) {
+        log.warn("environment variable not set for config reference", {
+          var: varName,
+          path: configFilepath,
+        })
+      }
+      return value || ""
+    })
+
+    const fileMatches = text.match(/\{file:[^}]+\}/g)
+    if (fileMatches) {
+      const configDir = path.dirname(configFilepath)
+      const lines = text.split("\n")
+
+      for (const match of fileMatches) {
+        const lineIndex = lines.findIndex((line) => line.includes(match))
+        if (lineIndex !== -1 && lines[lineIndex].trim().startsWith("//")) {
+          continue // Skip if line is commented
+        }
+        let filePath = match.replace(/^\{file:/, "").replace(/\}$/, "")
+        if (filePath.startsWith("~/")) {
+          filePath = path.join(RuntimeContext.current().host.home, filePath.slice(2))
+        }
+        const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
+        let fileContent: string
+        try {
+          fileContent = (await Bun.file(resolvedPath).text()).trim()
+        } catch (error: any) {
+          log.warn("failed to resolve file reference", {
+            path: configFilepath,
+            reference: match,
+            resolvedPath,
+            error: error.code ?? error.message,
+          })
+          const placeholder = `(file not resolved: ${path.basename(resolvedPath)})`
+          text = text.replace(match, JSON.stringify(placeholder).slice(1, -1))
+          continue
+        }
+        // escape newlines/quotes, strip outer quotes
+        text = text.replace(match, JSON.stringify(fileContent).slice(1, -1))
+      }
+    }
+
+    const errors: JsoncParseError[] = []
+    const data = LegacyExecutionConfig.migrate(parseJsonc(text, errors, { allowTrailingComma: true }))
+    if (errors.length) {
+      const lines = text.split("\n")
+      const errorDetails = errors
+        .map((e) => {
+          const beforeOffset = text.substring(0, e.offset).split("\n")
+          const line = beforeOffset.length
+          const column = beforeOffset[beforeOffset.length - 1].length + 1
+          const problemLine = lines[line - 1]
+
+          const error = `${printParseErrorCode(e.error)} at line ${line}, column ${column}`
+          if (!problemLine) return error
+
+          return `${error}\n   Line ${line}: ${problemLine}\n${"".padStart(column + 9)}^`
+        })
+        .join("\n")
+
+      throw new JsonError({
+        path: configFilepath,
+        message: `\n--- JSONC Input ---\n${text}\n--- Errors ---\n${errorDetails}\n--- End ---`,
+      })
+    }
+
+    const parsed = storedSchema().safeParse(
+      data && typeof data === "object" && !Array.isArray(data) ? upgradeImportedConfig(data) : data,
+    )
+    if (parsed.success) {
+      if (options.addSchema !== false && !parsed.data.$schema) {
+        parsed.data.$schema = Global.Path.configSchemaUrl
+      }
+      const result = parsed.data
+      ConfigExtensions.resolve(result, configFilepath)
+      return result
+    }
+
+    if (strictExecution.getStore()) throw new InvalidError({ path: configFilepath, issues: parsed.error.issues })
+
+    // Partial recovery: remove invalid sections / section entries and retry.
+    // This allows Synergy to start with usable config even when individual
+    // providers, agents, MCP servers, or channels have schema errors.
+    const stripKeys = new Set<string>()
+    for (const issue of parsed.error.issues) {
+      if (issue.path.length === 0 && issue.code === "invalid_type") {
+        // Root-level type error (e.g. data is not an object) — unrecoverable
+        throw new InvalidError({
+          path: configFilepath,
+          issues: parsed.error.issues,
+        })
+      }
+      if (issue.path.length === 0 && issue.code === "unrecognized_keys") {
+        // The root schema is strict, so retired top-level keys surface as a
+        // root-level issue that names them via `keys` instead of carrying a
+        // real path. Strip exactly those keys like any recoverable section;
+        // keying the strip on path[0] would delete a bogus "undefined" entry
+        // and quarantine the whole file. Legacy monolithic loads opt out:
+        // a retired root key there is a migration signal, because rewrite
+        // migrations (e.g. identity → embedding/rerank/library) need the
+        // file intact until ensureMigrations() rewrites it.
+        if (options.stripUnknownKeys === false) {
+          throw new InvalidError({
+            path: configFilepath,
+            issues: parsed.error.issues,
+          })
+        }
+        for (const key of issue.keys) stripKeys.add(String(key))
+        continue
+      }
+      const section = String(issue.path[0])
+      stripKeys.add(section)
+    }
+
+    if (stripKeys.size === 0) {
+      throw new InvalidError({
+        path: configFilepath,
+        issues: parsed.error.issues,
+      })
+    }
+
+    log.warn("skipping invalid config sections (will use defaults)", {
+      path: configFilepath,
+      sections: [...stripKeys],
+    })
+
+    for (const key of stripKeys) {
+      delete (data as Record<string, unknown>)[key]
+    }
+
+    const retried = storedSchema().safeParse(data)
+    if (retried.success) {
+      if (options.addSchema !== false && !retried.data.$schema) {
+        retried.data.$schema = Global.Path.configSchemaUrl
+      }
+      const result = retried.data
+      ConfigExtensions.resolve(result, configFilepath)
+      return result
+    }
+
+    throw new InvalidError({
+      path: configFilepath,
+      issues: retried.error.issues,
+    })
+  }
+  export const JsonError = NamedError.create(
+    "ConfigJsonError",
+    z.object({
+      path: z.string(),
+      message: z.string().optional(),
+    }),
+  )
+
+  export const ConfigDirectoryTypoError = NamedError.create(
+    "ConfigDirectoryTypoError",
+    z.object({
+      path: z.string(),
+      dir: z.string(),
+      suggestion: z.string(),
+    }),
+  )
+
+  export const InvalidError = NamedError.create(
+    "ConfigInvalidError",
+    z.object({
+      path: z.string(),
+      issues: z.custom<z.core.$ZodIssue[]>().optional(),
+      message: z.string().optional(),
+    }),
+  )
+
+  export const Issue = z
+    .object({
+      domain: z.string().optional().describe("Config domain id the issue belongs to, when known"),
+      path: z.string().describe("Path of the config file that failed to load"),
+      error: z.string().describe("Human-readable error summary"),
+      code: z
+        .enum([
+          "config.json_syntax",
+          "config.root_type",
+          "config.unknown_key",
+          "config.load_failed",
+          "config.migration_failed",
+        ])
+        .describe("Stable machine-readable issue code"),
+      quarantined: z.boolean().describe("Whether the offending file was moved aside"),
+      quarantinedPath: z.string().optional().describe("Path the file was moved to, when quarantined"),
+      timestamp: z.number().describe("Unix epoch milliseconds when the issue was recorded"),
+    })
+    .meta({ ref: "ConfigIssue" })
+  export type Issue = z.infer<typeof Issue>
+
+  // Module-level diagnostics registry: records the most recent config
+  // loading/reloading failures. Bounded so a broken directory cannot grow
+  // memory unboundedly. Snapshot-based: callers read a copy, not a live view.
+  const MAX_ISSUES = 20
+
+  export function recordIssue(issue: Issue) {
+    const instanceState = runtimeState()
+
+    instanceState.issues = [...instanceState.issues, issue].slice(-MAX_ISSUES)
+  }
+
+  export function clearIssueForPath(path: string) {
+    const instanceState = runtimeState()
+
+    instanceState.issues = instanceState.issues.filter((issue) => issue.path !== path)
+  }
+
+  export function diagnostics(): Issue[] {
+    const instanceState = runtimeState()
+
+    return structuredClone(instanceState.issues)
+  }
+
+  export function resetDiagnostics() {
+    const instanceState = runtimeState()
+
+    instanceState.issues = []
+  }
+  export async function resolveExecutionDetails() {
+    return strictExecution.run(true, async () => {
+      const { config, sources } = await loadStateValueInner()
+      return { config, sources: sources ?? {} }
+    })
+  }
+  export async function resolveExecution() {
+    return (await resolveExecutionDetails()).config
+  }
+
+  export async function current() {
+    return state().then((x) => (ConfigSource.get() ? x.config : Experiment.apply(x.config)))
+  }
+
+  export async function forScope(scope: Scope) {
+    return ScopeContext.provide({
+      scope,
+      fn: current,
+    })
+  }
+
+  export async function globalResolved() {
+    return forScope(Scope.home())
+  }
+
+  export const Event = {
+    Updated: BusEvent.define(
+      "config.updated",
+      z.object({
+        scope: z.enum(["global", "project"]),
+        changedFields: z.string().array(),
+      }),
+    ),
+  }
+
+  export function diff(oldConfig: Info, newConfig: Info): string[] {
+    const allKeys = new Set([...Object.keys(oldConfig), ...Object.keys(newConfig)])
+    const changed: string[] = []
+    for (const key of allKeys) {
+      if (key === "$schema") continue
+      const oldVal = (oldConfig as any)[key]
+      const newVal = (newConfig as any)[key]
+      if (oldVal === newVal) continue
+      try {
+        if (JSON.stringify(oldVal) === JSON.stringify(newVal)) continue
+      } catch {}
+      changed.push(key)
+    }
+    return changed
+  }
+  /**
+   * Sentinel value used by clients to indicate that a redacted password
+   * field has not changed. When the server receives this value, it merges
+   * the currently stored secret instead of overwriting it with the placeholder.
+   */
+  export const REDACTED_SENTINEL = SecretPaths.REDACTED_SENTINEL
+
+  const secretHelpers = {
+    sentinel: SecretPaths.REDACTED_SENTINEL,
+    redact: SecretPaths.redactRecord,
+    restore: SecretPaths.mergeRecord,
+  }
+
+  /** Deep-clone config and replace secrets with REDACTED_SENTINEL for safe client exposure. */
+  export function redactForClient(config: Info): Info {
+    const visible = structuredClone(config)
+    // An absent owner cannot classify its secrets; retain those fields on disk only.
+    for (const key of Object.keys(visible)) {
+      if (!(key in Info.shape)) delete (visible as Record<string, unknown>)[key]
+    }
+    const result = project(visible) as Record<string, any>
+
+    if (result.provider) {
+      for (const provider of Object.values(result.provider) as any[]) {
+        if (provider?.options?.apiKey) provider.options.apiKey = REDACTED_SENTINEL
+        if (provider?.options) SecretPaths.redactRecord(provider.options)
+        for (const model of Object.values(provider?.models ?? {}) as any[]) {
+          if (model?.options?.apiKey) model.options.apiKey = REDACTED_SENTINEL
+          if (model?.options) SecretPaths.redactRecord(model.options)
+        }
+      }
+    }
+
+    if (result.agent) {
+      for (const agent of Object.values(result.agent) as any[]) {
+        if (agent?.options) SecretPaths.redactRecord(agent.options)
+      }
+    }
+    ConfigExtensions.redact(result, secretHelpers)
+    return result as Info
+  }
+
+  /**
+   * When an incoming PATCH payload has REDACTED_SENTINEL for any password
+   * field, replace it with the currently stored value so the real secret
+   * is not overwritten with the placeholder.
+   */
+  export function mergeRedactedSecrets(incoming: Info, stored: Info): Info {
+    const result = structuredClone(incoming) as Record<string, any>
+
+    if (result.provider && stored.provider) {
+      for (const [key, provider] of Object.entries(result.provider) as [string, any][]) {
+        const storedProvider = (stored.provider as Record<string, any>)[key]
+        if (provider?.options?.apiKey === REDACTED_SENTINEL) {
+          if (storedProvider?.options?.apiKey) provider.options.apiKey = storedProvider.options.apiKey
+        }
+        if (provider?.options) SecretPaths.mergeRecord(provider.options, storedProvider?.options)
+        for (const [modelKey, model] of Object.entries(provider?.models ?? {}) as [string, any][]) {
+          const storedModel = storedProvider?.models?.[modelKey]
+          if (model?.options?.apiKey === REDACTED_SENTINEL) {
+            if (storedModel?.options?.apiKey) model.options.apiKey = storedModel.options.apiKey
+          }
+          if (model?.options) SecretPaths.mergeRecord(model.options, storedModel?.options)
+        }
+      }
+    }
+
+    if (result.agent && stored.agent) {
+      for (const [key, agent] of Object.entries(result.agent) as [string, any][]) {
+        if (agent?.options) SecretPaths.mergeRecord(agent.options, (stored.agent as Record<string, any>)[key]?.options)
+      }
+    }
+    ConfigExtensions.restore(result, stored, secretHelpers)
+    return result as Info
+  }
+
+  export interface Change {
+    oldConfig: Info
+    config: Info
+    changedFields: string[]
+  }
+
+  export interface ReloadResult {
+    config: Info
+    changedFields: string[]
+    oldConfig: Info
+    issues?: Issue[]
+  }
+
+  export async function reload(
+    scope: "global" | "project" = "global",
+    options: { files?: string[] } = {},
+  ): Promise<ReloadResult> {
+    const instanceState = runtimeState()
+
+    if (!ScopeContext.tryScope()) {
+      if (scope !== "global") {
+        throw new Error("Config.reload('project') requires a ScopeContext")
+      }
+      return ScopeContext.provide<ReloadResult>({
+        scope: Scope.home(),
+        fn: () => reload(scope, options),
+      })
+    }
+
+    // Each reload produces a fresh diagnostic snapshot: clear the previous
+    // run's issues before re-loading so recovered files stop reporting
+    // ghost problems. Surviving issues are re-recorded during the load.
+    resetDiagnostics()
+
+    const oldConfig = await state()
+      .then((x) => x.config)
+      .catch(() => ({}) as Info)
+
+    global.reset()
+    instanceState.reloadHintFilesByScope.set(ScopeContext.current.scope.id, options.files ?? [])
+    try {
+      if (scope === "global") {
+        await state.resetAll()
+      } else {
+        await state.reset()
+      }
+
+      // state() re-runs loadStateValue from disk. Broken domain files are
+      // quarantined during the load; unrecoverable failures fall back to the
+      // last good config instead of throwing, so a bad edit can never wipe the
+      // running configuration.
+      const newConfig = await state().then((x) => x.config)
+      const changedFields = diff(oldConfig, newConfig)
+
+      if (changedFields.length > 0) {
+        log.info("config reloaded", { scope, changedFields })
+      } else {
+        log.info("config reloaded, no changes detected")
+      }
+
+      return { config: newConfig, changedFields, oldConfig, issues: diagnostics() }
+    } finally {
+      instanceState.reloadHintFilesByScope.delete(ScopeContext.current.scope.id)
+    }
+  }
+
+  export async function update(config: Info) {
+    assertWritable()
+    const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
+    for (const [id, fragment] of ConfigDomain.split(config)) {
+      if (ConfigDomain.byId().get(id)?.globalOnly) throw new Error("This configuration domain must be global")
+      await domainUpdate(id, fragment, { root: synergyDir, mode: "replace-domain" })
+    }
+    const { ScopeRuntime } = await import("../scope/runtime")
+    await ScopeRuntime.dispose()
+  }
+
+  export async function updateGlobalWithChange(config: Info): Promise<Change> {
+    const oldConfig = await globalResolved()
+    await updateGlobal(config)
+    const newConfig = await globalResolved()
+    return { oldConfig, config: newConfig, changedFields: diff(oldConfig, newConfig) }
+  }
+
+  export async function updateGlobal(config: Info) {
+    assertWritable()
+    for (const [id, fragment] of ConfigDomain.split(config)) {
+      await domainUpdate(id, fragment)
+    }
+  }
+
+  export async function globalPath() {
+    return ConfigDomain.directory()
+  }
+
+  export async function globalRaw() {
+    // global() lazily loads and caches the merged domain directory. Every
+    // write path (reload, domain update, import, setup, watcher auto-reload)
+    // resets that cache, so reads are cheap without serving stale config
+    // after a commit. Clone on the way out so callers cannot mutate the cache.
+    return structuredClone(await global())
+  }
+
+  export const DomainSummary = z
+    .object({
+      id: ConfigDomain.Id,
+      filename: z.string(),
+      label: z.string(),
+      path: z.string(),
+      ownedKeys: z.array(z.string()),
+      mergePolicy: ConfigDomain.MergeMode,
+      reloadTargets: z.array(z.string()),
+      uiSection: z.string(),
+      importable: z.boolean(),
+      config: z.optional(Info),
+    })
+    .meta({ ref: "ConfigDomainSummary" })
+  export type DomainSummary = z.infer<typeof DomainSummary>
+
+  export async function domainList(): Promise<DomainSummary[]> {
+    await migrateLegacyGlobalConfig()
+    return Promise.all(
+      ConfigDomain.definitions().map(async (domain) => ({
+        ...domain,
+        path: ConfigDomain.filepath(domain.id),
+        ownedKeys: domain.ownedKeys.map(String),
+        config: redactForClient(await domainGet(domain.id)),
+      })),
+    )
+  }
+
+  export async function domainGet(id: ConfigDomain.Id, root = Global.Path.config): Promise<Info> {
+    return project(await domainStored(id, root))
+  }
+
+  async function domainStored(id: ConfigDomain.Id, root = Global.Path.config): Promise<Info> {
+    const parsed = ConfigDomain.Id.parse(id)
+    const source = ConfigSource.get()
+    if (source) return ConfigDomain.split(await hostConfig(source, Scope.home())).get(parsed) ?? {}
+    await migrateLegacyGlobalConfig()
+    const filepath = ConfigDomain.filepath(parsed, root)
+    try {
+      const config = await loadFile(filepath, { addSchema: false })
+      ConfigDomain.validateKeys(config as Record<string, unknown>, parsed, { preserveUnregistered: true })
+      return config
+    } catch (error) {
+      if (ConfigDomain.byId().get(parsed)?.failClosed) throw error
+      // A broken single domain file should not make the domain unreadable:
+      // quarantine it and report empty (Settings will show no config).
+      await quarantineDomainFile(parsed, filepath, error)
+      return {}
+    }
+  }
+
+  /**
+   * Read one domain file for export without quarantining it on failure:
+   * export must be read-only, so a broken file surfaces as a warning and
+   * the domain is skipped instead of being moved aside. Takes the shared
+   * domain lock in read mode so a concurrent write cannot expose a torn
+   * read.
+   */
+  export async function domainReadForExport(
+    id: ConfigDomain.Id,
+    root = Global.Path.config,
+  ): Promise<{ config: Info; error?: string }> {
+    const parsed = ConfigDomain.Id.parse(id)
+    if (ConfigSource.get()) return { config: await domainGet(parsed, root) }
+    await migrateLegacyGlobalConfig()
+    const filepath = ConfigDomain.filepath(parsed, root)
+    using _ = await Lock.read(`config-domain:${filepath}`)
+    try {
+      const config = await loadFile(filepath, { addSchema: false })
+      ConfigDomain.validateKeys(config as Record<string, unknown>, parsed, { preserveUnregistered: true })
+      return { config: project(config) }
+    } catch (error) {
+      return { config: {}, error: sanitizeErrorForIssue(error) }
+    }
+  }
+
+  export async function domainUpdate(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
+  ) {
+    assertWritable()
+    const parsed = ConfigDomain.Id.parse(id)
+    if (parsed === "storage")
+      throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
+    using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed, options.root)}`)
+    // `return await` (not bare `return promise`): with `using`, a bare return
+    // disposes the lock before the async transaction has run, so concurrent
+    // updates would not be serialized. Awaiting inside the guarded body keeps
+    // the lock held across the read-merge-write transaction.
+    return await domainUpdateUnlocked(parsed, patch, options)
+  }
+
+  async function domainUpdateUnlocked(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
+  ) {
+    const prepared = await prepareDomainUpdate(id, patch, options)
+    Info.parse(mergeConfigConcatArrays(project(await globalRaw()), prepared.next))
+    storedSchema().parse(mergeConfigConcatArrays(await globalConfig()(), prepared.stored))
+    await writeDomainFile(id, prepared.stored, options.root)
+    global.reset()
+    await state.resetAll()
+    return redactForClient(await domainGet(id, options.root))
+  }
+
+  export type PreparedDomainUpdate = { current: Info; next: Info; stored: Info }
+
+  export async function prepareDomainUpdate(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
+  ): Promise<PreparedDomainUpdate> {
+    assertWritable()
+    const parsed = ConfigDomain.Id.parse(id)
+    if (
+      ConfigDomain.byId().get(parsed)?.globalOnly &&
+      path.resolve(options.root ?? Global.Path.config) !== path.resolve(Global.Path.config)
+    )
+      throw new InvalidError({
+        path: ConfigDomain.filepath(parsed, options.root),
+        message: "This configuration domain must be global",
+      })
+    ConfigDomain.validateKeys(patch as Record<string, unknown>, parsed)
+    const stored = await domainStored(parsed, options.root)
+    const mergedPatch = mergeRedactedSecrets(patch as Info, stored)
+    const mode = options.mode ?? ConfigDomain.byId().get(parsed)!.mergePolicy
+    const visible = project(stored)
+    const next = Info.parse(mergeDomainConfig(visible, mergedPatch, mode))
+    const preserved = structuredClone(next)
+    ConfigExtensions.preserveStored(stored, visible, preserved)
+    return { current: visible, next, stored: preserved }
+  }
+
+  export async function domainMutateWithChange(
+    id: ConfigDomain.Id,
+    mutate: (current: Info) => Partial<Info> | Promise<Partial<Info>>,
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
+  ) {
+    assertWritable()
+    const parsed = ConfigDomain.Id.parse(id)
+    if (parsed === "storage")
+      throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
+    using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed, options.root)}`)
+    const oldConfig = await (options.root ? current() : globalResolved())
+    const stored = await domainGet(parsed, options.root)
+    const patch = await mutate(structuredClone(stored))
+    const result = await domainUpdateUnlocked(parsed, patch, options)
+    const config = await (options.root ? current() : globalResolved())
+    return {
+      result,
+      change: { oldConfig, config, changedFields: diff(oldConfig, config) } satisfies Change,
+    }
+  }
+
+  // Files written by domainUpdateWithChange already ran their full reload;
+  // the file watcher consults this registry to avoid re-reloading them.
+  const HANDLED_WRITE_WINDOW_MS = 3_000
+
+  // mtime skew tolerated when matching a watcher event to the handled write
+  // (the event is dispatched after the write completed).
+  const HANDLED_WRITE_MTIME_SKEW_MS = 100
+
+  export function markWriteHandled(filepath: string) {
+    const instanceState = runtimeState()
+
+    instanceState.handledWrites.set(filepath, Date.now())
+  }
+
+  export async function isWriteRecentlyHandled(filepath: string): Promise<boolean> {
+    const instanceState = runtimeState()
+
+    const handledAt = instanceState.handledWrites.get(filepath)
+    if (handledAt === undefined) return false
+    // Consume the marker on every check: only the first watcher event for
+    // this write is suppressed, so a genuine external edit inside the window
+    // is never silently discarded.
+    instanceState.handledWrites.delete(filepath)
+    if (Date.now() - handledAt > HANDLED_WRITE_WINDOW_MS) return false
+    // Tie the suppression to the handled write's own mtime: a genuine
+    // external edit in the window gets a newer mtime and must trigger a
+    // reload. A missing file means the write was replaced/deleted — let the
+    // watcher reload.
+    try {
+      const stat = await fs.stat(filepath)
+      if (stat.mtimeMs > handledAt + HANDLED_WRITE_MTIME_SKEW_MS) return false
+    } catch {
+      return false
+    }
+    return true
+  }
+
+  export async function domainUpdateWithChange(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode } = {},
+  ) {
+    assertWritable()
+    const parsed = ConfigDomain.Id.parse(id)
+    if (parsed === "storage")
+      throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
+    using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed)}`)
+    const oldConfig = await globalResolved()
+    const result = await domainUpdateUnlocked(parsed, patch, options)
+    markWriteHandled(ConfigDomain.filepath(parsed))
+    const config = await globalResolved()
+    return {
+      result,
+      change: { oldConfig, config, changedFields: diff(oldConfig, config) } satisfies Change,
+    }
+  }
+
+  export function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
+    if (mode === "replace-domain") return patch
+    if (mode === "append") {
+      const merged = mergeAppendArrays(current, patch) as Info
+      if (patch.features) merged.features = structuredClone(patch.features)
+      return merged
+    }
+    const merged = mergeDeep(current, patch) as Info
+    ConfigExtensions.merge(current, patch, merged)
+    return merged
+  }
+
+  function mergeAppendArrays(current: unknown, patch: unknown): unknown {
+    if (Array.isArray(current) && Array.isArray(patch)) return [...current, ...patch]
+    if (!isConfigObject(current) || !isConfigObject(patch)) return patch
+
+    const merged: Record<string, unknown> = { ...current }
+    for (const [key, value] of Object.entries(patch)) {
+      merged[key] = key in current ? mergeAppendArrays(current[key], value) : value
+    }
+    return merged
+  }
+
+  function isConfigObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+  }
+
+  async function writeDomainFile(id: ConfigDomain.Id, config: Partial<Info>, root = Global.Path.config) {
+    const filepath = ConfigDomain.filepath(id, root)
+    await fs.mkdir(path.dirname(filepath), { recursive: true })
+    let content = serializeConfig(config)
+    let changed = true
+    try {
+      const rendered = await renderDomainFragment({
+        current: await Bun.file(filepath)
+          .text()
+          .catch(() => ""),
+        next: config,
+        filepath,
+        renderFresh: serializeConfig,
+      })
+      content = rendered.content
+      changed = rendered.changed
+    } catch (error) {
+      // A malformed fragment cannot be edited in place; replace it with the
+      // valid merged config so the save still lands, matching the quarantine
+      // recovery contract instead of turning silent overwrites into failures.
+      if (!(error instanceof MalformedFragmentError)) throw error
+    }
+    // An unchanged document skips the write entirely: an empty Settings save
+    // must not churn the fragment's mtime or wake the file watcher.
+    if (!changed) {
+      await fs
+        .chmod(filepath, DOMAIN_FRAGMENT_MODE)
+        .catch((error) => log.warn("failed to restrict config fragment permissions", { filepath, error }))
+      return
+    }
+    await Bun.write(filepath, content, { mode: DOMAIN_FRAGMENT_MODE })
+    await fs
+      .chmod(filepath, DOMAIN_FRAGMENT_MODE)
+      .catch((error) => log.warn("failed to restrict config fragment permissions", { filepath, error }))
+  }
+
+  export function serializeConfig(config: Partial<Info>) {
+    return `${JSON.stringify(sortConfigKeys(config), null, 2)}\n`
+  }
+
+  function sortConfigKeys(config: Partial<Info>) {
+    const result: Record<string, unknown> = {}
+    for (const domain of ConfigDomain.definitions()) {
+      for (const key of domain.ownedKeys) {
+        if ((config as Record<string, unknown>)[key] !== undefined) {
+          result[String(key)] = (config as Record<string, unknown>)[key]
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(config)) if (!(key in result)) result[key] = value
+    return result
+  }
+
+  export async function directories() {
+    return state().then((x) => x.directories)
+  }
+}

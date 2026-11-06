@@ -1,0 +1,325 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
+import { afterAll, expect, test } from "bun:test"
+import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { WebFetchTool } from "../../src/tools/webfetch"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+const html =
+  "<html><head><style>hidden-style</style><script>hidden-script</script></head><body><h1>Research methods</h1><p>A reproducible experiment measures the same phenomenon with independent observations.</p></body></html>"
+const requests: Array<{ accept: string | null }> = []
+const retryRequests = new Map<string, number>()
+const server = Bun.serve({
+  hostname: "127.0.0.1",
+  port: 0,
+  async fetch(request) {
+    requests.push({ accept: request.headers.get("accept") })
+    const pathname = new URL(request.url).pathname
+    if (pathname.startsWith("/retry/")) {
+      const count = (retryRequests.get(pathname) ?? 0) + 1
+      retryRequests.set(pathname, count)
+      const status = Number(pathname.split("/")[2])
+      if (count === 1 || pathname.includes("always"))
+        return new Response("unavailable", {
+          status,
+          headers: { "Retry-After": pathname.includes("wait") ? "60" : "0" },
+        })
+      return new Response("Recovered complete page", { headers: { "content-type": "text/plain" } })
+    }
+    if (pathname === "/slow-body")
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("partial"))
+          },
+        }),
+      )
+    if (pathname === "/slow") {
+      await Bun.sleep(100)
+      return new Response("late")
+    }
+    if (pathname === "/missing") return new Response("missing", { status: 404 })
+    if (pathname === "/forbidden") return new Response("denied", { status: 403 })
+    if (pathname === "/huge") return new Response("x".repeat(5 * 1024 * 1024 + 1))
+    if (pathname === "/chunked-huge")
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(5 * 1024 * 1024 + 1))
+            controller.close()
+          },
+        }),
+      )
+    if (pathname === "/plain")
+      return new Response("Independent observations make an experiment reproducible.", {
+        headers: { "content-type": "text/plain" },
+      })
+    if (pathname === "/empty") return new Response("", { headers: { "content-type": "text/html" } })
+    return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } })
+  },
+})
+afterAll(() => runtime.run(() => server.stop(true)))
+async function context(signal = new AbortController().signal) {
+  const { session, assistant } = await ScopeContext.provide({
+    scope: Scope.home(),
+    fn: async () => {
+      const session = await Session.create({ workspace: null })
+      const user = await Session.updateMessage({
+        id: Identifier.ascending("message"),
+        sessionID: session.id,
+        role: "user",
+        isRoot: true,
+        agent: PrimaryAgentIdentity.names.general,
+        model: { providerID: "fixture", modelID: "fixture" },
+        time: { created: Date.now() },
+      })
+      const assistant = await Session.updateMessage({
+        id: Identifier.ascending("message"),
+        sessionID: session.id,
+        role: "assistant",
+        rootID: user.id,
+        parentID: user.id,
+        agent: PrimaryAgentIdentity.names.general,
+        mode: "synergy",
+        path: { cwd: null, root: null },
+        providerID: "fixture",
+        modelID: "fixture",
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: Date.now() },
+      })
+      return { session, assistant }
+    },
+  })
+  const permissions: string[] = []
+  const ctx: Tool.Context = {
+    sessionID: session.id,
+    messageID: assistant.id,
+    agent: PrimaryAgentIdentity.names.general,
+    abort: signal,
+    metadata() {},
+    async ask(input) {
+      permissions.push(...input.patterns)
+    },
+  }
+  return { ctx, permissions }
+}
+const definition = await WebFetchTool.init()
+const tool = {
+  async execute(input: Parameters<typeof definition.execute>[0], context: Tool.Context) {
+    return ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const partID = Identifier.ascending("part")
+        const callID = crypto.randomUUID()
+        const start = Date.now()
+        try {
+          const result = await definition.execute(input, { ...context, callID })
+          await Session.updatePart({
+            id: partID,
+            sessionID: context.sessionID,
+            messageID: context.messageID,
+            type: "tool",
+            tool: "webfetch",
+            callID,
+            state: {
+              status: "completed",
+              input,
+              output: result.output,
+              title: result.title,
+              metadata: result.metadata,
+              time: { start, end: Date.now() },
+            },
+          })
+          return result
+        } catch (error) {
+          await Session.updatePart({
+            id: partID,
+            sessionID: context.sessionID,
+            messageID: context.messageID,
+            type: "tool",
+            tool: "webfetch",
+            callID,
+            state: { status: "error", input, error: String(error), time: { start, end: Date.now() } },
+          })
+          throw error
+        }
+      },
+    })
+  },
+}
+const url = (pathname: string) => new URL(pathname, server.url).href
+
+test("fetches HTML through permissions and converts requested representations", () =>
+  runtime.run(async () => {
+    for (const format of ["markdown", "text", "html"] as const) {
+      const { ctx, permissions } = await context()
+      const result = await tool.execute({ url: url("/article"), format }, ctx)
+      expect(permissions).toEqual([url("/article")])
+      expect(result.metadata).toMatchObject({
+        contentType: "text/html; charset=utf-8",
+        contentLength: new TextEncoder().encode(html).length,
+      })
+      expect(result.output).toContain("Research methods")
+      expect(requests.at(-1)?.accept).toContain(
+        format === "markdown" ? "text/markdown;q=1.0" : `text/${format === "text" ? "plain" : "html"};q=1.0`,
+      )
+      if (format === "html") expect(result.output).toContain(html)
+      else {
+        expect(result.output).not.toContain("hidden-script")
+        expect(result.output).not.toContain("hidden-style")
+        expect(result.output).not.toContain("<h1>")
+        if (format === "markdown") expect(result.output).toContain("# Research methods")
+      }
+    }
+  }))
+test("preserves non-HTML bodies and labels empty content quality", () =>
+  runtime.run(async () => {
+    for (const format of ["markdown", "text"] as const) {
+      const result = await tool.execute({ url: url("/plain"), format }, (await context()).ctx)
+      expect(result.output).toContain("Independent observations")
+      expect(result.metadata.contentType).toBe("text/plain")
+    }
+    const empty = await tool.execute({ url: url("/empty"), format: "text" }, (await context()).ctx)
+    expect(empty.metadata.searchFailureType).toBe("low_quality_results")
+    expect(empty.metadata.contentLength).toBe(0)
+  }))
+test("rejects invalid URLs before approval and permits fresh repeated requests", () =>
+  runtime.run(async () => {
+    const { ctx, permissions } = await context()
+    await expect(tool.execute({ url: "file:///private/file", format: "text" }, ctx)).rejects.toThrow(
+      "http:// or https://",
+    )
+    expect(permissions).toEqual([])
+    await tool.execute({ url: url("/plain"), format: "text" }, ctx)
+    const requestCount = requests.length
+    const duplicate = await tool.execute({ url: url("/plain"), format: "text" }, ctx)
+    expect(duplicate.output).toContain("Independent observations")
+    expect(requests.length).toBe(requestCount + 1)
+    expect(permissions).toHaveLength(2)
+  }))
+test("classifies upstream failures and enforces declared and streamed response limits", () =>
+  runtime.run(async () => {
+    for (const [pathname, failure] of [
+      ["/missing", "404 (http_404)"],
+      ["/forbidden", "403 (http_403)"],
+      ["/huge", "exceeds 5MB limit"],
+      ["/chunked-huge", "exceeds 5MB limit"],
+    ] as const) {
+      await expect(tool.execute({ url: url(pathname), format: "text" }, (await context()).ctx)).rejects.toThrow(failure)
+    }
+  }))
+test("aborts slow requests at configured timeout and honors caller cancellation", () =>
+  runtime.run(async () => {
+    await expect(
+      tool.execute({ url: url("/slow"), format: "text", timeoutSeconds: 0.01 }, (await context()).ctx),
+    ).rejects.toThrow("Request timed out")
+    const controller = new AbortController()
+    const reason = new DOMException("Cancelled by caller", "AbortError")
+    controller.abort(reason)
+    await expect(
+      tool.execute({ url: url("/slow"), format: "text" }, (await context(controller.signal)).ctx),
+    ).rejects.toThrow("Cancelled by caller")
+  }))
+
+test.each([408, 429, 500, 502, 503, 504])(
+  "retries HTTP %s reads within one permission and search attempt",
+  runtime.bind(async (status) => {
+    const pathname = `/retry/${status}/${crypto.randomUUID()}`
+    const { ctx, permissions } = await context()
+    const result = await tool.execute({ url: url(pathname), format: "text" }, ctx)
+    expect(result.output).toBe("Recovered complete page")
+    expect(retryRequests.get(pathname)).toBe(2)
+    expect(permissions).toEqual([url(pathname)])
+  }),
+)
+
+test.each([403, 404, 501, 505])(
+  "does not retry HTTP %s reads",
+  runtime.bind(async (status) => {
+    const pathname = `/retry/${status}/${crypto.randomUUID()}`
+    await expect(tool.execute({ url: url(pathname), format: "text" }, (await context()).ctx)).rejects.toThrow(
+      `status code: ${status}`,
+    )
+    expect(retryRequests.get(pathname)).toBe(1)
+  }),
+)
+
+test("bounds attempts and includes body reading and backoff in the total deadline", () =>
+  runtime.run(async () => {
+    const pathname = `/retry/503/always-${crypto.randomUUID()}`
+    await expect(tool.execute({ url: url(pathname), format: "text" }, (await context()).ctx)).rejects.toThrow("503")
+    expect(retryRequests.get(pathname)).toBe(3)
+    const waiting = `/retry/429/wait-${crypto.randomUUID()}`
+    await expect(
+      tool.execute({ url: url(waiting), format: "text", timeoutSeconds: 0.05 }, (await context()).ctx),
+    ).rejects.toThrow("Request timed out")
+    expect(retryRequests.get(waiting)).toBe(1)
+    await expect(
+      tool.execute({ url: url("/slow-body"), format: "text", timeoutSeconds: 0.05 }, (await context()).ctx),
+    ).rejects.toThrow("Request timed out")
+  }))
+
+// The shared classifier reports an unmapped certificate verification failure as indeterminate rather
+// than a proven transport failure; webfetch accepts it but keeps its own attempt and deadline budget.
+test("retries an unmapped certificate verification failure within its existing budget", () =>
+  runtime.run(async () => {
+    const original = globalThis.fetch
+    const calls: string[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+      calls.push(target)
+      if (calls.length === 1) throw new Error("unknown certificate verification error")
+      return new Response("Recovered secure page", { headers: { "content-type": "text/plain" } })
+    }) as unknown as typeof fetch
+    try {
+      const result = await tool.execute({ url: url("/tls-recover"), format: "text" }, (await context()).ctx)
+      expect(calls).toHaveLength(2)
+      expect(result.output).toContain("Recovered secure page")
+    } finally {
+      globalThis.fetch = original
+    }
+  }))
+
+test("does not retry a mapped certificate failure", () =>
+  runtime.run(async () => {
+    const original = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      throw Object.assign(new Error("certificate has expired"), { code: "CERT_HAS_EXPIRED" })
+    }) as unknown as typeof fetch
+    try {
+      await expect(tool.execute({ url: url("/tls-expired"), format: "text" }, (await context()).ctx)).rejects.toThrow(
+        "certificate has expired",
+      )
+      expect(calls).toBe(1)
+    } finally {
+      globalThis.fetch = original
+    }
+  }))
+
+test("exhausts the opaque certificate retry budget and honors the total deadline", () =>
+  runtime.run(async () => {
+    const original = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      throw new Error("unknown certificate verification error")
+    }) as unknown as typeof fetch
+    try {
+      await expect(tool.execute({ url: url("/tls-always"), format: "text" }, (await context()).ctx)).rejects.toThrow(
+        "unknown certificate verification error",
+      )
+      expect(calls).toBe(3)
+    } finally {
+      globalThis.fetch = original
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

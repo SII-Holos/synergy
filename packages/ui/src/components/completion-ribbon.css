@@ -1,0 +1,18 @@
+[data-component="completion-ribbon"] {
+  display: block;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+
+  &[data-travelling] {
+    visibility: hidden;
+  }
+}
+
+[data-component="completion-ribbon-overlay"] {
+  position: fixed;
+  z-index: 1;
+  pointer-events: none;
+  contain: strict;
+}

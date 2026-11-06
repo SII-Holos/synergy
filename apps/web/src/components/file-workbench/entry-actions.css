@@ -1,0 +1,115 @@
+.file-entry-form {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  padding-right: 6px;
+}
+
+.file-entry-form input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  border: 1px solid var(--border-focus);
+  border-radius: 3px;
+  background: var(--input-base);
+  color: var(--text-strong);
+  padding: 0 5px;
+  font: inherit;
+}
+
+.file-entry-error {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  color: var(--text-on-critical-weak);
+  background: var(--surface-critical-weak);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.file-entry-popover [data-slot="popover-body"] {
+  padding: 5px;
+}
+
+.file-entry-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-height: min(28rem, calc(100dvh - 48px));
+  overflow-y: auto;
+}
+
+.file-entry-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-base);
+}
+
+.file-entry-menu button:hover:not(:disabled),
+.file-entry-menu button:focus-visible {
+  background: var(--surface-raised-base-hover);
+}
+
+.file-entry-menu button:disabled {
+  color: var(--text-weaker);
+}
+
+.file-entry-menu hr {
+  border: 0;
+  border-top: 1px solid var(--border-weak-base);
+  margin: 4px;
+}
+
+.file-tree-row--cut {
+  opacity: 0.55;
+}
+
+.file-tree-entry-menu {
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.file-tree-row:hover .file-tree-entry-menu,
+.file-tree-row:focus-within .file-tree-entry-menu,
+.file-tree-row--focused .file-tree-entry-menu {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .file-tree-entry-menu {
+    opacity: 1;
+  }
+}
+
+.file-entry-create {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+}
+
+.file-entry-create:hover:not(:disabled) {
+  background: var(--surface-raised-base-hover);
+}
+
+.file-entry-create-mark {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  display: flex;
+  background: var(--workbench-panel-bg, var(--background-stronger));
+  border-radius: 2px;
+}
+
+.file-entry-create-mark svg {
+  width: 10px;
+  height: 10px;
+}

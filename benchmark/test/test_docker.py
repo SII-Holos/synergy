@@ -1,0 +1,393 @@
+import asyncio
+import importlib.util
+import json
+import os
+import shutil
+import threading
+import zipfile
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+
+import pytest
+import yaml
+from fixtures.resources import fixture_resources, healthy_docker_snapshot
+
+from synergy_bench.catalog import tree_digest
+from synergy_bench.prepare import BENCHMARK
+from synergy_bench.runner import initialize, resume
+from synergy_bench.source import git
+from synergy_bench.storage import atomic_json, read_json
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit Docker integration suite"
+)
+
+
+@pytest.mark.parametrize("topology", ["ordinary", "none", "restricted"])
+async def test_admission_preserves_native_network_topology_and_removes_only_owned_resources(tmp_path, topology):
+    import uuid
+
+    from pier.models.task.config import EnvironmentConfig
+    from pier.models.trial.paths import TrialPaths
+
+    from synergy_bench.docker_resources import DockerStats
+    from synergy_bench.environment import CachedDockerEnvironment
+    from synergy_bench.prepare import command
+    from synergy_bench.resources import Capacity, ResourcePool
+    from synergy_bench.scheduling import PhaseResources, current_resources
+
+    info = json.loads(command(["docker", "info", "--format", "{{json .}}"], timeout=30))
+    project = "sb-admission-" + uuid.uuid4().hex[:12]
+    (tmp_path / "Dockerfile").write_text("FROM ubuntu:24.04\n")
+    if topology == "restricted":
+        (tmp_path / "docker-compose.yaml").write_text(
+            json.dumps(
+                {
+                    "services": {
+                        "main": {"networks": ["internal"]},
+                        "egress": {
+                            "image": "ubuntu:24.04",
+                            "command": ["sleep", "infinity"],
+                            "networks": ["internal", "default"],
+                        },
+                    },
+                    "networks": {"internal": {"internal": True}, "default": {}},
+                }
+            )
+        )
+    paths = TrialPaths(trial_dir=tmp_path / "trial")
+    for path in [paths.agent_dir, paths.verifier_dir, paths.artifacts_dir]:
+        path.mkdir(parents=True)
+    env = CachedDockerEnvironment(
+        environment_dir=tmp_path,
+        environment_name=project,
+        session_id=project,
+        trial_paths=paths,
+        task_env_config=EnvironmentConfig(docker_image="ubuntu:24.04", allow_internet=topology != "none"),
+        benchmark_cache=str(tmp_path / "cache"),
+        benchmark_platform="linux/arm64" if info["Architecture"] == "aarch64" else "linux/amd64",
+    )
+    env._use_prebuilt = True
+    env._mounts_compose_path = env._write_mounts_compose_file()
+    sampler = DockerStats()
+    pool = ResourcePool(Capacity(info["NCPU"], info["MemTotal"]), 1, sampler=sampler, pressure_timeout_seconds=15)
+    phases = PhaseResources(pool, tmp_path)
+    token = current_resources.set(phases)
+    try:
+        await env._run_docker_compose_command(["up", "--detach", "--wait", "--force-recreate"])
+        identities = command(
+            ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
+        ).splitlines()
+        containers = json.loads(command(["docker", "inspect", *identities]))
+        services = {row["Config"]["Labels"]["com.docker.compose.service"]: row for row in containers}
+        main = services["main"]["NetworkSettings"]["Networks"]
+        if topology == "none":
+            assert services["main"]["HostConfig"]["NetworkMode"] == "none"
+        else:
+            assert len(main) == 1
+            network = json.loads(command(["docker", "network", "inspect", next(iter(main.values()))["NetworkID"]]))[0]
+            assert network["Internal"] is (topology == "restricted")
+            if topology == "restricted":
+                assert len(services["egress"]["NetworkSettings"]["Networks"]) == 2
+        snapshot = await healthy_docker_snapshot(DockerStats(), timeout_seconds=pool.pressure_timeout_seconds)
+        assert snapshot.healthy
+        assert len([row for row in snapshot.containers if row["project"] == project]) == len(services)
+    finally:
+        try:
+            await env._run_docker_compose_command(["down", "--volumes", "--remove-orphans"])
+            assert not await env._project_resources_remain()
+            assert pool.active == 0
+        finally:
+            current_resources.reset(token)
+
+
+@pytest.fixture(scope="module")
+def experiment_fixture(tmp_path_factory: pytest.TempPathFactory):
+    tmp_path = tmp_path_factory.mktemp("docker-benchmark")
+    spec = importlib.util.spec_from_file_location(
+        "benchmark_fixture_provider", BENCHMARK / "test/fixtures/task/environment/provider.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.Handler.artifacts = tmp_path / "provider-artifacts"
+    module.Handler.artifacts.mkdir()
+    provider = ThreadingHTTPServer(("127.0.0.1", 0), module.Handler)
+    thread = threading.Thread(target=provider.serve_forever, daemon=True)
+    thread.start()
+    dataset = tmp_path / "dataset"
+    shutil.copytree(
+        BENCHMARK / "test/fixtures/task",
+        dataset / "tasks/fixture",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    separate = dataset / "tasks/separate"
+    shutil.copytree(BENCHMARK / "test/fixtures/task", separate, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    definition = (separate / "task.toml").read_text()
+    definition = 'artifacts = ["/logs/artifacts/marker"]\n' + definition
+    definition = definition.replace('name = "synergy/fixture"', 'name = "synergy/separate"')
+    definition = definition.replace("[verifier]\n", '[verifier]\nenvironment_mode = "separate"\n')
+    definition += (
+        "\n[[verifier.collect]]\n"
+        'command = "mkdir -p /logs/artifacts && cp /app/marker /logs/artifacts/marker"\ntimeout_sec = 10\n'
+    )
+    (separate / "task.toml").write_text(definition)
+    (separate / "tests/test.sh").write_text(
+        "#!/bin/sh\nmkdir -p /logs/verifier\n"
+        'if test ! -f /app/marker && test "$(cat /logs/artifacts/marker)" = verified; then\n'
+        "echo 1 > /logs/verifier/reward.txt\nelse\necho 0 > /logs/verifier/reward.txt\nfi\n"
+    )
+    (separate / "tests/Dockerfile").write_text(
+        "FROM python:3.12-slim-bookworm\nWORKDIR /app\nCOPY test.sh /tests/test.sh\n"
+    )
+    git(dataset, "init", "--quiet")
+    git(dataset, "add", ".")
+    git(
+        dataset,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "commit",
+        "--quiet",
+        "-m",
+        "fixture",
+    )
+    commit = git(dataset, "rev-parse", "HEAD").decode().strip()
+    atomic_json(
+        tmp_path / "suite.json",
+        {
+            "version": 1,
+            "name": "fixture",
+            "selection": "deterministic transport test",
+            "sources": {"fixture": {"url": str(dataset), "commit": commit, "license": "test fixture"}},
+            "tasks": [
+                {
+                    "id": "fixture/marker",
+                    "source": "fixture",
+                    "path": "tasks/fixture",
+                    "digest": tree_digest(dataset / "tasks/fixture"),
+                    "tags": [],
+                }
+            ]
+            + [
+                {
+                    "id": "fixture/separate",
+                    "source": "fixture",
+                    "path": "tasks/separate",
+                    "digest": tree_digest(separate),
+                    "tags": [],
+                }
+            ],
+        },
+    )
+    atomic_json(
+        tmp_path / "provider.json",
+        {
+            "execution": {"agentWorkers": 1, "agentWorkerMinIdle": 0},
+            "provider": {
+                "fixture": {
+                    "name": "Fixture",
+                    "npm": "@ai-sdk/openai-compatible",
+                    "env": [],
+                    "models": {
+                        name: {"name": name, "tool_call": True, "limit": {"context": 128000, "output": 4096}}
+                        for name in ["fixture", "hang", "disconnect", "long"]
+                    },
+                    "options": {"apiKey": "{env:BENCH_FIXTURE_KEY}", "baseURL": "http://127.0.0.1:8087/v1"},
+                }
+            },
+        },
+    )
+    variant = {
+        "source": {"artifact": os.environ["SYNERGY_BENCH_TEST_ARTIFACT"]}
+        if os.environ.get("SYNERGY_BENCH_TEST_ARTIFACT")
+        else {"path": str(BENCHMARK.parent)},
+        "kind": "synergy",
+        "runtime": "core",
+        "config": "provider.json",
+    }
+    library_config = read_json(tmp_path / "provider.json")
+    library_config["embedding"] = {
+        "apiKey": "{env:BENCH_FIXTURE_KEY}",
+        "baseURL": "http://127.0.0.1:8087/v1",
+        "model": "fixture-embedding",
+    }
+    atomic_json(tmp_path / "library.json", library_config)
+    config = {
+        "version": 2,
+        "suite": "suite.json",
+        "resources": fixture_resources(),
+        "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
+        "output": str(BENCHMARK.parent / ".artifacts/benchmark/integration"),
+        "models": {
+            "m": {
+                "model": "fixture",
+                "protocol": "chat-completions",
+                "base_url": f"http://127.0.0.1:{provider.server_port}/v1",
+                "api_key_env": "BENCH_FIXTURE_KEY",
+                "context_window": 128000,
+                "max_output_tokens": 4096,
+            }
+        },
+        "harnesses": {
+            "A": variant,
+            "B": variant,
+            "library": {**variant, "runtime": "core-library", "config": "library.json"},
+            "full": {**variant, "runtime": "full", "config": "library.json"},
+        },
+    }
+    path = tmp_path / "experiment.yaml"
+    path.write_text(yaml.safe_dump(config))
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("BENCH_FIXTURE_KEY", "deterministic-local-fixture")
+        try:
+            yield path, module.Handler.artifacts
+        finally:
+            provider.shutdown()
+            provider.server_close()
+            thread.join(timeout=5)
+
+
+def test_real_synergy_paired_rollout(experiment_fixture) -> None:
+    path, _ = experiment_fixture
+    root = initialize(path)
+    print(f"Integration evidence: {root}", flush=True)
+    asyncio.run(resume(root))
+    evidence = [read_json(file) for file in root.glob("trials/*/attempt-*/evidence.json")]
+    assert len(evidence) == 8
+    assert all(result["execution"] and result["execution"]["exit_code"] == 0 for result in evidence), evidence
+    assert all(result["verifier"]["rewards"] == {"reward": 1.0} for result in evidence), evidence
+    assert all(result["evidence"]["valid"] for result in evidence), evidence
+    assert all(result["accounting"]["tokens"]["cacheRead"]["total"] > 0 for result in evidence), evidence
+    assert_retained_credentials_absent(root)
+    asyncio.run(resume(root))
+    assert len(list(root.glob("trials/*/attempt-*/evidence.json"))) == 8
+
+
+def assert_retained_credentials_absent(root: Path) -> None:
+    sentinel = b"deterministic-local-fixture"
+    for evidence_file in root.glob("trials/*/attempt-*/evidence.json"):
+        evidence = read_json(evidence_file)
+        trial = evidence_file.parent / evidence["trial_directory"]
+        for name in evidence["files"]:
+            file = trial / name
+            assert sentinel not in file.read_bytes(), name
+            if file.suffix == ".zip":
+                with zipfile.ZipFile(file) as archive:
+                    for item in archive.infolist():
+                        assert sentinel not in archive.read(item), item.filename
+
+
+def primary_attempts(root: Path):
+    for file in root.glob("trials/*/attempt-*/*/agent/rollout.zip"):
+        with zipfile.ZipFile(file) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["format"] == "synergy-rollout" and manifest["version"] == 1
+        for snapshot in manifest["snapshots"]:
+            calls = {call["id"] for call in snapshot["calls"] if call.get("usageRole") == "conversation"}
+            yield from (attempt for attempt in snapshot["attempts"] if attempt["callID"] in calls)
+
+
+@pytest.mark.parametrize("mode", ["long", "disconnect", "timeout", "cancel", "docker-stop"])
+def test_faults_preserve_terminal_evidence_and_cleanup(experiment_fixture, mode: str, monkeypatch) -> None:
+    from synergy_bench.prepare import command
+
+    path, provider_artifacts = experiment_fixture
+    for marker in provider_artifacts.iterdir():
+        marker.unlink()
+    config = yaml.safe_load(path.read_text())
+    variant = config["harnesses"]["A"]
+    config["models"]["m"]["model"] = "hang" if mode in {"timeout", "cancel", "docker-stop"} else mode
+    config["harnesses"] = {mode: variant}
+    config["selection"] = {"tasks": ["fixture/marker"]}
+    if mode in {"timeout", "disconnect"}:
+        monkeypatch.setattr("synergy_bench.runner.TASK_TIMEOUT_SECONDS", 15 if mode == "timeout" else 90)
+    fault = path.with_name(f"{mode}.yaml")
+    fault.write_text(yaml.safe_dump(config))
+    root = initialize(fault)
+    print(f"Fault injection ({mode}): {root}", flush=True)
+
+    async def run() -> None:
+        execution = asyncio.create_task(resume(root))
+        if mode not in {"disconnect", "cancel", "docker-stop"}:
+            await execution
+            return
+        try:
+            # Preparation owns its deadline; cold image builds cannot consume the fault observation budget.
+            while not any(read_json(file).get("agent") for file in root.glob("trials/*/attempt-*/stages.json")):
+                if execution.done():
+                    await execution
+                    pytest.fail("Native execution never started")
+                await asyncio.sleep(0.05)
+            async with asyncio.timeout(180):
+                while not (provider_artifacts / "provider-started").exists():
+                    if execution.done():
+                        await execution
+                        pytest.fail("Primary provider response was never recorded")
+                    await asyncio.sleep(0.05)
+                environment = next(root.glob("trials/*/attempt-*/environment.json"))
+                project = read_json(environment)["project"]
+                containers = await asyncio.to_thread(
+                    command, ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
+                )
+                container = next(
+                    name
+                    for name in containers.splitlines()
+                    if command(
+                        ["docker", "inspect", "--format", '{{index .Config.Labels "com.docker.compose.service"}}', name]
+                    )
+                    == "main"
+                )
+                probe = (BENCHMARK / "test/fixtures/rollout_progress.py").read_text()
+                while (
+                    await asyncio.to_thread(
+                        command, ["docker", "exec", "--user", "0", container, "python", "-c", probe]
+                    )
+                ).strip() != "True":
+                    if execution.done():
+                        await execution
+                        pytest.fail("Primary provider response was never recorded")
+                    await asyncio.sleep(0.05)
+            if mode == "disconnect":
+                marker = provider_artifacts / "provider-started"
+                marker.with_name("disconnect-release").touch()
+                await execution
+                return
+            if mode == "cancel":
+                execution.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await execution
+                return
+            await asyncio.to_thread(command, ["docker", "kill", container])
+            await execution
+        finally:
+            if not execution.done():
+                execution.cancel()
+                await asyncio.gather(execution, return_exceptions=True)
+
+    asyncio.run(run())
+    file = next(root.glob("trials/*/attempt-*/evidence.json"))
+    result = read_json(file)
+    if mode == "docker-stop":
+        assert result["evidence"]["valid"] is False
+        assert result["evidence"]["issues"]
+    else:
+        assert result["evidence"]["valid"], result
+        assert result["export"]["status"] == "completed", result
+        assert result["evidence"]["archive_valid"]
+        if mode == "long":
+            assert result["execution"]["outcome"] == "completed", result
+            assert result["verifier"]["rewards"] == {"reward": 1.0}
+            assert result["evidence"]["recording"] == "complete"
+        else:
+            assert result["execution"]["outcome"] in {"failed", "timeout", "cancelled"}, result
+            assert result["evidence"]["recording"] == "partial", result
+            assert result["accounting"]["tokens"]["input"]["unknown"] > 0, result
+            attempts = list(primary_attempts(root))
+            assert any((attempt.get("response") or {}).get("bytes", 0) > 0 for attempt in attempts), attempts
+    assert_retained_credentials_absent(root)
+    for resource in [["ps", "-a"], ["network", "ls"]]:
+        projects = command(["docker", *resource, "--format", '{{.Label "com.docker.compose.project"}}'])
+        assert not any(name.startswith(f"sb-{root.name[-8:]}-") for name in projects.splitlines())
+    asyncio.run(resume(root))
+    assert len(list(root.glob("trials/*/attempt-*/evidence.json"))) == 1

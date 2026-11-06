@@ -1,0 +1,231 @@
+import { createHash } from "node:crypto"
+import { execFileSync } from "node:child_process"
+import { cp, mkdir, readFile, readdir, rm, stat, lstat, realpath, readlink } from "node:fs/promises"
+import path from "node:path"
+import { ROOT, OUTPUT } from "./catalog"
+import { workspaces, workspaceGraph } from "../workspace-manifest"
+
+export const BUILD_INPUTS = [
+  "bun.lock",
+  "package.json",
+  "turbo.json",
+  "script/ci.ts",
+  "script/ci/artifacts.ts",
+  "script/workspace-manifest.ts",
+  "script/build-workspace.ts",
+  "script/generate-openapi.ts",
+  ".github/actions/ci-setup/action.yml",
+  "packages/local-runtime/package.json",
+  "packages/local-runtime/script/build-watcher.ts",
+  "packages/local-runtime/script/build-pty.ts",
+  "packages/local-runtime/src/process/native-pty.ts",
+  "packages/util/src/native-assets.ts",
+  "tsconfig.json",
+]
+
+export async function filesIn(directory: string, ignored: string[] = [], sourceRoot?: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      if (ignored.includes(entry.name)) return []
+      const file = path.join(directory, entry.name)
+      if (entry.isSymbolicLink()) {
+        if (!sourceRoot) throw new Error(`CI output must not follow a symlink: ${entry.name}`)
+        const target = await realpath(file)
+        const relative = path.relative(await realpath(sourceRoot), target)
+        if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative))
+          throw new Error(`Build source link resolves outside the repository: ${entry.name}`)
+        if (!(await stat(target)).isFile()) throw new Error(`Build source link must target a file: ${entry.name}`)
+      }
+      return entry.isDirectory() ? filesIn(file, ignored, sourceRoot) : [file]
+    }),
+  )
+  return nested.flat().sort()
+}
+
+export async function fileHash(file: string): Promise<string> {
+  return createHash("sha256")
+    .update(await readFile(file))
+    .digest("hex")
+}
+
+export async function mapFiles<T, R>(files: T[], operation: (file: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(files.length)
+  let cursor = 0
+  const workers = await Promise.allSettled(
+    Array.from({ length: Math.min(16, files.length) }, async () => {
+      while (cursor < files.length) {
+        const index = cursor++
+        results[index] = await operation(files[index]!)
+      }
+    }),
+  )
+  const failed = workers.find((worker) => worker.status === "rejected")
+  if (failed?.status === "rejected") throw failed.reason
+  return results
+}
+
+function buildWorkspaces(root: string, web = false) {
+  const packages = workspaces(root)
+  const graph = workspaceGraph(
+    packages.map((entry) => ({
+      ...entry,
+      dependencies: { ...entry.dependencies, ...entry.devDependencies },
+    })),
+  )
+  const plugin = packages.find((entry) => entry.directory === "packages/plugin")
+  if (!plugin) throw new Error("Missing plugin build workspace")
+  const selected = new Set<string>()
+  const active = new Set<string>()
+  function visit(name: string) {
+    if (selected.has(name)) return
+    if (active.has(name)) throw new Error("Cyclic build dependency")
+    active.add(name)
+    for (const dependency of graph[name] ?? []) visit(dependency)
+    active.delete(name)
+    selected.add(name)
+  }
+  visit(plugin.name)
+  if (web) {
+    const app = packages.find((entry) => entry.directory === "apps/web")
+    if (!app) throw new Error("Missing Web build workspace")
+    visit(app.name)
+  }
+  return [...selected].map((name) => packages.find((entry) => entry.name === name)!)
+}
+
+export function buildCommands(root = ROOT) {
+  return buildWorkspaces(root)
+    .filter((entry) => entry.scripts?.build)
+    .map((entry) => ({
+      cwd: path.join(root, entry.directory),
+      args: [process.execPath, "run", "build", ...(entry.directory === "packages/sdk/js" ? ["--compile-only"] : [])],
+    }))
+}
+
+type Bundle = "build" | "intermediate"
+
+function includesWeb(bundle: Bundle) {
+  return bundle === "build" && process.env.SYNERGY_CI_WEB_BUILD === "true"
+}
+
+function buildPaths(root: string, web: boolean) {
+  return [
+    "packages/local-runtime/.artifacts/watcher",
+    "packages/local-runtime/.artifacts/pty",
+    ...(process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1" ? ["packages/local-runtime/sandbox-assets/linux-x64"] : []),
+    ...(web ? ["apps/web/dist"] : []),
+    ...buildWorkspaces(root)
+      .filter((entry) => entry.scripts?.build)
+      .map((entry) => `${entry.directory}/dist`),
+  ]
+}
+
+export async function buildIdentity(root = ROOT, web = includesWeb("build")): Promise<string> {
+  const abi =
+    process.platform === "linux"
+      ? execFileSync("getconf", ["GNU_LIBC_VERSION"], { encoding: "utf8" }).trim()
+      : process.platform
+  const hash = createHash("sha256").update(
+    `ci-build-v7:${process.platform}:${process.arch}:${Bun.version}:${abi}:node22.14.0-bullseye:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}:${web}:${web ? (process.env.SYNERGY_CI_TESTED_SHA ?? "") : ""}`,
+  )
+  const files = [...BUILD_INPUTS]
+  for (const entry of buildWorkspaces(root, web)) {
+    for (const file of await filesIn(
+      path.join(root, entry.directory),
+      ["dist", "node_modules", ".turbo", "coverage", "test"],
+      root,
+    ))
+      files.push(path.relative(root, file))
+  }
+  for (const directory of [
+    "packages/local-runtime/script/watcher",
+    "packages/local-runtime/src/process/native-pty",
+    "packages/local-runtime/src/sandbox/helper-linux",
+  ]) {
+    for (const file of await filesIn(path.join(root, directory), ["target", "node_modules"]))
+      files.push(path.relative(root, file))
+  }
+  for (const file of [...new Set(files)].sort()) {
+    const source = path.join(root, file)
+    hash
+      .update(file)
+      .update((await lstat(source)).isSymbolicLink() ? await readlink(source) : "")
+      .update(String((await stat(source)).mode & 0o777))
+      .update(await readFile(source))
+  }
+  return hash.digest("hex")
+}
+
+export async function buildCacheIdentity(root = ROOT, bundle: Bundle = "build"): Promise<string> {
+  const toolchain = [process.env.ImageVersion ?? "local"]
+  for (const [command, args] of [
+    ["rustc", ["-vV"]],
+    ["cc", ["--version"]],
+  ] as const)
+    toolchain.push(execFileSync(command, [...args], { encoding: "utf8" }).trim())
+  return createHash("sha256")
+    .update(await buildIdentity(root, includesWeb(bundle)))
+    .update(JSON.stringify(toolchain))
+    .digest("hex")
+}
+
+export async function publishBuild(root = ROOT, bundle: Bundle = "build") {
+  const files: Array<{ path: string; sha256: string; mode: number }> = []
+  for (const directory of buildPaths(root, includesWeb(bundle))) {
+    const outputs = await filesIn(path.join(root, directory))
+    if (!outputs.length) throw new Error(`Missing build output: ${directory}`)
+    files.push(
+      ...(await mapFiles(outputs, async (file) => ({
+        path: path.relative(root, file).split(path.sep).join("/"),
+        sha256: await fileHash(file),
+        mode: (await stat(file)).mode & 0o777,
+      }))),
+    )
+  }
+  const destination = path.join(root, OUTPUT, bundle)
+  await rm(destination, { recursive: true, force: true })
+  await mkdir(destination, { recursive: true })
+  await mapFiles(files, async (file) => {
+    await mkdir(path.dirname(path.join(destination, file.path)), { recursive: true })
+    await cp(path.join(root, file.path), path.join(destination, file.path), { recursive: true, force: true })
+  })
+  await Bun.write(
+    path.join(destination, "manifest.json"),
+    JSON.stringify({ identity: await buildIdentity(root, includesWeb(bundle)), files }),
+  )
+}
+
+export async function restoreBuild(root = ROOT, bundle: Bundle = "build") {
+  const directory = path.join(root, OUTPUT, bundle)
+  const paths = buildPaths(root, includesWeb(bundle))
+  const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8")) as {
+    identity: string
+    files: Array<{ path: string; sha256: string; mode: number }>
+  }
+  if (manifest.identity !== (await buildIdentity(root, includesWeb(bundle))))
+    throw new Error("Build artifact inputs differ from this checkout")
+  const expected = (await filesIn(directory))
+    .map((file) => path.relative(directory, file).split(path.sep).join("/"))
+    .filter((file) => file !== "manifest.json")
+  const declared = manifest.files.map((file) => file.path)
+  if (new Set(declared).size !== declared.length || declared.toSorted().join("\0") !== expected.sort().join("\0"))
+    throw new Error("Build artifact inventory differs from its manifest")
+  for (const prefix of paths) {
+    if (!declared.some((file) => file.startsWith(prefix + "/"))) throw new Error(`Missing build output: ${prefix}`)
+  }
+  await mapFiles(manifest.files, async (entry) => {
+    if (!paths.some((prefix) => entry.path.startsWith(prefix + "/")) || entry.path.split("/").includes(".."))
+      throw new Error("Unowned build artifact path")
+    const file = path.join(directory, entry.path)
+    if ((await fileHash(file)) !== entry.sha256 || ((await stat(file)).mode & 0o777) !== entry.mode)
+      throw new Error(`Build artifact changed: ${entry.path}`)
+  })
+  for (const prefix of paths)
+    if (declared.some((file) => file.startsWith(prefix + "/")))
+      await rm(path.join(root, prefix), { recursive: true, force: true })
+  await mapFiles(manifest.files, async (entry) => {
+    await mkdir(path.dirname(path.join(root, entry.path)), { recursive: true })
+    await cp(path.join(directory, entry.path), path.join(root, entry.path))
+  })
+}

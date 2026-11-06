@@ -1,0 +1,119 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
+import { describe, expect, test } from "bun:test"
+import type { BrowserNativeViewBridge } from "../../../../src/context/platform"
+import {
+  NativePresentationCoordinator,
+  resolveBrowserClientPresentation,
+} from "../../../../src/components/workspace/browser/native-presentation-coordinator"
+
+function bridge(overrides: Partial<BrowserNativeViewBridge> = {}): BrowserNativeViewBridge {
+  return {
+    async attachView() {},
+    async detachView() {},
+    async focusView() {},
+    async resizeView() {},
+    async retryPage() {},
+    async presentationCapability() {
+      return { protocolVersion: BROWSER_PROTOCOL_VERSION, managedLocal: true, status: "ready" }
+    },
+    async createPresentationTicket() {
+      return { ok: true, protocolVersion: BROWSER_PROTOCOL_VERSION, ticket: "native-ticket" }
+    },
+    ...overrides,
+  }
+}
+
+describe("native presentation coordinator", () => {
+  test("selects native only when Desktop owns the connected server", async () => {
+    expect(await resolveBrowserClientPresentation({ bridge: bridge(), serverUrl: "http://127.0.0.1:4096" })).toBe(
+      "native",
+    )
+    await expect(
+      resolveBrowserClientPresentation({
+        bridge: bridge({
+          async presentationCapability() {
+            return { protocolVersion: BROWSER_PROTOCOL_VERSION, managedLocal: false, status: "failed" }
+          },
+        }),
+        serverUrl: "https://remote.example.com",
+      }),
+    ).rejects.toThrow()
+    await expect(resolveBrowserClientPresentation({ serverUrl: "https://web.example.com" })).rejects.toThrow()
+  })
+  test("reports a failed native capability probe without an alternate presentation", async () => {
+    await expect(
+      resolveBrowserClientPresentation({
+        bridge: bridge({
+          async presentationCapability() {
+            throw new Error("bridge unavailable")
+          },
+        }),
+        serverUrl: "http://127.0.0.1:4096",
+      }),
+    ).rejects.toThrow()
+  })
+
+  test("stops native recovery when the capability bridge fails", async () => {
+    const coordinator = new NativePresentationCoordinator({
+      bridge: bridge({
+        async presentationCapability() {
+          throw new Error("bridge unavailable")
+        },
+      }),
+      serverUrl: "http://127.0.0.1:4096",
+      ownerKey: "owner-1",
+      onState() {},
+    })
+
+    await expect(coordinator.createTicket()).rejects.toMatchObject({
+      code: "browser_native_bridge_missing",
+      retryable: true,
+    })
+  })
+
+  test("retries Host registration before issuing an owner-bound ticket", async () => {
+    let capabilityCalls = 0
+    const delays: number[] = []
+    const states: string[] = []
+    const coordinator = new NativePresentationCoordinator({
+      bridge: bridge({
+        async presentationCapability() {
+          capabilityCalls++
+          return {
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            managedLocal: true,
+            status: capabilityCalls === 1 ? "connecting" : "ready",
+          }
+        },
+      }),
+      serverUrl: "http://127.0.0.1:4096",
+      ownerKey: "owner-1",
+      onState: (state) => states.push(state.phase),
+      delay: async (milliseconds) => {
+        delays.push(milliseconds)
+      },
+    })
+
+    await expect(coordinator.createTicket()).resolves.toBe("native-ticket")
+    expect(delays).toEqual([250])
+    expect(states).toEqual(["recovering", "ready"])
+  })
+
+  test("cancels a pending native recovery when its workspace is disposed", async () => {
+    const coordinator = new NativePresentationCoordinator({
+      bridge: bridge({
+        async presentationCapability() {
+          return { protocolVersion: BROWSER_PROTOCOL_VERSION, managedLocal: true, status: "connecting" }
+        },
+      }),
+      serverUrl: "http://127.0.0.1:4096",
+      ownerKey: "owner-1",
+      onState() {},
+    })
+
+    const ticket = coordinator.createTicket()
+    await Promise.resolve()
+    coordinator.dispose()
+    await expect(ticket).rejects.toMatchObject({ code: "browser_native_ticket_rejected", retryable: true })
+  })
+})

@@ -1,0 +1,218 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { sanitizeBrowserFilename, BROWSER_MAX_DOWNLOAD_BYTES } from "@ericsanchezok/synergy-browser-core"
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
+import { constants } from "node:fs"
+import { BrowserOwner } from "./owner.js"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { BrowserExport } from "./export"
+import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
+
+export namespace BrowserDownloads {
+  export interface DownloadRecord {
+    id: string
+    pageID: string
+    url: string
+    suggestedFilename: string
+    mimeType?: string
+    state: "awaiting_approval" | "pending" | "completed" | "failed" | "blocked" | "cancelled"
+    path?: string
+    size?: number
+    createdAt: number
+  }
+
+  interface ManagedRecord {
+    record: DownloadRecord
+  }
+
+  const runtimeState = RuntimeContext.state(() => ({
+    records: new Map<string, Map<string, ManagedRecord>>(),
+  }))
+  const MAX_OWNER_RECORDS = 10_000
+
+  export function list(owner: BrowserOwner.Info): DownloadRecord[] {
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.records.get(BrowserOwner.key(owner))?.values() ?? [], (entry) => ({
+      ...entry.record,
+    }))
+  }
+
+  export function add(owner: BrowserOwner.Info, record: DownloadRecord): boolean {
+    const instanceState = runtimeState()
+
+    const key = BrowserOwner.key(owner)
+    const ownerRecords = instanceState.records.get(key) ?? new Map()
+    if (!ownerRecords.has(record.id) && ownerRecords.size >= MAX_OWNER_RECORDS) return false
+    ownerRecords.set(record.id, { record })
+    instanceState.records.set(key, ownerRecords)
+    return true
+  }
+
+  export function get(owner: BrowserOwner.Info, id: string): DownloadRecord | undefined {
+    const instanceState = runtimeState()
+
+    const record = instanceState.records.get(BrowserOwner.key(owner))?.get(id)?.record
+    return record ? { ...record } : undefined
+  }
+
+  export function update(owner: BrowserOwner.Info, id: string, patch: Partial<DownloadRecord>): void {
+    const instanceState = runtimeState()
+
+    const entry = instanceState.records.get(BrowserOwner.key(owner))?.get(id)
+    if (entry) Object.assign(entry.record, patch)
+  }
+
+  export async function cancel(owner: BrowserOwner.Info, id: string): Promise<DownloadRecord> {
+    const instanceState = runtimeState()
+
+    const entry = instanceState.records.get(BrowserOwner.key(owner))?.get(id)
+    if (!entry) throw new Error(`Download ${id} was not found for this browser owner.`)
+    if (entry.record.state === "cancelled") return { ...entry.record }
+    if (entry.record.state !== "pending" && entry.record.state !== "awaiting_approval") {
+      throw new Error(`Download ${id} cannot be cancelled after reaching ${entry.record.state} state.`)
+    }
+    entry.record.state = "cancelled"
+    return { ...entry.record }
+  }
+
+  export async function wait(
+    owner: BrowserOwner.Info,
+    id: string,
+    timeoutMs: number = ToolTimeout.DEFAULTS.browserDownloadsWaitMs,
+    signal?: AbortSignal,
+  ): Promise<DownloadRecord> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() <= deadline) {
+      if (signal?.aborted) throw signal.reason ?? new Error("Download wait was cancelled.")
+      const record = get(owner, id)
+      if (!record) throw new Error(`Download ${id} was not found for this browser owner.`)
+      if (record.state !== "pending") return record
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    throw new Error(`Timed out waiting for download ${id} after ${timeoutMs}ms.`)
+  }
+
+  export async function managedPath(owner: BrowserOwner.Info, id: string, filename: string): Promise<string> {
+    const safeName = sanitizeBrowserFilename(filename, "download")
+    const directory = path.join(Global.Path.data, "browser", "downloads", BrowserOwner.storageID(owner), idSlug(id))
+    const realDirectory = await ensureManagedDirectory(directory)
+    return path.join(realDirectory, safeName)
+  }
+
+  export async function managedDirectory(owner: BrowserOwner.Info): Promise<string> {
+    const directory = path.join(Global.Path.data, "browser", "downloads", BrowserOwner.storageID(owner))
+    return ensureManagedDirectory(directory)
+  }
+
+  export async function exportTo(
+    owner: BrowserOwner.Info,
+    id: string,
+    target: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const workspace = BrowserExport.capture()
+    if (owner.scopeID !== ScopeContext.current.scope.id) throw new Error("Download belongs to another Scope")
+    const record = get(owner, id)
+    if (!record) throw new Error(`Download ${id} was not found for this browser owner.`)
+    if (record.state !== "completed" || !record.path) throw new Error(`Download ${id} is not complete.`)
+    const ownerRoot = await fs.realpath(
+      path.join(Global.Path.data, "browser", "downloads", BrowserOwner.storageID(owner)),
+    )
+    const sourceInfo = await fs.lstat(record.path)
+    if (!sourceInfo.isFile() || sourceInfo.isSymbolicLink()) {
+      throw new Error(`Managed download ${id} is not a safe regular file.`)
+    }
+    const source = await fs.realpath(record.path)
+    if (!source.startsWith(`${ownerRoot}${path.sep}`)) throw new Error(`Managed download ${id} escaped owner storage.`)
+    const stat = await fs.stat(source)
+    if (!stat.isFile()) throw new Error(`Managed download ${id} is not a regular file.`)
+    return BrowserExport.copy(workspace, target, source, signal, async (file) => {
+      const current = await fs.realpath(file)
+      if (!current.startsWith(`${ownerRoot}${path.sep}`))
+        throw new Error(`Managed download ${id} escaped owner storage.`)
+      const info = await fs.lstat(file)
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Managed download ${id} is not a safe regular file.`)
+    })
+  }
+
+  export function clearForTest(): void {
+    const instanceState = runtimeState()
+
+    instanceState.records.clear()
+  }
+
+  export async function artifact(owner: BrowserOwner.Info, id: string) {
+    const record = get(owner, id)
+    if (record?.state !== "completed" || !record.path) throw new Error("This download is not complete.")
+    const root = await fs.realpath(await managedDirectory(owner))
+    const source = await fs.realpath(record.path)
+    if (!source.startsWith(root + path.sep)) throw new Error("Download is outside its owner storage.")
+    const file = await fs.open(record.path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const info = await file.stat()
+      const named = await fs.lstat(record.path)
+      if (
+        !info.isFile() ||
+        named.isSymbolicLink() ||
+        info.dev !== named.dev ||
+        info.ino !== named.ino ||
+        info.size > BROWSER_MAX_DOWNLOAD_BYTES
+      )
+        throw new Error("Download is unavailable or exceeds the supported size.")
+      const buffer = Buffer.alloc(info.size + 1)
+      let size = 0
+      while (size < buffer.length) {
+        const read = await file.read(buffer, size, buffer.length - size, size)
+        if (!read.bytesRead) break
+        size += read.bytesRead
+      }
+      if (size !== info.size) throw new Error("Download changed while reading. Retry the operation.")
+      const mime = record.mimeType ?? "application/octet-stream"
+      const filename = sanitizeBrowserFilename(record.suggestedFilename, "download")
+      const assetID = await Asset.write(buffer.subarray(0, size), mime, filename)
+      return { id: assetID, url: `asset://${assetID}`, filename, mime, size }
+    } finally {
+      await file.close()
+    }
+  }
+
+  export function restore(owner: BrowserOwner.Info, restored: DownloadRecord[]): void {
+    const instanceState = runtimeState()
+
+    const root = path.resolve(Global.Path.data, "browser", "downloads", BrowserOwner.storageID(owner))
+    const ownerRecords = new Map<string, ManagedRecord>()
+    for (const record of restored) {
+      if (!record?.id || record.pageID === undefined) continue
+      const managedPath = record.path ? path.resolve(record.path) : undefined
+      if (managedPath && !managedPath.startsWith(`${root}${path.sep}`)) continue
+      ownerRecords.set(record.id, {
+        record: {
+          ...record,
+          state: ["pending", "awaiting_approval"].includes(record.state) ? "failed" : record.state,
+          ...(managedPath ? { path: managedPath } : {}),
+        },
+      })
+    }
+    if (ownerRecords.size) instanceState.records.set(BrowserOwner.key(owner), ownerRecords)
+  }
+}
+
+function idSlug(id: string): string {
+  return id.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 200) || "download"
+}
+
+async function ensureManagedDirectory(directory: string): Promise<string> {
+  const root = path.join(Global.Path.data, "browser", "downloads")
+  await fs.mkdir(root, { recursive: true, mode: 0o700 })
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+  const info = await fs.lstat(directory)
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Managed Browser download storage is unsafe.")
+  const [realRoot, realDirectory] = await Promise.all([fs.realpath(root), fs.realpath(directory)])
+  if (realDirectory !== realRoot && !realDirectory.startsWith(`${realRoot}${path.sep}`)) {
+    throw new Error("Managed Browser download storage escaped its root.")
+  }
+  return realDirectory
+}

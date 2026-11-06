@@ -1,0 +1,374 @@
+import { useGlobalSDK } from "@/context/global-sdk"
+import { parseSessionDragData } from "@/utils/session-drag"
+import type { Accessor, Setter } from "solid-js"
+import type { SetStoreFunction } from "solid-js/store"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { useParams } from "@/context/session-route"
+import { useSDK } from "@/context/sdk"
+import { usePrompt } from "@/context/prompt"
+import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart, UploadedAttachmentPart } from "@/context/prompt"
+import { PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
+import { useLocale } from "@/context/locale"
+import { useSync } from "@/context/sync"
+import {
+  DEFAULT_ATTACHMENT_LIMITS,
+  formatAttachmentBatchToast,
+  formatOversizedAttachmentToast,
+  partitionPromptAttachmentFiles,
+} from "./files"
+import { createPromptPartID, inlineLength } from "./content"
+import { getCursorPosition } from "./editor-dom"
+import type { PendingAttachmentTracker } from "./pending-attachments"
+import { insertUploadedPromptAttachment, runPendingAttachmentUpload } from "./attachment-upload-flow"
+import { PI } from "./prompt-input-i18n"
+import type { BlueprintSlot, DroppedBlueprintData, PromptInputStore } from "./types"
+import { decideDroppedSession } from "./session-drop"
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+
+type PromptAttachmentsInput = {
+  editor: () => HTMLDivElement | undefined
+  isFocused: Accessor<boolean>
+  addPart: (part: ContentPart) => void
+  noteAttachments: Accessor<NoteAttachmentPart[]>
+  sessionAttachments: Accessor<SessionAttachmentPart[]>
+  localArmedLoop: Accessor<BlueprintSlot | null>
+  setLocalArmedLoop: Setter<BlueprintSlot | null>
+  activeLoopID: Accessor<string | undefined>
+  working: Accessor<boolean>
+  workflowKind: Accessor<"plan" | "lightloop" | "lattice" | "boss" | "extension" | undefined>
+  clearPendingWorkflows: () => void
+  setStore: SetStoreFunction<PromptInputStore>
+  pendingUploads: PendingAttachmentTracker
+}
+
+const DROPPABLE_TYPES = [
+  "Files",
+  "application/x-synergy-note",
+  "application/x-synergy-session",
+  "application/x-synergy-blueprint",
+]
+
+export function usePromptAttachments(input: PromptAttachmentsInput) {
+  const sdk = useSDK()
+  const { capabilities } = useGlobalSDK()
+  const prompt = usePrompt()
+  const params = useParams()
+  const dialog = useDialog()
+  const { i18n } = useLocale()
+  const sync = useSync()
+  const pendingUploads = input.pendingUploads
+  let pendingBlueprint:
+    { binding: ReturnType<typeof prompt.capture>; selection: ReturnType<typeof capabilities.current> } | undefined
+
+  const attachmentLimits = () => {
+    const limits = sync.data.config.attachment
+    return {
+      maxFiles: limits?.maxFiles ?? DEFAULT_ATTACHMENT_LIMITS.maxFiles,
+      maxFileBytes: limits?.maxFileBytes ?? DEFAULT_ATTACHMENT_LIMITS.maxFileBytes,
+      maxTotalBytes: limits?.maxTotalBytes ?? DEFAULT_ATTACHMENT_LIMITS.maxTotalBytes,
+    }
+  }
+
+  const cursor = () => {
+    const editor = input.editor()
+    return prompt.cursor() ?? (editor ? getCursorPosition(editor) : inlineLength(prompt.current()))
+  }
+
+  const appendAttachment = async (
+    file: File,
+    draft: ReturnType<typeof prompt.capture>["draft"],
+    id = createPromptPartID(),
+  ) => {
+    const sessionKeyAtStart = `${params.dir}${params.id ? "/" + params.id : ""}`
+    try {
+      await runPendingAttachmentUpload({
+        file,
+        id,
+        tracker: pendingUploads,
+        upload: (uploadFile) => uploadPromptAttachment(sdk.client, uploadFile),
+        insertAttachment: (attachment) => {
+          const cursorPosition = draft.cursor() ?? cursor()
+          draft.set(insertUploadedPromptAttachment(draft.current(), attachment), cursorPosition)
+        },
+        isDestinationCurrent: () => `${params.dir}${params.id ? "/" + params.id : ""}` === sessionKeyAtStart,
+      })
+    } catch (error) {
+      const description =
+        error instanceof PromptAttachmentError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : i18n._(PI.attachFailedGeneric)
+
+      showToast({
+        type: "error",
+        title: error instanceof PromptAttachmentError ? error.title : i18n._(PI.attachFailedTitle),
+        description,
+      })
+    }
+  }
+
+  const addAttachments = async (files: Iterable<File>) => {
+    const all = Array.from(files)
+    const existing = composerAttachmentScope()
+    const limits = attachmentLimits()
+    const batchToast = formatAttachmentBatchToast(all, existing, i18n, limits)
+    if (batchToast) {
+      showToast(batchToast)
+      return
+    }
+    const { accepted, rejected } = partitionPromptAttachmentFiles(all, limits)
+    const toast = formatOversizedAttachmentToast(rejected, accepted.length, i18n, limits)
+    if (toast) showToast(toast)
+    const draft = prompt.capture()
+    try {
+      await Promise.allSettled(accepted.map((file) => appendAttachment(file, draft.draft)))
+    } finally {
+      draft.release()
+    }
+  }
+
+  const retryAttachment = async (id: string) => {
+    const entry = pendingUploads.pending().find((item) => item.id === id && item.status === "failed")
+    const file = pendingUploads.file(id)
+    if (!entry || !file) return
+    const binding = prompt.capture()
+    try {
+      await appendAttachment(file, binding.draft, id)
+    } finally {
+      binding.release()
+    }
+  }
+
+  const composerAttachmentScope = () => {
+    const parts = prompt.current()
+    const attachments = parts.filter(
+      (part): part is Extract<ContentPart, { type: "attachment" }> => part.type === "attachment",
+    )
+    const pendingScope = pendingUploads.scope()
+    return {
+      count: attachments.length + pendingScope.count,
+      bytes:
+        attachments.reduce((total, part) => total + (typeof part.size === "number" ? part.size : 0), 0) +
+        pendingScope.bytes,
+    }
+  }
+
+  const removeAttachment = (id: string) => {
+    const current = prompt.current()
+    if (current.some((part) => "id" in part && part.id === id)) {
+      prompt.set(
+        current.filter((part) => !("id" in part) || part.id !== id),
+        prompt.cursor(),
+      )
+    }
+    pendingUploads.cancel(id)
+  }
+
+  const handlePaste = async (event: ClipboardEvent) => {
+    if (!input.isFocused()) return
+    const clipboardData = event.clipboardData
+    if (!clipboardData) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    const items = Array.from(clipboardData.items)
+    const files = items
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => !!file)
+
+    if (files.length > 0) {
+      await addAttachments(files)
+      return
+    }
+
+    const plainText = clipboardData.getData("text/plain") ?? ""
+    if (!plainText) return
+    input.addPart({ type: "text", content: plainText, start: 0, end: 0 })
+    prompt.setAssistance(
+      InputAssistance.accept(prompt.assistance(), {
+        producer: "clipboard",
+        proposalID: generateUUID(),
+        generated: plainText,
+        accepted: plainText,
+      }),
+    )
+  }
+
+  const handleDragOver = (event: DragEvent) => {
+    if (dialog.active) return
+
+    event.preventDefault()
+    const hasDroppable = event.dataTransfer?.types.some((type) => {
+      if (type === "application/x-synergy-blueprint") return capabilities.has("blueprint")
+      if (type === "application/x-synergy-note") return capabilities.has("note")
+      return DROPPABLE_TYPES.includes(type)
+    })
+    if (hasDroppable) {
+      input.setStore("dragging", true)
+    }
+  }
+
+  const handleDragLeave = (event: DragEvent) => {
+    if (dialog.active) return
+
+    const currentTarget = event.currentTarget
+    const relatedTarget = event.relatedTarget
+    if (
+      currentTarget instanceof HTMLElement &&
+      relatedTarget instanceof Node &&
+      currentTarget.contains(relatedTarget)
+    ) {
+      return
+    }
+
+    input.setStore("dragging", false)
+  }
+
+  const handleDrop = async (event: DragEvent) => {
+    if (dialog.active) return
+
+    event.preventDefault()
+    input.setStore("dragging", false)
+
+    const blueprintData = event.dataTransfer?.getData("application/x-synergy-blueprint")
+    if (blueprintData) {
+      if (!capabilities.has("blueprint")) return
+      const selection = capabilities.current()
+      if (pendingBlueprint?.binding.isCurrent() && pendingBlueprint.selection === selection) return
+      const binding = prompt.capture()
+      const operation = { binding, selection }
+      pendingBlueprint = operation
+      try {
+        const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
+        if (typeof dropped.noteID !== "string" || !dropped.noteID) return
+        const workflowKind = input.workflowKind()
+        if (input.working() && (workflowKind === "plan" || workflowKind === "lightloop")) {
+          showToast({
+            type: "warning",
+            title: i18n._(PI.sessionRunning),
+            description: i18n._(workflowKind === "plan" ? PI.attachWaitPlan : PI.attachWaitLightLoop),
+          })
+          return
+        }
+        if (input.localArmedLoop() || input.activeLoopID()) {
+          showToast({
+            type: "warning",
+            title: i18n._(PI.attachSlotOccupied),
+            description: i18n._(PI.attachWaitCurrentBp),
+          })
+          return
+        }
+        if (workflowKind === "lattice" || workflowKind === "boss") {
+          showToast({
+            type: "warning",
+            title: workflowKind === "lattice" ? i18n._(PI.attachLatticeActive) : i18n._(PI.attachBossActive),
+            description: workflowKind === "lattice" ? i18n._(PI.attachCancelLattice) : i18n._(PI.attachCancelBoss),
+          })
+          return
+        }
+        if (workflowKind === "plan" || workflowKind === "lightloop") {
+          if (params.id) {
+            try {
+              const result = await sdk.client.workflow.session.set({
+                id: params.id,
+                workflowSetInput: { kind: "none" },
+              })
+              if (result.error) throw result.error
+            } catch (error) {
+              if (!binding.isCurrent() || capabilities.current() !== selection) return
+              showToast({
+                type: "error",
+                title: i18n._(workflowKind === "plan" ? PI.attachExitPlanFailed : PI.attachExitLightLoopFailed),
+                description: error instanceof Error ? error.message : i18n._(PI.attachRequestFailed),
+              })
+              return
+            }
+          }
+          if (!binding.isCurrent() || capabilities.current() !== selection) return
+          input.clearPendingWorkflows()
+        }
+        input.setLocalArmedLoop({
+          type: "pending",
+          noteID: dropped.noteID,
+          title: dropped.title || "Blueprint",
+          runMode: "current",
+        })
+      } catch {
+      } finally {
+        if (pendingBlueprint === operation) pendingBlueprint = undefined
+        binding.release()
+      }
+      return
+    }
+
+    const sessionData = event.dataTransfer?.getData("application/x-synergy-session")
+    if (sessionData) {
+      try {
+        const dropped = parseSessionDragData(sessionData, sdk.url)
+        if (!dropped) return
+        const decision = decideDroppedSession(dropped, params.id, input.sessionAttachments())
+        if (!decision.accepted) return
+        const cursorPosition = cursor()
+        prompt.set(
+          [
+            ...prompt.current(),
+            {
+              type: "session",
+              id: createPromptPartID(),
+              sessionId: dropped.id,
+              scopeID: dropped.scopeID,
+              title: dropped.title || "Untitled",
+              updatedAt: dropped.updatedAt,
+            },
+          ],
+          cursorPosition,
+        )
+      } catch {}
+      return
+    }
+
+    const noteData = event.dataTransfer?.getData("application/x-synergy-note")
+    if (noteData && capabilities.has("note")) {
+      try {
+        const { id: noteId, title, content } = JSON.parse(noteData)
+        const existing = input.noteAttachments().find((note) => note.noteId === noteId)
+        if (existing) return
+        const cursorPosition = cursor()
+        prompt.set(
+          [
+            ...prompt.current(),
+            {
+              type: "note",
+              id: createPromptPartID(),
+              noteId,
+              title: title || "Untitled",
+              content: content || "",
+            },
+          ],
+          cursorPosition,
+        )
+      } catch {}
+      return
+    }
+
+    const dropped = event.dataTransfer?.files
+    if (!dropped) return
+
+    await addAttachments(Array.from(dropped))
+  }
+
+  return {
+    addAttachments,
+    retryAttachment,
+    removeAttachment,
+    handlePaste,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  }
+}

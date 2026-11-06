@@ -10,7 +10,7 @@ A runtime profile of the desktop renderer during a long, multi-session run showe
 
 Freeze formatted results instead of recomputing them:
 
-- `packages/app/src/context/locale/formatter.ts` adds result-level caches to `date`, `dateTime`, and `time` keyed by `(locale, options, timestamp)`, and to `relative` keyed by `(locale, rounded unit, rounded value)`. The cache is capped at 4096 entries per map and clears entirely on locale change. The relative-unit table moved to module scope so the unit scan no longer allocates per call.
+- `apps/web/src/context/locale/formatter.ts` adds result-level caches to `date`, `dateTime`, and `time` keyed by `(locale, options, timestamp)`, and to `relative` keyed by `(locale, rounded unit, rounded value)`. The cache is capped at 4096 entries per map and clears entirely on locale change. The relative-unit table moved to module scope so the unit scan no longer allocates per call.
 - New shared helper `packages/ui/src/components/message-time.ts` exposes `messageCreatedTime(ms)`: a single module-level `Intl.DateTimeFormat` instance plus a 64-entry cache keyed by minute bucket. Message-row timestamps only depend on the minute the message was created, so the label is computed once per minute and reused.
 - `MailboxMessage`, `CommandResultOutput`, and `CompactionCard` switch their timestamp memos to `messageCreatedTime`, so streaming object replacement re-runs the memo into a map lookup instead of fresh Intl formatting.
 - `formatTurnCost` in `session-turn.tsx` hoists its `Intl.NumberFormat` to a module-level instance instead of constructing one per call.

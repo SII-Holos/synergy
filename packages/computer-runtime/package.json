@@ -1,0 +1,73 @@
+{
+  "name": "@ericsanchezok/synergy-computer-runtime",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./tools": "./src/tools.ts",
+    "./routes/computer-route": "./src/routes/computer-route.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/computer-runtime",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-computer-protocol": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@hono/standard-validator": "0.4.0",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "computer-runtime",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "computer",
+    "requires": {
+      "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "computer",
+          "owner": "computer-runtime",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Computer",
+          "description": "Provide computer capabilities.",
+          "component": "computer-runtime"
+        }
+      ]
+    }
+  }
+}

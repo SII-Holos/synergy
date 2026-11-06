@@ -34,6 +34,10 @@ export default definePlugin({
 
 Tool IDs are plugin-local. Synergy exposes them as namespaced host tools and validates input from the generated schema. `requires` drives the contribution capability gate and must reference top-level capabilities.
 
+## Invoke Host Tools
+
+`context.tools.invoke()` executes an available host tool through the Harness execution API. Calls preserve the session's tool visibility, permission enforcement, cancellation and durable tool evidence. A nested invocation completes under a single global concurrency slot; host shutdown rejects new calls, and cancellation of the parent cancels unfinished nested work. Output-recording failures remain errors rather than successful plugin results.
+
 ## Delegated Tasks
 
 `context.task` exists only when `task.delegate` is approved. It exposes five finite Host calls:
@@ -71,6 +75,10 @@ Parent Session failures use stable Host Service error codes: `PLUGIN_TASK_PARENT
 ## Exposure and Display
 
 `exposure` controls how a tool appears to agents: resident, grouped, searchable, or internal. `display` supplies host-owned presentation metadata. Both are declarations copied into the generated manifest; the executable handler remains in the runtime bundle.
+
+`display.icon` selects one icon for both conversation activity rows and tool-card triggers. Use a host glyph name or the ID of a `ui.icon` contribution from the same plugin; the host resolves the plugin namespace first. The portable `ToolDisplay` type also accepts bounded image data with optional light/dark variants. Invalid or unavailable declarations use the tool's semantic icon, or the plugin icon for an unknown plugin tool. Display metadata persists on tool Parts through execution, completion and failure so history uses the same selection. Custom tool-renderer bodies remain responsible for their own content.
+
+For grouped tools, put capability and selection guidance in `exposure.description`; the host uses it in discovery and the expandable-group directory. API4 retains `whenToExpand` for existing definitions, but it is not a model-visible instruction or a search signal. New definitions need only the canonical description.
 
 A handler may return a string or `ToolResult` with title, output, metadata, and attachments. Keep durable business state and provenance in plugin-owned artifacts.
 
@@ -153,16 +161,16 @@ const loop = await context.lightloop.start({
   instructions: "Explore the problem broadly and submit an auditable plan.",
   correlationId: stageRunID,
   executionAgent: "my-plugin.lightloop-executor",
-  reviewAgent: "my-plugin.lightloop-reviewer",
   executionTools: { "my-plugin.internal-search": true },
-  reviewTools: { "my-plugin.internal-review-check": true },
-  budget: { maxRuntimeMs: 1_800_000, maxIterations: 3 },
+  budget: { maxRuntimeMs: 1_800_000 },
 })
 const current = await context.lightloop.get(loop.sessionID)
 const cancelled = await context.lightloop.cancel(loop.sessionID)
 ```
 
-`start()` atomically creates a dedicated execution Session, records the plugin owner and instructions in its LightLoop workflow, delivers the first prompt, and returns a `LightLoopInfo` snapshot. The execution and review agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. Agent fields and capability allowlists use public `agent.name` values, not Agent contribution IDs. Optional `model`, `executionTools`, and `reviewTools` fields select the execution model and role-specific tool visibility. `reviewTools` is persisted by the Host and applied only when the delayed reviewer Session launches.
+`start()` atomically creates a dedicated execution Session, records the plugin owner and instructions in its LightLoop workflow, delivers the first prompt, and returns a `LightLoopInfo` snapshot. The execution agent must be a hidden agent owned by the invoking plugin generation and allowed by its capability constraints. Agent fields and allowlists use public `agent.name` values, not contribution IDs. Optional `model` and `executionTools` select execution settings. The executor verifies the full goal and completes directly through `loop_stop`; use BlueprintLoop when independent acceptance is required.
+
+Optional deprecated `reviewAgent`, `reviewTools` and `budget.maxIterations` inputs are accepted and ignored, including stale reviewer names. They do not affect permissions or persistence. API 4 and IPC protocol 5 remain unchanged. Runtime deadlines, execution permissions and generation ownership remain enforced.
 
 Tool maps are visibility toggles, not capability grants. They do not override agent or Session permissions, and unspecified tools keep their normal visibility unless the caller uses explicit wildcard semantics.
 

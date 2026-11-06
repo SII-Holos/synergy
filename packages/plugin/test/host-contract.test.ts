@@ -169,14 +169,14 @@ export const completion = hook({
             moduleResolution: "bundler",
             target: "es2022",
             lib: ["es2022", "dom", "dom.iterable"],
-            types: ["bun", "node"],
+            types: ["node"],
             allowImportingTsExtensions: true,
           },
           files: [source],
         }),
       )
 
-      const child = Bun.spawn([process.execPath, "x", "tsgo", "-p", config, "--pretty", "false"], {
+      const child = Bun.spawn([process.execPath, "x", "--no-install", "tsc", "-p", config, "--pretty", "false"], {
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",

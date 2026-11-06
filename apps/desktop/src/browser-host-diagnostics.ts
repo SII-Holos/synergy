@@ -1,0 +1,451 @@
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import {
+  BROWSER_MAX_DOWNLOAD_BYTES,
+  BrowserStagingLeasePool,
+  browserDownloadExceedsLimit,
+  redactBrowserText,
+  redactBrowserURL,
+  sanitizeBrowserFilename,
+  type BrowserHostDownloadEntry,
+  type BrowserHostPageEvent,
+} from "@ericsanchezok/synergy-browser-core"
+import { clearBrowserContentPermissions, installBrowserContentPermissions } from "./browser-permissions.js"
+
+const BLOCKED_DOWNLOAD_MIMES = new Set(["application/x-msdownload", "application/x-sh", "application/x-mach-binary"])
+const BLOCKED_DOWNLOAD_EXTENSIONS = new Set([
+  ".app",
+  ".bat",
+  ".cmd",
+  ".com",
+  ".dmg",
+  ".exe",
+  ".msi",
+  ".pkg",
+  ".ps1",
+  ".scr",
+  ".sh",
+  ".vbs",
+])
+
+export interface BrowserHostUploadFile {
+  name: string
+  mimeType?: string
+  data: string
+}
+
+interface BrowserHostDiagnosticsOptions {
+  pageId: string
+  contents: Electron.WebContents
+  downloadDir?: string
+  emitHostEvent(event: BrowserHostPageEvent): void
+}
+
+interface PendingFileChooser {
+  backendNodeId?: number
+  timer: ReturnType<typeof setTimeout>
+}
+
+export class BrowserHostDiagnostics {
+  private readonly session: Electron.Session
+  private downloadDirectory?: string
+  private staging = new BrowserStagingLeasePool()
+  private pendingDialogs = new Map<string, ReturnType<typeof setTimeout>>()
+  private pendingPrompts = new Map<string, { event: Electron.IpcMainEvent; timer: ReturnType<typeof setTimeout> }>()
+  private pendingFileChoosers = new Map<string, PendingFileChooser>()
+  private pendingDownloads = new Map<string, Electron.DownloadItem>()
+  private waitingDownloads = new Map<string, BrowserHostDownloadEntry>()
+  private readonly onDebuggerMessage: (event: Electron.Event, method: string, params: unknown) => void
+  private readonly onDownload: (
+    event: Electron.Event,
+    item: Electron.DownloadItem,
+    webContents: Electron.WebContents,
+  ) => void
+
+  constructor(private options: BrowserHostDiagnosticsOptions) {
+    this.session = options.contents.session
+    this.onDebuggerMessage = (_event, method, params) => this.handleDebuggerMessage(method, params)
+    this.onDownload = (_event, item, webContents) => {
+      if (webContents.id !== this.options.contents.id) return
+      item.pause()
+      void this.trackDownload(item)
+    }
+  }
+
+  async start(): Promise<void> {
+    const { contents } = this.options
+    if (this.options.downloadDir) this.downloadDirectory = await this.downloadRoot()
+    contents.ipc.on("synergy:browser:prompt", this.onPrompt)
+    installBrowserContentPermissions(contents.session)
+    registerDownloadListener(contents.session, contents.id, this.onDownload)
+    await this.attachDebugger()
+  }
+
+  async dispose(): Promise<void> {
+    const { contents } = this.options
+    if (!contents.isDestroyed()) contents.ipc.off("synergy:browser:prompt", this.onPrompt)
+    for (const request of this.pendingPrompts.values()) {
+      clearTimeout(request.timer)
+      request.event.returnValue = null
+    }
+    this.pendingPrompts.clear()
+    unregisterDownloadListener(this.session, contents.id)
+    clearBrowserContentPermissions(this.session)
+    for (const timer of this.pendingDialogs.values()) clearTimeout(timer)
+    this.pendingDialogs.clear()
+    for (const request of this.pendingFileChoosers.values()) clearTimeout(request.timer)
+    this.pendingFileChoosers.clear()
+    const cleanup: Promise<unknown>[] = []
+    for (const item of this.pendingDownloads.values()) {
+      item.cancel()
+      const savePath = item.getSavePath()
+      if (savePath) cleanup.push(fs.rm(savePath, { force: true }))
+    }
+    this.pendingDownloads.clear()
+    for (const entry of this.waitingDownloads.values()) {
+      if (entry.path) cleanup.push(fs.rm(entry.path, { force: true }))
+    }
+    this.waitingDownloads.clear()
+    cleanup.push(this.staging.dispose())
+    const cleanupResults = await Promise.allSettled(cleanup)
+    if (!contents.isDestroyed()) {
+      contents.debugger.off("message", this.onDebuggerMessage)
+      if (contents.debugger.isAttached()) contents.debugger.detach()
+    }
+    const failures = cleanupResults.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (failures.length) throw new AggregateError(failures, "Browser Host diagnostics did not dispose cleanly.")
+  }
+
+  async respondToDialog(requestId: string, accept: boolean, promptText?: string): Promise<void> {
+    const prompt = this.pendingPrompts.get(requestId)
+    if (prompt) {
+      clearTimeout(prompt.timer)
+      this.pendingPrompts.delete(requestId)
+      prompt.event.returnValue = accept ? (promptText ?? "") : null
+      return
+    }
+    const timer = this.pendingDialogs.get(requestId)
+    if (!timer) throw new Error(`Dialog request ${requestId} is no longer available`)
+    clearTimeout(timer)
+    this.pendingDialogs.delete(requestId)
+    await this.options.contents.debugger.sendCommand("Page.handleJavaScriptDialog", { accept, promptText })
+  }
+
+  async respondToFileChooser(requestId: string, files: BrowserHostUploadFile[]): Promise<void> {
+    const request = this.pendingFileChoosers.get(requestId)
+    if (!request) throw new Error(`File chooser request ${requestId} is no longer available`)
+    this.pendingFileChoosers.delete(requestId)
+    clearTimeout(request.timer)
+    const staged = await this.stageFiles(files)
+    try {
+      const params: Record<string, unknown> = { files: staged.paths }
+      if (request.backendNodeId !== undefined) params.backendNodeId = request.backendNodeId
+      await this.options.contents.debugger.sendCommand("DOM.setFileInputFiles", params)
+      this.staging.retain(staged.cleanup)
+    } catch (error) {
+      await staged.cleanup()
+      throw error
+    }
+  }
+
+  async acceptDownload(id: string): Promise<void> {
+    const item = this.pendingDownloads.get(id)
+    const entry = this.waitingDownloads.get(id)
+    if (!entry) throw new Error("Download is no longer waiting. List downloads to check its state.")
+    this.waitingDownloads.delete(id)
+    entry.state = item ? "in_progress" : "completed"
+    this.emitDownload(entry)
+    item?.resume()
+  }
+
+  async cancelDownload(id: string): Promise<void> {
+    const item = this.pendingDownloads.get(id)
+    const entry = this.waitingDownloads.get(id)
+    if (!item && !entry) throw new Error(`Download ${id} is no longer active.`)
+    const savePath = item?.getSavePath() ?? entry?.path
+    this.pendingDownloads.delete(id)
+    this.waitingDownloads.delete(id)
+    item?.cancel()
+    if (entry) {
+      entry.state = "cancelled"
+      this.emitDownload(entry)
+    }
+    if (savePath) await fs.rm(savePath, { force: true })
+  }
+
+  async stageFiles(files: BrowserHostUploadFile[]): Promise<{ paths: string[]; cleanup: () => Promise<void> }> {
+    if (files.length > 20) throw new Error("A Browser upload can contain at most 20 files.")
+    const uploadDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-browser-upload-"))
+    await fs.chmod(uploadDir, 0o700)
+    const paths: string[] = []
+    let totalBytes = 0
+    try {
+      for (const [index, file] of files.entries()) {
+        const data = decodeBase64(file.data)
+        totalBytes += data.byteLength
+        if (data.byteLength > 25 * 1024 * 1024 || totalBytes > 50 * 1024 * 1024) {
+          throw new Error("Browser upload exceeds the 25 MB per-file or 50 MB request limit.")
+        }
+        const name = safeBasename(file.name, `upload-${index}`)
+        const directory = path.join(uploadDir, String(index))
+        await fs.mkdir(directory, { mode: 0o700 })
+        const filepath = path.join(directory, name)
+        await fs.writeFile(filepath, data, { flag: "wx", mode: 0o600 })
+        paths.push(filepath)
+      }
+      return { paths, cleanup: () => fs.rm(uploadDir, { recursive: true, force: true }) }
+    } catch (error) {
+      await fs.rm(uploadDir, { recursive: true, force: true })
+      throw error
+    }
+  }
+
+  private async attachDebugger(): Promise<void> {
+    const { contents } = this.options
+    if (!contents.debugger.isAttached()) contents.debugger.attach("1.3")
+    contents.debugger.on("message", this.onDebuggerMessage)
+    await Promise.all([
+      contents.debugger.sendCommand("Page.enable"),
+      contents.debugger.sendCommand("DOM.enable"),
+      contents.debugger.sendCommand("Page.setInterceptFileChooserDialog", { enabled: true }),
+    ])
+  }
+
+  private handleDebuggerMessage(method: string, params: unknown): void {
+    if (method === "Page.javascriptDialogOpening") this.handleJavaScriptDialog(params)
+    if (method === "Page.fileChooserOpened") this.handleFileChooser(params)
+  }
+
+  private readonly onPrompt = (event: Electron.IpcMainEvent, payload: unknown): void => {
+    const data = record(payload)
+    if (
+      event.sender !== this.options.contents ||
+      event.senderFrame !== this.options.contents.mainFrame ||
+      typeof data.message !== "string" ||
+      typeof data.defaultValue !== "string" ||
+      data.message.length > 100_000 ||
+      data.defaultValue.length > 100_000 ||
+      this.pendingPrompts.size > 0
+    ) {
+      event.returnValue = null
+      return
+    }
+    const requestId = `dialog-${crypto.randomUUID()}`
+    const timer = setTimeout(() => {
+      if (!this.pendingPrompts.delete(requestId)) return
+      event.returnValue = null
+    }, 30_000)
+    timer.unref?.()
+    this.pendingPrompts.set(requestId, { event, timer })
+    this.options.emitHostEvent({
+      type: "dialog.opened",
+      pageId: this.options.pageId,
+      requestId,
+      dialogType: "prompt",
+      message: data.message,
+      defaultValue: data.defaultValue,
+    })
+  }
+
+  private handleJavaScriptDialog(params: unknown): void {
+    const data = record(params)
+    const requestId = `dialog-${crypto.randomUUID()}`
+    const timer = setTimeout(() => {
+      if (!this.pendingDialogs.delete(requestId)) return
+      void this.options.contents.debugger
+        .sendCommand("Page.handleJavaScriptDialog", { accept: false })
+        .catch((error) => this.emitFailure("Timed-out Browser dialog could not be dismissed", error))
+    }, 30_000)
+    timer.unref?.()
+    this.pendingDialogs.set(requestId, timer)
+    this.options.emitHostEvent({
+      type: "dialog.opened",
+      pageId: this.options.pageId,
+      requestId,
+      dialogType: String(data.type ?? "alert").slice(0, 1_000),
+      message: String(data.message ?? "").slice(0, 100_000),
+      defaultValue: typeof data.defaultPrompt === "string" ? data.defaultPrompt.slice(0, 100_000) : undefined,
+    })
+  }
+
+  private handleFileChooser(params: unknown): void {
+    const data = record(params)
+    const requestId = `filechooser-${crypto.randomUUID()}`
+    const backendNodeId = typeof data.backendNodeId === "number" ? data.backendNodeId : undefined
+    const timer = setTimeout(() => {
+      if (!this.pendingFileChoosers.delete(requestId)) return
+      void this.options.contents.debugger
+        .sendCommand("DOM.setFileInputFiles", {
+          files: [],
+          ...(backendNodeId !== undefined ? { backendNodeId } : {}),
+        })
+        .catch((error) => this.emitFailure("Timed-out Browser file chooser could not be dismissed", error))
+    }, 30_000)
+    timer.unref?.()
+    this.pendingFileChoosers.set(requestId, {
+      backendNodeId,
+      timer,
+    })
+    this.options.emitHostEvent({
+      type: "filechooser.request",
+      pageId: this.options.pageId,
+      requestId,
+      multiple: data.mode === "selectMultiple",
+      accept: [],
+    })
+  }
+
+  private async trackDownload(item: Electron.DownloadItem): Promise<void> {
+    const id = `download-${crypto.randomUUID()}`
+    const fileName = safeBasename(item.getFilename(), "download")
+    const mimeType = (item.getMimeType() || "application/octet-stream").slice(0, 256)
+    const entry: BrowserHostDownloadEntry = {
+      id,
+      url: redactBrowserURL(item.getURL()).slice(0, 20_000),
+      fileName,
+      mimeType,
+      state: "awaiting_approval",
+      totalBytes: browserByteCount(item.getTotalBytes()),
+      receivedBytes: browserByteCount(item.getReceivedBytes()),
+      timestamp: Date.now(),
+    }
+    if (isDangerousDownload(mimeType, fileName)) {
+      entry.state = "blocked"
+      entry.warning = `Download blocked by browser safety policy: ${fileName}`
+      item.cancel()
+      this.emitDownload(entry)
+      return
+    }
+    if (browserDownloadExceedsLimit(entry.totalBytes)) {
+      entry.state = "blocked"
+      entry.warning = `Download exceeds the ${BROWSER_MAX_DOWNLOAD_BYTES / (1024 * 1024)} MiB Browser limit.`
+      item.cancel()
+      this.emitDownload(entry)
+      return
+    }
+
+    try {
+      const root = this.downloadDirectory
+      if (!root) throw new Error("Managed Browser download storage is unavailable.")
+      const target = path.join(root, `${id}-${fileName}`)
+      if (!target.startsWith(`${root}${path.sep}`)) throw new Error("Managed download escaped its owner directory.")
+      item.setSavePath(target)
+      entry.path = target
+      this.pendingDownloads.set(id, item)
+      this.waitingDownloads.set(id, entry)
+      this.emitDownload(entry)
+      let oversized = false
+      item.on("updated", (_event, state) => {
+        if (oversized) return
+        entry.state = this.waitingDownloads.has(id)
+          ? "awaiting_approval"
+          : state === "interrupted"
+            ? "interrupted"
+            : "in_progress"
+        entry.totalBytes = browserByteCount(item.getTotalBytes())
+        entry.receivedBytes = browserByteCount(item.getReceivedBytes())
+        if (browserDownloadExceedsLimit(entry.totalBytes, entry.receivedBytes)) {
+          oversized = true
+          entry.state = "blocked"
+          entry.warning = `Download exceeds the ${BROWSER_MAX_DOWNLOAD_BYTES / (1024 * 1024)} MiB Browser limit.`
+          item.cancel()
+        }
+        this.emitDownload(entry)
+      })
+      item.on("done", (_event, state) => {
+        this.pendingDownloads.delete(id)
+        // Chromium can finish a buffered response despite pause(); release the staged file only after acceptance.
+        const awaitingApproval = !oversized && state === "completed" && this.waitingDownloads.has(id)
+        if (!awaitingApproval) this.waitingDownloads.delete(id)
+        entry.state = oversized ? "blocked" : awaitingApproval ? "awaiting_approval" : state
+        entry.totalBytes = browserByteCount(item.getTotalBytes())
+        entry.receivedBytes = browserByteCount(item.getReceivedBytes())
+        if (oversized) {
+          void fs.rm(target, { force: true }).catch(() => {
+            entry.warning = "The oversized Browser download could not be removed from managed storage."
+            this.emitDownload(entry)
+          })
+        }
+        this.emitDownload(entry)
+      })
+    } catch (error) {
+      item.cancel()
+      entry.state = "interrupted"
+      entry.warning = (error instanceof Error ? error.message : String(error)).slice(0, 100_000)
+      this.emitDownload(entry)
+    }
+  }
+
+  private async downloadRoot(): Promise<string> {
+    if (!this.options.downloadDir) throw new Error("Managed Browser download storage is unavailable.")
+    const stat = await fs.lstat(this.options.downloadDir)
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Managed Browser download storage is unsafe.")
+    return fs.realpath(this.options.downloadDir)
+  }
+
+  private emitDownload(entry: BrowserHostDownloadEntry): void {
+    this.options.emitHostEvent({ type: "download.updated", pageId: this.options.pageId, entry })
+  }
+
+  private emitFailure(message: string, error: unknown): void {
+    this.options.emitHostEvent({
+      type: "page.error",
+      pageId: this.options.pageId,
+      message: redactBrowserText(`${message}: ${error instanceof Error ? error.message : String(error)}`).slice(
+        0,
+        100_000,
+      ),
+    })
+  }
+}
+
+function browserByteCount(value: number): number {
+  return Number.isSafeInteger(value) && value > 0 ? value : 0
+}
+
+function safeBasename(value: string, fallback: string): string {
+  return sanitizeBrowserFilename(value, fallback)
+}
+
+function decodeBase64(value: string): Buffer {
+  const normalized = value.replace(/\s/g, "")
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) || normalized.length % 4 === 1) {
+    throw new Error("Browser upload contains invalid base64 data.")
+  }
+  return Buffer.from(normalized, "base64")
+}
+
+function isDangerousDownload(mimeType: string, filename: string): boolean {
+  const mime = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? ""
+  return BLOCKED_DOWNLOAD_MIMES.has(mime) || BLOCKED_DOWNLOAD_EXTENSIONS.has(path.extname(filename).toLowerCase())
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {}
+}
+
+type DownloadListener = (event: Electron.Event, item: Electron.DownloadItem, contents: Electron.WebContents) => void
+const downloadListeners = new WeakMap<
+  Electron.Session,
+  { listeners: Map<number, DownloadListener>; dispatch: DownloadListener }
+>()
+function registerDownloadListener(session: Electron.Session, id: number, listener: DownloadListener) {
+  let entry = downloadListeners.get(session)
+  if (!entry) {
+    const listeners = new Map<number, DownloadListener>()
+    const dispatch: DownloadListener = (event, item, contents) => listeners.get(contents.id)?.(event, item, contents)
+    entry = { listeners, dispatch }
+    downloadListeners.set(session, entry)
+    session.on("will-download", dispatch)
+  }
+  entry.listeners.set(id, listener)
+}
+function unregisterDownloadListener(session: Electron.Session, id: number) {
+  const entry = downloadListeners.get(session)
+  if (!entry) return
+  entry.listeners.delete(id)
+  if (entry.listeners.size) return
+  session.off("will-download", entry.dispatch)
+  downloadListeners.delete(session)
+}

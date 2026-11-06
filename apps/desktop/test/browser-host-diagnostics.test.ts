@@ -1,0 +1,498 @@
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
+import path from "node:path"
+import { EventEmitter } from "node:events"
+import { BROWSER_MAX_DOWNLOAD_BYTES } from "@ericsanchezok/synergy-browser-core"
+import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "../src/browser-host-diagnostics.js?real"
+
+interface SendCommandRecord {
+  method: string
+  params: Record<string, unknown>
+}
+
+class MockDebugger extends EventEmitter {
+  attached = false
+  attachVersion: string | undefined
+  commands: SendCommandRecord[] = []
+
+  isAttached() {
+    return this.attached
+  }
+
+  attach(version: string) {
+    this.attachVersion = version
+    this.attached = true
+  }
+
+  detach() {
+    this.attached = false
+  }
+
+  async sendCommand(method: string, params?: Record<string, unknown>) {
+    this.commands.push({ method, params: params ?? {} })
+    return {}
+  }
+}
+
+class MockDownloadItem extends EventEmitter {
+  savePath: string | undefined
+  filename = "report.pdf"
+  mimeType = "application/pdf"
+  url = "https://example.com/report.pdf?token=secret"
+  totalBytes = 1024
+  receivedBytes = 512
+  pauses = 0
+  resumes = 0
+  cancels = 0
+
+  pause() {
+    this.pauses++
+  }
+
+  resume() {
+    this.resumes++
+  }
+
+  cancel() {
+    this.cancels++
+  }
+
+  getSavePath() {
+    return this.savePath
+  }
+
+  setSavePath(target: string) {
+    this.savePath = target
+  }
+
+  getFilename() {
+    return this.filename
+  }
+
+  getMimeType() {
+    return this.mimeType
+  }
+
+  getURL() {
+    return this.url
+  }
+
+  getTotalBytes() {
+    return this.totalBytes
+  }
+
+  getReceivedBytes() {
+    return this.receivedBytes
+  }
+}
+
+class MockSession extends EventEmitter {
+  setPermissionCheckHandlerCalls: unknown[] = []
+  setPermissionRequestHandlerCalls: unknown[] = []
+
+  setPermissionCheckHandler(handler: unknown) {
+    this.setPermissionCheckHandlerCalls.push(handler)
+  }
+
+  setPermissionRequestHandler(handler: unknown) {
+    this.setPermissionRequestHandlerCalls.push(handler)
+  }
+}
+
+class MockContents extends EventEmitter {
+  readonly ipc = new EventEmitter()
+  readonly mainFrame = {}
+  readonly debugger: MockDebugger
+  destroyed = false
+  readonly id = 42
+
+  constructor(readonly session: MockSession) {
+    super()
+    this.debugger = new MockDebugger()
+  }
+
+  isDestroyed() {
+    return this.destroyed
+  }
+}
+
+interface Fixture {
+  contents: MockContents
+  session: MockSession
+  events: unknown[]
+  downloadDir: string
+  diagnostics: BrowserHostDiagnostics
+  item: MockDownloadItem
+}
+
+async function createFixture(options: { downloadDir?: string; start?: boolean } = {}): Promise<Fixture> {
+  const session = new MockSession()
+  const contents = new MockContents(session)
+  const events: unknown[] = []
+  const downloadDir = options.downloadDir ?? (await mkdtemp(path.join(import.meta.dir, ".diagnostics-dl-")))
+  const diagnostics = new BrowserHostDiagnostics({
+    pageId: "page-1",
+    contents: contents as never,
+    downloadDir,
+    emitHostEvent: (event) => events.push(event),
+  })
+  if (options.start !== false) await diagnostics.start()
+  const item = new MockDownloadItem()
+  return { contents, session, events, downloadDir, diagnostics, item }
+}
+
+interface TrackedDownloadEntry {
+  id: string
+  state: string
+  fileName: string
+  path: string
+}
+
+async function untilTrackedDownload(fixture: Fixture): Promise<TrackedDownloadEntry> {
+  const started = Date.now()
+  while (Date.now() - started < 2_000) {
+    const event = fixture.events.at(-1) as { type: string; entry: Partial<TrackedDownloadEntry> } | undefined
+    if (event?.type === "download.updated" && event.entry.path) {
+      return event.entry as TrackedDownloadEntry
+    }
+    await Bun.sleep(1)
+  }
+  throw new Error("tracked download event timed out")
+}
+
+async function untilDownloadEvent(
+  fixture: Fixture,
+  match: (entry: { state: string; warning: string }) => boolean,
+): Promise<{ entry: { state: string; warning: string } }> {
+  const started = Date.now()
+  while (Date.now() - started < 2_000) {
+    const event = fixture.events.at(-1) as { type: string; entry: { state: string; warning: string } } | undefined
+    if (event?.type === "download.updated" && match(event.entry)) return event
+    await Bun.sleep(1)
+  }
+  throw new Error("terminal download event timed out")
+}
+
+let fixtures: Array<{ downloadDir: string }> = []
+
+afterEach(async () => {
+  for (const fixture of fixtures) await rm(fixture.downloadDir, { recursive: true, force: true })
+  fixtures = []
+})
+
+describe("Browser Host diagnostics", () => {
+  test("routes prompt responses only to the requesting page and releases them on disposal", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const event = () => ({
+      sender: fixture.contents,
+      senderFrame: fixture.contents.mainFrame,
+      returnValue: undefined as unknown,
+    })
+    const emit = (request: ReturnType<typeof event>, payload: unknown) =>
+      fixture.contents.ipc.emit("synergy:browser:prompt", request, payload)
+    for (const answer of ["edited", "", null]) {
+      const request = event()
+      emit(request, { message: "Name", defaultValue: "draft" })
+      const opened = fixture.events.at(-1) as { requestId: string }
+      expect(fixture.events.at(-1)).toMatchObject({
+        type: "dialog.opened",
+        pageId: "page-1",
+        dialogType: "prompt",
+        message: "Name",
+        defaultValue: "draft",
+      })
+      expect(request.returnValue).toBeUndefined()
+      await fixture.diagnostics.respondToDialog(opened.requestId, answer !== null, answer ?? undefined)
+      expect(request.returnValue).toBe(answer)
+    }
+    const invalidRequests = [
+      { ...event(), sender: {} },
+      { ...event(), senderFrame: {} },
+    ]
+    for (const request of invalidRequests) {
+      fixture.contents.ipc.emit("synergy:browser:prompt", request, { message: "Name", defaultValue: "draft" })
+      expect(request.returnValue).toBeNull()
+    }
+    for (const payload of [
+      { message: "x".repeat(100_001), defaultValue: "" },
+      { message: 1, defaultValue: "" },
+    ]) {
+      const request = event()
+      emit(request, payload)
+      expect(request.returnValue).toBeNull()
+    }
+    const pending = event()
+    emit(pending, { message: "Name", defaultValue: "draft" })
+    const duplicate = event()
+    emit(duplicate, { message: "Another", defaultValue: "" })
+    expect(duplicate.returnValue).toBeNull()
+    expect(pending.returnValue).toBeUndefined()
+    await fixture.diagnostics.dispose()
+    expect(pending.returnValue).toBeNull()
+    expect(fixture.contents.ipc.listenerCount("synergy:browser:prompt")).toBe(0)
+  })
+
+  test("installs content permissions, subscribes downloads, and enables CDP domains on start", async () => {
+    const fixture = await createFixture({ start: false })
+    fixtures.push(fixture)
+    expect(fixture.session.setPermissionCheckHandlerCalls).toHaveLength(0)
+
+    await fixture.diagnostics.start()
+
+    expect(fixture.session.setPermissionCheckHandlerCalls).toHaveLength(1)
+    expect(fixture.session.setPermissionRequestHandlerCalls).toHaveLength(1)
+    expect(fixture.session.listenerCount("will-download")).toBe(1)
+    expect(fixture.contents.debugger.attachVersion).toBe("1.3")
+    expect(fixture.contents.debugger.commands.map((command) => command.method)).toEqual([
+      "Page.enable",
+      "DOM.enable",
+      "Page.setInterceptFileChooserDialog",
+    ])
+  })
+
+  test("turns JavaScript dialog messages into host events and responds through CDP", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    fixture.contents.debugger.emit("message", {} as never, "Page.javascriptDialogOpening", {
+      type: "confirm",
+      message: "Proceed?",
+      defaultPrompt: "yes",
+    })
+
+    expect(fixture.events).toHaveLength(1)
+    const opened = fixture.events[0] as { type: string; requestId: string; dialogType: string; message: string }
+    expect(opened.type).toBe("dialog.opened")
+    expect(opened.dialogType).toBe("confirm")
+    expect(opened.message).toBe("Proceed?")
+
+    await fixture.diagnostics.respondToDialog(opened.requestId, true, "yes")
+    expect(fixture.contents.debugger.commands.at(-1)).toEqual({
+      method: "Page.handleJavaScriptDialog",
+      params: { accept: true, promptText: "yes" },
+    })
+
+    await expect(fixture.diagnostics.respondToDialog("missing", true)).rejects.toThrow("no longer available")
+  })
+
+  test("stages file chooser uploads and scopes them to the intercepted backend node", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    fixture.contents.debugger.emit("message", {} as never, "Page.fileChooserOpened", {
+      mode: "selectMultiple",
+      backendNodeId: 7,
+    })
+
+    expect(fixture.events).toHaveLength(1)
+    const opened = fixture.events[0] as { type: string; requestId: string; multiple: boolean }
+    expect(opened.type).toBe("filechooser.request")
+    expect(opened.multiple).toBe(true)
+
+    await fixture.diagnostics.respondToFileChooser(opened.requestId, [
+      { name: "notes.txt", mimeType: "text/plain", data: Buffer.from("hello world").toString("base64") },
+    ])
+
+    const command = fixture.contents.debugger.commands.at(-1)!
+    expect(command.method).toBe("DOM.setFileInputFiles")
+    const files = command.params.files as string[]
+    expect(files).toHaveLength(1)
+    expect(path.basename(files[0]!)).toBe("notes.txt")
+    expect(await readFile(files[0]!, "utf8")).toBe("hello world")
+    expect(command.params.backendNodeId).toBe(7)
+
+    await expect(fixture.diagnostics.respondToFileChooser("missing", [])).rejects.toThrow("no longer available")
+  })
+
+  test("rejects oversized upload batches and files over the staging limits", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    const file: BrowserHostUploadFile = { name: "a.txt", data: Buffer.from("x").toString("base64") }
+    await expect(fixture.diagnostics.stageFiles(Array.from({ length: 21 }, () => file))).rejects.toThrow("at most 20")
+
+    const big = { name: "big.bin", data: Buffer.alloc(26 * 1024 * 1024, "a").toString("base64") }
+    await expect(fixture.diagnostics.stageFiles([big])).rejects.toThrow("25 MB per-file")
+
+    await expect(fixture.diagnostics.stageFiles([{ name: "bad.txt", data: "%%%not-base64%%%" }])).rejects.toThrow(
+      "invalid base64",
+    )
+
+    const staged = await fixture.diagnostics.stageFiles([{ name: "../escape.txt", data: "aGVsbG8=" }])
+    expect(staged.paths).toHaveLength(1)
+    expect(path.basename(staged.paths[0]!)).not.toContain("..")
+    await staged.cleanup()
+  })
+
+  test("blocks dangerous downloads before they ever reach disk", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    fixture.item.filename = "setup.exe"
+    fixture.session.emit("will-download", {} as never, fixture.item, fixture.contents)
+
+    expect(fixture.item.pauses).toBe(1)
+    expect(fixture.item.cancels).toBe(1)
+    const event = fixture.events.at(-1) as { type: string; entry: { state: string; warning: string } }
+    expect(event.type).toBe("download.updated")
+    expect(event.entry.state).toBe("blocked")
+    expect(event.entry.warning).toContain("safety policy")
+  })
+
+  test("blocks downloads that exceed the browser limit", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    fixture.item.totalBytes = BROWSER_MAX_DOWNLOAD_BYTES + 1
+    fixture.session.emit("will-download", {} as never, fixture.item, fixture.contents)
+
+    const event = fixture.events.at(-1) as { type: string; entry: { state: string; warning: string } }
+    expect(event.entry.state).toBe("blocked")
+    expect(event.entry.warning).toContain("exceeds")
+  })
+
+  test("manages a clean download to completion and reports interruption on failure", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    fixture.session.emit("will-download", {} as never, fixture.item, fixture.contents)
+    const tracked = await untilTrackedDownload(fixture)
+
+    expect(fixture.item.savePath).toBeDefined()
+    expect(fixture.item.resumes).toBe(0)
+    expect(tracked.state).toBe("awaiting_approval")
+    await fixture.diagnostics.acceptDownload(tracked.id)
+    expect(fixture.item.resumes).toBe(1)
+    expect(tracked.fileName).toBe("report.pdf")
+
+    fixture.item.emit("updated", {} as never, "interrupted")
+    fixture.item.emit("done", {} as never, "completed")
+    const done = fixture.events.at(-1) as { entry: { state: string } }
+    expect(done.entry.state).toBe("completed")
+
+    await expect(fixture.diagnostics.cancelDownload(tracked.id)).rejects.toThrow("no longer active")
+  })
+
+  test("cancels downloads with their emitted id and removes the managed path", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    fixture.session.emit("will-download", {} as never, fixture.item, fixture.contents)
+    const entry = await untilTrackedDownload(fixture)
+    await fixture.diagnostics.cancelDownload(entry.id)
+    expect(fixture.item.cancels).toBe(1)
+    expect(await Bun.file(entry.path).exists()).toBe(false)
+  })
+
+  test("disposes listeners, permissions, debugger attachment, and pending downloads", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    fixture.session.emit("will-download", {} as never, fixture.item, fixture.contents)
+    await untilTrackedDownload(fixture)
+
+    await fixture.diagnostics.dispose()
+
+    expect(fixture.session.listenerCount("will-download")).toBe(0)
+    expect(fixture.contents.debugger.attached).toBe(false)
+    expect(fixture.item.cancels).toBe(1)
+    expect(fixture.contents.debugger.listenerCount("message")).toBe(0)
+  })
+
+  test("refuses unavailable or unsafe download roots before subscribing", async () => {
+    const missing = await createFixture({
+      start: false,
+      downloadDir: path.join(import.meta.dir, "no-such-download-dir"),
+    })
+    await expect(missing.diagnostics.start()).rejects.toThrow("ENOENT")
+    expect(missing.session.listenerCount("will-download")).toBe(0)
+    const root = await mkdtemp(path.join(import.meta.dir, ".diagnostics-file-"))
+    fixtures.push({ downloadDir: root })
+    const filePath = path.join(root, "not-a-dir")
+    await Bun.write(filePath, "x")
+    const invalid = await createFixture({ start: false, downloadDir: filePath })
+    await expect(invalid.diagnostics.start()).rejects.toThrow("unsafe")
+  })
+
+  test("retains buffered downloads privately until accepted, cancelled, or disposed", async () => {
+    for (const decision of ["accept", "cancel", "dispose"] as const) {
+      const fixture = await createFixture()
+      fixtures.push(fixture)
+      fixture.session.emit("will-download", {} as never, fixture.item, fixture.contents)
+      const tracked = await untilTrackedDownload(fixture)
+      await Bun.write(tracked.path, "buffered response")
+      fixture.item.emit("done", {} as never, "completed")
+      expect(tracked.state).toBe("awaiting_approval")
+      if (decision === "accept") {
+        await fixture.diagnostics.acceptDownload(tracked.id)
+        expect(tracked.state).toBe("completed")
+        expect(await readFile(tracked.path, "utf8")).toBe("buffered response")
+        expect(fixture.item.resumes).toBe(0)
+      } else {
+        if (decision === "cancel") await fixture.diagnostics.cancelDownload(tracked.id)
+        else await fixture.diagnostics.dispose()
+        expect(await Bun.file(tracked.path).exists()).toBe(false)
+      }
+    }
+  })
+
+  test("stages an empty upload as an actual zero-byte file", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const staged = await fixture.diagnostics.stageFiles([{ name: "empty.txt", data: "" }])
+    try {
+      expect(staged.paths).toHaveLength(1)
+      expect((await stat(staged.paths[0]!)).size).toBe(0)
+    } finally {
+      await staged.cleanup()
+    }
+  })
+
+  test("preserves duplicate upload filenames without replacing either file", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const staged = await fixture.diagnostics.stageFiles([
+      { name: "same.txt", data: Buffer.from("first").toString("base64") },
+      { name: "same.txt", data: Buffer.from("second").toString("base64") },
+    ])
+    try {
+      expect(staged.paths.map((file) => path.basename(file))).toEqual(["same.txt", "same.txt"])
+      expect(await Promise.all(staged.paths.map((file) => readFile(file, "utf8")))).toEqual(["first", "second"])
+      for (const file of staged.paths) expect((await stat(path.dirname(file))).mode & 0o777).toBe(0o700)
+    } finally {
+      await staged.cleanup()
+    }
+    for (const file of staged.paths) expect(await Bun.file(file).exists()).toBe(false)
+  })
+
+  test("writes uploaded files with restricted permissions and cleans up on failure", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    const staged = await fixture.diagnostics.stageFiles([
+      { name: "a.txt", data: Buffer.from("one").toString("base64") },
+      { name: "b.txt", data: Buffer.from("two").toString("base64") },
+    ])
+    expect(staged.paths).toHaveLength(2)
+    for (const file of staged.paths) {
+      expect((await stat(path.dirname(file))).mode & 0o777).toBe(0o700)
+      expect((await stat(file)).mode & 0o777).toBe(0o600)
+    }
+
+    await staged.cleanup()
+    for (const file of staged.paths) expect(await Bun.file(file).exists()).toBe(false)
+  })
+
+  test("blocks downloads by mime type even with a safe extension", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+
+    fixture.item.filename = "payload.txt"
+    fixture.item.mimeType = "application/x-msdownload"
+    fixture.session.emit("will-download", {} as never, fixture.item, fixture.contents)
+    const event = fixture.events.at(-1) as { entry: { state: string; warning: string } }
+    expect(event.entry.state).toBe("blocked")
+    expect(event.entry.warning).toContain("payload.txt")
+  })
+})

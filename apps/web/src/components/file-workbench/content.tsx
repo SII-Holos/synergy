@@ -1,0 +1,834 @@
+import { ImageViewer } from "@ericsanchezok/synergy-ui/image-viewer"
+import { useImageActions } from "@/hooks/use-image-actions"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import DOMPurify from "dompurify"
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { resourceMenuKeyDown } from "../workspace/resource-menu"
+import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { FileWorkspaceProvider, useFile, useProjectFiles } from "@/context/file"
+import { usePlatform } from "@/context/platform"
+import { usePrompt } from "@/context/prompt"
+import { useSDK } from "@/context/sdk"
+import { fileWorkspaceLabel, workspaceFileOwner, workspaceFilePath, type FileWorkspace } from "@/context/file/workspace"
+import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
+import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
+import { FileExplorer } from "./explorer"
+import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
+import { classifyResourcePreview } from "../resource-preview"
+import { AttachmentPreview } from "../attachment-workbench/preview"
+import { buildWorkspaceFileBrowserUrl, buildWorkspaceFilePreviewUrl } from "@/utils/workspace-file-url"
+import { AttachmentPdfPreview } from "@/components/attachment-workbench/pdf-preview"
+import { FileSourceView, type FileSourceViewApi } from "./source-view"
+import "./styles.css"
+import { panels as P, fileWorkbench as F } from "@/locales/messages"
+import { useLocale } from "@/context/locale"
+import { useViewActivity } from "@/context/view-residency"
+import "@/components/attachment-workbench/styles.css"
+import type { PdfDocumentState } from "@/context/file"
+
+function selectionLabel(range: { start: number; end: number }) {
+  const start = Math.min(range.start, range.end)
+  const end = Math.max(range.start, range.end)
+  return start === end ? `L${start}` : `L${start}–L${end}`
+}
+
+function MarkdownPreview(props: { path: string; content: string }) {
+  const file = useFile()
+  const context = () => {
+    const value = ResourceReference.capture(file.workspace)
+    return value.state === "bound" ? { ...value, directory: props.path.split("/").slice(0, -1).join("/") } : value
+  }
+  return (
+    <div class="file-markdown-preview">
+      <Markdown
+        text={props.content}
+        navigation={file.navigation(props.path)}
+        referenceContext={context()}
+        cacheKey={`file-preview:${file.resourceKey}:${props.path}`}
+      />
+    </div>
+  )
+}
+
+function SvgPreview(props: { path: string; content: string }) {
+  const [url, setUrl] = createSignal<string>()
+  createEffect(() => {
+    const sanitized = DOMPurify.sanitize(props.content, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+      FORBID_TAGS: ["script", "foreignObject"],
+      FORBID_ATTR: ["onload", "onclick", "onerror"],
+    })
+    const parsed = new DOMParser().parseFromString(String(sanitized), "image/svg+xml")
+    for (const element of parsed.querySelectorAll("*")) {
+      for (const attribute of Array.from(element.attributes)) {
+        if (attribute.name !== "href" && attribute.name !== "xlink:href") continue
+        if (attribute.value.startsWith("#") || attribute.value.startsWith("data:image/")) continue
+        element.removeAttribute(attribute.name)
+      }
+    }
+    const safeSvg = new XMLSerializer().serializeToString(parsed.documentElement)
+    const next = URL.createObjectURL(new Blob([safeSvg], { type: "image/svg+xml" }))
+    setUrl(next)
+    onCleanup(() => URL.revokeObjectURL(next))
+  })
+  return <Show when={url()}>{(src) => <FileImagePreview path={props.path} src={src()} mime="image/svg+xml" />}</Show>
+}
+
+// Served through the workspace raw-file route: relative resources resolve, and
+// the server puts the document in a CSP-sandboxed opaque origin, so scripts run
+// but cannot reach the app origin, its storage, or the HTTP control plane.
+// The frame must be same-origin with the app because the route sets
+// X-Frame-Options: SAMEORIGIN: when the SDK base points at another origin (bun
+// dev serves the app from Vite and the server from :4096), fall back to the app
+// origin, which Vite proxies to the server. The version query forces a reload
+// when the file changes on disk (watcher events, edits, focus refresh).
+function HtmlPreview(props: { path: string; version?: { mtime: number; size: number; contentVersion?: string } }) {
+  const file = useFile()
+  const sdk = useSDK()
+  const lingui = useLingui()
+  const [loaded, setLoaded] = createSignal(false)
+  const url = createMemo(() =>
+    buildWorkspaceFilePreviewUrl(
+      sdk.url,
+      window.location.origin,
+      props.path,
+      {
+        scopeID: sdk.scopeID,
+        ...file.reference(),
+      },
+      props.version,
+    ),
+  )
+  // A new URL (path switch or disk version change) reloads the frame; show the
+  // loading state until its load event fires. Time out so a blocked frame (for
+  // example an X-Frame-Options refusal) never leaves a permanent spinner.
+  let hideTimer: number | undefined
+  createEffect(() => {
+    url()
+    setLoaded(false)
+    window.clearTimeout(hideTimer)
+    hideTimer = window.setTimeout(() => setLoaded(true), 15000)
+    onCleanup(() => window.clearTimeout(hideTimer))
+  })
+  return (
+    <div class="file-html-preview-shell">
+      <Show when={!loaded()}>
+        <div class="file-workbench-loading">
+          <Spinner class="size-5" />
+          <span>
+            {lingui._({
+              id: F.loading.id,
+              message: F.loading.message,
+              values: { path: props.path },
+            })}
+          </span>
+        </div>
+      </Show>
+      <iframe
+        class="file-html-preview"
+        sandbox="allow-scripts"
+        src={url()}
+        title={props.path}
+        onLoad={() => setLoaded(true)}
+      />
+    </div>
+  )
+}
+
+function FileImagePreview(props: { path: string; mime: string; src: string }) {
+  const file = useFile()
+  const sdk = useSDK()
+  const actions = useImageActions(() => sdk.url)
+  const images = createMemo(() => [
+    {
+      id: props.path,
+      src: props.src,
+      filename: props.path.split("/").at(-1) ?? props.path,
+      mime: props.mime,
+      downloadUrl: buildWorkspaceFileBrowserUrl(sdk.url, props.path, { scopeID: sdk.scopeID, ...file.reference() }),
+    },
+  ])
+  return (
+    <ImageViewer
+      images={images()}
+      initialScaleMode={file.view.imageScaleMode(props.path)}
+      onScaleModeChange={(mode) => file.view.setImageScaleMode(props.path, mode)}
+      actions={actions}
+    />
+  )
+}
+
+function FilePdfPreview(props: {
+  state: PdfDocumentState | undefined
+  path: string
+  totalBytes: number | undefined
+  lingui: ReturnType<typeof useLingui>
+  onRetry: () => void
+}) {
+  const file = useFile()
+  return (
+    <Show
+      when={props.state?.bytes}
+      fallback={
+        <Show
+          when={props.state?.tooLarge}
+          fallback={
+            <Show
+              when={props.state?.error}
+              fallback={
+                <div class="file-workbench-loading">
+                  <Spinner class="size-5" />
+                  <span>
+                    {props.lingui._({
+                      id: F.loading.id,
+                      message: F.loading.message,
+                      values: { path: props.path },
+                    })}
+                  </span>
+                </div>
+              }
+            >
+              {(message) => (
+                <div class="file-workbench-state">
+                  <FileIcon node={{ path: props.path, type: "file" }} class="size-10" />
+                  <strong>{props.lingui._({ id: F.pdfPreviewFailed.id, message: F.pdfPreviewFailed.message })}</strong>
+                  <Show when={message() !== "not-found"}>
+                    <span>{message()}</span>
+                  </Show>
+                  <button type="button" onClick={props.onRetry}>
+                    {props.lingui._({ id: F.retry.id, message: F.retry.message })}
+                  </button>
+                </div>
+              )}
+            </Show>
+          }
+        >
+          <div class="file-workbench-state">
+            <FileIcon node={{ path: props.path, type: "file" }} class="size-10" />
+            <strong>{props.lingui._({ id: F.pdfTooLarge.id, message: F.pdfTooLarge.message })}</strong>
+            <span>
+              {props.lingui._({
+                id: F.binaryInfo.id,
+                message: F.binaryInfo.message,
+                values: {
+                  mimeType: "application/pdf",
+                  bytes: props.totalBytes ?? props.state?.version?.size ?? 0,
+                },
+              })}
+            </span>
+          </div>
+        </Show>
+      }
+    >
+      {(bytes) => (
+        <AttachmentPdfPreview
+          bytes={bytes()}
+          location={file.navigation(props.path)?.location}
+          navigation={file.navigation(props.path)?.id}
+        />
+      )}
+    </Show>
+  )
+}
+
+export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
+  const lingui = useLingui()
+  const file = useFile()
+  const owner = createMemo(() => workspaceFileOwner(props.tab) ?? (!props.tab.resourceId ? file.workspace : undefined))
+  const resource = createMemo(() => {
+    const workspace = owner()
+    return workspace && JSON.stringify([workspace.id, workspace.generation, props.tab.resourceId])
+  })
+  return (
+    <Show
+      when={resource()}
+      keyed
+      fallback={
+        <div class="file-workbench-empty">
+          {lingui._({ id: F.workspaceMissing.id, message: F.workspaceMissing.message })}
+        </div>
+      }
+    >
+      {(_resource) => (
+        <FileWorkspaceProvider workspace={owner()!}>
+          <WorkspaceFileContent {...props} />
+        </FileWorkspaceProvider>
+      )}
+    </Show>
+  )
+}
+
+function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
+  const active = useViewActivity()
+  const file = useFile()
+  const project = useProjectFiles()
+  const platform = usePlatform()
+  const sdk = useSDK()
+  const prompt = usePrompt()
+  const { fmt } = useLocale()
+  const lingui = useLingui()
+  const path = createMemo(() => workspaceFilePath(props.tab.resourceId))
+  const isHtml = createMemo(() => /\.html?$/i.test(path()))
+  const documentState = createMemo(() => file.get(path()))
+  const content = createMemo(() => documentState()?.content)
+  const textContent = createMemo(() => {
+    const value = content()
+    if (value?.kind === "text") return value
+    const draft = file.draft.get(path())
+    return draft
+      ? { content: draft.baseContent, contentVersion: draft.expectedVersion, truncationReason: undefined }
+      : undefined
+  })
+  const imageContent = createMemo(() => {
+    const value = content()
+    return value?.kind === "image" ? value : undefined
+  })
+  const binaryContent = createMemo(() => {
+    const value = content()
+    return value?.kind === "binary" ? value : undefined
+  })
+  const pdfContent = createMemo(() => file.pdf.get(path()))
+  const capability = createMemo(() => {
+    const value = content()
+    return classifyResourcePreview(
+      value?.mimeType ?? "",
+      path(),
+      file.draft.get(path()) ? "text" : (value?.kind ?? "binary"),
+    )
+  })
+  const mode = createMemo(() => {
+    if (file.draft.get(path())) return "source"
+    const saved = file.view.mode(path())
+    if (capability().dual && saved) return saved
+    return capability().defaultMode
+  })
+  const selectedLines = createMemo(() => file.view.selectedLines(path()))
+  const breadcrumb = createMemo(() => path().split("/").filter(Boolean))
+  const parents = createMemo(() => breadcrumb().slice(0, -1))
+  const origins = createMemo(() => {
+    const seen = new Set<string>()
+    const options: { value: string; label: string; workspace: FileWorkspace }[] = []
+    for (const workspace of [file.workspace, ...project.roots()]) {
+      if (!workspace) continue
+      const value = JSON.stringify([workspace.id, workspace.generation])
+      if (seen.has(value)) continue
+      seen.add(value)
+      options.push({ value, label: fileWorkspaceLabel(workspace), workspace })
+    }
+    return options
+  })
+  const originLabel = createMemo(() => {
+    const workspace = file.workspace
+    if (!workspace) return ""
+    if (typeof workspace.name === "string" && workspace.name.trim()) return workspace.name.trim()
+    if (workspace.type === "worktree") {
+      return lingui._({ id: "fileWorkbench.origin.workingCopy", message: "Working copy" })
+    }
+    return workspace.path.split(/[\\/]/).filter(Boolean).at(-1) ?? fileWorkspaceLabel(workspace)
+  })
+  const wordWrap = createMemo(() => file.view.wordWrap(path()))
+  const canWrap = createMemo(() => mode() === "source" && !!textContent())
+  const [editing, setEditing] = createSignal(!!file.draft.get(path()))
+  const dirty = createMemo(() => file.draft.dirty(path()))
+  const [saving, setSaving] = createSignal(false)
+  const [moreOpen, setMoreOpen] = createSignal(false)
+  const [navigator, setNavigator] = createSignal<WorkspaceNavigatorController>()
+  let host!: HTMLDivElement
+  let sourceApi: FileSourceViewApi | undefined
+  const canEdit = createMemo(
+    () => mode() === "source" && !!textContent()?.contentVersion && textContent()?.truncationReason !== "size",
+  )
+
+  async function runSave(overwrite = false) {
+    if (!sourceApi || saving()) return
+    setSaving(true)
+    try {
+      await file.save(path(), sourceApi.getContent(), { overwrite })
+      setEditing(!!file.draft.get(path()))
+      const saved = textContent()
+      if (!file.draft.get(path()) && saved) sourceApi?.applyContent(saved.content)
+      showToast({
+        type: "success",
+        title: lingui._({ id: F.saved.id, message: F.saved.message }),
+      })
+    } catch (error) {
+      if (isFileWriteConflictError(error)) {
+        showToast({
+          type: "warning",
+          title: lingui._({ id: F.saveConflict.id, message: F.saveConflict.message }),
+          description: lingui._({ id: F.saveConflictOverwrite.id, message: F.saveConflictOverwrite.message }),
+          actions: [
+            {
+              label: lingui._({ id: F.overwrite.id, message: F.overwrite.message }),
+              onClick: () => void runSave(true),
+            },
+            { label: lingui._({ id: F.dismiss.id, message: F.dismiss.message }), onClick: "dismiss" },
+          ],
+        })
+      } else if (isFileWriteDeniedError(error)) {
+        showToast({
+          type: "error",
+          title: lingui._({ id: F.saveDenied.id, message: F.saveDenied.message }),
+          description: fileWriteErrorMessage(error),
+        })
+      } else {
+        showToast({
+          type: "error",
+          title: lingui._({ id: F.saveFailed.id, message: F.saveFailed.message }),
+          description: fileWriteErrorMessage(error),
+        })
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function startEdit() {
+    if (editing()) return
+    file.draft.begin(path())
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    if (!editing()) return
+    const value = textContent()
+    file.draft.discard(path())
+    if (value) sourceApi?.applyContent(value.content)
+    setEditing(false)
+  }
+
+  function toggleWrap() {
+    if (canWrap()) file.view.setWordWrap(path(), !wordWrap())
+  }
+
+  createEffect(() => {
+    if (!path()) return
+    void file.load(path())
+    if (capability().kind === "pdf") void file.pdf.load(path())
+  })
+
+  createEffect(() => {
+    if (!active()) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!active() || event.defaultPrevented || event.isComposing) return
+      const focused = document.activeElement
+      if (!(focused instanceof HTMLElement) || !host.contains(focused)) return
+      const input = focused.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")
+      if (event.altKey) {
+        if (
+          (event.code !== "KeyZ" && event.key.toLowerCase() !== "z") ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          !canWrap() ||
+          (input && !focused.closest(".file-source-view"))
+        )
+          return
+        event.preventDefault()
+        toggleWrap()
+        return
+      }
+      if (!(event.metaKey || event.ctrlKey)) return
+      if (event.key.toLowerCase() === "s" && !event.shiftKey) {
+        if (!editing() || (input && !focused.closest(".file-source-view"))) return
+        event.preventDefault()
+        void runSave()
+        return
+      }
+      if (!event.shiftKey || event.key.toLowerCase() !== "v" || input || !capability().dual) return
+      event.preventDefault()
+      file.view.setMode(path(), mode() === "source" ? "preview" : "source")
+    }
+    document.addEventListener("keydown", onKeyDown)
+    onCleanup(() => document.removeEventListener("keydown", onKeyDown))
+  })
+
+  return (
+    <div ref={host} class="file-workbench">
+      <div class="file-workbench-toolbar">
+        <div class="file-toolbar-location">
+          <IconButton
+            icon={getSemanticIcon("workspace.files")}
+            variant="ghost"
+            class="file-tree-toggle"
+            aria-label={
+              navigator()?.opened()
+                ? lingui._({ id: "fileWorkbench.navigation.hide", message: "Hide files list" })
+                : lingui._({ id: "fileWorkbench.navigation.show", message: "Show files list" })
+            }
+            aria-expanded={navigator()?.opened() ?? false}
+            aria-controls={navigator()?.id}
+            data-workspace-navigation-toggle
+            onClick={() => navigator()?.toggle()}
+          />
+          <Show when={file.workspace}>
+            {(workspace) => (
+              <MenuField
+                ariaLabel={lingui._({ id: "fileWorkbench.origin.label", message: "Workspace" })}
+                icon={getSemanticIcon(workspace().type === "worktree" ? "workspace.worktree" : "workspace.main")}
+                triggerLabel={originLabel()}
+                triggerClass="file-origin-picker"
+                surfaceClass="file-origin-options"
+                value={JSON.stringify([workspace().id, workspace().generation])}
+                options={origins()}
+                onChange={(value) => {
+                  const origin = origins().find((option) => option.value === value)
+                  if (origin) void project.open(origin.workspace, "", { directory: true })
+                }}
+              />
+            )}
+          </Show>
+          <Show when={parents().length > 0}>
+            <nav
+              class="file-breadcrumb"
+              title={parents().join("/")}
+              aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}
+            >
+              <For each={parents()}>
+                {(part, index) => (
+                  <>
+                    <span class="file-breadcrumb-separator" aria-hidden="true">
+                      /
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        file.explorer.setOpen(true)
+                        void file.explorer.reveal(
+                          `${parents()
+                            .slice(0, index() + 1)
+                            .join("/")}/__reveal__`,
+                        )
+                      }}
+                    >
+                      {part}
+                    </button>
+                  </>
+                )}
+              </For>
+            </nav>
+          </Show>
+        </div>
+        <div class="file-toolbar-actions">
+          <Show when={capability().dual}>
+            <div
+              class="file-view-toggle"
+              role="group"
+              aria-label={lingui._({ id: F.viewMode.id, message: F.viewMode.message })}
+            >
+              <button
+                type="button"
+                aria-pressed={mode() === "source"}
+                onClick={() => file.view.setMode(path(), "source")}
+              >
+                {lingui._({ id: F.source.id, message: F.source.message })}
+              </button>
+              <button
+                type="button"
+                aria-pressed={mode() === "preview"}
+                onClick={() => file.view.setMode(path(), "preview")}
+              >
+                {lingui._({ id: F.preview.id, message: F.preview.message })}
+              </button>
+            </div>
+          </Show>
+          <Show when={canEdit()}>
+            <Show
+              when={!editing()}
+              fallback={
+                <>
+                  <button
+                    type="button"
+                    class="file-edit-pill file-edit-pill--save"
+                    disabled={saving() || !dirty()}
+                    onClick={() => void runSave()}
+                    aria-label={saving() ? lingui._(F.saving) : lingui._(F.save)}
+                    title={saving() ? lingui._(F.saving) : lingui._(F.save)}
+                  >
+                    <Icon name={getSemanticIcon("state.success")} size="small" />
+                    <span>
+                      {saving()
+                        ? lingui._({ id: F.saving.id, message: F.saving.message })
+                        : lingui._({ id: F.save.id, message: F.save.message })}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    class="file-edit-pill"
+                    disabled={saving()}
+                    onClick={cancelEdit}
+                    aria-label={lingui._({ id: F.discard.id, message: F.discard.message })}
+                    title={lingui._(F.discard)}
+                  >
+                    <Icon name={getSemanticIcon("action.clear")} size="small" />
+                    <span>{lingui._(F.discard)}</span>
+                  </button>
+                </>
+              }
+            >
+              <button
+                type="button"
+                class="file-edit-pill"
+                classList={{ "file-edit-pill--active": editing() }}
+                onClick={startEdit}
+                aria-label={lingui._(F.edit)}
+                title={lingui._(F.edit)}
+              >
+                <Icon name={getSemanticIcon("action.edit")} size="small" />
+                <span>{lingui._({ id: F.edit.id, message: F.edit.message })}</span>
+              </button>
+            </Show>
+          </Show>
+          <IconButton
+            icon={getSemanticIcon("review.wrap")}
+            variant="ghost"
+            class="file-wrap-toggle"
+            aria-label={lingui._({ id: "fileWorkbench.wordWrap", message: "Word wrap" })}
+            aria-keyshortcuts="Alt+Z"
+            aria-pressed={wordWrap()}
+            disabled={!canWrap()}
+            onClick={toggleWrap}
+          />
+          <Show when={path()}>
+            <Popover
+              open={moreOpen()}
+              onOpenChange={setMoreOpen}
+              placement="bottom-end"
+              class="file-options-popover"
+              triggerAs={(triggerProps) => (
+                <IconButton
+                  {...triggerProps}
+                  icon={getSemanticIcon("action.more")}
+                  variant="ghost"
+                  aria-label={lingui._({ id: "fileWorkbench.options", message: "File options" })}
+                  aria-haspopup="menu"
+                />
+              )}
+            >
+              <div
+                class="file-options-menu"
+                role="menu"
+                onKeyDown={resourceMenuKeyDown}
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("button, a")) setMoreOpen(false)
+                }}
+              >
+                <Show when={selectedLines()}>
+                  {(range) => (
+                    <button
+                      type="button"
+                      class="file-add-context"
+                      role="menuitem"
+                      onClick={() =>
+                        prompt.context.add({
+                          type: "file",
+                          path: path(),
+                          ...(file.workspace
+                            ? {
+                                workspace: {
+                                  id: file.workspace.id,
+                                  generation: file.workspace.generation,
+                                  root: file.workspace.path,
+                                },
+                              }
+                            : {}),
+                          selection: {
+                            startLine: Math.min(range().start, range().end),
+                            endLine: Math.max(range().start, range().end),
+                            startChar: 0,
+                            endChar: 0,
+                          },
+                        })
+                      }
+                    >
+                      <span>{selectionLabel(range())}</span>
+                      <span>{lingui._({ id: F.addToContext.id, message: F.addToContext.message })}</span>
+                    </button>
+                  )}
+                </Show>
+                <Show when={isHtml()}>
+                  <button
+                    type="button"
+                    class="file-open-in-browser"
+                    role="menuitem"
+                    onClick={() =>
+                      platform.openLink(
+                        buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() }),
+                      )
+                    }
+                  >
+                    <Icon name={getSemanticIcon("action.open")} size="small" />
+                    <span>{lingui._({ id: F.openInBrowser.id, message: F.openInBrowser.message })}</span>
+                  </button>
+                </Show>
+                <Show when={path()}>
+                  <a
+                    class="file-download"
+                    role="menuitem"
+                    href={`${buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() })}?download=1`}
+                    download={breadcrumb().at(-1)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Icon name={getSemanticIcon("action.download")} size="small" />
+                    <span>{lingui._({ id: F.download.id, message: F.download.message })}</span>
+                  </a>
+                </Show>
+              </div>
+            </Popover>
+          </Show>
+        </div>
+      </div>
+      <div class="file-workbench-main">
+        <WorkspaceNavigator
+          id={`file-navigation-${props.tab.id}`}
+          label={lingui._(P.files)}
+          header={false}
+          open={file.explorer.open()}
+          width={file.explorer.width()}
+          onResize={file.explorer.setWidth}
+          onReady={setNavigator}
+          onOpen={() => file.explorer.setOpen(true)}
+          onClose={() => file.explorer.setOpen(false)}
+        >
+          <FileExplorer onClose={() => navigator()?.close()} onOpenResource={() => navigator()?.closeDrawer()} />
+        </WorkspaceNavigator>
+        <main class="file-viewer">
+          <Show when={file.draft.backupUnavailable()}>
+            <div class="file-state-banner" role="alert">
+              {lingui._({ id: F.draftBackupUnavailable.id, message: F.draftBackupUnavailable.message })}
+            </div>
+          </Show>
+          <Show when={documentState()?.error && file.draft.get(path())}>
+            <div class="file-state-banner" role="status">
+              {documentState()?.error}
+            </div>
+          </Show>
+          <Show when={documentState()?.deleted}>
+            <div class="file-state-banner">
+              <span>{lingui._({ id: F.fileDeleted.id, message: F.fileDeleted.message })}</span>
+              <button type="button" onClick={() => file.load(path(), { force: true })}>
+                {lingui._({ id: F.retry.id, message: F.retry.message })}
+              </button>
+              <button type="button" onClick={props.onRequestClose}>
+                {lingui._({ id: F.close.id, message: F.close.message })}
+              </button>
+            </div>
+          </Show>
+          <Show when={textContent()?.truncationReason === "size"}>
+            <div class="file-state-banner">
+              {lingui._({ id: F.fileTruncated.id, message: F.fileTruncated.message })}
+            </div>
+          </Show>
+          <Switch>
+            <Match when={!path()}>
+              <div class="file-workbench-state file-workbench-empty">
+                <FileIcon node={{ path: "workspace", type: "directory" }} expanded class="size-10" />
+                <strong>{lingui._({ id: F.openAFile.id, message: F.openAFile.message })}</strong>
+                <span>{lingui._({ id: F.chooseFromTree.id, message: F.chooseFromTree.message })}</span>
+              </div>
+            </Match>
+            <Match when={documentState()?.loading && !textContent() && !content()}>
+              <div class="file-workbench-loading">
+                <Spinner class="size-5" />
+                <span>{lingui._({ id: F.loading.id, message: F.loading.message, values: { path: path() } })}</span>
+              </div>
+            </Match>
+            <Match when={documentState()?.error && !textContent() && !content()}>
+              {(error) => (
+                <div class="file-workbench-state">
+                  <FileIcon node={{ path: path(), type: "file" }} class="size-10" />
+                  <strong>{lingui._({ id: F.unableToOpen.id, message: F.unableToOpen.message })}</strong>
+                  <span>{error()}</span>
+                  <button type="button" onClick={() => file.load(path(), { force: true })}>
+                    {lingui._({ id: F.retry.id, message: F.retry.message })}
+                  </button>
+                </div>
+              )}
+            </Match>
+            <Match when={mode() === "source" ? textContent() : undefined}>
+              {(value) => (
+                <FileSourceView
+                  path={path()}
+                  content={value().content}
+                  editable={editing()}
+                  wordWrap={wordWrap()}
+                  onRegister={(api) => {
+                    sourceApi = api
+                  }}
+                />
+              )}
+            </Match>
+            <Match when={capability().kind === "markdown" ? textContent() : undefined}>
+              {(value) => <MarkdownPreview path={path()} content={value().content} />}
+            </Match>
+            <Match when={capability().kind === "svg" ? textContent() : undefined}>
+              {(value) => <SvgPreview path={path()} content={value().content} />}
+            </Match>
+            <Match when={capability().kind === "html" ? textContent() : undefined}>
+              <HtmlPreview path={path()} version={documentState()?.version} />
+            </Match>
+            <Match when={imageContent()}>
+              {(value) => (
+                <FileImagePreview
+                  path={path()}
+                  mime={value().mimeType}
+                  src={`data:${value().mimeType};base64,${value().content}`}
+                />
+              )}
+            </Match>
+            <Match when={capability().kind === "pdf"}>
+              <FilePdfPreview
+                state={pdfContent()}
+                path={path()}
+                totalBytes={documentState()?.node?.size ?? documentState()?.version?.size}
+                lingui={lingui}
+                onRetry={() => void file.pdf.load(path(), { force: true })}
+              />
+            </Match>
+            <Match when={["docx", "xlsx", "pptx", "audio", "video"].includes(capability().kind)}>
+              <AttachmentPreview
+                file={{
+                  filename: path(),
+                  mime: content()?.mimeType ?? "application/octet-stream",
+                  size: documentState()?.node?.size,
+                }}
+                serverUrl={sdk.url}
+                sourceUrl={buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() })}
+                fetcher={platform.fetch}
+              />
+            </Match>
+            <Match when={binaryContent()}>
+              {(value) => (
+                <div class="file-workbench-state">
+                  <FileIcon node={{ path: path(), type: "file" }} class="size-12" />
+                  <strong>{path().split("/").at(-1)}</strong>
+                  <span>
+                    {lingui._({
+                      id: F.binaryInfo.id,
+                      message: F.binaryInfo.message,
+                      values: {
+                        mimeType: value().mimeType ?? "Unknown file type",
+                        bytes: fmt.number(value().totalBytes),
+                      },
+                    })}
+                  </span>
+                  <p>{value().unsupportedReason}</p>
+                </div>
+              )}
+            </Match>
+          </Switch>
+        </main>
+      </div>
+    </div>
+  )
+}

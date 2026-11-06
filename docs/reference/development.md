@@ -2,15 +2,23 @@
 
 Source development is orchestrated from the repository root with `bun dev`. The installed/product `synergy` CLI is a different surface.
 
+One-shot and persistent-server execution share the runtime lifecycle. [Rollout execution](rollout.md) documents task configuration, durable evidence, import/export and accounting boundaries.
+
+Workspace `build` commands compile dependency modules. CLI and Presets modules use `dist/modules`; their explicit `script/build.ts` entries produce executable distributions. Running workspace tests does not request cross-platform release artifacts.
+
 ## Requirements and Preparation
 
-The root manifest pins Bun `1.3.14`. Install that version, then run:
+The root manifest pins Bun `1.4.3`. Development commands validate both the running Bun and any `BUN_BIN` override before installation, builds or startup. Preparation does not change the global runtime selection. With mise, select the installed version using `mise use --global bun@1.4.3`, or run a single command using `mise exec bun@1.4.3 -- bun dev prepare`. Restart existing development processes after selecting a different version. Then run:
 
 ```bash
 bun dev prepare
 ```
 
-Preparation installs dependencies, generates OpenAPI/SDK artifacts, builds the plugin SDK and Web app, and prepares the platform sandbox helper where supported. Linux and Windows helper compilation requires Rust; Linux sandboxing also uses Bubblewrap. `build-helper.ts --local` installs the local helper without editing tracked trust hashes. Stable builds compile each release helper first and embed its SHA-256 into the matching runtime binary.
+Preparation installs dependencies, generates OpenAPI/SDK artifacts, builds the plugin SDK and Web app, and prepares the platform sandbox helper where supported. Preparation requires Rust to build the bounded native PTY library on every platform; the same library supplies Linux process ownership operations. Linux and Windows sandbox helpers also use Rust; Linux sandboxing also uses Bubblewrap. `build-helper.ts --local` installs the local helper without editing tracked trust hashes. Stable builds compile each release helper first and embed its SHA-256 into the matching runtime binary.
+
+Linux preparation also requires Docker to build the pinned Parcel watcher with its EINTR fix. After updating a Linux source checkout, run `bun dev prepare` before starting the new runtime; an old unpatched watcher binding is rejected. The same verified binding builder supplies release assets for glibc and musl.
+
+macOS Desktop builds prepare the native Computer driver through `desktop:prepare-computer`. This reports build-input and cache checks, source download and validation, patching, toolchain preparation, each architecture build, universal-driver validation and publication. Each phase appears before its work begins and reports elapsed time every five seconds while pending. Download status includes received MiB and the latest interval's transfer rate; a percentage appears only when a reliable response size is available. Verified driver and source caches report reuse, and a driver rebuild reports its cache rejection reason. Status uses newline-terminated stderr messages so direct execution, `bun dev` forwarding and CI capture the same output alongside native compiler logs. Waiting messages indicate that an operation has not settled; they do not prove forward progress or extend existing timeouts. Successful preparation reports total elapsed time after saving the executable and build receipt. Ordinary `bun dev prepare` does not prepare this Desktop-only driver.
 
 ## Development Modes
 
@@ -29,7 +37,7 @@ bun dev build desktop
 | ------------------- | ------------------------------------------------------------------------- |
 | `server`            | source server on fixed development port 4096 by default                   |
 | `app`               | Vite app against an existing server; default app port 3000                |
-| `web`               | source server, Vite app, and remote Browser Host                          |
+| `web`               | source server and Vite app                                                |
 | `desktop`           | source server, Vite app, and Electron in external-server mode             |
 | `desktop --managed` | build plugin/app, then Electron with production-style managed server mode |
 | `send`              | one-off source CLI execution                                              |
@@ -38,15 +46,31 @@ Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--ap
 
 Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Its server also watches the Electron parent and shuts down if Electron is force-terminated without running normal quit handlers. Normal daily Desktop work should use external mode for Vite reload speed.
 
+Managed Desktop shows preparation, data updates, recovery and workspace opening in its startup overlay. The current task, migration step, elapsed step and total time, and time since the last accepted progress update remain visible. Known first-party migrations report a bounded public task category; migration IDs, descriptions and private domain names stay out of the progress stream. Unknown totals show checked counts and an indeterminate bar with an explicit label. After 30 seconds without a new accepted update, that animation pauses and the page explains the silent interval; new progress resumes it. Reduced motion keeps the bar static. Each percentage applies only to the current migration step or scan phase. Execution-history recovery reports a cumulative count of checked items without estimating a total. Storage preparation, inventory scans, backup, import, validation and activation also report aggregate progress before HTTP admission. Interrupted-import recovery, attachment checks, resource recovery, quarantine loading and notification reconciliation each announce their stage before work starts and report checked counts as work advances, including on already-migrated restarts. The renderer's clock describes waiting and never establishes backend activity or completion. See the [startup presentation decision](../decisions/implemented/feature/2026-10-04-desktop-startup-progress.md).
+
+Managed startup failures retain the Runtime failure stage alongside a child exit code. Diagnose a child’s own exit separately from health or migration inactivity deadlines. Startup and history performance verification follows the [testing guide](../../.synergy/skill/testing-guide/references/local-verification.md#local-performance-experiments), including usable UI milestones rather than health alone.
+
+Managed server admission requires both the Runtime readiness record and successful HTTP health. The Runtime lifecycle covers initialization, storage, migrations, recovery, configuration, extensions, transport, services and finalization. Component composition automatically counts completed startup hooks; a new component does not need its own reporter to keep advancing work observable. Advancing counts and lifecycle stages renew a five-minute inactivity deadline. Subsystem completion cannot end that wait. Only successful completion of the whole Runtime, after the CLI arms shutdown monitoring, starts the ordinary 30-second health budget. Repeated or regressive stages and counts, and late progress after readiness, do not renew it. SQLite index creation/removal, VACUUM, reclaim and physical integrity checking report a shared maintenance lifecycle from the driver, including work before domain migrations. Desktop displays the operation, available checkpoint/rewrite stage and elapsed waiting time without inventing a percentage. Each operation receives the finite current-snapshot engine budget, including WAL growth and bounded liveness probes, plus five seconds for delivery. Overlapping operations retain independent deadlines; completion restores the underlying phase wait and failure stops startup. That budget is an upper bound, not an estimated completion time. Duplicate announcements, duplicate counts and ordinary logs do not extend the current deadline. The same waiting policy applies to source and packaged runtimes. The legacy `validate-engine` record is accepted for older managed binaries, but current producers use the maintenance lifecycle. Startup failures display only a bounded stdout/stderr tail from the current launch, with the reason visible above scrollable details.
+
+Progress establishes that work is advancing; readiness still requires sufficient capacity, successful validation and activation. The first SQL upgrade reserves space for an immutable backup, the database and its migration journal. Homes with millions of small records can exceed that budget even when their logical content size looks modest. Capacity failures remain fatal prerequisites and are independent of the Desktop waiting policy. Measure an already-activated restart separately from this first upgrade.
+
+CLI startup displays pending migration steps, a progress bar, percentages and processed/total counts on stderr. This applies to foreground server startup, background-service setup and local `synergy send`, including JSON output mode. Redirected stderr uses plain append-only lines; terminals update the current line. Unknown totals show preparation status until counts are available. Percentages describe the current migration step or scan phase, and completion or failure restores terminal wrapping. `NO_COLOR` suppresses color, and `TERM=dumb` also suppresses cursor control. The managed server command selects Desktop’s structured progress stream. ACP startup keeps migrations silent, including when it inherits the Desktop progress environment flag, so stdout remains an ACP protocol stream.
+
 Vite development and App builds launched through `bun dev` identify themselves as `local@<git-revision>` (with `+dirty` when applicable) on fatal and startup error pages and emit source maps for diagnostics. The semantic package version remains unchanged for update compatibility. Direct package and release builds keep the package version label and do not emit source maps by default.
 
 Managed Desktop resolves the current user's login shell once during Desktop startup and imports only a normalized `PATH` into the managed server environment. Login-shell entries take precedence while inherited absolute entries remain as fallbacks; other profile variables and output are discarded. If the probe fails, Desktop keeps its inherited `PATH`. The Bash tool still executes commands with the ordinary non-login `shell -c` path and the existing sandbox environment allowlist. Developer-mode Settings → Observability shows the effective Desktop `PATH`, its source, and fixed command-resolution diagnostics.
 
 Managed Desktop always starts its private Synergy server with `--hostname 127.0.0.1`. Plugins with approved `runtime.endpoint.read` access may read that credential-free loopback origin; the Host Service serves loopback and wildcard binds over loopback and fails closed only when the listener excludes loopback.
 
+Managed Desktop keeps its private server on a stable loopback port instead of an ephemeral one. Each launch tries `SYNERGY_DESKTOP_SERVER_PORT`, the port remembered for the current Desktop channel under Electron `userData`, then `4096` to `4099`, and finally a random free port. Every candidate is probed before the server spawns, and a deterministic winner is remembered for the next launch. `bun dev desktop --managed --server-port <port>` pins that port and adds it to the run preflight.
+
+A managed server that exits before becoming healthy advances to the next candidate only when its port is taken. Every other startup failure, including another Synergy runtime that owns the same `SYNERGY_HOME`, fails immediately with the existing diagnostics.
+
 The development orchestrator tags each spawned command so shutdown can recover descendant process groups after an intermediate package wrapper exits. Managed servers arm cross-platform parent-process liveness monitoring before startup work can report healthy.
 
 ## Developing Synergy with Synergy
+
+The Agent receives the [hosting Runtime identity](../architecture/llm-loop.md#prompt-assembly) separately from its Session Workspace and selected Environment. It includes the launch entry, actual backend listener, Home/data root and source revision captured at launch. `bun dev web`, external Desktop, managed Desktop and source `send` register their owning entrypoints; `--attach` retains the existing backend's identity. Web/Vite ports do not describe the backend listener. Source edits and later Git commits do not rewrite a running instance's launch snapshot.
 
 Do not restart or stop the Synergy instance carrying your current session. Run the source checkout against an isolated home and explicit alternate ports:
 
@@ -62,32 +86,33 @@ The config copy preserves provider setup while `SYNERGY_HOME` isolates data, log
 
 ## Tests
 
-Core runtime tests run from `packages/synergy`:
+Harness runtime tests run from `packages/harness`:
 
 ```bash
-cd packages/synergy
+cd packages/harness
 bun test
 bun run test:ci
 bun test test/tool/read.test.ts
-bun run test:changed
 bun run test:coverage
 bun test --watch
 ```
 
-`bun run test:ci` matches the CI core-suite boundary: four sequential shards run in separate Bun processes, limiting process-global state and temporary fixture accumulation while avoiding concurrent port and environment collisions. Set `SYNERGY_TEST_JUNIT_DIR` to a package-relative directory when per-shard JUnit reports are needed.
+`test:ci` and `test:coverage` use the same executor in `packages/testing/script/run.ts`. Each stable batch gets an independent test Home and fixture root; reports live in `coverage/shards/<id>/` as JUnit, lcov and timing JSON. Local execution runs batches sequentially. CI distributes four Harness and two Local Runtime partitions across bounded Linux workers, overlaps at most two independent task processes per runner, and runs each selected package's complete test inventory once with coverage.
 
-`bun run test:coverage` runs through `script/coverage-run.ts`, which spawns every coverage batch with an injected isolated test home. Both orchestrators (`test-ci.ts`, `coverage-run.ts`) set `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` in the child environment and delete `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw `bun test --coverage --parallel` run would fall through to the real user home and write fixtures into `~/.synergy/data`.
+The root `bun run coverage:check` runs the complete local coverage policy. `bun script/coverage-check.ts --package packages/library` runs a fresh owner check; `--existing` is diagnostic only. CI aggregates only the current plan's successful, complete, checksum-verified reports and retains the same owner thresholds, exemptions and zero coverage for unloaded files. Selection, admission, cold runs and diagnostic commands are defined in [CI verification](../operations/ci.md).
 
-For the full isolation procedure, the guard predicate, and the escape hatch, see the `testing-guide` Skill (`.synergy/skill/testing-guide/SKILL.md`). Run core suites through the package scripts; the only escape hatch for a deliberate real-home test run is `SYNERGY_ALLOW_REAL_HOME=1` (see [Configuration layout](configuration-layout.md)).
+For isolation, test selection and review of added, duplicated or obsolete coverage, use the [testing-guide Skill](../../.synergy/skill/testing-guide/SKILL.md#review-test-value-and-ci-cost). Run core suites through the package scripts; the only escape hatch for a deliberate real-home test run is `SYNERGY_ALLOW_REAL_HOME=1` (see [Configuration layout](configuration-layout.md)).
 
-The same pinned catalog is the default input for core binary builds. `packages/synergy/script/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
+The same pinned catalog is the default input for core binary builds. `script/release/shared/build/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
+
+Workspace `build` scripts write only their own outputs. Build a package and its dependencies from the root, for example `bun turbo build --filter=@ericsanchezok/synergy-plugin-kit`; `bun dev prepare` and managed Desktop preparation arrange these dependencies automatically.
 
 Other package tests can run through Turbo or their package scripts:
 
 ```bash
 bun turbo test
 bun run desktop:test
-bun run --cwd packages/app test
+bun run --cwd apps/web test
 bun run --cwd packages/ui test
 ```
 
@@ -106,11 +131,11 @@ Frontend product colors must use the canonical semantic theme contract. Do not a
 Localized frontend changes also update and validate the shared App/UI Lingui catalog:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
 ```
 
-`i18n:extract` is App-owned because `packages/app/lingui.config.ts` includes both `packages/app/src` and `packages/ui/src`. The single root `localization:check` gate re-extracts catalogs and rejects drift, rejects missing or blank Simplified Chinese translations, strictly compiles every locale, then enforces the App/UI source contract for hard-coded visible strings, Chinese source literals, hard-coded locale tags, invalid descriptors, dynamic IDs, and Lingui macro imports. Keep tracked PO catalogs unchanged after extraction before handing off a localization change.
+`i18n:extract` is App-owned because `apps/web/lingui.config.ts` includes both `apps/web/src` and `packages/ui/src`. The single root `localization:check` gate re-extracts catalogs and rejects drift, rejects missing or blank Simplified Chinese translations, strictly compiles every locale, then enforces the App/UI source contract for hard-coded visible strings, Chinese source literals, hard-coded locale tags, invalid descriptors, dynamic IDs, and Lingui macro imports. Keep tracked PO catalogs unchanged after extraction before handing off a localization change.
 
 Write behavior tests around public invariants. Avoid source-text assertions that fail when an implementation is refactored without changing behavior.
 
@@ -132,7 +157,9 @@ bun run quality:quick
 bun run quality
 ```
 
-`quality:quick` is the default local PR preflight: format, lint, Skill/package-guide/test-layout checks, strict localization contract, typecheck, monorepo consistency, and package validation. `quality` adds all Turbo tests. The pre-push hook runs Bun-version, format, lint, typecheck, and monorepo checks; CI runs the wider matrix.
+`verify local --test <path>` validates the selection and passes the local static cluster before running selected behavior tests with fresh coverage. Static failures stop before test execution. `verify plan` explains the complete working-tree CI scope against `origin/dev`; `verify coverage --package <path>` checks a complete package. Reports under `.artifacts/verify/` distinguish local results from pending CI verification.
+
+`quality:quick` runs only the local static cluster: format, lint, Skill/package-guide/test-layout checks, strict localization contract, typecheck, monorepo consistency, and package validation. `quality` adds all Turbo tests. The pre-push hook checks the Bun version and runs format, lint, typecheck, monorepo, documentation and decision checks. Identical local static inputs may reuse successful checks for one day; CI executes independently.
 
 See [Open-source quality](../operations/open-source-quality.md) for exact jobs and failure guidance.
 
@@ -144,13 +171,14 @@ After modifying server routes or OpenAPI-visible schemas:
 ./script/generate.ts
 ```
 
-Build the core single binary/runtime artifact with:
+Build the standalone core CLI or the complete product binary with the corresponding entry:
 
 ```bash
-./packages/synergy/script/build.ts --single
+bun packages/cli/script/build.ts --single
+bun packages/presets/script/build.ts --single
 ```
 
-The build validates and embeds the pinned `test/tool/fixtures/models-api.json` catalog before compiling. Use `MODELS_DEV_API_JSON=/path/to/models.json` only for a deliberate local build override; release workflows ignore that override and embed the repository snapshot.
+The build validates and embeds the pinned `packages/testing/fixtures/models-api.json` catalog before compiling. Use `MODELS_DEV_API_JSON=/path/to/models.json` only for a deliberate local build override; release workflows ignore that override and embed the repository snapshot.
 
 Frontend code should use `createSynergyClient()` and generated methods for internal routes. Raw browser transports remain appropriate for WebSocket/EventSource streams, external URLs, browser file/blob handling, and endpoints whose semantics cannot be represented by the SDK.
 
@@ -177,11 +205,13 @@ The repository-local `.synergy/skill/` directory is the executable handbook for 
 | HTTP route, OpenAPI schema, generated SDK, or internal Web API call                              | `change-server-api`                                |
 | Durable storage, schema, index, migration, or recovery                                           | `change-persistence`                               |
 | Capability, permission, control-profile, enforcement, or sandbox behavior                        | `change-execution-boundaries`                      |
-| Browser ownership/control, Desktop native presentation, or WebRTC                                | `change-browser-runtime`                           |
+| Browser pages/identities, authorization or Desktop native presentation                           | `change-browser-runtime`                           |
+| Native Computer observation, action admission, model images, quality UI, or Cua packaging        | `change-computer-runtime`                          |
 | Plugin manifest, install/update, runtime, bridge, marketplace, or UI host                        | `change-plugin-runtime`                            |
 | Built-in agent, CLI command, or first-party tool                                                 | `add-agent`, `add-cli-command`, or `add-tool`      |
 | Test selection, isolated runtime, or Git operation                                               | `testing-guide`, `develop-synergy`, or `git-guide` |
 | Broad simplification audit, dead/duplicated/over-built surface, or decision-record coalescing    | `find-simplifications`                             |
+| Bug report drafting from a diagnosed Synergy problem                                             | `report-bug`                                       |
 
 When implementation or review reveals a reusable required pattern, registration, safety constraint, or verification step, update the owning Skill in the same change. Create a focused verb-led Skill if no existing workflow would reliably trigger. Root and package `AGENTS.md` files retain safety, global invariants, and routing; canonical docs retain product and architecture truth; Skills retain the executable procedure.
 
@@ -189,7 +219,7 @@ When implementation or review reveals a reusable required pattern, registration,
 
 - Server route/schema: regenerate SDK, typecheck runtime and SDK, run affected route tests.
 - Session/message loop: read the session and frontend-sync contracts, run focused session tests, then shared checks.
-- Frontend: typecheck `packages/app`, run relevant UI tests, preserve generated SDK usage and `PRODUCT.md` principles.
+- Frontend: typecheck `apps/web`, run relevant UI tests, preserve generated SDK usage and `PRODUCT.md` principles.
 - Desktop/release: run Desktop typecheck/tests/build validation and review the Desktop release runbook.
 - Plugin/public package: build package, run `package:check`, and verify exported ESM/type paths.
 - Config/auth examples: run secret scanning and verify both global and project configuration behavior.

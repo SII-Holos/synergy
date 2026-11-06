@@ -1,0 +1,562 @@
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+import { afterAll, afterEach, expect, test, spyOn } from "bun:test"
+import {
+  BROWSER_PROTOCOL_VERSION,
+  BrowserHostMessageSchema,
+  type BrowserHostMessage,
+  type BrowserBackendResult,
+} from "@ericsanchezok/synergy-browser-core"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
+import { BrowserRuntime } from "../src/runtime"
+import { BrowserCommandService } from "../src/command-service"
+import { BrowserOwner } from "../src/owner"
+import { BrowserStorage } from "../src/storage"
+import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
+import { BrowserEvent } from "../src/event"
+import { testRuntime } from "./support/runtime"
+import { BrowserToolHelper } from "../src/tools/browser-shared"
+
+const runtime = await testRuntime(() => {
+  registerLocalRuntime()
+  EnvironmentProviders.register({
+    id: "remote-fixture",
+    allocate: async () => {
+      throw Error("must not allocate")
+    },
+    inspect: async () => ({ state: "absent" }),
+    deallocate: async () => {},
+  })
+})
+afterAll(() => runtime.close())
+afterEach(() =>
+  runtime.run(async () => {
+    await BrowserRuntime.stop()
+    BrowserBroker.resetForTest()
+  }),
+)
+
+function owner(session: Session.Info): BrowserOwner.Info {
+  return BrowserOwner.fromRoute({
+    scopeID: session.scope.id,
+    directory: session.workspace?.path ?? null,
+    sessionID: session.id,
+    workspaceID: session.workspaceID,
+    generation: session.workspace?.generation,
+  })
+}
+
+test("switching Workspace retires the old browser before commit while preserving presentation and history", () =>
+  runtime.run(async () => {
+    await using first = await tmpdir(),
+      second = await tmpdir()
+    await ScopeContext.provide({
+      scope: await first.scope(),
+      async fn() {
+        const session = await Session.create({})
+        const original = owner(session)
+        await BrowserStorage.save(original, {
+          pages: [
+            {
+              ...{ id: "preserved-page", url: "https://example.com/", title: "Preserved" },
+              profileId: "personal",
+              status: "suspended",
+              isLoading: false,
+              lastActiveAt: null,
+            },
+          ],
+          timestamp: Date.now(),
+        })
+        BrowserBroker.attach(
+          { send() {}, close() {} },
+          {
+            type: "host.register",
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            hostId: "workspace-test",
+            token: BrowserBroker.secret(),
+            capabilities: { native: true },
+          },
+        )
+        BrowserBroker.prepare(original, first.path, "native")
+        const watermark = BrowserEvent.watermark(original)
+        const browser = await BrowserRuntime.getOrCreateSession(original)
+        const disposed = spyOn(browser, "dispose")
+        try {
+          const target = WorkspaceCatalog.projection(await WorkspaceBinding.register(session.scope.id, second.path))
+          const updated = await Session.updateWorkspace(session.id, target)
+          expect(disposed).toHaveBeenCalledTimes(1)
+          const current = await BrowserRuntime.getOrCreateSession(owner(updated))
+          expect(current).not.toBe(browser)
+          expect(current.owner.directory).toBe(second.path)
+          expect(current.pages[0]?.id).toBe("preserved-page")
+          expect(BrowserBroker.preference(original)).toEqual({ presentation: "native", routeDirectory: first.path })
+          expect(BrowserEvent.watermark(original).epoch).toBe(watermark.epoch)
+          await expect(BrowserRuntime.getOrCreateSession(original)).rejects.toThrow()
+        } finally {
+          disposed.mockRestore()
+        }
+      },
+    })
+  }))
+
+class WorkspaceHost implements BrowserBrokerSocket {
+  requests: BrowserHostMessage[] = []
+  pages = new Map<string, { id: string; url: string; title: string; isLoading: boolean; lastActiveAt: number | null }>()
+  beforeReply?: (message: BrowserHostMessage) => Promise<void>
+  failClose = false
+
+  send(data: string) {
+    const message = BrowserHostMessageSchema.parse(JSON.parse(data))
+    this.requests.push(message)
+    if (message.type !== "page.create" && message.type !== "page.close" && message.type !== "page.command") return
+    void this.respond(message)
+  }
+  close() {}
+
+  private async respond(message: Extract<BrowserHostMessage, { type: "page.create" | "page.close" | "page.command" }>) {
+    await this.beforeReply?.(message)
+    if (message.type === "page.close" && this.failClose) {
+      BrowserBroker.handle(this, {
+        type: "page.result",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        requestId: message.requestId,
+        error: { type: "error", code: "test_close_failed", message: "Host close failed", retryable: true },
+      })
+      return
+    }
+    let result: BrowserBackendResult = { type: "void" }
+    if (message.type === "page.create") {
+      this.pages.set(message.page.id, { ...message.page })
+      result = { type: "page", page: message.page }
+    } else if (message.type === "page.close") {
+      this.pages.delete(message.pageId)
+    } else {
+      const page = this.pages.get(message.pageId)!
+      if (message.command.type === "navigate") {
+        page.url = message.command.url
+        result = { type: "navigation", page: { ...page } }
+      } else if (message.command.type === "checkpoint" && message.command.action === "capture") {
+        result = {
+          type: "data",
+          pageId: page.id,
+          data: { url: page.url, viewport: { width: 100, height: 100 }, scroll: { x: 0, y: 0 } },
+        }
+      }
+    }
+    BrowserBroker.handle(this, {
+      type: "page.result",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      requestId: message.requestId,
+      result,
+    })
+  }
+
+  attach() {
+    BrowserBroker.attach(this, {
+      type: "host.register",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      hostId: "workspace-host",
+      token: BrowserBroker.secret(),
+      capabilities: { native: true },
+    })
+  }
+}
+
+test("shared pages survive task Workspace and Environment changes while task authority stays local", () =>
+  runtime.run(async () => {
+    await using first = await tmpdir(),
+      second = await tmpdir()
+    await ScopeContext.provide({
+      scope: await first.scope(),
+      async fn() {
+        const one = await Session.create({}),
+          two = await Session.create({}),
+          shared = BrowserOwner.shared()
+        const host = new WorkspaceHost()
+        host.attach()
+        BrowserBroker.prepare(shared, first.path, "native")
+        const browser = await BrowserRuntime.getOrCreateSession(shared)
+        const page = await browser.openPage({ url: "https://example.com" })
+        const target = WorkspaceCatalog.projection(await WorkspaceBinding.register(one.scope.id, second.path))
+        if (!target) throw new Error("Workspace projection was not created")
+        await Session.updateWorkspace(one.id, target)
+        expect(browser.getPage(page.id)).toBe(page)
+        const ctx = (sessionID: string) => ({
+          sessionID,
+          messageID: "message",
+          callID: "call",
+          agent: "synergy",
+          abort: new AbortController().signal,
+          extra: {},
+          metadata() {},
+          async ask() {},
+        })
+        await BrowserToolHelper.withTask(ctx(one.id), async () => {
+          expect(ScopeContext.current.workspace?.id).toBe(target.id)
+        })
+        await BrowserToolHelper.withTask(ctx(two.id), async () => {
+          expect(ScopeContext.current.workspace?.path).toBe(first.path)
+        })
+        const remote = await Environment.bind({
+          ownerID: "shared-browser-test",
+          provider: "remote-fixture",
+          scopeID: one.scope.id,
+          spec: {},
+        })
+        await Session.updateEnvironment(one.id, { environmentID: remote.id, expectedEnvironmentID: one.environmentID! })
+        await expect(BrowserToolHelper.resolveOwner(ctx(one.id), page.id)).rejects.toMatchObject({
+          code: "browser_environment_unavailable",
+        })
+        expect(await BrowserToolHelper.resolveOwner(ctx(two.id), page.id)).toEqual(shared)
+        expect(host.requests.filter((request) => request.type === "page.close")).toHaveLength(0)
+        await Session.remove(two.id)
+        expect(browser.getPage(page.id)).toBe(page)
+        await BrowserCommandService.execute(shared, {
+          pageId: page.id,
+          commandId: "human-close",
+          command: { type: "close" },
+        })
+        expect(browser.pages).toEqual([])
+      },
+    })
+  }))
+
+test("dialog replies unblock a pending page command and retain response replay", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const session = await Session.create({})
+        const original = owner(session)
+        const host = new WorkspaceHost()
+        host.attach()
+        BrowserBroker.prepare(original, directory.path, "native")
+        const pageId = (await (await BrowserRuntime.getOrCreateSession(original)).openPage({})).id
+        await BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "open-for-dialog",
+          command: { type: "navigate", url: "https://example.com/", source: "user" },
+        })
+        const entered = Promise.withResolvers<void>()
+        const finish = Promise.withResolvers<void>()
+        host.beforeReply = async (message) => {
+          if (message.type !== "page.command") return
+          if (message.command.type === "evaluate") {
+            entered.resolve()
+            await finish.promise
+          }
+          if (message.command.type === "dialog.respond") finish.resolve()
+        }
+        const pending = BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "pending-prompt",
+          command: { type: "evaluate", mode: "trusted", expression: "prompt('Name')" },
+        })
+        await entered.promise
+        await expect(
+          BrowserCommandService.execute(
+            { ...original, directory: `${directory.path}/stale` },
+            {
+              pageId,
+              commandId: "stale-prompt-answer",
+              command: { type: "dialog.respond", requestId: "prompt-1", accept: true },
+            },
+          ),
+        ).rejects.toMatchObject({ code: "browser_workspace_changed" })
+        await expect(
+          BrowserCommandService.execute(original, {
+            pageId,
+            commandId: "pending-prompt",
+            command: { type: "dialog.respond", requestId: "prompt-1", accept: true },
+          }),
+        ).rejects.toMatchObject({ code: "browser_command_id_conflict" })
+        const request = {
+          pageId,
+          commandId: "prompt-answer",
+          command: { type: "dialog.respond", requestId: "prompt-1", accept: true, promptText: "" },
+        } as const
+        const replies = Promise.all([
+          BrowserCommandService.execute(original, request),
+          BrowserCommandService.execute(original, request),
+        ])
+        try {
+          expect(await Promise.race([replies.then(() => true), Bun.sleep(500).then(() => false)])).toBe(true)
+          expect(
+            host.requests.filter(
+              (message) => message.type === "page.command" && message.command.type === "dialog.respond",
+            ),
+          ).toHaveLength(1)
+        } finally {
+          finish.resolve()
+          await Promise.all([pending, replies])
+        }
+      },
+    })
+  }))
+
+test("human stop reuses an active page binding without accepting a stale Workspace", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const original = owner(await Session.create({}))
+        const host = new WorkspaceHost()
+        host.attach()
+        BrowserBroker.prepare(original, directory.path, "native")
+        const pageId = (await (await BrowserRuntime.getOrCreateSession(original)).openPage({})).id
+        const entered = Promise.withResolvers<void>()
+        const finish = Promise.withResolvers<void>()
+        host.beforeReply = async (message) => {
+          if (message.type !== "page.command") return
+          if (message.command.type === "wait") {
+            entered.resolve()
+            await finish.promise
+          }
+          if (message.command.type === "stop") finish.resolve()
+        }
+        const pending = BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "waiting",
+          command: { type: "wait", condition: { type: "title", value: "Never", match: "equals" }, timeoutMs: 60000 },
+        })
+        await entered.promise
+        const stop = BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "stop",
+          command: { type: "stop" },
+        })
+        try {
+          expect(await Promise.race([stop.then(() => true), Bun.sleep(300).then(() => false)])).toBe(true)
+          await expect(
+            BrowserCommandService.execute(
+              { ...original, directory: `${directory.path}/stale` },
+              {
+                pageId,
+                commandId: "stale-stop",
+                command: { type: "stop" },
+              },
+            ),
+          ).rejects.toMatchObject({ code: "browser_workspace_changed" })
+        } finally {
+          finish.resolve()
+          await Promise.all([pending, stop])
+        }
+      },
+    })
+  }))
+
+test("Workspace selection drains an active Host command and acknowledges page closure before committing", () =>
+  runtime.run(async () => {
+    await using first = await tmpdir(),
+      second = await tmpdir()
+    await ScopeContext.provide({
+      scope: await first.scope(),
+      async fn() {
+        const session = await Session.create({})
+        const original = owner(session)
+        const host = new WorkspaceHost()
+        host.attach()
+        BrowserBroker.prepare(original, first.path, "native")
+        const pageId = (await (await BrowserRuntime.getOrCreateSession(original)).openPage({})).id
+        const entered = Promise.withResolvers<void>(),
+          finish = Promise.withResolvers<void>()
+        const closing = Promise.withResolvers<void>(),
+          closed = Promise.withResolvers<void>()
+        host.beforeReply = async (message) => {
+          if (message.type === "page.command" && message.command.type === "navigate") {
+            entered.resolve()
+            await finish.promise
+          }
+          if (message.type === "page.close") {
+            closing.resolve()
+            await closed.promise
+          }
+        }
+        const command = BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "in-flight",
+          command: { type: "navigate", url: "https://example.com/", source: "user" },
+        })
+        await entered.promise
+        const target = WorkspaceCatalog.projection(await WorkspaceBinding.register(session.scope.id, second.path))
+        const switching = Session.updateWorkspace(session.id, target)
+        const cancel = new AbortController()
+        const queued = BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "cancelled",
+          command: { type: "close" },
+          signal: cancel.signal,
+        }).then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+        cancel.abort(new Error("queued browser cancelled"))
+        expect(await queued).toMatchObject({ message: "queued browser cancelled" })
+        expect((await Session.get(session.id)).workspaceID).toBe(session.workspaceID)
+        expect(host.requests.filter((entry) => entry.type === "page.close")).toHaveLength(0)
+        finish.resolve()
+        await command
+        await closing.promise
+        expect((await Session.get(session.id)).workspaceID).toBe(session.workspaceID)
+        expect(host.pages.size).toBe(1)
+        closed.resolve()
+        const updated = await switching
+        expect(updated.workspaceID).toBe(target!.id!)
+        expect(host.pages.size).toBe(0)
+        const nextPageId = (await (await BrowserRuntime.getOrCreateSession(owner(updated))).openPage({})).id
+        await BrowserCommandService.execute(owner(updated), {
+          pageId: nextPageId,
+          commandId: "new-context",
+          command: { type: "navigate", url: "https://example.com/next", source: "user" },
+        })
+        const creation = host.requests.filter((entry) => entry.type === "page.create").at(-1)!
+        expect(creation.owner.directory).toBe(second.path)
+        expect(host.pages.size).toBe(1)
+      },
+    })
+  }))
+
+test("a failed Host closure preserves the binding and a retry revokes the old local-file authority", () =>
+  runtime.run(async () => {
+    await using first = await tmpdir(),
+      second = await tmpdir()
+    await ScopeContext.provide({
+      scope: await first.scope(),
+      async fn() {
+        const session = await Session.create({})
+        const original = owner(session)
+        const host = new WorkspaceHost()
+        host.attach()
+        BrowserBroker.prepare(original, first.path, "native")
+        const pageId = (await (await BrowserRuntime.getOrCreateSession(original)).openPage({})).id
+        const filename = path.join(first.path, "index.html")
+        await Bun.write(filename, "<h1>Workspace</h1>")
+        await BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "local",
+          command: { type: "navigate", url: pathToFileURL(filename).href, source: "user" },
+        })
+        const target = WorkspaceCatalog.projection(await WorkspaceBinding.register(session.scope.id, second.path))
+        host.failClose = true
+        await expect(Session.updateWorkspace(session.id, target)).rejects.toThrow()
+        expect((await Session.get(session.id)).workspaceID).toBe(session.workspaceID)
+        expect(host.pages.size).toBe(1)
+        host.failClose = false
+        const updated = await Session.updateWorkspace(session.id, target)
+        expect(host.pages.size).toBe(0)
+        await expect(
+          BrowserCommandService.execute(owner(updated), {
+            pageId,
+            commandId: "resume-old-file",
+            command: { type: "resume" },
+          }),
+        ).rejects.toThrow()
+        expect(host.pages.size).toBe(0)
+        expect(host.requests.filter((entry) => entry.type === "page.create")).toHaveLength(1)
+      },
+    })
+  }))
+
+test(
+  "rebinding a Workspace retires its browser resources and old replay results",
+  () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          const session = await Session.create({})
+          const original = owner(session)
+          const host = new WorkspaceHost()
+          host.attach()
+          BrowserBroker.prepare(original, tmp.path, "native")
+          const browser = await BrowserRuntime.getOrCreateSession(original)
+          const pageId = (await browser.openPage({})).id
+          const close = spyOn(browser, "closePage")
+          await BrowserCommandService.execute(original, { pageId, commandId: "repeat", command: { type: "close" } })
+          const record = await WorkspaceCatalog.get(session.workspaceID!, session.scope.id)
+          const deadline = Date.now() + 15000
+          for (;;) {
+            try {
+              await WorkspaceBinding.rebind(record.id, {
+                scopeID: session.scope.id,
+                expectedRevision: record.revision,
+                path: tmp.path,
+              })
+              break
+            } catch (error) {
+              if (!(error instanceof WorkspaceAccess.BusyError) || Date.now() >= deadline) throw error
+              await Bun.sleep(50)
+            }
+          }
+          const updated = owner(await Session.get(session.id))
+          const current = await BrowserRuntime.getOrCreateSession(updated)
+          expect(current).not.toBe(browser)
+          await expect(BrowserRuntime.getOrCreateSession(original)).rejects.toThrow()
+          const currentPageId = (await current.openPage({})).id
+          const closeCurrent = spyOn(current, "closePage")
+          try {
+            await BrowserCommandService.execute(updated, {
+              pageId: currentPageId,
+              commandId: "repeat",
+              command: { type: "close" },
+            })
+            expect(closeCurrent).toHaveBeenCalledTimes(1)
+            expect(close).toHaveBeenCalledTimes(1)
+          } finally {
+            close.mockRestore()
+            closeCurrent.mockRestore()
+          }
+        },
+      })
+    }),
+  20000,
+)
+
+test("changing Environment closes the local Browser and remote selection cannot use the controller", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ workspace: null })
+        const browser = await BrowserRuntime.getOrCreateSession(owner(session))
+        const disposed = spyOn(browser, "dispose")
+        const remote = await Environment.bind({
+          scopeID: session.scope.id,
+          ownerID: "remote-browser",
+          provider: "remote-fixture",
+          spec: {},
+        })
+        try {
+          const changed = await Session.updateEnvironment(session.id, {
+            environmentID: remote.id,
+            expectedEnvironmentID: session.environmentID!,
+          })
+          expect(disposed).toHaveBeenCalledTimes(1)
+          await expect(BrowserRuntime.getOrCreateSession(owner(changed))).rejects.toMatchObject({
+            code: "browser_environment_unavailable",
+          })
+          expect((await Environment.get(remote.id, session.scope.id)).state).toBe("idle")
+          const disabled = await Session.updateEnvironment(session.id, {
+            environmentID: null,
+            expectedEnvironmentID: remote.id,
+          })
+          await expect(BrowserRuntime.getOrCreateSession(owner(disabled))).rejects.toMatchObject({
+            code: "browser_environment_unavailable",
+          })
+        } finally {
+          disposed.mockRestore()
+        }
+      },
+    })
+  }))

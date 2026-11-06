@@ -1,11 +1,23 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { generate as generateCli, parseCommandBlocks } from "../../script/gen/gen-cli-reference"
+import { generate as generateCli, parseCommandBlocks, collectCommandSources } from "../../script/gen/gen-cli-reference"
 import { generate as generateConfig, parseDefCall, parseDomainObject } from "../../script/gen/gen-config-reference"
 import { generate as generateTools, parseTaxonomy } from "../../script/gen/gen-tool-catalog"
-import { findBlock, isFresh, matchClose, stringLiteral, templateLiteral } from "../../script/gen/shared"
+import { featureCopy } from "../../apps/web/src/components/settings/feature-copy"
+import { componentFeatures as localRuntimeFeatures } from "../../packages/local-runtime/src/features"
+import { componentFeatures as pluginHostFeatures } from "../../packages/plugin-host/src/features"
+import { FeatureSelection } from "../../packages/util/src/features"
+import {
+  findBlock,
+  isFresh,
+  matchClose,
+  parseObjectFields,
+  stringLiteral,
+  templateLiteral,
+  zodTypeOf,
+} from "../../script/gen/shared"
 
 const roots: string[] = []
 
@@ -36,10 +48,73 @@ describe("catalog determinism", () => {
     const first = await generateTools()
     const second = await generateTools()
     expect(second).toBe(first)
+    const skill = first.split("## skill\n")[1]?.split("\n## ")[0]
+    expect(skill).toContain("| `name` | string | yes |")
+    expect(skill).toContain("| `reference` | string |  |")
+    expect(skill).not.toContain("| `sha256`")
   })
 })
 
 describe("generated catalog completeness", () => {
+  test("feature copy includes provided core definitions", () => {
+    for (const feature of [...localRuntimeFeatures.definitions, ...pluginHostFeatures.definitions]) {
+      expect(featureCopy[feature.id]).toEqual({
+        name: { id: `features.${feature.id}.name`, message: feature.name },
+        description: { id: `features.${feature.id}.description`, message: feature.description },
+      })
+    }
+  })
+
+  test.each([false, true])(
+    "core Session memory is discoverable without optional products (selected: %s)",
+    (selected) => {
+      const optIn = selected ? ["session-long-term-memory"] : []
+      const plan = FeatureSelection.resolve(
+        [{ id: "local-runtime", version: "1.0.0", features: localRuntimeFeatures }],
+        { optIn },
+      )
+      expect(plan.components).toEqual(["local-runtime"])
+      expect(
+        FeatureSelection.status(plan, optIn, optIn).find((feature) => feature.id === "session-long-term-memory"),
+      ).toMatchObject({
+        available: true,
+        selected,
+        enabled: selected,
+        pendingRestart: false,
+      })
+    },
+  )
+
+  test("code search documentation explains evidence without unresolved template variables", async () => {
+    const body = (await generateTools()).split("## parse_code\n")[1]!.split("\n## ")[0]!
+    expect(body).toContain("Only displayed source lines count as observations")
+    expect(body).not.toMatch(/\{\{(?:reader|evidence)\}\}/)
+  })
+  test("observe documentation lists its imported schema instead of the execution command", async () => {
+    const body = (await generateTools()).split("## computer_observe\n")[1]!.split("\n## ")[0]!
+    expect(body).toContain("| `pid` | number | yes |")
+    expect(body).toContain("| `windowId` | number | yes |")
+    expect(body).not.toContain("| `type` |")
+  })
+  test("presentation documentation resolves shared namespace parameters and excludes the retired executable", async () => {
+    const catalog = await generateTools()
+    const body = catalog.split("## workbench_view\n")[1]!.split("\n## ")[0]!
+    expect(body).toContain("| `input` |")
+    expect(body).toContain("| `clientId` | string |  |")
+    expect(body).toContain("| `timeoutSeconds` | number |  |")
+    expect(catalog).not.toContain("## browser_view\n")
+  })
+  test("memory editing documentation resolves local parameter schemas and optional revisions", async () => {
+    const catalog = await generateTools()
+    const edit = catalog.split("## memory_edit\n")[1]!.split("\n## ")[0]!
+    const get = catalog.split("## memory_get\n")[1]!.split("\n## ")[0]!
+    expect(edit).toContain("| `expectedUpdatedAt` | number |  |")
+    expect(edit).toContain("| `memoryId` | string | yes |")
+    expect(edit).not.toContain("| `metadata`")
+    expect(get).toContain("| `memoryIds` | array | yes |")
+    expect(get).not.toContain("| `updatedAt` |")
+  })
+
   test("cli catalog lists top-level commands with option tables", async () => {
     const body = await generateCli()
     expect(body).toContain("## Commands")
@@ -49,6 +124,8 @@ describe("generated catalog completeness", () => {
     // surface them as option tables rather than an empty options column.
     expect(body).toContain("| Option | Description |")
     expect(body).toContain("| `--cwd`")
+    expect(body).toContain("## build [path]")
+    expect(body).toContain("build a plugin definition into an installable package")
   })
 
   test("config catalog lists every config domain", async () => {
@@ -58,13 +135,13 @@ describe("generated catalog completeness", () => {
       "models",
       "providers",
       "library",
+      "anima",
       "mcp",
       "plugins",
       "agents",
       "commands",
       "permissions",
       "channels",
-      "holos",
       "email",
       "runtime",
       "skills",
@@ -73,6 +150,11 @@ describe("generated catalog completeness", () => {
     }
     expect(body).toContain("| `00-general.jsonc` |")
     expect(body).toContain("| `55-skills.jsonc` |")
+    expect(body).toContain("| `35-anima.jsonc` |")
+    for (const key of ["embedding", "library", "channel", "plugin", "voice", "mcp", "theme", "skills", "boss"]) {
+      expect(body).toContain(`| \`${key}\` |`)
+      expect(body).not.toContain(`| \`${key}\` | - |`)
+    }
   })
 
   test("tools catalog carries kind and description for builtin tools", async () => {
@@ -86,6 +168,42 @@ describe("generated catalog completeness", () => {
 })
 
 describe("parser behavior", () => {
+  test("multiline coercion preserves the public number type, optionality and description", () => {
+    const [field] = parseObjectFields(`
+      limit: z.coerce
+        .number()
+        .int()
+        .min(0)
+        .describe("Maximum lines")
+        .optional(),
+    `)
+    expect(field).toMatchObject({ name: "limit", type: "number", optional: true, description: "Maximum lines" })
+  })
+
+  test("CLI source discovery follows lazy nested contributions without importing their runtime", async () => {
+    const root = await fixture()
+    const cli = path.join(root, "cli")
+    await mkdir(cli)
+    await writeFile(path.join(cli, "data.ts"), 'export const load = async () => (await import("./move")).MoveCommand')
+    await writeFile(
+      path.join(cli, "move.ts"),
+      'throw new Error("must remain static"); export const MoveCommand = cmd({ command: "move", describe: "move data" })',
+    )
+    const files = await collectCommandSources([path.join(cli, "data.ts")])
+    expect(files).toContain(path.join(cli, "move.ts"))
+  })
+
+  test("CLI catalog includes grouped data imports without replacing the migrate alias with its nested command", async () => {
+    const output = await generateCli()
+    expect(output).toContain("| `data` | manage synergy data location and storage |")
+    expect(output).toContain("| `migrate` | move synergy data to a new location (alias for 'data move') |")
+    expect(output).toContain("## snapshots")
+    expect(output).toContain("## pack [output]")
+    expect(output).toContain("## merge <source>")
+    expect(output).toContain("## move <target>")
+    expect(output).toContain("## lsp")
+  })
+
   test("parseCommandBlocks extracts describe and options from cmd blocks", () => {
     const source = `export const FooCommand = cmd({
   command: "foo",
@@ -169,6 +287,49 @@ const DEFAULT_ENTRY = entry("platform.external")
     expect(stringLiteral('"line1\\nline2"')).toBe("line1 line2")
     expect(templateLiteral("`one\ntwo`", 0)).toBe("one two")
     expect(templateLiteral("`a\\`b`", 0)).toBe("a`b")
+  })
+
+  test("parseObjectFields attributes a describe to the field that owns it", () => {
+    const fields = parseObjectFields(`
+    parent: z
+      .object({
+        child: z.number().optional().describe("child description"),
+      })
+      .optional()
+      .describe("parent description"),
+    sibling: z.string().optional().describe("sibling description"),
+  `)
+    expect(fields.find((field) => field.name === "parent")?.description).toBe("parent description")
+    expect(fields.find((field) => field.name === "sibling")?.description).toBe("sibling description")
+  })
+
+  test("parseObjectFields reaches a large object's own describe and outermost type", () => {
+    const inner = Array.from(
+      { length: 40 },
+      (_, index) => `        field${index}: z.number().optional().describe("inner ${index}"),`,
+    ).join("\n")
+    const fields = parseObjectFields(`
+    big: z
+      .object({
+${inner}
+      })
+      .strict()
+      .optional()
+      .describe("big description"),
+  `)
+    const big = fields.find((field) => field.name === "big")
+    expect(big?.description).toBe("big description")
+    expect(big?.type).toBe("object")
+  })
+
+  test("zodTypeOf reports the outermost constructor rather than a nested one", () => {
+    expect(zodTypeOf('z.object({ level: z.enum(["error", "warning"]).optional() })')).toBe("object")
+    expect(zodTypeOf('z.enum(["error", "warning"])')).toBe('"error" | "warning"')
+    expect(zodTypeOf("z.record(z.string(), z.string())")).toBe("record")
+    expect(zodTypeOf("z.lazy(() => z.record(z.string(), ProviderSchema())).optional()")).toBe("record")
+    expect(zodTypeOf("z.lazy(() => TreeSchema)")).toBe("TreeSchema")
+    expect(zodTypeOf("z.array(z.string())")).toBe("array")
+    expect(zodTypeOf("z\n      .number()\n      .int()\n      .optional()")).toBe("number")
   })
 
   test("matchClose and findBlock skip string and template contents", () => {

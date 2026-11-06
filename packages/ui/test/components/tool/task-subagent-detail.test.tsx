@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { describe, expect, mock, test } from "bun:test"
 
 type TestNode = { type: unknown; props: Record<string, unknown>; children: unknown[] }
@@ -16,6 +17,7 @@ mock.module("@lingui/solid", () => ({
   useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
 }))
 mock.module("solid-js", () => ({
+  createSignal,
   createMemo:
     <T,>(compute: () => T) =>
     () =>

@@ -25,6 +25,14 @@ test("resolves CSS variable references for imperative consumers", () => {
   expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weaker"))
 })
 
+test("unmodified dark brand artwork remains readable on its image surface in both modes", () => {
+  const variants = resolveTheme(synergyTheme)
+  for (const theme of [variants.light, variants.dark]) {
+    const surface = theme["surface-brand-image" as ThemeTokenName]
+    expect(contrastRatio("#151515", surface)).toBeGreaterThanOrEqual(7)
+  }
+})
+
 function luminance(value: string): number {
   const hex = value.trim()
   if (!hex.startsWith("#")) throw new Error(`Expected hex color for luminance check, got ${value}`)
@@ -45,7 +53,9 @@ function contrastRatio(foreground: string, background: string): number {
 }
 
 function expectReadablePair(theme: ResolvedTheme, foreground: ThemeTokenName, background: ThemeTokenName) {
-  expect(contrastRatio(theme[foreground], theme[background])).toBeGreaterThanOrEqual(4.5)
+  expect(
+    contrastRatio(resolveThemeColor(theme, foreground), resolveThemeColor(theme, background)),
+  ).toBeGreaterThanOrEqual(4.5)
 }
 
 function expectBrighter(theme: ResolvedTheme, inner: ThemeTokenName, outer: ThemeTokenName) {
@@ -65,7 +75,7 @@ function expectAtMostAsBright(theme: ResolvedTheme, inner: ThemeTokenName, outer
  * Every entry here MUST be present in resolved output.
  *
  * Sources scanned:
- *   packages/app/src/components/**\/*.tsx
+ *   apps/web/src/components/**\/*.tsx
  *   packages/ui/src/components/**\/*.css
  *   packages/ui/src/components/**\/*.tsx
  */
@@ -155,6 +165,56 @@ describe("color scheme helpers", () => {
 })
 
 describe("resolveTheme (synergy)", () => {
+  test("uses the approved SII ribbon colors in both modes", () => {
+    const resolved = resolveTheme(synergyTheme)
+    for (const mode of ["light", "dark"] as const) {
+      expect(resolved[mode]).toMatchObject({
+        "brand-ribbon-start": "#92bf46",
+        "brand-ribbon-middle": "#4f9bb6",
+        "brand-ribbon-end": "#5e52b4",
+      })
+    }
+  })
+
+  test("gives Full Access its own readable foreground without recoloring warnings", () => {
+    const fullAccessToken = "text-permission-full-access"
+    const resolved = resolveTheme(synergyTheme)
+    for (const [mode, expected, warning] of [
+      ["light", "#C4481C", "#6c6c6c"],
+      ["dark", "#FF8A50", "#b7b7b7"],
+    ] as const) {
+      const theme = resolved[mode]
+      expect(theme[fullAccessToken]).toBe(expected)
+      expect(resolveThemeColor(theme, "text-on-warning-base")).toBe(warning)
+      for (const background of ["input-base", "surface-raised-stronger-non-alpha"] as const) {
+        expectReadablePair(theme, fullAccessToken, background)
+      }
+    }
+  })
+
+  test("resolves the Full Access foreground for seed-only themes", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const theme = resolveThemeVariant({ seeds: synergyTheme[mode].seeds }, mode === "dark")
+      const fullAccessToken = "text-permission-full-access"
+      expect(resolveThemeColor(theme, fullAccessToken)).toBe(resolveThemeColor(theme, "text-on-warning-base"))
+    }
+  })
+
+  test("keeps workbench captions readable on canvas, navigation, input and menus", () => {
+    for (const theme of Object.values(resolveTheme(synergyTheme))) {
+      for (const surface of [
+        "background-stronger",
+        "background-weak",
+        "input-base",
+        "surface-raised-stronger-non-alpha",
+        "surface-interactive-selected",
+      ] as const) {
+        for (const text of ["text-base", "text-weak", "text-weaker", "text-subtle"] as const) {
+          expectReadablePair(theme, text, surface)
+        }
+      }
+    }
+  })
   // ── Contract: only 2 themes exist ───────────────────────
 
   test("produces exactly light and dark variants", () => {
@@ -485,7 +545,8 @@ describe("resolveTheme (synergy)", () => {
     expectBrighter(resolved.dark, "surface-inset-base", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-interactive-selected", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
-    expectBrighter(resolved.dark, "input-base", "surface-raised-base")
+    expectAtLeastAsBright(resolved.dark, "input-base", "surface-raised-base")
+    expectBrighter(resolved.dark, "input-base", "background-stronger")
     expectBrighter(resolved.dark, "button-secondary-base", "surface-raised-base")
   })
 

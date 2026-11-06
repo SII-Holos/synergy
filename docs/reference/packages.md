@@ -1,39 +1,97 @@
 # Package Map
 
-Synergy is a Bun monorepo. Package ownership is intentionally split between the runtime, clients, public SDKs, protocol hosts, and build tooling.
+The root `package.json` selects workspace packages. Each package manifest owns its name, dependencies and public exports. The [architecture ownership map](../architecture/README.md#ownership-map) describes the complete directory layout and responsibilities.
 
-| Path                             | Package / responsibility                                                                                              |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `packages/synergy`               | `synergy`: core runtime, server, CLI, sessions, agents, tools, permissions, integrations, orchestration, persistence  |
-| `packages/browser`               | `@ericsanchezok/synergy-browser`: private Browser protocol, CDP controller, locators, errors, redaction, and safety   |
-| `packages/app`                   | `@ericsanchezok/synergy-app`: Solid/Vite Web workbench and product UI                                                 |
-| `packages/desktop`               | `@ericsanchezok/synergy-desktop`: Electron shell, managed local runtime, native Browser, packaging, signing, updating |
-| `packages/plugin`                | `@ericsanchezok/synergy-plugin`: public plugin SDK, manifest/contribution types, hooks, permissions, UI contracts     |
-| `packages/plugin-kit`            | `@ericsanchezok/synergy-plugin-kit`: standalone `synergy-plugin` authoring/build/validation CLI                       |
-| `packages/sdk/js`                | `@ericsanchezok/synergy-sdk`: generated and hand-written TypeScript client/server helpers                             |
-| `packages/synergy-link`          | `@ericsanchezok/synergy-link`: remote Link host and CLI                                                               |
-| `packages/synergy-link-protocol` | `@ericsanchezok/synergy-link-protocol`: typed Link envelopes, sessions, Bash, process, errors, and client contracts   |
-| `packages/ui`                    | `@ericsanchezok/synergy-ui`: shared UI components, semantic icons, rendering, styles, themes, plugin UI surfaces      |
-| `packages/util`                  | `@ericsanchezok/synergy-util`: shared errors, protocol helpers, policy and utility primitives                         |
+Use package names for runtime ownership: Harness owns generic Agent execution, Agent Runtime opens explicit component compositions, Local Runtime supplies local host implementations, and Plugin Host runs plugins. The installation preset `core` is a selection of packages, not a package name or a synonym for Harness. Use `core` when referring to that preset or its release artifact.
 
-## Runtime Boundaries
+## Runtime entry points
 
-`packages/synergy` owns product truth for server behavior. Web clients call its routes through `@ericsanchezok/synergy-sdk`; internal product routes should not be duplicated as hand-written frontend fetches.
+`@ericsanchezok/synergy-harness` exposes programmatic execution and lifecycle APIs. `@ericsanchezok/synergy-local-runtime` registers the default local host and provides `openLocalRuntime`. The single CLI implementation lives in `packages/cli`; `packages/presets` invokes that same CLI with full product capabilities. Both entry points use the command name `synergy`, and `createRuntimeCli()` derives available commands from the selected components.
 
-`packages/app` owns Web interaction and workbench behavior. Durable visual and UX principles live in `packages/app/PRODUCT.md`, while reusable primitives belong in `packages/ui`.
+`packages/server` owns HTTP/WS transport and core routes. Domain packages contribute their own routes, tools and commands. Full OpenAPI generation includes those contributions, and Web clients use `@ericsanchezok/synergy-sdk`.
 
-`packages/desktop` owns native capabilities and production hosting, not a separate session model. Its managed mode launches the packaged server; its Browser native presentation executes the shared Browser command protocol.
+`apps/web` owns Web interaction. `apps/desktop` owns Electron, native Browser/Computer hosting and managed runtime processes. Desktop Browser Host is a second entry and independently packaged artifact. Shared protocol packages remain separate from these native implementations.
 
-## Public Extension Boundaries
+The [secret-detection package](../../packages/secret-detection/README.md) owns the asynchronous detection interface, regex baseline and offline quality/performance evaluation. Harness owns its detector source, Vault and masking integration.
 
-Plugin authors compile against `packages/plugin`, not runtime internals. `packages/plugin-kit` consumes that SDK to create, build, validate, sign, pack, test, and publish plugin artifacts.
+## Optional agent integrations
 
-The TypeScript SDK is generated from server OpenAPI metadata. When routes or route schemas change, run `./script/generate.ts` and include the generated SDK update.
+[Digital Twin](../../packages/digital-twin/README.md) owns personalized next-input inference and historical evidence preparation. Full selects it explicitly; core excludes it. Its HTTP adapter has an optional Server peer, and its worker registers only configuration and the hidden Agent.
 
-Synergy Link transport and host code depend on the standalone protocol package so local runtime, remote host, and third-party consumers validate the same versioned envelopes.
+MCP, LSP, Formatter, ACP, External Agents, Link Client and Code Tools are separate workspace packages: `mcp`, `lsp`, `formatter`, `acp`, `external-agents`, `link-client` and `code-tools`. Each owns its public exports, tests and configuration registration. LSP and Formatter can register independently; complete composition orders Formatter before LSP. Their existing domain configuration files and field names stay stable.
 
-## Package Validation
+## Embedded component composition
 
-The root package catalog pins shared dependency versions. `bun run monorepo:check` validates workspace consistency. `bun run package:check` builds and validates publishable package manifests and TypeScript resolution with publint and attw.
+`@ericsanchezok/synergy-agent-runtime` provides `openAgentRuntime({ home, components })` for Bun. `home` is the data directory itself, and the returned handle exposes `client({ directory })`, `run()`, `close()` and asynchronous disposal. Every capability comes from the required explicit component list; Local Runtime and Plugin Host are selected by product assemblies. See the [Agent Runtime package](../../packages/agent-runtime/README.md) for an embedding example.
 
-See [Development](development.md) and [Open-source quality](../operations/open-source-quality.md).
+Each optional package exports a factory from `./component`. Factories declare identity, API version, dependency versions, optional ordering, role-specific worker entries and lazy CLI/HTTP adapters. A missing dependency, incompatible version, duplicate identity or cycle rejects the composition before storage opens. Registration and service state belong to each Runtime, including when two runtimes reuse the same component objects. The HTTP host combines independent route owners while preserving Scope middleware, authentication and operation IDs.
+
+Plugin Host owns plugin execution and installation. Plugin Kit is an explicit authoring dependency; the full preset selects its authoring commands through the same component adapter used by downstream hosts. Domain CLI modules use shared terminal/command primitives and Local Runtime's network/Scope adapters, without depending on the CLI application.
+
+## Workflow and connection capability packages
+
+| Packages                                                     | Required capability boundary                                                |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `agenda`, `light-loop`                                       | Local Runtime; neither requires Note or Library                             |
+| `blueprint`, `lattice`                                       | Blueprint requires Note; Lattice requires Blueprint                         |
+| `boss`, `anima`                                              | Boss requires Agenda and Library; Anima additionally requires Note          |
+| `channels`, `github`, `email`                                | Independent Local Runtime capabilities                                      |
+| `channel-feishu`, `channel-github`                           | Provider owners; GitHub requires GitHub                                     |
+| `agenda-blueprint`, `agenda-light-loop`, `github-agenda`     | Explicit Agenda integrations requiring both named owners                    |
+| `plugin-agenda`, `plugin-blueprint`, `plugin-light-loop`     | Explicit Plugin Host services requiring Plugin Host and the named owner     |
+| `boss-feishu`                                                | Boss account routing, explicit replies and Feishu guidance                  |
+| `channel-blueprint`, `channel-light-loop`, `channel-lattice` | Explicit Channel command adapters requiring Channels and the named workflow |
+
+`workflowComponents()` and `connectionComponents()` are source assembly arrays. The `workflows` and `connections` installation names remain presets for the six and seven leaf capabilities respectively. They do not infer integrations from installed packages. Full composition explicitly selects all named bridges. The cross-domain Boss delivery builder lives at `@ericsanchezok/synergy-boss-feishu/prompt`.
+
+Moved subpaths backed by `workflows/src/compat/` and `connections/src/compat/`, including their configuration re-exports, are deprecated for the remainder of the 1.x series and scheduled for removal in 2.0.0. They only re-export the owning leaf without registration side effects. Consumers migrate to that leaf's public package export; new first-party imports use the leaf directly. The `workflows` and `connections` installation preset names remain supported independently of this import-path sunset.
+
+Worker entries register the same selected owner and integrations as the foreground Runtime. Package metadata, source requirements and the release catalog share the same dependency closure. Legacy installation selections are upgraded once to explicit leaves and bridges, preserving previously active capabilities; a new minimal selection uses only its declared requirements.
+
+## Package builds
+
+Run `bun script/build-workspace.ts packages/harness` from the repository root to build its importable modules. `bun script/pack-workspace.ts packages/cli .artifacts/packages` builds and packs the CLI workspace dependency closure. Archives contain compiled module exports and normal dependency versions. Packing compiles the existing HTTP SDK without regenerating the complete product API; run the root generator explicitly after API changes. Minimal CLI archives do not include optional Browser, Library, MCP or UI packages.
+
+Harness and Local Runtime publish platform-independent modules. Their optional `synergy-native-<platform>-<architecture>[-<libc>]` dependencies supply verified SQLite, PTY, watcher and sandbox resources. macOS uses the packaged universal SQLite engine without Homebrew; Linux glibc and musl have distinct package identities. Pass `--target=linux-x64`, `--target=linux-arm64-musl` or `--target=win32-x64` to select a target; Linux and Windows builds require matching helper assets through `SYNERGY_SANDBOX_ASSETS_DIR`. The build verifies the binary format and records its digest in the platform package. Missing required assets fail the build. Darwin uses the operating system sandbox.
+
+`bun script/package-install-check.ts .artifacts/packages` installs the archives through a temporary local registry into a fresh directory outside the repository and runs the same CLI artifact contracts used for compiled binaries. It does not publish packages. After packing `packages/presets` into the same archive directory, `bun script/runtime-composition-check.ts .artifacts/packages` verifies independent Bun core, MCP, LSP, HTTP, Browser, Library, Notes and full backend compositions. `bun script/installation-composition-check.ts packages/presets/dist/modules-packages` uses the complete release archive set to verify core installation, component changes, company presets, Web and the installed Node SDK. Package installation cannot rely on workspace symlinks or test preload dependencies.
+
+Full product and Desktop distribution use the existing release workflow and the typed catalog in `script/release/shared/packages.ts`. The existing `@ericsanchezok/synergy` product package retains the complete product; `@ericsanchezok/synergy-cli` installs the minimal CLI. All public workspace modules, platform native packages and core/full/Web/Desktop selections publish from the same dependency-ordered release graph. Desktop application metadata publishes after the portable artifacts are signed, hashed and uploaded.
+
+## Public extension APIs
+
+Plugin authors compile against `packages/plugin`; `packages/plugin-kit` provides plugin development commands. Host internals live in `packages/plugin-host`.
+
+The HTTP SDK is generated from the complete Server API. Run `./script/generate.ts` after route/schema changes. A reduced server composition does not remove methods from the full public SDK.
+
+Use `client.global.capabilities()` to inspect the active component selection. Node.js hosts use an explicit managed process or attach to an existing service; see [Embedding](embedding.md) for version, home, authentication and shutdown ownership.
+
+## Validation
+
+`bun run deps:check` checks package imports, exports and dependency directions. `bun run monorepo:check` checks manifest consistency. `bun run package:check` validates existing public packages and their TypeScript resolution. Independent runtime archives additionally use the install check above. Tests and fixtures follow their domain owner; full composition tests live in `packages/presets/test`.
+
+See [Development](development.md) and [Open-source quality](../operations/open-source-quality.md) for repository commands and CI checks.
+
+The authoritative selection catalog is `packages/plugin-host/src/installation/catalog.ts`: core supplies execution and plugin hosting, full adds backend components, HTTP and Plugin Kit, Web adds its UI payload, and Desktop adds its application shell. Each first-party component publishes its factory entry, version and requirements under `package.json#synergy`.
+
+Installation metadata is published through `synergy-plugin/package`. Plugin Host owns source resolution and verified immutable module generations; `atomic-file` and `io-retry` are public Util primitives used by both startup verification and existing plugin recovery.
+
+Generation publication synchronizes staged file contents before committing the active selection. Inventory synchronization preserves file bytes and uses the host platform's required file access; failures abort publication. See [installation durability across platforms](../decisions/implemented/bug-fix/2026-11-05-windows-installation-inventory-durability.md).
+
+## Installation commands
+
+`synergy install <spec...>` accepts built-in selections, npm and Git sources, local directories and archives. `synergy list --json` reports package identities, versions, explicit selections and dependency owners alongside legacy plugins. `synergy update [name...]` updates explicit selections; omitting names selects all roots. `synergy remove <name...>` removes a root and dependencies that no retained selection needs. Removing an indirect dependency reports the package that selects it. Existing `plugin add`, `plugin update` and `plugin remove` commands route managed packages through the same installer.
+
+Components and applications require host-code trust for the complete resolved generation, including retained packages. Interactive install/update displays that selection; unattended install/update uses `--trust-host-code` whenever the resulting installation contains components or applications, even if the requested change only updates a plugin. Removal preserves trust for retained code. API4 plugins retain their separate capability grants. `--approve-plugin <id>` approves the displayed grant for that plugin, and host-code trust cannot substitute for it. Legacy API4 manifests and flat plugin archives remain accepted without evaluating their entrypoints during resolution.
+
+The CLI package bin enters a dependency-light launcher that verifies a complete immutable module generation before importing Harness. Its first npm launch snapshots only the installed dependency closure, including required peers and present optional dependencies, without another registry request or code evaluation. Workers re-enter the launcher with the foreground generation and digest, including when another installation becomes active. Source embedding continues to use explicit component lists. Installation changes apply on the next start; running processes retain their existing modules. A committed but interrupted plugin activation resumes through storage recovery or `synergy install --resume`. Further activation waits until that journal completes, and API4 configuration, approvals and lifecycle delivery remain owned by the existing plugin transactions.
+
+Application packages select a portable archive for the host platform. Downloads require HTTPS and the published checksum; macOS additionally verifies the Apple signing team and notarization, and signed Windows distributions verify Authenticode and publisher identity. An unsigned Windows distribution explicitly declares checksum-only verification, following the existing release signing-continuity policy. `synergy desktop` opens the verified native shell, or the owning Desktop application when invoked through its bundled CLI. Application payloads stay in immutable installation generations, separate from the running app and its user data.
+
+Compiled releases use the same modules as npm installs: a thin launcher plus a sealed offline seed. Optional packages own their runtime resources; the full/Web/Desktop selections use the same component factories and worker pins. The outer release inventory and inner generation inventory verify the complete tree before it executes.
+
+First-party upgrade ownership is derived from the preset catalog, including Desktop-only selections such as Browser runtime. An explicitly selected component at the previous host version advances with that host; third-party pins and separately constrained versions keep their original specifications.
+
+Updating the launcher upgrades its core and version-aligned first-party roots together. Explicit local sources and third-party pins remain selected and must satisfy the new host version. Compatible bundled selections upgrade offline; other selections use their retained package lock. A failed upgrade leaves the active generation intact, and old workers keep their original pins. `synergy remove <name>` runs against the active generation before upgrading, so an incompatible extension can be removed without editing installation files. The next ordinary launch retries the upgrade. Pending API4 activation must finish with `synergy install --resume` before another generation can replace it. Existing homes retain the full Web backend on first adoption; replacing a minimal launcher with a full distribution does not silently expand an existing core selection.
+
+Component-only changes do not require database maintenance, and package listing inspects legacy plugins read-only. API4 activation retains exclusive maintenance ownership. Source runtimes use explicit component composition; installed-package commands reject source execution before resolving packages, while `plugin add` retains the local API4 development workflow. Application preparation reuses unchanged verified payloads and refuses changes to an established signing identity.

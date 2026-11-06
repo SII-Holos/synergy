@@ -11,6 +11,7 @@ import {
 } from "./clipboard-core"
 
 export * from "./clipboard-core"
+export { selectedMathText } from "./clipboard-selection"
 
 export type CopyIconButtonProps = Omit<ComponentProps<typeof IconButton>, "icon" | "onClick"> & {
   text: CopyTextSource

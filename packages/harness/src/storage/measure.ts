@@ -1,0 +1,112 @@
+import { ObservabilityIssues } from "../observability/issues"
+import { ObservabilityMetrics } from "../observability/metrics"
+import { NotFoundError } from "./errors"
+import { excludingQueueWait } from "./queue"
+
+const STORAGE_DURATION_SAMPLE_RATE = 0.02
+
+export function recordStorageWrite(key: string[], bytes: number, maintenance = false) {
+  const category =
+    maintenance || key[0].startsWith("storage_") || key[0] === "meta"
+      ? "maintenance"
+      : key[0].startsWith("usage")
+        ? "usage"
+        : key[0].startsWith("event_")
+          ? "outbox"
+          : key.includes("messages")
+            ? "message"
+            : key.includes("rollout")
+              ? key.includes("runs") && !key.includes("attempts")
+                ? "lifecycle"
+                : "rollout-progress"
+              : "other"
+  for (const [name, value, unit] of [
+    ["storage.record.write", 1, "count"],
+    ["storage.record.encoded_bytes", bytes, "bytes"],
+  ] as const)
+    ObservabilityMetrics.record({ name, value, unit, module: "storage", labels: { category }, sampleRate: 1 })
+}
+
+export function recordStorageTransaction(backend: "sqlite" | "postgres", outcome: "committed" | "failed") {
+  ObservabilityMetrics.record({
+    name: "storage.transaction.count",
+    value: 1,
+    unit: "count",
+    module: "storage",
+    labels: { backend, outcome },
+    sampleRate: 1,
+  })
+}
+
+/**
+ * The single measurement source for authoritative-store work.
+ *
+ * Every operation the store performs is attributed here, whether it starts on
+ * the public `Storage` surface or in a store primitive that queries the driver
+ * directly, so latency, volume and errors share one convention and no operation
+ * is invisible to telemetry.
+ *
+ * Duration excludes the admission wait reported separately by
+ * `storage.queue.wait`. That wait is measured where it happens, and counting it
+ * here as well described the same interval twice: the largest
+ * `storage.operation.duration` tails were queue wait on the serialized reader
+ * rather than work.
+ */
+export async function measureStorageOperation<T>(
+  operation: string,
+  keyPrefix: string,
+  body: () => Promise<T>,
+  options: { silentNotFound?: boolean } = {},
+): Promise<T> {
+  return excludingQueueWait(async (queueWaitMs) => {
+    const start = performance.now()
+    let status = "ok"
+    try {
+      return await body()
+    } catch (error) {
+      const isNotFound = error instanceof NotFoundError
+      status = options.silentNotFound && isNotFound ? "missing" : "error"
+      if (status === "error") {
+        ObservabilityIssues.raise({
+          code: "PERF_STORAGE_OPERATION_ERROR",
+          severity: "warning",
+          module: "storage",
+          title: "Storage operation failed",
+          message: `${operation} failed for ${keyPrefix}`,
+          evidence: {
+            operation,
+            keyPrefix,
+            errorName: error instanceof Error ? error.name : "unknown",
+          },
+        })
+      }
+      throw error
+    } finally {
+      const durationMs = Math.max(0, performance.now() - start - queueWaitMs())
+      ObservabilityMetrics.record({
+        name: "storage.operation.duration",
+        value: durationMs,
+        unit: "ms",
+        module: "storage",
+        labels: { operation, keyPrefix, status },
+        sampleRate: status === "error" || durationMs >= 1_000 ? 1 : STORAGE_DURATION_SAMPLE_RATE,
+      })
+      ObservabilityMetrics.record({
+        name: "storage.operation.count",
+        value: 1,
+        unit: "count",
+        module: "storage",
+        labels: { operation, status },
+      })
+      if (status === "error") {
+        ObservabilityMetrics.record({
+          name: "storage.operation.error",
+          value: 1,
+          unit: "count",
+          module: "storage",
+          labels: { operation },
+        })
+      }
+    }
+  })
+}

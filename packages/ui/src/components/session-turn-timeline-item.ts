@@ -20,9 +20,10 @@ export type SessionTurnTimelineItem =
       part: ReasoningPart
     }
   | {
-      kind: "media-pending"
+      kind: "media"
       message: AssistantMessage
       part: ToolPart
+      files: AttachmentPart[]
     }
   | {
       kind: "tool-attachments"
@@ -37,13 +38,7 @@ export type SessionTurnTimelineItem =
     }
 
 export type SessionTurnTimelineVisualKind =
-  | "text"
-  | "reasoning"
-  | "tool"
-  | "attachment"
-  | "media-pending"
-  | "tool-attachments"
-  | "compaction"
+  "text" | "reasoning" | "tool" | "attachment" | "media" | "tool-attachments" | "compaction"
 
 export function timelineVisualKind(item: SessionTurnTimelineItem): SessionTurnTimelineVisualKind {
   if (item.kind === "compaction") return "compaction"

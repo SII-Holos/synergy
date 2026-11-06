@@ -1,0 +1,14 @@
+Create a new note or overwrite an existing note with complete markdown content.
+
+Choose the write mode:
+- "create" (default): Creates a new note. Requires `noteTitle` and `noteContent`.
+- "append": Adds content to the end of an existing note. Requires `noteId` and `noteContent`. This is an optimistic update and may report a conflict if the note changes while appending.
+- "replace": Overwrites the entire existing note content. Requires `noteId` and `noteContent`. This is the reliable full-document write path, analogous to file write; use it when you have generated the complete desired note from the latest content or when rewriting most of a note.
+
+Prefer `note_edit` for targeted changes to a few blocks. Prefer `note_write` with `mode:"replace"` for broad rewrites, large document reshaping, or recovery after local edit structure is no longer useful. Do not use append/replace as a blind fallback after a failed edit unless the replacement content is intentionally complete.
+
+The `scope` parameter controls where new notes are created:
+- "current" (default): Creates in the current project scope
+- "home": Creates in the home scope (visible from all projects)
+
+When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.

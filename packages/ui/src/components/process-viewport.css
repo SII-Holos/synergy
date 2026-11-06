@@ -1,0 +1,54 @@
+[data-component="process-window"] {
+  container: process-window / inline-size;
+  min-width: 0;
+  position: relative;
+}
+[data-component="process-viewport"] {
+  max-height: min(20rem, var(--process-viewport-limit, 45dvh));
+  overflow: auto;
+  overflow-anchor: none;
+  min-width: 0;
+  padding-inline: 3px;
+  margin-inline: -3px;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+}
+[data-component="process-viewport"][data-overflow] {
+  overscroll-behavior: contain;
+}
+[data-slot="process-viewport-content"] {
+  overflow: clip;
+}
+@container process-window (width <= 480px) {
+  [data-component="process-viewport"] {
+    max-height: min(15rem, var(--process-viewport-limit, 45dvh));
+  }
+}
+[data-component="process-viewport"] [data-slot="process-reasoning-detail"] {
+  max-height: none;
+  overflow: visible;
+}
+[data-component="process-viewport"]
+  [data-component="session-turn"][data-activity-body]
+  [data-slot="session-turn-timeline-item"]:not([hidden])
+  ~ [data-slot="session-turn-timeline-item"]:not([hidden]) {
+  margin-block-start: 2px;
+}
+
+[data-component="process-window"][data-above]::before,
+[data-component="process-window"][data-below]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  height: 24px;
+  z-index: 1;
+  pointer-events: none;
+}
+[data-component="process-window"][data-above]::before {
+  inset-block-start: 0;
+  background: linear-gradient(var(--background-stronger), transparent);
+}
+[data-component="process-window"][data-below]::after {
+  inset-block-end: 0;
+  background: linear-gradient(transparent, var(--background-stronger));
+}

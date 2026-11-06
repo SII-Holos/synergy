@@ -1,0 +1,22 @@
+import { componentFeatures } from "./features"
+import { registerResourceSource } from "./resource-source"
+import { disposeBrowser } from "./register"
+import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
+import { version } from "../package.json" with { type: "json" }
+import { registerBrowser } from "./register"
+
+export function browser(): RuntimeComponent {
+  return {
+    id: "browser-runtime",
+    features: componentFeatures,
+    apiVersion: 1,
+    version,
+    requires: { "local-runtime": version },
+    services: () => ({ disposeExtensions: disposeBrowser }),
+    adapters: { http: new URL("./http.ts", import.meta.url) },
+    register() {
+      registerResourceSource()
+      registerBrowser()
+    },
+  }
+}

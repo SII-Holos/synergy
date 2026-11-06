@@ -1,0 +1,297 @@
+import type { WSContext } from "hono/ws"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
+
+export namespace GlobalEventClients {
+  const log = Log.create({ service: "server.global-event-clients" })
+
+  export type Mode = "full" | "delta" | "projection" | "projection-v2"
+  export type SendResult = "sent" | "backpressured" | "dropped" | "closed" | "error"
+
+  export interface ClientState {
+    mode: Mode
+    ws: WSContext
+    raw?: unknown
+    connectedAt: number
+    lastSendAt?: number
+    lastBackpressureAt?: number
+    consecutiveBackpressure: number
+    droppedFrames: number
+    sentFrames: number
+  }
+
+  export interface RegistryOptions {
+    /** Max consecutive backpressure results before the client is closed. */
+    maxConsecutiveBackpressure?: number
+    /** If raw.bufferedAmount exceeds this, treat as backpressure. */
+    bufferedAmountLimit?: number
+    now?: () => number
+    onRemove?: (key: unknown) => void
+  }
+
+  export interface Registry {
+    size(): number
+    add(ws: WSContext, mode: Mode): void
+    remove(ws: WSContext): boolean
+    reply(ws: WSContext, data: string): SendResult
+    stream(ws: WSContext, data: string): SendResult
+    broadcast(
+      encode: (mode: Mode) => string,
+      project?: (client: ClientState) => string | null | undefined,
+    ): {
+      clients: number
+      sent: number
+      dropped: number
+      removed: number
+    }
+    heartbeat(data: string): {
+      clients: number
+      sent: number
+      removed: number
+    }
+    clear(): void
+    clients(): IterableIterator<ClientState>
+  }
+
+  export function connectionKey(ws: WSContext): unknown {
+    // Hono's Bun adapter constructs a fresh WSContext wrapper per callback while
+    // keeping the underlying ServerWebSocket (`ws.raw`) stable. Prefer raw as the
+    // identity so open/close/error/message share one registry entry.
+    return (ws as { raw?: unknown }).raw ?? ws
+  }
+
+  export function createRegistry(options: RegistryOptions = {}): Registry {
+    const maxConsecutiveBackpressure = options.maxConsecutiveBackpressure ?? 32
+    const bufferedAmountLimit = options.bufferedAmountLimit ?? 8 * 1024 * 1024
+    const now = options.now ?? Date.now
+    const clients = new Map<unknown, ClientState>()
+
+    function add(ws: WSContext, mode: Mode) {
+      const key = connectionKey(ws)
+      const existing = clients.get(key)
+      if (existing) {
+        existing.ws = ws
+        existing.mode = mode
+        existing.raw = (ws as { raw?: unknown }).raw
+        return
+      }
+      clients.set(key, {
+        mode,
+        ws,
+        raw: (ws as { raw?: unknown }).raw,
+        connectedAt: now(),
+        consecutiveBackpressure: 0,
+        droppedFrames: 0,
+        sentFrames: 0,
+      })
+    }
+
+    function close(ws: WSContext, reason: string) {
+      try {
+        ws.close(1013, reason)
+      } catch {}
+    }
+
+    function remove(ws: WSContext): boolean {
+      const key = connectionKey(ws)
+      const client = clients.get(key)
+      if (!client) return false
+      clients.delete(key)
+      options.onRemove?.(key)
+      const readyState = rawReadyState(client)
+      if (readyState === undefined || readyState === 1) close(client.ws, "websocket subscription removed")
+      return true
+    }
+
+    function rawReadyState(client: ClientState): number | undefined {
+      const raw = client.raw as { readyState?: number } | undefined
+      if (raw && typeof raw.readyState === "number") return raw.readyState
+      // Hono snapshots readyState into WSContext construction options, so the
+      // wrapper value can be stale. Prefer raw when present.
+      try {
+        return client.ws.readyState
+      } catch {
+        return undefined
+      }
+    }
+
+    function rawBufferedAmount(client: ClientState): number | undefined {
+      const raw = client.raw as { bufferedAmount?: number } | undefined
+      return typeof raw?.bufferedAmount === "number" ? raw.bufferedAmount : undefined
+    }
+
+    function send(client: ClientState, data: string): SendResult {
+      const record = () => {
+        if (client.mode !== "projection-v2") return
+        ObservabilityMetrics.record({
+          name: "server.projection.frames",
+          value: 1,
+          unit: "count",
+          module: "server",
+          sampleRate: 1,
+        })
+        ObservabilityMetrics.record({
+          name: "server.projection.bytes",
+          value: Buffer.byteLength(data),
+          unit: "bytes",
+          module: "server",
+          sampleRate: 1,
+        })
+      }
+      const readyState = rawReadyState(client)
+      // 1 = OPEN in both browser and Bun ServerWebSocket conventions.
+      if (readyState !== undefined && readyState !== 1) return "closed"
+
+      const bufferedAmount = rawBufferedAmount(client)
+      if (bufferedAmount !== undefined && bufferedAmount > bufferedAmountLimit) {
+        client.consecutiveBackpressure++
+        client.lastBackpressureAt = now()
+        client.droppedFrames++
+        return "backpressured"
+      }
+
+      try {
+        const raw = client.raw as { send?: (data: string) => number | void } | undefined
+        if (raw && typeof raw.send === "function") {
+          const result = raw.send(data)
+          // Bun documents: -1 backpressure, 0 dropped/closed, >0 bytes sent.
+          if (typeof result === "number") {
+            if (result < 0) {
+              client.consecutiveBackpressure++
+              client.lastBackpressureAt = now()
+              client.droppedFrames++
+              return "backpressured"
+            }
+            if (result === 0) {
+              client.droppedFrames++
+              return "dropped"
+            }
+            client.consecutiveBackpressure = 0
+            client.sentFrames++
+            client.lastSendAt = now()
+            record()
+            return "sent"
+          }
+        }
+
+        client.ws.send(data)
+        client.consecutiveBackpressure = 0
+        client.sentFrames++
+        client.lastSendAt = now()
+        record()
+        return "sent"
+      } catch {
+        return "error"
+      }
+    }
+
+    function maybeEvict(key: unknown, client: ClientState, result: SendResult): boolean {
+      if (result === "closed") {
+        clients.delete(key)
+        options.onRemove?.(key)
+        return true
+      }
+      if (result === "error" || result === "dropped") {
+        clients.delete(key)
+        options.onRemove?.(key)
+        close(client.ws, `websocket send ${result}`)
+        log.warn("evicted websocket client after send failure", { result, mode: client.mode })
+        return true
+      }
+      if (result === "backpressured" && client.consecutiveBackpressure >= maxConsecutiveBackpressure) {
+        clients.delete(key)
+        options.onRemove?.(key)
+        close(client.ws, "websocket backpressure")
+        log.warn("evicted websocket client under backpressure", {
+          consecutiveBackpressure: client.consecutiveBackpressure,
+          droppedFrames: client.droppedFrames,
+          mode: client.mode,
+        })
+        return true
+      }
+      return false
+    }
+
+    function broadcast(encode: (mode: Mode) => string, project?: (client: ClientState) => string | null | undefined) {
+      let sent = 0
+      let dropped = 0
+      let removed = 0
+      // Cache encodings once per mode for this event.
+      let fullData: string | undefined
+      let deltaData: string | undefined
+      const payloadFor = (mode: Mode) => {
+        if (mode === "full") {
+          fullData ??= encode("full")
+          return fullData
+        }
+        deltaData ??= encode("delta")
+        return deltaData
+      }
+
+      for (const [key, client] of clients) {
+        const projected = project?.(client)
+        if (clients.get(key) !== client) {
+          removed++
+          continue
+        }
+        if (projected === null) continue
+        const result = send(client, projected ?? payloadFor(client.mode))
+        if (result === "sent") sent++
+        else dropped++
+        if (maybeEvict(key, client, result)) removed++
+      }
+      return { clients: clients.size + removed, sent, dropped, removed }
+    }
+
+    function reply(ws: WSContext, data: string): SendResult {
+      const key = connectionKey(ws)
+      const client = clients.get(key)
+      if (!client) {
+        close(ws, "websocket subscription lost")
+        return "closed"
+      }
+      const result = send(client, data)
+      // Control frames must not advance the streaming backpressure eviction threshold.
+      if (result === "backpressured") {
+        client.consecutiveBackpressure = Math.max(0, client.consecutiveBackpressure - 1)
+      } else {
+        maybeEvict(key, client, result)
+      }
+      return result
+    }
+
+    function stream(ws: WSContext, data: string): SendResult {
+      const key = connectionKey(ws)
+      const client = clients.get(key)
+      if (!client) return "closed"
+      const result = send(client, data)
+      maybeEvict(key, client, result)
+      return result
+    }
+
+    function heartbeat(data: string) {
+      let sent = 0
+      let removed = 0
+      for (const client of clients.values()) {
+        const result = reply(client.ws, data)
+        if (result === "sent") sent++
+        if (result === "closed" || result === "error" || result === "dropped") removed++
+      }
+      return { clients: clients.size + removed, sent, removed }
+    }
+
+    return {
+      size: () => clients.size,
+      add,
+      remove,
+      reply,
+      stream,
+      broadcast,
+      heartbeat,
+      clear: () => {
+        for (const client of clients.values()) remove(client.ws)
+      },
+      clients: () => clients.values(),
+    }
+  }
+}

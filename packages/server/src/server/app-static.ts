@@ -1,0 +1,107 @@
+import { Hono, type Context } from "hono"
+import { Server } from "./server"
+import path from "node:path"
+
+export type AppStaticRequest =
+  { type: "file"; path: string; immutable: boolean } | { type: "missing" } | { type: "spa" }
+
+export async function resolveAppStaticRequest(appDist: string, reqPath: string): Promise<AppStaticRequest> {
+  const exact = path.join(appDist, reqPath)
+  if (await isFileWithin(appDist, exact)) {
+    return { type: "file", path: exact, immutable: reqPath.includes("/assets/") }
+  }
+
+  const assetsIdx = reqPath.lastIndexOf("/assets/")
+  if (assetsIdx >= 0) {
+    const normalized = path.join(appDist, reqPath.slice(assetsIdx))
+    if (await isFileWithin(appDist, normalized)) {
+      return { type: "file", path: normalized, immutable: true }
+    }
+    return { type: "missing" }
+  }
+
+  const basename = reqPath.split("/").pop()
+  if (basename?.includes(".")) {
+    const rootCandidate = path.join(appDist, basename)
+    if (rootCandidate !== exact && (await isFileWithin(appDist, rootCandidate))) {
+      return { type: "file", path: rootCandidate, immutable: false }
+    }
+    return { type: "missing" }
+  }
+
+  return { type: "spa" }
+}
+
+async function isFileWithin(appDist: string, candidate: string): Promise<boolean> {
+  const root = path.resolve(appDist)
+  const resolved = path.resolve(candidate)
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) return false
+  const file = Bun.file(resolved)
+  if (!(await file.exists().catch(() => false))) return false
+  const stat = await file.stat()
+  return !stat.isDirectory()
+}
+
+async function appDocument(c: Context, directory: string) {
+  const file = Bun.file(path.join(directory, "index.html"))
+  if (!(await file.exists().catch(() => false))) return c.notFound()
+  const html = await file.text()
+  const reqPath = new URL(c.req.url).pathname
+  const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
+  c.header("Cache-Control", "no-cache")
+  c.header("Content-Security-Policy", Server.spaCsp())
+  const rendered = html.includes("<head>")
+    ? html.replace("<head>", `<head>\n${routeTag}`)
+    : html.includes("</head>")
+      ? html.replace("</head>", `${routeTag}\n</head>`)
+      : routeTag + html
+  return c.body(rendered, { headers: { "Content-Type": "text/html; charset=utf-8" } })
+}
+
+export function appNavigationRoutes(directory: string) {
+  const app = new Hono()
+  for (const route of ["/agenda", "/library", "/kanban", "/performance", "/plugins/marketplace"]) {
+    app.get(route, (c, next) => {
+      return isDocumentNavigation(c) ? appDocument(c, directory) : next()
+    })
+  }
+  return app
+}
+
+function isDocumentNavigation(c: Context): boolean {
+  c.header("Vary", "Accept, Sec-Fetch-Mode, Sec-Fetch-Dest", { append: true })
+  const mode = c.req.header("sec-fetch-mode")
+  const destination = c.req.header("sec-fetch-dest")
+  if ((mode && mode !== "navigate") || (destination && destination !== "document")) return false
+  return (
+    c.req
+      .header("accept")
+      ?.split(",")
+      .some((entry) => {
+        const [type, ...parameters] = entry.trim().split(";")
+        const quality = parameters.find((parameter) => parameter.trim().startsWith("q="))?.split("=")[1]
+        return type.trim() === "text/html" && (quality === undefined || Number(quality) > 0)
+      }) ?? false
+  )
+}
+
+export function mountApp(app: Hono, directory: string) {
+  app
+    .use("/*", async (c, next) => {
+      const reqPath = decodeURI(new URL(c.req.url).pathname)
+
+      const serveFile = (resolved: string, immutable?: boolean) => {
+        const file = Bun.file(resolved)
+        if (immutable) c.header("Cache-Control", "public, immutable, max-age=31536000")
+        else if (path.extname(resolved) === ".html") c.header("Cache-Control", "no-cache")
+        c.header("Content-Security-Policy", Server.spaCsp())
+        return c.body(file.stream(), { headers: { "Content-Type": file.type || "application/octet-stream" } })
+      }
+
+      const resolved = await resolveAppStaticRequest(directory, reqPath)
+      if (resolved.type === "file") return serveFile(resolved.path, resolved.immutable)
+      if (resolved.type === "missing") return c.notFound()
+      return next()
+    })
+    .get("/*", (c) => (isDocumentNavigation(c) ? appDocument(c, directory) : c.notFound()))
+}

@@ -85,16 +85,6 @@
       border: 1px solid var(--border-weak-base);
       background: var(--workbench-input-bg, var(--input-base));
 
-      &:focus-within {
-        /* border/shadow-xs/select */
-        box-shadow:
-          0 0 0 3px var(--border-weak-selected),
-          0 0 0 1px var(--border-selected),
-          0 1px 2px -1px var(--surface-overlay),
-          0 1px 2px 0 var(--surface-overlay),
-          0 1px 3px 0 var(--surface-overlay);
-      }
-
       &:has([data-invalid]) {
         background: var(--surface-critical-weak);
         border: 1px solid var(--border-critical-selected);
@@ -109,7 +99,7 @@
       color: var(--text-strong);
 
       display: flex;
-      height: 32px;
+      height: 40px;
       padding: 2px 12px;
       align-items: center;
       flex: 1;
@@ -137,7 +127,7 @@
 
     textarea[data-slot="input-input"] {
       height: auto;
-      min-height: 32px;
+      min-height: 40px;
       padding: 6px 12px;
       resize: none;
     }

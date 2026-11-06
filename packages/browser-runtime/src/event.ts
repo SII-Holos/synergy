@@ -1,0 +1,103 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import {
+  BROWSER_PROTOCOL_VERSION,
+  BrowserEventSchema,
+  type BrowserEvent as BrowserProtocolEvent,
+} from "@ericsanchezok/synergy-browser-core"
+import { SyncSequencer } from "@ericsanchezok/synergy-harness/bus/sequencer"
+import { BrowserOwner } from "./owner.js"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { browserErrorDiagnostics } from "./error-diagnostics.js"
+
+type SequencedEvent = Exclude<BrowserProtocolEvent, { type: "session.state" | "error" }>
+type EventInput = SequencedEvent extends infer Event
+  ? Event extends unknown
+    ? Omit<Event, "protocolVersion" | "seq" | "epoch">
+    : never
+  : never
+type Listener = (event: BrowserProtocolEvent) => void
+
+interface State {
+  sequencer: SyncSequencer
+  listeners: Set<Listener>
+}
+
+const runtimeState = RuntimeContext.state(() => ({
+  states: new Map<string, State>(),
+}))
+const log = Log.create({ service: "browser.event" })
+
+export namespace BrowserEvent {
+  export function publish<Input extends EventInput>(
+    owner: BrowserOwner.Info,
+    input: Input,
+  ): Extract<SequencedEvent, { type: Input["type"] }> {
+    const state = get(owner)
+    const payload = {
+      ...input,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      seq: 0,
+      epoch: state.sequencer.epoch,
+    }
+    state.sequencer.stamp(payload, Date.now())
+    const event = BrowserEventSchema.parse(payload)
+    for (const listener of state.listeners) {
+      try {
+        listener(event)
+      } catch (error) {
+        log.warn("Browser event observer failed", {
+          boundary: "event.observer",
+          type: event.type,
+          ...browserErrorDiagnostics(error),
+        })
+      }
+    }
+    return event as Extract<SequencedEvent, { type: Input["type"] }>
+  }
+
+  export function subscribe(owner: BrowserOwner.Info, listener: Listener): () => void {
+    const state = get(owner)
+    state.listeners.add(listener)
+    return () => state.listeners.delete(listener)
+  }
+
+  export function watermark(owner: BrowserOwner.Info): { seq: number; epoch: string } {
+    const sequencer = get(owner).sequencer
+    return { seq: sequencer.current, epoch: sequencer.epoch }
+  }
+
+  export function replay(
+    owner: BrowserOwner.Info,
+    sinceSeq: number,
+    epoch: string | undefined,
+  ): BrowserProtocolEvent[] | null {
+    const sequencer = get(owner).sequencer
+    if (!epoch || epoch !== sequencer.epoch) return null
+    const replay = sequencer.replay(sinceSeq, Date.now())
+    if (replay.status === "reset") return null
+    return replay.events.map((event) => BrowserEventSchema.parse(event))
+  }
+
+  export function remove(owner: BrowserOwner.Info): void {
+    const instanceState = runtimeState()
+
+    instanceState.states.delete(BrowserOwner.key(owner))
+  }
+
+  export function resetForTest(): void {
+    const instanceState = runtimeState()
+
+    instanceState.states.clear()
+  }
+}
+
+function get(owner: BrowserOwner.Info): State {
+  const instanceState = runtimeState()
+
+  const key = BrowserOwner.key(owner)
+  const existing = instanceState.states.get(key)
+  if (existing) return existing
+  const state = { sequencer: new SyncSequencer(crypto.randomUUID()), listeners: new Set<Listener>() }
+  instanceState.states.set(key, state)
+  return state
+}

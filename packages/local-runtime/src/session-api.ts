@@ -1,0 +1,337 @@
+import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
+import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionInvoke, type InvokeInput } from "@ericsanchezok/synergy-harness/session/invoke"
+import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
+import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
+import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
+import { SessionRetry } from "@ericsanchezok/synergy-harness/session/retry"
+import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
+import { SessionInputProgress } from "@ericsanchezok/synergy-harness/session/input-progress"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { Command } from "./command/command"
+import { Worktree } from "./workspace/worktree"
+import { ResourceProfiles } from "./environment/profiles"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { z } from "zod"
+
+const log = Log.create({ service: "session-api" })
+
+export const SessionLocationError = NamedError.create(
+  "SessionLocationError",
+  z.object({
+    message: z.string(),
+    code: z.enum(["conflicting_selection", "incompatible_files"]),
+  }),
+)
+
+export async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
+  if (input.model) await Provider.getModel(input.model.providerID, input.model.modelID)
+  if (input.agent && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
+  let item: SessionInbox.Item
+  let runID: string | undefined
+  let idleNoReply = false
+  {
+    using control = await Lock.write(`session-control:${input.sessionID}`)
+    idleNoReply =
+      input.noReply === true &&
+      (!SessionManager.isRunning(input.sessionID) || SessionManager.isPassiveInputRunning(input.sessionID))
+    if (input.messageID) {
+      const session = await SessionManager.requireSession(input.sessionID)
+      const existing = await Storage.read<MessageV2.Info>(
+        StoragePath.messageInfo(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(input.sessionID),
+          Identifier.asMessageID(input.messageID),
+        ),
+      ).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      if (existing) return { status: "started", messageID: input.messageID }
+    }
+    const paused = await SessionLifecycle.snapshot(input.sessionID)
+    if (paused && !idleNoReply) await SessionManager.waitForIdle(input.sessionID)
+    const session = await Session.get(input.sessionID)
+    const canResume = idleNoReply || (await SessionExecutionOwners.allowsResume(session))
+    const newTask = !idleNoReply && MessageV2.isHumanInput(input) && (!canResume || paused?.reason === "failed")
+    if (!canResume && !newTask) await SessionExecutionOwners.assertResume(session)
+    const rolledBack = paused && (await SessionHistory.storedInfo(input.sessionID))?.rollback?.canUnrollback === true
+    const rootID =
+      paused &&
+      canResume &&
+      !newTask &&
+      !rolledBack &&
+      (await SessionProgress.pendingReplyFor({ scopeID: session.scope.id, sessionID: session.id }))
+        ? await SessionInbox.latestRootID(input.sessionID)
+        : undefined
+    item = await SessionInbox.enqueueUser(
+      input,
+      idleNoReply
+        ? { mode: "steer", admission: "idle_no_reply" }
+        : newTask
+          ? { mode: "task" }
+          : rootID
+            ? { mode: "steer" }
+            : undefined,
+    )
+    runID = rootID
+    if (!idleNoReply) {
+      if (newTask) await SessionLifecycle.startNewTask(input.sessionID)
+      else await SessionLifecycle.resume(input.sessionID)
+    }
+  }
+  if (idleNoReply) SessionManager.scheduleWake(item.sessionID, "durable-no-reply-input")
+  else scheduleInput(item, "user-input")
+  return { status: "queued", item, runID }
+}
+
+function scheduleInput(item: SessionInbox.Item, reason: string) {
+  void SessionDrive.request(item.sessionID, reason).catch((error) => {
+    SessionManager.scheduleWake(item.sessionID, "durable-input-recovery")
+    SessionInputProgress.schedulingFailure(item.sessionID, error, false, { messageID: item.messageID, itemID: item.id })
+    log.error("failed to schedule durable user input", {
+      sessionID: item.sessionID,
+      itemID: item.id,
+      messageID: item.messageID,
+      error,
+    })
+  })
+}
+
+export async function retryInput(input: { sessionID: string; itemID: string }): Promise<SessionInbox.Item> {
+  let item: SessionInbox.Item
+  {
+    using control = await Lock.write(`session-control:${input.sessionID}`)
+    if (await SessionLifecycle.snapshot(input.sessionID)) await SessionManager.waitForIdle(input.sessionID)
+    item = await SessionInbox.rearm(input)
+    if (item.mode === "task") await SessionLifecycle.startNewTask(input.sessionID)
+    else await SessionLifecycle.resume(input.sessionID)
+  }
+  scheduleInput(item, "user-input-retry")
+  return item
+}
+
+export async function restoreInput(input: { sessionID: string; itemID: string }): Promise<void> {
+  using control = await Lock.write(`session-control:${input.sessionID}`)
+  const result = await SessionInbox.restore(input)
+  if (result.restored && result.item.status !== "failed") scheduleInput(result.item, "user-input-restored")
+}
+
+export async function createSession(
+  input?: Omit<NonNullable<Parameters<typeof Session.create>[0]>, "workspace"> & {
+    workspace?: Session.WorkspaceSelection
+    environmentProfile?: string
+  },
+) {
+  const { workspace, environmentProfile, ...body } = input ?? {}
+  if (environmentProfile !== undefined && body.environmentID !== undefined)
+    throw new SessionLocationError({
+      code: "conflicting_selection",
+      message: "environmentProfile and environmentID are mutually exclusive",
+    })
+  const isWorktree = workspace?.mode === "create" || workspace?.mode === "existing"
+  const environmentSelection =
+    environmentProfile !== undefined
+      ? await ResourceProfiles.resolveEnvironment(environmentProfile)
+      : isWorktree && body.environmentID === undefined && !body.parentID
+        ? await EnvironmentProviders.resolveDefault()
+        : undefined
+  const parent = body.parentID ? await Session.get(body.parentID) : undefined
+  const scope = body.scope ?? parent?.scope ?? ScopeContext.current.scope
+  const selectedWorkspaceID =
+    workspace?.mode === "workspace"
+      ? workspace.workspaceID
+      : workspace?.mode === "none"
+        ? null
+        : body.workspaceID !== undefined
+          ? body.workspaceID
+          : parent?.scope.id === scope.id
+            ? parent.workspaceID
+            : undefined
+  const selectedWorkspace = selectedWorkspaceID ? await WorkspaceCatalog.get(selectedWorkspaceID, scope.id) : undefined
+  if (
+    selectedWorkspace &&
+    workspace?.mode === "workspace" &&
+    selectedWorkspace.binding.generation !== workspace.workspaceGeneration
+  )
+    throw new WorkspaceCatalog.BindingChanged({
+      workspaceID: selectedWorkspace.id,
+      message: "Workspace selection changed; choose the file location again",
+    })
+  if (
+    environmentSelection &&
+    environmentSelection.provider !== "native" &&
+    (workspace?.mode === "create" ||
+      workspace?.mode === "existing" ||
+      (selectedWorkspaceID !== null &&
+        (selectedWorkspace
+          ? selectedWorkspace.backend?.provider !== "objects"
+          : !!scope.local || scope.type === "home")))
+  )
+    throw new SessionLocationError({
+      code: "incompatible_files",
+      message:
+        "This execution profile cannot use these project files. Choose a compatible file collection or project execution location.",
+    })
+  if (
+    isWorktree &&
+    (body.environmentID === null || (!environmentSelection && body.environmentID === undefined && !body.parentID))
+  )
+    throw new SessionLocationError({
+      code: "incompatible_files",
+      message: "An independent copy requires a native execution location. Choose the project execution location first.",
+    })
+  const deferredEnvironment =
+    environmentSelection?.reuse === "workspace" && (workspace?.mode === "create" || workspace?.mode === "existing")
+  const preparedWorktree =
+    deferredEnvironment && workspace?.mode === "create"
+      ? await Worktree.create({
+          name: workspace.name,
+          sourceWorkspaceID: workspace.sourceWorkspaceID,
+          baseRef: workspace.baseRef ?? "current",
+          baseRevision: workspace.baseRevision,
+          bind: false,
+        })
+      : deferredEnvironment && workspace?.mode === "existing"
+        ? await Worktree.withSource(workspace.sourceWorkspaceID, () => Worktree.resolve(workspace.target))
+        : undefined
+  if (preparedWorktree?.setupFailed)
+    throw new Worktree.StartCommandFailedError({
+      message: preparedWorktree.setupError ?? "Independent copy setup failed",
+    })
+  const session = await Session.create({
+    ...body,
+    ...(preparedWorktree ? { workspace: Worktree.workspace(preparedWorktree) } : {}),
+    ...(environmentSelection ? { environmentSelection } : {}),
+    ...(workspace?.mode === "workspace"
+      ? { workspaceID: workspace.workspaceID }
+      : workspace?.mode === "none"
+        ? { workspaceID: null }
+        : {}),
+  })
+  try {
+    const result = await Session.applyWorkspaceSelection(
+      session.id,
+      preparedWorktree ? { mode: "existing", target: preparedWorktree.path } : workspace,
+    )
+    if (isWorktree && result.workspace?.type === "git_worktree") {
+      const copy = await Worktree.resolve(result.workspace.path)
+      if (copy.setupFailed)
+        throw new Worktree.StartCommandFailedError({ message: copy.setupError ?? "Independent copy setup failed" })
+    }
+    return result
+  } catch (error) {
+    await Session.remove(session.id)
+    throw error
+  }
+}
+
+export async function submitCommand(input: Parameters<typeof SessionInvoke.command>[0]): Promise<void> {
+  const command = await Command.require(input.command)
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  await RolloutLifecycle.configuration(
+    await Session.get(input.sessionID),
+    messageID,
+    input.experiment,
+    input.model ? Provider.parseModel(input.model) : undefined,
+  )
+  if (command.kind === "action") {
+    SessionManager.assertIdle(input.sessionID)
+    await SessionInvoke.command({ ...input, messageID })
+    return
+  }
+  void SessionInvoke.command({ ...input, messageID }).catch((error) => {
+    log.error("failed to execute async command", { command: input.command, sessionID: input.sessionID, error })
+  })
+}
+
+/** Admit a durable recovery request and wait for execution for in-process callers. */
+export async function continueSession(sessionID: string): Promise<boolean> {
+  const result = await SessionResume.request({ sessionID })
+  if (result.outcome === "accepted") await SessionManager.wake(sessionID)
+  return result.handled
+}
+
+export const resumeSession = SessionResume.request
+export const ContinueSessionInput = SessionResume.Input
+export const ContinueSessionResult = SessionResume.Result
+
+export const RetrySessionRequestInput = z.object({
+  sessionID: Identifier.schema("session"),
+  messageID: Identifier.schema("message"),
+})
+
+export async function retrySessionRequest(
+  input: z.infer<typeof RetrySessionRequestInput>,
+): Promise<{ handled: boolean }> {
+  const { sessionID, messageID } = input
+  {
+    using control = await Lock.write(`session-control:${sessionID}`)
+    const session = await Session.get(sessionID)
+    if (SessionManager.isRunning(sessionID)) return { handled: SessionRetry.now(sessionID, messageID) }
+    if (session.paused && session.paused.reason !== "failed") return { handled: false }
+    const messages = await SessionHistory.modelMessages({ sessionID })
+    const latest = messages.at(-1)?.info
+    const root = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)?.info
+    if (
+      !root ||
+      latest?.role !== "assistant" ||
+      latest.id !== messageID ||
+      latest.rootID !== root.id ||
+      !latest.error ||
+      !SessionRetry.retryable(latest.error)
+    )
+      return { handled: false }
+    if (await SessionInbox.hasRunnableItem(sessionID)) return { handled: false }
+    await SessionExecutionOwners.assertResume(session)
+    const delivery = await SessionInbox.deliverUnique({
+      sessionID,
+      deliveryKey: `retry:${messageID}`,
+      mode: "steer",
+      message: {
+        role: "user",
+        visible: false,
+        origin: { type: "user", detail: "retry" },
+        parts: [{ type: "text", text: "Retry the failed request and continue the current task." }],
+      },
+    })
+    if (!delivery.created) return { handled: false }
+    await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), root.id)
+    await SessionLifecycle.clear(sessionID)
+  }
+  return { handled: await SessionDrive.request(sessionID, "user-retry") }
+}
+
+/**
+ * Give up on a session that stopped mid-work.
+ *
+ * Ordering is the contract: stop live work before repairing, because a running
+ * turn would keep writing; terminalize and cancel the workflow before clearing
+ * the latch, because clearing first would let the release drive resume the very
+ * work the user is abandoning.
+ */
+export async function abandonSession(sessionID: string): Promise<SessionInvoke.AbortRepairState> {
+  await Session.get(sessionID)
+  const state = await SessionAbort.abort(sessionID, {
+    terminalize: true,
+    abandonWorkflow: true,
+    pauseReason: "aborted",
+  })
+  return { repaired: state.repaired, paused: state.paused, abandoned: state.abandoned }
+}

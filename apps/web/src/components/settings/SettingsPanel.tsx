@@ -1,0 +1,2113 @@
+import { ExperimentsPanel } from "./panels/ExperimentsPanel"
+import { createExperimentsController } from "./panels/experiments-controller"
+import { getBuiltinSettingsSection } from "./catalog"
+import { createBossNameController } from "./panels/boss-name-controller"
+import { validateSettingsDraft } from "./settings-draft-validation"
+import { SettingsViewStateContext } from "./settings-view-state"
+import { runtimeFeatureAvailable } from "../runtime-features"
+import { createBrowserSettingsCapability } from "./browser-settings-capability"
+import {
+  ErrorBoundary,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  lazy,
+  onCleanup,
+  Show,
+  untrack,
+  type Component,
+  type JSX,
+} from "solid-js"
+import { createStore, produce, reconcile } from "solid-js/store"
+import { isDeepEqual } from "remeda"
+import { Dynamic } from "solid-js/web"
+import { createMediaQuery } from "@solid-primitives/media"
+import { useNavigate } from "@solidjs/router"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { useLingui } from "@lingui/solid"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
+import type {
+  AgentWorkerCapacityStatus,
+  ResourceStatus,
+  ConfigDomainSummary,
+  ControlProfileSummary,
+  CortexConcurrencyStatus,
+  McpStatus,
+  ModelRoleSummary,
+  SandboxStatus,
+  SkillList,
+} from "@ericsanchezok/synergy-sdk/client"
+import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from "@ericsanchezok/synergy-plugin"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useInput } from "@/context/input"
+import { useGlobalSync } from "@/context/global-sync"
+import { useLocale } from "@/context/locale"
+import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
+import { useProductUpdate } from "@/context/product-update"
+import { useFontPreference } from "@/context/font-preference"
+import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
+import {
+  getSettingsSections,
+  subscribeSettingsSections,
+  type SettingsSection as RegisteredSettingsSection,
+} from "@/plugin"
+import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
+import { AppPanel } from "@/components/app-panel"
+import { translateDescriptor } from "@/locales/translate"
+import { requestErrorMessage } from "@/utils/error"
+import "./settings-panel.css"
+import type {
+  BuiltinMcpInfo,
+  DialogSettingsProps,
+  McpEntry,
+  ModelsStore,
+  ProviderGroup,
+  ProviderModel,
+  SettingsState,
+} from "./types"
+import { defaultSettingsState, emptyMcp, groupByProvider } from "./types"
+import { isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
+import { ensureInit } from "./hooks/useSettingsForm"
+import { buildPatch, builtinServerEnabled } from "./hooks/useConfigPatch"
+import { useSettingsSave } from "./hooks/useSettingsSave"
+import {
+  hasExplicitSettingsChanges,
+  rebaseDraftAfterSave,
+  retainDraftAfterSave,
+  saveSettingsSources,
+  snapshotSettingsDraft,
+  themeIdToSettingsValue,
+} from "./settings-explicit-save"
+import { prepareLocaleSettingsSave, rejectLocaleSettingsSave } from "./settings-locale-save"
+import { pluginSettingsResourceKey } from "./plugin-settings-resource"
+import { createSettingsComponentLoader } from "./settings-component-loader"
+import { createPluginSettingsDrafts } from "./plugin-settings-drafts"
+import { settingsSearchResults, locateSettingsField } from "./settings-search"
+import { createSettingsResource, type SettingsResourceState } from "./settings-resource"
+import { SettingsDialogFrame } from "./settings-dialog-frame"
+import { settingsSaveFooterStatus } from "./settings-save-status"
+import {
+  createSettingsMobileNavigationState,
+  reduceSettingsMobileNavigation,
+  restoreSettingsMobileListFocus,
+} from "./settings-mobile-navigation"
+import { GeneralPanel } from "./panels/GeneralPanel"
+import { ModelsPanel } from "./panels/ModelsPanel"
+import { ProvidersPanel } from "./panels/ProvidersPanel"
+import { createProviderSetupDrafts } from "@/components/provider/provider-setup-drafts"
+import { isSelectableModel } from "@/components/provider/model-catalog"
+import { PersonalizePanel } from "./panels/PersonalizePanel"
+import { createPersonalizeController } from "./panels/personalize-controller"
+import { UsagePanel } from "./panels/UsagePanel"
+import { GitHubPanel } from "./panels/GitHubPanel"
+import { VoicePanel } from "./panels/VoicePanel"
+import { createVoiceController } from "./panels/voice-controller"
+import { McpPanel } from "./panels/McpPanel"
+import { LearningPanel, MemoryPanel, ExperiencePanel } from "./panels/LibraryPanels"
+import { ChannelsPanel } from "./panels/ChannelsPanel"
+import { EmailPanel } from "./panels/EmailPanel"
+import { ImportPanel } from "./panels/ImportPanel"
+import { LanguageToolsPanel } from "./panels/LanguageToolsPanel"
+import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPanel"
+import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
+import { StoragePanel } from "./panels/StoragePanel"
+import { WorktreesPanel } from "./panels/WorktreesPanel"
+import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
+import { SecretsPanel } from "./panels/SecretsPanel"
+import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
+import { BossModePanel } from "./panels/BossModePanel"
+import { CodeChecksPanel } from "./panels/CodeChecksPanel"
+import { SkillsPanel } from "./panels/SkillsPanel"
+import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
+import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
+import { SaveIndicator } from "./components/SaveIndicator"
+import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
+import { createDesktopZoomController } from "./desktop-zoom-model"
+import { createDesktopPowerController } from "./desktop-power-model"
+import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
+import { recordThemeSelection, settleThemeSelection } from "@/plugin/theme-selection"
+import { SlotOutlet } from "@/plugin/slot-outlet"
+
+function settingsValues(value: unknown, fallback: Record<string, unknown> = {}): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : fallback
+}
+
+const DigitalTwinSettings = lazy(() =>
+  import("../digital-twin/settings").then((module) => ({ default: module.DigitalTwinSettings })),
+)
+
+const BrowserPanel = lazy(() => import("./panels/BrowserPanel").then((module) => ({ default: module.BrowserPanel })))
+
+const legacyInitialTabs: Record<string, string> = {
+  advanced: "control-profile",
+  appearance: "general",
+  library: "learning",
+}
+
+const copy = {
+  dialogLabel: { id: "settings.panel.dialog.label", message: "Settings" },
+  closeLabel: { id: "settings.panel.close.label", message: "Close settings" },
+  backLabel: { id: "settings.panel.back.label", message: "Back to settings categories" },
+  globalConfig: { id: "settings.panel.globalConfig.label", message: "Global settings" },
+  customInstructionsNotSaved: {
+    id: "settings.panel.customInstructions.notSaved",
+    message: "Custom instructions not saved",
+  },
+  customInstructionsReview: {
+    id: "settings.panel.customInstructions.review",
+    message: "Review the Custom Instructions content and try again.",
+  },
+  customInstructionsSaved: {
+    id: "settings.panel.customInstructions.saved",
+    message: "Custom instructions saved",
+  },
+  customInstructionsReset: {
+    id: "settings.panel.customInstructions.reset",
+    message: "Custom instructions reset",
+  },
+  customInstructionsOverride: {
+    id: "settings.panel.customInstructions.override",
+    message: "Synergy will use AGENTS.override.md for subsequent prompt assembly.",
+  },
+  customInstructionsGlobal: {
+    id: "settings.panel.customInstructions.global",
+    message: "Synergy will fall back to the global AGENTS.md file.",
+  },
+  configFileOpened: { id: "settings.panel.configFile.opened", message: "Config file opened" },
+  formatterTitle: { id: "settings.panel.reference.formatterTitle", message: "Formatter" },
+  formatterDescription: {
+    id: "settings.panel.reference.formatterDescription",
+    message: "Review formatter configuration and availability for a selected project.",
+  },
+  lspTitle: { id: "settings.panel.reference.lspTitle", message: "LSP" },
+  lspDescription: {
+    id: "settings.panel.reference.lspDescription",
+    message: "Review language server configuration and reported project status.",
+  },
+  pluginsGroup: { id: "settings.panel.group.plugins", message: "Plugins" },
+  errorBadge: { id: "settings.panel.badge.error", message: "Error" },
+  unsavedBadge: { id: "settings.panel.badge.unsaved", message: "Unsaved" },
+  savingBadge: { id: "settings.panel.badge.saving", message: "Saving" },
+  savedBadge: { id: "settings.panel.badge.saved", message: "Saved" },
+  developerBadge: { id: "settings.panel.badge.developer", message: "Dev" },
+  searchPlaceholder: { id: "settings.panel.search.placeholder", message: "Search settings..." },
+  noSettings: { id: "settings.panel.search.empty", message: "No settings found" },
+  developerMode: { id: "settings.panel.developerMode.label", message: "Developer mode" },
+  cancel: { id: "settings.panel.action.cancel", message: "Cancel" },
+  saving: { id: "settings.panel.action.saving", message: "Saving..." },
+  saveChanges: { id: "settings.panel.action.saveChanges", message: "Save Changes" },
+  loading: { id: "settings.panel.loading.label", message: "Loading..." },
+  emptyTitle: { id: "settings.panel.empty.title", message: "Settings" },
+  emptyDescription: { id: "settings.panel.empty.description", message: "Select a settings section." },
+  noSection: { id: "settings.panel.empty.noSection", message: "No section selected" },
+  sectionLoadFailed: {
+    id: "settings.panel.section.loadFailed",
+    message: "Could not load {label}. Your changes are kept.",
+  },
+  diagnosticsLoadFailed: {
+    id: "settings.panel.diagnostics.loadFailed",
+    message: "Could not check configuration issues.",
+  },
+  retrySection: { id: "settings.panel.section.retry", message: "Retry" },
+  sectionUnavailable: {
+    id: "settings.panel.section.unavailable",
+    message: "{label} is not available",
+  },
+  partialSaveFailed: { id: "settings.panel.save.partialFailure", message: "Some settings were not saved" },
+  partialSaveReview: {
+    id: "settings.panel.save.partialFailure.description",
+    message: "Review the failed settings and try again.",
+  },
+  configDiagnosticsTitle: {
+    id: "settings.panel.configDiagnostics.title",
+    message: "Configuration issues found",
+  },
+  configDiagnosticsDescription: {
+    id: "settings.panel.configDiagnostics.description",
+    message:
+      "One or more config files could not be loaded and were set aside. Fix the file and rename it back to continue using those settings.",
+  },
+  configDiagnosticsDetail: {
+    id: "settings.panel.configDiagnostics.detail",
+    message: "{path}: {error}",
+  },
+  configDiagnosticsQuarantined: {
+    id: "settings.panel.configDiagnostics.quarantined",
+    message: "Moved to {path}",
+  },
+  interfaceZoomRow: { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
+  themeSaveFailed: { id: "settings.panel.theme.saveFailed", message: "Theme change could not be saved" },
+  zoomSaveFailed: { id: "settings.panel.zoom.saveFailed", message: "Interface zoom could not be saved" },
+  preventSleepFailed: { id: "settings.panel.preventSleep.saveFailed", message: "The sleep setting could not be saved" },
+}
+
+export type SettingsPanelProps = DialogSettingsProps & {
+  onClose?: () => void
+  registerCloseRequest?: (close: () => void) => void
+}
+
+export function SettingsDialog(props: DialogSettingsProps) {
+  const dialog = useDialog()
+  const { _ } = useLingui()
+  let requestClose: (() => void) | undefined
+  return (
+    <SettingsDialogFrame ariaLabel={_(copy.dialogLabel)} onRequestClose={() => requestClose?.()}>
+      <SettingsPanel
+        {...props}
+        onClose={() => dialog.close()}
+        registerCloseRequest={(close) => {
+          requestClose = close
+        }}
+      />
+    </SettingsDialogFrame>
+  )
+}
+
+export function SettingsPanel(props: SettingsPanelProps) {
+  const { _, i18n } = useLingui()
+  const dialog = useDialog()
+  const confirm = useConfirm({ class: "settings-control-scope" })
+  const globalSDK = useGlobalSDK()
+  const globalSync = useGlobalSync()
+  const locale = useLocale()
+  const providerSetupDrafts = createProviderSetupDrafts()
+  onCleanup(() => providerSetupDrafts.clear())
+  const input = useInput()
+  const platform = usePlatform()
+  const productUpdate = useProductUpdate()
+  const browserCapability = createBrowserSettingsCapability({
+    selection: globalSDK.capabilities.current,
+    selected: () => globalSDK.capabilities.has("browser"),
+    serverUrl: () => globalSDK.url,
+    bridge: () => platform.browserNative,
+  })
+  const sectionAvailable = (id: string) =>
+    runtimeFeatureAvailable("settings", id, globalSDK.capabilities.has) &&
+    (id !== "browser" || browserCapability.visible())
+  const theme = useTheme()
+  const font = useFontPreference()
+  const navigate = useNavigate()
+  const personalizeController = createPersonalizeController({
+    get: async () => (await globalSDK.client.config.instructions.get({}, { throwOnError: true })).data!,
+    update: async (content) =>
+      (
+        await globalSDK.client.config.instructions.update(
+          {
+            configInstructionsUpdateInput: { content },
+          },
+          { throwOnError: true },
+        )
+      ).data!,
+    reset: async () => (await globalSDK.client.config.instructions.reset({}, { throwOnError: true })).data!,
+  })
+
+  const isDesktop = createMediaQuery("(min-width: 768px)")
+  const initialTab = normalizeInitialTab(props.initialTab)
+  const initialDeveloperMode = readDeveloperMode()
+  const initialNavigation = createSettingsMobileNavigationState(
+    initialTab,
+    filterSettingsSections(getSettingsSections(), initialDeveloperMode)
+      .filter((section) => sectionAvailable(section.id))
+      .map((section) => section.id),
+    isDesktop(),
+  )
+  let settingsNavigation: HTMLDivElement | undefined
+  let settingsSearch: HTMLInputElement | undefined
+  const [navigation, setNavigation] = createSignal(initialNavigation)
+  const activeTab = () => navigation().activeTab
+  const mobileDetailOpen = () => navigation().detailOpen
+  let settingsBody: HTMLDivElement | undefined
+  const scrollPositions = new Map<string, number>()
+  const settingsSubviews = new Map<string, string>()
+  const expandedSections = new Map<string, boolean>()
+  const pageKey = () => `${activeTab()}:${activeTab() === "general" ? generalView() : ""}`
+  const rememberPosition = () => {
+    if (settingsBody) scrollPositions.set(pageKey(), settingsBody.scrollTop)
+  }
+  const setActiveTab = (id: string) => {
+    rememberPosition()
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "select", id }))
+  }
+  const showMobileSectionList = () => {
+    rememberPosition()
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "back" }))
+    restoreSettingsMobileListFocus(settingsNavigation)
+  }
+  const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
+  const [generalView, setGeneralView] = createSignal<"regular" | "appearance" | "notifications">(
+    props.initialTab === "appearance" ? "appearance" : "regular",
+  )
+  const [search, setSearch] = createSignal("")
+  const [searchTarget, setSearchTarget] = createSignal<{ section: string; label: string }>()
+  const [mcpRevealIndex, setMcpRevealIndex] = createSignal<number>()
+  const [contentRoot, setContentRoot] = createSignal<HTMLDivElement>()
+  const [initialized, setInitialized] = createSignal(false)
+  const [saving, setSaving] = createSignal(false)
+  const [aggregateSaveStatus, setAggregateSaveStatus] =
+    createSignal<Exclude<import("./settings-save-status").SettingsSaveStatus, "dirty" | "loading">>("idle")
+  const [saveResultFingerprint, setSaveResultFingerprint] = createSignal<string>()
+  const [successfulSaveSources, setSuccessfulSaveSources] = createSignal<
+    { name?: string; page?: string; server?: boolean }[]
+  >([])
+  const [failedSaveSources, setFailedSaveSources] = createSignal<{ name?: string; page?: string; server?: boolean }[]>(
+    [],
+  )
+  const [desktopUpdateDraft, setDesktopUpdateDraft] = createSignal<DesktopUpdateMode>()
+  const [pluginDraftVersion, setPluginDraftVersion] = createSignal(0)
+  const pluginDrafts = createPluginSettingsDrafts(() => setPluginDraftVersion((version) => version + 1))
+  const [refreshing, setRefreshing] = createSignal(false)
+  const [focusedConfigDomain, setFocusedConfigDomain] = createSignal<string>()
+  const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
+  const [settingsPopoverLayer, setSettingsPopoverLayer] = createSignal<HTMLElement>()
+  const [developerMode, setDeveloperMode] = createSignal(initialDeveloperMode)
+  const [settingsRegistryVersion, setSettingsRegistryVersion] = createSignal(0)
+  let settingsRegistryRefreshScheduled = false
+  let mobileBackButton: HTMLButtonElement | undefined
+  let settingsRegistryDisposed = false
+  const unsubscribeSettingsSections = subscribeSettingsSections(() => {
+    if (settingsRegistryRefreshScheduled) return
+    settingsRegistryRefreshScheduled = true
+    queueMicrotask(() => {
+      settingsRegistryRefreshScheduled = false
+      if (!settingsRegistryDisposed) setSettingsRegistryVersion((version) => version + 1)
+    })
+  })
+  onCleanup(() => {
+    settingsRegistryDisposed = true
+    unsubscribeSettingsSections()
+  })
+
+  const [settings, setSettings] = createStore<SettingsState>(
+    defaultSettingsState(input.sendShortcut(), theme.colorScheme()),
+  )
+  const bossNameController = createBossNameController({
+    listSelfMemories: async () =>
+      (await globalSDK.client.library.list({ category: "self" }, { throwOnError: true })).data ?? [],
+    createMemory: (input) => globalSDK.client.library.memory.create(input, { throwOnError: true }),
+    updateMemory: (input) => globalSDK.client.library.memory.update(input, { throwOnError: true }),
+    removeMemory: (id) => globalSDK.client.library.remove({ id }, { throwOnError: true }),
+  })
+  createEffect(() => {
+    if (activeTab() === "boss" && globalSDK.capabilities.has("library") && !bossNameController.loaded())
+      untrack(() => void bossNameController.load())
+  })
+  const experimentsController = createExperimentsController(
+    {
+      get: async () => (await globalSDK.client.global.features({ throwOnError: true })).data!,
+      update: async (optIn) => {
+        await globalSDK.client.config.domain.update(
+          {
+            domain: "features",
+            configDomainUpdateInput: { config: { features: { optIn } }, mode: "replace-domain" },
+          },
+          { throwOnError: true },
+        )
+      },
+    },
+    {
+      owner: globalSDK.capabilities.current,
+      identity: () => globalSDK.url,
+      visible: () => activeTab() === "experiments",
+    },
+  )
+  const voiceController = createVoiceController({
+    get: async () =>
+      (await globalSDK.client.config.domain.get({ domain: "voice" }, { throwOnError: true })).data?.voice,
+    update: async (voice) =>
+      (
+        await globalSDK.client.config.domain.update(
+          { domain: "voice", configDomainUpdateInput: { config: { voice } } },
+          { throwOnError: true },
+        )
+      ).data?.config.voice,
+  })
+  createEffect(() => {
+    if (activeTab() === "voice" && globalSDK.capabilities.has("media") && !voiceController.loaded())
+      untrack(() => void voiceController.load())
+  })
+
+  const configSections = [
+    "general",
+    "models",
+    "github",
+    "learning",
+    "memory",
+    "experience",
+    "skills",
+    "mcp",
+    "channels",
+    "email",
+    "permissions",
+    "sandbox",
+    "control-profile",
+    "questions",
+    "compaction",
+    "timeouts",
+    "code-checks",
+    "observability",
+    "boss",
+    "storage",
+  ]
+  const sectionResourceStates: { sections: readonly string[]; state: SettingsResourceState }[] = []
+  function sectionResource<T>(
+    loader: () => Promise<T>,
+    sections: readonly string[],
+    merge?: (current: T | undefined, next: T) => T,
+  ) {
+    const resource = createSettingsResource(
+      loader,
+      () =>
+        sections.includes(activeTab()) && runtimeFeatureAvailable("settings", activeTab(), globalSDK.capabilities.has),
+      globalSDK.capabilities.current,
+      merge,
+    )
+    sectionResourceStates.push({ sections, state: resource[1] })
+    return resource
+  }
+  const [config, configResource] = sectionResource(async () => {
+    const res = await globalSDK.client.config.global({}, { throwOnError: true })
+    return res.data!
+  }, configSections)
+  const refetchConfig = configResource.refetch
+
+  const [mcpStatuses, mcpStatusesResource] = sectionResource(async () => {
+    await globalSDK.capabilities.load()
+    if (!globalSDK.capabilities.has("mcp")) return {} as Record<string, McpStatus>
+    const res = await globalSDK.client.mcp.status({}, { throwOnError: true })
+    return (res.data ?? {}) as Record<string, McpStatus>
+  }, ["mcp"])
+  const refetchMcpStatuses = mcpStatusesResource.refetch
+
+  // The builtin catalog resource is fetched once, so a server that finishes
+  // connecting while the panel is open would otherwise keep reading as
+  // not-yet-connected.
+  const unsubscribeMcpStatuses = globalSDK.event.listen((event) => {
+    if (event.details?.type?.startsWith("mcp.")) void refetchMcpStatuses()
+  })
+  onCleanup(unsubscribeMcpStatuses)
+
+  const [cortexConcurrencyStatus, cortexConcurrencyStatusResource] = sectionResource(async () => {
+    const res = await globalSDK.client.cortex.concurrency({}, { throwOnError: true })
+    return res.data as CortexConcurrencyStatus | undefined
+  }, ["timeouts"])
+  const refetchCortexConcurrencyStatus = cortexConcurrencyStatusResource.refetch
+
+  const [agentWorkerCapacityStatus, agentWorkerCapacityStatusResource] = sectionResource(async () => {
+    const res = await globalSDK.client.runtime.agentWorkers({}, { throwOnError: true })
+    return res.data as AgentWorkerCapacityStatus | undefined
+  }, ["timeouts"])
+  const refetchAgentWorkerCapacityStatus = agentWorkerCapacityStatusResource.refetch
+
+  const [resourceStatus, resourceStatusResource] = sectionResource(
+    async () => {
+      const res = await globalSDK.client.runtime.resources({}, { throwOnError: true })
+      return res.data as ResourceStatus
+    },
+    ["timeouts"],
+    (current, next) => (current && current.revision > next.revision ? current : next),
+  )
+  onCleanup(
+    globalSDK.event.listen((event) => {
+      if (event.details.type === "runtime.resources") resourceStatusResource.update(event.details.properties)
+    }),
+  )
+
+  const [domainSummaries, domainSummariesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.config.domain.list({}, { throwOnError: true })
+    return res.data ?? []
+  }, [...configSections, "import", "config-files", "formatter", "lsp"])
+  const refetchDomains = domainSummariesResource.refetch
+
+  const [configDiagnostics, diagnosticsResource] = createSettingsResource(async () => {
+    const res = await globalSDK.client.config.diagnostics({}, { throwOnError: true })
+    return res.data?.issues ?? []
+  })
+
+  const [desktopServerStatus] = createResource(async () => {
+    if (platform.platform !== "desktop" || !platform.desktopServer) return null
+    return platform.desktopServer.status().catch(() => null)
+  })
+  const [desktopZoomSaved, { mutate: setDesktopZoomSaved }] = createResource(async () => {
+    if (!platform.desktopZoom) return undefined
+    return platform.desktopZoom.get().catch(() => undefined)
+  })
+  const desktopZoomController = createDesktopZoomController({
+    bridge: platform.desktopZoom,
+    onApplied: (factor) => setDesktopZoomSaved(factor),
+    onFailure: (error) => {
+      showToast({
+        type: "error",
+        title: _(copy.zoomSaveFailed),
+        description: requestErrorMessage(error),
+      })
+    },
+  })
+
+  const [desktopPowerSaved, { mutate: setDesktopPowerSaved }] = createResource(async () => {
+    if (!platform.desktopPower) return undefined
+    return platform.desktopPower.get().catch(() => undefined)
+  })
+  const desktopPowerController = createDesktopPowerController({
+    bridge: platform.desktopPower,
+    onApplied: (snapshot) => setDesktopPowerSaved(snapshot),
+    onFailure: (error) => {
+      showToast({
+        type: "error",
+        title: _(copy.preventSleepFailed),
+        description: requestErrorMessage(error),
+      })
+    },
+  })
+  createEffect(() => {
+    const bridge = platform.desktopPower
+    if (!bridge?.onEvent) return
+    // Solid ignores a returned function (that is React useEffect semantics);
+    // the unsubscribe must go through onCleanup or every dialog mount leaks a
+    // listener on the stable preload bridge.
+    onCleanup(bridge.onEvent((event) => setDesktopPowerSaved(event.snapshot)))
+  })
+
+  const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
+
+  const [modelRoleSummaries, modelRoleSummariesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.app.agentModelRoles({}, { throwOnError: true })
+    return (res.data ?? []) as ModelRoleSummary[]
+  }, ["models"])
+  const refetchModelRoleSummaries = modelRoleSummariesResource.refetch
+
+  const [agents, agentsResource] = sectionResource(async () => {
+    const res = await globalSDK.client.app.agents({}, { throwOnError: true })
+    return res.data ?? []
+  }, ["timeouts"])
+  const refetchAgents = agentsResource.refetch
+  const [skillSources, skillSourcesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.skill.list({}, { throwOnError: true })
+    return (res.data?.sources ?? []) as SkillList["sources"]
+  }, ["skills"])
+  const refetchSkillSources = skillSourcesResource.refetch
+
+  const providerModels = createMemo(() => {
+    const data = globalSync.data.provider
+    const list: ProviderModel[] = []
+    for (const provider of data.all) {
+      if (!data.connected.includes(provider.id)) continue
+      if (data.runtimeAvailability?.[provider.id]?.available === false) continue
+      for (const [modelId, model] of Object.entries(provider.models)) {
+        if (!isSelectableModel(model)) continue
+        list.push({
+          providerId: provider.id,
+          providerName: provider.name,
+          modelId,
+          modelName: model.name,
+          variantKeys: model.variants ? Object.keys(model.variants) : [],
+        })
+      }
+    }
+    return list
+  })
+
+  const providerGroups = createMemo<ProviderGroup[]>(() => groupByProvider(providerModels()))
+
+  const savedModels = createMemo<ModelsStore>(() => {
+    const cfg = config()
+    return {
+      model: cfg?.model ?? "",
+      nano_model: cfg?.nano_model ?? "",
+      mini_model: cfg?.mini_model ?? "",
+      mid_model: cfg?.mid_model ?? "",
+      vision_model: cfg?.vision_model ?? "",
+      thinking_model: cfg?.thinking_model ?? "",
+      long_context_model: cfg?.long_context_model ?? "",
+      creative_model: cfg?.creative_model ?? "",
+      quick_switcher: cfg?.quick_switcher?.models ?? [],
+    }
+  })
+
+  const providerSummaries = createMemo(() => {
+    const data = globalSync.data.provider
+    const providers = new Map(data.all.map((provider) => [provider.id, provider]))
+    return Object.values(data.connections).map((connection) => {
+      const provider = providers.get(connection.id)
+      const health = data.authHealth?.[connection.id]
+      const availability = data.runtimeAvailability?.[connection.id]
+      return {
+        ...connection,
+        connected: data.connected.includes(connection.id),
+        modelCount: availability?.modelCount ?? Object.keys(provider?.models ?? {}).length,
+        health,
+        availability,
+        catalog: data.modelCatalog?.[connection.id],
+        profile: data.profiles?.[connection.id],
+      }
+    })
+  })
+
+  const [controlProfiles, controlProfilesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.controlProfile.list({}, { throwOnError: true })
+    return (res.data ?? []) as ControlProfileSummary[]
+  }, ["control-profile"])
+
+  const [sandboxStatus, sandboxStatusResource] = sectionResource(async () => {
+    const res = await globalSDK.client.sandbox.status({}, { throwOnError: true })
+    return res.data as SandboxStatus | undefined
+  }, ["sandbox"])
+
+  const [builtinMcps, builtinMcpsResource] = sectionResource(async () => {
+    await globalSDK.capabilities.load()
+    if (!globalSDK.capabilities.has("mcp")) return [] as BuiltinMcpInfo[]
+    const res = await globalSDK.client.mcp.builtins({}, { throwOnError: true })
+    return (res.data ?? []) as BuiltinMcpInfo[]
+  }, ["mcp"])
+  const refetchBuiltinMcps = builtinMcpsResource.refetch
+  const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
+  let initializedForSet: string | undefined
+
+  const doEnsureInit = () => {
+    const result = ensureInit({
+      cfg: config(),
+      setName: "global",
+      refreshing,
+      initialized,
+      initializedForSet,
+      sendShortcut: () => input.sendShortcut(),
+      colorScheme: theme.colorScheme,
+      setSettings,
+      setInitialized,
+      originalMcpsRef,
+      builtinMcps: builtinMcps(),
+      availableAgents: agents(),
+    })
+    if (result !== undefined) initializedForSet = result
+  }
+
+  createEffect(() => {
+    config()
+    doEnsureInit()
+  })
+
+  createEffect(() => {
+    const list = builtinMcps()
+    if (!list || untrack(refreshing)) return
+    const cfg = untrack(config)
+    const current = untrack(() => new Map(settings.mcps.builtins.map((entry) => [entry.name, entry])))
+    setSettings(
+      "mcps",
+      "builtins",
+      reconcile(
+        list.map((info) => {
+          const draft = current.get(info.name)
+          return {
+            ...info,
+            toggle: draft?.toggle ?? builtinServerEnabled(cfg, info.name),
+            apiKeyDraft: draft?.apiKeyDraft ?? "",
+            clearApiKey: draft?.clearApiKey ?? false,
+          }
+        }),
+      ),
+    )
+  })
+
+  const activeResources = () =>
+    sectionResourceStates.filter((entry) => entry.sections.includes(activeTab())).map((entry) => entry.state)
+  const sectionReady = () => activeResources().every((resource) => resource.ready())
+  const failedResources = () => activeResources().filter((resource) => resource.error())
+  const sectionLoading = () => activeResources().some((resource) => resource.loading())
+  const retrySection = () => {
+    for (const resource of failedResources()) void resource.retry()
+  }
+
+  function resetEditor() {
+    setInitialized(false)
+    initializedForSet = undefined
+  }
+
+  async function refreshAfterConfigChange(
+    changedFields: string[],
+    submittedDraft?: SettingsState,
+    savedConfig?: Record<string, unknown>,
+  ) {
+    let acknowledgedDraft = submittedDraft
+    if (submittedDraft && savedConfig) {
+      const [base, setBase] = createStore<SettingsState>(
+        defaultSettingsState(input.sendShortcut(), theme.colorScheme()),
+      )
+      ensureInit({
+        cfg: { ...config(), ...savedConfig },
+        setName: "global",
+        refreshing: () => false,
+        initialized: () => false,
+        initializedForSet: undefined,
+        sendShortcut: input.sendShortcut,
+        colorScheme: theme.colorScheme,
+        setSettings: setBase,
+        setInitialized: () => {},
+        originalMcpsRef: { current: {} },
+        builtinMcps: builtinMcps(),
+      })
+      acknowledgedDraft = snapshotSettingsDraft(base)
+    }
+    setRefreshing(true)
+    const changed = new Set(changedFields)
+    // Refresh only the panel resources affected by the fields that actually
+    // changed. The global sync store (provider/agent/command across scopes)
+    // is refreshed by the runtime.reloaded event via refreshTargeted, so we
+    // no longer trigger a full refreshAllConfigs() on every save.
+    const modelFields = [
+      "model",
+      "nano_model",
+      "mini_model",
+      "mid_model",
+      "thinking_model",
+      "long_context_model",
+      "creative_model",
+      "vision_model",
+      "role_variant",
+    ]
+    const agentFields = ["agent", "default_agent", "external_agent", "category", "permission", "library"]
+    try {
+      await Promise.all([
+        refetchConfig(),
+        refetchDomains(),
+        ...(modelFields.some((field) => changed.has(field)) ? [refetchModelRoleSummaries()] : []),
+        ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
+        ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
+        ...(changed.has("execution") ? [refetchAgentWorkerCapacityStatus()] : []),
+        ...(changed.has("mcp") ? [refetchBuiltinMcps()] : []),
+        ...(changed.has("skills") ? [refetchSkillSources()] : []),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
+    const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
+    setRefreshing(false)
+    if (configResource.error()) throw configResource.error()
+    if (domainSummariesResource.error()) throw domainSummariesResource.error()
+    resetEditor()
+    doEnsureInit()
+    if (acknowledgedDraft && currentDraft) {
+      setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), acknowledgedDraft, currentDraft)))
+    }
+    if (submittedDraft) {
+      restoreInstantTheme()
+      void restoreInstantZoom()
+    }
+  }
+
+  // Theme is applied instantly and persisted by a background update, so the
+  // server config resource may still hold the previous value when the panel
+  // re-initializes. Restore the live provider value on discard and after an
+  // explicit save so the picker stays in sync with the applied appearance.
+  // Config imports skip this: there the server value is the intended one.
+  function restoreInstantTheme() {
+    setSettings("general", "theme", themeIdToSettingsValue(theme.themeId()))
+  }
+  // Zoom is applied instantly and persisted by the desktop bridge, so
+  // re-read the live value on discard and after an explicit save to keep
+  // the slider in sync with the actually applied zoom factor.
+  function restoreInstantZoom() {
+    void desktopZoomController.restore()
+  }
+  // Keep-awake is applied instantly and persisted by the desktop bridge, so
+  // re-read the live value on discard and after an explicit save to keep the
+  // toggle in sync with the assertion the shell is actually holding.
+  function restoreInstantPower() {
+    void desktopPowerController.restore()
+  }
+
+  const serverPatch = createMemo<Record<string, unknown>>(() => {
+    if (!initialized() || !config()) return {}
+    return buildPatch({
+      cfg: config()!,
+      state: settings,
+      originalMcps: originalMcpsRef.current,
+      hasFeature: globalSDK.capabilities.has,
+    })
+  })
+
+  const serverValidation = createMemo(() => (initialized() ? validateSettingsDraft(settings) : []))
+  const serverFieldError = (page: string, field: string) => {
+    const issue = serverValidation().find((issue) => issue.page === page && issue.field === field)
+    return issue ? _(issue.message) : undefined
+  }
+  const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0 || serverValidation().length > 0)
+  const hasPluginChanges = () => {
+    pluginDraftVersion()
+    return pluginDrafts.dirty()
+  }
+  const desktopUpdateDirty = () => {
+    const draft = desktopUpdateDraft()
+    return draft !== undefined && draft !== (productUpdate.desktopStatus()?.mode ?? "auto")
+  }
+  const editingLabel = createMemo(() => _(copy.globalConfig))
+  const hasAnyChanges = createMemo(
+    () =>
+      hasServerChanges() ||
+      hasPluginChanges() ||
+      personalizeController.dirty() ||
+      font.dirty() ||
+      desktopUpdateDirty() ||
+      voiceController.dirty() ||
+      experimentsController.dirty() ||
+      (globalSDK.capabilities.has("library") && bossNameController.dirty()),
+  )
+  const draftFingerprint = createMemo(() =>
+    JSON.stringify({
+      server: serverPatch(),
+      invalidDraft: serverValidation().length
+        ? [settings.runtime, settings.email, settings.library, settings.mcps]
+        : undefined,
+      plugin: pluginDraftVersion(),
+      personalize: [personalizeController.content(), personalizeController.resetPending()],
+      font: [font.selected("sans"), font.selected("mono")],
+      desktopUpdate: desktopUpdateDraft(),
+      voice: voiceController.draft,
+      experiments: experimentsController.draft(),
+      bossName: bossNameController.content(),
+    }),
+  )
+
+  function showConfirm(params: ConfirmOptions) {
+    confirm.show(params)
+  }
+
+  function discardChanges() {
+    providerSetupDrafts.clear()
+    pluginDrafts.discard()
+    personalizeController.discard()
+    voiceController.discard()
+    experimentsController.discard()
+    bossNameController.discard()
+    font.discard()
+    setDesktopUpdateDraft(undefined)
+    resetEditor()
+    doEnsureInit()
+    restoreInstantTheme()
+    void restoreInstantZoom()
+    void restoreInstantPower()
+  }
+
+  const save = useSettingsSave({
+    serverPatch,
+    serverDraft: () => snapshotSettingsDraft(settings),
+    domainSummaries: () => domainSummaries() ?? [],
+    hasAnyChanges,
+    hasUnsavedResources: () => providerSetupDrafts.dirty(),
+    editingLabel,
+    refreshAfterConfigChange,
+    preparePatchSave: (patch) => prepareLocaleSettingsSave(patch, locale.controller),
+    rejectPatchSave: async (patch) => {
+      await rejectLocaleSettingsSave(patch, locale.controller, globalSync.data.config.locale)
+    },
+    discardChanges,
+    closeBlocked: () => saving() || personalizeController.status() === "saving" || providerSetupDrafts.pending(),
+    closeDialog: () => {
+      if (props.onClose) props.onClose()
+      else dialog.close()
+    },
+    showConfirm,
+  })
+
+  props.registerCloseRequest?.(save.closeWithGuard)
+
+  async function openBossSession() {
+    const requireSavedChanges = () => {
+      if (hasAnyChanges() || saving() || providerSetupDrafts.dirty() || providerSetupDrafts.pending())
+        throw new Error(
+          _({
+            id: "settings.runtime.boss.saveFirst",
+            message: "Save changes first.",
+          }),
+        )
+    }
+    requireSavedChanges()
+    // The runtime boss session lives in home scope; the open route requires
+    // an explicit scope (it refuses to guess from the request context).
+    const result = await globalSDK.client.boss.session.open({ scopeID: HOME_SCOPE_KEY }, { throwOnError: true })
+    const sessionID = result.data?.sessionID
+    if (!sessionID) {
+      throw new Error("The runtime did not return a boss session.")
+    }
+    requireSavedChanges()
+    ;(props.onClose ?? (() => dialog.close()))()
+    navigate(`/${base64Encode(HOME_SCOPE_KEY)}/session/${sessionID}`)
+  }
+
+  async function savePersonalizeChanges() {
+    const saved = await personalizeController.save()
+    if (!saved) {
+      showToast({
+        type: "error",
+        title: _(copy.customInstructionsNotSaved),
+        description: personalizeController.error() ?? _(copy.customInstructionsReview),
+      })
+      return false
+    }
+    showToast({
+      type: "success",
+      title: personalizeController.info()?.hasOverride
+        ? _(copy.customInstructionsSaved)
+        : _(copy.customInstructionsReset),
+      description: personalizeController.info()?.hasOverride
+        ? _(copy.customInstructionsOverride)
+        : _(copy.customInstructionsGlobal),
+    })
+    return true
+  }
+
+  async function savePluginChanges() {
+    return pluginDrafts.save(async (key, values) => {
+      const result = await globalSDK.client.plugin.updateConfig(
+        {
+          pluginId: key.pluginId,
+          scopeID: key.scopeId,
+          pluginConfigUpdate: values,
+        },
+        { throwOnError: true },
+      )
+      const saved = settingsValues(result.data, values)
+      window.dispatchEvent(
+        new CustomEvent("synergy:plugin-config-changed", {
+          detail: { pluginId: key.pluginId, scopeId: key.scopeId, values: saved },
+        }),
+      )
+      return saved
+    })
+  }
+
+  async function saveFontChanges() {
+    return font.save()
+  }
+
+  async function saveDesktopUpdateChanges() {
+    const mode = desktopUpdateDraft()
+    if (mode === undefined) return true
+    const next = await productUpdate.setDesktopMode(mode)
+    if (next?.mode !== mode) return false
+    setDesktopUpdateDraft((current) => retainDraftAfterSave(current, mode))
+    return true
+  }
+
+  const explicitSaveSources = () => [
+    {
+      name: translateDescriptor(getBuiltinSettingsSection("experiments")!.copy.label, i18n()),
+      page: "experiments",
+      dirty: experimentsController.dirty,
+      save: experimentsController.save,
+    },
+    {
+      name: serverValidation()[0]
+        ? _(getBuiltinSettingsSection(serverValidation()[0]!.page)!.copy.label)
+        : _(copy.globalConfig),
+      page: serverValidation()[0]?.page ?? activeTab(),
+      dirty: () => save.explicitDirty() || serverValidation().length > 0,
+      validate: () => serverValidation().length === 0,
+      save: save.saveServerChanges,
+    },
+    {
+      name: _({ id: "settings.runtime.boss.name", message: "Assistant name" }),
+      page: "boss",
+      dirty: () => globalSDK.capabilities.has("library") && bossNameController.dirty(),
+      save: bossNameController.save,
+    },
+    { name: _(copy.pluginsGroup), page: activeTab(), dirty: hasPluginChanges, save: savePluginChanges },
+    {
+      name: _({ id: "settings.catalog.personalize.label", message: "Personalize" }),
+      page: "personalize",
+      dirty: personalizeController.dirty,
+      validate: () => !personalizeController.overLimit(),
+      save: savePersonalizeChanges,
+    },
+    {
+      name: _({ id: "settings.general.font.title", message: "Interface font" }),
+      page: "general",
+      dirty: font.dirty,
+      save: saveFontChanges,
+    },
+    { name: _(copy.globalConfig), page: "general", dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
+    {
+      name: _({ id: "settings.voice.page.title", message: "Voice" }),
+      page: "voice",
+      dirty: voiceController.dirty,
+      validate: () => !voiceController.validate(),
+      save: voiceController.save,
+    },
+  ]
+  const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
+  const explicitSaveBlocked = createMemo(
+    () =>
+      save.refreshPending() ||
+      saving() ||
+      save.status() === "saving" ||
+      personalizeController.busy() ||
+      experimentsController.status() === "saving" ||
+      (hasServerChanges() && !domainSummariesResource.ready()),
+  )
+
+  async function saveExplicitChanges() {
+    if (explicitSaveBlocked()) return
+    setSaving(true)
+    setAggregateSaveStatus("saving")
+    try {
+      const result = await saveSettingsSources(explicitSaveSources())
+      const details = result.results.flatMap(({ source, outcome }) =>
+        outcome.domains?.length
+          ? outcome.domains.map((domain) => {
+              const summary = domainSummaries()?.find((item) => item.id === domain.domain)
+              const section = summary && getBuiltinSettingsSection(summary.uiSection)
+              return {
+                server: true,
+                phase: domain.phase,
+                name: section ? _(section.copy.label) : (summary?.label ?? source.name),
+                page: summary?.uiSection ?? source.page,
+              }
+            })
+          : [{ name: source.name, page: source.page, phase: outcome.phase }],
+      )
+      const failures = result.invalid ? result.failed : details.filter((item) => item.phase === "write")
+      const successes = details.filter((item) => item.phase === "complete" || item.phase === "refresh")
+      setFailedSaveSources(failures)
+      setSuccessfulSaveSources(successes)
+      setSaveResultFingerprint(draftFingerprint())
+      setAggregateSaveStatus(
+        result.invalid
+          ? "invalid"
+          : failures.length
+            ? successes.length
+              ? "partial"
+              : "error"
+            : result.refreshPending.length
+              ? "refresh"
+              : "saved",
+      )
+      if (result.invalid) {
+        const page = failures[0]?.page
+        const issue = serverValidation()[0]
+        if (issue?.page === "mcp") setMcpRevealIndex(Number(issue.field.split(".")[0]))
+        if (page) setActiveTab(page)
+        requestAnimationFrame(() => contentRoot()?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus())
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function openDomain(domain: ConfigDomainSummary["id"]) {
+    if (!canOpenConfigFiles()) return
+    setOpeningDomain(domain)
+    try {
+      const res = await globalSDK.client.config.domain.open({ domain })
+      showToast({
+        type: "success",
+        title: _(copy.configFileOpened),
+        description: res.data?.path ?? domain,
+      })
+      await refetchDomains()
+    } catch (error) {
+      const filepath = domainSummaries()?.find((item) => item.id === domain)?.path ?? domain
+      const failure = configFileOpenFailure(error, filepath)
+      showToast({
+        type: "error",
+        title: translateDescriptor(failure.title, i18n()),
+        description: translateDescriptor(failure.description, i18n()),
+      })
+    } finally {
+      setOpeningDomain(undefined)
+    }
+  }
+
+  function readDeveloperMode(): boolean {
+    try {
+      return localStorage.getItem(SETTINGS_DEVELOPER_MODE_STORAGE_KEY) === "true"
+    } catch {
+      return false
+    }
+  }
+
+  function persistDeveloperMode(value: boolean) {
+    try {
+      if (value) {
+        localStorage.setItem(SETTINGS_DEVELOPER_MODE_STORAGE_KEY, "true")
+      } else {
+        localStorage.removeItem(SETTINGS_DEVELOPER_MODE_STORAGE_KEY)
+      }
+    } catch {
+      // localStorage unavailable — in-memory state only
+    }
+  }
+
+  function toggleDeveloperMode() {
+    const next = !developerMode()
+    setDeveloperMode(next)
+    persistDeveloperMode(next)
+  }
+  function stageDesktopUpdateMode(mode: DesktopUpdateMode) {
+    const saved = productUpdate.desktopStatus()?.mode ?? "auto"
+    setDesktopUpdateDraft(mode === saved ? undefined : mode)
+  }
+  function applyDesktopZoomFactor(factor: number) {
+    desktopZoomController.apply(factor)
+  }
+
+  function applyDesktopPower(keepAwakeWhileRunning: boolean) {
+    desktopPowerController.apply(keepAwakeWhileRunning)
+  }
+
+  const saveFooterStatus = createMemo(() =>
+    settingsSaveFooterStatus({
+      saving: saving(),
+      refreshPending: save.refreshPending(),
+      loading:
+        (configSections.includes(activeTab()) && !initialized()) ||
+        sectionLoading() ||
+        (activeTab() === "voice" && voiceController.status() === "loading") ||
+        (activeTab() === "boss" && bossNameController.status() === "loading"),
+      dirty: hasExplicitChanges(),
+      resultCurrent: saveResultFingerprint() === draftFingerprint(),
+      aggregate: aggregateSaveStatus(),
+      server: save.status(),
+      personalize: personalizeController.status(),
+    }),
+  )
+  const builtinSettingsComponents = (): Partial<Record<string, Component>> => ({
+    browser: BrowserPanel,
+    experiments: () => (
+      <ExperimentsPanel controller={experimentsController} onRetrySave={() => void saveExplicitChanges()} />
+    ),
+    personalize: () => <PersonalizePanel controller={personalizeController} />,
+    general: () => (
+      <GeneralPanel
+        view={generalView()}
+        onViewChange={(view) => {
+          rememberPosition()
+          setGeneralView(view)
+        }}
+        searchField={searchTarget()?.section === "general" ? searchTarget()?.label : undefined}
+        developerMode={developerMode()}
+        onDeveloperModeChange={toggleDeveloperMode}
+        general={settings.general}
+        onGeneralChange={(key, value) => {
+          if (key === "colorScheme") {
+            const scheme = value as ColorScheme
+            theme.setColorScheme(scheme)
+            setSettings("general", "colorScheme", scheme)
+            return
+          }
+          if (key === "theme") {
+            const themeValue = value as string
+            recordThemeSelection(globalSDK.url, themeValue)
+            theme.setThemeId(themeValue || "synergy")
+            setSettings("general", "theme", themeValue)
+            // Persist to server independently — fire-and-forget with error toast on failure.
+            void globalSDK.client.config.domain
+              .update(
+                { domain: "general", configDomainUpdateInput: { config: { theme: themeValue } } },
+                { throwOnError: true },
+              )
+              .then(() => settleThemeSelection(globalSDK.url, themeValue, true))
+              .catch((error) => {
+                settleThemeSelection(globalSDK.url, themeValue, false)
+                showToast({
+                  type: "error",
+                  title: _(copy.themeSaveFailed),
+                  description: requestErrorMessage(error),
+                })
+              })
+            return
+          }
+          setSettings("general", key, value)
+        }}
+        desktopUpdateMode={desktopUpdateDraft() ?? productUpdate.desktopStatus()?.mode}
+        onDesktopUpdateModeChange={stageDesktopUpdateMode}
+        desktopZoom={desktopZoomSaved() ?? 1}
+        onDesktopZoomChange={applyDesktopZoomFactor}
+        desktopPower={desktopPowerSaved()}
+        onDesktopPowerChange={applyDesktopPower}
+        popoverLayer={settingsPopoverLayer()}
+      />
+    ),
+    models: () => (
+      <ModelsPanel
+        searchField={searchTarget()?.section === "models" ? searchTarget()?.label : undefined}
+        models={settings.models}
+        savedModels={savedModels()}
+        providerModels={providerModels}
+        modelRoleSummaries={() => modelRoleSummaries() ?? []}
+        roleVariant={settings.roleVariant}
+        popoverLayer={settingsPopoverLayer()}
+        onModelChange={(key, value) => setSettings("models", key, value)}
+        onVariantChange={(roleId, variant) => setSettings("roleVariant", roleId, variant || "")}
+        onQuickSwitcherChange={(preferences) => setSettings("models", "quick_switcher", preferences)}
+        onConnectProvider={(providerID) => {
+          setProviderFocusID(providerID)
+          setActiveTab("providers")
+        }}
+      />
+    ),
+    "digital-twin": () => (
+      <DigitalTwinSettings
+        value={settings.digitalTwin}
+        models={providerModels()}
+        change={(value) => setSettings("digitalTwin", value)}
+      />
+    ),
+    voice: () => <VoicePanel controller={voiceController} searchField={searchTarget()?.label} />,
+    providers: () => (
+      <ProvidersPanel
+        summaries={providerSummaries()}
+        authMethods={globalSync.data.provider_auth}
+        providerFocusID={providerFocusID()}
+        drafts={providerSetupDrafts}
+      />
+    ),
+    github: () => (
+      <GitHubPanel
+        github={settings.github}
+        onGithubChange={(key, value) => setSettings("github", key, value as never)}
+        configDirty={Boolean(serverPatch().github)}
+      />
+    ),
+    usage: () => (
+      <UsagePanel
+        onConnectProvider={(providerID) => {
+          setProviderFocusID(providerID)
+          setActiveTab("providers")
+        }}
+      />
+    ),
+    learning: () => (
+      <LearningPanel
+        showAutonomy={globalSDK.capabilities.has("anima")}
+        library={settings.library}
+        onLibraryChange={(key, value) => setSettings("library", key, value)}
+      />
+    ),
+    memory: () => (
+      <MemoryPanel
+        fieldError={(key) => serverFieldError("memory", key)}
+        library={settings.library}
+        embeddingConfigDirty={Boolean(serverPatch().embedding)}
+        onLibraryChange={(key, value) => setSettings("library", key, value)}
+      />
+    ),
+    experience: () => (
+      <ExperiencePanel
+        fieldError={(key) => serverFieldError("experience", key)}
+        library={settings.library}
+        onLibraryChange={(key, value) => setSettings("library", key, value)}
+      />
+    ),
+    skills: () => (
+      <SkillsPanel
+        skills={settings.skills}
+        sources={skillSources() ?? []}
+        onSkillsChange={(source, value) => setSettings("skills", source, value)}
+      />
+    ),
+    mcp: () => (
+      <McpPanel
+        entries={settings.mcps.entries}
+        fieldError={(index, field) =>
+          aggregateSaveStatus() === "invalid" ? serverFieldError("mcp", `${index}.${field}`) : undefined
+        }
+        revealIndex={mcpRevealIndex()}
+        onRevealed={() => setMcpRevealIndex(undefined)}
+        entryUnsaved={(entry) => {
+          const cfg = config()
+          const current = cfg?.mcp?.[entry.key.trim()]
+          if (!current || !("type" in current)) return true
+          const next = (serverPatch().mcp as Record<string, unknown> | undefined)?.[entry.key.trim()]
+          return Boolean(next && !isDeepEqual(next, current))
+        }}
+        builtins={settings.mcps.builtins}
+        statuses={mcpStatuses()}
+        onAdd={() => setSettings("mcps", "entries", (prev) => [...prev, emptyMcp()])}
+        onChange={(index, field, value) =>
+          setSettings("mcps", "entries", index, field as keyof McpEntry, value as never)
+        }
+        onRemove={(index) =>
+          setSettings(
+            "mcps",
+            "entries",
+            produce((draft) => {
+              draft.splice(index, 1)
+            }),
+          )
+        }
+        onBuiltinToggle={(name, value) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) entry.toggle = value
+            }),
+          )
+        }
+        onBuiltinApiKeyChange={(name, value) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) {
+                entry.apiKeyDraft = value
+                if (value.trim() !== "") entry.clearApiKey = false
+              }
+            }),
+          )
+        }
+        onBuiltinClearKey={(name, cleared) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) entry.clearApiKey = cleared
+            }),
+          )
+        }
+      />
+    ),
+
+    channels: () => (
+      <ChannelsPanel
+        onConfigure={() => {
+          setFocusedConfigDomain("channels")
+          selectSection("config-files")
+        }}
+        channels={settings.channels}
+        providers={providerGroups()}
+        popoverLayer={settingsPopoverLayer()}
+        onFeishuToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
+        onFeishuModelChange={(index, model) => setSettings("channels", "feishuAccounts", index, "model", model)}
+        onFeishuVariantChange={(index, variant) => setSettings("channels", "feishuAccounts", index, "variant", variant)}
+        onGithubToggle={(index, value) => setSettings("channels", "githubAccounts", index, "enabled", value)}
+        onGithubFieldChange={(index, field, value) =>
+          setSettings("channels", "githubAccounts", index, field, value as never)
+        }
+      />
+    ),
+    email: () => (
+      <EmailPanel
+        email={settings.email}
+        fieldError={(key) => serverFieldError("email", key)}
+        onEmailChange={(key, value) => setSettings("email", key, value as never)}
+      />
+    ),
+    permissions: () => (
+      <PermissionsPanel safety={settings.safety} onSafetyChange={(key, value) => setSettings("safety", key, value)} />
+    ),
+    sandbox: () => (
+      <SandboxPanel
+        safety={settings.safety}
+        sandboxStatus={sandboxStatus()}
+        onSafetyChange={(key, value) => setSettings("safety", key, value)}
+      />
+    ),
+    "control-profile": () => (
+      <ControlProfilePanel
+        safety={settings.safety}
+        controlProfiles={controlProfiles() ?? []}
+        onSafetyChange={(key, value) => setSettings("safety", key, value)}
+      />
+    ),
+    secrets: () => <SecretsPanel />,
+    questions: () => (
+      <QuestionsPanel runtime={settings.runtime} onRuntimeChange={(key, value) => setSettings("runtime", key, value)} />
+    ),
+    compaction: () => (
+      <CompactionPanel
+        runtime={settings.runtime}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+      />
+    ),
+    timeouts: () => (
+      <TimeoutsPanel
+        runtime={settings.runtime}
+        fieldError={(key) => serverFieldError("timeouts", key)}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+        availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
+        fileToolGroup={settings.agents.fileToolGroup}
+        onFileToolGroupChange={(group) => setSettings("agents", "fileToolGroup", group)}
+        defaultAgent={settings.agents.defaultAgent}
+        onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
+        concurrencyStatus={cortexConcurrencyStatus()}
+        capacityStatus={agentWorkerCapacityStatus()}
+        resourceStatus={resourceStatus()}
+        popoverLayer={settingsPopoverLayer()}
+      />
+    ),
+    "code-checks": () => (
+      <CodeChecksPanel
+        runtime={settings.runtime}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+        popoverLayer={settingsPopoverLayer()}
+      />
+    ),
+    formatter: () => (
+      <LanguageToolsPanel
+        kind="formatter"
+        title={_(copy.formatterTitle)}
+        description={_(copy.formatterDescription)}
+        config={globalSync.data.config}
+        domains={domainSummaries() ?? []}
+        scopes={globalSync.data.scope}
+        openingDomain={openingDomain()}
+        onOpenDomain={canOpenConfigFiles() ? openDomain : undefined}
+      />
+    ),
+    lsp: () => (
+      <LanguageToolsPanel
+        kind="lsp"
+        title={_(copy.lspTitle)}
+        description={_(copy.lspDescription)}
+        config={globalSync.data.config}
+        domains={domainSummaries() ?? []}
+        scopes={globalSync.data.scope}
+        openingDomain={openingDomain()}
+        onOpenDomain={canOpenConfigFiles() ? openDomain : undefined}
+      />
+    ),
+    observability: () => (
+      <ObservabilityPanel
+        runtime={settings.runtime}
+        shellEnvironment={desktopServerStatus()?.shellEnvironment}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+      />
+    ),
+    boss: () => (
+      <BossModePanel
+        runtime={settings.runtime}
+        nameController={bossNameController}
+        nameAvailable={globalSDK.capabilities.has("library")}
+        configDirty={hasAnyChanges()}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+        onOpenBossSession={openBossSession}
+      />
+    ),
+    import: () => (
+      <ImportPanel
+        domains={domainSummaries() ?? []}
+        scopes={globalSync.data.scope}
+        onImported={(changedFields) => refreshAfterConfigChange(changedFields, undefined)}
+        popoverLayer={settingsPopoverLayer()}
+      />
+    ),
+    "config-files": () => (
+      <ConfigFilesPanel
+        focusedDomain={focusedConfigDomain()}
+        domains={domainSummaries() ?? []}
+        openingDomain={openingDomain()}
+        onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
+      />
+    ),
+    "archived-sessions": () => <ArchivedSessionsPanel popoverLayer={settingsPopoverLayer()} />,
+    storage: () => (
+      <StoragePanel
+        general={settings.general}
+        onGeneralChange={(key, value) => setSettings("general", key, value)}
+        popoverLayer={settingsPopoverLayer()}
+      />
+    ),
+    worktrees: WorktreesPanel,
+  })
+
+  const settingsSections = createMemo(() => {
+    settingsRegistryVersion()
+    const components = builtinSettingsComponents()
+    const desktopZoom = Boolean(platform.desktopZoom)
+    return filterSettingsSections(getSettingsSections(), developerMode())
+      .filter((section) => sectionAvailable(section.id))
+      .map((section) => {
+        const localized = localizeSettingsSection(section, _, globalSDK.capabilities.has)
+        const base = isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized
+        if (!desktopZoom || section.id !== "general") return base
+        const zoomLabel = _(copy.interfaceZoomRow)
+        return {
+          ...base,
+          keywords: [...(base.keywords ?? []), zoomLabel.toLowerCase()],
+          rowLabels: [...(base.rowLabels ?? []), zoomLabel],
+        }
+      })
+      .sort(compareSections)
+  })
+
+  const searchResults = createMemo(() => settingsSearchResults(settingsSections(), search()))
+  const filteredSections = () => searchResults().map((result) => result.section)
+  const matchingFields = (id: string) => searchResults().find((result) => result.section.id === id)?.fields ?? []
+
+  const navGroups = createMemo(() => {
+    const map = new Map<string, { label: string; sections: RegisteredSettingsSection[] }>()
+    for (const section of filteredSections()) {
+      const key = settingsSectionGroupKey(section) || "Plugins"
+      const label = section.group || _(copy.pluginsGroup)
+      const group = map.get(key)
+      if (group) group.sections.push(section)
+      else map.set(key, { label, sections: [section] })
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => settingsGroupOrder(a) - settingsGroupOrder(b) || a.localeCompare(b))
+      .map(([, group]) => ({ ...group, sections: group.sections.sort(compareSections) }))
+  })
+
+  const domainMap = createMemo(() => new Map((domainSummaries() ?? []).map((domain) => [domain.id, domain])))
+  const domainsFor = (ids: string[] | undefined) =>
+    (ids ?? []).flatMap((id) => {
+      const domain = domainMap().get(id as ConfigDomainSummary["id"])
+      return domain ? [domain] : []
+    })
+
+  createEffect(() => {
+    const desktop = isDesktop()
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "layout", desktop }))
+  })
+
+  const activeSection = createMemo(() => settingsSections().find((section) => section.id === activeTab()))
+  createEffect(() => {
+    if (!activeSection() && settingsSections().length) setActiveTab(settingsSections()[0].id)
+  })
+
+  const selectSection = (id: string) => {
+    setSearchTarget(undefined)
+    setActiveTab(id)
+  }
+  const selectField = (section: string, label: string) => {
+    setActiveTab(section)
+    setSearchTarget({ section, label })
+  }
+  createEffect(() => {
+    const key = pageKey()
+    const root = contentRoot()
+    const visible = isDesktop() || mobileDetailOpen()
+    if (!root || !visible || searchTarget() || !sectionReady()) return
+    const frame = requestAnimationFrame(() => {
+      if (settingsBody) settingsBody.scrollTop = scrollPositions.get(key) ?? 0
+    })
+    onCleanup(() => cancelAnimationFrame(frame))
+  })
+  createEffect(() => {
+    const target = searchTarget()
+    const root = contentRoot()
+    if (!root || !target || target.section !== activeTab() || !sectionReady()) return
+    onCleanup(locateSettingsField(root, target.label))
+  })
+
+  createEffect(() => {
+    const sectionIDs = settingsSections().map((section) => section.id)
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "validate", sectionIDs }))
+  })
+
+  createEffect(() => {
+    if (isDesktop() || !mobileDetailOpen()) return
+    queueMicrotask(() => mobileBackButton?.focus())
+  })
+
+  return (
+    <div class="settings-panel-frame">
+      <button
+        type="button"
+        class="settings-panel-close"
+        aria-label={_(copy.closeLabel)}
+        disabled={
+          saving() ||
+          save.status() === "saving" ||
+          personalizeController.status() === "saving" ||
+          providerSetupDrafts.pending()
+        }
+        onClick={save.closeWithGuard}
+      >
+        <Icon name={getSemanticIcon("action.close")} size="small" />
+      </button>
+      <OverlayLayerProvider layer={settingsPopoverLayer}>
+        <AppPanel.Root class="settings-panel-root">
+          <AppPanel.Nav
+            ref={(element) => (settingsNavigation = element)}
+            class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+          >
+            <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">
+              <div>
+                <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
+              </div>
+              <div class="ds-settings-search">
+                <Icon name={getSemanticIcon("action.search")} size="small" />
+                <input
+                  ref={settingsSearch}
+                  value={search()}
+                  placeholder={_(copy.searchPlaceholder)}
+                  aria-label={_(copy.searchPlaceholder)}
+                  onInput={(event) => setSearch(event.currentTarget.value)}
+                />
+                <Show when={search()}>
+                  <button
+                    type="button"
+                    aria-label={_({ id: "settings.search.clear", message: "Clear search" })}
+                    onClick={() => {
+                      setSearch("")
+                      settingsSearch?.focus()
+                    }}
+                  >
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
+                  </button>
+                </Show>
+              </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-2 pb-3">
+              <For each={navGroups()}>
+                {(group) => (
+                  <AppPanel.NavSection label={group.label}>
+                    <For each={group.sections}>
+                      {(section) => (
+                        <div>
+                          <AppPanel.NavItem
+                            icon={sectionIcon(section)}
+                            label={section.label}
+                            active={activeTab() === section.id}
+                            onClick={() => selectSection(section.id)}
+                          />
+                          <For each={matchingFields(section.id)}>
+                            {(label) => (
+                              <button
+                                class="settings-search-result"
+                                type="button"
+                                onClick={() => selectField(section.id, label)}
+                              >
+                                {label}
+                              </button>
+                            )}
+                          </For>
+                        </div>
+                      )}
+                    </For>
+                  </AppPanel.NavSection>
+                )}
+              </For>
+              <Show when={navGroups().length === 0}>
+                <div class="settings-empty-text px-3 py-6 text-text-weaker">
+                  {_(copy.noSettings)}
+                  <Button variant="ghost" onClick={() => setSearch("")}>
+                    {_({ id: "settings.search.clear", message: "Clear search" })}
+                  </Button>
+                </div>
+              </Show>
+            </div>
+          </AppPanel.Nav>
+
+          <div
+            class="settings-panel-main"
+            classList={{ "settings-panel-mobile-summary": !isDesktop() && !mobileDetailOpen() }}
+          >
+            <AppPanel.Content
+              class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+            >
+              <div class="settings-panel-mobile-detail-header">
+                <button
+                  ref={mobileBackButton}
+                  type="button"
+                  class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base"
+                  aria-label={_(copy.backLabel)}
+                  onClick={showMobileSectionList}
+                >
+                  <Icon name={getSemanticIcon("navigation.back")} size="small" />
+                </button>
+                <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
+              </div>
+              <Show when={diagnosticsResource.error()}>
+                <div class="settings-resource-error" role="alert">
+                  <div>{_(copy.diagnosticsLoadFailed)}</div>
+                  <Button
+                    variant="secondary"
+                    disabled={diagnosticsResource.loading()}
+                    onClick={() => void diagnosticsResource.retry()}
+                  >
+                    {_(copy.retrySection)}
+                  </Button>
+                </div>
+              </Show>
+              <Show when={(configDiagnostics()?.length ?? 0) > 0}>
+                <div class="settings-config-diagnostics-banner" role="alert">
+                  <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
+                  <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
+                  <ul class="settings-config-diagnostics-list">
+                    <For each={configDiagnostics()}>
+                      {(issue) => (
+                        <li>
+                          {_({
+                            ...copy.configDiagnosticsDetail,
+                            values: { path: issue.path, error: issue.error },
+                          })}
+                          <Show when={issue.quarantinedPath}>
+                            {_({
+                              ...copy.configDiagnosticsQuarantined,
+                              values: { path: issue.quarantinedPath! },
+                            })}
+                          </Show>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </div>
+              </Show>
+              <AppPanel.Body
+                padding={false}
+                ref={(element) => {
+                  settingsBody = element
+                }}
+              >
+                <Show when={failedResources().length > 0}>
+                  <div class="settings-resource-error" role="alert">
+                    <div>
+                      {_({
+                        ...copy.sectionLoadFailed,
+                        values: { label: activeSection()?.label ?? _(copy.dialogLabel) },
+                      })}
+                    </div>
+                    <Button variant="secondary" disabled={sectionLoading()} onClick={retrySection}>
+                      {_(copy.retrySection)}
+                    </Button>
+                  </div>
+                </Show>
+                <Show
+                  when={sectionReady()}
+                  fallback={
+                    <Show when={failedResources().length === 0}>
+                      <div class="settings-panel-loading" role="status">
+                        {_(copy.loading)}
+                      </div>
+                    </Show>
+                  }
+                >
+                  <SettingsViewStateContext.Provider
+                    value={{
+                      view: (key) => settingsSubviews.get(`${activeTab()}:${key}`),
+                      setView: (key, view) => settingsSubviews.set(`${activeTab()}:${key}`, view),
+                      expanded: (key) => expandedSections.get(`${activeTab()}:${key}`),
+                      setExpanded: (key, open) => expandedSections.set(`${activeTab()}:${key}`, open),
+                      searchField: () => (searchTarget()?.section === activeTab() ? searchTarget()?.label : undefined),
+                    }}
+                  >
+                    <Show keyed when={activeTab()}>
+                      {(id) => (
+                        <div ref={setContentRoot} class="settings-page-transition" data-settings-page={id}>
+                          {renderActiveContent()}
+                        </div>
+                      )}
+                    </Show>
+                  </SettingsViewStateContext.Provider>
+                </Show>
+                <SlotOutlet slot="settings.section" />
+              </AppPanel.Body>
+            </AppPanel.Content>
+
+            <AppPanel.Footer
+              class={`settings-panel-footer ${!isDesktop() && !mobileDetailOpen() && !hasExplicitChanges() && ["idle", "loading"].includes(saveFooterStatus()) ? "settings-panel-mobile-hidden" : ""}`}
+            >
+              <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
+                <SaveIndicator status={saveFooterStatus()} />
+                <Show
+                  when={["invalid", "error", "partial"].includes(saveFooterStatus()) && failedSaveSources().length > 0}
+                >
+                  <button
+                    type="button"
+                    class="settings-save-recovery"
+                    onClick={() => {
+                      const page = failedSaveSources()[0]?.page
+                      if (page) setActiveTab(page)
+                    }}
+                  >
+                    {_({
+                      id: "settings.save.failedPages",
+                      message: "Review: {pages}",
+                      values: {
+                        pages: failedSaveSources()
+                          .map((source) => source.name)
+                          .filter(Boolean)
+                          .join(" · "),
+                      },
+                    })}
+                  </button>
+                </Show>
+                <Show when={saveFooterStatus() === "partial" && successfulSaveSources().length > 0}>
+                  <span class="settings-row-description">
+                    {_({
+                      id: "settings.save.successfulPages",
+                      message: "Saved: {pages}",
+                      values: {
+                        pages: successfulSaveSources()
+                          .map((source) => source.name)
+                          .filter(Boolean)
+                          .join(" · "),
+                      },
+                    })}
+                  </span>
+                </Show>
+                <Show when={save.refreshPending()}>
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    disabled={save.status() === "saving"}
+                    onClick={async () => {
+                      const outcome = await save.retryRead()
+                      const remaining = failedSaveSources().filter((source) => !source.server)
+                      const failures =
+                        outcome.domains
+                          ?.filter((domain) => domain.phase === "write")
+                          .map((domain) => {
+                            const summary = domainSummaries()?.find((item) => item.id === domain.domain)
+                            const section = summary && getBuiltinSettingsSection(summary.uiSection)
+                            return {
+                              server: true,
+                              name: section ? _(section.copy.label) : (summary?.label ?? domain.domain),
+                              page: summary?.uiSection,
+                            }
+                          }) ?? []
+                      setFailedSaveSources([...remaining, ...failures])
+                      setAggregateSaveStatus(
+                        remaining.length || failures.length
+                          ? "partial"
+                          : outcome.phase === "complete"
+                            ? "saved"
+                            : "refresh",
+                      )
+                      setSaveResultFingerprint(draftFingerprint())
+                    }}
+                  >
+                    {_({ id: "settings.save.retryRead", message: "Retry reading" })}
+                  </Button>
+                </Show>
+              </div>
+              <div class="settings-panel-footer-actions">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="large"
+                  disabled={
+                    saving() ||
+                    save.status() === "saving" ||
+                    personalizeController.status() === "saving" ||
+                    providerSetupDrafts.pending()
+                  }
+                  onClick={save.closeWithGuard}
+                >
+                  {_(copy.cancel)}
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="large"
+                  disabled={!hasExplicitChanges() || explicitSaveBlocked()}
+                  onClick={() => void saveExplicitChanges()}
+                >
+                  {saving() ? _(copy.saving) : _(copy.saveChanges)}
+                </Button>
+              </div>
+            </AppPanel.Footer>
+          </div>
+        </AppPanel.Root>
+      </OverlayLayerProvider>
+      <div class="settings-popover-layer" ref={setSettingsPopoverLayer} />
+    </div>
+  )
+
+  function renderActiveContent(): JSX.Element {
+    const section = activeSection()
+    if (!section) {
+      return (
+        <SettingsPage title={_(copy.emptyTitle)} description={_(copy.emptyDescription)}>
+          <SettingsSection>
+            <div class="ds-empty-state">{_(copy.noSection)}</div>
+          </SettingsSection>
+        </SettingsPage>
+      )
+    }
+    return (
+      <ErrorBoundary
+        fallback={(_error, reset) => (
+          <div class="settings-resource-error" role="alert">
+            <div>{_({ ...copy.sectionLoadFailed, values: { label: section.label } })}</div>
+            <Button variant="secondary" onClick={reset}>
+              {_(copy.retrySection)}
+            </Button>
+          </div>
+        )}
+      >
+        <SettingsSectionContent section={section} drafts={pluginDrafts} draftVersion={pluginDraftVersion} />
+      </ErrorBoundary>
+    )
+  }
+
+  function referencePanel(title: string, description: string, domainIds: string[]) {
+    return (
+      <ConfigReferencePanel
+        title={title}
+        description={description}
+        domains={domainsFor(domainIds)}
+        openingDomain={openingDomain()}
+        onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
+      />
+    )
+  }
+}
+
+function SettingsSectionContent(props: {
+  section: RegisteredSettingsSection
+  drafts: ReturnType<typeof createPluginSettingsDrafts>
+  draftVersion: () => number
+}) {
+  const globalSDK = useGlobalSDK()
+  const { _ } = useLingui()
+  const componentLoader = createSettingsComponentLoader<Component<PluginSettingsComponentProps>>()
+  const comp = componentLoader.component
+  const loading = componentLoader.loading
+
+  const section = () => props.section
+  const [values, { mutate }] = createResource(
+    () => pluginSettingsResourceKey(section()),
+    async (key) => {
+      const result = await globalSDK.client.plugin.getConfig(
+        { pluginId: key.pluginId, scopeID: key.scopeId },
+        { throwOnError: true },
+      )
+      return props.drafts.adopt(key, settingsValues(result.data))
+    },
+  )
+
+  function updateValues(next: Record<string, unknown>) {
+    const key = pluginSettingsResourceKey(section())
+    if (!key) return
+    props.drafts.stage(key, next)
+    mutate(next)
+  }
+
+  const surfaceContext = createMemo(() => section().createContext?.())
+
+  function pluginContext(): PluginSettingsSurfaceContext {
+    const context = surfaceContext()
+    if (!context) throw new Error("Plugin Settings component has no bound context")
+    return {
+      ...context,
+      settings: {
+        ...context.settings,
+        values: () => values() ?? {},
+        change: updateValues,
+        status() {
+          props.draftVersion()
+          const key = pluginSettingsResourceKey(section())
+          return key ? props.drafts.status(key) : "saved"
+        },
+      },
+    }
+  }
+
+  createEffect(() => {
+    props.draftVersion()
+    const key = pluginSettingsResourceKey(section())
+    if (!key) return
+    const draft = props.drafts.values(key)
+    if (draft) mutate(draft)
+  })
+
+  createEffect(() => {
+    const current = section()
+    void componentLoader.load({
+      component: current.component as Component<PluginSettingsComponentProps> | undefined,
+      loader: current.loader as (() => Promise<{ default: Component<PluginSettingsComponentProps> }>) | undefined,
+    })
+  })
+
+  return (
+    <Show
+      when={!loading()}
+      fallback={
+        <div class="flex items-center justify-center py-8">
+          <Spinner class="size-5" />
+        </div>
+      }
+    >
+      <Show when={!section().pluginId || values()}>
+        <Show
+          when={comp()}
+          fallback={
+            <Show
+              when={section().formSchema}
+              fallback={
+                <div class="settings-availability-message flex items-center justify-center py-8">
+                  {_({ ...copy.sectionUnavailable, values: { label: section().label } })}
+                  <Show when={section().loader}>
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        void componentLoader.load({
+                          loader: section().loader as () => Promise<{
+                            default: Component<PluginSettingsComponentProps>
+                          }>,
+                        })
+                      }
+                    >
+                      {_(copy.retrySection)}
+                    </Button>
+                  </Show>
+                </div>
+              }
+            >
+              {(schema) => (
+                <SettingsPage title={section().label}>
+                  <SettingsSection>
+                    <DeclarativeSettingsForm
+                      schema={schema()}
+                      values={(values() ?? {}) as Record<string, unknown>}
+                      onChange={(next) => updateValues(next)}
+                    />
+                  </SettingsSection>
+                </SettingsPage>
+              )}
+            </Show>
+          }
+        >
+          {(c) => (
+            <ErrorBoundary
+              fallback={(_error, reset) => (
+                <div class="settings-resource-error" role="alert">
+                  <div>{_({ ...copy.sectionLoadFailed, values: { label: section().label } })}</div>
+                  <Button variant="secondary" onClick={reset}>
+                    {_(copy.retrySection)}
+                  </Button>
+                </div>
+              )}
+            >
+              <Show when={section().pluginId} fallback={<Dynamic component={c()} context={pluginContext()} />}>
+                <SettingsPage title={section().label} description={section().description}>
+                  <Dynamic component={c()} context={pluginContext()} />
+                </SettingsPage>
+              </Show>
+            </ErrorBoundary>
+          )}
+        </Show>
+      </Show>
+    </Show>
+  )
+}
+
+function normalizeInitialTab(id: string | undefined) {
+  if (!id) return "general"
+  return legacyInitialTabs[id] ?? id
+}
+
+function compareSections(a: RegisteredSettingsSection, b: RegisteredSettingsSection) {
+  return (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label)
+}
+
+function sectionIcon(section: RegisteredSettingsSection): IconName {
+  if (section.iconToken) return getSemanticIcon(section.iconToken)
+  return (section.icon ?? getSemanticIcon("settings.general")) as IconName
+}

@@ -1,0 +1,133 @@
+import { MessageV2 } from "./message-v2"
+import { formatLocalDateTime } from "../util/time-format"
+import { Log } from "../util/log"
+import type { Info } from "./types"
+import { Agent } from "../agent/agent"
+import { Provider } from "../provider/provider"
+import { AgentCall } from "../agent/call"
+import { LoopJob } from "./loop-job"
+import { Turn } from "./turn"
+import { SessionHistory } from "./history"
+
+const log = Log.create({ service: "session.title" })
+
+const parentTitlePrefix = "New session - "
+const childTitlePrefix = "Child session - "
+
+export function createDefaultTitle(isChild = false) {
+  return (isChild ? childTitlePrefix : parentTitlePrefix) + formatLocalDateTime(Date.now())
+}
+
+export function isDefaultTitle(title: string) {
+  return new RegExp(
+    `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}\\s\\(UTC[+-]\\d{2}:\\d{2}\\)$`,
+  ).test(title)
+}
+
+export function registerTitleJob() {
+  LoopJob.register({
+    type: "ensure-title",
+    // Detached jobs still share model capacity. Admit the first conversation
+    // step before a title call can occupy the only available execution slot.
+    phase: "post",
+    blocking: false,
+    detached: true,
+    collect(ctx) {
+      if (ctx.step !== 1) return []
+      return [{ type: "ensure-title" }]
+    },
+    capture(ctx) {
+      return {
+        type: "ensure-title",
+        sessionID: ctx.sessionID,
+        user: ctx.lastUser,
+        modelID: ctx.lastUser.model.modelID,
+        providerID: ctx.lastUser.model.providerID,
+      }
+    },
+    key(input) {
+      return input.sessionID
+    },
+    timeoutMs: 120_000,
+    async execute(input, signal) {
+      const { Session } = await import(".")
+      const [session, history] = await Promise.all([
+        Session.get(input.sessionID),
+        SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal }),
+      ])
+      await ensureTitle({
+        session,
+        user: input.user,
+        modelID: input.modelID,
+        providerID: input.providerID,
+        history,
+        abort: signal,
+      })
+      return "pass"
+    },
+  })
+}
+
+export async function ensureTitle(input: {
+  session: Info
+  user: MessageV2.User
+  history: MessageV2.WithParts[]
+  providerID: string
+  modelID: string
+  abort: AbortSignal
+}) {
+  if (input.session.parentID) return
+  if (!isDefaultTitle(input.session.title)) return
+
+  // Title from the first prompt-visible user message regardless of how much
+  // history followed it, so later turns and forked sessions can recover a
+  // missed or failed title run (#1417).
+  const firstRealUser = input.history.find((m) => m.info.role === "user" && !Turn.isSyntheticUser(m))
+  if (!firstRealUser) return
+  const firstRealUserIdx = input.history.findIndex((m) => m.info.id === firstRealUser.info.id)
+
+  // Gather all prompt-visible context up to and including the first real user message.
+  const contextMessages = input.history.slice(0, firstRealUserIdx + 1).filter(MessageV2.isPromptVisible)
+
+  const agent = await Agent.get("title")
+  if (!agent) return
+  const fallbackModel = await Provider.getModel(input.providerID, input.modelID).catch(() => undefined)
+  const result = await AgentCall.text({
+    agent: "title",
+    user: { ...input.user, system: undefined },
+    sessionId: input.session.id,
+    fallbackModel,
+    signal: input.abort,
+    timeoutMs: 120_000,
+    retries: 3,
+    maxOutputChars: 200,
+    messages: [
+      {
+        role: "user",
+        content: "Generate a title for this conversation:\n",
+      },
+      ...(await MessageV2.toModelMessage(contextMessages)),
+    ],
+  }).catch((error) => {
+    log.error("failed to generate title", { error })
+    return undefined
+  })
+  const text = result?.text
+  if (text) {
+    const { Session } = await import(".")
+    return Session.update(input.session.id, (draft) => {
+      // The LLM call ran detached: the user may have renamed the session
+      // while it was in flight. Only replace a title that is still the default.
+      if (!isDefaultTitle(draft.title)) return
+      const cleaned = text
+        .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.length > 0)
+      if (!cleaned) return
+
+      const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
+      draft.title = title
+    })
+  }
+}

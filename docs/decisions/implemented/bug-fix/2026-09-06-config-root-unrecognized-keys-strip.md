@@ -1,0 +1,22 @@
+# Decision Record: Strip root-level unrecognized config keys instead of quarantining the file
+
+Status: implemented
+
+## Problem
+
+Domain config files that still carried a retired top-level key — `20-providers.jsonc` with `providerCatalog`, removed from the schema and the providers domain's owned keys by [retire signed provider catalog](../architecture/2026-09-05-retire-signed-provider-catalog.md) — were renamed to `*.invalid-<ts>-<rand>` on load, discarding every valid provider connection in the file with it. The root `Config.Info` schema is strict, so a retired top-level key surfaces as a root-level zod issue with `path: []` and `keys: ["providerCatalog"]`. The partial-recovery path in `Config.load()` derived the section to strip from `String(issue.path[0])`, which is the string `"undefined"` for a root issue — it deleted a nonexistent `data["undefined"]`, the retry failed identically, and `loadDomainDirectory` quarantined the whole file. The one-shot cleanup migration cannot prevent this: it runs once per install, so a file restored from a backup after the migration ran (or written while a load raced migration completion) still carries the retired key. Parsing a quarantined file showed exactly one issue — the root `unrecognized_keys` — and removing that single key made the file fully valid.
+
+## Decision
+
+`Config.load()` partial recovery now treats a root-level `unrecognized_keys` issue as recoverable: it strips exactly `issue.keys` and re-validates through the existing strip-and-retry path with its "skipping invalid config sections" warning, instead of throwing `ConfigInvalidError`. Root-level `invalid_type` remains unrecoverable and still fails the load. Legacy monolithic loads opt out through a `stripUnknownKeys: false` load option: `migrateLegacyGlobalConfig` and `migrateLegacyProjectConfig` keep throwing on a retired root key because there it is a migration signal — rewrite migrations (e.g. `identity` → `embedding`/`rerank`/`library`, `auto_classifier` → `smartAllow`) need the monolithic file intact until `ensureMigrations()` rewrites it, and a load that wins the race against the migration pass must not silently drop the value that rewrite would have ported. Section-level recovery inside monolithic loads is unchanged, and strict parsing of config values (`Info.parse`) is unchanged — recovery happens only in the file-load layer.
+
+## Alternatives considered
+
+- **Re-running retired-key cleanup migrations on every config load** — rejected: it duplicates at load time what parsing can recover locally, would have to enumerate every future retired key forever, and still races a watcher-triggered load that reads the file before the sweep completes.
+- **Quarantining with an actionable warning instead of stripping** — rejected as the primary behavior: it preserves data but leaves the user's providers unusable until manual intervention; stripping with a warning heals the file automatically, and the `.invalid-*` quarantine remains for genuinely unrecoverable files (syntax errors, root type errors).
+- **Re-adding a tombstone `providerCatalog` key to the schema** — rejected: re-accepting retired keys restores the surface the retirement removed and does not generalize to the next retired key.
+- **Stripping root unknown keys in legacy monolithic loads too** — rejected after review: it erases the throw-as-migration-signal contract those call sites rely on. `Config.current()` fired at server module evaluation and config-reading CLI commands can run before `ensureMigrations()`; a load that wins that race would strip the retired key, split the file into domain fragments, and archive the source, turning a transient race into permanent silent loss of the settings the rewrite migrations exist to port.
+
+## Consequences
+
+Domain fragment files restored from backups or written around the cleanup migration now auto-heal on the next load instead of losing every custom provider in the file. For fragments, unknown top-level keys are a load-time warning rather than a hard error, so a typo in a key is dropped with the warning log as its only signal, while the strict schema contract stays asserted through direct `Info.parse`. Legacy monolithic files keep failing the load on retired root keys so `ensureMigrations()` can rewrite them first, preserving the pre-existing migration-signal path. Future schema key removals no longer require a matching cleanup migration to be fragment-load-safe, though migrations remain the right tool when a legacy value must be rewritten rather than dropped.

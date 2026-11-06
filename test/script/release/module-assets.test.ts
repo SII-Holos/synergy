@@ -1,0 +1,62 @@
+import { expect, test } from "bun:test"
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
+import { buildWorkspace } from "../../../script/build-workspace"
+import { pruneSeedPayload } from "../../../script/release/shared/seed-payload"
+
+test("the Library module initializes its own WASM backend outside the repository", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-library-modules-"))
+  try {
+    const { output } = await buildWorkspace("packages/library", {
+      output: path.join(directory, "node_modules/@ericsanchezok/synergy-library/dist"),
+    })
+    expect(await Bun.file(path.join(output, "vector/packaged-embedding.js")).exists()).toBe(true)
+    const unused = path.join(directory, "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm")
+    await Bun.write(unused, "unused backend")
+    await pruneSeedPayload(directory)
+    expect(await Bun.file(unused).exists()).toBe(false)
+    const entry = pathToFileURL(path.join(output, "vector/embedding-runtime.js")).href
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `const module=await import(${JSON.stringify(entry)}); await module.verifyStandaloneEmbeddingRuntime(); console.log('module embedding ready')`,
+      ],
+      {
+        cwd: directory,
+        env: { ...process.env, NODE_PATH: undefined, NODE_OPTIONS: undefined },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(code, stderr).toBe(0)
+    expect(stdout).toContain("module embedding ready")
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+}, 60_000)
+
+test("Feishu owns the SVG raster assets independently of the Connections preset", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-channel-assets-"))
+  try {
+    const { output } = await buildWorkspace("packages/channel-feishu", { output: path.join(directory, "feishu") })
+    for (const name of [
+      "index_bg.wasm",
+      "THIRD_PARTY_NOTICES.txt",
+      "fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
+      "fonts/LICENSE-OFL-1.1.txt",
+    ])
+      expect(await Bun.file(path.join(output, "lib/resvg-wasm", name)).exists()).toBe(true)
+    const facade = await buildWorkspace("packages/connections", { output: path.join(directory, "connections") })
+    expect(await Bun.file(path.join(facade.output, "lib/resvg-wasm/index_bg.wasm")).exists()).toBe(false)
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+}, 30_000)

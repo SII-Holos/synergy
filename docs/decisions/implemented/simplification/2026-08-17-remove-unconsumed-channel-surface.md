@@ -6,9 +6,9 @@ Status: implemented
 
 The channel domain shipped three surfaces with no production consumer:
 
-- `ChannelHost` `status` seam (`packages/synergy/src/channel/host.ts`): providers could publish status through `host.status.update`, but no provider called it; the only caller was `test/channel/host.test.ts`. Channel core owns canonical status via the `statuses` map and `Channel.status()`.
-- `Channel.Event.MessageReceived` (`packages/synergy/src/channel/index.ts`): published on message receipt but had zero subscribers in `packages/synergy/src`, `packages/app/src`, `packages/desktop`, `packages/plugin`, or `packages/ui`; it only leaked into the generated SDK surface (`packages/sdk/openapi.json`, `packages/sdk/js/src/gen/types.gen.ts`).
-- `diagnostics.hasData` (`packages/synergy/src/channel/diagnostics.ts`): exported, zero callers anywhere. Its sibling `list`/`Channel.getDiagnostics` are retained.
+- `ChannelHost` `status` seam (`packages/connections/src/channel/host.ts`): providers could publish status through `host.status.update`, but no provider called it; the only caller was `test/channel/host.test.ts`. Channel core owns canonical status via the `statuses` map and `Channel.status()`.
+- `Channel.Event.MessageReceived` (`packages/connections/src/channel/index.ts`): published on message receipt but had zero subscribers in `packages/synergy/src`, `apps/web/src`, `apps/desktop`, `packages/plugin`, or `packages/ui`; it only leaked into the generated SDK surface (`packages/sdk/openapi.json`, `packages/sdk/js/src/gen/types.gen.ts`).
+- `diagnostics.hasData` (`packages/connections/src/channel/diagnostics.ts`): exported, zero callers anywhere. Its sibling `list`/`Channel.getDiagnostics` are retained.
 
 ## Decision
 

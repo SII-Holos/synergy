@@ -8,7 +8,29 @@
       "bun": "./src/*.ts",
       "types": "./src/*.ts",
       "import": "./src/*.ts"
-    }
+    },
+    "./pty-keys": "./src/pty-keys.ts",
+    "./terminal": {
+      "types": "./src/terminal.ts",
+      "bun": "./src/terminal.ts",
+      "import": "./dist/terminal.js"
+    },
+    "./cli-command": {
+      "types": "./src/cli-command.ts",
+      "bun": "./src/cli-command.ts",
+      "import": "./dist/cli-command.js"
+    },
+    "./atomic-file": {
+      "types": "./src/atomic-file.ts",
+      "bun": "./src/atomic-file.ts",
+      "import": "./dist/atomic-file.js"
+    },
+    "./io-retry": {
+      "types": "./src/io-retry.ts",
+      "bun": "./src/io-retry.ts",
+      "import": "./dist/io-retry.js"
+    },
+    "./installed-launcher": "./src/installed-launcher.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -16,13 +38,19 @@
     "test": "bun test test/*.test.ts"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE.codex",
+    "NOTICE"
   ],
   "dependencies": {
+    "jsonc-parser": "3.3.1",
+    "marked": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@types/yargs": "17.0.35",
     "typescript": "catalog:"
   }
 }

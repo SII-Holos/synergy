@@ -1,11 +1,20 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript"],
+  "jsPlugins": ["./script/oxlint/memory-residency.js"],
   "categories": {
     "correctness": "error",
     "suspicious": "error"
   },
   "rules": {
+    "eslint/no-restricted-properties": [
+      "error",
+      {
+        "object": "navigator",
+        "property": "clipboard",
+        "message": "Call copyTextToClipboard() from @ericsanchezok/synergy-ui/clipboard; the raw Clipboard API loses the Desktop writer and the execCommand fallback. See apps/web/PRODUCT.md."
+      }
+    ],
     "eslint/no-unused-vars": "off",
     "eslint/no-control-regex": "off",
     "eslint/no-unassigned-vars": "off",
@@ -43,8 +52,7 @@
     "packages/**/dist/**",
     "packages/**/release/**",
     "packages/sdk/js/src/gen/**",
-    "packages/synergy/schema/**",
-    "packages/synergy/test/tool/fixtures/**",
+    "packages/presets/schema/**",
     "**/*.min.js"
   ],
   "overrides": [
@@ -52,6 +60,46 @@
       "files": ["packages/sdk/js/src/gen/**", "packages/**/test/**", "test/**"],
       "rules": {
         "typescript/no-explicit-any": "off"
+      }
+    },
+    {
+      "files": ["apps/web/test/**", "packages/**/test/**", "test/**"],
+      "rules": {
+        "eslint/no-restricted-properties": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/web/src/context/{sync,global-sync}.tsx",
+        "apps/web/src/context/{event-queue,session-message-page,session-message-loader,session-message-page-recovery,session-sync-plan,scope-snapshot-merge,part-checkpoint-merge,part-page-batch,part-summary-loader}.ts"
+      ],
+      "rules": {
+        "memory-residency/no-restricted-syntax": [
+          "error",
+          {
+            "selector": "CallExpression[callee.name='structuredClone']",
+            "message": "Do not structuredClone while admitting retained frontend state. Update the changed field in place. See docs/operations/memory-residency-scope.md."
+          },
+          {
+            "selector": "CallExpression[callee.property.name='messages'][callee.object.property.name='session'], CallExpression[callee.property.name='messages'][callee.object.name='session']",
+            "message": "Do not call session.messages() while admitting retained frontend state. It reads an unbounded transcript. Use the bounded timeline page. See docs/operations/memory-residency-scope.md."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "apps/web/src/context/{streaming-token-event,message-arrival,part-arrival}.ts",
+        "apps/web/src/components/session/{conversation-rows,virtual-conversation-rows,conversation-timeline,conversation-viewport}.{ts,tsx}"
+      ],
+      "rules": {
+        "memory-residency/no-restricted-syntax": [
+          "error",
+          {
+            "selector": "CallExpression[callee.name='structuredClone']",
+            "message": "Do not structuredClone on a per-update frontend path. Update the changed field in place. See docs/operations/memory-residency-scope.md."
+          }
+        ]
       }
     }
   ]

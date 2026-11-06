@@ -1,0 +1,179 @@
+import { describe, expect, test } from "bun:test"
+import type { ProviderConnection } from "@ericsanchezok/synergy-sdk/client"
+import {
+  canAddProviderAccount,
+  removeProviderAccount,
+  saveProviderAccount,
+  createProviderAccountCommand,
+  type ProviderConnectionClient,
+} from "../../../../src/components/settings/panels/provider-account-operations"
+
+function connection(overrides: Partial<ProviderConnection> = {}): ProviderConnection {
+  return {
+    id: "deepseek-work",
+    name: "DeepSeek Work",
+    profileID: "deepseek",
+    catalogProviderID: "deepseek",
+    enabled: true,
+    configured: true,
+    removable: true,
+    canCreateSibling: true,
+    ...overrides,
+  }
+}
+
+function mockClient() {
+  const calls: Array<{ operation: string; input: unknown; options: unknown }> = []
+  const client: ProviderConnectionClient = {
+    async create(input, options) {
+      calls.push({ operation: "create", input, options })
+      return { data: connection({ name: input.providerConnectionCreateInput.name }) }
+    },
+    async update(input, options) {
+      calls.push({ operation: "update", input, options })
+      return { data: connection({ id: input.providerID, name: input.providerConnectionUpdateInput.name }) }
+    },
+    async remove(input, options) {
+      calls.push({ operation: "remove", input, options })
+    },
+  }
+  return { client, calls }
+}
+
+describe("provider account operations", () => {
+  test("retries the read after account creation without creating another account", async () => {
+    let writes = 0
+    let reads = 0
+    const command = createProviderAccountCommand(
+      async () => {
+        writes++
+        return connection()
+      },
+      async () => {
+        reads++
+        if (reads === 1) throw new Error("refresh failed")
+      },
+    )
+    await expect(command.run()).rejects.toThrow("refresh failed")
+    expect(command.persisted()).toBe(true)
+    expect((await command.run()).id).toBe("deepseek-work")
+    expect(writes).toBe(1)
+    expect(reads).toBe(2)
+  })
+  test("only permits another account when the server reports a reusable catalog", () => {
+    expect(canAddProviderAccount(connection({ canCreateSibling: true }))).toBe(true)
+    expect(canAddProviderAccount(connection({ canCreateSibling: false }))).toBe(false)
+  })
+
+  test("recovers a connection whose creation response was lost instead of creating another one", async () => {
+    let writes = 0
+    const command = createProviderAccountCommand(
+      async () => {
+        writes++
+        throw new Error("response lost")
+      },
+      async () => {},
+      async () => connection(),
+    )
+    expect((await command.run()).id).toBe("deepseek-work")
+    expect((await command.run()).id).toBe("deepseek-work")
+    expect(writes).toBe(1)
+  })
+
+  test("preserves the caller's stable account identity when retrying creation", async () => {
+    const { client, calls } = mockClient()
+    await saveProviderAccount(client, {
+      mode: "create",
+      id: "account-stable",
+      profileID: "deepseek",
+      name: "Work",
+      enabled: true,
+    })
+    expect(calls[0].input).toEqual({
+      providerConnectionCreateInput: { id: "account-stable", profileID: "deepseek", name: "Work", enabled: true },
+    })
+  })
+
+  test("creates a named account with its own endpoint and enabled state", async () => {
+    const { client, calls } = mockClient()
+    const result = await saveProviderAccount(client, {
+      mode: "create",
+      profileID: "deepseek",
+      name: "DeepSeek Work",
+      endpoint: "https://work.deepseek.invalid/v1",
+      enabled: false,
+    })
+
+    expect(result.name).toBe("DeepSeek Work")
+    expect(calls).toEqual([
+      {
+        operation: "create",
+        input: {
+          providerConnectionCreateInput: {
+            profileID: "deepseek",
+            name: "DeepSeek Work",
+            endpoint: "https://work.deepseek.invalid/v1",
+            enabled: false,
+          },
+        },
+        options: { throwOnError: true },
+      },
+    ])
+  })
+
+  test("updates and removes only the selected account connection", async () => {
+    const { client, calls } = mockClient()
+    const result = await saveProviderAccount(client, {
+      mode: "update",
+      providerID: "deepseek-work",
+      name: "DeepSeek Production",
+      endpoint: null,
+      enabled: true,
+    })
+    await removeProviderAccount(client, "deepseek-work")
+
+    expect(result).toMatchObject({ id: "deepseek-work", name: "DeepSeek Production" })
+    expect(calls).toEqual([
+      {
+        operation: "update",
+        input: {
+          providerID: "deepseek-work",
+          providerConnectionUpdateInput: {
+            name: "DeepSeek Production",
+            endpoint: null,
+            enabled: true,
+          },
+        },
+        options: { throwOnError: true },
+      },
+      {
+        operation: "remove",
+        input: { providerID: "deepseek-work" },
+        options: { throwOnError: true },
+      },
+    ])
+  })
+
+  test("a remark-only update leaves endpoint and enabled settings untouched", async () => {
+    const { client, calls } = mockClient()
+    await saveProviderAccount(client, { mode: "update", providerID: "deepseek", name: "Personal" })
+    expect(calls[0].input).toStrictEqual({
+      providerID: "deepseek",
+      providerConnectionUpdateInput: { name: "Personal" },
+    })
+  })
+
+  test("rejects an empty generated client response", async () => {
+    const { client } = mockClient()
+    client.create = async () => ({})
+
+    await expect(
+      saveProviderAccount(client, {
+        mode: "create",
+        profileID: "deepseek",
+        name: "DeepSeek Work",
+        enabled: true,
+      }),
+    ).rejects.toThrow("Provider account response was empty")
+  })
+})

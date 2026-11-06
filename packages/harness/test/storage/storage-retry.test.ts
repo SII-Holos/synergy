@@ -1,0 +1,140 @@
+import { describe, expect, spyOn, test } from "bun:test"
+import fs from "fs/promises"
+import path from "path"
+import { Global } from "../../src/global"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+const FileRecords = {
+  write: (key: string[], value: unknown, options?: AtomicFile.WriteOptions) =>
+    AtomicFile.writeJsonAtomic(path.join(Global.Path.data, ...key) + ".json", JSON.stringify(value), options),
+  read: <T>(key: string[]) => Bun.file(path.join(Global.Path.data, ...key) + ".json").json() as Promise<T>,
+}
+
+function keyRoot() {
+  return ["storage-retry-test", Math.random().toString(36).slice(2)]
+}
+
+function errnoError(code: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(`injected ${code}`), { code })
+}
+
+async function tempFiles(root: string[]): Promise<string[]> {
+  const dir = path.join(Global.Path.data, ...root)
+  const entries = await fs.readdir(dir).catch(() => [] as string[])
+  return entries.filter((name) => name.includes(".tmp-") || name.endsWith(".tmp"))
+}
+
+describe("Storage atomic write transient-failure retry", () => {
+  test("durable write failure leaves the previous record intact", () =>
+    runtime.run(async () => {
+      const root = keyRoot()
+      const key = [...root, "durable"]
+      await FileRecords.write(key, { phase: "old" })
+      const realOpen = fs.open.bind(fs)
+      using _open = spyOn(fs, "open").mockImplementation((async (file, ...args) => {
+        if (String(file).includes(".tmp-")) throw errnoError("ENOSPC")
+        return realOpen(file, ...args)
+      }) as typeof fs.open)
+      await expect(FileRecords.write(key, { phase: "new" }, { durable: true })).rejects.toMatchObject({
+        code: "ENOSPC",
+      })
+      expect(await FileRecords.read<{ phase: string }>(key)).toEqual({ phase: "old" })
+      expect(await tempFiles(root)).toEqual([])
+    }))
+  test("retries a transient EPERM on rename and persists the payload", () =>
+    runtime.run(async () => {
+      const root = keyRoot()
+      const realRename: typeof fs.rename = fs.rename.bind(fs)
+      let calls = 0
+      const impl = (async (from: unknown, to: unknown) => {
+        calls += 1
+        if (calls <= 2) throw errnoError("EPERM")
+        return realRename(from as Parameters<typeof realRename>[0], to as Parameters<typeof realRename>[1])
+      }) as unknown as typeof fs.rename
+      using _rename = spyOn(fs, "rename").mockImplementation(impl)
+
+      await FileRecords.write([...root, "item"], { value: 1 })
+
+      expect(calls).toBe(3)
+      expect(await FileRecords.read<{ value: number }>([...root, "item"])).toEqual({ value: 1 })
+      expect(await tempFiles(root)).toEqual([])
+    }))
+
+  test("retries a transient EPERM on the temp-file write", () =>
+    runtime.run(async () => {
+      const root = keyRoot()
+      const realWrite: typeof Bun.write = Bun.write.bind(Bun)
+      let calls = 0
+      const impl = (async (destination: unknown, data: unknown) => {
+        calls += 1
+        if (calls === 1) throw errnoError("EPERM")
+        return realWrite(destination as never, data as never)
+      }) as unknown as typeof Bun.write
+      using _write = spyOn(Bun, "write").mockImplementation(impl)
+
+      await FileRecords.write([...root, "item"], { value: 2 })
+
+      expect(calls).toBe(2)
+      expect(await FileRecords.read<{ value: number }>([...root, "item"])).toEqual({ value: 2 })
+      expect(await tempFiles(root)).toEqual([])
+    }))
+
+  test("propagates the original error after retries are exhausted without leaving temp files", () =>
+    runtime.run(async () => {
+      const root = keyRoot()
+      let calls = 0
+      const impl = (async () => {
+        calls += 1
+        throw errnoError("EPERM")
+      }) as unknown as typeof fs.rename
+      using _rename = spyOn(fs, "rename").mockImplementation(impl)
+
+      await expect(FileRecords.write([...root, "item"], { value: 3 })).rejects.toMatchObject({ code: "EPERM" })
+      expect(calls).toBe(4)
+      expect(await tempFiles(root)).toEqual([])
+    }))
+
+  test("does not retry non-transient errors", () =>
+    runtime.run(async () => {
+      const root = keyRoot()
+      let calls = 0
+      const impl = (async () => {
+        calls += 1
+        throw errnoError("ENOSPC")
+      }) as unknown as typeof fs.rename
+      using _rename = spyOn(fs, "rename").mockImplementation(impl)
+
+      await expect(FileRecords.write([...root, "item"], { value: 4 })).rejects.toMatchObject({ code: "ENOSPC" })
+      expect(calls).toBe(1)
+      expect(await tempFiles(root)).toEqual([])
+    }))
+
+  test("retries transient EPERM on terminal cleanup and still removes the temp file", () =>
+    runtime.run(async () => {
+      const root = keyRoot()
+      const realUnlink: typeof fs.unlink = fs.unlink.bind(fs)
+      let renameCalls = 0
+      let unlinkCalls = 0
+      const renameImpl = (async () => {
+        renameCalls += 1
+        throw errnoError("EPERM")
+      }) as unknown as typeof fs.rename
+      using _rename = spyOn(fs, "rename").mockImplementation(renameImpl)
+      const unlinkImpl = (async (p: unknown) => {
+        unlinkCalls += 1
+        if (unlinkCalls === 1) throw errnoError("EPERM")
+        return realUnlink(p as Parameters<typeof realUnlink>[0])
+      }) as unknown as typeof fs.unlink
+      using _unlink = spyOn(fs, "unlink").mockImplementation(unlinkImpl)
+
+      await expect(FileRecords.write([...root, "item"], { value: 5 })).rejects.toMatchObject({ code: "EPERM" })
+      expect(renameCalls).toBe(4)
+      expect(unlinkCalls).toBe(2)
+      expect(await tempFiles(root)).toEqual([])
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

@@ -1,0 +1,1467 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f7f2" />
+    <meta name="description" content="Launchpad — a sample October release readiness board." />
+    <title>October release · Launchpad</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f7f2;
+        --surface: #fff;
+        --sidebar: #efefe9;
+        --ink: #202c3c;
+        --muted: #7c838b;
+        --line: #e6e7e1;
+        --accent: #5556ce;
+        --tint: #eeedfc;
+        --green: #36836b;
+        --green-bg: #eaf4ef;
+        --amber: #a87931;
+        --amber-bg: #fbf3e4;
+        --shadow: 0 8px 32px #25304406;
+      }
+      [data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #171d27;
+        --surface: #202834;
+        --sidebar: #1b222d;
+        --ink: #ecedf5;
+        --muted: #a0a9b6;
+        --line: #343d4a;
+        --accent: #a5a1ff;
+        --tint: #343251;
+        --green: #85cbb0;
+        --green-bg: #263f39;
+        --amber: #e5ba78;
+        --amber-bg: #423a2c;
+        --shadow: 0 8px 32px #0002;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        font-size: 14px;
+        -webkit-font-smoothing: antialiased;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      button:focus-visible,
+      a:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 4px;
+      }
+      button {
+        border: 0;
+      }
+      svg {
+        display: block;
+      }
+      .icon {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex-shrink: 0;
+      }
+      .sidebar {
+        width: 216px;
+        position: fixed;
+        inset: 0 auto 0 0;
+        background: var(--sidebar);
+        border-right: 1px solid var(--line);
+        padding: 35px 22px;
+        display: flex;
+        flex-direction: column;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 21px;
+        font-weight: 750;
+        letter-spacing: -0.8px;
+        padding: 0 8px;
+      }
+      .brand-mark {
+        width: 30px;
+        height: 30px;
+        background: var(--ink);
+        color: var(--bg);
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+      }
+      .workspace {
+        margin: 42px 10px 17px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        color: var(--muted);
+      }
+      nav {
+        display: grid;
+        gap: 7px;
+      }
+      .nav-item {
+        background: transparent;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 14px;
+        border-radius: 8px;
+        color: var(--muted);
+        text-align: left;
+        font-size: 13px;
+        font-weight: 550;
+      }
+      .nav-item.active {
+        background: var(--surface);
+        color: var(--ink);
+        box-shadow: 0 2px 5px #00000003;
+      }
+      .nav-item.active .icon {
+        color: var(--accent);
+      }
+      .nav-count {
+        margin-left: auto;
+        font-size: 10px;
+        background: var(--line);
+        padding: 3px 6px;
+        border-radius: 4px;
+      }
+      .sidebar-bottom {
+        margin-top: auto;
+      }
+      .workspace-note {
+        padding: 17px 13px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        line-height: 1.6;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .workspace-note strong {
+        display: block;
+        color: var(--ink);
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+      .profile {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 23px 6px 0;
+      }
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #e5dfd4;
+        color: #77634d;
+        font-size: 10px;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+      .profile strong {
+        font-size: 12px;
+      }
+      .profile small {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        margin-top: 4px;
+      }
+      .theme-button {
+        margin-left: auto;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        padding: 7px;
+        border-radius: 7px;
+      }
+      .theme-button .icon {
+        width: 15px;
+        height: 15px;
+      }
+      .main {
+        max-width: 1560px;
+        margin-left: 216px;
+        padding: 35px 48px 22px;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.1px;
+      }
+      .breadcrumb {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .breadcrumb span:last-child {
+        color: var(--ink);
+      }
+      .topbar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .live-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+      .hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 39px 0 29px;
+      }
+      .eyebrow {
+        font-size: 10px;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 650;
+        margin: 0 0 10px;
+      }
+      h1 {
+        font-size: 34px;
+        font-weight: 650;
+        letter-spacing: -1.25px;
+        margin: 0 0 11px;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 0;
+        line-height: 1.7;
+      }
+      .release-meta {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 5px;
+        font-size: 10px;
+        font-weight: 600;
+        padding: 6px 8px;
+        white-space: nowrap;
+      }
+      .pill.green {
+        color: var(--green);
+        background: var(--green-bg);
+      }
+      .release-date {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 10px 12px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 11px;
+        background: var(--surface);
+      }
+      .release-date .icon {
+        width: 15px;
+        height: 15px;
+        color: var(--muted);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      .metric {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 21px 23px;
+        box-shadow: var(--shadow);
+      }
+      .metric-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .metric-top .icon {
+        width: 17px;
+        height: 17px;
+      }
+      .metric-value {
+        font-size: 32px;
+        letter-spacing: -1px;
+        font-weight: 600;
+        margin: 15px 0 10px;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .metric-value small {
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--muted);
+        letter-spacing: 0;
+      }
+      .metric-bottom {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 10px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .positive {
+        color: var(--green);
+      }
+      .metric-track {
+        height: 4px;
+        background: var(--line);
+        border-radius: 3px;
+        overflow: hidden;
+        margin: 14px 0 0;
+      }
+      .metric-track span {
+        display: block;
+        width: 78%;
+        height: 100%;
+        background: var(--accent);
+        border-radius: 3px;
+      }
+      .chart-panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        margin-top: 22px;
+        padding: 23px 25px 14px;
+        box-shadow: var(--shadow);
+      }
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+      }
+      h2 {
+        font-size: 14px;
+        letter-spacing: -0.25px;
+        margin: 0;
+        font-weight: 650;
+      }
+      .section-description {
+        font-size: 10px;
+        color: var(--muted);
+        margin: 7px 0 0;
+      }
+      .chart-legend {
+        display: flex;
+        gap: 19px;
+        align-items: center;
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .legend-key {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .legend-line {
+        width: 15px;
+        height: 2px;
+        background: var(--accent);
+      }
+      .legend-line.target {
+        height: 0;
+        background: none;
+        border-top: 2px dashed #bdc1c8;
+      }
+      .period {
+        font-size: 10px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 7px 9px;
+        color: var(--muted);
+        margin-left: 5px;
+      }
+      .chart {
+        width: 100%;
+        height: 186px;
+        margin-top: 15px;
+        overflow: visible;
+      }
+      .chart text {
+        font-family: inherit;
+        font-size: 10px;
+        fill: var(--muted);
+      }
+      .chart .grid {
+        stroke: var(--line);
+        stroke-width: 1;
+      }
+      .chart .actual {
+        stroke: var(--accent);
+        stroke-width: 2.5;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .board-section {
+        margin-top: 31px;
+      }
+      .board-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 21px;
+      }
+      .board-title {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .total-count {
+        background: var(--line);
+        color: var(--muted);
+        font-size: 10px;
+        padding: 3px 6px;
+        border-radius: 5px;
+      }
+      .filters {
+        display: flex;
+        gap: 4px;
+        background: var(--sidebar);
+        border: 1px solid var(--line);
+        padding: 3px;
+        border-radius: 7px;
+      }
+      .filter {
+        background: transparent;
+        color: var(--muted);
+        font-size: 10px;
+        border-radius: 4px;
+        padding: 7px 10px;
+      }
+      .filter[aria-pressed="true"] {
+        background: var(--surface);
+        color: var(--ink);
+        box-shadow: 0 1px 3px #00000008;
+      }
+      .board {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 19px;
+        align-items: start;
+      }
+      .column {
+        background: var(--sidebar);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 13px 10px 10px;
+        min-height: 326px;
+      }
+      .column-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 5px 13px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border: 1.5px solid var(--muted);
+        border-radius: 50%;
+      }
+      .status-dot.progress {
+        border-color: var(--accent);
+        background: var(--accent);
+      }
+      .status-dot.ready {
+        border-color: var(--green);
+        background: var(--green);
+      }
+      .column-count {
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 400;
+        margin-left: 3px;
+      }
+      .column-head .icon {
+        margin-left: auto;
+        width: 14px;
+        height: 14px;
+        color: var(--muted);
+      }
+      .task-card {
+        display: block;
+        width: 100%;
+        text-align: left;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 15px;
+        margin-bottom: 9px;
+        transition:
+          transform 0.15s,
+          box-shadow 0.15s;
+      }
+      .task-card:last-child {
+        margin-bottom: 0;
+      }
+      .task-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 14px #202c3c0b;
+        border-color: var(--accent);
+      }
+      .task-label {
+        font-size: 8px;
+        letter-spacing: 0.55px;
+        text-transform: uppercase;
+        font-weight: 650;
+        display: inline-block;
+        padding: 4px 6px;
+        border-radius: 4px;
+        background: var(--tint);
+        color: var(--accent);
+      }
+      .task-label.design {
+        background: #f8eee5;
+        color: #b08259;
+      }
+      .task-label.docs {
+        background: #eaf1f4;
+        color: #678393;
+      }
+      .task-label.quality {
+        background: var(--green-bg);
+        color: var(--green);
+      }
+      .task-card h3 {
+        font-size: 12px;
+        line-height: 1.5;
+        font-weight: 600;
+        letter-spacing: -0.12px;
+        margin: 10px 0 6px;
+      }
+      .task-card p {
+        font-size: 10px;
+        line-height: 1.65;
+        color: var(--muted);
+        margin: 0 0 16px;
+      }
+      .task-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid var(--line);
+        padding-top: 11px;
+      }
+      .assignee {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .task-footer .avatar {
+        width: 22px;
+        height: 22px;
+        font-size: 7px;
+      }
+      .avatar.lilac {
+        background: #e5e1f6;
+        color: #77709f;
+      }
+      .avatar.sage {
+        background: #dee9df;
+        color: #67816c;
+      }
+      .avatar.blue {
+        background: #dce8ed;
+        color: #627f8d;
+      }
+      .task-date {
+        font-size: 9px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .task-date .icon {
+        width: 12px;
+        height: 12px;
+      }
+      .empty {
+        font-size: 11px;
+        text-align: center;
+        color: var(--muted);
+        padding: 55px 12px;
+        line-height: 1.8;
+      }
+      .footer {
+        margin-top: 26px;
+        padding-top: 17px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .footer-left {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .footer .icon {
+        width: 12px;
+        height: 12px;
+      }
+      .secondary-view {
+        margin-top: 30px;
+      }
+      .team-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+        margin-top: 24px;
+      }
+      .team-card {
+        padding: 25px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      .team-card h3 {
+        font-size: 14px;
+        margin: 15px 0 7px;
+      }
+      .team-card p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      [hidden] {
+        display: none !important;
+      }
+      dialog {
+        margin: 0 0 0 auto;
+        width: min(460px, 100%);
+        height: 100dvh;
+        max-height: 100dvh;
+        max-width: 100%;
+        border: 0;
+        border-left: 1px solid var(--line);
+        padding: 32px;
+        background: var(--surface);
+        color: var(--ink);
+        box-shadow: -20px 0 80px #0002;
+      }
+      dialog::backdrop {
+        background: #17223650;
+        backdrop-filter: blur(3px);
+      }
+      .drawer-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 10px;
+        color: var(--muted);
+        margin-bottom: 40px;
+      }
+      .close {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        padding: 8px;
+        border-radius: 7px;
+      }
+      .close .icon {
+        width: 16px;
+        height: 16px;
+      }
+      dialog h2 {
+        font-size: 25px;
+        line-height: 1.4;
+        margin: 17px 0;
+      }
+      dialog p {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.9;
+      }
+      .detail-list {
+        margin: 30px 0;
+        border-top: 1px solid var(--line);
+      }
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 17px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 12px;
+      }
+      .detail-row dt {
+        color: var(--muted);
+      }
+      .detail-row dd {
+        margin: 0;
+      }
+      .checklist {
+        padding: 0;
+        list-style: none;
+        font-size: 12px;
+        line-height: 1.8;
+      }
+      .checklist li {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin: 15px 0;
+      }
+      .checklist .icon {
+        width: 17px;
+        height: 17px;
+        color: var(--green);
+        margin-top: 2px;
+      }
+      .drawer-note {
+        padding: 15px;
+        background: var(--bg);
+        border-radius: 8px;
+        margin-top: 30px;
+        font-size: 11px;
+      }
+      @media (min-width: 1450px) {
+        .main {
+          padding: 40px 64px;
+        }
+        .chart {
+          height: 210px;
+        }
+        .task-card {
+          padding: 19px;
+        }
+        .task-card h3 {
+          font-size: 13px;
+        }
+        .task-card p {
+          font-size: 11px;
+        }
+        .column {
+          min-height: 350px;
+        }
+      }
+      @media (max-width: 1100px) {
+        .sidebar {
+          width: 180px;
+          padding: 30px 15px;
+        }
+        .main {
+          margin-left: 180px;
+          padding: 30px 26px;
+        }
+        .release-meta {
+          gap: 8px;
+          flex-direction: column;
+          align-items: flex-end;
+        }
+        .task-card {
+          padding: 12px;
+        }
+        .assignee {
+          font-size: 8px;
+        }
+        .chart-legend {
+          gap: 10px;
+        }
+        .metric {
+          padding: 18px;
+        }
+      }
+      @media (max-width: 800px) {
+        .sidebar {
+          width: 70px;
+          padding: 25px 12px;
+        }
+        .brand {
+          padding: 0;
+          justify-content: center;
+        }
+        .brand-name,
+        .workspace,
+        .nav-label,
+        .nav-count,
+        .sidebar-bottom {
+          display: none;
+        }
+        nav {
+          margin-top: 35px;
+        }
+        .nav-item {
+          padding: 13px;
+          justify-content: center;
+        }
+        .main {
+          margin-left: 70px;
+          padding: 25px 22px;
+        }
+        .hero {
+          margin-top: 30px;
+        }
+        h1 {
+          font-size: 29px;
+        }
+        .metrics {
+          gap: 10px;
+        }
+        .metric {
+          padding: 16px;
+        }
+        .metric-value {
+          font-size: 28px;
+        }
+        .metric-bottom {
+          font-size: 9px;
+        }
+        .board {
+          gap: 10px;
+        }
+        .task-card p {
+          min-height: 32px;
+        }
+        .assignee > span:last-child {
+          display: none;
+        }
+        .board-toolbar {
+          align-items: flex-start;
+        }
+        .filters {
+          flex-wrap: wrap;
+        }
+        .filter {
+          padding: 6px 8px;
+        }
+        .chart-legend .period {
+          display: none;
+        }
+        .team-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 580px) {
+        .main {
+          padding: 22px 16px;
+        }
+        .topbar-right {
+          display: none;
+        }
+        .hero {
+          display: block;
+        }
+        .release-meta {
+          flex-direction: row;
+          justify-content: flex-start;
+          align-items: center;
+          margin-top: 20px;
+        }
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+        .metric {
+          padding: 17px 20px;
+        }
+        .metric-value {
+          margin: 10px 0;
+        }
+        .metric-track {
+          margin-top: 10px;
+        }
+        .chart-panel {
+          padding: 20px 15px 12px;
+        }
+        .chart-legend {
+          font-size: 8px;
+          gap: 7px;
+        }
+        .section-description {
+          max-width: 150px;
+          line-height: 1.6;
+        }
+        .chart {
+          height: 165px;
+        }
+        .board-toolbar {
+          display: block;
+        }
+        .filters {
+          display: inline-flex;
+          margin-top: 16px;
+        }
+        .board {
+          grid-template-columns: 1fr;
+        }
+        .column {
+          min-height: 0;
+          padding: 14px 10px;
+        }
+        .task-card p {
+          min-height: 0;
+        }
+        .assignee > span:last-child {
+          display: inline;
+        }
+        .footer {
+          gap: 15px;
+          line-height: 1.6;
+        }
+        .footer > span {
+          max-width: 100px;
+          text-align: right;
+        }
+        .team-grid {
+          grid-template-columns: 1fr;
+        }
+        dialog {
+          padding: 25px;
+        }
+        .sidebar {
+          width: 58px;
+          padding: 25px 7px;
+        }
+        .main {
+          margin-left: 58px;
+        }
+        .nav-item {
+          padding: 12px;
+        }
+        .brand-mark {
+          width: 29px;
+          height: 29px;
+        }
+      }
+      @media (max-width: 580px) {
+        .topbar-right {
+          display: flex;
+          font-size: 0;
+          gap: 0;
+        }
+        .topbar-right > .live-dot {
+          display: none;
+        }
+        .footer-left {
+          max-width: none !important;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+        dialog::backdrop {
+          backdrop-filter: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-grid" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        </symbol>
+        <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" /></symbol>
+        <symbol id="i-team" viewBox="0 0 24 24">
+          <circle cx="9" cy="8" r="3" />
+          <path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 5" />
+        </symbol>
+        <symbol id="i-calendar" viewBox="0 0 24 24">
+          <rect x="4" y="5" width="16" height="16" rx="2" />
+          <path d="M8 3v4m8-4v4M4 11h16m-12 4h2m4 0h2" />
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="m8 12 3 3 5-6" />
+        </symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </symbol>
+        <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4m0 0c5-4 9 4 14 0v10c-5 4-9-4-14 0" /></symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z" /></symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10" /></symbol>
+        <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6" /></symbol>
+      </defs>
+    </svg>
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <div class="brand">
+        <span class="brand-mark"
+          ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 17 5-11h7l-5 11H6Zm4-5h7" /></svg></span
+        ><span class="brand-name">launchpad<span style="color: var(--accent)">.</span></span>
+      </div>
+      <div class="workspace">WORKSPACE</div>
+      <nav aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview" aria-label="Overview" aria-current="page">
+          <svg class="icon" aria-hidden="true"><use href="#i-grid" /></svg><span class="nav-label">Overview</span>
+        </button>
+        <button class="nav-item" data-view="releases" aria-label="Releases">
+          <svg class="icon" aria-hidden="true"><use href="#i-layers" /></svg><span class="nav-label">Releases</span
+          ><span class="nav-count">1</span>
+        </button>
+        <button class="nav-item" data-view="team" aria-label="Team">
+          <svg class="icon" aria-hidden="true"><use href="#i-team" /></svg><span class="nav-label">Team</span>
+        </button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="workspace-note">
+          <strong>A little clarity. A better launch.</strong>Everything your team needs to ship with confidence.
+        </div>
+        <div class="profile">
+          <span class="avatar lilac">JL</span>
+          <div><strong>Jordan Lee</strong><small>Release manager</small></div>
+          <button class="theme-button" id="theme-toggle" aria-label="Switch to dark theme" title="Switch theme">
+            <svg class="icon" aria-hidden="true"><use href="#i-moon" /></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div class="breadcrumb"><span>Workspace</span><span>/</span><span id="breadcrumb-current">Overview</span></div>
+        <div class="topbar-right">
+          <span class="live-dot"></span> Your release, in focus
+          <button class="theme-button" id="mobile-theme" aria-label="Switch to dark theme" title="Switch theme">
+            <svg class="icon" aria-hidden="true"><use href="#i-moon" /></svg>
+          </button>
+        </div>
+      </div>
+      <header class="hero">
+        <div>
+          <p class="eyebrow">A smooth launch starts here</p>
+          <h1>October release</h1>
+          <p class="subtitle">The final stretch. Keep the details in check and the team in sync.</p>
+        </div>
+        <div class="release-meta">
+          <span class="pill green"><span class="live-dot"></span> On track</span
+          ><span class="release-date"
+            ><svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg>Oct 30, 2026</span
+          >
+        </div>
+      </header>
+      <div id="overview-view">
+        <section class="metrics" aria-label="Release readiness metrics">
+          <article class="metric">
+            <div class="metric-top">
+              Release readiness<svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>
+            </div>
+            <div class="metric-value">78<small>%</small></div>
+            <div class="metric-bottom"><span class="positive">↗ 18%</span> from the start of this cycle</div>
+            <div
+              class="metric-track"
+              role="progressbar"
+              aria-label="Release readiness"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="78"
+            >
+              <span></span>
+            </div>
+          </article>
+          <article class="metric">
+            <div class="metric-top">
+              Tasks ready<svg class="icon" aria-hidden="true"><use href="#i-layers" /></svg>
+            </div>
+            <div class="metric-value">2 <small>/ 6</small></div>
+            <div class="metric-bottom">
+              <span class="positive">2 in progress</span><span>·</span> Moving things forward
+            </div>
+          </article>
+          <article class="metric">
+            <div class="metric-top">
+              Days until launch<svg class="icon" aria-hidden="true"><use href="#i-flag" /></svg>
+            </div>
+            <div class="metric-value">10 <small>days</small></div>
+            <div class="metric-bottom">
+              <svg class="icon" style="width: 12px; height: 12px" aria-hidden="true"><use href="#i-calendar" /></svg>
+              Targeting Friday, October 30
+            </div>
+          </article>
+        </section>
+        <section class="chart-panel" aria-labelledby="chart-title">
+          <div class="section-head">
+            <div>
+              <h2 id="chart-title">Steady progress, every day.</h2>
+              <p class="section-description">Release readiness over the last 14 days</p>
+            </div>
+            <div class="chart-legend">
+              <span class="legend-key"><i class="legend-line"></i>Readiness</span
+              ><span class="legend-key"><i class="legend-line target"></i>Target</span
+              ><span class="period">Oct 7 – 20</span>
+            </div>
+          </div>
+          <svg class="chart" viewBox="0 0 960 190" role="img" aria-labelledby="chart-svg-title chart-svg-desc">
+            <title id="chart-svg-title">14-day release readiness trend</title>
+            <desc id="chart-svg-desc">
+              Readiness increased from 60 percent on October 7 to 78 percent on October 20. Daily values: 60, 60, 62,
+              63, 63, 66, 66, 68, 70, 70, 73, 74, 76, 78 percent. The target rises from 60 to 80 percent.
+            </desc>
+            <defs>
+              <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#7471db" stop-opacity=".13" />
+                <stop offset="1" stop-color="#7471db" stop-opacity=".01" />
+              </linearGradient>
+            </defs>
+            <g class="grid"><path d="M42 20H927M42 59H927M42 98H927M42 137H927" stroke-dasharray="3 4" /></g>
+            <g>
+              <text x="0" y="23">90%</text>
+              <text x="0" y="62">80%</text>
+              <text x="0" y="101">70%</text>
+              <text x="0" y="140">60%</text>
+            </g>
+            <path
+              d="M42 137 110 137 178 129 246 125 314 125 382 114 450 114 518 106 586 98 654 98 722 86 790 82 858 75 927 67V149H42Z"
+              fill="url(#chart-fill)"
+            />
+            <path d="M42 137 927 59" fill="none" stroke="#bdc1c8" stroke-width="1.5" stroke-dasharray="5 5" />
+            <path
+              class="actual"
+              d="M42 137 110 137 178 129 246 125 314 125 382 114 450 114 518 106 586 98 654 98 722 86 790 82 858 75 927 67"
+            />
+            <circle cx="927" cy="67" r="5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.5" />
+            <rect x="895" y="29" width="44" height="24" rx="5" fill="var(--tint)" />
+            <text x="917" y="45" text-anchor="middle" style="fill: var(--accent); font-weight: 700">78%</text>
+            <g text-anchor="middle">
+              <text x="42" y="178">Oct 7</text>
+              <text x="178" y="178">Oct 9</text>
+              <text x="314" y="178">Oct 11</text>
+              <text x="450" y="178">Oct 13</text>
+              <text x="586" y="178">Oct 15</text>
+              <text x="722" y="178">Oct 17</text>
+              <text x="858" y="178">Oct 19</text>
+              <text x="927" y="178">20</text>
+            </g>
+          </svg>
+        </section>
+      </div>
+      <section class="board-section" id="board-view" aria-labelledby="board-heading">
+        <div class="board-toolbar">
+          <div class="board-title">
+            <h2 id="board-heading">Release board</h2>
+            <span class="total-count" id="visible-count" aria-live="polite">6 tasks</span>
+          </div>
+          <div class="filters" role="group" aria-label="Filter tasks by status">
+            <button class="filter" data-filter="all" aria-pressed="true">All tasks</button
+            ><button class="filter" data-filter="planned" aria-pressed="false">Planned</button
+            ><button class="filter" data-filter="progress" aria-pressed="false">In progress</button
+            ><button class="filter" data-filter="ready" aria-pressed="false">Ready</button>
+          </div>
+        </div>
+        <div class="board" id="board"></div>
+      </section>
+      <section id="team-view" class="secondary-view" hidden aria-labelledby="team-heading">
+        <h2 id="team-heading">The people behind the release</h2>
+        <p class="subtitle" style="margin-top: 9px">Six teammates. One shared launch.</p>
+        <div class="team-grid" id="team-grid"></div>
+      </section>
+      <footer class="footer">
+        <span class="footer-left"
+          ><svg class="icon" aria-hidden="true"><use href="#i-layers" /></svg> Sample release data</span
+        ><span>Made for a calmer launch.</span>
+      </footer>
+    </main>
+    <dialog id="task-drawer" aria-labelledby="detail-title">
+      <div class="drawer-top">
+        <span id="detail-id"></span
+        ><button class="close" id="close-drawer" aria-label="Close task details">
+          <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <span class="task-label" id="detail-tag"></span>
+      <h2 id="detail-title"></h2>
+      <p id="detail-description"></p>
+      <dl class="detail-list">
+        <div class="detail-row">
+          <dt>Status</dt>
+          <dd id="detail-status"></dd>
+        </div>
+        <div class="detail-row">
+          <dt>Owner</dt>
+          <dd id="detail-owner"></dd>
+        </div>
+        <div class="detail-row">
+          <dt>Due date</dt>
+          <dd id="detail-due"></dd>
+        </div>
+        <div class="detail-row">
+          <dt>Priority</dt>
+          <dd id="detail-priority"></dd>
+        </div>
+      </dl>
+      <h3 style="font-size: 13px">Acceptance checklist</h3>
+      <ul class="checklist" id="detail-checklist"></ul>
+      <p class="drawer-note">
+        Part of October release · v2.8<br />Readiness reflects weighted launch criteria, not just completed tasks.
+      </p>
+    </dialog>
+    <script>
+      const tasks = [
+        {
+          id: "LP-041",
+          title: "Polish the onboarding flow",
+          summary: "A warmer welcome, from the very first click.",
+          tag: "Design",
+          kind: "design",
+          status: "planned",
+          owner: "Maya Chen",
+          initials: "MC",
+          color: "lilac",
+          role: "Product designer",
+          due: "Oct 24",
+          priority: "Medium",
+          description:
+            "Refine the first-run experience for new workspaces. Finalize empty states, welcome copy, and the three-step setup checklist before handing off to engineering.",
+          checks: [
+            ["Review welcome and empty-state copy", false],
+            ["Validate the flow at mobile sizes", false],
+            ["Publish final design specifications", false],
+          ],
+        },
+        {
+          id: "LP-042",
+          title: "Draft the release announcement",
+          summary: "Tell the story behind what’s new.",
+          tag: "Content",
+          kind: "docs",
+          status: "planned",
+          owner: "Theo Brooks",
+          initials: "TB",
+          color: "sage",
+          role: "Product marketing",
+          due: "Oct 26",
+          priority: "Medium",
+          description:
+            "Prepare an announcement for version 2.8 covering the new dashboard, faster exports, and accessibility improvements. Include a concise changelog and a customer-facing email draft.",
+          checks: [
+            ["Collect highlights from feature owners", true],
+            ["Write announcement and changelog", false],
+            ["Get editorial approval", false],
+          ],
+        },
+        {
+          id: "LP-043",
+          title: "Run end-to-end regression tests",
+          summary: "Check the critical paths. Catch the surprises.",
+          tag: "Quality",
+          kind: "quality",
+          status: "progress",
+          owner: "Nora Patel",
+          initials: "NP",
+          color: "blue",
+          role: "Quality engineer",
+          due: "Oct 23",
+          priority: "High",
+          description:
+            "Exercise sign-in, workspace creation, report exports, and billing in the release candidate. Verify the supported browser matrix and record any launch-blocking defects.",
+          checks: [
+            ["Verify sign-in and workspace creation", true],
+            ["Test report exports and billing", true],
+            ["Complete cross-browser regression", false],
+          ],
+        },
+        {
+          id: "LP-044",
+          title: "Fine-tune dashboard performance",
+          summary: "Make the everyday feel a little faster.",
+          tag: "Engineering",
+          kind: "",
+          status: "progress",
+          owner: "Eli Morgan",
+          initials: "EM",
+          color: "lilac",
+          role: "Frontend engineer",
+          due: "Oct 24",
+          priority: "High",
+          description:
+            "Reduce dashboard render time for larger workspaces. Profile the activity feed, defer non-critical rendering, and confirm that the release meets the interaction latency budget.",
+          checks: [
+            ["Capture a representative baseline", true],
+            ["Optimize activity feed rendering", true],
+            ["Confirm p95 interaction latency under 200ms", false],
+          ],
+        },
+        {
+          id: "LP-045",
+          title: "Complete the accessibility audit",
+          summary: "A better experience, for everyone.",
+          tag: "Quality",
+          kind: "quality",
+          status: "ready",
+          owner: "Iris Nguyen",
+          initials: "IN",
+          color: "sage",
+          role: "Accessibility specialist",
+          due: "Oct 19",
+          priority: "High",
+          description:
+            "Audit all updated screens for keyboard navigation, screen reader labels, focus visibility, and WCAG AA color contrast. Findings have been resolved and verified in the release candidate.",
+          checks: [
+            ["Check keyboard and focus behavior", true],
+            ["Validate screen reader announcements", true],
+            ["Resolve contrast and labeling findings", true],
+          ],
+        },
+        {
+          id: "LP-046",
+          title: "Update the API documentation",
+          summary: "Clear examples. Fewer question marks.",
+          tag: "Documentation",
+          kind: "docs",
+          status: "ready",
+          owner: "Sam Rivera",
+          initials: "SR",
+          color: "blue",
+          role: "Developer advocate",
+          due: "Oct 20",
+          priority: "Medium",
+          description:
+            "Document the new export endpoint and pagination options. Refresh request and response examples, confirm error codes, and verify examples against the release candidate.",
+          checks: [
+            ["Document endpoint and error contracts", true],
+            ["Refresh request and response examples", true],
+            ["Verify examples against the candidate", true],
+          ],
+        },
+      ]
+      const statuses = [
+        { key: "planned", label: "Planned" },
+        { key: "progress", label: "In progress" },
+        { key: "ready", label: "Ready" },
+      ]
+      const icon = (name) => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`
+      let currentFilter = "all"
+      const board = document.getElementById("board")
+      function renderBoard() {
+        board.innerHTML = statuses
+          .map((status) => {
+            const items = tasks.filter(
+              (task) => task.status === status.key && (currentFilter === "all" || currentFilter === task.status),
+            )
+            return `<section class="column" aria-label="${status.label}"><div class="column-head"><span class="status-dot ${status.key}"></span>${status.label}<span class="column-count">${items.length}</span>${icon(status.key === "ready" ? "check" : "layers")}</div>${items.length ? items.map((task) => `<button class="task-card" data-task="${task.id}" aria-label="View ${task.title}"><span class="task-label ${task.kind}">${task.tag}</span><h3>${task.title}</h3><p>${task.summary}</p><div class="task-footer"><span class="assignee"><span class="avatar ${task.color}">${task.initials}</span><span>${task.owner}</span></span><span class="task-date">${icon(task.status === "ready" ? "check" : "calendar")}${task.due}</span></div></button>`).join("") : '<div class="empty">No tasks match this filter.</div>'}</section>`
+          })
+          .join("")
+        const count = tasks.filter((task) => currentFilter === "all" || task.status === currentFilter).length
+        document.getElementById("visible-count").textContent = `${count} tasks`
+      }
+      document.querySelectorAll("[data-filter]").forEach((button) =>
+        button.addEventListener("click", () => {
+          currentFilter = button.dataset.filter
+          document
+            .querySelectorAll("[data-filter]")
+            .forEach((item) => item.setAttribute("aria-pressed", String(item === button)))
+          renderBoard()
+        }),
+      )
+      const drawer = document.getElementById("task-drawer")
+      board.addEventListener("click", (event) => {
+        const card = event.target.closest("[data-task]")
+        if (!card) return
+        const task = tasks.find((item) => item.id === card.dataset.task)
+        document.getElementById("detail-id").textContent = `${task.id} / OCTOBER RELEASE`
+        document.getElementById("detail-title").textContent = task.title
+        document.getElementById("detail-description").textContent = task.description
+        document.getElementById("detail-tag").textContent = task.tag
+        document.getElementById("detail-tag").className = `task-label ${task.kind}`
+        document.getElementById("detail-status").textContent = statuses.find((item) => item.key === task.status).label
+        document.getElementById("detail-owner").textContent = task.owner
+        document.getElementById("detail-due").textContent = `${task.due}, 2026`
+        document.getElementById("detail-priority").textContent = task.priority
+        document.getElementById("detail-checklist").innerHTML = task.checks
+          .map(
+            ([label, done]) =>
+              `<li>${icon(done ? "check" : "clock")}<span>${label}<span style="color:var(--muted)"> · ${done ? "Complete" : "Pending"}</span></span></li>`,
+          )
+          .join("")
+        drawer.showModal()
+      })
+      document.getElementById("close-drawer").addEventListener("click", () => drawer.close())
+      drawer.addEventListener("click", (event) => {
+        if (event.target === drawer && event.clientX < drawer.getBoundingClientRect().left) drawer.close()
+      })
+      let theme = "light"
+      try {
+        theme = localStorage.getItem("launchpad-theme") === "dark" ? "dark" : "light"
+      } catch {}
+      function applyTheme() {
+        document.documentElement.dataset.theme = theme
+        document
+          .querySelectorAll(".theme-button")
+          .forEach((button) =>
+            button.setAttribute("aria-label", `Switch to ${theme === "light" ? "dark" : "light"} theme`),
+          )
+        document.querySelector('meta[name="theme-color"]').content = theme === "light" ? "#f7f7f2" : "#171d27"
+      }
+      document.querySelectorAll(".theme-button").forEach((button) =>
+        button.addEventListener("click", () => {
+          theme = theme === "light" ? "dark" : "light"
+          applyTheme()
+          try {
+            localStorage.setItem("launchpad-theme", theme)
+          } catch {}
+        }),
+      )
+      document.querySelectorAll("[data-view]").forEach((button) =>
+        button.addEventListener("click", () => {
+          const view = button.dataset.view
+          document.querySelectorAll("[data-view]").forEach((item) => {
+            item.classList.toggle("active", item === button)
+            if (item === button) item.setAttribute("aria-current", "page")
+            else item.removeAttribute("aria-current")
+          })
+          document.getElementById("breadcrumb-current").textContent = button.querySelector(".nav-label").textContent
+          document.getElementById("overview-view").hidden = view !== "overview"
+          document.getElementById("board-view").hidden = view === "team"
+          document.getElementById("team-view").hidden = view !== "team"
+        }),
+      )
+      document.getElementById("team-grid").innerHTML = tasks
+        .map(
+          (task) =>
+            `<article class="team-card"><span class="avatar ${task.color}">${task.initials}</span><h3>${task.owner}</h3><p>${task.role}</p><span class="pill ${task.status === "ready" ? "green" : ""}" style="background:var(--bg)">1 release task · ${statuses.find((item) => item.key === task.status).label}</span></article>`,
+        )
+        .join("")
+      renderBoard()
+      applyTheme()
+    </script>
+  </body>
+</html>

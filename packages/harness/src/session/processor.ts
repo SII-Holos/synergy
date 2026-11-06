@@ -1,0 +1,2243 @@
+import { ToolIntent } from "./tool-intent"
+import { readImageInputReceipt, publishImageInputReceipt, type ImageAttachmentSource } from "./rollout/image-receipt"
+import { RolloutExecution } from "./rollout/execution"
+import type { RolloutSchema } from "./rollout/schema"
+import { RolloutLedger } from "./rollout/ledger"
+import { SessionModelSelection } from "./model-selection"
+import { RolloutAccounting } from "./rollout/accounting"
+import { RolloutRecordingError } from "./rollout/error"
+import { MessageV2 } from "./message-v2"
+import { Log } from "../util/log"
+import { Identifier } from "../id/id"
+import { Session } from "."
+import { SessionEvent } from "./event"
+import { Bus } from "../bus"
+import { SessionRetry } from "./retry"
+import { SessionManager } from "./manager"
+import { SessionLifecycle } from "./lifecycle"
+import { SessionPluginHooks as Plugin } from "./plugin-hooks"
+import { providerEndpointHost } from "../provider/retry-coordinator"
+import { Provider } from "../provider/provider"
+import { LLM } from "./llm"
+import { Config } from "../config/config"
+import { TimeoutConfig } from "../util/timeout-config"
+import { PermissionNext } from "../permission/next"
+import { SessionContextContributions } from "./context-contributions"
+import { SessionQuestionErrors } from "./question-errors"
+import { ToolTimeout } from "../tool/timeout"
+import { Observability } from "../observability"
+import { ToolDiagnostic } from "../tool/diagnostic"
+import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
+import { SessionToolInput } from "./tool-input"
+import { ObservabilityMetrics } from "../observability/metrics"
+import { ObservabilityToolFailures } from "../observability/tool-failures"
+import { ObservabilitySpans } from "../observability/spans"
+import { ObservabilityContext } from "../observability/context"
+import { SessionMemoryPressure } from "./memory-pressure"
+import { SessionMemoryIncident } from "./memory-incident"
+import { LLMTurnMemory } from "./llm-memory"
+import { SessionBounds } from "./bounds"
+import { ContextUsage } from "./context-usage"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import type { Tool as AITool } from "ai"
+import { AgentTurn } from "./agent-turn"
+import { ToolScheduler } from "./tool-scheduler"
+import type { ToolResolver } from "./tool-resolver"
+import { SecretMask } from "../secrets/mask"
+import { PausedTurnAbort } from "./error"
+import type { Activity } from "./types"
+import { RuntimeContext } from "../lifecycle/context"
+
+export namespace SessionProcessor {
+  const TOOL_SETTLE_TIMEOUT = 5_000
+  const TRACE_ACTIVITY_INTERVAL_MS = 1_000
+  const log = Log.create({ service: "session.processor" })
+
+  export type ToolOutcome =
+    | {
+        status: "completed"
+        input: any
+        result: {
+          output: string
+          activityEvidence?: import("./activity-evidence").ToolActivityEvidence
+          title: string
+          metadata: Record<string, any>
+          attachments?: MessageV2.AttachmentPart[]
+          afterPersist?: () => Promise<void> | void
+        }
+      }
+    | { status: "error"; input: any; error: string; metadata?: Record<string, any> }
+  export type ToolExecutionSlot = {
+    callID: string
+    promise: Promise<ToolOutcome>
+    resolve(outcome: ToolOutcome): void
+    complete(input: unknown, result: ToolOutcomeCompletedResult): void
+    fail(input: unknown, error: string, metadata?: Record<string, any>): void
+    readonly outcome: ToolOutcome | undefined
+    readonly status: "pending" | "resolved"
+  }
+
+  export type ToolOutcomeCompletedResult = Extract<ToolOutcome, { status: "completed" }>["result"]
+
+  type ToolExecutionSlotInternal = Omit<ToolExecutionSlot, "outcome" | "status"> & {
+    outcome: ToolOutcome | undefined
+    status: "pending" | "resolved"
+    registeredAt: number
+    resolvedAt?: number
+  }
+
+  type ToolCallState = {
+    input: Record<string, any>
+    title?: string
+    metadata?: Record<string, any>
+    start?: number
+    onProgress?: () => void
+  }
+
+  export function createSlot(callID: string): ToolExecutionSlot {
+    let outcome: ToolOutcome | undefined
+    let resolved = false
+    let resolvePromise!: (value: ToolOutcome) => void
+    const promise = new Promise<ToolOutcome>((resolve) => {
+      resolvePromise = resolve
+    })
+    return {
+      callID,
+      promise,
+      resolve(value: ToolOutcome) {
+        if (resolved) return
+        resolved = true
+        outcome = value
+        resolvePromise(value)
+      },
+      complete(input: unknown, result: ToolOutcomeCompletedResult) {
+        this.resolve({ status: "completed", input, result })
+      },
+      fail(input: unknown, error: string, metadata?: Record<string, any>) {
+        this.resolve({ status: "error", input, error, metadata })
+      },
+      get outcome() {
+        return outcome
+      },
+      get status() {
+        return resolved ? "resolved" : "pending"
+      },
+    }
+  }
+
+  export type Info = Awaited<ReturnType<typeof create>>
+  export type Result = Awaited<ReturnType<Info["process"]>>
+  export type ProcessInput = AgentTurn.Input & {
+    executionTools: Record<string, AITool>
+    executorKinds: Record<string, import("./tool-scheduler").ToolExecutorKind>
+    memoryTurn?: LLMTurnMemory.Handle
+    autoExpandable?: Set<string>
+    resolverInput?: Omit<ToolResolver.Input, "processor">
+    intentBindings?: ReadonlyMap<string, ToolIntent.Binding>
+    onModelStreamSettled?: (error?: MessageV2.Assistant["error"]) => void
+  }
+
+  function streamToolDiagnostic(toolName: string, error: unknown): ToolDiagnostic {
+    const rawMessage = error instanceof Error ? error.message : String(error)
+    const errorName = error instanceof Error ? error.name : undefined
+    const unavailable = /unavailable tool|no such tool|tool .* not found|unknown tool|no.?such.?tool/i.test(
+      `${errorName ?? ""} ${rawMessage}`,
+    )
+    return {
+      code: unavailable ? "unknown_tool" : "invalid_arguments",
+      toolName,
+      message: unavailable
+        ? [
+            `The model tried to call unavailable tool "${toolName}".`,
+            "This tool is not available in the current session, mode, or permission context. Do not retry the same hidden tool.",
+            rawMessage,
+          ].join("\n")
+        : [
+            `The "${toolName}" tool call could not be accepted.`,
+            "Rewrite the tool input so it satisfies the current schema, or choose another available tool.",
+            rawMessage,
+          ].join("\n"),
+      metadata: {
+        source: "ai_sdk_tool_error",
+        errorName,
+        rawMessage,
+      },
+    }
+  }
+
+  export function streamToolErrorOutcome(part: MessageV2.ToolPart, error: unknown): ToolOutcome {
+    const diagnostic = streamToolDiagnostic(part.tool, error)
+    return {
+      status: "error",
+      input:
+        part.state.status === "running" || part.state.status === "pending" || part.state.status === "generating"
+          ? part.state.input
+          : {},
+      error: diagnostic.message,
+      metadata: ToolDiagnostic.metadata(diagnostic),
+    }
+  }
+
+  export function isFastAbort(signal: AbortSignal, error?: unknown): boolean {
+    if (signal.aborted) return true
+    if (!error || typeof error !== "object") return false
+    const name = "name" in error ? String((error as { name?: unknown }).name) : ""
+    return name === "AbortError"
+  }
+
+  export function unresolvedToolError(fastAbort: boolean) {
+    return fastAbort ? "Tool execution aborted" : "Tool execution did not return a final result"
+  }
+
+  export function create(input: {
+    assistantMessage: MessageV2.Assistant
+    imageAttachments?: ImageAttachmentSource[]
+    sessionID: string
+    model: Provider.Model
+    abort: AbortSignal
+    generation?: number
+    toolDisplay?: (toolName: string) => ToolDisplay | undefined
+  }) {
+    const runtime = RuntimeContext.current()
+    const isCurrent = () => {
+      if (input.abort.aborted) return false
+      if (input.generation === undefined) return true
+      const owner = SessionManager.getRuntime(input.sessionID)?.owner
+      return (
+        owner?.lease.generation === input.generation &&
+        owner.rootID === (input.assistantMessage.rootID ?? input.assistantMessage.parentID) &&
+        owner.phase !== "stopping"
+      )
+    }
+    const executionPhase = (phase: SessionManager.ExecutionPhase) => {
+      if (isCurrent()) SessionManager.setExecutionPhase(input.sessionID, phase)
+    }
+    const recovery = SessionRetry.create({
+      sessionID: input.sessionID,
+      rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+      messageID: input.assistantMessage.id,
+      providerID: input.model.providerID,
+      abort: input.abort,
+      publish: (state) =>
+        SessionManager.setStatus(
+          input.sessionID,
+          state,
+          input.generation === undefined
+            ? undefined
+            : {
+                generation: input.generation,
+                rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+              },
+        ),
+    })
+    const activity = (phase: Activity["phase"], tool?: Activity["tool"]) => {
+      if (recovery.active()) {
+        if (phase === "preparing_context" || phase === "queued_agent" || phase === "waiting_model") return
+        recovery.finish()
+      }
+      if (input.generation === undefined) return
+      SessionManager.setActivity(
+        input.sessionID,
+        { phase, tool },
+        {
+          generation: input.generation,
+          rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+        },
+      )
+    }
+    const toolcalls: Record<string, MessageV2.ToolPart> = {}
+    const modelInputs = new Map<string, Record<string, unknown>>()
+    const modelCalls = new Map<string, { owner: RolloutSchema.Owner; runID: string; callID: string }>()
+    const executions = new Map<string, ToolExecutionSlotInternal>()
+    const executionCallbacks = new Map<string, Promise<unknown>>()
+    const settlementPromises = new Map<string, Promise<void>>()
+    const settledToolCalls = new Set<string>()
+    // Calls whose terminal write is registered on the per-call queue but has
+    // not committed yet. Replayed stream events must be ignored in this
+    // window exactly as for settled calls: the terminal write has not
+    // landed, so the settled-stream filter would otherwise let a full-part
+    // replay write commit after it.
+    const settlingToolCalls = new Set<string>()
+    // LLM-side tool-error events without an execution slot or tool part are
+    // recorded for observability but never settled, so track their call IDs
+    // separately to avoid double-counting when the stream repeats the event.
+    const recordedToolFailures = new Set<string>()
+    const pendingToolCallStates = new Map<string, ToolCallState>()
+    const toolCallStateUpdates = new Map<string, Promise<void>>()
+    const generatingAccum: Record<string, string> = {}
+    const generatingBytes: Record<string, number> = {}
+    let blocked = false
+    let attempt = 0
+    let fastAbort = input.abort.aborted
+
+    function toolStartTime(part: MessageV2.ToolPart, fallback = Date.now()) {
+      if (part.state.status !== "running") return fallback
+      const approval = (part.state.metadata as any)?.approval
+      const executionStartedAt = approval?.time?.executionStartedAt
+      if (typeof executionStartedAt === "number") return executionStartedAt
+      if (
+        approval?.status === "pending_user" ||
+        approval?.status === "user_denied" ||
+        approval?.status === "auto_denied" ||
+        approval?.status === "policy_denied"
+      ) {
+        return fallback
+      }
+      return part.state.time.start
+    }
+
+    function providerMetadataObject(metadata: unknown): Record<string, any> | undefined {
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined
+      return metadata as Record<string, any>
+    }
+
+    function runningToolMetadata(
+      toolName: string,
+      providerMetadata: unknown,
+      resolvedDisplay?: ToolDisplay,
+    ): Record<string, any> | undefined {
+      const metadata = providerMetadataObject(providerMetadata)
+      const display = resolvedDisplay ?? input.toolDisplay?.(toolName)
+      if (!display) return metadata
+      const existingDisplay = metadata?.display as { media?: Record<string, any> } | undefined
+      const media =
+        existingDisplay?.media || display.media
+          ? {
+              ...existingDisplay?.media,
+              ...display.media,
+            }
+          : undefined
+      return {
+        ...metadata,
+        display: {
+          ...metadata?.display,
+          ...display,
+          ...(media ? { media } : {}),
+        },
+      }
+    }
+
+    function streamingToolMetadata(part: MessageV2.ToolPart): Record<string, any> | undefined {
+      const state = part.state
+      return state.status === "pending" || state.status === "generating" || state.status === "running"
+        ? (state.metadata as Record<string, any> | undefined)
+        : undefined
+    }
+
+    async function settleToolPart(part: MessageV2.ToolPart, outcome: ToolOutcome) {
+      settlingToolCalls.add(part.callID)
+      // Terminal settlement must serialize behind queued and in-flight
+      // running-state flushes for the same call (#1335): a stale full-part
+      // running write that is already underway has to commit before the
+      // terminal state, never after it. The settling mark goes down before
+      // the queue wait so replayed stream events are ignored during that
+      // window exactly as for settled calls; the in-memory part moves to its
+      // terminal state as soon as the durable write lands, and flushes
+      // queued mid-settlement run behind that write.
+      const previous = toolCallStateUpdates.get(part.callID)?.catch(() => {}) ?? Promise.resolve()
+      const write = previous.then(async () => {
+        // Resolve the live tracked part at write time: callers may hold a
+        // detached durable snapshot (resolveUnsettledParts scans loaded
+        // parts), and an in-flight flush that committed ahead of us carries
+        // fresher metadata than the caller's copy.
+        const live = toolcalls[part.callID] ?? part
+        const startTime = toolStartTime(live)
+        await Observability.emit("tool.settle.start", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: live.callID,
+          tool: live.tool,
+          data: {
+            status: outcome.status,
+          },
+        })
+        if (outcome.status === "completed") {
+          const updated = await Session.updatePart({
+            ...live,
+            activityEvidence: outcome.result.activityEvidence ?? live.activityEvidence,
+            state: {
+              status: "completed",
+              input: SessionToolInput.canonical(outcome.input),
+              output: outcome.result.output,
+              metadata: ToolTimeout.mergeMetadata(
+                live.state.status === "running" ? live.state.metadata : undefined,
+                outcome.result.metadata,
+              )!,
+              title: outcome.result.title,
+              time: { start: startTime, end: Date.now() },
+              attachments: outcome.result.attachments,
+            },
+          })
+          Object.assign(live, updated)
+          await outcome.result.afterPersist?.()
+        } else {
+          const updated = await Session.updatePart({
+            ...live,
+            state: {
+              status: "error",
+              input: SessionToolInput.canonical(outcome.input),
+              error: outcome.error,
+              reason: input.abort.aborted && input.abort.reason?.name === "AbortError" ? "cancelled" : undefined,
+              metadata: ToolTimeout.mergeMetadata(streamingToolMetadata(live), outcome.metadata),
+              time: { start: startTime, end: Date.now() },
+            },
+          })
+          Object.assign(live, updated)
+          const paused =
+            !input.abort.aborted &&
+            (await SessionLifecycle.blocksDrive(await SessionManager.getSession(input.sessionID)))
+          if (paused && !input.abort.aborted) {
+            SessionManager.signalAbort(input.sessionID, {
+              pauseTurn: true,
+              rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+            })
+          }
+        }
+        settledToolCalls.add(live.callID)
+        await Observability.emit("tool.settle.end", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: live.callID,
+          tool: live.tool,
+          level: outcome.status === "error" ? "error" : "info",
+          data: {
+            status: outcome.status,
+          },
+        })
+      })
+      toolCallStateUpdates.set(part.callID, write)
+      try {
+        await write
+      } finally {
+        settlingToolCalls.delete(part.callID)
+        if (toolCallStateUpdates.get(part.callID) === write) toolCallStateUpdates.delete(part.callID)
+      }
+    }
+
+    function toolSettlementSnapshot(callID?: string, detail = false): Record<string, any> {
+      const ids = detail
+        ? callID
+          ? [callID]
+          : [...new Set([...Object.keys(toolcalls), ...executions.keys(), ...settledToolCalls])]
+        : []
+      const part = callID ? toolcalls[callID] : undefined
+      const slot = callID ? executions.get(callID) : undefined
+      return {
+        activeToolCallCount: Object.keys(toolcalls).length,
+        activeExecutionCount: executions.size,
+        executionCallbackCount: executionCallbacks.size,
+        settledToolCallCount: settledToolCalls.size,
+        settlementPromiseCount: settlementPromises.size,
+        ...(callID
+          ? {
+              callID,
+              tool: part?.tool,
+              partStatus: part?.state.status,
+              hasPart: Boolean(part),
+              hasSlot: Boolean(slot),
+              hasExecutionCallback: executionCallbacks.has(callID),
+              slotStatus: slot?.status,
+              hasOutcome: Boolean(slot?.outcome),
+              hasSettlementPromise: settlementPromises.has(callID),
+              settled: settledToolCalls.has(callID),
+            }
+          : {}),
+        ...(detail
+          ? {
+              calls: ids.map((id) => {
+                const part = toolcalls[id]
+                const slot = executions.get(id)
+                return {
+                  callID: id,
+                  tool: part?.tool,
+                  partStatus: part?.state.status,
+                  hasPart: Boolean(part),
+                  hasSlot: Boolean(slot),
+                  hasExecutionCallback: executionCallbacks.has(id),
+                  slotStatus: slot?.status,
+                  hasOutcome: Boolean(slot?.outcome),
+                  registeredAt: slot?.registeredAt,
+                  resolvedAt: slot?.resolvedAt,
+                  hasSettlementPromise: settlementPromises.has(id),
+                  settled: settledToolCalls.has(id),
+                }
+              }),
+            }
+          : {}),
+      }
+    }
+
+    function shouldIgnoreSettledStreamEvent(callID: string, event: "tool-input-start" | "tool-call", tool: string) {
+      if (!settledToolCalls.has(callID) && !settlingToolCalls.has(callID)) return false
+      delete generatingAccum[callID]
+      delete generatingBytes[callID]
+      log.warn("ignoring tool stream event after settlement", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID,
+        tool,
+        event,
+        snapshot: toolSettlementSnapshot(callID),
+      })
+      return true
+    }
+
+    function settleTrackedExecution(toolCallId: string): Promise<void> | undefined {
+      const existing = settlementPromises.get(toolCallId)
+      if (existing) {
+        log.info("tool.execution.settle.reuse", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: toolCallId,
+          snapshot: toolSettlementSnapshot(toolCallId),
+        })
+        return existing
+      }
+
+      const slot = executions.get(toolCallId)
+      const outcome = slot?.outcome
+      const part = toolcalls[toolCallId]
+      if (!slot || !outcome || !part || part.state.status !== "running") {
+        log.info("tool.execution.settle.skip", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: toolCallId,
+          reason: !slot ? "missing_slot" : !outcome ? "missing_outcome" : !part ? "missing_part" : "part_not_running",
+          snapshot: toolSettlementSnapshot(toolCallId),
+        })
+        return undefined
+      }
+
+      log.info("tool.execution.settle.start", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID: toolCallId,
+        tool: part.tool,
+        outcomeStatus: outcome.status,
+        snapshot: toolSettlementSnapshot(toolCallId),
+      })
+
+      const settlement = (async () => {
+        await settleToolPart(part, outcome)
+        executions.delete(toolCallId)
+        delete toolcalls[toolCallId]
+        log.info("tool.execution.settle.completed", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: toolCallId,
+          tool: part.tool,
+          snapshot: toolSettlementSnapshot(toolCallId),
+        })
+      })()
+      settlementPromises.set(toolCallId, settlement)
+      void settlement
+        .catch((error) =>
+          log.warn("failed to settle tracked tool execution", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: toolCallId,
+            tool: part.tool,
+            error,
+            snapshot: toolSettlementSnapshot(toolCallId),
+          }),
+        )
+        .finally(() => settlementPromises.delete(toolCallId))
+      return settlement
+    }
+
+    async function waitForTrackedSettlements() {
+      if (settlementPromises.size === 0) return
+      log.info("tool.execution.settlement.wait", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        snapshot: toolSettlementSnapshot(),
+      })
+      await Promise.allSettled([...settlementPromises.values()])
+    }
+
+    async function pendingExecutionWaitMs(part: MessageV2.ToolPart): Promise<number> {
+      const metadata =
+        part.state.status === "pending" || part.state.status === "generating" || part.state.status === "running"
+          ? (part.state.metadata as Record<string, any> | undefined)
+          : undefined
+      const toolTimeout = metadata?.toolTimeout
+      const configured = await TimeoutConfig.resolve()
+      const toolTimeoutMs =
+        toolTimeout && typeof toolTimeout === "object" && typeof toolTimeout.toolTimeoutMs === "number"
+          ? toolTimeout.toolTimeoutMs
+          : (configured.toolOverrides[part.tool] ?? configured.toolDefaultMs)
+      if (!Number.isFinite(toolTimeoutMs) || toolTimeoutMs <= 0) {
+        return TOOL_SETTLE_TIMEOUT
+      }
+
+      const startTime = toolStartTime(part)
+      const remaining = Math.max(0, startTime + toolTimeoutMs - Date.now())
+      return Math.max(TOOL_SETTLE_TIMEOUT, remaining + TOOL_SETTLE_TIMEOUT)
+    }
+
+    async function raceWithTimeout(promise: Promise<unknown>, ms: number) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeout = new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), ms)
+        if (typeof timer === "object" && "unref" in timer) timer.unref()
+      })
+      try {
+        return await Promise.race([promise, timeout])
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    }
+
+    async function waitForPendingExecution(part: MessageV2.ToolPart): Promise<ToolOutcome | undefined> {
+      const slot = executions.get(part.callID)
+      if (!slot) {
+        log.warn("tool.execution.wait.missing_slot", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: part.callID,
+          tool: part.tool,
+          snapshot: toolSettlementSnapshot(part.callID),
+        })
+        return undefined
+      }
+      if (slot.outcome) {
+        log.info("tool.execution.wait.outcome_ready", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: part.callID,
+          tool: part.tool,
+          slotStatus: slot.status,
+          outcomeStatus: slot.outcome.status,
+        })
+        return slot.outcome
+      }
+
+      const waitMs = await pendingExecutionWaitMs(part)
+      log.info("tool.execution.wait.pending", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID: part.callID,
+        tool: part.tool,
+        waitMs,
+        snapshot: toolSettlementSnapshot(part.callID),
+      })
+      const outcome = (await raceWithTimeout(slot.promise, waitMs)) as ToolOutcome | undefined
+      log[outcome ? "info" : "warn"]("tool.execution.wait.finished", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID: part.callID,
+        tool: part.tool,
+        waitMs,
+        outcomeStatus: outcome?.status,
+        snapshot: toolSettlementSnapshot(part.callID),
+      })
+      return outcome
+    }
+
+    function missingExecutionSlotMetadata(part: MessageV2.ToolPart): Record<string, any> {
+      return {
+        reason: "missing_execution_slot",
+        tool: part.tool,
+        callID: part.callID,
+        messageID: part.messageID,
+        sessionID: part.sessionID,
+        partStatus: part.state.status,
+        streamMetadata: streamingToolMetadata(part),
+      }
+    }
+    function pendingExecutionSlotMetadata(
+      part: MessageV2.ToolPart,
+      slot: ToolExecutionSlotInternal,
+    ): Record<string, any> {
+      return {
+        reason: "pending_execution_slot_timeout",
+        tool: part.tool,
+        callID: part.callID,
+        messageID: part.messageID,
+        sessionID: part.sessionID,
+        partStatus: part.state.status,
+        slotStatus: slot.status,
+        registeredAt: slot.registeredAt,
+        resolvedAt: slot.resolvedAt,
+        streamMetadata: streamingToolMetadata(part),
+      }
+    }
+
+    function stageToolCallState(callID: string, state: ToolCallState) {
+      const pending = pendingToolCallStates.get(callID)
+      pendingToolCallStates.set(callID, {
+        input: state.input,
+        title: state.title ?? pending?.title,
+        metadata: ToolTimeout.mergeMetadata(pending?.metadata, state.metadata),
+        start: state.start ?? pending?.start,
+        onProgress: state.onProgress ?? pending?.onProgress,
+      })
+    }
+
+    async function flushToolCallState(callID: string) {
+      const match = toolcalls[callID]
+      if (!match || match.state.status !== "running") return
+      const state = pendingToolCallStates.get(callID)
+      if (!state) return
+      pendingToolCallStates.delete(callID)
+
+      const presentation = {
+        title: state.title ?? match.state.title,
+        metadata: structuredClone(
+          ToolTimeout.mergeMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
+        ),
+      }
+      await SecretMask.transformResult(presentation)
+      const previousState = match.state
+      const updated = await Session.updatePart({
+        ...match,
+        state: {
+          ...match.state,
+          ...presentation,
+          status: "running",
+          input: state.input,
+          time: {
+            start: state.start ?? match.state.time.start,
+          },
+        },
+      })
+      Object.assign(match, updated)
+      if (
+        updated.type === "tool" &&
+        updated.state.status === "running" &&
+        (updated.state.title !== previousState.title || !Bun.deepEquals(updated.state.metadata, previousState.metadata))
+      )
+        state.onProgress?.()
+    }
+
+    async function queueToolCallStateFlush(callID: string) {
+      const previous = toolCallStateUpdates.get(callID)?.catch(() => {}) ?? Promise.resolve()
+      const update = previous.then(() => flushToolCallState(callID))
+      toolCallStateUpdates.set(callID, update)
+      try {
+        await update
+      } finally {
+        if (toolCallStateUpdates.get(callID) === update) toolCallStateUpdates.delete(callID)
+      }
+    }
+
+    async function updateToolCallState(callID: string, state: ToolCallState) {
+      stageToolCallState(callID, state)
+      await queueToolCallStateFlush(callID)
+    }
+
+    function forgetToolCall(callID: string) {
+      executions.delete(callID)
+      pendingToolCallStates.delete(callID)
+      toolCallStateUpdates.delete(callID)
+      delete toolcalls[callID]
+      delete generatingAccum[callID]
+      delete generatingBytes[callID]
+    }
+
+    async function waitForOutcomesAndSettle(parts: MessageV2.Part[]) {
+      await Promise.allSettled(
+        parts.map(async (part) => {
+          if (part.type !== "tool" || part.state.status === "completed" || part.state.status === "error") return
+          if (part.type === "tool" && settledToolCalls.has(part.callID)) return
+          const outcome = await waitForPendingExecution(part)
+          if (!outcome) return
+          await settleTrackedExecution(part.callID)
+        }),
+      )
+    }
+
+    async function resolveUnsettledParts(parts: MessageV2.Part[], fastAbort: boolean) {
+      log.info("tool.execution.unsettled.scan", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        fastAbort,
+        partCount: parts.length,
+        snapshot: toolSettlementSnapshot(),
+      })
+      for (const part of parts) {
+        if (part.type !== "tool" || part.state.status === "completed" || part.state.status === "error") continue
+        if (settledToolCalls.has(part.callID)) continue
+        const slot = executions.get(part.callID)
+        if (slot?.outcome) {
+          log.info("tool.execution.unsettled.settle_ready", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: part.callID,
+            tool: part.tool,
+            outcomeStatus: slot.outcome.status,
+            snapshot: toolSettlementSnapshot(part.callID),
+          })
+          const tracked = toolcalls[part.callID] ?? part
+          await settleToolPart(tracked, slot.outcome)
+          forgetToolCall(part.callID)
+        } else {
+          const reason = slot ? "pending_execution_slot_timeout" : "missing_execution_slot"
+          log.warn("tool.execution.unsettled.erroring_part", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: part.callID,
+            tool: part.tool,
+            reason,
+            fastAbort,
+            snapshot: toolSettlementSnapshot(part.callID),
+          })
+          const tracked = toolcalls[part.callID] ?? part
+          await settleToolPart(tracked, {
+            status: "error",
+            input:
+              tracked.state.status === "running" ||
+              tracked.state.status === "pending" ||
+              tracked.state.status === "generating"
+                ? tracked.state.input
+                : {},
+            error: unresolvedToolError(fastAbort),
+            // Streamed metadata is re-read from the live part inside
+            // settleToolPart once the flush queue drains; only the
+            // diagnostic metadata is fixed at scan time.
+            metadata: fastAbort
+              ? undefined
+              : slot
+                ? pendingExecutionSlotMetadata(tracked, slot)
+                : missingExecutionSlotMetadata(tracked),
+          })
+          forgetToolCall(part.callID)
+        }
+      }
+    }
+
+    function beginExecution(callID: string): ToolExecutionSlot {
+      const existing = executions.get(callID)
+      if (existing) {
+        log.info("tool.execution.slot.reuse", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID,
+          snapshot: toolSettlementSnapshot(callID),
+        })
+        return existing
+      }
+
+      const base = createSlot(callID)
+      const underlyingResolve = base.resolve
+      base.resolve = (outcome: ToolOutcome) => {
+        if (base.status === "resolved") {
+          log.warn("ignoring duplicate tool execution outcome", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID,
+            status: outcome.status,
+            existingStatus: base.outcome?.status,
+            snapshot: toolSettlementSnapshot(callID),
+          })
+          return
+        }
+        log.info("tool.execution.slot.resolve", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID,
+          outcomeStatus: outcome.status,
+          snapshot: toolSettlementSnapshot(callID),
+        })
+        underlyingResolve.call(base, outcome)
+        const internal = executions.get(callID)
+        if (internal) internal.resolvedAt = Date.now()
+        void settleTrackedExecution(callID)
+      }
+      const slot: ToolExecutionSlotInternal = {
+        callID: base.callID,
+        promise: base.promise,
+        resolve: base.resolve,
+        complete: base.complete,
+        fail: base.fail,
+        get outcome() {
+          return base.outcome
+        },
+        get status() {
+          return base.status
+        },
+        registeredAt: Date.now(),
+      }
+      executions.set(callID, slot)
+      log.info("tool.execution.slot.created", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID,
+        snapshot: toolSettlementSnapshot(callID),
+      })
+      void settleTrackedExecution(callID)
+      return slot
+    }
+
+    function executeOnce<T>(callID: string, execute: () => Promise<T>): Promise<T> {
+      const existing = executionCallbacks.get(callID)
+      if (existing) {
+        log.warn("reusing tool execution callback", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID,
+          snapshot: toolSettlementSnapshot(callID),
+        })
+        return existing as Promise<T>
+      }
+
+      const execution = Promise.resolve().then(execute)
+      executionCallbacks.set(callID, execution)
+      return execution
+    }
+
+    function dispose(reason = "manual") {
+      const before = toolSettlementSnapshot(undefined, true)
+      for (const callID of Object.keys(toolcalls)) delete toolcalls[callID]
+      modelInputs.clear()
+      executions.clear()
+      pendingToolCallStates.clear()
+      toolCallStateUpdates.clear()
+      executionCallbacks.clear()
+      settlementPromises.clear()
+      settledToolCalls.clear()
+      settlingToolCalls.clear()
+      recordedToolFailures.clear()
+      for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
+      for (const callID of Object.keys(generatingBytes)) delete generatingBytes[callID]
+      log.info("processor disposed", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        reason,
+        before,
+      })
+    }
+
+    const result = {
+      get message() {
+        return input.assistantMessage
+      },
+      async inputImages(toolCallID: string) {
+        const identity = modelCalls.get(toolCallID)
+        return identity ? readImageInputReceipt(identity) : undefined
+      },
+      modelInputFromToolCall(toolCallID: string) {
+        return modelInputs.get(toolCallID)
+      },
+      partFromToolCall(toolCallID: string) {
+        return toolcalls[toolCallID]
+      },
+      beginExecution,
+      updateToolCallState,
+      executeOnce,
+      dispose,
+      async executeToolCall(call: {
+        callID: string
+        toolName: string
+        args: Record<string, unknown>
+        tool: AITool
+        executor?: import("./tool-scheduler").ToolExecutorKind
+        parentCallID?: string
+        workBrief?: string
+      }): Promise<ToolOutcomeCompletedResult> {
+        const part = MessageV2.ToolPart.parse(
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: input.assistantMessage.id,
+            sessionID: input.sessionID,
+            type: "tool",
+            tool: call.toolName,
+            callID: call.callID,
+            workBrief: call.workBrief,
+            state: { status: "running", input: call.args, time: { start: Date.now() } },
+          }),
+        )
+        toolcalls[call.callID] = part
+        const slot = beginExecution(call.callID)
+        let executionFailed = false
+        let executionError: unknown
+        try {
+          await ToolScheduler.dispatch(
+            {
+              sessionID: input.sessionID,
+              generation: input.generation ?? 0,
+              messageID: input.assistantMessage.id,
+              callID: call.callID,
+              toolName: call.toolName,
+              input: call.args,
+              executor: call.executor,
+              processor: result,
+              signal: input.abort,
+              tool: {
+                ...call.tool,
+                async execute(args, options) {
+                  try {
+                    if (!call.tool.execute) throw new Error(`Tool "${call.toolName}" has no executable implementation`)
+                    return await call.tool.execute(args, options)
+                  } catch (error) {
+                    executionFailed = true
+                    executionError = error
+                    throw error
+                  }
+                },
+              },
+            },
+            call.parentCallID,
+          )
+          await settleTrackedExecution(call.callID)
+          if (executionFailed) throw executionError
+          if (slot.outcome?.status === "completed") return slot.outcome.result
+          if (input.abort.aborted) throw input.abort.reason ?? new DOMException("Tool execution aborted", "AbortError")
+          throw new Error(slot.outcome?.status === "error" ? slot.outcome.error : "Tool execution did not settle")
+        } catch (error) {
+          if (slot.status === "pending") slot.fail(call.args, error instanceof Error ? error.message : String(error))
+          await settleTrackedExecution(call.callID)
+          throw error
+        }
+      },
+      async process(streamInput: ProcessInput) {
+        log.info("process")
+        const inputBindings =
+          streamInput.intentBindings ??
+          new Map(
+            streamInput.toolDefinitions.map((definition) => [
+              definition.id,
+              ToolIntent.snapshot(definition.inputSchema),
+            ]),
+          )
+        let recordingFailure: InstanceType<typeof RolloutRecordingError> | undefined
+        const turnTraceId = ObservabilityContext.current().traceId ?? Observability.traceId("turn")
+        const autoExpandedByTool = new Map<string, ToolResolver.AutoExpandedTool>()
+        const resolveAutoExpand = async (toolName: string): Promise<ToolResolver.AutoExpandedTool | undefined> => {
+          const cached = autoExpandedByTool.get(toolName)
+          if (cached) return cached
+          if (!streamInput.resolverInput) return undefined
+          try {
+            const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
+            const resolved = await DynamicToolResolver.autoExpandTool(
+              { ...streamInput.resolverInput, processor: result },
+              toolName,
+            )
+            if (resolved) autoExpandedByTool.set(toolName, resolved)
+            return resolved
+          } catch (error) {
+            // Fail closed: any resolution failure falls back to the diagnostic
+            // stub path (deferred diagnostic) instead of aborting the whole
+            // dispatch loop. The tool call settles as an error below.
+            log.warn("tool.auto_expand.resolution_failed", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              tool: toolName,
+              error,
+            })
+            return undefined
+          }
+        }
+        const markAutoExpanded = async (
+          call: { callID: string; toolName: string },
+          expanded: ToolResolver.AutoExpandedTool,
+        ) => {
+          const part = toolcalls[call.callID]
+          // A settled call must never receive a late full-part write here;
+          // this guard keeps the bypass aligned with flushToolCallState().
+          if (
+            part &&
+            part.state.status === "running" &&
+            !settledToolCalls.has(call.callID) &&
+            !settlingToolCalls.has(call.callID)
+          ) {
+            const updated = await Session.updatePart({
+              ...part,
+              state: {
+                ...part.state,
+                metadata: ToolTimeout.mergeMetadata(part.state.metadata as Record<string, any> | undefined, {
+                  autoExpanded: true,
+                }),
+              },
+            })
+            toolcalls[call.callID] = updated as MessageV2.ToolPart
+          }
+          await Observability.emit("tool.auto_expanded", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: call.callID,
+            tool: call.toolName,
+            data: {
+              ...(expanded.group ? { group: expanded.group } : {}),
+              ...(expanded.activatedTool ? { activatedTool: expanded.activatedTool } : {}),
+            },
+          }).catch(() => {})
+        }
+        const turnStartedAt = Date.now()
+        await Observability.emit("session.turn.start", {
+          traceId: turnTraceId,
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          data: {
+            parentID: input.assistantMessage.parentID,
+            agent: input.assistantMessage.agent,
+            model: input.model.id,
+            providerID: input.model.providerID,
+          },
+        })
+        await Bus.publish(SessionEvent.TurnStart, {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          agent: input.assistantMessage.agent,
+        })
+        const config = await Config.current()
+        const shouldBreak = config.execution?.continueOnDeny !== true
+        const maxRetryAttempts = config.retry?.unlimited
+          ? "unlimited"
+          : (config.retry?.maxAttempts ?? SessionRetry.RETRY_MAX_ATTEMPTS)
+        const retainedPartIDs = new Set(
+          (await MessageV2.parts({ sessionID: input.sessionID, messageID: input.assistantMessage.id })).map(
+            (part) => part.id,
+          ),
+        )
+        let modelStreamSettled = false
+        function settleModelStream(error?: MessageV2.Assistant["error"]) {
+          if (modelStreamSettled) return
+          modelStreamSettled = true
+          streamInput.onModelStreamSettled?.(error)
+        }
+        try {
+          while (true) {
+            let streamAborted = false
+            let retryEligible = false
+            let contextUsageEnrichment:
+              | {
+                  callID?: string
+                  draft: Promise<ContextUsage.Draft | undefined>
+                  totalInput: number
+                }
+              | undefined
+            try {
+              input.abort.throwIfAborted()
+              if (attempt > 0) {
+                await waitForTrackedSettlements()
+                await Promise.all(toolCallStateUpdates.values())
+                await Session.flushPartWrites(input.sessionID)
+                const parts = await MessageV2.parts({
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                })
+                for (const part of parts) {
+                  if (retainedPartIDs.has(part.id) || part.type === "patch" || part.type === "step-finish") continue
+                  await Session.removePart({
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                    partID: part.id,
+                  })
+                }
+                dispose("retry")
+                blocked = false
+                input.assistantMessage.finish = undefined
+                await Session.updateMessage(input.assistantMessage)
+              }
+              let currentText: MessageV2.TextPart | undefined
+              let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
+              const deferredToolCalls: Array<{
+                callID: string
+                toolName: string
+                input: ReturnType<typeof SessionToolInput.canonical>
+              }> = []
+              SessionMemoryPressure.probe("processor.before_llm_stream", {
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+              })
+              executionPhase("preparing")
+              activity("preparing_context")
+              const {
+                executionTools: _executionTools,
+                executorKinds: _executorKinds,
+                memoryTurn: _memoryTurn,
+                autoExpandable: _autoExpandable,
+                resolverInput: _resolverInput,
+                intentBindings: _intentBindings,
+                onModelStreamSettled: _onModelStreamSettled,
+                ...agentTurnInput
+              } = streamInput
+              retryEligible = true
+              if (streamInput.modelSelection)
+                await SessionModelSelection.applied(
+                  input.sessionID,
+                  streamInput.modelSelection,
+                  input.assistantMessage.id,
+                )
+              const stream = await AgentTurn.stream({
+                ...agentTurnInput,
+                usageRole: streamInput.usageRole ?? "conversation",
+                retryIndex: attempt,
+                onPhase: runtime.bind((phase) => {
+                  executionPhase(phase === "waiting_model" ? "running_agent" : phase)
+                  activity(phase)
+                }),
+                recovery: { immediate: recovery.takeImmediate(), onWait: runtime.bind(recovery.providerWait) },
+              })
+              const rollout = stream.rollout
+              const stepFinishes: MessageV2.StepFinishPart[] = []
+              if (rollout) {
+                const previous = input.assistantMessage.accounting
+                input.assistantMessage.accounting = {
+                  kind: "rollout",
+                  callIDs: [...new Set([...(previous?.kind === "rollout" ? previous.callIDs : []), rollout.callID])],
+                }
+              }
+              streamInput.memoryTurn?.streamStarted()
+              SessionMemoryPressure.probe("processor.after_llm_stream", {
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+              })
+              const llmSpan = ObservabilitySpans.start({
+                name: "llm.request",
+                module: "llm",
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+                attributes: {
+                  provider: input.model.providerID,
+                  model: input.model.id,
+                  executionPhase: "waiting_model",
+                  activityState: "unknown",
+                },
+              })
+              const llmStartedAt = Date.now()
+              let firstTokenSeen = false
+              let firstContent: { at: number; kind: "text" | "reasoning" | "tool" } | undefined
+              let firstVisibleText: { at: number; kind: "text" } | undefined
+              let lastTraceActivityAt = llmStartedAt
+              let lastContentKind: "text" | "reasoning" | "tool" | undefined
+              function observeContent(kind: "text" | "reasoning" | "tool", text: string) {
+                if (!text.trim() || !isCurrent()) return
+                const at = Date.now()
+                firstContent ??= { at, kind }
+                if (kind === "text") firstVisibleText ??= { at, kind }
+                if (llmSpan) llmSpan.lastActivityTime = at
+                if (kind !== lastContentKind || at - lastTraceActivityAt >= TRACE_ACTIVITY_INTERVAL_MS) {
+                  lastTraceActivityAt = at
+                  lastContentKind = kind
+                  ObservabilitySpans.activity(llmSpan, {
+                    executionPhase: "responding",
+                    activityState: "recent_progress",
+                    contentKind: kind,
+                  })
+                }
+                activity("responding")
+              }
+              function recordFirstDelta(kind: "text" | "reasoning") {
+                if (firstTokenSeen) return
+                firstTokenSeen = true
+                ObservabilityMetrics.record({
+                  name: "llm.stream.first_token",
+                  value: Date.now() - llmStartedAt,
+                  unit: "ms",
+                  module: "llm",
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  labels: {
+                    provider: input.model.providerID,
+                    model: input.model.id,
+                    kind,
+                    clock: "stream_opened",
+                    semantics: "first_text_or_reasoning_delta",
+                  },
+                })
+              }
+              async function flushFirstContentMetrics() {
+                if (!firstContent) return
+                const attempts = rollout
+                  ? await RolloutLedger.attempts(rollout.owner, rollout.runID, rollout.callID)
+                  : []
+                for (const [name, observation] of [
+                  ["llm.stream.first_content", firstContent],
+                  ["llm.stream.first_visible_text", firstVisibleText],
+                ] as const) {
+                  if (!observation) continue
+                  const started = attempts.filter((attempt) => attempt.started <= observation.at)
+                  const corresponding = started.at(-1)
+                  const ambiguous =
+                    corresponding !== undefined &&
+                    started.some(
+                      (attempt) =>
+                        attempt !== corresponding &&
+                        (attempt.ended === undefined || attempt.ended > corresponding.started),
+                    )
+                  const dispatch = corresponding?.timing?.sentAt
+                  const sentAt =
+                    !ambiguous && dispatch !== undefined && dispatch <= observation.at ? dispatch : undefined
+                  ObservabilityMetrics.record({
+                    name: sentAt === undefined ? `${name}.unavailable` : name,
+                    value: sentAt === undefined ? 1 : observation.at - sentAt,
+                    unit: sentAt === undefined ? "count" : "ms",
+                    module: "llm",
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                    callID: rollout?.callID,
+                    labels: {
+                      provider: input.model.providerID,
+                      model: input.model.id,
+                      kind: observation.kind,
+                      clock: sentAt === undefined ? "unknown" : "transport.sentAt",
+                      observedAt: "processor",
+                      ...(sentAt === undefined ? { reason: ambiguous ? "attempt_ambiguous" : "dispatch_unknown" } : {}),
+                    },
+                  })
+                }
+              }
+              const streamStats = {
+                text: { lastChunkAt: undefined as number | undefined, outputChars: 0, gapTotalMs: 0, gapCount: 0 },
+                reasoning: {
+                  lastChunkAt: undefined as number | undefined,
+                  outputChars: 0,
+                  gapTotalMs: 0,
+                  gapCount: 0,
+                },
+              }
+
+              function recordChunkMetrics(kind: "text" | "reasoning", chars: number) {
+                const now = Date.now()
+                const stats = streamStats[kind]
+                if (stats.lastChunkAt !== undefined) {
+                  stats.gapTotalMs += now - stats.lastChunkAt
+                  stats.gapCount++
+                }
+                stats.lastChunkAt = now
+                stats.outputChars += chars
+              }
+
+              function flushChunkMetrics() {
+                const elapsedSeconds = Math.max(0.001, (Date.now() - llmStartedAt) / 1000)
+                for (const kind of ["text", "reasoning"] as const) {
+                  const stats = streamStats[kind]
+                  if (stats.gapCount > 0) {
+                    ObservabilityMetrics.record({
+                      name: "llm.stream.chunk_gap",
+                      value: stats.gapTotalMs / stats.gapCount,
+                      unit: "ms",
+                      module: "llm",
+                      sessionID: input.sessionID,
+                      messageID: input.assistantMessage.id,
+                      labels: { provider: input.model.providerID, model: input.model.id, kind },
+                    })
+                  }
+                  if (stats.outputChars === 0) continue
+                  ObservabilityMetrics.record({
+                    name: "llm.stream.output_chars_per_second",
+                    value: stats.outputChars / elapsedSeconds,
+                    unit: "count",
+                    module: "llm",
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                    labels: { provider: input.model.providerID, model: input.model.id, kind },
+                  })
+                }
+              }
+
+              try {
+                if (rollout) await Session.updateMessage(input.assistantMessage)
+                for await (const value of stream.fullStream) {
+                  input.abort.throwIfAborted()
+                  if (
+                    isCurrent() &&
+                    Date.now() - (llmSpan?.heartbeatTime ?? llmStartedAt) >= TRACE_ACTIVITY_INTERVAL_MS
+                  )
+                    ObservabilitySpans.heartbeat(llmSpan, { observerLiveness: "alive" })
+                  if (
+                    streamInput.toolChoice === "none" &&
+                    (value.type === "tool-input-start" || value.type === "tool-call")
+                  ) {
+                    retryEligible = false
+                    throw new Error("Tool calls are prohibited for this model request")
+                  }
+                  switch (value.type) {
+                    case "start":
+                      ObservabilityMetrics.record({
+                        name: "llm.stream.start",
+                        value: Date.now() - llmStartedAt,
+                        unit: "ms",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id },
+                      })
+                      break
+
+                    case "reasoning-start":
+                      if (value.id in reasoningMap) {
+                        continue
+                      }
+                      reasoningMap[value.id] = {
+                        id: Identifier.ascending("part"),
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.assistantMessage.sessionID,
+                        type: "reasoning",
+                        text: "",
+                        time: {
+                          start: Date.now(),
+                        },
+                        metadata: value.providerMetadata,
+                      }
+                      break
+
+                    case "reasoning-delta":
+                      recordFirstDelta("reasoning")
+                      if (!value.text) break
+                      activity("responding")
+                      observeContent("reasoning", value.text)
+                      if (value.text) {
+                        streamInput.memoryTurn?.addOutputChars(value.text.length)
+                        ObservabilityMetrics.record({
+                          name: "llm.stream.output_chars",
+                          value: value.text.length,
+                          unit: "count",
+                          module: "llm",
+                          sessionID: input.sessionID,
+                          messageID: input.assistantMessage.id,
+                          labels: { kind: "reasoning" },
+                        })
+                        recordChunkMetrics("reasoning", value.text.length)
+                      }
+                      if (value.id in reasoningMap) {
+                        const part = reasoningMap[value.id]
+                        part.text += value.text
+                        if (value.providerMetadata) part.metadata = value.providerMetadata
+                        if (part.text) await Session.updatePartDelta(part, value.text)
+                      }
+                      break
+
+                    case "reasoning-end":
+                      if (value.id in reasoningMap) {
+                        const part = reasoningMap[value.id]
+                        part.text = part.text.trimEnd()
+
+                        part.time = {
+                          ...part.time,
+                          end: Date.now(),
+                        }
+                        if (value.providerMetadata) part.metadata = value.providerMetadata
+                        await Session.updatePart(part)
+                        delete reasoningMap[value.id]
+                      }
+                      break
+
+                    case "tool-input-start": {
+                      if (shouldIgnoreSettledStreamEvent(value.id, "tool-input-start", value.toolName)) break
+                      activity("responding")
+                      observeContent("tool", value.toolName)
+                      const part = await Session.updatePart({
+                        id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.assistantMessage.sessionID,
+                        type: "tool",
+                        tool: value.toolName,
+                        callID: value.id,
+                        state: {
+                          status: "pending",
+                          input: {},
+                          raw: "",
+                          metadata: runningToolMetadata(
+                            value.toolName,
+                            "providerMetadata" in value ? value.providerMetadata : undefined,
+                          ),
+                        },
+                      })
+                      toolcalls[value.id] = part as MessageV2.ToolPart
+                      generatingAccum[value.id] = ""
+                      generatingBytes[value.id] = 0
+                      break
+                    }
+
+                    case "tool-input-delta": {
+                      const match = toolcalls[value.id]
+                      if (!match || settledToolCalls.has(value.id) || settlingToolCalls.has(value.id)) break
+                      const prevRaw = generatingAccum[value.id]
+                      if (prevRaw === undefined) break
+                      const receivedBytes = (generatingBytes[value.id] ?? 0) + SessionBounds.byteLength(value.delta)
+                      if (receivedBytes > SessionBounds.TOOL_INPUT_MAX_BYTES) {
+                        const error = SessionBounds.toolInputExceededMessage()
+                        const part = await Session.updatePart({
+                          ...match,
+                          state: {
+                            status: "error",
+                            input: {},
+                            error,
+                            metadata: streamingToolMetadata(match),
+                            time: { start: Date.now(), end: Date.now() },
+                          },
+                        })
+                        toolcalls[value.id] = part as MessageV2.ToolPart
+                        settledToolCalls.add(value.id)
+                        delete generatingAccum[value.id]
+                        delete generatingBytes[value.id]
+                        throw new Error(error)
+                      }
+                      observeContent("tool", value.delta)
+                      generatingBytes[value.id] = receivedBytes
+                      const raw = prevRaw + value.delta
+                      generatingAccum[value.id] = raw
+                      streamInput.memoryTurn?.observeToolRawChars(value.id, raw.length)
+                      // Throttle generating updates: emit when enough new content has accumulated
+                      const published = match.state.status === "generating" ? match.state.charsReceived : 0
+                      if (raw.length - published < 50) break
+                      const part = await Session.updatePart({
+                        ...match,
+                        state: {
+                          status: "generating",
+                          input: {},
+                          raw,
+                          charsReceived: raw.length,
+                          metadata: streamingToolMetadata(match),
+                        },
+                      })
+                      toolcalls[value.id] = part as MessageV2.ToolPart
+                      break
+                    }
+
+                    case "tool-input-end": {
+                      const match = toolcalls[value.id]
+                      if (!match || settledToolCalls.has(value.id) || settlingToolCalls.has(value.id)) break
+                      const raw = generatingAccum[value.id]
+                      if (!raw) break
+                      streamInput.memoryTurn?.observeToolRawChars(value.id, raw.length)
+                      // Final flush: push the complete accumulated raw even if it didn't hit the throttle
+                      const part = await Session.updatePart({
+                        ...match,
+                        state: {
+                          status: "generating",
+                          input: {},
+                          raw,
+                          charsReceived: raw.length,
+                          metadata: streamingToolMetadata(match),
+                        },
+                      })
+                      toolcalls[value.id] = part as MessageV2.ToolPart
+                      break
+                    }
+
+                    case "tool-call": {
+                      log.info("tool.stream.tool_call.received", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                        hadPart: Boolean(toolcalls[value.toolCallId]),
+                        hadSlot: executions.has(value.toolCallId),
+                        snapshot: toolSettlementSnapshot(value.toolCallId),
+                      })
+                      if (shouldIgnoreSettledStreamEvent(value.toolCallId, "tool-call", value.toolName)) break
+                      if (rollout) modelCalls.set(value.toolCallId, rollout)
+                      const match = toolcalls[value.toolCallId]
+                      const pendingState = pendingToolCallStates.get(value.toolCallId)
+                      pendingToolCallStates.delete(value.toolCallId)
+                      const streamedRaw = generatingAccum[value.toolCallId]
+                      const rawInput = SessionToolInput.normalize(value.input)
+                      modelInputs.set(value.toolCallId, structuredClone(rawInput))
+                      const expanded = streamInput.autoExpandable?.has(value.toolName)
+                        ? await resolveAutoExpand(value.toolName)
+                        : undefined
+                      const binding =
+                        inputBindings.get(value.toolName) ??
+                        (expanded?.inputSchema ? ToolIntent.snapshot(expanded.inputSchema) : undefined)
+                      const intent = binding
+                        ? ToolIntent.decode(binding, rawInput)
+                        : { input: rawInput, workBrief: undefined, inputShape: undefined }
+                      const toolInput = SessionToolInput.canonical(intent.input)
+                      const toolInputBytes = SessionBounds.toolInputByteLength(rawInput)
+                      log.info("tool.stream.tool_call.input_ready", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                        source: "ai_sdk_input",
+                        bytes: toolInputBytes,
+                        streamedBytes: streamedRaw === undefined ? undefined : SessionBounds.byteLength(streamedRaw),
+                      })
+                      const runningMetadata = ToolTimeout.mergeMetadata(
+                        runningToolMetadata(value.toolName, value.providerMetadata, expanded?.display),
+                        pendingState?.metadata,
+                      )
+                      log.info("tool.stream.tool_call.metadata_ready", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                      })
+                      streamInput.memoryTurn?.observeToolRawChars(
+                        value.toolCallId,
+                        streamedRaw !== undefined
+                          ? streamedRaw.length
+                          : LLMTurnMemory.estimateChars(toolInput, SessionBounds.TOOL_INPUT_MAX_BYTES),
+                      )
+                      if (toolInputBytes > SessionBounds.TOOL_INPUT_MAX_BYTES) {
+                        const error = SessionBounds.toolInputExceededMessage()
+                        const part = await Session.updatePart({
+                          ...(match ?? {
+                            id: Identifier.ascending("part"),
+                            messageID: input.assistantMessage.id,
+                            sessionID: input.assistantMessage.sessionID,
+                            type: "tool" as const,
+                            callID: value.toolCallId,
+                          }),
+                          tool: value.toolName,
+                          state: {
+                            status: "error",
+                            input: {},
+                            error,
+                            metadata: runningMetadata,
+                            time: { start: Date.now(), end: Date.now() },
+                          },
+                          metadata: value.providerMetadata,
+                        })
+                        toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                        settledToolCalls.add(value.toolCallId)
+                        delete generatingAccum[value.toolCallId]
+                        delete generatingBytes[value.toolCallId]
+                        throw new Error(error)
+                      }
+                      observeContent("tool", value.toolName)
+                      log.info("tool.stream.tool_call.persist_running", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                      })
+                      const part = await Session.updatePart({
+                        ...(match ?? {
+                          id: Identifier.ascending("part"),
+                          messageID: input.assistantMessage.id,
+                          sessionID: input.assistantMessage.sessionID,
+                          type: "tool" as const,
+                          callID: value.toolCallId,
+                        }),
+                        tool: value.toolName,
+                        workBrief: intent.workBrief,
+                        inputShape: intent.inputShape,
+                        state: {
+                          status: "running",
+                          input: toolInput,
+                          title: pendingState?.title,
+                          metadata: runningMetadata,
+                          time: {
+                            start: pendingState?.start ?? Date.now(),
+                          },
+                        },
+                        metadata: value.providerMetadata,
+                      })
+                      toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                      await queueToolCallStateFlush(value.toolCallId)
+                      delete generatingAccum[value.toolCallId]
+                      delete generatingBytes[value.toolCallId]
+                      log.info("tool.stream.tool_call.part_running", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                        hasSlot: executions.has(value.toolCallId),
+                        snapshot: toolSettlementSnapshot(value.toolCallId),
+                      })
+
+                      deferredToolCalls.push({
+                        callID: value.toolCallId,
+                        toolName: value.toolName,
+                        input: toolInput,
+                      })
+                      break
+                    }
+                    case "tool-result": {
+                      const slot = executions.get(value.toolCallId)
+                      log.info("tool.stream.tool_result.received", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        hadSlot: Boolean(slot),
+                        slotStatus: slot?.status,
+                        hasOutcome: Boolean(slot?.outcome),
+                        snapshot: toolSettlementSnapshot(value.toolCallId),
+                      })
+                      if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
+                      await settleTrackedExecution(value.toolCallId)
+                      break
+                    }
+
+                    case "tool-error": {
+                      log.warn("tool.stream.tool_error.received", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        hadPart: Boolean(toolcalls[value.toolCallId]),
+                        hadSlot: executions.has(value.toolCallId),
+                        error: value.error instanceof Error ? value.error.message : String(value.error),
+                        snapshot: toolSettlementSnapshot(value.toolCallId),
+                      })
+                      const match = toolcalls[value.toolCallId]
+                      const slot = executions.get(value.toolCallId)
+                      const rejected =
+                        value.error instanceof PermissionNext.RejectedError ||
+                        SessionQuestionErrors.isRejected(value.error)
+                      // A hidden-but-authorized tool call that the processor will
+                      // auto-expand must not be failure-recorded or error-settled
+                      // here; it stays `running` until the deferred dispatch below
+                      // executes the real tool.
+                      const pendingAutoExpand =
+                        streamInput.autoExpandable?.has(value.toolName) === true && match?.state.status === "running"
+                      if (!pendingAutoExpand) {
+                        if (
+                          !slot &&
+                          !rejected &&
+                          !settledToolCalls.has(value.toolCallId) &&
+                          !recordedToolFailures.has(value.toolCallId)
+                        ) {
+                          recordedToolFailures.add(value.toolCallId)
+                          const diagnostic = streamToolDiagnostic(value.toolName, value.error)
+                          ObservabilityToolFailures.record({
+                            tool: value.toolName,
+                            sessionID: input.sessionID,
+                            messageID: input.assistantMessage.id,
+                            callID: value.toolCallId,
+                            phase: "llm.tool_call",
+                            error: value.error,
+                            errorClass: diagnostic.code,
+                            owner: "llm",
+                          })
+                        }
+                        if (match && match.state.status === "running") {
+                          if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
+                          const settlement = settleTrackedExecution(value.toolCallId)
+                          if (settlement) {
+                            await settlement
+                          } else if (!slot) {
+                            await settleToolPart(match, streamToolErrorOutcome(match, value.error))
+                            delete toolcalls[value.toolCallId]
+                          }
+                        }
+                      }
+                      if (rejected) blocked = shouldBreak
+                      break
+                    }
+                    case "error":
+                      throw value.error
+
+                    case "start-step":
+                      await Session.updatePart({
+                        id: Identifier.ascending("part"),
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.sessionID,
+                        type: "step-start",
+                      })
+                      break
+
+                    case "finish-step": {
+                      const stepAccounting = rollout
+                        ? await RolloutLedger.summarizeCalls(rollout.owner, rollout.runID, [rollout.callID])
+                        : undefined
+                      const usage = stepAccounting
+                        ? RolloutAccounting.project(stepAccounting)
+                        : Session.getUsage({
+                            model: input.model,
+                            usage: value.usage,
+                            metadata: value.providerMetadata,
+                          })
+                      ObservabilityMetrics.record({
+                        name: "llm.tokens.input",
+                        value: usage.tokens.input,
+                        unit: "tokens",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id },
+                      })
+                      ObservabilityMetrics.record({
+                        name: "llm.tokens.output",
+                        value: usage.tokens.output,
+                        unit: "tokens",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id },
+                      })
+                      ObservabilityMetrics.record({
+                        name: "llm.tokens.cached_input",
+                        value: usage.tokens.cache.read,
+                        unit: "tokens",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id },
+                      })
+                      ObservabilityMetrics.record({
+                        name: "llm.request.count",
+                        value: 1,
+                        unit: "count",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: {
+                          provider: input.model.providerID,
+                          model: input.model.id,
+                          finishReason: value.finishReason,
+                        },
+                      })
+                      input.assistantMessage.finish = value.finishReason
+                      input.assistantMessage.cost += usage.cost
+                      input.assistantMessage.tokens = usage.tokens
+                      const exactProviderInputTotal = rollout
+                        ? stepAccounting?.tokens.input.total
+                        : ModelLimit.actualInput(usage.tokens)
+                      if (
+                        hasProviderInputUsage(value.usage) &&
+                        stream.contextUsageDraft &&
+                        exactProviderInputTotal != null
+                      ) {
+                        contextUsageEnrichment = {
+                          callID: rollout?.callID,
+                          draft: stream.contextUsageDraft,
+                          totalInput: exactProviderInputTotal,
+                        }
+                      }
+                      const step = await Session.updatePart({
+                        id: Identifier.ascending("part"),
+                        reason: value.finishReason,
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.assistantMessage.sessionID,
+                        type: "step-finish",
+                        tokens: usage.tokens,
+                        cost: usage.cost,
+                        accounting: rollout
+                          ? { kind: "rollout", callIDs: [rollout.callID], summary: stepAccounting }
+                          : undefined,
+                      })
+                      if (step.type === "step-finish") stepFinishes.push(step)
+                      await Session.updateMessage(input.assistantMessage)
+                      break
+                    }
+
+                    case "text-start":
+                      currentText = {
+                        id: Identifier.ascending("part"),
+                        messageID: input.assistantMessage.id,
+                        sessionID: input.assistantMessage.sessionID,
+                        type: "text",
+                        text: "",
+                        time: {
+                          start: Date.now(),
+                        },
+                        metadata: value.providerMetadata,
+                      }
+                      break
+
+                    case "text-delta":
+                      recordFirstDelta("text")
+                      if (!value.text) break
+                      activity("responding")
+                      observeContent("text", value.text)
+                      if (value.text) {
+                        streamInput.memoryTurn?.addOutputChars(value.text.length)
+                        ObservabilityMetrics.record({
+                          name: "llm.stream.output_chars",
+                          value: value.text.length,
+                          unit: "count",
+                          module: "llm",
+                          sessionID: input.sessionID,
+                          messageID: input.assistantMessage.id,
+                          labels: { kind: "text" },
+                        })
+                        recordChunkMetrics("text", value.text.length)
+                      }
+                      if (currentText) {
+                        currentText.text += value.text
+                        if (value.providerMetadata) currentText.metadata = value.providerMetadata
+                        if (currentText.text) await Session.updatePartDelta(currentText, value.text)
+                      }
+                      break
+
+                    case "text-end":
+                      if (currentText) {
+                        currentText.text = currentText.text.trimEnd()
+                        const textOutput = await Plugin.trigger(
+                          "experimental.text.complete",
+                          {
+                            sessionID: input.sessionID,
+                            messageID: input.assistantMessage.id,
+                            partID: currentText.id,
+                          },
+                          { text: currentText.text },
+                        )
+                        currentText.text = textOutput.text
+                        currentText.time = {
+                          start: Date.now(),
+                          end: Date.now(),
+                        }
+                        if (value.providerMetadata) currentText.metadata = value.providerMetadata
+                        await Session.updatePart(currentText)
+                      }
+                      currentText = undefined
+                      break
+
+                    case "finish":
+                      if (
+                        input.assistantMessage.finish === "stop" &&
+                        streamStats.text.outputChars === 0 &&
+                        deferredToolCalls.length === 0
+                      )
+                        throw new MessageV2.EmptyResponseError({ message: "Provider returned an empty response" })
+                      break
+
+                    case "abort":
+                      streamAborted = true
+                      break
+                  }
+                }
+                retryEligible = false
+                if (recovery.active()) activity("finalizing")
+                ObservabilitySpans.end(llmSpan, {
+                  attributes: { provider: input.model.providerID, model: input.model.id },
+                })
+              } catch (error) {
+                ObservabilitySpans.end(llmSpan, { status: "error", error })
+                throw error
+              } finally {
+                try {
+                  await stream.dispose()
+                  if (rollout && input.imageAttachments?.length) {
+                    const receipt = await readImageInputReceipt(rollout)
+                    await publishImageInputReceipt(input.sessionID, input.imageAttachments, receipt)
+                  }
+                } finally {
+                  streamInput.memoryTurn?.streamDisposed()
+                  flushChunkMetrics()
+                  await flushFirstContentMetrics()
+                  currentText = undefined
+                  reasoningMap = {}
+                  SessionMemoryPressure.probe("processor.after_full_stream", {
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                  })
+                }
+                if (rollout && input.assistantMessage.accounting?.kind === "rollout") {
+                  const current = await RolloutLedger.summarizeCalls(rollout.owner, rollout.runID, [rollout.callID])
+                  for (const step of stepFinishes)
+                    await Session.updatePart({
+                      ...step,
+                      ...RolloutAccounting.project(current),
+                      accounting: { kind: "rollout", callIDs: [rollout.callID], summary: current },
+                    })
+                  const summary = await RolloutLedger.summarizeCalls(
+                    rollout.owner,
+                    rollout.runID,
+                    input.assistantMessage.accounting.callIDs,
+                  )
+                  Object.assign(input.assistantMessage, RolloutAccounting.project(summary))
+                  input.assistantMessage.accounting.summary = summary
+                  await Session.updateMessage(input.assistantMessage)
+                }
+              }
+              settleModelStream()
+              streamInput.prepared = undefined
+              agentTurnInput.prepared = undefined
+              agentTurnInput.system?.splice(0)
+              agentTurnInput.lateSystem?.splice(0)
+              agentTurnInput.messages?.splice(0)
+              agentTurnInput.toolDefinitions?.splice(0)
+              agentTurnInput.activeToolIDs?.splice(0)
+              if (deferredToolCalls.length > 0) {
+                executionPhase("authorizing_tools")
+              }
+              if (deferredToolCalls.length > 0) {
+                executionPhase("queued_tools")
+                activity("queued_tools")
+              }
+              const runningTools = new Map<string, string>()
+              const queuedTools = new Set(deferredToolCalls.map((call) => call.callID))
+              await RolloutExecution.suspend(() =>
+                Promise.all(
+                  deferredToolCalls.map(async (call) => {
+                    if (!streamInput.executionTools) return
+                    let expanded: ToolResolver.AutoExpandedTool | undefined
+                    if (streamInput.autoExpandable?.has(call.toolName)) {
+                      expanded = await resolveAutoExpand(call.toolName)
+                      if (expanded) {
+                        streamInput.executionTools[call.toolName] = expanded.tool
+                        streamInput.executorKinds[call.toolName] = expanded.executor
+                        await markAutoExpanded(call, expanded)
+                      }
+                    }
+                    if (expanded) {
+                      const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
+                      const invalid = DynamicToolResolver.validateToolInput(
+                        call.toolName,
+                        inputBindings.get(call.toolName)?.nativeSchema ?? expanded.inputSchema,
+                        call.input,
+                      )
+                      if (invalid) {
+                        const part = toolcalls[call.callID]
+                        if (part && part.state.status === "running") {
+                          await settleToolPart(part, streamToolErrorOutcome(part, new Error(invalid)))
+                          delete toolcalls[call.callID]
+                        }
+                        return
+                      }
+                    }
+                    const task = await ToolScheduler.dispatch({
+                      sessionID: input.sessionID,
+                      generation: input.generation ?? 0,
+                      messageID: input.assistantMessage.id,
+                      callID: call.callID,
+                      toolName: call.toolName,
+                      input: call.input,
+                      tool: streamInput.executionTools[call.toolName],
+                      executor: streamInput.executorKinds[call.toolName],
+                      processor: result,
+                      signal: input.abort,
+                      onState(state) {
+                        if (state === "running") executionPhase("running_tools")
+                        if (state === "running") {
+                          queuedTools.delete(call.callID)
+                          runningTools.set(call.callID, call.toolName)
+                        } else if (state !== "queued") {
+                          queuedTools.delete(call.callID)
+                          runningTools.delete(call.callID)
+                        }
+                        if (runningTools.size)
+                          activity("running_tools", {
+                            id: runningTools.values().next().value,
+                            count: runningTools.size,
+                          })
+                        else if (queuedTools.size) activity("queued_tools")
+                        else activity("finalizing")
+                      },
+                    })
+                    await settleTrackedExecution(call.callID)
+                    if (
+                      shouldBreak &&
+                      (task.errorName === PermissionNext.RejectedError.name ||
+                        SessionQuestionErrors.isRejectedErrorName(task.errorName))
+                    ) {
+                      blocked = true
+                    }
+                  }),
+                ),
+              )
+              executionPhase("waiting_background")
+            } catch (e: unknown) {
+              if (RolloutRecordingError.isInstance(e)) recordingFailure = e
+              fastAbort = !!recordingFailure || isFastAbort(input.abort, e)
+              if (SessionMemoryIncident.isOutOfMemory(e)) {
+                await SessionMemoryIncident.capture({
+                  error: e,
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                }).catch((incidentError) => {
+                  log.warn("failed to capture OOM incident", { error: incidentError })
+                })
+              }
+              log.error("process", {
+                error: e,
+              })
+              // Derive the endpoint host from the same connection identity
+              // source as providerRetryKey: provider-level options (e.g. a
+              // proxy baseURL) must merge over the model record, or a proxied
+              // provider reports the catalog URL instead of the real host.
+              const providerRecord = await Provider.getProvider(input.model.providerID).catch(() => undefined)
+              const error = MessageV2.fromError(e, {
+                providerID: input.model.providerID,
+                modelID: input.model.id,
+                endpointHost: providerEndpointHost(input.model, providerRecord),
+              })
+              const retry = fastAbort || !retryEligible ? undefined : SessionRetry.retryable(error, maxRetryAttempts)
+              if (retry !== undefined && (retry.maxAttempts === "unlimited" || attempt < retry.maxAttempts)) {
+                attempt++
+                const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
+                ObservabilityMetrics.record({
+                  name: "session.turn.retry",
+                  value: 1,
+                  unit: "count",
+                  module: "session",
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  labels: { attempt, retry: retry.message, errorName: error.name },
+                })
+                await Observability.emit("session.turn.retry", {
+                  traceId: turnTraceId,
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  level: "warn",
+                  data: {
+                    attempt,
+                    delay,
+                    retry: retry.message,
+                    error,
+                  },
+                })
+                await recovery.wait(error, attempt, delay).catch((error) => {
+                  if (!input.abort.aborted) throw error
+                })
+                continue
+              }
+              recovery.finish()
+              settleModelStream(error)
+              // A user stop pauses the session; it does not fail it. Writing the
+              // turn's terminal record here — `finish:"error"` plus
+              // `time.completed` below — is what destroys the breakpoint
+              // `session.continue` resumes from, so that record belongs to
+              // Abandon alone. Leaving the message non-terminal is the same
+              // contract `repairIncompleteAssistant` already honours for a stop
+              // observed without a live processor.
+              if (!PausedTurnAbort.is(input.abort.reason)) {
+                input.assistantMessage.finish = "error"
+                input.assistantMessage.error = error
+                ObservabilityMetrics.record({
+                  name: "session.turn.error",
+                  value: 1,
+                  unit: "count",
+                  module: "session",
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  labels: { errorName: error.name },
+                })
+                await Observability.emit("session.turn.error", {
+                  traceId: turnTraceId,
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  level: "error",
+                  data: {
+                    error,
+                  },
+                })
+                Bus.publish(SessionEvent.Error, {
+                  sessionID: input.assistantMessage.sessionID,
+                  error: input.assistantMessage.error,
+                })
+              }
+            }
+            fastAbort ||= input.abort.aborted
+            await waitForTrackedSettlements()
+            SessionMemoryPressure.probe("processor.after_tool_settlement", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+            // Flush buffered streaming part writes before reading parts to
+            // finalize the message. A turn interrupted mid-stream (idle timeout,
+            // provider error, abort) never fires the terminal part write that
+            // normally flushes, so without this the persisted/finalized parts
+            // would be missing the last streamed content (issue #327).
+            await Session.flushPartWrites(input.sessionID)
+            SessionMemoryPressure.probe("processor.after_flush_part_writes", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+            let parts = await MessageV2.parts({
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+            if (fastAbort || streamAborted || input.assistantMessage.error) {
+              const incompleteStreamingParts = parts.filter(
+                (part): part is MessageV2.TextPart | MessageV2.ReasoningPart =>
+                  (part.type === "text" || part.type === "reasoning") && !!part.text && !part.time?.end,
+              )
+              await Promise.all(incompleteStreamingParts.map((part) => Session.updatePart(part)))
+            }
+            if (!fastAbort) {
+              await waitForOutcomesAndSettle(parts)
+              await waitForTrackedSettlements()
+              parts = await MessageV2.parts({
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+              })
+            }
+            await resolveUnsettledParts(parts, fastAbort)
+            // The breakpoint `session.continue` resumes from is exactly the
+            // absence of this record, so a paused turn persists its parts and
+            // accounting without ever claiming the message finished.
+            if (!PausedTurnAbort.is(input.abort.reason)) {
+              input.assistantMessage.time.completed = Date.now()
+              await Session.updateMessage(input.assistantMessage)
+            }
+            if (contextUsageEnrichment) {
+              persistContextUsage({
+                sessionID: input.assistantMessage.sessionID,
+                messageID: input.assistantMessage.id,
+                ...contextUsageEnrichment,
+              })
+            }
+            Session.updateLastExchange(input.sessionID).catch((e) =>
+              log.warn("failed to update lastExchange", { sessionID: input.sessionID, error: e }),
+            )
+            await SessionContextContributions.onAssistantComplete(input.assistantMessage)
+            await Plugin.trigger(
+              "session.turn.after",
+              {
+                sessionID: input.sessionID,
+                userMessageID: input.assistantMessage.parentID,
+                assistantMessageID: input.assistantMessage.id,
+                assistant: input.assistantMessage,
+                finish: input.assistantMessage.finish,
+                error: input.assistantMessage.error,
+              },
+              {},
+            )
+            SessionMemoryPressure.probe("processor.after_plugin_turn_after", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+            await Observability.emit("session.turn.end", {
+              traceId: turnTraceId,
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              level: input.assistantMessage.error ? "error" : "info",
+              data: {
+                finish: input.assistantMessage.finish,
+                blocked,
+                error: input.assistantMessage.error,
+                durationMs: Date.now() - turnStartedAt,
+                pendingTools: executions.size,
+              },
+            })
+            await Bus.publish(SessionEvent.TurnEnd, {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              finish: input.assistantMessage.finish,
+              agent: input.assistantMessage.agent,
+            })
+            SessionMemoryPressure.probe("processor.after_observability_turn_end", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+            })
+            if (recordingFailure) throw recordingFailure
+            if (blocked) return "stop"
+            if (input.assistantMessage.error) return "stop"
+            return "continue"
+          }
+        } finally {
+          recovery.dispose()
+          dispose("process.complete")
+        }
+      },
+    }
+    return result
+  }
+  function hasProviderInputUsage(usage: unknown): boolean {
+    if (!usage || typeof usage !== "object") return false
+    const inputTokens = (usage as { inputTokens?: unknown }).inputTokens
+    return typeof inputTokens === "number" && Number.isFinite(inputTokens)
+  }
+
+  function persistContextUsage(input: {
+    sessionID: string
+    messageID: string
+    callID?: string
+    draft: Promise<ContextUsage.Draft | undefined>
+    totalInput: number
+  }) {
+    void input.draft
+      .then(async (draft) => {
+        if (!draft) return
+        await Session.updateAssistantContextUsage({
+          sessionID: input.sessionID,
+          messageID: input.messageID,
+          contextUsage: { ...ContextUsage.reconcile(draft, input.totalInput), callID: input.callID },
+        })
+      })
+      .catch((error) => {
+        log.warn("context usage enrichment failed", {
+          sessionID: input.sessionID,
+          messageID: input.messageID,
+          error,
+        })
+      })
+  }
+}

@@ -1,0 +1,140 @@
+import { z } from "zod"
+
+export interface RuntimeStatusRow {
+  label: string
+  value: string
+  kind?: "success" | "warning" | "error" | "pending" | "muted"
+}
+
+export const RUNTIME_STARTUP_PREFIX = "SYNERGY_STARTUP_V1 "
+export const RUNTIME_STARTUP_MAX_LINE_LENGTH = 1024
+
+const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+const timeout = z.number().int().positive().max(2_147_483_647)
+export const RuntimeStartupStage = z.enum([
+  "installation",
+  "initializing",
+  "storage",
+  "migrations",
+  "storage-recovery",
+  "configuration",
+  "execution-recovery",
+  "extensions",
+  "transport",
+  "services",
+  "finalizing",
+])
+export type RuntimeStartupStage = z.infer<typeof RuntimeStartupStage>
+export const RuntimeStartupEvent = z.discriminatedUnion("state", [
+  z
+    .object({
+      phase: z.literal("runtime"),
+      state: z.literal("opening"),
+      stage: RuntimeStartupStage,
+      current: count.optional(),
+    })
+    .strict(),
+  z.object({ phase: z.literal("runtime"), state: z.literal("ready") }).strict(),
+  z.object({ phase: z.literal("runtime"), state: z.literal("failed") }).strict(),
+])
+export type RuntimeStartupEvent = z.infer<typeof RuntimeStartupEvent>
+export const StorageMaintenanceOperation = z.enum([
+  "checkpoint",
+  "vacuum",
+  "reclaim",
+  "prune",
+  "integrity-check",
+  "create-index",
+  "drop-index",
+])
+export type StorageMaintenanceOperation = z.infer<typeof StorageMaintenanceOperation>
+export const StorageMaintenanceStage = z.enum(["checkpoint-before", "rewrite", "checkpoint-after"])
+export type StorageMaintenanceStage = z.infer<typeof StorageMaintenanceStage>
+const maintenance = { phase: z.literal("maintenance"), id: count.positive() }
+export const StorageMaintenanceEvent = z.discriminatedUnion("state", [
+  z
+    .object({ ...maintenance, state: z.literal("started"), operation: StorageMaintenanceOperation, timeoutMs: timeout })
+    .strict(),
+  z.object({ ...maintenance, state: z.literal("stage"), stage: StorageMaintenanceStage }).strict(),
+  z.object({ ...maintenance, state: z.enum(["completed", "failed"]), elapsedMs: count }).strict(),
+])
+export type StorageMaintenanceEvent = z.infer<typeof StorageMaintenanceEvent>
+export const StorageStartupProgress = z.object({
+  stage: z.enum([
+    "prepare",
+    "staging",
+    "scan",
+    "backup",
+    "inventory",
+    "owners",
+    "import",
+    "verify",
+    "archive-verify",
+    "archive-import",
+    "validate-engine",
+    "validate",
+    "activate",
+    "check",
+    "artifacts",
+    "resources",
+    "quarantine",
+    "notifications",
+    "complete",
+  ]),
+  current: count,
+  total: count,
+  bytes: count,
+  timeoutMs: z.number().int().positive().max(2_147_483_647).optional(),
+})
+export type StorageStartupProgress = z.infer<typeof StorageStartupProgress>
+
+export const MigrationStartupTask = z.enum([
+  "scheduled-work",
+  "blueprints",
+  "browser",
+  "connections",
+  "settings",
+  "notes",
+  "conversations",
+  "request-prices",
+  "file-history",
+  "tool-history",
+  "usage",
+  "workflows",
+  "scopes",
+  "workspaces",
+  "storage",
+])
+export type MigrationStartupTask = z.infer<typeof MigrationStartupTask>
+
+export const RuntimeStartupProgress = z.union([
+  RuntimeStartupEvent,
+  StorageMaintenanceEvent,
+  z.discriminatedUnion("phase", [
+    z.object({ phase: z.literal("starting") }).strict(),
+    StorageStartupProgress.extend({ phase: z.literal("storage"), step: count.positive() })
+      .strict()
+      .refine((value) => value.total === 0 || value.current <= value.total)
+      .refine((value) =>
+        value.stage === "validate-engine"
+          ? value.timeoutMs !== undefined && value.current === 0 && value.total === 0 && value.bytes === 0
+          : value.timeoutMs === undefined,
+      ),
+    z.object({ phase: z.literal("recovery"), current: count }).strict(),
+    z
+      .object({
+        phase: z.literal("migration"),
+        step: count.positive(),
+        current: count,
+        total: count,
+        task: MigrationStartupTask.optional(),
+      })
+      .strict()
+      .refine((value) => value.total === 0 || value.current <= value.total),
+  ]),
+])
+export type RuntimeStartupProgress = z.infer<typeof RuntimeStartupProgress>
+
+export function runtimeStartupLine(progress: RuntimeStartupProgress): string {
+  return RUNTIME_STARTUP_PREFIX + JSON.stringify(RuntimeStartupProgress.parse(progress)) + "\n"
+}

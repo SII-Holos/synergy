@@ -10,8 +10,8 @@ The `<env>` system prompt block rendered `Is directory a git repo: no` for the w
 
 `SystemPrompt.environment()` now asks the same live probe that git-health uses:
 
-- `GitHealth.isGitRepo(cwd)` was added to `packages/synergy/src/project/git-health.ts`, wrapping the existing private `resolveRepo()` (which runs `git rev-parse --is-inside-work-tree` with the established 2s timeout and path normalization). It deliberately bypasses the scan cache: the env block needs the current answer, and a cached repo probe would re-create the staleness bug.
-- `packages/synergy/src/session/system.ts` computes `isGitRepo` per call via `GitHealth.isGitRepo(ScopeContext.current.directory)` for project scopes, and renders the env line from that. Home scope keeps rendering `no` without a probe.
+- `GitHealth.isGitRepo(cwd)` was added to `packages/workbench/src/project/git-health.ts`, wrapping the existing private `resolveRepo()` (which runs `git rev-parse --is-inside-work-tree` with the established 2s timeout and path normalization). It deliberately bypasses the scan cache: the env block needs the current answer, and a cached repo probe would re-create the staleness bug.
+- `packages/harness/src/session/system.ts` computes `isGitRepo` per call via `GitHealth.isGitRepo(ScopeContext.current.directory)` for project scopes, and renders the env line from that. Home scope keeps rendering `no` without a probe.
 - The session-scope `vcs` snapshot is no longer the source of truth for this line.
 
 The scope metadata (`scope.vcs`) is intentionally left alone: `Scope.fromDirectory()` already refreshes it on the next re-resolution (covered by `test/scope/scope-stability.test.ts`), so the persisted field heals itself; only the in-flight session snapshot was stale, and this change stops the env block from depending on it.

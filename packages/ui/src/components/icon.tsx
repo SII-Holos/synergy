@@ -1,24 +1,109 @@
+import { PhotoEdit, Notion } from "./integration-icons"
 import { getIcon } from "../plugin/icon-registry"
 // Side-effect import: registers all built-in Lucide icon names in the registry
 import "../plugin/builtin-icons"
 
-import { splitProps, type ComponentProps } from "solid-js"
+import { createMemo, createSignal, For, Show, splitProps, type ComponentProps } from "solid-js"
+import type { ToolIconSource } from "@ericsanchezok/synergy-util/tool-display"
 import { Dynamic } from "solid-js/web"
 import {
+  Icon as LucideIcon,
+  BrainCircuit,
+  SquareTerminal,
+  MonitorCog,
+  BookOpenText,
+  FilePlus2,
+  FilePenLine,
+  FileDiff,
+  GitMergeConflict,
+  FileSearchCorner,
+  TextSearch,
+  FileCode,
+  Logs,
+  FileScan,
+  ImagePlus,
+  AppWindow,
+  Earth,
+  ListFilterPlus,
+  PackageOpen,
+  BookText,
+  NotebookText,
+  BookX,
+  ClipboardMinus,
+  CircleCheckBig,
+  ListX,
+  GitGraph,
+  MessageSquareQuote,
+  MessageSquareShare,
+  FolderRoot,
+  Repeat2,
+  AlarmClockCheck,
+  CalendarCog,
+  CalendarX,
+  CalendarArrowUp,
+  CalendarCheck,
+  SquareDashedMousePointer,
+  Camera,
+  FileBraces,
+  ArrowLeftRight,
+  ChartNoAxesColumnIncreasing,
+  ShieldQuestionMark,
+  TabletSmartphone,
+  GalleryVerticalEnd,
+  FileUp,
+  FileDown,
+  ClipboardCopy,
+  MessageSquareDiff,
+  Mouse,
+  MessageCircleQuestionMark,
+  CloudDownload,
+  CloudCog,
+  Container,
+  Rows3,
+  ServerOff,
+  ChartColumnIncreasing,
+  ServerPlus,
+  FileQuestionMark,
+  FileStack,
+  FileInput,
+  BookTemplate,
+  ChartGantt,
+  LibraryBig,
+  type LucideProps,
   Activity,
+  WandSparkles,
+  TextCursorInput,
+  UserRound,
+  ScanFace,
+  TimerReset,
+  Binary,
+  CircleDollarSign,
+  ListOrdered,
+  CornerUpRight,
+  NotebookTabs,
+  FileChartColumn,
+  ListEnd,
+  ShieldHalf,
+  Laptop,
+  BriefcaseBusiness,
+  CodeXml,
   AlignRight,
   Archive,
   ArchiveRestore,
+  ArrowDown,
   ArrowDownFromLine,
   ArrowDownToLine,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
+  AudioLines,
+  Puzzle,
   BadgeAlert,
   BadgeCheck,
   BadgeX,
   Ban,
+  Beaker,
   Binoculars,
   BookDown,
   BookMarked,
@@ -34,6 +119,7 @@ import {
   CalendarClock,
   CalendarDays,
   ChartPie,
+  FileClock,
   Check,
   ChevronDown,
   ChevronRight,
@@ -43,7 +129,9 @@ import {
   CircleCheck,
   CircleDashed,
   CircleGauge,
+  CircleMinus,
   CirclePause,
+  Play,
   CirclePlay,
   CirclePlus,
   CircleStop,
@@ -76,6 +164,13 @@ import {
   FileCheck2,
   FilePen,
   FileSearch,
+  FoldVertical,
+  UnfoldVertical,
+  Columns2,
+  WrapText,
+  Folders,
+  Footprints,
+  MessageSquareText,
   FileTerminal,
   FileText,
   Fingerprint,
@@ -93,7 +188,6 @@ import {
   GitBranch,
   GitCommitHorizontal,
   GitFork,
-  Github,
   GitMerge,
   Glasses,
   Globe,
@@ -113,6 +207,7 @@ import {
   Info,
   Kanban,
   KeyRound,
+  Vault,
   Languages,
   Layers,
   LayoutGrid,
@@ -130,12 +225,15 @@ import {
   MailSearch,
   Map,
   Maximize,
+  Maximize2,
   Megaphone,
   MemoryStick,
   Menu,
   MessageCircle,
+  MessageCircleQuestion,
   MessageSquare,
   MessageSquareMore,
+  Mic,
   Microscope,
   Minimize,
   Minimize2,
@@ -162,8 +260,10 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Paperclip,
+  Pause,
   Pen,
   Pencil,
+  PencilLine,
   PenLine,
   Pin,
   PinOff,
@@ -179,6 +279,8 @@ import {
   Rocket,
   RotateCcw,
   RotateCw,
+  RotateCwSquare,
+  Grid2X2,
   Route,
   Satellite,
   Scale,
@@ -205,6 +307,7 @@ import {
   SquareCheck,
   SquarePen,
   SquarePlay,
+  SquarePlus,
   SquareX,
   Stamp,
   Star,
@@ -236,22 +339,126 @@ import {
   ZoomOut,
 } from "lucide-solid"
 
+// Provenance: https://unpkg.com/lucide-solid@0.468.0/dist/source/icons/github.jsx (ISC).
+// Local adaptation: retain the established brand glyph after Lucide removed brand icons.
+const Github = (props: LucideProps) => (
+  <LucideIcon
+    {...props}
+    iconNode={[
+      [
+        "path",
+        {
+          d: "M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4",
+        },
+      ],
+      ["path", { d: "M9 18c-4.51 2-5-2-7-2" }],
+    ]}
+  />
+)
+
 const icons = {
+  "rotate-cw-square": RotateCwSquare,
+  "grid-2x2": Grid2X2,
+  "tabler-photo-edit": PhotoEdit,
+  "brand-notion": Notion,
+  "brain-circuit": BrainCircuit,
+  "square-terminal": SquareTerminal,
+  "monitor-cog": MonitorCog,
+  "book-open-text": BookOpenText,
+  "file-plus-2": FilePlus2,
+  "file-pen-line": FilePenLine,
+  "file-diff": FileDiff,
+  "git-merge-conflict": GitMergeConflict,
+  "file-search-corner": FileSearchCorner,
+  "text-search": TextSearch,
+  "file-code": FileCode,
+  logs: Logs,
+  "file-scan": FileScan,
+  "image-plus": ImagePlus,
+  "app-window": AppWindow,
+  earth: Earth,
+  "list-filter-plus": ListFilterPlus,
+  "package-open": PackageOpen,
+  "book-text": BookText,
+  "notebook-text": NotebookText,
+  "book-x": BookX,
+  "clipboard-minus": ClipboardMinus,
+  "circle-check-big": CircleCheckBig,
+  "list-x": ListX,
+  "git-graph": GitGraph,
+  "message-square-quote": MessageSquareQuote,
+  "message-square-share": MessageSquareShare,
+  "folder-root": FolderRoot,
+  "repeat-2": Repeat2,
+  "alarm-clock-check": AlarmClockCheck,
+  "calendar-cog": CalendarCog,
+  "calendar-x": CalendarX,
+  "calendar-arrow-up": CalendarArrowUp,
+  "calendar-check": CalendarCheck,
+  "square-dashed-mouse-pointer": SquareDashedMousePointer,
+  camera: Camera,
+  "file-braces": FileBraces,
+  "arrow-left-right": ArrowLeftRight,
+  "chart-no-axes-column-increasing": ChartNoAxesColumnIncreasing,
+  "shield-question-mark": ShieldQuestionMark,
+  "tablet-smartphone": TabletSmartphone,
+  "gallery-vertical-end": GalleryVerticalEnd,
+  "file-up": FileUp,
+  "file-down": FileDown,
+  "clipboard-copy": ClipboardCopy,
+  "message-square-diff": MessageSquareDiff,
+  mouse: Mouse,
+  "message-circle-question-mark": MessageCircleQuestionMark,
+  "triangle-alert": TriangleAlert,
+  "cloud-download": CloudDownload,
+  "cloud-cog": CloudCog,
+  container: Container,
+  "rows-3": Rows3,
+  "server-off": ServerOff,
+  "chart-column-increasing": ChartColumnIncreasing,
+  "server-plus": ServerPlus,
+  "file-question-mark": FileQuestionMark,
+  "file-stack": FileStack,
+  "file-input": FileInput,
+  "book-template": BookTemplate,
+  "chart-gantt": ChartGantt,
+  "library-big": LibraryBig,
+  "file-search": FileSearch,
+  "fold-vertical": FoldVertical,
+  "unfold-vertical": UnfoldVertical,
+  "columns-2": Columns2,
+  "wrap-text": WrapText,
+  folders: Folders,
+  footprints: Footprints,
+  "message-square-text": MessageSquareText,
+  "timer-reset": TimerReset,
+  binary: Binary,
+  "circle-dollar-sign": CircleDollarSign,
+  "list-ordered": ListOrdered,
+  "corner-up-right": CornerUpRight,
+  "notebook-tabs": NotebookTabs,
+  "file-chart-column": FileChartColumn,
+  "list-end": ListEnd,
+  "shield-half": ShieldHalf,
   activity: Activity,
   "alert-triangle": TriangleAlert,
   "align-right": AlignRight,
   archive: Archive,
   "archive-restore": ArchiveRestore,
+  "arrow-down": ArrowDown,
   "arrow-down-from-line": ArrowDownFromLine,
   "arrow-down-to-line": ArrowDownToLine,
   "arrow-left": ArrowLeft,
   "arrow-right": ArrowRight,
   "arrow-up": ArrowUp,
   "arrow-up-right": ArrowUpRight,
+  "audio-lines": AudioLines,
+  puzzle: Puzzle,
   "badge-alert": BadgeAlert,
   "badge-check": BadgeCheck,
   "badge-x": BadgeX,
   ban: Ban,
+  beaker: Beaker,
   binoculars: Binoculars,
   "book-down": BookDown,
   "book-marked": BookMarked,
@@ -260,6 +467,8 @@ const icons = {
   languages: Languages,
   bot: Bot,
   boxes: Boxes,
+  laptop: Laptop,
+  "briefcase-business": BriefcaseBusiness,
   braces: Braces,
   brain: Brain,
   bug: Bug,
@@ -269,6 +478,7 @@ const icons = {
   "calendar-days": CalendarDays,
   kanban: Kanban,
   "chart-pie": ChartPie,
+  "file-clock": FileClock,
   check: Check,
   "chevron-down": ChevronDown,
   "chevron-right": ChevronRight,
@@ -278,7 +488,9 @@ const icons = {
   "circle-check": CircleCheck,
   "circle-dashed": CircleDashed,
   "circle-gauge": CircleGauge,
+  "circle-minus": CircleMinus,
   "circle-pause": CirclePause,
+  play: Play,
   "circle-play": CirclePlay,
   "circle-plus": CirclePlus,
   "circle-stop": CircleStop,
@@ -290,6 +502,7 @@ const icons = {
   clock: Clock,
   "cloud-upload": CloudUpload,
   code: Code,
+  "code-xml": CodeXml,
   compass: Compass,
   "contact-round": ContactRound,
   copy: Copy,
@@ -346,6 +559,7 @@ const icons = {
   inbox: Inbox,
   info: Info,
   "key-round": KeyRound,
+  vault: Vault,
   layers: Layers,
   "layout-grid": LayoutGrid,
   lightbulb: Lightbulb,
@@ -362,12 +576,15 @@ const icons = {
   "mail-search": MailSearch,
   map: Map,
   maximize: Maximize,
+  "maximize-2": Maximize2,
   megaphone: Megaphone,
   "memory-stick": MemoryStick,
   menu: Menu,
   "message-circle": MessageCircle,
+  "message-circle-question": MessageCircleQuestion,
   "message-square": MessageSquare,
   "message-square-more": MessageSquareMore,
+  mic: Mic,
   microscope: Microscope,
   minimize: Minimize,
   "minimize-2": Minimize2,
@@ -394,9 +611,11 @@ const icons = {
   "panel-right-close": PanelRightClose,
   "panel-right-open": PanelRightOpen,
   paperclip: Paperclip,
+  pause: Pause,
   pen: Pen,
   "pen-line": PenLine,
   pencil: Pencil,
+  "pencil-line": PencilLine,
   pin: Pin,
   "pin-off": PinOff,
   plus: Plus,
@@ -432,12 +651,17 @@ const icons = {
   signal: Signal,
   "sliders-horizontal": SlidersHorizontal,
   sparkles: Sparkles,
+  "wand-sparkles": WandSparkles,
+  "text-cursor-input": TextCursorInput,
+  "user-round": UserRound,
+  "scan-face": ScanFace,
   split: Split,
   spline: Spline,
   square: Square,
   "square-check": SquareCheck,
   "square-pen": SquarePen,
   "square-play": SquarePlay,
+  "square-plus": SquarePlus,
   "square-x": SquareX,
   stamp: Stamp,
   star: Star,
@@ -465,7 +689,9 @@ const icons = {
   workflow: Workflow,
   "worktree-enter": GitFork,
   "worktree-leave": ArrowLeft,
+  "worktree-archive": Archive,
   "worktree-list": LayoutGrid,
+  "workbench-view": PanelRight,
   wrench: Wrench,
   x: X,
   zap: Zap,
@@ -474,9 +700,10 @@ const icons = {
 }
 
 export type IconName = keyof typeof icons | string
+export type IconSource = IconName | { sources: ToolIconSource[]; fallback: IconName }
 
 export interface IconProps extends Omit<ComponentProps<"svg">, "name"> {
-  name: IconName
+  name: IconSource
   size?: "small" | "normal" | "large"
   /** Override the icon color (applied as inline fill / stroke via `color`). */
   color?: string
@@ -486,7 +713,7 @@ export function Icon(props: IconProps) {
   const [local, others] = splitProps(props, ["name", "size", "class", "classList", "color"])
 
   // Check registry for a plugin-contributed icon with actual SVG markup
-  const entry = () => getIcon(local.name)
+  const entry = () => (typeof local.name === "string" ? getIcon(local.name) : undefined)
   const pluginSvg = () => entry()?.svgContent
 
   // Fall back to Lucide component map for built-ins
@@ -499,6 +726,7 @@ export function Icon(props: IconProps) {
       style={local.color ? { color: local.color } : undefined}
     >
       {(() => {
+        if (local.name && typeof local.name === "object") return <ImageIcon value={local.name} size={local.size} />
         const svg = pluginSvg()
         if (svg) {
           // Plugin icon: render raw SVG markup through innerHTML
@@ -534,3 +762,35 @@ export function Icon(props: IconProps) {
     </div>
   )
 }
+
+function ImageIcon(props: { value: Exclude<IconSource, string>; size: IconProps["size"] }) {
+  const variants = createMemo(() => {
+    const sources = props.value.sources
+    const choose = (theme: "light" | "dark") =>
+      sources.find((item) => item.theme === theme) ?? sources.find((item) => !item.theme) ?? sources[0]
+    const light = choose("light")
+    const dark = choose("dark")
+    return light?.src === dark?.src
+      ? [{ source: light, theme: "any" }]
+      : [
+          { source: light, theme: "light" },
+          { source: dark, theme: "dark" },
+        ]
+  })
+  return (
+    <For each={variants()}>
+      {(variant) => {
+        const [failed, setFailed] = createSignal(false)
+        return (
+          <span data-slot="icon-image" data-theme={variant.theme}>
+            <Show when={variant.source && !failed()} fallback={<Icon name={props.value.fallback} size={props.size} />}>
+              <img src={variant.source?.src} alt="" aria-hidden="true" onError={() => setFailed(true)} />
+            </Show>
+          </span>
+        )
+      }}
+    </For>
+  )
+}
+
+export { COMPUTER_TOOL_ICONS } from "./tool/computer-icons"

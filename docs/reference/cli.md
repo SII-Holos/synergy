@@ -2,7 +2,7 @@
 
 # CLI Reference
 
-Generated from the CLI registration in `packages/synergy/src/main.ts`. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.
+Generated from the core and product CLI catalogs and explicit command contributions. This reference describes the full product; standalone core installations expose the locally composed subset through the same `synergy` command. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.
 
 ## Commands
 
@@ -11,35 +11,41 @@ Generated from the CLI registration in `packages/synergy/src/main.ts`. Concept a
 | `acp` | start ACP (Agent Client Protocol) server |
 | `agent` | manage agents |
 | `auth` | manage credentials |
-| `browser` | diagnose and install Chromium for Browser tools |
 | `channel` | manage messaging channels |
 | `config` | manage synergy configuration |
-| `data` |  |
+| `data` | manage synergy data location and storage |
 | `debug` | debugging and troubleshooting tools |
+| `desktop` | open the installed Synergy Desktop application |
 | `diagnostics` | create a local diagnostics package |
 | `doctor` | diagnose synergy sandbox and environment |
 | `embed` | manage the local embedding model |
-| `export` |  |
-| `generate` |  |
-| `holos` | manage Holos identity and runtime |
-| `import` |  |
+| `environment` | manage compute on an attached server; print JSON results |
+| `export` | export a session transcript or self-contained rollout ZIP |
+| `generate` | generate the OpenAPI contract |
+| `import` | import a session transcript or rollout ZIP |
+| `install` | install components, presets, plugins or applications |
 | `library` | manage library memory and learning |
+| `list` | list installed packages and legacy plugins |
 | `logs` | show synergy background service logs |
 | `mcp` | manage MCP (Model Context Protocol) servers |
-| `migrate` |  |
+| `migrate` | move synergy data to a new location (alias for 'data move') |
 | `migration` | manage schema and data migrations |
-| `models` |  |
+| `models` | list all available models |
 | `plugin` | install, remove, update, and inspect plugins |
-| `send` |  |
-| `server` |  |
+| `remove` | remove packages and unused dependencies |
+| `secrets` | manage the secret vault |
+| `send` | send a message to synergy |
+| `server` | start synergy server |
 | `session` | manage sessions |
 | `start` | start synergy background service |
 | `stats` | show token usage and cost statistics |
 | `status` | show synergy background service status |
 | `stop` | stop synergy background service |
-| `uninstall` |  |
-| `upgrade` |  |
+| `uninstall` | uninstall synergy and remove all related files |
+| `update` | update explicitly installed packages |
+| `upgrade` | upgrade synergy to the latest or a specific version |
 | `web` | URL of a running synergy server |
+| `workspace` | manage durable files on an attached server; print JSON results |
 
 ## acp
 
@@ -92,9 +98,14 @@ manage credentials
 authenticate with an OAuth-enabled MCP server
 
 
-## browser
+## build [path]
 
-diagnose and install Chromium for Browser tools
+build a plugin definition into an installable package
+
+
+## cancel <environmentID> <operationID>
+
+request cancellation of an existing process and drain its result
 
 
 ## channel
@@ -102,9 +113,29 @@ diagnose and install Chromium for Browser tools
 manage messaging channels
 
 
+## check
+
+verify stored objects and historical snapshot roots
+
+
+## clean
+
+reclaim unowned legacy snapshot directories (dry-run unless --apply)
+
+
+## compact
+
+pack shared snapshots (dry-run unless --apply)
+
+
 ## config
 
-show resolved configuration
+manage synergy configuration
+
+
+## connect [name]
+
+connect an MCP server on the running synergy server
 
 
 ## create
@@ -116,16 +147,29 @@ create a new agent
 | `--path` (string) | directory path to generate the agent file |
 | `--description` (string) | what the agent should do |
 | `--mode` (string) | agent mode |
-| `--tools` (string) |  |
+| `--tools` (string) | comma-separated tool permission allowlist (default: all); fileToolGroup in scoped configuration selects the file interface |
 | `--model` (string) | model to use in the format of provider/model |
 
-## credentials
+## create <name>
 
-show local Holos credential status
+scaffold a definePlugin() project
 
 | Option | Description |
 | --- | --- |
-| `--json` (boolean) | output as JSON |
+| `--template` (string) |  |
+
+## create <profile>
+
+create an object-backed Workspace without allocating compute
+
+| Option | Description |
+| --- | --- |
+| `--name` (string) | display name for this Workspace |
+
+## data
+
+manage synergy data location and storage
+
 
 ## debug
 
@@ -147,12 +191,34 @@ delete a session using recovery-safe filesystem/index cleanup
 | `--yes` (boolean) | confirm deletion |
 | `--json` (boolean) |  |
 
+## desktop
+
+open the installed Synergy Desktop application
+
+
+## detach <workspaceID>
+
+save and detach an idle Workspace view
+
+| Option | Description |
+| --- | --- |
+| `--revision` (number) | observed Workspace revision |
+
+## dev [path]
+
+watch, rebuild, and atomically reload a plugin generation
+
+| Option | Description |
+| --- | --- |
+| `--server-url` (string) | isolated Synergy server URL for live reload |
+
 ## diagnostics
 
 create a local diagnostics package
 
 | Option | Description |
 | --- | --- |
+| `--startup` (boolean) | create bounded startup diagnostics without opening any database |
 | `--session` (string) | include indexed observability events for a specific session |
 | `--since` (string) | include indexed observability events since a duration like 30m, 2h, or 7d |
 | `--output` (string) | path for the generated .tar.gz package |
@@ -202,6 +268,31 @@ configure embedding provider (writes to global config)
 | --- | --- |
 | `--print` (boolean) | print config instead of writing to file |
 
+## entry <tarball>
+
+generate a marketplace registry entry JSON
+
+| Option | Description |
+| --- | --- |
+| `--repo` (string) | plugin GitHub repository URL |
+| `--download-url` (string) | release asset URL for the .synergy-plugin.tgz |
+| `--signature-url` (string) | release asset URL for the .sig file |
+| `--release-backend` (string) | release asset URL backend |
+| `--release-url-template` (string) |  |
+| `--release-tag-template` (string) |  |
+| `--write-entry` (string) | write or update a marketplace plugins/<id>.json entry |
+| `--changelog` (string) | version changelog |
+
+## environment
+
+manage compute on an attached server; print JSON results
+
+| Option | Description |
+| --- | --- |
+| `--attach` (string) | target Synergy HTTP server URL |
+| `--scope` (string) | Scope ID on the target server |
+| `--token-env` (string) | environment variable containing the server bearer token |
+
 ## export
 
 export config as JSONC (secrets redacted by default)
@@ -215,8 +306,21 @@ export config as JSONC (secrets redacted by default)
 
 ## export [sessionID]
 
-export session data as JSON
+export a session transcript or self-contained rollout ZIP
 
+| Option | Description |
+| --- | --- |
+| `--format` | export format |
+| `--run` (string) | root run ID to include in the rollout |
+| `--output` (string) | destination file (required for rollout ZIP) |
+
+## export <workspaceID> <output>
+
+export the observed saved files; does not include unsaved live changes
+
+| Option | Description |
+| --- | --- |
+| `--revision` (number) | observed Workspace revision |
 
 ## file
 
@@ -233,15 +337,18 @@ list files using ripgrep
 | `--glob` (string) |  |
 | `--limit` (number) |  |
 
-## holos
-
-manage Holos identity and runtime
-
-
 ## import <file>
 
-import session data from JSON or JSON.GZ export file
+import a session transcript or rollout ZIP
 
+
+## import <file> <profile>
+
+verify an archive and publish its files as a new Workspace
+
+| Option | Description |
+| --- | --- |
+| `--name` (string) | display name for the imported Workspace |
 
 ## import <source>
 
@@ -261,6 +368,16 @@ import config from URL or file
 show detailed plugin status and metadata
 
 
+## inspect
+
+show snapshot ownership and logical/allocated storage usage
+
+
+## inspect <environmentID>
+
+inspect allocation, leases and retained operations
+
+
 ## inspect <sessionID>
 
 inspect a session without hydrating its messages
@@ -270,20 +387,15 @@ inspect a session without hydrating its messages
 | `--scope` (string) | scope id when the session index is missing |
 | `--json` (boolean) |  |
 
-## install
+## install [spec..]
 
-install verified managed Chromium for Browser tools
+install components, presets, plugins or applications
 
 | Option | Description |
 | --- | --- |
-| `--force` (boolean) | reinstall Chromium even when the managed version is current |
-| `--json` (boolean) | print the installation result as JSON |
-| `--deps` (boolean) | install required Linux system packages (use --no-deps to skip) |
-
-## install-deps
-
-install Linux system packages required by Chromium
-
+| `--trust-host-code` (boolean) | trust the resolved component and application code to run with host privileges |
+| `--approve-plugin` (array) | approve the displayed API4 capability grant for these plugin ids |
+| `--resume` (boolean) | finish an interrupted plugin activation |
 
 ## learning
 
@@ -300,27 +412,13 @@ manage library memory and learning
 
 ## list
 
-list sessions
+list durable Workspaces and their current bindings
 
-| Option | Description |
-| --- | --- |
-| `--max-count` (number) | limit to N most recent sessions |
-| `--format` (string) | output format |
-| `--with-health` (boolean) | include recovery-safe health data |
 
 ## list <path>
 
 list files in a directory
 
-
-## login
-
-bind to Holos platform
-
-| Option | Description |
-| --- | --- |
-| `--agent-id` (string) | optional expected Holos agent ID when importing a secret |
-| `--agent-secret` (string) | log in with an existing Holos agent secret |
 
 ## login [url]
 
@@ -329,7 +427,7 @@ log in to a provider
 
 ## logout
 
-clear Holos credentials and stop the runtime
+log out from a configured provider
 
 
 ## logout [name]
@@ -379,12 +477,28 @@ configure memory parameters (writes to global config)
 | --- | --- |
 | `--print` (boolean) | print config instead of writing to file |
 
+## merge <source>
+
+merge data from another synergy directory or zip archive
+
+
+## migrate
+
+move synergy data to a new location (alias for 'data move')
+
+| Option | Description |
+| --- | --- |
+| `--target` (string) | target directory path |
+| `--remove-original` (boolean) | remove original data after successful move |
+| `--dry-run` (boolean) | show plan without executing |
+
 ## migration
 
 manage schema and data migrations
 
 | Option | Description |
 | --- | --- |
+| `--maintenance` (boolean) | include optional blocking database maintenance; requires an idle maintenance window |
 | `--dry-run` (boolean) | show what would run without executing |
 
 ## models [provider]
@@ -395,6 +509,35 @@ list all available models
 | --- | --- |
 | `--verbose` (boolean) | use more verbose model output (includes metadata like costs) |
 | `--refresh` (boolean) | refresh the models cache from models.dev |
+
+## move <target>
+
+move synergy data to a new location
+
+| Option | Description |
+| --- | --- |
+| `--remove-original` (boolean) | remove original data after successful move |
+| `--dry-run` (boolean) | show plan without executing |
+
+## operations <workspaceID>
+
+list unfinished Workspace mutations
+
+
+## pack [output]
+
+pack synergy data into a zip archive
+
+
+## pack [path]
+
+package a built plugin
+
+
+## pack-legacy
+
+pack all local legacy snapshot objects without deleting history or requiring a storage upgrade
+
 
 ## patch <hash>
 
@@ -424,15 +567,76 @@ show declared plugin capabilities in user-language format
 install, remove, update, and inspect plugins
 
 
+## preview [path]
+
+build and watch a plugin in an isolated real Synergy host
+
+| Option | Description |
+| --- | --- |
+| `--host-command` (array) | host executable and arguments (defaults to installed synergy) |
+
+## profiles
+
+list configured compute and storage profiles without allocating compute
+
+
+## publish-market [tarball]
+
+prepare and open an official Synergy Plugin Marketplace PR
+
+| Option | Description |
+| --- | --- |
+| `--path` (string) | plugin directory (defaults to cwd) |
+| `--repo` (string) | plugin GitHub repository URL |
+| `--registry-dir` (string) | local checkout path for the marketplace registry repository |
+| `--registry-repo` (string) | registry repository to clone when --registry-dir does not exist |
+| `--registry-github-repo` (string) | GitHub owner/repo used for opening the registry PR |
+| `--registry-base-branch` (string) | base branch for the registry PR |
+| `--registry-branch-prefix` (string) | branch prefix for registry PR branches |
+| `--download-url` (string) | release asset URL for the .synergy-plugin.tgz |
+| `--signature-url` (string) | release asset URL for the .sig file |
+| `--skip-release-upload` (boolean) | do not create/upload GitHub Release assets |
+| `--release-backend` | release asset backend; github can create/upload releases, manual only writes registry metadata |
+| `--release-url-template` (string) |  |
+| `--release-tag-template` (string) |  |
+| `--registry-branch` (string) | exact registry branch name to use instead of the default generated branch |
+| `--registry-branch-template` (string) |  |
+| `--registry-pr-title` (string) |  |
+| `--registry-pr-body` (string) |  |
+| `--pr` (boolean) | open a PR after preparing registry changes; pass --no-pr to skip |
+| `--changelog` (string) | version changelog for the registry entry |
+
 ## read <path>
 
 read file contents as JSON
 
 
-## reconnect
+## reconcile <environmentID>
 
-reload the Holos runtime connection
+check the selected allocation without replaying commands
 
+
+## recover <environmentID> <operationID>
+
+reconcile an existing operation and retry saving its result
+
+| Option | Description |
+| --- | --- |
+| `--file` (boolean) | recover a file mutation instead of process execution |
+
+## recover <workspaceID> <operationID>
+
+reconcile an existing Workspace mutation without replaying effects
+
+
+## recover-saved <workspaceID> <profile>
+
+copy the saved version to a new Workspace; retain unknown work on the original
+
+| Option | Description |
+| --- | --- |
+| `--name` (string) | display name for the recovered Workspace |
+| `--revision` (number) | observed source Workspace revision |
 
 ## reencode
 
@@ -445,13 +649,36 @@ detect experience candidates with low-quality intent or script
 | `--intent` (boolean) | show intent candidates |
 | `--script` (boolean) | show script candidates |
 
-## remove <id>
+## register
 
-uninstall and deactivate a plugin
+register a secret value (read from a hidden prompt)
 
 | Option | Description |
 | --- | --- |
-| `--force` (boolean) | skip confirmation prompt |
+| `--policy-tools` (array) | Restrict which tools may resolve this secret; can be repeated |
+
+## register <path>
+
+register a directory on the target server's native host
+
+
+## release <environmentID>
+
+save mounted files and release idle compute
+
+| Option | Description |
+| --- | --- |
+| `--generation` (number) | observed allocation generation |
+
+## remove <id>
+
+remove a secret; historical mask tokens stop resolving
+
+
+## remove <name..>
+
+remove explicitly installed packages and unused dependencies
+
 
 ## repair
 
@@ -471,6 +698,11 @@ configure rerank provider (writes to global config)
 | --- | --- |
 | `--print` (boolean) | print config instead of writing to file |
 
+## restart [name]
+
+restart an MCP server on the running synergy server
+
+
 ## restart <plugin>
 
 restart plugin runtime
@@ -481,9 +713,19 @@ restart plugin runtime
 retry a failed or pending lifecycle.install for a plugin
 
 
+## reveal <id>
+
+print a secret's plaintext to this terminal (local process only; never over HTTP)
+
+
 ## rg
 
 ripgrep debugging utilities
+
+
+## rotate <id>
+
+replace a secret's value; policy and history carry over
 
 
 ## runtime
@@ -510,6 +752,27 @@ search file contents using ripgrep
 search the npm registry for Synergy plugins
 
 
+## secrets <command>
+
+manage the secret vault
+
+
+## select <sessionID> <environmentID>
+
+change Session compute independently of its Workspace
+
+| Option | Description |
+| --- | --- |
+| `--expected` | currently observed Environment ID, or none |
+
+## select <sessionID> <workspaceID>
+
+change Session files independently of its Environment
+
+| Option | Description |
+| --- | --- |
+| `--generation` (number) | required binding generation when selecting a Workspace |
+
 ## send [message..]
 
 send a message to synergy
@@ -522,23 +785,42 @@ send a message to synergy
 | `--scope` (string) | registered scope id (defaults to the current directory, registering it when needed) |
 | `--model` (string) | model to use in the format of provider/model |
 | `--agent` (string) | agent to use |
+| `--experiment` (string) | Versioned experiment configuration file |
+| `--non-interactive` (boolean) | Fail explicitly if the task requires user input or permission |
+| `--timeout` (number) | Task timeout in seconds, including descendants and cleanup |
 | `--format` (string) | format: default (formatted) or json (raw JSON events) |
 | `--file` (string) | file(s) to attach to message |
 | `--title` (string) | title for the session (uses truncated prompt if no value provided) |
 | `--attach` (string) | attach to a running synergy server (start one with: synergy start) |
-| `--port` (number) | port for the local server (defaults to random port if no value provided) |
+| `--port` (number) | accepted for compatibility; local execution does not open an HTTP listener |
 | `--variant` (string) | model variant (provider-specific reasoning effort, e.g., high, max, minimal) |
-| `--workflow` (string) | run the message as a Light Loop workflow task: the session enables loop_stop and a reviewer loop, and send exits when the workflow reaches a terminal state |
+| `--workflow` (string) | run the message as a Light Loop workflow task: the executor verifies the full goal and completes it with loop_stop, and send exits when the workflow reaches a terminal state |
 
 ## session
 
 manage sessions
 
 
+## set-home <path>
+
+set SYNERGY_HOME to change data location (does not move data)
+
+| Option | Description |
+| --- | --- |
+| `--unset` (boolean) | remove SYNERGY_HOME, revert to default ~/.synergy |
+
 ## show
 
 show current library configuration
 
+
+## sign <tarball>
+
+sign a plugin package tarball
+
+| Option | Description |
+| --- | --- |
+| `--stdout` (boolean) | also print the signature JSON to stdout |
 
 ## skill
 
@@ -550,13 +832,18 @@ list all available skills
 snapshot debugging utilities
 
 
+## snapshots
+
+inspect and maintain file snapshot storage
+
+
 ## start
 
 start synergy background service
 
 | Option | Description |
 | --- | --- |
-| `--non-interactive` (boolean) | skip Holos login prompts before starting the background service |
+| `--non-interactive` (boolean) | skip initial configuration prompts before starting the background service |
 
 ## start [key]
 
@@ -569,6 +856,8 @@ show token usage and cost statistics
 
 | Option | Description |
 | --- | --- |
+| `--run` (string) | Show one run and its descendant accounting |
+| `--compare` (string) | Compare two runs without inferring task quality |
 | `--days` (number) | show stats for the last N days (default: all time) |
 | `--tools` (number) | number of tools to show (default: all) |
 | `--models` | show model statistics (default: hidden). Pass a number to show top N, otherwise shows all |
@@ -604,9 +893,24 @@ stop channels
 stop plugin runtime
 
 
+## storage
+
+inspect, verify, recover, restore backups, and move authoritative Agent storage
+
+| Option | Description |
+| --- | --- |
+| `--apply` (boolean) | back up and compact history in resumable batches; default only reports pending work |
+| `--json` (boolean) | print only the final status as JSON |
+| `--target` (string) | JSONC configuration file containing the target storage domain; credentials use an environment reference |
+
 ## symbols <query>
 
 search workspace symbols
+
+
+## test [path]
+
+run plugin tests
 
 
 ## track
@@ -630,6 +934,11 @@ show file tree using ripgrep
 show directory tree
 
 
+## typegen [path]
+
+generate UI operation and event types from plugin schemas
+
+
 ## update [id]
 
 update plugins to their latest version
@@ -638,15 +947,27 @@ update plugins to their latest version
 | --- | --- |
 | `--auto-approve` (boolean) | auto-approve permission changes without prompting (low-security convenience) |
 
+## update [name..]
+
+update explicitly installed packages (all when no name is given)
+
+| Option | Description |
+| --- | --- |
+| `--trust-host-code` (boolean) | trust the resolved component and application code to run with host privileges |
+| `--approve-plugin` (array) | approve the displayed API4 capability grant for these plugin ids |
+
 ## usage [provider]
 
 show provider account usage and quota windows
 
 
-## verify
+## validate [path]
 
-verify stored Holos credentials
+validate definePlugin() source and generated artifacts
 
+| Option | Description |
+| --- | --- |
+| `--runtime-discovery` (boolean) | verify packaged runtime handlers |
 
 ## web
 
@@ -659,3 +980,14 @@ URL of a running synergy server
 ## wizard
 
 interactive config wizard — auto-detect and set up providers
+
+
+## workspace
+
+manage durable files on an attached server; print JSON results
+
+| Option | Description |
+| --- | --- |
+| `--attach` (string) | target Synergy HTTP server URL |
+| `--scope` (string) | Scope ID on the target server |
+| `--token-env` (string) | environment variable containing the server bearer token |

@@ -1,0 +1,45 @@
+import type {
+  BrowserNavigation,
+  BrowserBackendCommand,
+  BrowserBackendResult,
+  BrowserHostDownloadEntry,
+} from "@ericsanchezok/synergy-browser-core"
+
+export interface BrowserFileChooserRequest {
+  requestId: string
+  multiple: boolean
+  accept: string[]
+}
+
+export interface BrowserDialogRequest {
+  requestId: string
+  type: string
+  message: string
+  defaultValue?: string
+}
+
+export interface BrowserPageEventHandlers {
+  onClosed?: (page: BrowserPageBackend) => void
+  onStatus?: (page: BrowserPageBackend, status: import("@ericsanchezok/synergy-browser-core").BrowserHostStatus) => void
+  onLoading?: (page: BrowserPageBackend, url: string) => void
+  onLoaded?: (page: BrowserPageBackend) => void
+  onUpdated?: (page: BrowserPageBackend) => void
+  onError?: (page: BrowserPageBackend, message: string, navigation?: BrowserNavigation) => void
+  onCrashed?: (page: BrowserPageBackend, message: string) => void
+  onDownload?: (page: BrowserPageBackend, entry: BrowserHostDownloadEntry) => void
+  onFileChooser?: (page: BrowserPageBackend, request: BrowserFileChooserRequest) => void
+  onDialog?: (page: BrowserPageBackend, request: BrowserDialogRequest) => void
+}
+
+export interface BrowserPageBackend {
+  readonly id: string
+  readonly backend: "host"
+  url: string
+  title: string
+  loading: boolean
+  navigation?: BrowserNavigation
+  lastActiveAt: number | null
+  isAlive(): boolean
+  execute(command: BrowserBackendCommand, agentSessionID?: string): Promise<BrowserBackendResult>
+  close(): Promise<void>
+}

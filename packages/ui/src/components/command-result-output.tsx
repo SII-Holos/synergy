@@ -1,6 +1,6 @@
 import { type AssistantMessage, type TextPart } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
-import { createMemo } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Markdown } from "./markdown"
 import { Icon } from "./icon"
@@ -13,6 +13,8 @@ const commandOutputLabelDescriptor = { id: "ui.commandResultOutput.label", messa
 
 export function CommandResultOutput(props: {
   message: AssistantMessage
+  partIDs?: readonly string[]
+  showHeader?: boolean
   classes?: {
     root?: string
     container?: string
@@ -22,7 +24,9 @@ export function CommandResultOutput(props: {
   const data = useData()
   const view = data.view
 
-  const parts = createMemo(() => view.partsFor(props.message.id))
+  const parts = createMemo(() =>
+    view.partsFor(props.message.id).filter((part) => !props.partIDs || props.partIDs.includes(part.id)),
+  )
 
   const commandName = createMemo(() => props.message.metadata?.commandName as string | undefined)
 
@@ -44,13 +48,15 @@ export function CommandResultOutput(props: {
   return (
     <div data-component="command-result-output" class={props.classes?.root}>
       <div data-slot="command-result-container" class={props.classes?.container}>
-        <div data-slot="command-result-header">
-          <div data-slot="command-result-source">
-            <Icon name={getSemanticIcon("settings.commands")} size="small" />
-            <span data-slot="command-result-label">{label()}</span>
+        <Show when={props.showHeader !== false}>
+          <div data-slot="command-result-header">
+            <div data-slot="command-result-source">
+              <Icon name={getSemanticIcon("settings.commands")} size="small" />
+              <span data-slot="command-result-label">{label()}</span>
+            </div>
+            <span data-slot="command-result-time">{timestamp()}</span>
           </div>
-          <span data-slot="command-result-time">{timestamp()}</span>
-        </div>
+        </Show>
         <div data-slot="command-result-body">
           <Markdown data-slot="command-result-markdown" text={textContent()} />
         </div>

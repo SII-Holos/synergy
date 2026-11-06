@@ -1,0 +1,599 @@
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test"
+import { Cortex, CortexConcurrency } from "../../src/cortex"
+import { ScopeContext } from "../../src/scope/context"
+import { Session } from "../../src/session"
+import { SessionInbox } from "../../src/session/inbox"
+import { SessionInvoke } from "../../src/session/invoke"
+import { SessionManager } from "../../src/session/manager"
+import { MessageV2 } from "../../src/session/message-v2"
+import { RolloutRecordingError } from "../../src/session/rollout/error"
+import { SessionUsage } from "../../src/session/usage"
+import { Storage } from "../../src/storage/storage"
+import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+function reset() {
+  Cortex.reset()
+  CortexConcurrency.reset()
+}
+
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 2_000, message = "timed out") {
+  const deadline = Date.now() + timeoutMs
+  while (!(await predicate())) {
+    if (Date.now() > deadline) throw new Error(message)
+    await Bun.sleep(5)
+  }
+}
+
+function followUpMail(sessionID: string, sourceSessionID: string, text: string) {
+  return {
+    type: "user" as const,
+    parts: [
+      {
+        id: `part_${Math.random().toString(36).slice(2)}`,
+        sessionID,
+        messageID: `msg_${Math.random().toString(36).slice(2)}`,
+        type: "text" as const,
+        text,
+      },
+    ],
+    metadata: { source: "session_send", sourceSessionID },
+  }
+}
+
+function retentionClock() {
+  let elapsed = 0
+  const timers = new Map<ReturnType<typeof setTimeout>, { deadline: number; action: () => void }>()
+  const native = setTimeout
+  const nativeClear = clearTimeout
+  const observer = spyOn(globalThis, "setTimeout").mockImplementation(
+    new Proxy(native, {
+      apply(target, receiver, args) {
+        if (args[1] !== 30_000 && args[1] !== 300_000) return Reflect.apply(target, receiver, args)
+        const timer = native(() => {}, 2_147_483_647)
+        timer.unref()
+        timers.set(timer, {
+          deadline: elapsed + args[1],
+          action: () => Reflect.apply(args[0], receiver, args.slice(2)),
+        })
+        return timer
+      },
+    }),
+  )
+  const cleared = spyOn(globalThis, "clearTimeout").mockImplementation(
+    new Proxy(nativeClear, {
+      apply(target, receiver, args) {
+        timers.delete(args[0])
+        return Reflect.apply(target, receiver, args)
+      },
+    }),
+  )
+  return {
+    count: () => timers.size,
+    advanceTo(time: number) {
+      elapsed = time
+      for (const [handle, timer] of [...timers].filter(([, timer]) => timer.deadline <= time)) {
+        clearTimeout(handle)
+        timer.action()
+      }
+    },
+    [Symbol.dispose]() {
+      for (const timer of timers.keys()) clearTimeout(timer)
+      cleared.mockRestore()
+      observer.mockRestore()
+    },
+  }
+}
+
+describe("Cortex cancellation fences queued follow-ups", () => {
+  test("cancellation discards mail queued in the same clock millisecond", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({ title: "same millisecond cancellation" })
+          const task = await Cortex.prepare({
+            description: "queued task",
+            prompt: "work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_same_tick",
+            notifyParentOnComplete: false,
+          })
+          const now = Date.now()
+          using clock = spyOn(Date, "now").mockReturnValue(now)
+          await SessionInbox.enqueueMail({
+            sessionID: task.sessionID,
+            mail: followUpMail(task.sessionID, parent.id, "before cancellation"),
+          })
+          await Cortex.cancel(task.id)
+          expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(false)
+          await SessionInbox.enqueueMail({
+            sessionID: task.sessionID,
+            mail: followUpMail(task.sessionID, parent.id, "after cancellation"),
+          })
+          expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(true)
+        },
+      })
+    }))
+
+  test("cancellation waits for an inbox write already in flight before purging", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({ title: "inflight inbox cancellation" })
+          const task = await Cortex.prepare({
+            description: "queued task",
+            prompt: "work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_inflight_inbox",
+            notifyParentOnComplete: false,
+          })
+          const held = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          const realWrite = Storage.write
+          using write = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+            if (key.includes(task.sessionID) && key.some((part) => part.startsWith("inb_"))) {
+              held.resolve()
+              await release.promise
+            }
+            return realWrite(key, value)
+          })
+          const delivery = SessionInbox.enqueueMail({
+            sessionID: task.sessionID,
+            mail: followUpMail(task.sessionID, parent.id, "inflight before cancellation"),
+          })
+          await held.promise
+          const cancellation = Cortex.cancel(task.id)
+          try {
+            await new Promise<void>((resolve) => setImmediate(resolve))
+          } finally {
+            release.resolve()
+          }
+          await Promise.all([delivery, cancellation])
+          expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(false)
+        },
+      })
+    }))
+
+  test("cancelAll reports a failed child while still cancelling the other children", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({ title: "partial cancellation" })
+          const first = await Cortex.prepare({
+            description: "first",
+            prompt: "work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_partial_first",
+            notifyParentOnComplete: false,
+          })
+          const second = await Cortex.prepare({
+            description: "second",
+            prompt: "work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_partial_second",
+            notifyParentOnComplete: false,
+          })
+          const remove = SessionInbox.fenceQueuedWork
+          using failure = spyOn(SessionInbox, "fenceQueuedWork").mockImplementation((sessionID, ...args) => {
+            if (sessionID === first.sessionID) throw new Error("inbox unavailable")
+            return remove(sessionID, ...args)
+          })
+          await expect(Cortex.cancelAll(parent.id)).rejects.toThrow("1 of 2")
+          expect(Cortex.get(first.id)?.status).toBe("queued")
+          expect(Cortex.get(second.id)?.status).toBe("cancelled")
+        },
+      })
+    }))
+
+  beforeEach(() => runtime.run(reset))
+  afterEach(() =>
+    runtime.run(async () => {
+      reset()
+      await Cortex.drain()
+      mock.restore()
+    }),
+  )
+
+  test.each(["none", "notification", "settlement"] as const)(
+    "terminal retention survives %s persistence failure and repeated cancellation",
+    runtime.bind(async (fault) => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({ title: "terminal retention" })
+          const prompt = "Complete instructions. ".repeat(300)
+          const task = await Cortex.prepare({
+            description: "Retained task",
+            prompt,
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_terminal_retention",
+            notifyParentOnComplete: fault === "notification",
+          })
+          SessionManager.registerChildRuntime(task.sessionID)
+          const failure =
+            fault === "notification"
+              ? new RolloutRecordingError({ message: "injected notification write failure" })
+              : new Error("injected settlement write failure")
+          let failures = 0
+          const realWrite = Storage.write
+          using write = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+            const notification = fault === "notification" && key[2] === parent.id && key[3] === "inbox"
+            const settlement =
+              fault === "settlement" &&
+              key[2] === task.sessionID &&
+              key[3] === "info" &&
+              (value as Session.Info).cortex?.settledAt !== undefined
+            if (notification || settlement) {
+              failures++
+              expect(Cortex.get(task.id)?.status).toBe("cancelled")
+              throw failure
+            }
+            return realWrite(key, value)
+          })
+          using clock = retentionClock()
+          if (fault === "none") await Cortex.cancel(task.id)
+          else if (fault === "notification") await expect(Cortex.cancel(task.id)).rejects.toBe(failure)
+          else
+            await expect(Cortex.cancel(task.id)).rejects.toMatchObject({
+              name: "RolloutRecordingError",
+              cause: failure,
+            })
+          expect(failures).toBe(fault === "none" ? 0 : 1)
+          expect(Cortex.get(task.id)?.prompt).toBe(prompt)
+          expect((await Session.get(task.sessionID)).cortex?.status).toBe("cancelled")
+          const completedAt = Cortex.get(task.id)?.completedAt
+          await Cortex.cancel(task.id)
+          expect(clock.count()).toBe(2)
+          clock.advanceTo(29_999)
+          expect(Cortex.get(task.id)?.prompt).toBe(prompt)
+          expect(Cortex.get(task.id)?.progress).toBeDefined()
+          clock.advanceTo(30_000)
+          expect(Cortex.get(task.id)?.prompt).toHaveLength(4096)
+          expect(Cortex.get(task.id)?.progress).toBeUndefined()
+          expect((await Cortex.getVisibleTaskForOutput(parent.id, task.id))?.prompt).toBe(prompt)
+          clock.advanceTo(299_999)
+          expect(Cortex.get(task.id)?.status).toBe("cancelled")
+          expect(SessionManager.getRuntime(task.sessionID)).toBeDefined()
+          const owner = fault === "none" ? SessionManager.acquire(task.sessionID) : undefined
+          clock.advanceTo(300_000)
+          if (owner) {
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+            expect(SessionManager.getRuntime(task.sessionID)?.owner?.lease).toBe(owner)
+            await SessionManager.release(owner, { requestNextWork: false })
+            clock.advanceTo(330_000)
+          }
+          expect(Cortex.get(task.id)).toBeUndefined()
+          expect(SessionManager.getRuntime(task.sessionID)).toBeUndefined()
+          expect(await Cortex.getVisibleTaskForOutput(parent.id, task.id)).toMatchObject({
+            prompt,
+            status: "cancelled",
+            completedAt,
+          })
+        },
+      })
+    }),
+  )
+
+  test("concurrent terminal cleanup waits for finalization and releases capacity once", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({ title: "concurrent terminal retention" })
+          const task = await Cortex.prepare({
+            description: "Concurrent cancellation",
+            prompt: "work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_concurrent_terminal_retention",
+            notifyParentOnComplete: false,
+            model: { providerID: "test-provider", modelID: "test-model" },
+          })
+          const started = Promise.withResolvers<void>()
+          const execution = Promise.withResolvers<void>()
+          using invoke = spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+            started.resolve()
+            return execution.promise.then(() => {
+              throw new DOMException("Task stopped", "AbortError")
+            })
+          })
+          await Cortex.start(task.id)
+          await started.promise
+          expect(CortexConcurrency.globalStatus().running).toBe(1)
+          using released = spyOn(CortexConcurrency, "release")
+          const held = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          let terminalWrites = 0
+          const realUsage = SessionUsage.read
+          using usage = spyOn(SessionUsage, "read").mockImplementation(async (...args) => {
+            const result = await realUsage(...args)
+            held.resolve()
+            await release.promise
+            return result
+          })
+          const realWrite = Storage.write
+          const failure = new RolloutRecordingError({ message: "injected concurrent terminal write failure" })
+          using write = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+            if (
+              key[2] === task.sessionID &&
+              key[3] === "info" &&
+              (value as Session.Info).cortex?.status === "cancelled"
+            ) {
+              terminalWrites++
+              if (terminalWrites === 1) throw failure
+            }
+            return realWrite(key, value)
+          })
+          using clock = retentionClock()
+          const first = Cortex.cancel(task.id)
+          await held.promise
+          const second = Cortex.cancel(task.id).catch((error: unknown) => error)
+          let scheduledBeforeRelease = 0
+          try {
+            expect(await second).toBe(failure)
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+            scheduledBeforeRelease = clock.count()
+            clock.advanceTo(300_000)
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+            expect(SessionManager.getRuntime(task.sessionID)).toBeDefined()
+            expect(CortexConcurrency.globalStatus().running).toBe(1)
+          } finally {
+            release.resolve()
+            await first
+            execution.resolve()
+            await Cortex.drain(task.id)
+          }
+          expect(scheduledBeforeRelease).toBe(2)
+          expect(released).toHaveBeenCalledTimes(1)
+          expect(CortexConcurrency.globalStatus().running).toBe(0)
+          expect(clock.count()).toBe(1)
+          clock.advanceTo(330_000)
+          expect(clock.count()).toBe(0)
+          expect(Cortex.get(task.id)).toBeUndefined()
+          expect(SessionManager.getRuntime(task.sessionID)).toBeUndefined()
+        },
+      })
+    }))
+
+  test("cancelling a running task discards its queued follow-up instead of restarting it", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const started = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+            started.resolve()
+            return (async () => {
+              await release.promise
+              throw new DOMException("Task stopped", "AbortError")
+            })() as Promise<never>
+          })
+          const loop = spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
+          spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+
+          const parent = await Session.create({ title: "cancel fence" })
+          const task = await Cortex.launch({
+            description: "Pending task",
+            prompt: "Do the work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_cancel_fence_1",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            notifyParentOnComplete: false,
+          })
+          await started.promise
+          expect(Cortex.get(task.id)?.status).toBe("running")
+
+          await SessionManager.deliver({
+            target: task.sessionID,
+            mail: followUpMail(task.sessionID, parent.id, "Stop expanding; run the focused tests."),
+          })
+          expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(true)
+
+          await Cortex.cancel(task.id)
+
+          // Let any wake chain queued before cancellation settle before measuring.
+          await Bun.sleep(20)
+          const loopCallsBeforeRelease = loop.mock.calls.length
+
+          expect(Cortex.get(task.id)?.status).toBe("cancelled")
+          expect((await Session.get(task.sessionID)).cortex?.status).toBe("cancelled")
+          expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(false)
+
+          release.resolve()
+          await Cortex.drain(task.id)
+          await Bun.sleep(100)
+
+          expect(loop.mock.calls.length).toBe(loopCallsBeforeRelease)
+          const messages = await Session.messages({ sessionID: task.sessionID })
+          const roots = messages.filter((m) => m.info.role === "user" && (m.info as MessageV2.User).isRoot === true)
+          expect(roots).toHaveLength(0)
+
+          await SessionManager.deliver({
+            target: task.sessionID,
+            mail: followUpMail(task.sessionID, parent.id, "New explicit work after cancellation."),
+          })
+          await waitFor(() => loop.mock.calls.length >= 1, 2_000, "post-cancel mail was not driven")
+          expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(true)
+        },
+      })
+    }))
+
+  test("runtime timeout fences queued follow-ups", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+            return new Promise<never>(() => {})
+          })
+          spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
+
+          const parent = await Session.create({ title: "timeout fence" })
+          const task = await Cortex.prepare({
+            description: "Stuck task",
+            prompt: "Do the work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_timeout_fence_1",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            notifyParentOnComplete: false,
+            timeoutMs: 50,
+          })
+          await SessionInbox.enqueueMail({
+            sessionID: task.sessionID,
+            mail: followUpMail(task.sessionID, parent.id, "Queued corrective follow-up."),
+          })
+          expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(true)
+          await Cortex.start(task.id)
+
+          await waitFor(() => Cortex.get(task.id)?.status === "error", 2_000, "task did not hit its runtime limit")
+          expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(false)
+          await waitFor(
+            async () => ((await Session.get(task.sessionID)).cortex?.settledAt ?? 0) > 0,
+            2_000,
+            "timeout settlement did not complete",
+          )
+        },
+      })
+    }))
+
+  test("fence cutoff discards only follow-ups queued before cancellation", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({ title: "fence cutoff" })
+          const firstItem = await SessionInbox.enqueueMail({
+            sessionID: parent.id,
+            mail: followUpMail(parent.id, parent.id, "queued before cancellation"),
+          })
+          // Advance past the first item's created millisecond so the cutoff is
+          // strictly newer than it even under timer coalescing.
+          while (Date.now() <= firstItem.time.created) await Bun.sleep(1)
+          const cutoff = Date.now()
+          await Bun.sleep(5)
+          await SessionInbox.enqueueMail({
+            sessionID: parent.id,
+            mail: followUpMail(parent.id, parent.id, "explicit new work after cancellation"),
+          })
+
+          expect(await SessionInbox.hasRunnableItem(parent.id)).toBe(true)
+          const removed = await SessionInbox.removeByModes(parent.id, ["task", "steer", "context"], cutoff)
+          expect(removed).toBe(1)
+
+          const remaining = await SessionInbox.list(parent.id)
+          expect(remaining).toHaveLength(1)
+          const keptText = remaining[0]?.message?.parts.find((part) => part.type === "text")
+          expect(keptText?.type === "text" ? keptText.text : "").toContain("after cancellation")
+
+          expect(await SessionInbox.hasRunnableItem(parent.id, { createdAfter: cutoff })).toBe(true)
+          expect(await SessionInbox.hasRunnableItem(parent.id, { createdAfter: Date.now() + 5_000 })).toBe(false)
+        },
+      })
+    }))
+
+  test("cancellation surfaces cleanup failure instead of acknowledging", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const started = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+            started.resolve()
+            return (async () => {
+              await release.promise
+              throw new DOMException("Task stopped", "AbortError")
+            })() as Promise<never>
+          })
+          spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
+          spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+
+          const parent = await Session.create({ title: "cancel cleanup failure" })
+          const task = await Cortex.launch({
+            description: "Stuck task",
+            prompt: "Do the work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_cancel_cleanup_failure",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            notifyParentOnComplete: false,
+          })
+          await started.promise
+          await waitFor(async () => (await Session.get(task.sessionID)).cortex?.status === "running")
+
+          spyOn(SessionInbox, "fenceQueuedWork").mockRejectedValue(new Error("storage unavailable"))
+          await expect(Cortex.cancel(task.id)).rejects.toThrow("queued follow-ups")
+          expect(Cortex.get(task.id)?.status).toBe("running")
+          expect((await Session.get(task.sessionID)).cortex?.status).toBe("running")
+
+          release.resolve()
+          await Cortex.drain(task.id)
+        },
+      })
+    }))
+
+  test("timeout with failing cleanup still surfaces the runtime-limit error and a cleanup warning", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const started = Promise.withResolvers<void>()
+          spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+            started.resolve()
+            return new Promise<never>(() => {})
+          })
+          spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
+          spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+          spyOn(SessionInbox, "fenceQueuedWork").mockRejectedValue(new Error("storage unavailable"))
+
+          const parent = await Session.create({ title: "timeout cleanup failure" })
+          const task = await Cortex.launch({
+            description: "Stuck task",
+            prompt: "Do the work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_timeout_cleanup_failure",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            notifyParentOnComplete: false,
+            timeoutMs: 50,
+          })
+          await started.promise
+
+          await waitFor(() => Cortex.get(task.id)?.status === "error", 2_000, "task did not hit its runtime limit")
+          const error = Cortex.get(task.id)?.error ?? ""
+          expect(error).toContain("runtime limit")
+          expect(error).toContain("cleanup failed")
+          await waitFor(
+            async () => ((await Session.get(task.sessionID)).cortex?.settledAt ?? 0) > 0,
+            2_000,
+            "timeout settlement did not complete",
+          )
+        },
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

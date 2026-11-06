@@ -1,0 +1,126 @@
+[data-component="selection-toolbar"] {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  max-width: min(32rem, calc(100vw - 16px));
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-weak-base);
+  background: var(--surface-raised-stronger-non-alpha);
+  box-shadow: var(--shadow-md);
+  color: var(--text-base);
+}
+
+.selection-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+}
+
+.selection-toolbar-item {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-base);
+  font-size: var(--font-size-small);
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.selection-toolbar-item > [data-component="icon"] {
+  flex: none;
+  color: var(--icon-base);
+}
+
+.selection-toolbar-item:hover {
+  background: var(--surface-base-hover);
+}
+
+.selection-toolbar-item[data-emphasis] {
+  color: var(--text-strong);
+  font-weight: var(--font-weight-medium);
+}
+
+.selection-toolbar-separator {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--border-weak-base);
+}
+
+.selection-toolbar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border-bottom: 1px solid var(--border-weak-base);
+}
+
+.selection-toolbar-heading {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-small);
+  color: var(--text-weak);
+}
+
+.selection-toolbar-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 12rem;
+  padding: 10px 12px;
+  font-size: var(--font-size-small);
+  color: var(--text-weak);
+}
+
+.selection-toolbar-note[data-tone="error"] {
+  color: var(--text-on-critical-base);
+}
+
+.selection-toolbar-message {
+  color: var(--text-weak);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-component="selection-toolbar"][data-kind="menu"] {
+    animation: selection-toolbar-enter 120ms ease-out;
+  }
+}
+
+@keyframes selection-toolbar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+@media (max-width: 639px) {
+  [data-component="selection-toolbar"] {
+    inset-inline: 8px;
+    top: auto !important;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    left: 8px !important;
+    max-width: none;
+  }
+
+  .selection-toolbar-row {
+    overflow-x: auto;
+  }
+
+  .selection-toolbar-item {
+    min-height: 40px;
+    padding: 0 12px;
+  }
+}

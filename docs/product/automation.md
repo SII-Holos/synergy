@@ -37,7 +37,7 @@ Multiple triggers can belong to one item. Deduplication compares their structura
 
 ## Execution Sessions
 
-Agenda work is unattended. Unless explicitly overridden, its session uses the `autonomous` control profile, so execution never waits for an approval prompt.
+Agenda work is unattended. Unless explicitly overridden, its session uses the configured non-interactive control profile, which defaults to `autonomous`, so execution never waits for an approval prompt. See [Control Profiles](../architecture/execution-boundaries.md#control-profiles).
 
 Session mode is inferred from the trigger:
 
@@ -48,11 +48,15 @@ One-shot `session` triggers default to `ephemeral`.
 
 An item can override that choice. A persistent item reuses its recorded Agenda session so context can accumulate across fires. An ephemeral item creates a dated session for one run and archives it after extracting the result.
 
+An item captures the origin Session's selected Workspace when it is created, including an explicit no-directory selection. Changing the origin Session later does not retarget the item. New execution sessions use that captured Workspace; a persistent execution session keeps its own selection. Missing or unbound directories produce a recorded failed run. Rebinding the captured Workspace explicitly changes its location for future runs.
+
+File watches subscribe to the captured Workspace even when no Session is open. They ignore other Scopes, other Workspaces and retired binding generations; global visibility does not broaden the directories watched. A file watch requires a Workspace.
+
 Normal execution builds a trigger-aware prompt, invokes the selected agent, observes the item timeout, captures the final assistant text, updates run state, and delivers the result according to the item's notification settings.
 
 `autoDone` is the exception used by one-shot watch-style delivery. It sends the item's prompt directly to the origin session instead of creating and invoking an Agenda session, then completes according to item state rules.
 
-`session_guidance` is a host-owned internal delivery mode for durable reminders attached to an existing Session. It does not create an Agenda execution Session or invoke a model on its own. When the trigger fires, Agenda writes the item's prompt to the origin Session as a deduplicated, hidden, system-authored `steer` inbox item and requests that Session's normal drive loop. This mode is not exposed by the Agenda agent tools; Native Clarus uses it for task-deadline guidance.
+`session_guidance` is a host-owned internal delivery mode for durable reminders attached to an existing Session. It does not create an Agenda execution Session or invoke a model on its own. When the trigger fires, Agenda writes the item's prompt to the origin Session as a deduplicated, hidden, system-authored `steer` inbox item and requests that Session's normal drive loop. This mode is not exposed by the Agenda agent tools..
 
 ## Delivery
 
@@ -62,15 +66,21 @@ Channel-origin Agenda items preserve endpoint context so ordinary results can re
 
 Failures are retained in run history and increment the consecutive-error count. After five consecutive failures, the next activation auto-pauses the item instead of continuing an unattended failure loop. A successful run resets the streak.
 
+Historical Home-origin items remain executable when their saved Scope predates the nullable-local shape. Agenda upgrades that origin before creating the execution Session, including an overdue timer recovered after restart. The upgrade preserves the instruction, schedule, control profile, explicit Workspace reference and existing run history; it does not reset failure counts or reactivate paused items.
+
 ## Built-in Autonomous Maintenance
 
-On first startup, Agenda creates the home-scoped `anima-daily` item. It runs the hidden `anima` agent at 03:00 in `Asia/Shanghai` using a fresh ephemeral session, suppresses delivery, and does not wake another session. The agent can reflect on recent work and maintain knowledge or Agenda state through the tools available to its autonomous profile.
+On first startup, Agenda creates the home-scoped `anima-daily` item. It runs the hidden `anima` agent at 03:00 in `Asia/Shanghai` using a fresh ephemeral session, suppresses delivery, and does not wake another session. The agent can reflect on recent work and maintain knowledge or Agenda state through the tools available to its non-interactive profile.
 
-`library.autonomy` controls these background routines and defaults on. When it is off, the seed is created paused and active Anima items are paused. Explicitly turning autonomy on at runtime reactivates paused Anima items; an ordinary startup with autonomy already on does not override a user's manual pause. Anima is a host-owned routine, not a primary agent exposed in the session selector.
+`anima.enabled` controls these background routines and defaults on. When it is off, the seed is created paused and active Anima items are paused. Explicitly turning autonomy on at runtime reactivates paused Anima items; an ordinary startup with autonomy already on does not override a user's manual pause. Anima is a host-owned routine, not a primary agent exposed in the session selector.
 
 ## Product Surfaces
 
-The Agenda UI presents calendar/schedule state, item editing, status controls, execution history, and related sessions. Agents can create and manage supported time triggers with Agenda tools. Plugins can inspect or alter execution through `agenda.run.before`, `agenda.run.after`, and `agenda.run.error` hooks.
+The Agenda UI separates Arrangements, Tasks and History. All three show data across Scopes without a page-level Scope filter or standing introductory explanation. Arrangements predicts future trigger times for enabled rules across all Scopes in a selected date range; its list starts at the selected date and covers seven days. Day, week and month views keep that selected date. Manual, event-triggered, paused, not-enabled and finished rules remain available in Tasks without date navigation. Selecting an arrangement opens details with the specific predicted time and its underlying rule.
+
+History shows actual executions by occurrence date, result and related session across all Scopes. It preserves records through failed refreshes and identifies how many records are loaded from its paged result. Calendar predictions do not stand in for historical executions. Absolute times, cron rules and anchored intervals can be expanded; floating intervals and delays show only an enabled rule's known next time because later times depend on activation and execution. Preview limits and invalid trigger settings are disclosed. Time presentation uses the browser's local timezone while cron rules retain their own timezone.
+
+Enabled describes a rule's lifecycle, not a running execution. Manually triggering a paused or pending item also enables it, so its action is labelled Enable and run now. Submission confirmation means the request was accepted; execution results belong to History. Agents can create and manage supported time triggers with Agenda tools. Plugins can inspect or alter execution through `agenda.run.before`, `agenda.run.after`, and `agenda.run.error` hooks.
 
 ## Invariants
 

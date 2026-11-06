@@ -13,6 +13,8 @@ const fromSessionDescriptor = { id: "ui.mailbox.fromSession", message: "From {so
 
 export function MailboxMessage(props: {
   message: AssistantMessage
+  partIDs?: readonly string[]
+  showHeader?: boolean
   classes?: {
     root?: string
     container?: string
@@ -22,7 +24,9 @@ export function MailboxMessage(props: {
   const data = useData()
   const view = data.view
 
-  const parts = createMemo(() => view.partsFor(props.message.id))
+  const parts = createMemo(() =>
+    view.partsFor(props.message.id).filter((part) => !props.partIDs || props.partIDs.includes(part.id)),
+  )
 
   const sourceName = createMemo(() => props.message.metadata?.sourceName as string | undefined)
   const sourceSessionID = createMemo(() => {
@@ -43,29 +47,31 @@ export function MailboxMessage(props: {
   return (
     <div data-component="mailbox-message" class={props.classes?.root}>
       <div data-slot="mailbox-message-container" class={props.classes?.container}>
-        <div data-slot="mailbox-message-header">
-          <div data-slot="mailbox-message-source">
-            <Icon name={getSemanticIcon("session.inbox")} size="small" />
-            <span data-slot="mailbox-message-source-label">
-              <Show
-                when={sourceSessionID()}
-                fallback={
-                  <span data-slot="mailbox-message-source-text">
-                    {_({ ...fromSessionDescriptor, values: { source: sourceLabel() } })}
-                  </span>
-                }
-              >
-                <button
-                  data-slot="mailbox-message-source-link"
-                  onClick={() => data.navigateToSession?.(sourceSessionID()!)}
+        <Show when={props.showHeader !== false}>
+          <div data-slot="mailbox-message-header">
+            <div data-slot="mailbox-message-source">
+              <Icon name={getSemanticIcon("session.inbox")} size="small" />
+              <span data-slot="mailbox-message-source-label">
+                <Show
+                  when={sourceSessionID()}
+                  fallback={
+                    <span data-slot="mailbox-message-source-text">
+                      {_({ ...fromSessionDescriptor, values: { source: sourceLabel() } })}
+                    </span>
+                  }
                 >
-                  {_({ ...fromSessionDescriptor, values: { source: sourceLabel() } })}
-                </button>
-              </Show>
-            </span>
+                  <button
+                    data-slot="mailbox-message-source-link"
+                    onClick={() => data.navigateToSession?.(sourceSessionID()!)}
+                  >
+                    {_({ ...fromSessionDescriptor, values: { source: sourceLabel() } })}
+                  </button>
+                </Show>
+              </span>
+            </div>
+            <span data-slot="mailbox-message-time">{timestamp()}</span>
           </div>
-          <span data-slot="mailbox-message-time">{timestamp()}</span>
-        </div>
+        </Show>
         <div data-slot="mailbox-message-body">
           <Markdown data-slot="mailbox-message-markdown" text={textContent()} />
         </div>

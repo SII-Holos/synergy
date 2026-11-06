@@ -1,0 +1,266 @@
+import { createSynergyClient, type Scope } from "@ericsanchezok/synergy-sdk/client"
+import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import { batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { createStore } from "solid-js/store"
+import { usePlatform } from "@/context/platform"
+import { migrateScopeState } from "@/utils/scope-state-migration"
+import { Persist, persisted } from "@/utils/persist"
+
+import { migrateServerPreferences, type StoredScope, type LegacyScope } from "./server-preferences"
+import { resolveLegacyScopeID } from "@/utils/session-reference"
+
+const HEALTH_TIMEOUT = 8000
+
+export function normalizeServerUrl(input: string) {
+  const trimmed = input.trim()
+  if (!trimmed) return
+  const withProtocol = /^https?:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`
+  return withProtocol.replace(/\/+$/, "")
+}
+
+export function serverDisplayName(url: string) {
+  if (!url) return ""
+  return url
+    .replace(/^https?:\/\//, "")
+    .replace(/\/+$/, "")
+    .split("/")[0]
+}
+
+function projectsKey(url: string) {
+  if (!url) return ""
+  return normalizeServerUrl(url) ?? ""
+}
+
+export const { use: useServer, provider: ServerProvider } = createSimpleContext({
+  name: "Server",
+  init: (props: { defaultUrl: string }) => {
+    const platform = usePlatform()
+
+    const [store, setStore, _, ready] = persisted(
+      { ...Persist.global("server", ["server.v3"]), migrate: migrateServerPreferences },
+      createStore({
+        list: [] as string[],
+        scopes: {} as Record<string, StoredScope[]>,
+        legacyScopes: {} as Record<string, LegacyScope[]>,
+      }),
+    )
+
+    const [active, setActiveRaw] = createSignal("")
+    const [peers, setPeers] = createSignal<Array<{ url: string; name: string }>>([], {
+      equals: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+    })
+    async function refreshConnections() {
+      const base = normalizeServerUrl(props.defaultUrl)
+      if (!base) return
+      const client = createSynergyClient({ baseUrl: base, fetch: platform.fetch })
+      const response = await client.hostConnection.peers({ signal: AbortSignal.timeout(3000) }).catch(() => undefined)
+      if (!Array.isArray(response?.data)) return
+      setPeers(response.data.map((peer) => ({ url: `${base}${peer.connectionPath}`, name: peer.name })))
+    }
+
+    function setActive(input: string) {
+      const url = normalizeServerUrl(input)
+      if (!url) return
+      setActiveRaw(url)
+    }
+
+    function add(input: string, activate = true) {
+      const url = normalizeServerUrl(input)
+      if (!url) return
+
+      const fallback = normalizeServerUrl(props.defaultUrl)
+      if (fallback && url === fallback) {
+        if (activate) setActiveRaw(url)
+        return
+      }
+
+      batch(() => {
+        if (!store.list.includes(url)) {
+          setStore("list", store.list.length, url)
+        }
+        if (activate) setActiveRaw(url)
+      })
+    }
+
+    function remove(input: string) {
+      const url = normalizeServerUrl(input)
+      if (!url) return
+
+      const list = store.list.filter((x) => x !== url)
+      const next = active() === url ? (list[0] ?? normalizeServerUrl(props.defaultUrl) ?? "") : active()
+
+      batch(() => {
+        setStore("list", list)
+        setActiveRaw(next)
+      })
+    }
+
+    createEffect(() => {
+      if (!ready()) return
+      if (active()) return
+      const url = normalizeServerUrl(props.defaultUrl)
+      if (!url) return
+      setActiveRaw(url)
+    })
+
+    const isReady = createMemo(() => ready() && !!active())
+
+    const [healthy, setHealthy] = createSignal<boolean | undefined>(undefined)
+    const [refreshToken, setRefreshToken] = createSignal(0)
+
+    const check = (url: string) => {
+      const sdk = createSynergyClient({
+        baseUrl: url,
+        fetch: platform.fetch,
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT),
+      })
+      return sdk.global
+        .health()
+        .then((x) => ({ healthy: x.data?.healthy === true }))
+        .catch(() => ({ healthy: false }))
+    }
+
+    createEffect(() => {
+      const url = active()
+      refreshToken()
+      if (!url) return
+
+      setHealthy(undefined)
+
+      let current = true
+      check(url).then((result) => {
+        if (!current) return
+        setHealthy(result.healthy)
+      })
+      onCleanup(() => {
+        current = false
+      })
+    })
+
+    const origin = createMemo(() => projectsKey(active()))
+    const scopesList = createMemo(() => store.scopes[origin()] ?? [])
+    const isLocal = createMemo(
+      () =>
+        !!active() &&
+        !peers().some((peer) => peer.url === active()) &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(new URL(active()).hostname),
+    )
+
+    return {
+      ready: isReady,
+      healthy,
+      isLocal,
+      get url() {
+        return active()
+      },
+      get name() {
+        return peers().find((peer) => peer.url === active())?.name ?? serverDisplayName(active())
+      },
+      get list() {
+        return [...new Set([...store.list, ...peers().map((peer) => peer.url)])]
+      },
+      get connections() {
+        return [
+          ...new Set(
+            [normalizeServerUrl(props.defaultUrl)!, ...store.list, ...peers().map((peer) => peer.url)].filter(Boolean),
+          ),
+        ]
+      },
+      displayName(url: string) {
+        return peers().find((peer) => peer.url === url)?.name ?? serverDisplayName(url)
+      },
+      refreshConnections,
+      setActive,
+      add,
+      remove,
+      refresh() {
+        setRefreshToken((value) => value + 1)
+      },
+      scopes: {
+        list: scopesList,
+        prepare(metadata: Scope[]) {
+          const connection = origin()
+          const isDefault = connection === normalizeServerUrl(props.defaultUrl)
+          const legacyKey = store.legacyScopes[connection] ? connection : isDefault ? "local" : undefined
+          const legacy = legacyKey ? (store.legacyScopes[legacyKey] ?? []) : []
+          const resolved: StoredScope[] = []
+          const pending: LegacyScope[] = []
+          const migrated = new Set<string>()
+          for (const entry of legacy) {
+            const scopeID = resolveLegacyScopeID(entry.worktree, metadata)
+            if (!scopeID) {
+              pending.push(entry)
+              continue
+            }
+            resolved.push({ id: scopeID, expanded: entry.expanded, pinned: entry.pinned })
+            migrated.add(scopeID)
+          }
+          migrateScopeState({
+            connection,
+            scopes: isDefault ? metadata : metadata.filter((scope) => migrated.has(scope.id)),
+            includeHome: isDefault,
+          })
+          batch(() => {
+            if (resolved.length) {
+              const current = store.scopes[connection] ?? []
+              setStore("scopes", connection, [
+                ...current,
+                ...resolved.filter((scope) => !current.some((entry) => entry.id === scope.id)),
+              ])
+            }
+            if (legacyKey) setStore("legacyScopes", legacyKey, pending)
+          })
+        },
+        open(directory: string) {
+          const key = origin()
+          if (!key) return
+          const current = store.scopes[key] ?? []
+          if (current.find((x) => x.id === directory)) return
+          setStore("scopes", key, [{ id: directory, expanded: true }, ...current])
+        },
+        close(directory: string) {
+          const key = origin()
+          if (!key) return
+          const current = store.scopes[key] ?? []
+          setStore(
+            "scopes",
+            key,
+            current.filter((x) => x.id !== directory),
+          )
+        },
+        expand(directory: string) {
+          const key = origin()
+          if (!key) return
+          const current = store.scopes[key] ?? []
+          const index = current.findIndex((x) => x.id === directory)
+          if (index !== -1) setStore("scopes", key, index, "expanded", true)
+        },
+        collapse(directory: string) {
+          const key = origin()
+          if (!key) return
+          const current = store.scopes[key] ?? []
+          const index = current.findIndex((x) => x.id === directory)
+          if (index !== -1) setStore("scopes", key, index, "expanded", false)
+        },
+        move(directory: string, toIndex: number) {
+          const key = origin()
+          if (!key) return
+          const current = store.scopes[key] ?? []
+          const fromIndex = current.findIndex((x) => x.id === directory)
+          if (fromIndex === -1 || fromIndex === toIndex) return
+          const result = [...current]
+          const [item] = result.splice(fromIndex, 1)
+          result.splice(toIndex, 0, item)
+          setStore("scopes", key, result)
+        },
+        pin(directory: string, value: number) {
+          const key = origin()
+          if (!key) return
+          const current = store.scopes[key] ?? []
+          const index = current.findIndex((x) => x.id === directory)
+          if (index !== -1) setStore("scopes", key, index, "pinned", value)
+        },
+      },
+    }
+  },
+})

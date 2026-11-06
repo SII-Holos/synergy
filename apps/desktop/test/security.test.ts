@@ -1,0 +1,178 @@
+import { describe, expect, test } from "bun:test"
+import { electronMockState, registerElectronMock } from "./electron-mock"
+
+registerElectronMock()
+
+const { enforceProductionLoading, installSessionSecurity, installWindowSecurity, openExternalSafely } =
+  await import("../src/security.js")
+
+describe("desktop session security", () => {
+  test("keeps media and device permissions restricted", () => {
+    electronMockState.permissionRequestHandlers = []
+    installSessionSecurity(
+      () => undefined,
+      () => null,
+    )
+    expect(electronMockState.permissionRequestHandlers).toHaveLength(1)
+
+    const handler = electronMockState.permissionRequestHandlers[0]! as (
+      webContents: unknown,
+      permission: string,
+      callback: (granted: boolean) => void,
+      details?: { mediaTypes?: Array<"audio" | "video"> },
+    ) => void
+    const decisions: boolean[] = []
+    const request = (permission: string, mediaTypes?: Array<"audio" | "video">) => {
+      handler(null, permission, (granted) => decisions.push(granted), mediaTypes && { mediaTypes })
+    }
+    request("media", ["audio"])
+    request("media", ["video"])
+    request("media", ["audio", "video"])
+    request("media")
+    request("geolocation")
+    expect(decisions).toEqual([true, false, false, false, false])
+  })
+
+  test("allows fullscreen only for the current trusted app main frame", () => {
+    electronMockState.permissionRequestHandlers = []
+    let url = "http://127.0.0.1:8765/session"
+    let appURL: string | null = "http://127.0.0.1:8765"
+    let destroyed = false
+    const contents = { getURL: () => url, isDestroyed: () => destroyed }
+    let current: typeof contents | undefined = contents
+    installSessionSecurity(
+      () => current as never,
+      () => appURL,
+    )
+    const handler = electronMockState.permissionRequestHandlers[0]! as (
+      webContents: unknown,
+      permission: string,
+      callback: (granted: boolean) => void,
+      details: { requestingUrl: string; isMainFrame: boolean },
+    ) => void
+    const request = (sender: unknown = contents, requestingUrl = url, isMainFrame = true) => {
+      let granted = false
+      handler(
+        sender,
+        "fullscreen",
+        (value) => {
+          granted = value
+        },
+        { requestingUrl, isMainFrame },
+      )
+      return granted
+    }
+    expect(request()).toBe(true)
+    expect(request(contents, url, false)).toBe(false)
+    expect(request({ ...contents })).toBe(false)
+    expect(request(null)).toBe(false)
+    expect(request(contents, "https://other.example/page")).toBe(false)
+    expect(request(contents, "http://127.0.0.1:8766/session")).toBe(false)
+    expect(request(contents, "http://127.0.0.1:8765/previous-document")).toBe(false)
+    expect(request(contents, "not a URL")).toBe(false)
+    current = undefined
+    expect(request()).toBe(false)
+    current = contents
+    destroyed = true
+    expect(request()).toBe(false)
+    destroyed = false
+    appURL = null
+    expect(request()).toBe(false)
+    appURL = "http://127.0.0.1:8765"
+    url = "https://other.example/page"
+    expect(request()).toBe(false)
+    url = "data:text/html,recovery"
+    expect(request()).toBe(false)
+  })
+
+  test("opens only http, https, and mailto URLs externally", async () => {
+    electronMockState.shellOpened = []
+    await openExternalSafely("https://example.com/docs")
+    await openExternalSafely("http://localhost:3000")
+    await openExternalSafely("mailto:hi@example.com")
+    await openExternalSafely("file:///etc/passwd")
+    await openExternalSafely("javascript:alert(1)")
+    await openExternalSafely("not a url")
+
+    expect(electronMockState.shellOpened).toEqual([
+      "https://example.com/docs",
+      "http://localhost:3000",
+      "mailto:hi@example.com",
+    ])
+  })
+
+  test("allows same-origin localhost window opens and denies everything else through the shell", async () => {
+    electronMockState.shellOpened = []
+    const windowOpenHandlers: Array<(details: { url: string }) => { action: string }> = []
+    const navigationHandlers: Array<(event: { prevented: boolean; preventDefault(): void }, url: string) => void> = []
+    const window = {
+      webContents: {
+        setWindowOpenHandler(handler: never) {
+          windowOpenHandlers.push(handler)
+        },
+        on(_event: string, handler: never) {
+          navigationHandlers.push(handler)
+        },
+      },
+    }
+
+    installWindowSecurity(window as never, () => "http://127.0.0.1:8765")
+
+    const open = windowOpenHandlers[0]!
+    expect(open({ url: "http://127.0.0.1:8765/session" })).toEqual({ action: "allow" })
+    expect(open({ url: "https://evil.example.com" })).toEqual({ action: "deny" })
+    expect(open({ url: "file:///etc/passwd" })).toEqual({ action: "deny" })
+    await Bun.sleep(0)
+    expect(electronMockState.shellOpened).toEqual(["https://evil.example.com"])
+
+    electronMockState.shellOpened = []
+    const navigate = navigationHandlers[0]!
+    const allowedEvent = {
+      prevented: false,
+      preventDefault() {
+        this.prevented = true
+      },
+    }
+    navigate(allowedEvent, "http://127.0.0.1:8765/session")
+    expect(allowedEvent.prevented).toBe(false)
+
+    const deniedEvent = {
+      prevented: false,
+      preventDefault() {
+        this.prevented = true
+      },
+    }
+    navigate(deniedEvent, "https://evil.example.com")
+    expect(deniedEvent.prevented).toBe(true)
+    await Bun.sleep(0)
+    expect(electronMockState.shellOpened).toEqual(["https://evil.example.com"])
+  })
+
+  test("reports failed loads outside the app origin and ignores the aborted code", () => {
+    const errors: Array<Array<unknown>> = []
+    const original = console.error
+    console.error = (...args: unknown[]) => errors.push(args)
+    try {
+      const handlers: Array<(event: unknown, code: number, description: string, url: string) => void> = []
+      const contents = {
+        on(_event: string, handler: never) {
+          handlers.push(handler)
+        },
+      }
+
+      enforceProductionLoading(contents as never, () => "http://127.0.0.1:8765")
+      const failed = handlers[0]!
+
+      failed(null, -3, "aborted", "https://evil.example.com")
+      failed(null, -105, "unreachable", "http://127.0.0.1:8765/page")
+      failed(null, -105, "unreachable", "https://evil.example.com/page")
+      failed(null, -105, "unreachable", "")
+
+      expect(errors).toHaveLength(1)
+      expect(errors[0]![0]).toContain("blocked failed navigation outside app origin")
+      expect(errors[0]![0]).toContain("https://evil.example.com/page")
+    } finally {
+      console.error = original
+    }
+  })
+})

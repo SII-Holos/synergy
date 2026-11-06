@@ -1,0 +1,258 @@
+[data-component="image-viewer"] {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface-raised-base);
+  color: var(--text-base);
+  container-type: inline-size;
+
+  &:fullscreen {
+    width: 100vw;
+    height: 100dvh;
+  }
+  [data-slot="image-viewer-toolbar"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex: none;
+    overflow-x: auto;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-weak-base);
+    [data-component="icon-button"] {
+      width: 32px;
+      height: 32px;
+      flex: none;
+      font-size: 12px;
+      border-radius: var(--radius-sm);
+    }
+    [aria-pressed="true"] {
+      background: var(--surface-raised-base-active);
+      color: var(--text-strong);
+    }
+    [data-viewer-command="fit"] {
+      min-width: 36px;
+    }
+  }
+  [data-slot="image-viewer-scale"] {
+    min-width: 52px;
+    text-align: center;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-weak);
+  }
+  [data-slot="image-viewer-canvas"] {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  [data-slot="image-viewer-stage"] {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    &[data-draggable] {
+      cursor: grab;
+    }
+    &[data-dragging] {
+      cursor: grabbing;
+    }
+    &[data-grid] {
+      background-color: var(--surface-base);
+      background-image: conic-gradient(
+        var(--surface-raised-base-hover) 25%,
+        transparent 0 50%,
+        var(--surface-raised-base-hover) 0 75%,
+        transparent 0
+      );
+      background-size: 20px 20px;
+    }
+  }
+  [data-slot="image-viewer-image"] {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    max-width: none;
+    max-height: none;
+    object-fit: fill;
+    transform-origin: center;
+    pointer-events: none;
+    border-radius: 0;
+  }
+  [data-slot="image-viewer-state"] {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    color: var(--text-weak);
+    font-size: 13px;
+    text-align: center;
+  }
+  [data-slot="image-viewer-nav"] {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    background-color: var(--surface-raised-stronger-non-alpha);
+    color: var(--text-base);
+    border: 1px solid var(--border-weak-base);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition:
+      background-color var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard),
+      transform var(--motion-duration-fast) var(--motion-ease-standard);
+
+    @media (hover: hover) and (pointer: fine) {
+      &:hover:not(:disabled) {
+        background-color: var(--button-secondary-hover);
+        color: var(--text-strong);
+      }
+    }
+
+    &:active:not(:disabled) {
+      background-color: var(--surface-inset-strong-hover);
+      color: var(--text-strong);
+      transform: translateY(-50%) scale(0.96);
+    }
+  }
+  [data-side="previous"] {
+    left: 8px;
+  }
+  [data-side="next"] {
+    right: 8px;
+  }
+  [data-slot="image-viewer-nav"]:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  [data-slot="image-viewer-thumbnails"] {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    padding: 6px 10px;
+    overflow-x: auto;
+    border-top: 1px solid var(--border-weak-base);
+  }
+  [data-slot="image-viewer-thumbnails"] button {
+    width: 48px;
+    height: 40px;
+    flex: none;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+  }
+  [data-slot="image-viewer-thumbnails"] [aria-current="true"] {
+    border-color: var(--border-strong-base);
+    background: var(--surface-raised-base-active);
+  }
+  [data-slot="image-viewer-thumbnails"] img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  [data-slot="image-viewer-footer"] {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 10px;
+    flex: none;
+    min-height: 26px;
+    font-size: 11px;
+    color: var(--text-weak);
+  }
+  [data-slot="image-viewer-footer"] > :first-child {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  [data-slot="image-viewer-footer"] [role="status"] {
+    max-width: 65%;
+    overflow-wrap: anywhere;
+  }
+  [data-error] {
+    color: var(--text-on-critical-base);
+  }
+}
+
+[data-component="image-viewer-menu"] {
+  z-index: 60;
+  min-width: 210px;
+  max-width: calc(100vw - 16px);
+  max-height: var(--kb-popper-content-available-height);
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border-weak-base);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised-stronger-non-alpha);
+  color: var(--text-base);
+  box-shadow: var(--shadow-popover);
+  transform-origin: var(--kb-menu-content-transform-origin);
+  &[data-expanded] {
+    animation: popover-open var(--motion-duration-base) var(--motion-ease-emphasized);
+  }
+  [role^="menuitem"] {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    outline: none;
+    cursor: default;
+  }
+  [role^="menuitem"] > span {
+    flex: 1;
+  }
+  [data-highlighted] {
+    background: var(--surface-raised-base-hover);
+  }
+  [data-disabled] {
+    color: var(--text-weaker);
+    opacity: 0.6;
+  }
+}
+@container (max-width: 420px) {
+  [data-component="image-viewer"] [data-slot="image-viewer-toolbar"] {
+    justify-content: flex-start;
+  }
+}
+@media (pointer: coarse) {
+  [data-component="image-viewer"] [data-slot="image-viewer-toolbar"] [data-component="icon-button"],
+  [data-component="image-viewer"] [data-slot="image-viewer-nav"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  [data-component="image-viewer-menu"] [role^="menuitem"] {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-component="image-viewer"] [data-slot="image-viewer-nav"] {
+    transition: none;
+    &:active:not(:disabled) {
+      transform: translateY(-50%);
+    }
+  }
+  [data-component="image-viewer-menu"][data-expanded] {
+    animation: none;
+  }
+}

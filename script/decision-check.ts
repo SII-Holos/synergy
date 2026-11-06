@@ -53,7 +53,9 @@ function decisionsDir(root: string) {
 
 async function stagedFiles(root: string, cwd: string): Promise<string[]> {
   const result = await $`git diff --cached --name-only --diff-filter=ACMR`.cwd(cwd).quiet()
-  const decisions = path.relative(cwd, decisionsDir(root))
+  // Git prints forward slashes on every platform; path.relative uses the
+  // platform separator, which never matched on Windows.
+  const decisions = path.relative(cwd, decisionsDir(root)).split(path.sep).join("/")
   return result
     .text()
     .split("\n")
@@ -182,7 +184,9 @@ export async function checkArchiveSeal(root: string, cwd: string): Promise<strin
   }
   const seen = new Set<string>()
   for (const record of records) {
-    const key = path.relative(decisionsDir(root), record)
+    // Manifest keys are forward-slash repo-relative paths; a raw
+    // path.relative key carries backslashes on Windows and never matches.
+    const key = path.relative(decisionsDir(root), record).split(path.sep).join("/")
     seen.add(key)
     const expected = sealed.get(key)
     const actual = sha256(await readFile(record, "utf8"))

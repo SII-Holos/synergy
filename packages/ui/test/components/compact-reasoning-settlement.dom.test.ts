@@ -1,180 +1,25 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
-import path from "node:path"
-import { pathToFileURL } from "node:url"
 import { JSDOM } from "jsdom"
-import { build } from "vite"
-import solidPlugin from "vite-plugin-solid"
+import { domFixture } from "../support/dom-fixtures"
+import type { TurnExecutionSummary } from "../../src/components/execution-completion"
 
-// Reproduces the working → settled transition on the REAL SessionTurn with the
-// REAL reactive store, without remounting: the compact reasoning row must flip
-// from the streaming line (spinner, no button) to the persistent expandable
-// row as soon as the turn settles (session status idle + terminal message).
 interface SettlementHarness {
   settle: () => void
+  reset: () => void
+  stop: () => void
+  clearStatus: () => void
+  recoverAfterError: () => void
+  setFollowing: (value: boolean) => void
+  setExecutionSummary: (value: TurnExecutionSummary) => void
 }
 
-let fixtureDirectory: string
 let dom: JSDOM
 let harness: SettlementHarness
 
 const waitForUpdate = () => new Promise((resolve) => setTimeout(resolve, 20))
 
 beforeAll(async () => {
-  fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".compact-reasoning-settlement-fixture-"))
-  const sessionTurnPath = path.resolve(import.meta.dir, "../../src/components/session-turn.tsx")
-  const dataContextPath = path.resolve(import.meta.dir, "../../src/context/data.tsx")
-  const dialogContextPath = path.resolve(import.meta.dir, "../../src/context/dialog.tsx")
-  const diffContextPath = path.resolve(import.meta.dir, "../../src/context/diff.tsx")
-  const markedContextPath = path.resolve(import.meta.dir, "../../src/context/marked.tsx")
-  const resourceOpenContextPath = path.resolve(import.meta.dir, "../../src/context/resource-open.tsx")
-  const i18nPath = path.resolve(import.meta.dir, "../../src/testing/i18n.tsx")
-  const messageSlotsPath = path.resolve(import.meta.dir, "../../src/components/message-slots.tsx")
-  const pluginThemePath = path.resolve(import.meta.dir, "../../../plugin/src/theme/index.ts")
-  const entry = path.join(fixtureDirectory, "main.tsx")
-
-  await Bun.write(
-    entry,
-    `
-      import { I18nProvider } from "@lingui/solid"
-      import { createStore } from "solid-js/store"
-      import { render } from "solid-js/web"
-      import { DataProvider } from ${JSON.stringify(dataContextPath)}
-      import { DialogProvider } from ${JSON.stringify(dialogContextPath)}
-      import { DiffComponentProvider } from ${JSON.stringify(diffContextPath)}
-      import { MarkedProvider } from ${JSON.stringify(markedContextPath)}
-      import { ResourceOpenProvider } from ${JSON.stringify(resourceOpenContextPath)}
-      import { SessionTurn } from ${JSON.stringify(sessionTurnPath)}
-      import { setupI18n } from ${JSON.stringify(i18nPath)}
-      import { setExternalMessageSlotLookup } from ${JSON.stringify(messageSlotsPath)}
-
-      const sessionID = "session-settlement"
-      const rootID = "user-settlement"
-      const assistantID = "assistant-settlement"
-      const reasoningID = "reasoning-settlement"
-      const answerID = "answer-settlement"
-
-      const rootMessage = {
-        id: rootID,
-        sessionID,
-        role: "user",
-        time: { created: 1 },
-        agent: "synergy",
-        model: { providerID: "provider", modelID: "model" },
-        isRoot: true,
-        rootID,
-        visible: true,
-      }
-      const assistantMessage = {
-        id: assistantID,
-        sessionID,
-        role: "assistant",
-        parentID: rootID,
-        rootID,
-        mode: "test",
-        agent: "synergy",
-        path: { cwd: "/workspace", root: "/workspace" },
-        cost: 0,
-        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-        modelID: "model",
-        providerID: "provider",
-        time: { created: 1 },
-      }
-      const reasoningPart = {
-        id: reasoningID,
-        sessionID,
-        messageID: assistantID,
-        type: "reasoning",
-        text: "## Planning\\nThinking through the request step by step.",
-      }
-      const answerPart = {
-        id: answerID,
-        sessionID,
-        messageID: assistantID,
-        type: "text",
-        text: "Here is the final answer.",
-      }
-
-      const [state, setState] = createStore({
-        session: [],
-        session_status: { [sessionID]: { type: "busy" } },
-        session_diff: { [sessionID]: [] },
-        permission: { [sessionID]: [] },
-        message: { [sessionID]: [rootMessage, assistantMessage] },
-        part: { [rootID]: [], [assistantID]: [reasoningPart, answerPart] },
-      })
-
-      const resourceController = {
-        open: () => false,
-        openAttachment: () => false,
-        resolveWorkspacePath: (value) => value,
-        openWorkspaceSource: () => false,
-      }
-      const EmptyDiff = () => null
-      const SlotProbe = (props) => <span data-test-slot={props.slot} />
-      setExternalMessageSlotLookup((slot) =>
-        ["message.before", "message.actions", "message.after"].includes(slot)
-          ? [{ id: "probe-" + slot, component: SlotProbe }]
-          : [],
-      )
-
-      render(
-        () => (
-          <I18nProvider i18n={setupI18n()}>
-            <DialogProvider>
-              <ResourceOpenProvider value={resourceController}>
-                <MarkedProvider>
-                  <DiffComponentProvider component={EmptyDiff}>
-                    <DataProvider data={state} directory="/workspace" serverUrl="http://localhost">
-                      <SessionTurn
-                        sessionID={sessionID}
-                        messageID={rootID}
-                        rootMessage={rootMessage}
-                        messages={state.message[sessionID]}
-                        lastUserMessageID={rootID}
-                        activityDisplay="balanced"
-                        compactReasoning={true}
-                      />
-                    </DataProvider>
-                  </DiffComponentProvider>
-                </MarkedProvider>
-              </ResourceOpenProvider>
-            </DialogProvider>
-          </I18nProvider>
-        ),
-        document.querySelector("#root"),
-      )
-
-      globalThis.__settlementHarness = {
-        settle: () => {
-          setState("session_status", sessionID, { type: "idle" })
-          setState("message", sessionID, (messages) =>
-            messages.map((m) =>
-              m.id === assistantID ? { ...m, time: { ...m.time, completed: 5000 }, finish: "stop" } : m,
-            ),
-          )
-        },
-      }
-    `,
-  )
-
-  await build({
-    configFile: false,
-    logLevel: "silent",
-    plugins: [solidPlugin()],
-    resolve: {
-      alias: { "@ericsanchezok/synergy-plugin/theme": pluginThemePath },
-    },
-    worker: { format: "es" },
-    build: {
-      outDir: path.join(fixtureDirectory, "dist"),
-      emptyOutDir: true,
-      minify: false,
-      lib: { entry, formats: ["es"], fileName: "fixture" },
-      rollupOptions: { output: { inlineDynamicImports: true } },
-    },
-  })
-
+  const entry = await domFixture("compact-reasoning-settlement.dom")
   dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: "http://localhost/",
   })
@@ -225,43 +70,101 @@ beforeAll(async () => {
     cancelAnimationFrame: (id: number) => clearTimeout(id),
   })
 
-  await import(`${pathToFileURL(path.join(fixtureDirectory, "dist", "fixture.js")).href}?test=${Date.now()}`)
+  await import(entry)
   harness = (globalThis as typeof globalThis & { __settlementHarness: SettlementHarness }).__settlementHarness
 }, 60000)
 
 afterAll(async () => {
   dom?.window.close()
-  if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
 })
 
-describe("Compact reasoning settlement transition", () => {
-  test("streams as a running line and settles into a clickable row without remount", async () => {
-    expect(document.querySelector('[data-component="compact-reasoning"][data-state="running"]')).not.toBeNull()
-    expect(document.querySelector('[data-slot="compact-reasoning-trigger"]')).toBeNull()
-    expect(document.querySelector('[data-slot="compact-reasoning-leading"] [data-component="spinner"]')).not.toBeNull()
+const process = () => document.querySelector('[data-slot="turn-process-trigger"]') as HTMLButtonElement
+const reasoning = () => document.querySelector('[data-slot="process-reasoning-trigger"]') as HTMLButtonElement
 
+describe("process settlement", () => {
+  test("raw reasoning stays independently expandable through canonical completion", async () => {
+    const row = document.querySelector('[data-component="process-reasoning"]')
+    expect(process().getAttribute("aria-expanded")).toBe("true")
+    expect(reasoning().getAttribute("aria-expanded")).toBe("true")
+    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning")
+    expect(row?.closest('[data-slot="turn-process-meta"]')).toBeNull()
+    reasoning().click()
+    await waitForUpdate()
+    expect(document.querySelector('[data-slot="process-reasoning-preview"]')).not.toBeNull()
+    reasoning().click()
+    await waitForUpdate()
+    expect(document.querySelector('[data-slot="process-reasoning-detail"]')?.textContent).toContain("Thinking through")
     harness.settle()
     await waitForUpdate()
+    expect(process().getAttribute("aria-expanded")).toBe("true")
+    process().click()
+    process().click()
     await waitForUpdate()
-
-    const settled = document.querySelector('[data-component="compact-reasoning"][data-state="settled"]')
-    expect(settled).not.toBeNull()
-    expect(document.querySelector('[data-component="compact-reasoning"][data-state="running"]')).toBeNull()
-
-    const trigger = document.querySelector('[data-slot="compact-reasoning-trigger"]') as HTMLButtonElement
-    expect(trigger).not.toBeNull()
-    expect(trigger.getAttribute("aria-expanded")).toBe("false")
-    expect(document.querySelector('[data-slot="compact-reasoning-leading"] [data-component="spinner"]')).toBeNull()
-    expect(document.querySelector('[data-slot="compact-reasoning-detail"]')).toBeNull()
-
-    trigger.click()
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-    const detail = document.querySelector('[data-slot="compact-reasoning-detail"]')
-    expect(detail).not.toBeNull()
-    // aria-controls points at the collapsible content root, which wraps the
-    // detail region (Kobalte owns the content id).
-    const controls = trigger.getAttribute("aria-controls")
-    expect(controls).toBeTruthy()
-    expect(document.getElementById(controls!)?.contains(detail)).toBe(true)
+    expect(document.querySelector('[data-component="process-reasoning"]')).toBe(row)
+    expect(reasoning().getAttribute("aria-expanded")).toBe("true")
+    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning")
+    const controls = reasoning().getAttribute("aria-controls")
+    expect(
+      document.getElementById(controls!)?.contains(document.querySelector('[data-slot="process-reasoning-detail"]')),
+    ).toBe(true)
+  })
+  test("completion preserves a detached reader until they return to latest", async () => {
+    harness.reset()
+    await waitForUpdate()
+    harness.setFollowing(false)
+    harness.settle()
+    await waitForUpdate()
+    expect(process().getAttribute("aria-expanded")).toBe("true")
+    harness.setFollowing(true)
+    await waitForUpdate()
+    expect(process().getAttribute("aria-expanded")).toBe("false")
+  })
+  test("explicit expansion survives completion while following", async () => {
+    harness.reset()
+    await waitForUpdate()
+    process().click()
+    process().click()
+    harness.settle()
+    await waitForUpdate()
+    expect(process().getAttribute("aria-expanded")).toBe("true")
+  })
+  test("stopped turns retain partial text and do not claim completion", async () => {
+    harness.reset()
+    await waitForUpdate()
+    harness.stop()
+    await waitForUpdate()
+    expect(process().textContent).toContain("Stopped")
+    expect(process().textContent).not.toContain("Completed")
+    expect(document.querySelector('[data-kind="text"]')?.textContent).toContain("Here is the final answer")
+    expect(document.querySelector('[data-component="error-card"]')).toBeNull()
+  })
+  test("an absent runtime bucket does not crash a completed turn", async () => {
+    harness.reset()
+    harness.settle()
+    harness.clearStatus()
+    await waitForUpdate()
+    expect(process().textContent).toContain("Work completed")
+    expect(process().textContent).not.toContain("Worked for")
+  })
+  test("a recovered canonical reply settles the turn after an earlier assistant failure", async () => {
+    harness.recoverAfterError()
+    await waitForUpdate()
+    expect(process().textContent).toContain("Work completed")
+    expect(process().textContent).not.toContain("Worked for")
+    expect(document.querySelector('[data-component="error-card"]')).toBeNull()
+    expect(document.querySelector('[data-kind="text"]')?.textContent).toContain("Here is the final answer")
+    expect(document.body.textContent).toContain("Recovered answer.")
+  })
+  test("the process header shares the recorded execution duration and lower bound with the completion footer", async () => {
+    harness.reset()
+    harness.settle()
+    harness.setExecutionSummary({ status: "completed", elapsedMs: 2500 })
+    await waitForUpdate()
+    expect(process().textContent).toContain("Worked for 2 s")
+    expect(document.querySelector('[data-component="execution-completion"]')?.textContent).toContain("00:02")
+    harness.setExecutionSummary({ status: "completed", elapsedMs: 0, elapsedLowerBound: true })
+    await waitForUpdate()
+    expect(process().textContent).toContain("≥ 0")
+    expect(document.querySelector('[data-component="execution-completion"]')?.textContent).toContain("≥ 00:00")
   })
 })

@@ -1,0 +1,34 @@
+{
+  "name": "@ericsanchezok/synergy-testing",
+  "version": "1.1.26",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./env": "./src/env.ts",
+    "./resources": "./src/resources.ts",
+    "./preload": "./src/preload.ts",
+    "./fixture": "./src/fixture.ts",
+    "./models-api.json": "./fixtures/models-api.json",
+    "./pptx": "./src/pptx.ts",
+    "./oauth-mcp-server": "./src/oauth-mcp-server.ts",
+    "./agent-fixture": "./src/agent-fixture.ts"
+  },
+  "scripts": {
+    "test": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts",
+    "typecheck": "tsc --noEmit",
+    "test:ci": "bun ../testing/script/test-ci.ts"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/typescript6": "catalog:",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@zip.js/zip.js": "2.24.0"
+  }
+}

@@ -1,0 +1,21 @@
+import { synergyAgentTooling } from "./synergy-agent-tooling"
+import { synergyPromptArchitect } from "./synergy-prompt-architect"
+import { synergySkillCreator } from "./synergy-skill-creator"
+import { synergyConfig } from "./synergy-config"
+import { agentManage } from "./agent-manage"
+
+export interface BuiltinSkill {
+  name: string
+  description: string
+  content: string
+  builtin: true
+  references?: Record<string, string>
+}
+
+export const BUILTIN_SKILLS: BuiltinSkill[] = [
+  synergySkillCreator,
+  synergyConfig,
+  synergyPromptArchitect,
+  synergyAgentTooling,
+  agentManage,
+]

@@ -1,6 +1,6 @@
 ---
 name: change-channel-runtime
-description: Add, modify, or review Synergy Channel targets, provider lifecycle, managed Project ownership, ChannelHost Scope/Session routing, native Clarus task handling over Holos, durable result or extension delivery, Channel diagnostics and routes, or Channel account navigation. Use across packages/synergy/src/channel, adjacent Holos/Session/Agenda/server owners, generated SDK contracts, and packages/app Channel surfaces.
+description: Add, modify, or review Synergy Channel targets, provider lifecycle, managed Project ownership, ChannelHost Scope/Session routing, durable result or extension delivery, Channel diagnostics and routes, or Channel account navigation. Use across packages/channels/src/channel, adjacent Session/Agenda/server owners, generated SDK contracts, and apps/web Channel surfaces.
 ---
 
 # Change the Channel Runtime
@@ -14,7 +14,7 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 
 ## GitHub Channel Provider
 
-The `github` provider (`packages/synergy/src/channel/provider/github/`) connects a GitHub App installation as a conversation channel. It is `self_connected` and polls the GitHub REST API outbound — no inbound webhook.
+The `github` provider (`packages/channel-github/src/channel/provider/github/`) connects a GitHub App installation as a conversation channel. It is `self_connected` and polls the GitHub REST API outbound — no inbound webhook.
 
 - **Conversation ingress only** — synthesized repository events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `comment.created`) flow through `ChannelHost.conversations.receive()` with `chatId = "owner/repo#<number>"`.
 - **Per-thread Scope** — implement `resolveConversationScope()` to bind each thread to its own random-hash checkout directory (see `GithubChannelWorkspace.ensure()`), so sessions are isolated per issue/PR. `workspaceDir` is configured per account.
@@ -22,6 +22,8 @@ The `github` provider (`packages/synergy/src/channel/provider/github/`) connects
 - **Reactions** — `addReaction` maps the generic channel emoji vocabulary onto GitHub's reaction content set (`eyes`/`rocket`/`confused`/`+1`/`-1`/`laugh`/`hooray`/`heart`) via a comment→chatId registry populated by the poll loop; unsupported emoji are skipped.
 - **Agent** — `github-channel-agent` owns all GitHub sessions; `gh`, `git push`, and `git remote` are denied (the provider performs all GitHub writes with an installation token).
 - **Credentials** — `SYNERGY_GITHUB_APP_ID` / `SYNERGY_GITHUB_APP_PRIVATE_KEY` env-only; distinct from the user-credential `src/provider/github.ts` (bash `GH_TOKEN` injection).
+
+Test checkout refresh and expiry against a live native Workspace user, replaced directories, dirty files, local commits, two independent thread Sessions, failed checkout retry and imported records. Preserve the Workspace ID across verified recreation, advance its generation even when the native identity is reused, and publish the provider record with the binding. Use real Git and filesystem operations; inject identity reuse only at the owning Runtime's directory-identification boundary so the regression is deterministic across filesystems. Ordinary checkout refresh must retain its generation. Defer poll-state publication until acceptance succeeds; verify partial batches and first-poll recovery after checkout contention. Delivery must validate and pin the Session selection before credentials or network access; test a concurrent selection change while the remote request is pending.
 
 Preserve these invariants when changing the provider: deterministic per-thread directory resolution, `@synergy-agent` mention gating, comment→chatId reaction registry, and the env-only credential boundary.
 
@@ -33,34 +35,33 @@ Preserve these invariants when changing the provider: deterministic per-thread d
 4. Map each external Project identity to one canonical managed Project Scope with hashed forward and reverse ownership indexes. Keep raw external IDs out of path components, reject path escape and symbolic links, keep the managed workspace non-Git, and never remove a Scope in response to remote archive.
 5. Map one external Task ID to one stable unattended Session in its managed Project Scope. Deliver assignments and updates through the persistent inbox with deterministic delivery keys; keep participation and deadline guidance hidden and system-authored.
 
-## Preserve Native Clarus Semantics
+## Exclusive Conversation Terminals
 
-1. Borrow the existing authenticated Holos Agent Tunnel through `HolosRuntime.getNativeTunnel()`. Do not add another WebSocket, transport reconnect loop, credential owner, daemon, or Holos server change. Provider initialization may retry through Channel's bounded backoff after borrowed transport readiness.
-2. Validate account identity, process epoch, connection generation, event schemas, request correlation, and acknowledgement identity at the transport boundary. Dispose observers and in-flight work on account stop or transport replacement.
-3. Clarus emits only Project and Task ingress. Treat `clarus.project.membership.accepted` only as a hint to repeat authoritative Project discovery and correlated subscription; never grant ownership from that payload or from an Assignment `project_id`. Keep subscription state and runtime Task events as the remaining accepted event families, and classify legacy Project message, file, system, and notary events as unknown without Session delivery.
-4. If Task dispatch reports missing managed ownership, allow one bounded authoritative Project refresh and one retry while preserving `ChannelHostProjectNotOwnedError` and the archive guard. Do not create a Scope or Session from Assignment identity alone.
-5. Send `clarus.runtime.task.accept` only after preflight, Session binding, assignment persistence, and deadline synchronization, immediately before first wake. Persist `acceptState`, stable `acceptRequestID`, and `acceptedAt` on the existing Assignment record; parse old records with `acceptState: none` and do not add a migration or outbox. Exact replay must validate managed ownership, the bound non-archived Session, and request/run/Project/Task/subtask/attempt identity before bypassing `ChannelHost.dispatch`: acknowledged replay is a full local no-op, live pending replay sends nothing, and ambiguous or orphaned persisted pending replay only resends accept with the same request ID. Let correlated `runtimeTaskAccepted` bypass generic in-flight suppression and settle only on matching request ID plus all five task identity fields. Late acknowledgement may upgrade ambiguous state, and acknowledged state must never regress on transport failure.
-6. Persist result and extension outbox records before dispatch. Only `not_dispatched` may retry automatically with a fresh request ID and lineage; `rejected`, `ambiguous`, and `acknowledged` are terminal for automatic retry. Recovered `pending` records become `ambiguous`.
-7. Keep remote Project pause as display/protocol state for already accepted work. Use the standard Session Abort path for local cancellation, and keep accepted-task result, extension, and deadline behavior available while remotely paused.
-8. Use Agenda `session_guidance` only for durable hidden steering into the owning Task Session. Clarus deadline guidance fires once exactly three minutes before the current deadline, fires as soon as safely possible when less time remains, does nothing after expiry, and reuses the same Agenda item after an acknowledged or authoritative extension. It must not create an Agenda execution Session or a visible fake user prompt.
-9. Keep `clarus-agent-participation` available as a memory-backed builtin Skill in a fresh `SYNERGY_HOME`. Its content must describe only the native assignment Session and result/extension tools; do not bundle standalone listener, CLI, daemon, credential, or second-WebSocket workflows.
+- Register provider tools, policy and loop jobs through the owning component and its worker entry point. Assembly tests must not manually restore missing production registrations. Model-chain fixtures replace inference and network boundaries but retain permission classification, real inbox execution and storage.
+- Build one target-root delivery plan from `SessionHistory.turnInfos()` and `turnMessages()`; reuse that operation-local body read across terminal segments. Recheck authoritative headers under the root lock before sending. Count Channel body reads separately from model context reads, including thousands of unrelated older messages, large turns, duplicate delivery and cancellation.
+
+- Process every newly completed terminal owned by the foreground root, not the inbox drain's last result or only the root's last terminal. A drain can complete other queued roots or fail after this root completed; neither changes its delivery obligations. Limit live updates and each terminal's transcript/projection to their owner. Classify terminal intent independently from root-level reaction idempotency, so ordinary answers in either order with reaction steers still deliver and repeated reaction-only terminals stay silent.
+- Respect the loop's AbortSignal in both collection and execution before closing an intent-bearing assistant. Paused assistants must remain resumable; error terminals must not become successful reactions.
+- For provider effects without idempotency keys, persist an attempt before dispatch under the root's delivery lock. Confirmation failure, response loss, and process exit leave an ambiguous attempt; do not automatically repeat it or append another external failure effect. Only an authoritative rejection is a confirmed failure. Cover metadata-event re-entry before acquiring a non-reentrant outbound lock, confirmation-write failures, response loss, queued-root errors, and both orders of ordinary versus reaction-only terminals with real Session/Storage fixtures.
+- Keep terminal delivery separate from resource finalization. `StreamingSession.close()` may flush cached content or send fallback; use `closeWithoutDelivery()` when classification failed. Test real streaming providers with only network fakes, including cached text, rejected settings, terminal CardKit errors and oversized content; assert no fallback and release of foreground ownership/subscriptions even on cleanup rejection. Never infer a no-delivery guarantee from an omitted `finalText` argument.
 
 ## Keep API and Product Projection Complete
 
 1. Add precise route schemas and OpenAPI metadata for Channel account actions, then regenerate the SDK and migrate ordinary Web calls to generated methods. Keep diagnostics downloads on the established file/blob path.
 2. Bound and redact durable diagnostics before persistence and export. Never expose credentials, auth headers, raw local paths, or unbounded prompt/result payloads.
-3. Project managed Projects once under the owning Channel account from canonical Scope/Session navigation state. Do not add a provider-specific Project store, duplicate generic Projects, or a dedicated Clarus hierarchy.
+3. Project managed Projects once under the owning Channel account from canonical Scope/Session navigation state. Do not add a provider-specific Project store, duplicate generic Projects, or a provider-specific hierarchy.
 4. Present provider-capability actions, account and remote Project states, semantic icons, keyboard access, localized labels, and archive-guard guidance through shared components.
-5. Update [Channels](../../../docs/architecture/channels.md), product connection/workspace docs, storage paths, and `packages/app/PRODUCT.md` when their contracts change.
+5. Update [Channels](../../../docs/architecture/channels.md), product connection/workspace docs, storage paths, and `apps/web/PRODUCT.md` when their contracts change.
 
 ## Verify
 
-1. Write the smallest failing behavioral test first. Use real temporary Scope, Storage, Session, inbox, Agenda, and filesystem state; fake only Holos/Clarus network boundaries.
+1. Write the smallest failing behavioral test first. Use real temporary Scope, Storage, Session, inbox, Agenda, and filesystem state; fake only external network boundaries.
 2. When Channel behavior depends on Scope-local subscriptions, cover both the first account connection and `ScopeRuntime.dispose()` followed by `ScopeRuntime.ensure()`; an active account must rebind its bridges exactly once before startup recovery can terminalize pending Channel messages, so recovery-time events are delivered rather than lost.
-3. Run the focused Channel, Holos native tunnel, Session endpoint/navigation, Agenda guidance, tool, server route, and frontend account/navigation tests affected by the change.
-4. Run `bun test test/channel/` and the relevant Holos, Agenda, Session, tool, and server suites from `packages/synergy`; preserve Feishu compatibility coverage.
-5. For route changes, run `./script/generate.ts` twice and confirm generated OpenAPI/SDK output is stable. Run App/UI tests, localization checks, typecheck, build, Skill validation, and `bun run quality:quick` as applicable.
-6. Exercise the protocol in an isolated second runtime with a separate `SYNERGY_HOME` and explicit ports. Verify disabled and zero-Project idle behavior, discovery, one Task Session per Task ID, result/extension settlement, reconnect recovery, diagnostics download, and cleanup without using the active runtime.
+3. Run the focused Channel, Session endpoint/navigation, Agenda guidance, tool, server route, and frontend account/navigation tests affected by the change.
+4. Run `bun test test/channel/` from the affected Channels/provider package and the relevant Agenda, Session, tool, and server package suites; preserve Feishu compatibility coverage.
+5. Verify independent selection, import-without-registration, failed startup and shutdown, then unload the provider, edit another provider, and reinstall. The unloaded owner must expose no feature, account, setup choice, tool or transport while its persisted settings and records remain intact.
+6. For route changes, run `./script/generate.ts` twice and confirm generated OpenAPI/SDK output is stable. Run App/UI tests, localization checks, typecheck, build, Skill validation, and `bun run quality:quick` as applicable.
+7. Exercise the protocol in an isolated second runtime with a separate `SYNERGY_HOME` and explicit ports. Verify disabled and zero-Project idle behavior, discovery, one Task Session per Task ID, result/extension settlement, reconnect recovery, diagnostics download, and cleanup without using the active runtime.
 
 ## Handoff
 

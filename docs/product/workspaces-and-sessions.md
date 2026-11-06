@@ -11,7 +11,7 @@ Clients, agents, automation, and integrations all use this model.
 
 ## Runtime and Clients
 
-The server is the product runtime. It owns sessions, providers, agents, tools, configuration, permissions, knowledge, automation, integrations, and state events. It persists across client connections and is not permanently attached to one project directory.
+The server is the preset runtime. It owns sessions, providers, agents, tools, configuration, permissions, knowledge, automation, integrations, and state events. It persists across client connections and is not permanently attached to one project directory.
 
 Web and Desktop are interactive clients. The CLI starts, stops, discovers, and attaches to runtimes, opens Web, and submits one-off `send` work. Channels and Agenda create unattended work through the same session APIs. Closing a client does not redefine the server's current project or erase work.
 
@@ -27,17 +27,37 @@ The global runtime serves every Scope. Project services start lazily when the Sc
 
 A project Scope can declare multiple project folders — the main worktree plus additional folders such as sibling checkouts or related sub-projects. Opening a directory inside a Git repository records it under the same project; the project editor can also add or remove folders explicitly.
 
-Every declared project folder is trusted automatically by the active control profile, the execution sandbox, and the file tools: reading, writing, and building inside any project folder needs no per-path approval, matching the main worktree. In an isolated worktree session the original main checkout stays outside this trust boundary and requires explicit authorization, while other declared project folders remain trusted.
+The selected Workspace defines the default writable directory. Declaring another project folder does not grant write access: additional writable Workspaces must be shared explicitly. Ordinary non-sensitive files outside that boundary remain readable under the active execution policy.
+
+## Starting a project task
+
+Web and Desktop let users choose a computer connection, project and applicable main-folder or Worktree mode before sending a task. The compact setup strip appears only before a Session ID exists. The project selector keeps the draft and stays on the new-task page; sidebar project navigation opens project history. Advanced file and execution choices live in developer management. See the [Web product rules](../../apps/web/PRODUCT.md#project-first-task-entry) for responsive controls, draft merging, native folder selection and dialog behavior.
 
 ## Workspace Binding
 
-A session belongs to a Scope and can also carry a workspace binding. The normal workspace is the Scope directory. A code task can instead enter an existing worktree or create a dedicated worktree while retaining the original Scope identity.
+A session belongs to a Scope and references a stable Workspace identity, or has no local files. New-task setup chooses the project's main folder or a Worktree while retaining Scope ownership. The Session keeps its actual binding after the setup strip disappears; new-task folder choices offer confirmation for unavailable project folders, and advanced resource management handles custom binding repair.
+
+New local Home sessions use a shared, persistent working folder separate from configuration and account data; its location follows the [Runtime storage root](../reference/storage-and-paths.md#physical-layout). Selecting another Workspace or no files overrides that default. Existing sessions retain their selections, and files survive session deletion or Runtime restart.
+
+Directory selection and recovery follow the explicit confirmation, draft preservation and flat-list rules in the [Web product contract](../../apps/web/PRODUCT.md#working-directory-selection).
+
+Sessions can share a Workspace. Explicitly changing its local binding updates every referencing Session and requires idle file resources. Imported history remains unavailable for local execution until deliberately rebound. Open file tabs retain the directory version they were opened against, so rebinding cannot silently redirect a pending edit.
+
+If a directory was missing during an upgrade, its history keeps the original location. Saved conversations remain readable when the directory is missing or replaced. Recreating that path does not activate the historical Workspace; explicitly rebind it to confirm which files the Session may use.
 
 This distinction lets configuration and project ownership remain stable while execution files move to an isolated checkout. Worktree sessions can inspect ordinary files from the original checkout, but writes and command execution outside the active worktree remain protected unless explicitly authorized.
 
 Settings lists worktrees for Git projects, including their branch, binding, lifecycle, dirty state, and managed-checkout size. Main and externally owned worktrees are informational. Deleting a Synergy-managed worktree requires confirmation, refuses active session use, returns idle bound sessions to the main checkout, and can clean an already-missing stale record. If one project has moved or is temporarily unreadable, its failure does not hide worktrees from the other projects.
 
 The Web workspace browses, previews, and searches files through Scope-contained APIs. Agents use governed file tools; the anchored coding harness can require a current file tag and proof that the edited lines were actually displayed. Formatting, LSP diagnostics, file events, snapshots, and runtime reload checks run around file changes without creating a second write boundary. See [Workspace and file operations](../architecture/workspace-and-files.md).
+
+### Finishing isolated work
+
+With Workbench tools available, an Agent can use `worktree_archive` when isolated work is finished. Omitting `target` selects its current managed worktree; if there is no current worktree, the result is `noop`. An explicit target accepts a managed worktree name, ID, branch or path, so an Agent can also request cleanup of another idle checkout. Main and externally owned worktrees cannot be archived this way.
+
+Permission is checked before changing the Workspace or requesting reclamation. If permission is denied, the result is `denied` and nothing changes. When the calling Session uses the target, an approved archive returns it to its original checkout without archiving the conversation or stopping the running task. The conversation and history remain available. Use `worktree_leave` instead when the intention is only to leave the checkout.
+
+An `archived` result means reclamation was requested, not necessarily that the checkout was removed. Check `cleanup.performed` and the reported reason: dirty or ignored files, local-only or unverifiable commits, locks and active resources keep the checkout. Cleanup has no force option; retained candidates are retried by maintenance even below the worktree limit. The caller stays in its restored checkout if cleanup is blocked. A retained, available checkout can be re-entered with `worktree_enter`; an unknown removal outcome keeps execution blocked until safe reconciliation, so do not assume that checkout can be re-entered. Confirmed deletion keeps the branch and conversation but provides no automatic snapshot restore. See [safe worktree archive](../architecture/workspace-and-files.md#safe-worktree-archive) for reference migration and deletion safeguards.
 
 ## Sessions
 
@@ -59,7 +79,7 @@ A task-only Channel provider can provision a managed Project Scope from a remote
 
 Remote lifecycle and local archive are separate. Active and remotely paused managed Projects remain locally usable and are protected from local archive. Stale or remote-archived Projects preserve their directory, files, and Sessions and can later follow the normal local archive workflow.
 
-A Clarus assignment creates one dedicated unattended Task Session in that managed Project Scope. The external Task ID is the stable Session target: redelivery or a new run reuses it, while a retry with a new Task ID creates another Session with lineage. Project discovery alone never creates a conversation Session.
+A Channel task assignment creates one dedicated unattended Task Session in that managed Project Scope. The external Task ID is the stable Session target: redelivery or a new run reuses it, while a retry with a new Task ID creates another Session with lineage. Project discovery alone never creates a conversation Session.
 
 ### Completion notices
 
@@ -70,6 +90,8 @@ Desktop mirrors this state with platform-native indicators. macOS shows a numeri
 ## Tasks and Messages
 
 One root user message defines one task. Every assistant message generated for that task points back to the same root. This stable grouping is independent of visual rendering or model inclusion.
+
+The reply's completion footer and copy action become available after foreground work ends. Library experience generation and other auxiliary work can continue in the background. The compact footer and execution details use the same actual execution duration, excluding auxiliary work and preserving a lower-bound marker when timing evidence is incomplete. Completion actions remain available while the duration summary loads; details retain auxiliary calls and usage.
 
 Messages describe four separate questions:
 
@@ -124,11 +146,13 @@ The durable message history remains available. Compaction is a model-context ope
 
 ## Browser Ownership
 
-The default Browser owner is the session. A session has at most one page, and both the user surface and Browser tools operate on that page. The Browser therefore behaves like a workspace alongside files and Notes, not like an unrelated browser application with its own task history.
+Ordinary Desktop Browser pages belong to their project Scope and can exist before a task starts. People and same-project Agents share those pages; human selection and explicit task targets are separate. Local-file and historical pages retain their task owner. Task completion, cancellation and Workspace changes preserve shared pages. Persistent identities reuse website logins without merging page owners.
 
 See [Browser workspace](browser.md).
 
 ## Invariants
+
+Model and thinking choices can be changed while a session runs. The current request completes with its original choice; the next eligible request uses the saved choice. The toolbar indicates pending changes and offers retry after a failed save. Default uses the provider default; Off appears only when supported. Switching back to a model restores its saved level within that session. Anthropic transitions that would change thinking mode or model inside a tool-use turn wait until a new turn.
 
 - The server owns runtime state; clients select context for each operation.
 - Scope is explicit and uses the selected directory without upward project discovery.
@@ -138,3 +162,15 @@ See [Browser workspace](browser.md).
 - Scheduling, visibility, model inclusion, and provenance are independent semantics.
 - Delegation hierarchy and fork provenance are different relationships.
 - Compaction changes model context without erasing durable history.
+
+## Pause, continue and abandon
+
+Pause stops current execution and keeps its task resumable. Continue resumes it; typing new requirements in the ordinary composer and choosing Send and continue supplies those requirements before the next model call. Abandon current execution is available through the session actions menu with confirmation or a three-second hold on the primary composer control. It cancels the current workflow and queued messages while preserving history, generated files and the unsent draft. Releasing a partial hold cancels the gesture. A service restart leaves interrupted sessions paused and marks unfinished tool calls as interrupted rather than running. Discovering a paused session during startup or when opening a project preserves its position in recent conversations.
+
+## Session tags
+
+Sessions carry optional user-defined tags, with up to 20 tags of 40 characters each. The session actions menu adds or removes tags. Sidebar tag search filters matching sessions across Home and Projects, including paginated history; pressing Enter also searches a tag absent from the loaded suggestions. Clearing the filter restores normal navigation.
+
+## Move a paused task to another device
+
+Add the destination in the server selector, then choose “Move to another device” from the paused task menu. The dialog shows preparation, copying and handoff progress. Before handoff you can cancel; after handoff use Retry to finish the same destination. “Open on destination” selects that connection and opens the preserved task. It stays paused until you click Continue. Both devices must be online and compatible; unsupported task bindings or files produce an explicit error. Detailed restrictions follow [Session transfer](../architecture/session-transfer.md).

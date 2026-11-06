@@ -1,0 +1,87 @@
+import { expect, test } from "bun:test"
+import { MessageV2 } from "../../src/session/message-v2"
+
+test("new Cortex deliveries retain their task reference and captured task title", () => {
+  expect(
+    MessageV2.originFromMetadata({
+      source: "cortex",
+      sourceSessionID: "child",
+      sourceTaskID: "ctx_original",
+      sourceTitle: "Inspect readiness",
+    }),
+  ).toEqual({ type: "cortex", sessionID: "child", taskID: "ctx_original", label: "Inspect readiness" })
+})
+
+test("session delivery metadata promotes the source name into the agent origin label", () => {
+  expect(
+    MessageV2.originFromMetadata({
+      source: "session_send",
+      sourceSessionID: "ses_source",
+      sourceName: "Source agent",
+    }),
+  ).toEqual({ type: "agent", sessionID: "ses_source", label: "Source agent" })
+})
+
+test("historical Cortex references resolve only from the established delivery identity", () => {
+  const message: MessageV2.User = {
+    id: "msg_delivery",
+    sessionID: "ses_parent",
+    role: "user",
+    time: { created: 1 },
+    agent: "general",
+    model: { providerID: "test", modelID: "test" },
+    isRoot: false,
+    origin: { type: "cortex", sessionID: "ses_child" },
+    metadata: { inboxDeliveryKey: "cortex:taskNotification:ctx_original" },
+  }
+  const projected = MessageV2.deriveSemantics([{ info: message, parts: [] }])[0].info as MessageV2.User
+  expect(projected.origin?.taskID).toBe("ctx_original")
+  expect(message.origin?.taskID).toBeUndefined()
+  const unrelated = MessageV2.deriveSemantics([
+    { info: { ...message, metadata: { inboxDeliveryKey: "other:ctx_original" } }, parts: [] },
+  ])[0].info as MessageV2.User
+  expect(unrelated.origin?.taskID).toBeUndefined()
+})
+
+for (const origin of [undefined, { type: "user" as const }]) {
+  test(`manual compaction normalizes ${origin?.type ?? "missing"} origin without changing explicit root semantics`, () => {
+    const info: MessageV2.User = {
+      id: "msg_control",
+      sessionID: "ses_control",
+      role: "user",
+      time: { created: 1 },
+      agent: "general",
+      model: { providerID: "test", modelID: "test" },
+      isRoot: true,
+      rootID: "msg_control",
+      visible: true,
+      includeInContext: true,
+      origin,
+      metadata: { compactionBoundary: true },
+    }
+    const input = [{ info, parts: [] }]
+    const before = structuredClone(input)
+    const projected = MessageV2.deriveSemantics(input)
+    expect(projected[0]!.info).toMatchObject({
+      origin: { type: "system", detail: "manual_compaction" },
+      isRoot: true,
+      rootID: info.id,
+      visible: true,
+      includeInContext: true,
+    })
+    expect(MessageV2.deriveSemantics(projected)).toEqual(projected)
+    expect(input).toEqual(before)
+    const explicit = MessageV2.deriveSemantics([{ info: { ...info, origin: { type: "channel" as const } }, parts: [] }])
+    expect(explicit[0]!.info).toHaveProperty("origin.type", "channel")
+  })
+}
+
+test("manual compaction metadata requires the explicit boolean marker", () => {
+  for (const compactionBoundary of [undefined, false, "true"]) {
+    expect(MessageV2.originFromMetadata({ compactionBoundary })).toEqual({ type: "user" })
+  }
+  expect(MessageV2.originFromMetadata({ compactionBoundary: true })).toEqual({
+    type: "system",
+    detail: "manual_compaction",
+  })
+})

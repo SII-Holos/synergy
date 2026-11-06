@@ -1,0 +1,890 @@
+import type { CurrentTurnChanges } from "@ericsanchezok/synergy-sdk/client"
+import { expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
+import { build } from "vite"
+import solidPlugin from "vite-plugin-solid"
+
+type SnapshotVersion = { epoch: string; seq: number }
+
+type ScopeState = [
+  {
+    status: string
+    currentTurnChanges: Record<string, CurrentTurnChanges | undefined>
+    session: Array<{ id: string; workspace?: { path: string; generation: number }; time?: { updated?: number } }>
+    workspaces: Array<{ id: string; revision: number }>
+    path: { workspace?: { path: string; generation: number } }
+    sessionTotal: number
+    cortex: Array<{ id: string; sessionID?: string }>
+  },
+  unknown,
+]
+
+type ScopeApi = {
+  loadCurrentTurn(key: string, sessionID: string): Promise<void>
+  retainScopeState(key: string): { state: ScopeState; release(): void }
+  ensureScopeState(key: string): ScopeState
+  peekScopeState(key: string): ScopeState | undefined
+  sessionStatus: Record<string, { type?: string; reason?: string; since?: number }>
+  permissions: Record<string, Array<{ id: string }> | undefined>
+  questions: Record<string, Array<{ id: string }> | undefined>
+  cortex: Array<{ id: string; parentSessionID?: string; status: string }>
+  captureQuestionSnapshot(scopeID: string): { scopeID: string; generation: number; revision: number }
+  seedGlobalQuestions(
+    requests: Array<{ id: string; sessionID: string; questions: [] }>,
+    headers: Headers | undefined,
+    token: { scopeID: string; generation: number; revision: number },
+  ): boolean
+  seedGlobalPermissions(
+    requests: Array<{ id: string; sessionID: string; permission: string; patterns: []; metadata: {} }>,
+    headers: undefined,
+    scopeID: string,
+  ): void
+}
+
+type Fixture = {
+  mount(root: Element): {
+    started: Promise<void>
+    dispose(): void
+    api(): ScopeApi
+    emit(key: string, seq: number, type: string, properties: Record<string, unknown>, epoch?: string): void
+    complete(key: string, data: Record<string, unknown>, version?: SnapshotVersion): void
+    waitForRequest(key: string): Promise<void>
+    waitComplete(state: ScopeState): Promise<void>
+    connect(): void
+    setPending(key: string, questions: unknown[], permissions: unknown[]): void
+    waitForReplay(key: string): Promise<void>
+    completeReplay(
+      key: string,
+      events?: Array<{ type: string; properties: Record<string, unknown>; seq: number }>,
+    ): void
+    waitForTurn(): Promise<void>
+    completeTurn(data: CurrentTurnChanges, version: SnapshotVersion): void
+    holdStatuses(): void
+    waitForStatusRequest(count?: number): Promise<void>
+    completeStatuses(data: Record<string, unknown>, version: SnapshotVersion): void
+    watchPeek(key: string, sink: (state: ScopeState | undefined) => void): () => void
+    resolveEntry(sessionID: string): { tone?: string; pulse?: boolean }
+  }
+}
+
+test("bootstrap snapshots behind the applied watermark keep event state; store registry stays reactive", async () => {
+  const directory = await mkdtemp(path.join(import.meta.dir, ".snapshot-race-"))
+  const entry = path.join(directory, "main.tsx")
+  const stub = path.join(directory, "services.tsx")
+  const globalSync = path.resolve(import.meta.dir, "../../src/context/global-sync.tsx")
+  const root = document.createElement("div")
+  document.body.append(root)
+  await Bun.write(
+    stub,
+    `
+    import { createSignal } from "solid-js"
+    export const requests = []
+    export const replays = []
+    export const turnRequests = []
+    export const statusRequests = []
+    let statusesHeld = false
+    export const holdStatuses = () => { statusesHeld = true }
+    const pending = new Map()
+    const [connected, setConnected] = createSignal(false)
+    export const connect = () => setConnected(true)
+    export const setPending = (key, questions, permissions) => pending.set(key, {questions, permissions})
+    let listener
+    export const emit = (key, seq, type, properties, epoch = "test-epoch") => listener({name:key,details:{type,epoch,seq,properties}})
+    const ok = data => Promise.resolve({data})
+    const stamped = data => Promise.resolve({data, response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
+    export function createSynergyClient(options) {
+      return {
+        scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve,done:false})) },
+        permission: {list:()=>stamped(pending.get(options.scopeID)?.permissions??[])}, question: {list:()=>stamped(pending.get(options.scopeID)?.questions??[])},
+        event:{replay:({since})=>new Promise(resolve=>replays.push({key:options.scopeID,since,resolve,done:false}))},
+        session:{files:{current:()=>new Promise(resolve=>turnRequests.push(resolve))},list:()=>ok({total:0,data:[]}),inbox:()=>ok([])},
+      }
+    }
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>({transports:{projection:"projection-v2"}})},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+      config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>statusesHeld ? new Promise(resolve=>statusRequests.push(resolve)) : stamped({})},
+      cortex:{list:()=>ok([])},
+    }})
+    export const LocaleConfigReconciler=()=>null
+    export const FatalErrorPage=()=> <div>failure</div>
+    export const DialogSelectServer=()=>null
+    export const useDialog=()=>({show(){}})
+    export const showToast=()=>{}
+    export const browserPerformanceEnabled=()=>false
+    export const startBrowserPerformanceMetrics=()=>{}
+    export const stopBrowserPerformanceMetrics=()=>{}
+    export const browserTokenDurationSampleRate=()=>0.1
+    export const recordTokenApply=()=>{}
+  `,
+  )
+  await Bun.write(
+    entry,
+    `
+    import { render } from "solid-js/web"
+    import { createRoot, createComputed } from "solid-js"
+    import { I18nProvider } from "@lingui/solid"
+    import { setupI18n } from "@lingui/core"
+    import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
+    import { requests, replays, emit, connect, setPending, statusRequests, holdStatuses, turnRequests } from ${JSON.stringify(stub)}
+    import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
+    export function mount(root) {
+      let api, ready
+      const started = new Promise(resolve=>ready=resolve)
+      function Child(){api=useGlobalSync();ready();return <div>ready</div>}
+      const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
+      return {started,dispose,emit,connect,setPending,holdStatuses,api:()=>api,
+        waitForTurn() {return new Promise(resolve=>{const check=()=>{if(turnRequests.length)return resolve();setTimeout(check,5)};check()})},
+        completeTurn(data,version) {const resolve=turnRequests.shift();if(!resolve)throw new Error("no pending turn snapshot");resolve({data,response:{headers:new Headers({"x-synergy-seq":String(version.seq),"x-synergy-epoch":version.epoch})}})},
+        waitForStatusRequest(count = 1) {return new Promise(resolve=>{const check=()=>{if(statusRequests.length >= count)return resolve();setTimeout(check,5)};check()})},
+        completeStatuses(data,version) {const resolve=statusRequests.shift();if(!resolve)throw new Error("no pending status snapshot");resolve({data,response:{headers:new Headers({"x-synergy-seq":String(version.seq),"x-synergy-epoch":version.epoch})}})},
+        waitForReplay(key) {return new Promise(resolve=>{const check=()=>{if(replays.some(r=>!r.done&&r.key===key))return resolve();setTimeout(check,5)};check()})},
+        completeReplay(key, events = []) {const replay=replays.find(r=>!r.done&&r.key===key);if(!replay)throw new Error("no replay for "+key);replay.done=true;replay.resolve({data:{status:"ok",epoch:"test-epoch",seq:events.at(-1)?.seq??replay.since,events:events.map(event=>({...event,epoch:"test-epoch"}))}})},
+      resolveEntry(sessionID) {
+        return resolveSessionVisualState({
+          entry: { id: sessionID },
+          status: api.sessionStatus[sessionID],
+          waiting: (api.permissions[sessionID]?.length ?? 0) > 0 || (api.questions[sessionID]?.length ?? 0) > 0,
+          runningChildTasks: api.cortex.some(
+            (task) => task.parentSessionID === sessionID && task.status === "running",
+          ),
+        })
+      },
+        complete(key,data,version) {
+          const request=requests.find(r=>!r.done&&r.key===key)
+          if(!request) throw new Error("no pending bootstrap for "+key)
+          request.done=true
+          const headers=version?{get:name=>name==="x-synergy-seq"?String(version.seq):name==="x-synergy-epoch"?version.epoch:undefined}:undefined
+          request.resolve({data,response:headers?{headers}:undefined})
+        },
+        waitForRequest(key) {return new Promise(resolve=>{const check=()=>{if(requests.some(r=>!r.done&&r.key===key))return resolve();setTimeout(check,5)};check()})},
+        waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
+        watchPeek(key,sink) {return createRoot(dispose=>{createComputed(()=>sink(api.peekScopeState(key)));return dispose})},
+      }
+    }
+  `,
+  )
+  try {
+    const stubbed = [
+      "./global-sdk",
+      "./locale-config-reconciler",
+      "../pages/fatal-error",
+      "@/components/dialog/dialog-select-server",
+      "@/components/performance/browser-metrics",
+      "@ericsanchezok/synergy-sdk/client",
+      "@ericsanchezok/synergy-ui/toast",
+      "@ericsanchezok/synergy-ui/context/dialog",
+    ]
+    await build({
+      configFile: false,
+      logLevel: "silent",
+      resolve: { alias: [{ find: "@", replacement: path.resolve(import.meta.dir, "../../src") }] },
+      plugins: [
+        {
+          name: "scope-services",
+          enforce: "pre",
+          resolveId(source, importer) {
+            if (
+              importer === globalSync &&
+              (stubbed.includes(source) ||
+                stubbed.some(
+                  (item) =>
+                    item.startsWith("@/") && source === path.resolve(import.meta.dir, "../../src", item.slice(2)),
+                ))
+            )
+              return stub
+          },
+        },
+        solidPlugin(),
+      ],
+      build: {
+        outDir: path.join(directory, "dist"),
+        minify: false,
+        lib: { entry, formats: ["es"], fileName: "fixture" },
+        rollupOptions: { output: { inlineDynamicImports: true } },
+      },
+    })
+    const fixture = (await import(pathToFileURL(path.join(directory, "dist/fixture.js")).href)) as Fixture
+    const h = fixture.mount(root)
+    try {
+      await h.started
+      const api = h.api()
+
+      const live = api.retainScopeState("live-scope")
+      await h.waitForRequest("live-scope")
+      h.complete(
+        "live-scope",
+        { scopeID: "live-scope", provider: { all: [] }, agent: [], config: {}, sessions: { data: [], total: 0 } },
+        { epoch: "test-epoch", seq: 0 },
+      )
+      await h.waitComplete(live.state)
+      const current = api.loadCurrentTurn("live-scope", "live-session")
+      await h.waitForTurn()
+      const root = {
+        id: "root-new",
+        sessionID: "live-session",
+        role: "user",
+        isRoot: true,
+        time: { created: 20 },
+        agent: "test",
+        model: { providerID: "test", modelID: "test" },
+        summary: { diffs: [], diffState: { status: "live" }, diffTotals: { files: 300, additions: 900, deletions: 1 } },
+      }
+      h.emit("live-scope", 1, "message.updated", { info: root })
+      expect(live.state[0].currentTurnChanges["live-session"]?.summary?.diffTotals?.files).toBe(300)
+      h.completeTurn({ rootID: "root-old", createdAt: 10, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 0 })
+      await current
+      expect(live.state[0].currentTurnChanges["live-session"]?.rootID).toBe("root-new")
+      h.emit("live-scope", 2, "message.updated", {
+        info: { ...root, id: "non-root", isRoot: false, time: { created: 30 } },
+      })
+      h.emit("live-scope", 3, "message.updated", { info: { ...root, id: "root-old", time: { created: 10 } } })
+      expect(live.state[0].currentTurnChanges["live-session"]?.rootID).toBe("root-new")
+      const staleTurn = api.loadCurrentTurn("live-scope", "live-session")
+      await h.waitForTurn()
+      h.emit("live-scope", 4, "message.removed", { sessionID: "live-session", messageID: "root-new" })
+      h.completeTurn({ rootID: "root-new", createdAt: 20, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 3 })
+      await staleTurn
+      await h.waitForTurn()
+      h.completeTurn(null, { epoch: "test-epoch", seq: 4 })
+      await api.loadCurrentTurn("live-scope", "live-session")
+      expect(live.state[0].currentTurnChanges["live-session"]).toBeNull()
+      live.release()
+      const coldTurn = api.retainScopeState("cold-turn-scope")
+      await h.waitForRequest("cold-turn-scope")
+      h.complete(
+        "cold-turn-scope",
+        { scopeID: "cold-turn-scope", provider: { all: [] }, agent: [], config: {}, sessions: { data: [], total: 0 } },
+        { epoch: "test-epoch", seq: 10 },
+      )
+      await h.waitComplete(coldTurn.state)
+      const loadingTurn = api.loadCurrentTurn("cold-turn-scope", "cold-session")
+      await h.waitForTurn()
+      h.emit("cold-turn-scope", 11, "message.updated", {
+        info: { ...root, sessionID: "cold-session", id: "older-root", time: { created: 10 } },
+      })
+      h.completeTurn({ rootID: "latest-root", createdAt: 20, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 10 })
+      await Promise.race([
+        h.waitForTurn(),
+        Bun.sleep(500).then(() => {
+          throw new Error("A stale response identifying a newer root must trigger recovery")
+        }),
+      ])
+      h.completeTurn({ rootID: "latest-root", createdAt: 20, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 11 })
+      await loadingTurn
+      expect(coldTurn.state[0].currentTurnChanges["cold-session"]?.rootID).toBe("latest-root")
+      const session = { id: "cold-session", time: {}, scope: { id: "cold-turn-scope" } }
+      h.emit("cold-turn-scope", 12, "session.updated", { info: session })
+      h.emit("cold-turn-scope", 13, "session.updated", {
+        info: {
+          ...session,
+          history: {
+            rollback: {
+              id: "rollback",
+              numTurns: 1,
+              created: 40,
+              droppedMessageIDs: ["latest-root"],
+              droppedUserMessageIDs: ["latest-root"],
+              files: [],
+              patchPartIDs: [],
+              canUnrollback: true,
+            },
+          },
+        },
+      })
+      await h.waitForTurn()
+      h.emit("cold-turn-scope", 14, "message.updated", {
+        info: { ...root, sessionID: "cold-session", id: "latest-root", time: { created: 20 } },
+      })
+      h.completeTurn({ rootID: "older-root", createdAt: 10, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 13 })
+      await api.loadCurrentTurn("cold-turn-scope", "cold-session")
+      h.emit("cold-turn-scope", 15, "message.updated", {
+        info: { ...root, sessionID: "cold-session", id: "latest-root", time: { created: 20 } },
+      })
+      expect(coldTurn.state[0].currentTurnChanges["cold-session"]?.rootID).toBe("older-root")
+      coldTurn.release()
+
+      api.seedGlobalQuestions(
+        [{ id: "scope-question", sessionID: "scope-request-session", questions: [] }],
+        undefined,
+        api.captureQuestionSnapshot("request-project"),
+      )
+      api.seedGlobalPermissions(
+        [
+          {
+            id: "scope-permission",
+            sessionID: "scope-request-session",
+            permission: "edit",
+            patterns: [],
+            metadata: {},
+          },
+        ],
+        undefined,
+        "request-project",
+      )
+      api.seedGlobalQuestions([], undefined, api.captureQuestionSnapshot("request-home"))
+      api.seedGlobalPermissions([], undefined, "request-home")
+      expect(api.questions["scope-request-session"]?.map((request) => request.id)).toEqual(["scope-question"])
+      expect(api.permissions["scope-request-session"]?.map((request) => request.id)).toEqual(["scope-permission"])
+      api.seedGlobalQuestions([], undefined, api.captureQuestionSnapshot("request-project"))
+      api.seedGlobalPermissions([], undefined, "request-project")
+      expect(api.questions["scope-request-session"]).toBeUndefined()
+      expect(api.permissions["scope-request-session"]).toBeUndefined()
+
+      h.emit("request-project", 1, "question.asked", {
+        id: "raced-question",
+        sessionID: "raced-session",
+        questions: [],
+      })
+      h.emit("request-project", 2, "question.replied", { requestID: "raced-question", sessionID: "raced-session" })
+      h.emit(
+        "request-other",
+        1,
+        "question.asked",
+        { id: "foreign-question", sessionID: "foreign-session", questions: [] },
+        "foreign-epoch",
+      )
+      api.seedGlobalQuestions(
+        [{ id: "raced-question", sessionID: "raced-session", questions: [] }],
+        new Headers({ "x-synergy-epoch": "test-epoch", "x-synergy-seq": "1" }),
+        api.captureQuestionSnapshot("request-project"),
+      )
+      expect(api.questions["raced-session"]).toBeUndefined()
+      for (const key of ["request-project", "request-other"]) {
+        expect(api.peekScopeState(key)).toBeUndefined()
+        api.ensureScopeState(key)
+        await h.waitForRequest(key)
+        h.complete(key, { scopeID: key, provider: { all: [] }, agent: [], config: {} })
+        await h.waitComplete(api.ensureScopeState(key))
+      }
+
+      // Releasing the last lease demotes a Scope into the inactive LRU rather
+      // than evicting it, so eviction is forced by overfilling that LRU: the
+      // registry keeps at most eight inactive Scopes, and creating a new one
+      // evicts the oldest. The sweep keys must not reuse an existing background
+      // key, because re-touching one only moves its LRU position instead of
+      // growing the set. The precondition is asserted rather than assumed, so
+      // this stays correct however many Scopes earlier steps left inactive.
+      let sweep = 0
+      const evictScope = async (key: string) => {
+        for (let i = 0; i < 64 && api.peekScopeState(key); i++) api.ensureScopeState(`background.sweep.${sweep++}`)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(api.peekScopeState(key)).toBeUndefined()
+      }
+
+      // A busy status event and a session insert apply while the scope's
+      // bootstrap response is still in flight. The response was stamped
+      // before the server read its snapshot, so its seq is behind the
+      // applied watermark and it must not reconcile the event writes away.
+      const shared = api.retainScopeState("shared")
+      h.emit("shared", 1, "session.status", { sessionID: "fixture-session", status: { type: "busy" } })
+      h.emit("shared", 1001, "server.cursor", { epoch: "test-epoch", fromSeq: 2, toSeq: 1001 })
+      h.emit("shared", 1002, "session.updated", { info: { id: "live-added", time: {} } })
+      expect(api.sessionStatus["fixture-session"]).toEqual({ type: "busy" })
+      expect(shared.state[0].session.some((session) => session.id === "live-added")).toBe(true)
+
+      h.complete(
+        "shared",
+        {
+          scopeID: "scope-shared",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: {},
+          sessions: { data: [{ id: "from-snapshot", time: {} }], total: 1 },
+        },
+        { epoch: "test-epoch", seq: 0 },
+      )
+      await h.waitComplete(shared.state)
+
+      expect(api.sessionStatus["fixture-session"]).toEqual({ type: "busy" })
+      expect(shared.state[0].session.some((session) => session.id === "live-added")).toBe(true)
+      expect(shared.state[0].session.some((session) => session.id === "from-snapshot")).toBe(true)
+      const workspaceScope = api.retainScopeState("workspace-scope")
+      const oldBinding = {
+        id: "wsp_fixture",
+        scopeID: "scope-workspace",
+        type: "directory",
+        generation: 1,
+        path: "/old",
+      }
+      const oldCatalog = {
+        id: oldBinding.id,
+        scopeID: oldBinding.scopeID,
+        type: "directory",
+        revision: 1,
+        binding: { state: "bound", hostID: "host", path: "/old", generation: 1 },
+        metadata: {},
+        sharedWritableWorkspaceIDs: [],
+        lifecycle: "active",
+        createdAt: 1,
+        updatedAt: 1,
+      }
+      const originalSession = {
+        id: "workspace-session",
+        scope: { id: oldBinding.scopeID },
+        workspaceID: oldBinding.id,
+        workspace: oldBinding,
+        time: { updated: 10 },
+      }
+      h.emit("workspace-scope", 1, "session.updated", { info: originalSession })
+      const pinnedTab = { ...workspaceScope.state[0].session[0]!.workspace! }
+      h.emit("workspace-scope", 2, "workspace.updated", {
+        ...oldCatalog,
+        revision: 2,
+        binding: { ...oldCatalog.binding, generation: 2, path: "/moved" },
+      })
+      h.complete(
+        "workspace-scope",
+        {
+          scopeID: oldBinding.scopeID,
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          path: { workspace: oldBinding },
+          workspaces: [oldCatalog],
+          sessions: { data: [originalSession], total: 1 },
+        },
+        { epoch: "test-epoch", seq: 1 },
+      )
+      await h.waitComplete(workspaceScope.state)
+      expect(workspaceScope.state[0].session[0]!.workspace).toMatchObject({ generation: 2, path: "/moved" })
+      expect(workspaceScope.state[0].path.workspace).toMatchObject({ generation: 2, path: "/moved" })
+      expect(workspaceScope.state[0].session[0]!.time?.updated).toBe(10)
+      expect(pinnedTab).toMatchObject({ generation: 1, path: "/old" })
+      h.emit("workspace-scope", 3, "session.updated", { info: originalSession })
+      expect(workspaceScope.state[0].session[0]!.workspace).toMatchObject({ generation: 2, path: "/moved" })
+      h.emit("workspace-scope", 4, "workspace.updated", {
+        ...oldCatalog,
+        scopeID: "another-scope",
+        revision: 99,
+        binding: { ...oldCatalog.binding, generation: 99, path: "/foreign" },
+      })
+      expect(workspaceScope.state[0].session[0]!.workspace?.path).toBe("/moved")
+      workspaceScope.release()
+
+      // Reviewer scenario: the response stamp sits between an old stale
+      // write and a newer unrelated event. Scope-wide "snapshot is behind"
+      // merging keeps every local entry; only keys written after the stamp
+      // may keep their event value, and post-stamp deletions must not be
+      // resurrected from the older snapshot read.
+      const stale = api.retainScopeState("stale-scope")
+      h.emit("stale-scope", 5, "session.status", { sessionID: "missed-idle", status: { type: "busy" } })
+      h.emit("stale-scope", 6, "session.diff", { sessionID: "missed-idle", diff: [] })
+      h.emit("stale-scope", 7, "session.updated", { info: { id: "b-session", time: {} } })
+      h.emit("stale-scope", 8, "cortex.task.created", { task: { id: "task-live", sessionID: "b-session" } })
+      h.emit("stale-scope", 9, "cortex.tasks.updated", { tasks: [] })
+      h.complete(
+        "stale-scope",
+        {
+          scopeID: "scope-stale",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: {},
+          sessions: {
+            data: [
+              { id: "snap-only", time: {} },
+              { id: "missed-idle", time: {} },
+            ],
+            total: 2,
+          },
+          cortex: [{ id: "task-live", sessionID: "b-session" }],
+        },
+        { epoch: "test-epoch", seq: 6 },
+      )
+      await h.waitComplete(stale.state)
+      expect(api.sessionStatus["missed-idle"]).toBeUndefined()
+      expect(stale.state[0].session.some((session) => session.id === "b-session")).toBe(true)
+      expect(stale.state[0].session.some((session) => session.id === "snap-only")).toBe(true)
+      // The whole-bucket `cortex.tasks.updated` at seq 9 postdates the response
+      // stamp (seq 6), so its empty list wins over the snapshot's task in the
+      // global Cortex index — the same post-stamp discipline the per-Scope
+      // bucket had, now applied to the eviction-independent carrier.
+      expect(api.cortex.some((task) => task.id === "task-live")).toBe(false)
+      stale.release()
+      // The store registry is reactive: a consumer that observed undefined
+      // before the store existed re-runs on creation and on eviction.
+      const seen: Array<ScopeState | undefined> = []
+      const stopWatch = h.watchPeek("registry-probe", (state) => seen.push(state))
+      expect(seen.length).toBe(1)
+      expect(seen[0]).toBeUndefined()
+      api.ensureScopeState("registry-probe")
+      expect(seen.length).toBe(2)
+      expect(seen[1]).toBeDefined()
+      await h.waitForRequest("registry-probe")
+      h.complete("registry-probe", { scopeID: "scope-probe", provider: { all: [] }, agent: [], config: {} })
+      api.retainScopeState("registry-probe").release()
+      expect(seen.length).toBe(2)
+      for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${i}`)
+      expect(seen.length).toBeGreaterThan(2)
+      expect(seen.at(-1)).toBeUndefined()
+      stopWatch()
+
+      // A snapshot with no newer events applied still populates the store.
+      api.ensureScopeState("fresh-scope")
+      await h.waitForRequest("fresh-scope")
+      h.complete(
+        "fresh-scope",
+        {
+          scopeID: "scope-fresh",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: { "other-session": { type: "busy" } },
+          sessions: { data: [{ id: "snapshot-session", time: {} }], total: 1 },
+        },
+        { epoch: "test-epoch", seq: 0 },
+      )
+      const fresh = api.retainScopeState("fresh-scope")
+      await h.waitComplete(fresh.state)
+      expect(api.sessionStatus["other-session"]).toEqual({ type: "busy" })
+      expect(fresh.state[0].session.some((session) => session.id === "snapshot-session")).toBe(true)
+      fresh.release()
+
+      // Session runtime state lives in the always-present global store keyed by
+      // session id, not in the per-Scope store: the sidebar renders sessions
+      // from every Scope, while a Scope store is evicted once enough Scopes are
+      // inactive. Evicting "index-scope" below is exactly the switch-project
+      // path that used to blank these values.
+      const indexed = api.retainScopeState("index-scope")
+      h.emit("index-scope", 1, "session.status", { sessionID: "watched", status: { type: "busy" } })
+      expect(api.sessionStatus["watched"]).toEqual({ type: "busy" })
+      h.emit("index-scope", 2, "permission.asked", {
+        id: "perm-1",
+        sessionID: "watched",
+        permission: "edit",
+        patterns: [],
+        metadata: {},
+      })
+      h.emit("index-scope", 3, "question.asked", { id: "question-1", sessionID: "watched", questions: [] })
+      expect(api.permissions["watched"]?.map((request) => request.id)).toEqual(["perm-1"])
+      expect(api.questions["watched"]?.map((request) => request.id)).toEqual(["question-1"])
+
+      indexed.release()
+      await evictScope("index-scope")
+      expect(api.sessionStatus["watched"]).toEqual({ type: "busy" })
+      expect(api.permissions["watched"]?.map((request) => request.id)).toEqual(["perm-1"])
+      expect(api.questions["watched"]?.map((request) => request.id)).toEqual(["question-1"])
+
+      h.emit("index-scope", 4, "permission.replied", { sessionID: "watched", requestID: "perm-1" })
+      h.emit("index-scope", 5, "question.timed_out", { sessionID: "watched", requestID: "question-1" })
+      expect(api.permissions["watched"]).toBeUndefined()
+      expect(api.questions["watched"]).toBeUndefined()
+
+      // The index holds only non-idle sessions, so an idle status deletes the
+      // key rather than storing a value every reader must filter out.
+      h.emit("index-scope", 6, "session.status", { sessionID: "watched", status: { type: "idle" } })
+      expect(api.sessionStatus["watched"]).toBeUndefined()
+
+      // Requests stay id-sorted so a reader can binary-search them rather than
+      // scanning, matching the per-Scope bucket shape.
+      h.emit("index-scope", 7, "permission.asked", {
+        id: "perm-2",
+        sessionID: "sorted",
+        permission: "edit",
+        patterns: [],
+        metadata: {},
+      })
+      h.emit("index-scope", 8, "permission.asked", {
+        id: "perm-1",
+        sessionID: "sorted",
+        permission: "edit",
+        patterns: [],
+        metadata: {},
+      })
+
+      expect(api.permissions["sorted"]?.map((request) => request.id)).toEqual(["perm-1", "perm-2"])
+
+      // Release the concurrency slot `index-scope` still holds. Its store is
+      // already evicted, so the late response applies nothing (every apply path
+      // re-checks that the live store is still the one that requested it) — it
+      // only lets the convergence Scope below start its bootstrap.
+      h.complete(
+        "index-scope",
+        {
+          scopeID: "scope-index",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: {},
+          sessions: { data: [], total: 0 },
+        },
+        { epoch: "test-epoch", seq: 0 },
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      // A recovered latch reaches the client through a snapshot or a
+      // session.updated `working` field, so the fallback fills a status the
+      // index has no entry for and never overwrites one it does have — a real
+      // status event always wins, mirroring SessionManager.listStatuses.
+      const paused = { status: "paused", reason: "aborted", since: 1 }
+      h.emit("index-scope", 9, "session.updated", { info: { id: "derived", time: {}, working: paused } })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
+      h.emit("index-scope", 10, "session.updated", {
+        info: {
+          id: "derived",
+          time: {},
+          working: {
+            status: "retry",
+            rootID: "retry-root",
+            messageID: "retry-message",
+            phase: "waiting",
+            error: "rate limited",
+            startedAt: 0,
+            canRetry: true,
+            attempt: 1,
+            message: "again",
+            next: 2,
+          },
+        },
+      })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
+      h.emit("index-scope", 11, "session.status", { sessionID: "derived", status: { type: "busy" } })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
+      h.emit("index-scope", 12, "session.updated", { info: { id: "derived", time: {}, working: paused } })
+      expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
+      const queuedResume = { type: "busy", activity: { phase: "queued_agent", startedAt: 2, rootID: "saved-root" } }
+      h.emit("index-scope", 13, "session.status", { sessionID: "derived", status: queuedResume })
+      expect(api.sessionStatus["derived"]).toEqual(queuedResume)
+      h.emit("index-scope", 14, "session.status", { sessionID: "derived", status: { type: "idle" } })
+      expect(api.sessionStatus["derived"]).toBeUndefined()
+      // Convergence across eviction. A Scope's bootstrap response used to be
+      // authoritative for its whole status bucket *including omissions*, so a
+      // status left stale by a missed idle could not survive a resync. A flat
+      // index cannot infer which omissions are deletions, so the bootstrap's
+      // own session list supplies the Scope-owned set: a session that Scope
+      // still lists, but which the snapshot no longer reports as running, is
+      // deleted — while a status written by an event after the response stamp
+      // is newer than the snapshot read and wins.
+      const converging = api.retainScopeState("converge-scope")
+      await h.waitForRequest("converge-scope")
+      h.complete(
+        "converge-scope",
+        {
+          scopeID: "scope-converge",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: { "stale-runner": { type: "busy" } },
+          sessions: {
+            data: [
+              { id: "stale-runner", time: {} },
+              { id: "fresh-runner", time: {} },
+            ],
+            total: 2,
+          },
+        },
+        { epoch: "test-epoch", seq: 10 },
+      )
+      await h.waitComplete(converging.state)
+      expect(api.sessionStatus["stale-runner"]).toEqual({ type: "busy" })
+
+      h.emit("converge-scope", 11, "session.status", { sessionID: "fresh-runner", status: { type: "busy" } })
+      expect(api.sessionStatus["fresh-runner"]).toEqual({ type: "busy" })
+
+      // Switching project: the last lease goes, the Scope is evicted, and only
+      // the global index still carries the runtime state.
+      converging.release()
+      await evictScope("converge-scope")
+
+      const revived = api.retainScopeState("converge-scope")
+      await h.waitForRequest("converge-scope")
+      h.complete(
+        "converge-scope",
+        {
+          scopeID: "scope-converge",
+          provider: { all: [] },
+          agent: [],
+          config: {},
+          sessionStatus: {},
+          sessions: {
+            data: [
+              { id: "stale-runner", time: {} },
+              { id: "fresh-runner", time: {} },
+            ],
+            total: 2,
+          },
+        },
+        { epoch: "test-epoch", seq: 12 },
+      )
+      // Emitted between the response being stamped (seq 12) and its fields
+      // being applied, so it postdates the read: the snapshot must not clear it.
+      h.emit("converge-scope", 13, "session.status", { sessionID: "fresh-runner", status: { type: "busy" } })
+      await h.waitComplete(revived.state)
+      expect(api.sessionStatus["stale-runner"]).toBeUndefined()
+      expect(api.sessionStatus["fresh-runner"]).toEqual({ type: "busy" })
+      revived.release()
+      // The delegated-child pulse is the third resolver input that lives in a
+      // global index. A session with no status of its own is the interesting
+      // case: its running child task is the only input that can make the row
+      // read as running, and it must keep doing so after its Scope is evicted.
+      // The pulse previously came from the Scope store's Cortex bucket, so a
+      // resting row lost its running state on a project switch while its task
+      // was still running.
+      const pulseScope = api.retainScopeState("pulse-scope")
+      h.emit("pulse-scope", 1, "cortex.task.created", {
+        task: { id: "task-pulse", parentSessionID: "resting-child", status: "running" },
+      })
+      const identity = api.cortex.find((task) => task.id === "task-pulse")
+      h.emit("pulse-scope", 2, "cortex.task.completed", {
+        task: { id: "task-pulse", parentSessionID: "resting-child", status: "running", progress: { toolCalls: 1 } },
+      })
+      expect(api.cortex.find((task) => task.id === "task-pulse")).toBe(identity)
+      h.emit("pulse-scope", 3, "cortex.tasks.updated", {
+        tasks: [{ id: "task-pulse", parentSessionID: "resting-child", status: "running", progress: { toolCalls: 2 } }],
+      })
+      expect(api.cortex.find((task) => task.id === "task-pulse")).toBe(identity)
+      expect(api.sessionStatus["resting-child"]).toBeUndefined()
+      expect(h.resolveEntry("resting-child")).toMatchObject({ tone: "active", pulse: true })
+      pulseScope.release()
+      await evictScope("pulse-scope")
+      expect(api.cortex.some((task) => task.id === "task-pulse" && task.status === "running")).toBe(true)
+      expect(h.resolveEntry("resting-child")).toMatchObject({ tone: "active", pulse: true })
+
+      const summaryScope = api.retainScopeState("summary-scope")
+      await h.waitForRequest("summary-scope")
+      const summary = {
+        id: "task-summary",
+        sessionID: "summary-child",
+        parentSessionID: "summary-parent",
+        parentMessageID: "summary-message",
+        description: "Summary-only task",
+        agent: "fixture",
+        status: "running",
+        startedAt: 10,
+      }
+      const usage = {
+        inputTokens: 2,
+        outputTokens: 3,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        cost: 0,
+      }
+      h.emit("summary-scope", 1, "cortex.task.created", { task: summary })
+      const summaryIdentity = api.cortex.find((task) => task.id === summary.id)
+      h.emit("summary-scope", 2, "session.updated", {
+        info: {
+          id: summary.sessionID,
+          time: { created: 10, updated: 20 },
+          cortex: {
+            taskID: summary.id,
+            status: "completed",
+            completedAt: 20,
+            output: { mode: "final_response", value: "private child output ".repeat(32_768) },
+            error: "private child stack ".repeat(8_192),
+            usage,
+          },
+        },
+      })
+      const completedSummary = { ...summary, status: "completed", completedAt: 20, usage }
+      expect(api.cortex.find((task) => task.id === summary.id)).toBe(summaryIdentity)
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(completedSummary)
+      h.complete(
+        "summary-scope",
+        { provider: { all: [] }, agent: [], config: {}, cortex: [summary] },
+        { epoch: "test-epoch", seq: 1 },
+      )
+      await h.waitComplete(summaryScope.state)
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(completedSummary)
+
+      h.setPending(
+        "shared",
+        [{ id: "reconnect-question", sessionID: "waiting-session", questions: [] }],
+        [{ id: "reconnect-permission", sessionID: "waiting-session", permission: "edit", patterns: [], metadata: {} }],
+      )
+      h.holdStatuses()
+      h.connect()
+      await h.waitForReplay("summary-scope")
+      h.completeReplay("summary-scope", [
+        { type: "cortex.tasks.updated", seq: 3, properties: { tasks: [completedSummary] } },
+      ])
+      await h.waitForStatusRequest()
+      h.emit(
+        "status-project",
+        1,
+        "session.status",
+        { sessionID: "finished-project-session", status: { type: "busy" } },
+        "project-epoch",
+      )
+      h.emit(
+        "status-project",
+        2,
+        "session.status",
+        { sessionID: "finished-project-session", status: { type: "idle" } },
+        "project-epoch",
+      )
+      h.emit(
+        "status-other",
+        1,
+        "session.status",
+        { sessionID: "new-project-session", status: { type: "busy" } },
+        "other-project-epoch",
+      )
+      h.completeStatuses(
+        {
+          "finished-project-session": { type: "busy" },
+          "snapshot-only-session": { type: "busy" },
+        },
+        { epoch: "home-epoch", seq: 1000 },
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.sessionStatus["finished-project-session"]).toBeUndefined()
+      expect(h.resolveEntry("finished-project-session")).toMatchObject({ tone: "default" })
+      expect(h.resolveEntry("finished-project-session").pulse).toBeUndefined()
+      expect(api.sessionStatus["new-project-session"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["snapshot-only-session"]).toEqual({ type: "busy" })
+      await h.waitForReplay("shared")
+      h.completeReplay("shared")
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.questions["waiting-session"]?.map((request) => request.id)).toEqual(["reconnect-question"])
+      expect(api.permissions["waiting-session"]?.map((request) => request.id)).toEqual(["reconnect-permission"])
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(completedSummary)
+      h.emit("summary-scope", 4, "session.updated", {
+        info: {
+          id: summary.sessionID,
+          time: { created: 10, updated: 30 },
+          cortex: { taskID: summary.id, status: "interrupted", completedAt: 30, usage },
+        },
+      })
+      const interruptedSummary = { ...completedSummary, status: "interrupted", completedAt: 30 }
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(interruptedSummary)
+      h.emit("summary-scope", 5, "session.updated", {
+        info: {
+          id: summary.sessionID,
+          time: { created: 10, updated: 40 },
+          cortex: { taskID: "reused-child-task", status: "completed", completedAt: 40 },
+        },
+      })
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(interruptedSummary)
+      summaryScope.release()
+      h.emit("global", 1, "global.disposed", {})
+      await h.waitForStatusRequest()
+      h.emit("global", 2, "global.disposed", {})
+      await h.waitForStatusRequest(2)
+      h.emit(
+        "status-project",
+        3,
+        "session.status",
+        { sessionID: "current-generation-session", status: { type: "busy" } },
+        "project-epoch",
+      )
+      h.completeStatuses({ "obsolete-generation-session": { type: "busy" } }, { epoch: "obsolete-home", seq: 1 })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.sessionStatus["obsolete-generation-session"]).toBeUndefined()
+      expect(api.sessionStatus["current-generation-session"]).toEqual({ type: "busy" })
+      h.completeStatuses({ "current-snapshot-session": { type: "busy" } }, { epoch: "current-home", seq: 1 })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.sessionStatus["current-snapshot-session"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["current-generation-session"]).toEqual({ type: "busy" })
+      shared.release()
+    } finally {
+      h.dispose()
+    }
+  } finally {
+    root.remove()
+    await rm(directory, { recursive: true, force: true })
+  }
+}, 60000)

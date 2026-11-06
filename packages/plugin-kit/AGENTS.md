@@ -2,7 +2,7 @@
 
 This package owns the published `synergy-plugin` authoring CLI. Load `change-plugin-runtime`; public behavior must follow `packages/plugin` and [Plugin documentation](../../docs/plugins/README.md).
 
-- Keep create, validate, build, dev, test, sign, pack, and marketplace publication commands consistent with `definePlugin()` and the generated manifest.
+- Keep create, typegen, validate, build, dev, preview, test, sign, pack, and marketplace publication commands consistent with `definePlugin()` and the generated manifest.
 - Build artifacts must include every declared JS/CSS/SVG asset, externalize the supported Solid runtime paths, preserve deterministic IDs/hashes, and reject source-only or escaping paths.
 - Theme JSON must be parsed through `@ericsanchezok/synergy-plugin/theme` in build, validate, and dev for both source and packaged artifacts. Declarative asset hashes participate in generation identity, and a failed dev validation must preserve the last valid generation pointer.
 - Validation, signing, and packing must operate on the artifact that will be installed. Do not let dev-mode discovery or local paths weaken production validation.
@@ -11,4 +11,16 @@ This package owns the published `synergy-plugin` authoring CLI. Load `change-plu
 - Runtime discovery must compare packaged executable handler IDs with generated declarations. Publication is an explicit remote action; do not publish during build, validate, test, or pack.
 - CLI handlers parse and report; reusable spec, crypto, artifact, and policy logic belongs under `lib/` or the public plugin package.
 
-Run `bun run typecheck` and `bun run build`, then focused scaffold/build/pack/sign/runtime-discovery tests in `packages/synergy`. Inspect a packed fixture and finish with root `bun run package:check` and `bun run quality:quick`.
+The public `testing` entry starts isolated production hosts; keep all eight packed templates in the root real-host UI suite. Preview may signal and delete only its own runtime/home, and must settle cancelled builds before cleanup.
+
+Run `bun run typecheck` and root `bun turbo build --filter=@ericsanchezok/synergy-plugin-kit`, then focused scaffold/build/pack/sign/runtime-discovery tests in `packages/plugin-host` and `packages/presets`. Inspect a packed fixture and finish with root `bun run package:check` and `bun run quality:quick`.
+
+Definition inspection runs a fresh Bun CLI subprocess from the author's project; keep its JSON-only descriptor boundary identical for source, published package and compiled host execution. Compile the standalone CLI probe in a fresh Bun CLI process so earlier fixture builds cannot share compiler loader state. The compiled CLI behavioral test covers `typegen` and scoped CSS builds without sibling implementation files. Type generation formats through explicitly bundled Prettier parsers so it never depends on discovering parser files beside the executable.
+
+The workspace `build` writes only this package’s outputs. Turbo and the release/development entrypoints build declared dependencies first; never clear a sibling package’s `dist` from a package build.
+
+Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.
+
+Built plugin package metadata must identify the same API4 manifest, version and compatibility range. Keep flat archive support in the installer; author-facing build output must not require users to edit generated metadata.
+
+Independent Kit releases retain the published host requirement in component metadata. The factory reads that requirement instead of deriving it from the authoring package version.

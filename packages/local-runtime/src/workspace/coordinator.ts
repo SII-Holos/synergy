@@ -1,0 +1,545 @@
+import { WorkspaceBusyError as BusyError } from "@ericsanchezok/synergy-harness/workspace/claim"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { randomUUID } from "node:crypto"
+import { z } from "zod"
+import { FileLockTimeoutError, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
+import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
+import { retrySleep } from "@ericsanchezok/synergy-util/retry"
+import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { FileCoordination } from "../file/coordination"
+import { OwnedTree } from "../process/owned-tree"
+
+const Root = z.object({
+  path: z.string(),
+  physicalID: z.string().optional(),
+  ancestorPhysicalIDs: z.array(z.string()).default([]),
+})
+const Claim = z.object({
+  id: z.string(),
+  token: z.string(),
+  owner: z.string(),
+  ancestors: z.array(z.string()),
+  kind: z.enum(["use", "task", "operation", "process", "exclusive"]),
+  parentClaim: z.string().optional(),
+  roots: z.array(Root).nullable(),
+  useRoots: z.array(Root).default([]),
+  pid: z.number().int().positive(),
+  startIdentity: z.string().optional(),
+  processBound: z.boolean().default(false),
+  processTree: OwnedTree.Reference.optional(),
+  finalizer: z.object({ pid: z.number().int().positive(), startIdentity: z.string() }).optional(),
+  finalizing: z.boolean().optional(),
+  durable: z.boolean().optional(),
+  drained: z.boolean().optional(),
+  cooperative: z.boolean().optional(),
+  transient: z.boolean().optional(),
+  overlappingWrites: z.boolean().optional(),
+  state: z.enum(["waiting", "active"]),
+})
+const Ledger = z.object({ version: z.union([z.literal(1), z.literal(2), z.literal(3)]), claims: z.array(Claim) })
+type Claim = z.infer<typeof Claim>
+type Ledger = z.infer<typeof Ledger>
+
+export interface WorkspaceClaimInput {
+  id: string
+  owner: string
+  ancestors: string[]
+  kind: Claim["kind"]
+  roots: string[] | null
+  useRoots?: string[]
+  parentClaim?: string
+  processID?: number
+  retainAfterExit?: boolean
+  durable?: boolean
+  cooperative?: boolean
+  transient?: boolean
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+export const WorkspaceBusyError = BusyError
+
+function contains(parent: string, child: string) {
+  const relative = path.relative(parent, child)
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+}
+function physicallyContains(parent: z.infer<typeof Root>, child: z.infer<typeof Root>) {
+  return (
+    !!parent.physicalID &&
+    (parent.physicalID === child.physicalID || child.ancestorPhysicalIDs.includes(parent.physicalID))
+  )
+}
+function overlaps(a: Claim["roots"], b: Claim["roots"]) {
+  if (a?.length === 0 || b?.length === 0) return false
+  if (a === null || b === null) return true
+  return a.some((left) =>
+    b.some(
+      (right) =>
+        contains(left.path, right.path) ||
+        contains(right.path, left.path) ||
+        physicallyContains(left, right) ||
+        physicallyContains(right, left),
+    ),
+  )
+}
+function covers(a: Claim["roots"], b: Claim["roots"]) {
+  if (a === null) return true
+  return (
+    b !== null &&
+    b.every((right) => a.some((left) => contains(left.path, right.path) || physicallyContains(left, right)))
+  )
+}
+function conflicts(request: Claim, held: Claim, claims: readonly Claim[]) {
+  const visited = new Set<string>()
+  let parent = request.parentClaim
+  while (parent && !visited.has(parent)) {
+    visited.add(parent)
+    const ancestor = claims.find(
+      (claim) =>
+        claim.id === parent &&
+        claim.owner === request.owner &&
+        claim.state === "active" &&
+        (claim.kind === "task" || claim.kind === "exclusive"),
+    )
+    if (!ancestor) break
+    if (ancestor.id === held.id) return false
+    parent = ancestor.parentClaim
+  }
+  if (request.id === held.id) return false
+  if (request.parentClaim === held.id && request.owner === held.owner) return false
+  if (request.kind === "exclusive" && request.parentClaim && request.owner === held.owner && held.kind === "use")
+    return false
+  if (request.kind === "exclusive" && overlaps(request.roots, held.useRoots)) return true
+  if (held.kind === "exclusive" && overlaps(held.roots, request.useRoots)) return true
+  if ((request.kind === "use" && held.kind !== "exclusive") || (held.kind === "use" && request.kind !== "exclusive"))
+    return false
+  if (
+    request.kind === "task" &&
+    held.kind === "operation" &&
+    held.parentClaim === request.id &&
+    held.owner === request.owner
+  )
+    return false
+  // Older runtimes retain unbounded writer receipts until their original recovery completes.
+  if (request.kind === "process" && held.roots === null) return true
+  if (held.kind === "process" && request.roots === null) return true
+  return overlaps(request.roots, held.roots)
+}
+
+export class WorkspaceCoordinator {
+  private readonly live = new Map<string, number>()
+  private directoryPromise?: Promise<string>
+  constructor(private readonly options: { directory?: string } = {}) {}
+
+  private directory() {
+    return (this.directoryPromise ??= (async () => {
+      if (!this.options.directory) return FileCoordination.lockDirectory()
+      const directory = this.options.directory
+      await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+      const stat = await fs.lstat(directory)
+      if (
+        !stat.isDirectory() ||
+        stat.isSymbolicLink() ||
+        (process.getuid && (stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0))
+      )
+        throw new Error("Workspace coordination directory is not private")
+      return directory
+    })())
+  }
+
+  private async retained(claim: Claim) {
+    if (claim.durable) return true
+    if (claim.drained) return false
+    if (await this.alive(claim)) return true
+    return !!claim.finalizer && (await this.alive(claim.finalizer))
+  }
+
+  private async participating(claim: Claim) {
+    if (claim.drained || claim.state !== "active" || claim.kind === "use" || claim.kind === "exclusive") return false
+    return this.alive(claim, true)
+  }
+
+  private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree" | "drained">, fresh = false) {
+    if (claim.drained) return false
+    if (claim.processTree) {
+      try {
+        return OwnedTree.inspect(claim.processTree).state === "active"
+      } catch {
+        return true
+      }
+    }
+    const key = `${claim.pid}:${claim.startIdentity}`
+    if (!fresh && (this.live.get(key) ?? 0) > Date.now()) return true
+    try {
+      process.kill(claim.pid, 0)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+        this.live.delete(key)
+        return false
+      }
+    }
+    const actual = claim.startIdentity ? await processStartIdentity(claim.pid) : undefined
+    if (actual !== undefined && actual !== claim.startIdentity) {
+      this.live.delete(key)
+      return false
+    }
+    if (this.live.size > 1024) this.live.clear()
+    this.live.set(key, Date.now() + 500)
+    return true
+  }
+
+  private async update<T>(
+    fn: (ledger: Ledger) => Promise<T> | T,
+    options?: { signal?: AbortSignal; timeoutMs?: number },
+  ) {
+    const directory = await this.directory()
+    return withFileLock(
+      { directory, key: "workspace-coordinator-v1", signal: options?.signal, timeoutMs: options?.timeoutMs },
+      async () => {
+        const filename = path.join(directory, "workspace-claims-v1.json")
+        const raw = await fs.readFile(filename, "utf8").catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error
+        })
+        const ledger = raw === undefined ? { version: 1 as const, claims: [] } : Ledger.parse(JSON.parse(raw))
+        const alive = await Promise.all(ledger.claims.map((claim) => this.retained(claim)))
+        const retired = ledger.claims.filter((_claim, index) => !alive[index])
+        ledger.claims = ledger.claims.filter((_claim, index) => alive[index])
+        const result = await fn(ledger)
+        if (ledger.claims.some((claim) => claim.drained)) ledger.version = 3
+        else if (ledger.version < 2 && ledger.claims.some((claim) => claim.durable)) ledger.version = 2
+        const serialized = JSON.stringify(ledger)
+        if (raw !== serialized) await AtomicFile.writeJsonAtomic(filename, serialized, { durable: true, private: true })
+        for (const claim of retired) {
+          if (!claim.processTree) continue
+          try {
+            OwnedTree.retire(claim.processTree)
+          } catch {}
+        }
+        return result
+      },
+    )
+  }
+
+  async acquire(input: WorkspaceClaimInput) {
+    input.signal?.throwIfAborted()
+    if (input.roots?.some((root) => !path.isAbsolute(root))) throw new Error("Workspace claim roots must be absolute")
+    if (input.useRoots?.some((root) => !path.isAbsolute(root))) throw new Error("Workspace use roots must be absolute")
+    if (input.processID !== undefined && (!Number.isInteger(input.processID) || input.processID <= 0))
+      throw new Error("Invalid Workspace process ID")
+    if (input.timeoutMs !== undefined && (!Number.isFinite(input.timeoutMs) || input.timeoutMs < 0))
+      throw new Error("Invalid Workspace admission timeout")
+    if (input.retainAfterExit && input.kind !== "process")
+      throw new Error("Only process claims can retain finalization ownership")
+    if (input.durable && (input.kind !== "process" || !input.retainAfterExit))
+      throw new Error("Durable claims require retained process ownership")
+    if (input.cooperative && input.kind !== "process")
+      throw new Error("Only process claims support cooperative retirement")
+    const finalizerIdentity = input.retainAfterExit ? await processStartIdentity(process.pid) : undefined
+    if (input.retainAfterExit && !finalizerIdentity) throw new Error("Cannot verify the Workspace finalizer identity")
+    const deadline = Date.now() + (input.timeoutMs ?? 120_000)
+    const identities = new Map<string, Promise<string | undefined>>()
+    const identify = (filename: string) => {
+      let result = identities.get(filename)
+      if (!result) {
+        result = identifyFilesystemObject(filename).then(
+          (identity) => identity.physicalID,
+          (error: NodeJS.ErrnoException) => {
+            if (error.code !== "ENOENT") throw error
+            return undefined
+          },
+        )
+        identities.set(filename, result)
+      }
+      return result
+    }
+    const canonicalRoots = async (values: string[] | null) =>
+      values === null
+        ? null
+        : await Promise.all(
+            [...new Set(values)].map(async (root) => {
+              let canonical = await FileCoordination.canonical(root)
+              if (process.platform === "win32") canonical = canonical.toLowerCase()
+              const parents: string[] = []
+              for (let parent = path.dirname(canonical); parent !== canonical; parent = path.dirname(parent)) {
+                parents.push(parent)
+                if (path.dirname(parent) === parent) break
+              }
+              const [physicalID, ancestorPhysicalIDs] = await Promise.all([
+                identify(canonical),
+                Promise.all(parents.map(identify)).then((items) =>
+                  items.filter((item): item is string => item !== undefined),
+                ),
+              ])
+              return { path: canonical, physicalID, ancestorPhysicalIDs }
+            }),
+          )
+    const roots = await canonicalRoots(input.roots)
+    const useRoots = (await canonicalRoots(input.useRoots ?? []))!
+    const pid = input.processID ?? process.pid
+    const request: Claim = {
+      id: input.id,
+      token: randomUUID(),
+      owner: input.owner,
+      ancestors: input.ancestors,
+      kind: input.kind,
+      parentClaim: input.parentClaim,
+      cooperative: input.cooperative,
+      transient: input.transient,
+      durable: input.durable,
+      roots,
+      useRoots,
+      pid,
+      startIdentity: await processStartIdentity(pid),
+      processBound: input.processID !== undefined,
+      finalizer: finalizerIdentity ? { pid: process.pid, startIdentity: finalizerIdentity } : undefined,
+      overlappingWrites: false,
+      state: "waiting",
+    }
+    let registered = false
+    let created = false
+    try {
+      for (;;) {
+        input.signal?.throwIfAborted()
+        if (Date.now() >= deadline) throw new WorkspaceBusyError("Workspace is busy; the writable roots are in use")
+        const granted = await this.update(
+          async (ledger) => {
+            const own = ledger.claims.find((claim) => claim.id === request.id)
+            if (own && own.owner !== request.owner) throw new Error("Workspace claim identity belongs to another owner")
+            if (!registered) {
+              if (own?.state === "active" && covers(own.roots, roots)) {
+                request.token = own.token
+                // Reusing a task reservation is not a new physical write admission.
+                // Its next operation/process claim must wait on retained native children.
+                if (own.kind === "task" && request.kind === "task") return true
+              } else {
+                ledger.claims = ledger.claims.filter((claim) => claim.id !== request.id)
+                if (ledger.claims.length >= 1024) throw new WorkspaceBusyError("Workspace coordination queue is busy")
+                ledger.claims.push(request)
+                created = true
+              }
+              registered = true
+            }
+            const index = ledger.claims.findIndex((claim) => claim.id === request.id && claim.token === request.token)
+            if (index < 0) throw new WorkspaceBusyError("Workspace claim was cancelled or superseded")
+            const current = ledger.claims[index]!
+            const parent = ledger.claims.find(
+              (claim) => claim.id === current.parentClaim && claim.owner === current.owner && claim.state === "active",
+            )
+            const alreadyAdmitted =
+              parent?.kind === "exclusive" || (parent?.kind === "task" && covers(parent.roots, current.roots))
+            if (
+              current.parentClaim &&
+              (!parent ||
+                (parent.kind !== "task" && parent.kind !== "exclusive") ||
+                (!alreadyAdmitted && !current.transient))
+            )
+              throw new WorkspaceBusyError("Workspace parent reservation is no longer available")
+            if (parent?.kind === "exclusive") {
+              const visited = new Set<string>()
+              let ancestor: Claim | undefined = parent
+              let reserved = false
+              while (ancestor && !visited.has(ancestor.id)) {
+                visited.add(ancestor.id)
+                if (covers(ancestor.roots, current.roots)) {
+                  reserved = true
+                  break
+                }
+                const parentID: string | undefined = ancestor.parentClaim
+                ancestor = ledger.claims.find(
+                  (claim) =>
+                    claim.id === parentID &&
+                    claim.owner === current.owner &&
+                    claim.state === "active" &&
+                    (claim.kind === "task" || claim.kind === "exclusive"),
+                )
+              }
+              if (!reserved)
+                throw new WorkspaceBusyError("Write footprint must be reserved before acquiring retirement ownership")
+            }
+            const blockers = ledger.claims.filter(
+              (claim, position) =>
+                (claim.state === "active" || (!alreadyAdmitted && position < index)) &&
+                conflicts(current, claim, ledger.claims),
+            )
+            if (
+              blockers.some(
+                (claim) =>
+                  claim.kind === "process" &&
+                  !claim.cooperative &&
+                  (claim.owner === current.owner ||
+                    current.ancestors.includes(claim.owner) ||
+                    claim.ancestors.includes(current.owner)),
+              )
+            )
+              throw new WorkspaceBusyError(
+                "A process owned by this session or its parent is still using the Workspace; wait for its exit or stop it before writing",
+              )
+            if (blockers.length) return false
+            current.state = "active"
+            if (current.kind !== "use" && current.kind !== "exclusive") {
+              const view = (claim: Claim) =>
+                claim.kind === "process" && claim.roots?.length === 0 ? claim.useRoots : claim.roots
+              const related = (claim: Claim, ancestor: Claim) => {
+                const visited = new Set<string>()
+                while (claim.parentClaim && !visited.has(claim.id)) {
+                  visited.add(claim.id)
+                  const parent = ledger.claims.find(
+                    (item) => item.id === claim.parentClaim && item.owner === claim.owner,
+                  )
+                  if (!parent) break
+                  if (parent.id === ancestor.id) return true
+                  claim = parent
+                }
+                return false
+              }
+              for (const held of ledger.claims) {
+                if (
+                  held.id === current.id ||
+                  held.state !== "active" ||
+                  held.kind === "use" ||
+                  held.kind === "exclusive"
+                )
+                  continue
+                if (related(current, held) || related(held, current) || !overlaps(view(current), view(held))) continue
+                if (!(await this.participating(held)) || !(await this.participating(current))) continue
+                held.overlappingWrites = true
+                current.overlappingWrites = true
+              }
+            }
+            return true
+          },
+          { signal: input.signal, timeoutMs: Math.max(1, deadline - Date.now()) },
+        )
+        if (granted) break
+        await retrySleep(Math.min(25, Math.max(1, deadline - Date.now())), input.signal)
+      }
+    } catch (error) {
+      if (created) await this.release(request.id, request.token)
+      if (error instanceof FileLockTimeoutError)
+        throw new WorkspaceBusyError("Workspace is busy; coordination admission timed out")
+      throw error
+    }
+    return this.lease(request.id, request.token, input.durable)
+  }
+
+  async recover(reference: { id: string; token: string }) {
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (claim && !claim.durable) throw new Error("Workspace claim is not recoverable")
+    })
+    return this.lease(reference.id, reference.token, true)
+  }
+
+  async confirmDrained(reference: { id: string; token: string }) {
+    // OwnedProcess removes its Linux receipt during cleanup; preserve the verified result before checkpoint I/O.
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (!claim?.durable || !claim.processTree) throw new Error("A retained process tree is required for completion")
+      if (claim.drained) return
+      if (OwnedTree.inspect(claim.processTree).state !== "exited")
+        throw new Error("Workspace process tree is still active")
+      claim.drained = true
+    })
+  }
+
+  async validateRetention(reference: { id: string; token: string }, root: string) {
+    const canonical = await FileCoordination.canonical(root)
+    const identity = await identifyFilesystemObject(canonical)
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (
+        !claim?.durable ||
+        claim.state !== "active" ||
+        !covers(claim.roots === null ? null : [...claim.roots, ...claim.useRoots], [
+          {
+            path: process.platform === "win32" ? canonical.toLowerCase() : canonical,
+            physicalID: identity.physicalID,
+            ancestorPhysicalIDs: [],
+          },
+        ])
+      )
+        throw new Error("Checkpoint has no retained use covering this Workspace")
+    })
+  }
+
+  async isolated(reference: { id: string; token: string }) {
+    return this.update((ledger) => {
+      const claim = ledger.claims.find((item) => item.id === reference.id && item.token === reference.token)
+      if (!claim || claim.state !== "active") throw new Error("Workspace observation claim is unavailable")
+      // Older runtimes can preserve a claim while stripping newer observation fields.
+      return claim.overlappingWrites === false
+    })
+  }
+
+  private lease(id: string, token: string, durable?: boolean) {
+    let releasing: Promise<void> | undefined
+    return {
+      id,
+      recovery: durable ? { id, token } : undefined,
+      isolated: () => this.isolated({ id, token }),
+      release: (beforeRelease?: () => Promise<void>) =>
+        (releasing ??= this.release(id, token, beforeRelease).finally(() => {
+          releasing = undefined
+        })),
+      bindProcess: (processID: number, options?: { descendants?: boolean }) =>
+        this.bindProcess(id, token, processID, options),
+    }
+  }
+
+  private async bindProcess(id: string, token: string, pid: number, options?: { descendants?: boolean }) {
+    const processTree = options?.descendants ? OwnedTree.capture(pid) : undefined
+    const identity = await processStartIdentity(pid)
+    if (!identity) throw new Error("Cannot verify the Workspace process identity")
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === id && claim.token === token)
+      if (!claim || claim.kind !== "process" || claim.processBound)
+        throw new Error("Workspace process claim is not pending")
+      claim.pid = pid
+      claim.startIdentity = identity
+      claim.processBound = true
+      claim.processTree = processTree
+    })
+  }
+
+  private async release(id: string, token: string, beforeRelease?: () => Promise<void>) {
+    const finalize = await this.update(async (ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === id && claim.token === token)
+      if (!claim || claim.finalizing) return false
+      if (claim.kind === "process" && claim.processBound && (await this.alive(claim, true))) return false
+      if (beforeRelease) {
+        claim.finalizing = true
+        return true
+      }
+      ledger.claims = ledger.claims.filter((claim) => claim.id !== id || claim.token !== token)
+      return false
+    })
+    if (!finalize) return
+    try {
+      await beforeRelease!()
+    } finally {
+      await this.update((ledger) => {
+        ledger.claims = ledger.claims.filter((claim) => claim.id !== id || claim.token !== token)
+      })
+    }
+  }
+
+  inspect() {
+    return this.update((ledger) => ledger.claims)
+  }
+
+  contendedProcesses() {
+    return this.update((ledger) => {
+      const waiting = ledger.claims.filter((claim) => claim.state === "waiting")
+      return ledger.claims
+        .filter(
+          (claim) =>
+            claim.cooperative &&
+            claim.state === "active" &&
+            waiting.some((next) => conflicts(next, claim, ledger.claims)),
+        )
+        .map((claim) => claim.id)
+    })
+  }
+}

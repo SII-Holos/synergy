@@ -1,0 +1,196 @@
+import { describe, expect, test } from "bun:test"
+import { createRoot } from "solid-js"
+import {
+  createPersonalizeController,
+  type CustomInstructionsInfo,
+} from "../../../../src/components/settings/panels/personalize-controller"
+
+const primary: CustomInstructionsInfo = {
+  content: "Base instructions.\n",
+  source: "primary",
+  sourceFilename: "AGENTS.md",
+  editableFilename: "AGENTS.override.md",
+  hasOverride: false,
+  maxBytes: 32 * 1024,
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function withController<T>(
+  api: Parameters<typeof createPersonalizeController>[0],
+  run: (controller: ReturnType<typeof createPersonalizeController>) => T | Promise<T>,
+) {
+  return createRoot((dispose) => {
+    const controller = createPersonalizeController(api)
+    return Promise.resolve(run(controller)).finally(dispose)
+  })
+}
+
+describe("Personalize custom instructions controller", () => {
+  test("saving acknowledges the submitted content while preserving later edits", async () => {
+    const pending = deferred<CustomInstructionsInfo>()
+    await withController(
+      { get: async () => primary, update: async () => pending.promise, reset: async () => primary },
+      async (controller) => {
+        await controller.load()
+        controller.setContent("Submitted")
+        const saving = controller.save()
+        controller.setContent("Later edit")
+        pending.resolve({ ...primary, content: "Submitted", hasOverride: true })
+        expect(await saving).toBe(true)
+        expect(controller.content()).toBe("Later edit")
+        expect(controller.dirty()).toBe(true)
+      },
+    )
+  })
+  test("loads the effective AGENTS.md content without marking it dirty", async () => {
+    const result = await withController(
+      {
+        get: async () => primary,
+        update: async () => primary,
+        reset: async () => primary,
+      },
+      async (controller) => {
+        await controller.load()
+        return {
+          content: controller.content(),
+          source: controller.info()?.source,
+          status: controller.status(),
+          dirty: controller.dirty(),
+        }
+      },
+    )
+
+    expect(result).toEqual({ content: "Base instructions.\n", source: "primary", status: "idle", dirty: false })
+  })
+
+  test("tracks UTF-8 bytes and blocks saves beyond the server limit", async () => {
+    const result = await withController(
+      {
+        get: async () => ({ ...primary, maxBytes: 4 }),
+        update: async () => primary,
+        reset: async () => primary,
+      },
+      async (controller) => {
+        await controller.load()
+        controller.setContent("你好")
+        return { bytes: controller.byteCount(), overLimit: controller.overLimit(), canSave: controller.canSave() }
+      },
+    )
+
+    expect(result).toEqual({ bytes: 6, overLimit: true, canSave: false })
+  })
+
+  test("exposes saving state and adopts the returned override", async () => {
+    const pending = deferred<CustomInstructionsInfo>()
+    const updates: string[] = []
+
+    const result = await withController(
+      {
+        get: async () => primary,
+        update: async (content) => {
+          updates.push(content)
+          return pending.promise
+        },
+        reset: async () => primary,
+      },
+      async (controller) => {
+        await controller.load()
+        controller.setContent("Personal instructions.\n")
+        const saving = controller.save()
+        const during = { status: controller.status(), canSave: controller.canSave() }
+        pending.resolve({
+          ...primary,
+          content: "Personal instructions.\n",
+          source: "override",
+          sourceFilename: "AGENTS.override.md",
+          hasOverride: true,
+        })
+        await saving
+        return {
+          during,
+          updates,
+          status: controller.status(),
+          dirty: controller.dirty(),
+          hasOverride: controller.info()?.hasOverride,
+        }
+      },
+    )
+
+    expect(result).toEqual({
+      during: { status: "saving", canSave: false },
+      updates: ["Personal instructions.\n"],
+      status: "idle",
+      dirty: false,
+      hasOverride: true,
+    })
+  })
+
+  test("stages reset until save and keeps the draft dirty when reset fails", async () => {
+    let shouldFail = true
+    let resetCalls = 0
+    const result = await withController(
+      {
+        get: async () => ({
+          ...primary,
+          content: "Override.\n",
+          source: "override",
+          sourceFilename: "AGENTS.override.md",
+          hasOverride: true,
+        }),
+        update: async () => primary,
+        reset: async () => {
+          resetCalls++
+          if (shouldFail) throw new Error("reset failed")
+          return primary
+        },
+      },
+      async (controller) => {
+        await controller.load()
+        controller.stageReset()
+        const staged = {
+          content: controller.content(),
+          dirty: controller.dirty(),
+          resetCalls,
+        }
+        await controller.save()
+        const failed = {
+          status: controller.status(),
+          error: controller.error(),
+          content: controller.content(),
+          dirty: controller.dirty(),
+          resetCalls,
+        }
+        shouldFail = false
+        await controller.save()
+        return {
+          staged,
+          failed,
+          status: controller.status(),
+          error: controller.error(),
+          content: controller.content(),
+          dirty: controller.dirty(),
+          resetCalls,
+        }
+      },
+    )
+
+    expect(result).toEqual({
+      staged: { content: "", dirty: true, resetCalls: 0 },
+      failed: { status: "error", error: "reset failed", content: "", dirty: true, resetCalls: 1 },
+      status: "idle",
+      error: undefined,
+      content: "Base instructions.\n",
+      dirty: false,
+      resetCalls: 2,
+    })
+  })
+})

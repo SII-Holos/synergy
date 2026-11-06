@@ -1,0 +1,3 @@
+把结果或状态显式推送到渠道(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to a channel chat, or reply to an inbound message — the only outbound delivery surface for boss-role sessions.
+
+accountId defaults to the session's channel account. chatId defaults to the chat the current inbound message arrived from; when there is no inbound message (a proactive push) you must pass chatId explicitly. Pass replyToMessageId to reply to a specific message (anchored replies in the inbound chat are the normal answer path and need no approval); pushing a new message to a chat, or pushing to a different chat, requires an explicit permission decision.

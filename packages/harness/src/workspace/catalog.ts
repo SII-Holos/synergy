@@ -1,0 +1,661 @@
+import path from "node:path"
+import { createHash, randomUUID } from "node:crypto"
+import { z } from "zod"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { BusEvent } from "../bus/bus-event"
+import { Bus } from "../bus"
+import { Scope } from "../scope"
+import { ScopeContext } from "../scope/context"
+import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import type { Workspace } from "../session/workspace-schema"
+import type { StoreTransaction } from "../storage/transactional-store"
+import { WorkspaceTree } from "./tree"
+import { EnvironmentSchema } from "../environment/schema"
+import { JsonValue } from "../util/json-value"
+
+export namespace WorkspaceCatalog {
+  export const Backend = z.object({ provider: z.string().min(1), spec: z.record(z.string(), JsonValue) })
+  export const Content = z.object({ revision: z.number().int().nonnegative(), manifest: WorkspaceTree.Hash.nullable() })
+  export const Mount = z.object({
+    id: z.string(),
+    generation: z.number().int().positive(),
+    target: EnvironmentSchema.Target,
+    path: z.string(),
+    state: z.enum(["preparing", "active", "saving", "unavailable"]),
+    readOnly: z.boolean().default(false),
+  })
+  export const Binding = z.object({
+    state: z.enum(["bound", "unbound"]),
+    hostID: z.string().min(1),
+    path: z.string().min(1).nullable(),
+    physicalID: z.string().optional(),
+    generation: z.number().int().positive(),
+  })
+  export const Info = z
+    .object({
+      id: z.string().min(1),
+      scopeID: z.string().min(1),
+      type: z.string().min(1),
+      revision: z.number().int().positive(),
+      binding: Binding,
+      backend: Backend.optional(),
+      recovery: Backend.optional(),
+      content: Content.optional(),
+      mountGeneration: z.number().int().nonnegative().optional(),
+      activeMount: Mount.optional(),
+      importedFrom: z.object({ workspaceID: z.string(), hostID: z.string() }).optional(),
+      metadata: z.record(z.string(), z.unknown()),
+      sharedWritableWorkspaceIDs: z.array(z.string()),
+      lifecycle: z.enum(["active", "deleting", "released", "deleted"]),
+      createdAt: z.number(),
+      updatedAt: z.number(),
+    })
+    .passthrough()
+    .meta({ ref: "WorkspaceInfo" })
+  export type Info = z.infer<typeof Info>
+  export const Event = { Updated: BusEvent.define("workspace.updated", Info) }
+  export async function publishUpdated(info: Info) {
+    const scope = await Scope.fromID(info.scopeID)
+    if (!scope) return
+    await ScopeContext.provide({ scope, workspace: null, fn: () => Bus.publish(Event.Updated, info) })
+  }
+  export const Invalid = NamedError.create(
+    "WorkspaceInvalid",
+    z.object({ message: z.string(), workspaceID: z.string() }),
+  )
+  export const BindingChanged = NamedError.create(
+    "WorkspaceBindingChanged",
+    z.object({ message: z.string(), workspaceID: z.string() }),
+  )
+  export const Unavailable = NamedError.create(
+    "WorkspaceUnavailable",
+    z.object({
+      message: z.string(),
+      workspaceID: z.string(),
+      reason: z
+        .enum(["binding_unavailable", "identity_unverified", "directory_unavailable", "identity_changed"])
+        .optional(),
+    }),
+  )
+
+  export interface RegisterInput {
+    scopeID: string
+    type: string
+    hostID: string
+    path: string
+    physicalID?: string
+    generation?: number
+    metadata?: Record<string, unknown>
+    sharedWritableWorkspaceIDs?: string[]
+  }
+
+  const recordKey = StoragePath.workspace
+  const scopeKey = StoragePath.workspaceScope
+  const locationKey = (scopeID: string, hostID: string, value: string) =>
+    StoragePath.workspaceLocation(scopeID, hostID, createHash("sha256").update(value).digest("hex"))
+  const locations = (info: Pick<Info, "scopeID" | "binding">) => [
+    locationKey(info.scopeID, info.binding.hostID, `path:${info.binding.path}`),
+    ...(info.binding.physicalID
+      ? [locationKey(info.scopeID, info.binding.hostID, `file:${info.binding.physicalID}`)]
+      : []),
+  ]
+
+  export async function get(
+    id: string,
+    scopeID: string,
+    transaction?: Pick<StoreTransaction, "readMany">,
+  ): Promise<Info> {
+    const [info] = await readMany([id], transaction)
+    if (!info || info.scopeID !== scopeID)
+      throw new Storage.NotFoundError({ message: "Workspace not found in this Scope" })
+    return info
+  }
+
+  export async function readMany(ids: string[], transaction?: Pick<StoreTransaction, "readMany">) {
+    const records = await (transaction ?? Storage).readMany<unknown>(ids.map(recordKey))
+    return records.map((record) => (record === undefined ? undefined : Info.parse(record)))
+  }
+
+  async function* catalogRecords(reader: Pick<StoreTransaction, "query"> = Storage) {
+    let after: string[] | undefined
+    for (;;) {
+      const page = await reader.query({ kind: "workspace", after, limit: 128 })
+      for (const row of page) yield Info.parse(row.value)
+      if (page.length < 128) return
+      after = page.at(-1)!.key
+    }
+  }
+
+  export function listAll(): Promise<Info[]> {
+    return Storage.snapshot(async () => {
+      const records: Info[] = []
+      for await (const record of catalogRecords()) records.push(record)
+      return records
+    })
+  }
+
+  function directoryContains(root: string, target: string) {
+    const relative = path.relative(root, target)
+    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+  }
+
+  function liveDirectory(record: Info): record is Info & { binding: { path: string } } {
+    return record.binding.state === "bound" && !!record.binding.path && record.lifecycle !== "deleted"
+  }
+
+  function samePhysicalDirectory(first: Info, second: Info) {
+    return !!first.binding.physicalID && first.binding.physicalID === second.binding.physicalID
+  }
+
+  async function assertDirectoryAdmission(candidate: Info, reader: Pick<StoreTransaction, "query"> = Storage) {
+    if (!liveDirectory(candidate)) return
+    for await (const record of catalogRecords(reader)) {
+      if (
+        record.id === candidate.id ||
+        !["deleting", "released"].includes(record.lifecycle) ||
+        !liveDirectory(record) ||
+        record.binding.hostID !== candidate.binding.hostID
+      )
+        continue
+      if (
+        samePhysicalDirectory(record, candidate) ||
+        directoryContains(record.binding.path, candidate.binding.path) ||
+        directoryContains(candidate.binding.path, record.binding.path)
+      )
+        throw new Unavailable({ workspaceID: candidate.id, message: "An overlapping Workspace is being removed" })
+    }
+  }
+
+  async function assertRetirementReferences(records: Info[]) {
+    const owned = new Set(records.map((record) => record.id))
+    const roots = records.filter(liveDirectory)
+    if (!roots.length) return
+    for await (const record of catalogRecords()) {
+      if (owned.has(record.id) || !liveDirectory(record)) continue
+      const root = roots.find(
+        (root) =>
+          record.binding.hostID === root.binding.hostID &&
+          (samePhysicalDirectory(record, root) ||
+            directoryContains(root.binding.path, record.binding.path) ||
+            (["deleting", "released"].includes(record.lifecycle) &&
+              directoryContains(record.binding.path, root.binding.path))),
+      )
+      if (root)
+        throw new Unavailable({
+          workspaceID: root.id,
+          message: "Another Workspace references this directory or a child directory",
+        })
+    }
+  }
+
+  export async function assertActive(id: string, scopeID: string): Promise<Info> {
+    const record = await get(id, scopeID)
+    if (record.lifecycle !== "active") throw new Unavailable({ workspaceID: id, message: "Workspace is not active" })
+    return record
+  }
+
+  export function beginRetirement(records: Info[], recovery?: z.infer<typeof Backend>): Promise<Info[]> {
+    return transitionRetirement(records, "active", "deleting", recovery)
+  }
+
+  export async function assertRetirement(records: Info[]): Promise<void> {
+    await Storage.snapshot(() => retirementRecords(records, "deleting"))
+  }
+
+  export function completeRetirement(records: Info[], lifecycle: "active" | "released" | "deleted"): Promise<Info[]> {
+    return transitionRetirement(records, "deleting", lifecycle)
+  }
+
+  async function retirementRecords(records: Info[], lifecycle: Info["lifecycle"]): Promise<Info[]> {
+    const ids = new Set<string>()
+    for (const record of records) {
+      if (ids.has(record.id))
+        throw new Invalid({ workspaceID: record.id, message: "Workspace retirement contains duplicate identities" })
+      ids.add(record.id)
+    }
+    const current = await readMany(records.map((record) => record.id))
+    const verified = records.map((expected, index) => {
+      const record = current[index]
+      if (!record || record.scopeID !== expected.scopeID)
+        throw new Storage.NotFoundError({ message: "Workspace not found in this Scope" })
+      if (record.revision !== expected.revision)
+        throw new BindingChanged({ workspaceID: record.id, message: "Workspace changed during retirement" })
+      if (record.lifecycle !== lifecycle)
+        throw new Unavailable({ workspaceID: record.id, message: "Workspace retirement lifecycle changed" })
+      return record
+    })
+    await assertRetirementReferences(verified)
+    return verified
+  }
+
+  function transitionRetirement(
+    records: Info[],
+    expectedLifecycle: Info["lifecycle"],
+    lifecycle: Info["lifecycle"],
+    recovery?: z.infer<typeof Backend>,
+  ): Promise<Info[]> {
+    return Storage.transaction(async () => {
+      const current = await retirementRecords(records, expectedLifecycle)
+      if (lifecycle === "released" && current.some((record) => !record.recovery))
+        throw new Invalid({ workspaceID: current[0]!.id, message: "Releasing a Workspace requires a recovery receipt" })
+      const next = current.map((record) => ({
+        ...record,
+        lifecycle,
+        recovery: lifecycle === "active" || lifecycle === "deleted" ? undefined : (recovery ?? record.recovery),
+        revision: record.revision + 1,
+        updatedAt: Date.now(),
+      }))
+      for (const record of next) {
+        await Storage.write(recordKey(record.id), record)
+        await publishUpdated(record)
+      }
+      return next
+    })
+  }
+
+  export function updateRecovery(records: Info[], recovery: z.infer<typeof Backend>) {
+    return transitionRetirement(records, "released", "released", recovery)
+  }
+
+  export function restoreReleased(records: Info[], physicalID: string): Promise<Info[]> {
+    return Storage.transaction(async () => {
+      const current = await retirementRecords(records, "released")
+      const next = current.map((record) =>
+        Info.parse({
+          ...record,
+          lifecycle: "active",
+          recovery: undefined,
+          revision: record.revision + 1,
+          updatedAt: Date.now(),
+          binding: { ...record.binding, physicalID, generation: record.binding.generation + 1 },
+          activeMount: undefined,
+        }),
+      )
+      await assertRetirementReferences(next)
+      for (const record of current) for (const key of locations(record)) await Storage.remove(key)
+      for (const record of next) {
+        await Storage.write(recordKey(record.id), record)
+        for (const key of locations(record)) await Storage.write(key, record.id)
+        await publishUpdated(record)
+      }
+      return next
+    })
+  }
+
+  export async function list(scopeID: string): Promise<Info[]> {
+    const keys = await Storage.list(StoragePath.workspaceScope(scopeID))
+    const records = await Storage.readMany<unknown>(keys.map((key) => recordKey(key[2])))
+    return records.flatMap((record) => (record === undefined ? [] : [Info.parse(record)]))
+  }
+
+  export async function findByLocation(input: { scopeID: string; hostID: string; path: string }) {
+    return Storage.snapshot(async () => {
+      const [id] = await Storage.readMany<string>([locationKey(input.scopeID, input.hostID, `path:${input.path}`)])
+      return id ? get(id, input.scopeID) : undefined
+    })
+  }
+
+  export async function register(input: RegisterInput): Promise<Info> {
+    const candidate = Info.parse({
+      id: `wsp_${randomUUID().replaceAll("-", "")}`,
+      scopeID: input.scopeID,
+      type: input.type,
+      revision: 1,
+      binding: {
+        state: "bound",
+        hostID: input.hostID,
+        path: input.path,
+        physicalID: input.physicalID,
+        generation: input.generation ?? 1,
+      },
+      backend: { provider: "directory", spec: {} },
+      content: { revision: 0, manifest: null },
+      metadata: input.metadata ?? {},
+      sharedWritableWorkspaceIDs: [],
+      lifecycle: "active",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    const registered = await Storage.snapshot(() => findRegistration(candidate))
+    if (registered) return registered
+    return Storage.transaction(async () => {
+      const existing = await findRegistration(candidate)
+      if (existing) return existing
+      await assertDirectoryAdmission(candidate)
+      candidate.sharedWritableWorkspaceIDs = await validateSharing(candidate, input.sharedWritableWorkspaceIDs ?? [])
+      await Storage.write(recordKey(candidate.id), candidate)
+      await Storage.write(scopeKey(candidate.scopeID, candidate.id), candidate.id)
+      for (const key of locations(candidate)) await Storage.write(key, candidate.id)
+      return candidate
+    })
+  }
+
+  async function findRegistration(candidate: Info): Promise<Info | undefined> {
+    const ids = await Storage.readMany<string>(locations(candidate))
+    const matches = [...new Set(ids.filter((id): id is string => !!id))]
+    if (matches.length > 1)
+      throw new Unavailable({ message: "Workspace location has conflicting registrations", workspaceID: matches[0] })
+    if (!matches[0]) return
+    const existing = await get(matches[0], candidate.scopeID)
+    if (existing.lifecycle !== "active")
+      throw new Unavailable({ message: "Workspace is being removed", workspaceID: existing.id })
+    if (
+      existing.binding.physicalID &&
+      candidate.binding.physicalID &&
+      existing.binding.physicalID !== candidate.binding.physicalID
+    )
+      throw new Unavailable({
+        message: "The directory was replaced; explicitly rebind this Workspace",
+        workspaceID: existing.id,
+        reason: "identity_changed",
+      })
+    return existing
+  }
+
+  export async function create(input: {
+    scopeID: string
+    backend: z.infer<typeof Backend>
+    metadata?: Record<string, unknown>
+  }): Promise<Info> {
+    const info = Info.parse({
+      id: `wsp_${randomUUID().replaceAll("-", "")}`,
+      scopeID: input.scopeID,
+      type: input.backend.provider,
+      revision: 1,
+      binding: { state: "bound", hostID: "provider", path: null, generation: 1 },
+      backend: input.backend,
+      content: { revision: 0, manifest: null },
+      metadata: input.metadata ?? {},
+      sharedWritableWorkspaceIDs: [],
+      lifecycle: "active",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    return Storage.transaction(async () => {
+      await Storage.write(recordKey(info.id), info)
+      await Storage.write(scopeKey(info.scopeID, info.id), info.id)
+      await publishUpdated(info)
+      return info
+    })
+  }
+
+  export async function publishContent(previous: Info, manifest: string): Promise<Info> {
+    WorkspaceTree.Hash.parse(manifest)
+    return Storage.transaction(async () => {
+      const latest = await get(previous.id, previous.scopeID)
+      if (latest.lifecycle !== "active" || latest.binding.state !== "bound")
+        throw new Unavailable({ workspaceID: latest.id, message: "Workspace has no active storage authority" })
+      if (
+        latest.binding.generation !== previous.binding.generation ||
+        latest.content?.revision !== previous.content?.revision ||
+        latest.activeMount?.id !== previous.activeMount?.id ||
+        latest.activeMount?.generation !== previous.activeMount?.generation ||
+        (latest.activeMount &&
+          previous.activeMount &&
+          !EnvironmentSchema.sameTarget(latest.activeMount.target, previous.activeMount.target))
+      )
+        throw new BindingChanged({ workspaceID: latest.id, message: "Workspace changed before checkpoint publication" })
+      if (latest.activeMount) {
+        const [value] = await Storage.readMany<unknown>([
+          StoragePath.environment(latest.activeMount.target.environmentID),
+        ])
+        const environment = EnvironmentSchema.Info.parse(value)
+        if (
+          environment.scopeID !== latest.scopeID ||
+          !["ready", "releasing"].includes(environment.state) ||
+          environment.allocation?.id !== latest.activeMount.target.allocationID ||
+          environment.generation !== latest.activeMount.target.generation
+        )
+          throw new BindingChanged({
+            workspaceID: latest.id,
+            message: "Workspace allocation changed before checkpoint publication",
+          })
+      }
+      const next = Info.parse({
+        ...latest,
+        revision: latest.revision + 1,
+        content: { revision: (latest.content?.revision ?? 0) + 1, manifest },
+        updatedAt: Date.now(),
+      })
+      await Storage.write(StoragePath.workspaceContent(next.id, next.content!.revision), {
+        ...next.content,
+        workspaceID: next.id,
+        scopeID: next.scopeID,
+        generation: next.binding.generation,
+        createdAt: next.updatedAt,
+      })
+      await Storage.write(recordKey(next.id), next)
+      await publishUpdated(next)
+      return next
+    })
+  }
+
+  export function importMissingReference(id: string, scopeID: string): Promise<Info> {
+    return importRecord({
+      id,
+      scopeID,
+      type: "unknown",
+      revision: 1,
+      binding: { state: "unbound", hostID: "unknown", path: null, generation: 1 },
+      metadata: {},
+      sharedWritableWorkspaceIDs: [],
+      lifecycle: "active",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+  }
+
+  export async function importRecord(record: Info): Promise<Info> {
+    const source = Info.parse(record)
+    return Storage.transaction(async (tx) => {
+      const [existing] = await Storage.readMany<Info>([recordKey(source.id)])
+      if (
+        existing?.scopeID === source.scopeID &&
+        existing.binding.state === "unbound" &&
+        existing.binding.hostID === source.binding.hostID &&
+        existing.binding.path === source.binding.path
+      )
+        return Info.parse(existing)
+      const imported = forImport(
+        source,
+        existing || !source.id.startsWith("wsp_") ? `wsp_${randomUUID().replaceAll("-", "")}` : source.id,
+      )
+      await writeImported(imported, tx)
+      return imported
+    })
+  }
+
+  export function forImport(source: Info, id: string): Info {
+    return Info.parse({
+      ...source,
+      id,
+      binding: { ...source.binding, state: "unbound" },
+      recovery: undefined,
+      activeMount: undefined,
+      mountGeneration: undefined,
+      importedFrom: source.importedFrom ?? { workspaceID: source.id, hostID: source.binding.hostID },
+      sharedWritableWorkspaceIDs: [],
+      lifecycle: "active",
+    })
+  }
+
+  export async function writeImported(info: Info, tx: StoreTransaction) {
+    if (info.binding.state !== "unbound" || info.sharedWritableWorkspaceIDs.length || info.activeMount)
+      throw new Invalid({ message: "Imported Workspace cannot carry local authority", workspaceID: info.id })
+    if ((await tx.readMany([recordKey(info.id)]))[0] !== undefined)
+      throw new BindingChanged({ message: "Workspace identity was occupied during import", workspaceID: info.id })
+    await tx.write(recordKey(info.id), info)
+    await tx.write(scopeKey(info.scopeID, info.id), info.id)
+  }
+
+  export async function writeRelocated(info: Info, tx: StoreTransaction) {
+    if (info.binding.state !== "bound" || !info.binding.path || !info.binding.physicalID || info.lifecycle !== "active")
+      throw new Invalid({ message: "Relocated Workspace requires verified local authority", workspaceID: info.id })
+    await assertDirectoryAdmission(info, tx)
+    const keys = locations(info)
+    if ((await tx.readMany([recordKey(info.id), ...keys])).some((value) => value !== undefined))
+      throw new BindingChanged({
+        message: "Workspace destination was occupied during relocation",
+        workspaceID: info.id,
+      })
+    await tx.write(recordKey(info.id), info)
+    await tx.write(scopeKey(info.scopeID, info.id), info.id)
+    for (const key of keys) await tx.write(key, info.id)
+  }
+
+  export async function resolve(
+    id: string,
+    input: { scopeID: string; hostID: string; generation?: number },
+  ): Promise<Info & { binding: { path: string } }> {
+    const info = await get(id, input.scopeID)
+    if (
+      info.lifecycle !== "active" ||
+      info.binding.state !== "bound" ||
+      info.binding.hostID !== input.hostID ||
+      !info.binding.path
+    )
+      throw new Unavailable({
+        message: "Workspace has no active binding on this host",
+        workspaceID: id,
+        reason: "binding_unavailable",
+      })
+    if (input.generation !== undefined && info.binding.generation !== input.generation)
+      throw new BindingChanged({ message: "Workspace binding changed; refresh before continuing", workspaceID: id })
+    return { ...info, binding: { ...info.binding, path: info.binding.path } }
+  }
+
+  export async function rebind(
+    id: string,
+    input: {
+      scopeID: string
+      expectedRevision: number
+      hostID: string
+      path: string
+      physicalID?: string
+    },
+  ): Promise<Info> {
+    return Storage.transaction(async () => {
+      const previous = await get(id, input.scopeID)
+      if (previous.activeMount)
+        throw new Unavailable({ workspaceID: id, message: "Detach the active Workspace mount before rebinding" })
+      if (previous.revision !== input.expectedRevision)
+        throw new BindingChanged({ message: "Workspace changed before rebinding", workspaceID: id })
+      if (previous.lifecycle !== "active")
+        throw new Unavailable({ message: "Workspace is not active", workspaceID: id })
+      const next = Info.parse({
+        ...previous,
+        revision: previous.revision + 1,
+        updatedAt: Date.now(),
+        binding: {
+          state: "bound",
+          hostID: input.hostID,
+          path: input.path,
+          physicalID: input.physicalID,
+          generation: previous.binding.generation + 1,
+        },
+        backend: { provider: "directory", spec: {} },
+        activeMount: undefined,
+      })
+      await assertDirectoryAdmission(next)
+      const keys = locations(next)
+      const conflicts = await Storage.readMany<string>(keys)
+      if (conflicts.some((value) => value !== undefined && value !== id))
+        throw new BindingChanged({ message: "The destination already belongs to another Workspace", workspaceID: id })
+      if (previous.binding.state === "bound") for (const key of locations(previous)) await Storage.remove(key)
+      await Storage.write(recordKey(id), next)
+      for (const key of keys) await Storage.write(key, id)
+      return next
+    })
+  }
+
+  export async function upgradePhysicalIdentity(previous: Info, physicalID: string) {
+    return Storage.transaction(async () => {
+      const raw = await Storage.read<Info>(recordKey(previous.id))
+      const current = await get(previous.id, previous.scopeID)
+      if (current.lifecycle !== "active")
+        throw new Unavailable({ workspaceID: current.id, message: "Workspace is not active" })
+      if (current.revision !== previous.revision || current.binding.physicalID !== previous.binding.physicalID)
+        throw new BindingChanged({ workspaceID: previous.id, message: "Workspace changed during identity upgrade" })
+      const next: Info = {
+        ...current,
+        revision: current.revision + 1,
+        binding: { ...current.binding, physicalID },
+      }
+      await assertDirectoryAdmission(next)
+      const keys = locations(next)
+      if ((await Storage.readMany<string>(keys)).some((owner) => owner !== undefined && owner !== current.id))
+        throw new BindingChanged({
+          workspaceID: current.id,
+          message: "Workspace identity has conflicting registrations",
+        })
+      for (const key of locations(current)) await Storage.remove(key)
+      await Storage.write(recordKey(current.id), {
+        ...raw,
+        revision: next.revision,
+        binding: { ...raw.binding, physicalID },
+      })
+      for (const key of keys) await Storage.write(key, current.id)
+      return next
+    })
+  }
+
+  export async function setSharing(
+    id: string,
+    input: { scopeID: string; expectedRevision: number; workspaceIDs: string[] },
+  ): Promise<Info> {
+    return Storage.transaction(async () => {
+      const previous = await get(id, input.scopeID)
+      if (previous.revision !== input.expectedRevision)
+        throw new BindingChanged({ message: "Workspace changed before sharing", workspaceID: id })
+      if (previous.lifecycle !== "active" || previous.binding.state !== "bound")
+        throw new Unavailable({ message: "Workspace has no active local binding", workspaceID: id })
+      const workspaceIDs = await validateSharing(previous, input.workspaceIDs)
+      const next = Info.parse({
+        ...previous,
+        sharedWritableWorkspaceIDs: workspaceIDs,
+        revision: previous.revision + 1,
+        updatedAt: Date.now(),
+      })
+      await Storage.write(recordKey(id), next)
+      return next
+    })
+  }
+
+  async function validateSharing(previous: Info, input: string[]) {
+    const workspaceIDs = [...new Set(input)]
+    if (workspaceIDs.length > 64)
+      throw new Invalid({ message: "At most 64 shared Workspaces are allowed", workspaceID: previous.id })
+    if (workspaceIDs.includes(previous.id))
+      throw new Invalid({ message: "A Workspace cannot share with itself", workspaceID: previous.id })
+    for (const targetID of workspaceIDs) {
+      const target = await get(targetID, previous.scopeID)
+      if (
+        target.lifecycle !== "active" ||
+        target.binding.state !== "bound" ||
+        target.binding.hostID !== previous.binding.hostID
+      )
+        throw new Unavailable({
+          message: "Shared Workspace has no active binding on this host",
+          workspaceID: targetID,
+        })
+    }
+    return workspaceIDs
+  }
+
+  export function projection(info: Info & { binding: { path: string } }): Workspace
+  export function projection(info: Info): Workspace | null
+  export function projection(info: Info): Workspace | null {
+    if (!info.binding.path) return null
+    return {
+      ...info.metadata,
+      id: info.id,
+      scopeID: info.scopeID,
+      type: info.type,
+      path: info.binding.path,
+      generation: info.binding.generation,
+      bindingState: info.binding.state,
+      lifecycle: info.lifecycle,
+    }
+  }
+}

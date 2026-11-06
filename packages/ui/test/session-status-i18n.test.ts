@@ -1,13 +1,22 @@
 import { describe, expect, test } from "bun:test"
 import { setupI18n as coreSetupI18n } from "@lingui/core"
 import type { Part as PartType } from "@ericsanchezok/synergy-sdk/client"
-import {
-  computeStatusFromPart,
-  computeWorkingPhrase,
-  computeLatestStatusFromParts,
-  pickStatusPhrase,
-  PHRASE_DEFAULTS,
-} from "../src/components/session-status"
+import { computeStatusFromPart, computeLatestStatusFromParts, processIsWorking } from "../src/components/session-status"
+
+test("canonical pause overrides stale current execution and projection but not a new submission", () => {
+  const input = {
+    current: true,
+    sessionStatus: { type: "paused" as const, reason: "aborted" as const, since: 1 },
+    executionStatus: "running",
+    projected: true,
+    fallback: true,
+  }
+  expect(processIsWorking(input)).toBe(false)
+  expect(processIsWorking({ ...input, current: false })).toBe(true)
+  expect(processIsWorking({ ...input, submission: { failed: false } })).toBe(true)
+  expect(processIsWorking({ ...input, sessionStatus: { type: "busy" } })).toBe(true)
+  expect(processIsWorking({ ...input, submission: { failed: true } })).toBe(false)
+})
 
 function reasoningPart(text: string): PartType {
   return {
@@ -19,7 +28,7 @@ function reasoningPart(text: string): PartType {
   } as PartType
 }
 
-function toolPart(tool: string, status = "running"): PartType {
+function toolPart(tool: string, status = "running", input: unknown = {}): PartType {
   return {
     id: "t1",
     sessionID: "s",
@@ -27,7 +36,7 @@ function toolPart(tool: string, status = "running"): PartType {
     type: "tool",
     callID: "call-1",
     tool,
-    state: { status, input: {}, metadata: {} },
+    state: { status, input, metadata: {} },
   } as PartType
 }
 
@@ -97,6 +106,31 @@ describe("session-status i18n", () => {
     expect(computeStatusFromPart(toolPart("email_send"), i18n)).toBe("ZZZ Sending email")
   })
 
+  test("Blueprint pause describes pausing the session without changing review defaults", () => {
+    const i18n = createI18n({
+      "session-status.pausing-session": "暂停会话中",
+      "session-status.reviewing-blueprint": "蓝图评审中",
+    })
+    for (const status of ["running", "completed"]) {
+      expect(computeStatusFromPart(toolPart("blueprint_loop_stop", status, { action: "pause" }))).toBe(
+        "Pausing session",
+      )
+      expect(computeStatusFromPart(toolPart("blueprint_loop_stop", status, { action: "pause" }), i18n)).toBe(
+        "暂停会话中",
+      )
+      for (const action of [undefined, "request_review"]) {
+        expect(computeStatusFromPart(toolPart("blueprint_loop_stop", status, { action }))).toBe("Reviewing Blueprint")
+        expect(computeStatusFromPart(toolPart("blueprint_loop_stop", status, { action }), i18n)).toBe("蓝图评审中")
+      }
+    }
+    expect(computeStatusFromPart(toolPart("blueprint_loop_stop", "generating", { action: "pause" }))).toBe(
+      "Generating input",
+    )
+    for (const input of [null, "pause", ["pause"], 1, false]) {
+      expect(computeStatusFromPart(toolPart("blueprint_loop_stop", "pending", input))).toBe("Reviewing Blueprint")
+    }
+  })
+
   test("computeStatusFromPart returns undefined for unknown tool", () => {
     const i18n = createI18n({})
     expect(computeStatusFromPart(toolPart("unknown_tool_xyz"), i18n)).toBeUndefined()
@@ -111,36 +145,6 @@ describe("session-status i18n", () => {
     expect(computeStatusFromPart(toolPart("read"), undefined)).toBe("Gathering context")
     expect(computeStatusFromPart(toolPart("edit", "generating"), undefined)).toBe("Composing edits")
     expect(computeStatusFromPart(textPart(), undefined)).toBe("Gathering thoughts")
-  })
-
-  test("computeWorkingPhrase resolves i18n waiting phrase messages", () => {
-    // Seed "d" (charCode 100) → 100 % 5 = 0 → hits waiting index 0
-    const i18n = createI18n({
-      "session-status.phrase.waiting.0": "OVERRIDE waiting",
-    })
-    const phrase = computeWorkingPhrase({ agentName: "X", cortexRunning: 1, seed: "d" }, i18n)
-    expect(phrase).toBe("OVERRIDE waiting")
-  })
-
-  test("computeWorkingPhrase resolves i18n thinking phrase messages", () => {
-    // Seed "f" (charCode 102) → 102 % 6 = 0 → hits thinking index 0
-    const i18n = createI18n({
-      "session-status.phrase.thinking.0": "OVERRIDE thinking",
-    })
-    const phrase = computeWorkingPhrase({ agentName: "X", cortexRunning: 0, seed: "f" }, i18n)
-    expect(phrase).toBe("OVERRIDE thinking")
-  })
-
-  test("PHRASE_DEFAULTS contains expected catalog entries", () => {
-    expect(PHRASE_DEFAULTS["session-status.phrase.waiting.0"]).toContain("{agentName}")
-    expect(PHRASE_DEFAULTS["session-status.phrase.waiting.0"]).toContain("{count, plural")
-    expect(PHRASE_DEFAULTS["session-status.phrase.thinking.0"]).toContain("{agentName}")
-    expect(Object.keys(PHRASE_DEFAULTS)).toHaveLength(11)
-  })
-
-  test("pickStatusPhrase is deterministic across same seed", () => {
-    const ids = ["a", "b", "c"] as const
-    expect(pickStatusPhrase(ids, "abc")).toBe(pickStatusPhrase(ids, "abc"))
   })
 
   test("computeLatestStatusFromParts picks last non-undefined status", () => {

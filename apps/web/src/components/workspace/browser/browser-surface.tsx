@@ -1,0 +1,223 @@
+import { BrowserPageDialog } from "./page-dialog"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { ResourceIcon } from "@ericsanchezok/synergy-ui/resource-icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { createMemo, Show } from "solid-js"
+import { Trans, useLingui } from "@lingui/solid"
+import { usePlatform } from "@/context/platform"
+import { useBrowser } from "./browser-store"
+import { browser as B, type AppMessageDescriptor } from "@/locales/messages"
+import { NativeBrowserSurface } from "./native-browser-surface"
+import { failedBrowserNavigation, shouldShowBrowserPresentationSurface } from "./browser-presentation"
+import { browserErrorPresentation } from "./browser-error"
+
+const MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024
+const MAX_UPLOAD_REQUEST_BYTES = 50 * 1024 * 1024
+const MAX_UPLOAD_FILES = 20
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
+export function BrowserSurface(props: {
+  route: import("./browser-workbench-model").BrowserWorkbenchRoute
+  ownerKey: string
+  clientPresentation: "native"
+  onRetryNative?: () => void
+  onRetryNavigation?: () => void
+}) {
+  let wrapperRef: HTMLDivElement | undefined
+  let fileInputRef: HTMLInputElement | undefined
+  const browser = useBrowser()
+  const platform = usePlatform()
+  const lingui = useLingui()
+
+  const container = () => wrapperRef
+  const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
+  const navigationFailure = () => failedBrowserNavigation(browser.page())
+  const navigationHint = () => {
+    const error = navigationFailure()
+    if (!error) return
+    const presentation = browserErrorPresentation(error)
+    return presentation.id === "browser.failure.request" ? undefined : presentation
+  }
+
+  async function chooseFiles(files: FileList | null) {
+    const request = browser.fileChooserRequest()
+    if (!request) return
+    if (!files || files.length === 0) {
+      browser.send({ type: "filechooser.select", pageId: request.pageId, requestId: request.requestId, files: [] })
+      browser.setFileChooserRequest(null)
+      return
+    }
+    const selected = Array.from(files)
+    const totalBytes = selected.reduce((total, file) => total + file.size, 0)
+    if (
+      selected.length > MAX_UPLOAD_FILES ||
+      selected.some((file) => file.size > MAX_UPLOAD_FILE_BYTES) ||
+      totalBytes > MAX_UPLOAD_REQUEST_BYTES
+    ) {
+      browser.setBrowserError({
+        severity: "error",
+        code: "browser_upload_too_large",
+        message: lingui._(B.uploadTooLarge.id),
+      })
+      return
+    }
+    const payload = await Promise.all(
+      selected.map(async (file) => ({
+        name: file.name,
+        mimeType: file.type,
+        dataBase64: arrayBufferToBase64(await file.arrayBuffer()),
+      })),
+    )
+    browser.send({ type: "filechooser.select", pageId: request.pageId, requestId: request.requestId, files: payload })
+    browser.setFileChooserRequest(null)
+  }
+
+  function hasPresentationSurface() {
+    if (navigationFailure() || browser.page()?.status === "suspended") return false
+    return shouldShowBrowserPresentationSurface({
+      presentation: browser.presentation()?.kind,
+      clientPresentation: props.clientPresentation,
+      hostStatus: browser.hostStatus(),
+      nativeAvailable: Boolean(platform.browserNative),
+      pageId: browser.pageId(),
+    })
+  }
+
+  // One state, one gesture: a mark, a title and at most one action. The copy
+  // names the state and never explains how recovery works internally — the
+  // action is the instruction.
+  const empty = createMemo((): { title: AppMessageDescriptor; action?: AppMessageDescriptor } => {
+    const host = browser.hostStatus()
+    const retry = platform.browserNative && props.onRetryNative ? B.retry : undefined
+    if (host === "restarting") return { title: B.nativeRecovering }
+    if (host === "failed") return { title: B.nativeRecoveryFailed, action: retry }
+    if (browser.page()?.status === "suspended")
+      return { title: B.suspended, action: props.onRetryNative ? B.resume : undefined }
+    if (navigationFailure())
+      return { title: B.pageLoadFailed, action: props.onRetryNavigation ? B.reloadPage : undefined }
+    return { title: B.ready, action: host === "detached" ? retry : undefined }
+  })
+
+  // A suspended or recovering page still has an identity: its own site. The
+  // brand mark says which page is coming back without a sentence explaining it.
+  const identity = createMemo(() => {
+    const url = navigationFailure() ? browser.page()?.navigation?.requestedURL : browser.page()?.url
+    return url && /^https?:\/\//i.test(url) ? ({ kind: "url", url } as const) : undefined
+  })
+
+  return (
+    <div
+      ref={wrapperRef}
+      data-prevent-autofocus
+      class="browser-surface relative flex h-full w-full items-center justify-center overflow-hidden"
+    >
+      <Show
+        when={hasPresentationSurface()}
+        fallback={
+          <div class="browser-empty-state" role="status">
+            <div class="browser-empty-mark">
+              <Show when={identity()} fallback={<Icon name={getSemanticIcon("browser.main")} size="large" />}>
+                {(reference) => <ResourceIcon reference={reference()} />}
+              </Show>
+            </div>
+            <div class="browser-empty-title">{lingui._(empty().title)}</div>
+            <Show when={empty().title === B.pageLoadFailed && navigationHint()}>
+              {(hint) => <p class="browser-empty-hint">{lingui._(hint())}</p>}
+            </Show>
+            <Show when={empty().action}>
+              {(action) => (
+                <Button
+                  size="large"
+                  variant="primary"
+                  disabled={Boolean(action() === B.reloadPage && browser.page()?.isLoading)}
+                  onClick={() => (action() === B.reloadPage ? props.onRetryNavigation?.() : props.onRetryNative?.())}
+                >
+                  {lingui._(action())}
+                </Button>
+              )}
+            </Show>
+          </div>
+        }
+      >
+        <Show when={nativePresentation()}>
+          <NativeBrowserSurface container={container} ownerKey={props.ownerKey} />
+        </Show>
+      </Show>
+
+      <Show when={browser.fileChooserRequest()}>
+        {(request) => (
+          <div class="absolute inset-0 z-50 flex items-center justify-center bg-surface-overlay">
+            <div class="w-[320px] rounded-lg border border-border-weak-base bg-surface-raised-base p-4 shadow-sm">
+              <div class="text-13 font-medium text-text-strong">
+                <Trans id={B.chooseFile.id} message={B.chooseFile.message} />
+              </div>
+              <div class="mt-1 text-12 text-text-weak">
+                {request().multiple
+                  ? lingui._({
+                      id: B.chooseFilesDescription.id,
+                      message: B.chooseFilesDescription.message,
+                      values: { count: 2 },
+                    })
+                  : lingui._({
+                      id: B.chooseFilesDescription.id,
+                      message: B.chooseFilesDescription.message,
+                      values: { count: 1 },
+                    })}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                class="hidden"
+                multiple={request().multiple}
+                accept={request().accept.join(",")}
+                onChange={(e) => void chooseFiles(e.currentTarget.files)}
+              />
+              <div class="mt-4 flex justify-end gap-2">
+                <Button
+                  size="small"
+                  variant="ghost"
+                  onClick={() => {
+                    void chooseFiles(null)
+                  }}
+                >
+                  <Trans id={B.cancel.id} message={B.cancel.message} />
+                </Button>
+                <Button size="small" variant="primary" onClick={() => fileInputRef?.click()}>
+                  <Trans id={B.choose.id} message={B.choose.message} />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Show>
+
+      <Show when={browser.dialogRequest()} keyed>
+        {(request) => (
+          <BrowserPageDialog
+            request={request}
+            onRespond={(accept, promptText) => {
+              browser.send({
+                type: "dialog.respond",
+                pageId: request.pageId,
+                requestId: request.requestId,
+                accept,
+                ...(promptText === undefined ? {} : { promptText }),
+              })
+              if (browser.dialogRequest()?.requestId === request.requestId) browser.setDialogRequest(null)
+            }}
+          />
+        )}
+      </Show>
+    </div>
+  )
+}

@@ -1,0 +1,171 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { chromium, type Browser, type Page } from "playwright"
+import { createServer, type ViteDevServer } from "vite"
+import solidPlugin from "vite-plugin-solid"
+
+let browser: Browser
+let page: Page
+let server: ViteDevServer
+let fixtureDirectory: string
+let baseUrl: string
+
+const componentPath = path.resolve(import.meta.dir, "../../src/pages/fatal-error.tsx")
+const initErrorComponentPath = path.resolve(import.meta.dir, "../../src/pages/error.tsx")
+
+beforeAll(async () => {
+  fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".fatal-error-fixture-"))
+  const localeStubPath = path.join(fixtureDirectory, "locale-stub.ts")
+  const platformStubPath = path.join(fixtureDirectory, "platform-stub.ts")
+
+  await Promise.all([
+    Bun.write(
+      path.join(fixtureDirectory, "index.html"),
+      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    ),
+    // Minimal hermetic locale stub: Lingui interpolates ICU values on the
+    // translated entry, so the rendered "Version: {version}" copy is
+    // observable in the DOM.
+    Bun.write(
+      localeStubPath,
+      `
+        import { setupI18n } from "@lingui/core"
+        const i18n = setupI18n({
+          locale: "en",
+          messages: { en: {
+            "app.error.versionLabel": "Version: {version}",
+            "app.error.detailsLabel": "Error Details",
+            "app.fatalError.action.tryAgain": "Try again",
+          } },
+        })
+        export const useLocale = () => ({ i18n })
+      `,
+    ),
+    Bun.write(
+      platformStubPath,
+      `
+        export const usePlatform = () => {
+          const build = new URLSearchParams(location.search).get("build")
+          return {
+            platform: "web",
+            version: "9.9.9-test",
+            buildLabel: build ?? undefined,
+            openLink: () => {},
+            restart: async () => {},
+          }
+        }
+      `,
+    ),
+    Bun.write(
+      path.join(fixtureDirectory, "main.tsx"),
+      `
+        import { createComponent } from "solid-js"
+        import { render } from "solid-js/web"
+        import { I18nProvider } from "@lingui/solid"
+        import { useLocale } from "@/context/locale"
+        import { FatalErrorPage } from ${JSON.stringify(`/@fs/${componentPath}`)}
+        import { ErrorPage } from ${JSON.stringify(`/@fs/${initErrorComponentPath}`)}
+
+        const component =
+          new URLSearchParams(location.search).get("page") === "init" ? ErrorPage : FatalErrorPage
+
+        render(
+          () =>
+            createComponent(I18nProvider, {
+              i18n: useLocale().i18n,
+              get children() {
+                return createComponent(component, {
+                  error: new Error("Unsupported runtime capabilities API"),
+                  source: "initialization",
+                  onRecover: () => { window.retries = (window.retries || 0) + 1 },
+                })
+              },
+            }),
+          document.querySelector("#root")!,
+        )
+      `,
+    ),
+  ])
+
+  server = await createServer({
+    configFile: false,
+    root: fixtureDirectory,
+    plugins: [solidPlugin()],
+    resolve: {
+      alias: {
+        "@/context/locale": localeStubPath,
+        "@/context/platform": platformStubPath,
+        "@": path.resolve(import.meta.dir, "../../src"),
+      },
+    },
+    server: {
+      host: "127.0.0.1",
+      port: 5214,
+      strictPort: true,
+      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
+    },
+  })
+  await server.listen()
+
+  const url = server.resolvedUrls?.local[0]
+  if (!url) throw new Error("Expected Vite test server URL")
+  baseUrl = url
+
+  browser = await chromium.launch({ headless: true })
+  page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+})
+
+afterAll(async () => {
+  await page?.close()
+  await browser?.close()
+  await server?.close()
+  if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
+})
+
+describe("fatal error page", () => {
+  test("keeps recovery visible and shows diagnostics only on explicit disclosure", async () => {
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 800 })
+      await page.goto(baseUrl)
+      const retry = page.getByRole("button", { name: "Try again", exact: true })
+      await retry.waitFor()
+      expect(await page.getByRole("textbox").count()).toBe(0)
+      await retry.click()
+      expect(await page.evaluate(() => (window as unknown as { retries: number }).retries)).toBe(1)
+      const details = page.locator("summary").filter({ hasText: "Error Details" })
+      await details.focus()
+      await details.press("Enter")
+      const diagnostic = page.getByRole("textbox")
+      await diagnostic.waitFor()
+      expect(await diagnostic.inputValue()).toContain("Unsupported runtime capabilities API")
+      expect(await diagnostic.count()).toBe(1)
+      await details.press("Space")
+      expect(await page.getByRole("textbox").count()).toBe(0)
+    }
+  })
+
+  test("renders the platform version string, not the Show accessor", async () => {
+    await page.goto(baseUrl)
+    const versionLine = page.getByText("Version: 9.9.9-test", { exact: true })
+    await versionLine.waitFor()
+    await expect(versionLine.count()).resolves.toBe(1)
+    await expect(versionLine.textContent()).resolves.toBe("Version: 9.9.9-test")
+  })
+
+  test("prefers the build label over the version when present", async () => {
+    await page.goto(`${baseUrl}?build=1.1.26%2Babc123`)
+    const versionLine = page.getByText("Version: 1.1.26+abc123", { exact: true })
+    await versionLine.waitFor()
+    await expect(versionLine.count()).resolves.toBe(1)
+    await expect(versionLine.textContent()).resolves.toBe("Version: 1.1.26+abc123")
+  })
+
+  test("init error page renders the version string too", async () => {
+    await page.goto(`${baseUrl}?page=init`)
+    const versionLine = page.getByText("Version: 9.9.9-test", { exact: true })
+    await versionLine.waitFor()
+    await expect(versionLine.count()).resolves.toBe(1)
+    await expect(versionLine.textContent()).resolves.toBe("Version: 9.9.9-test")
+  })
+})

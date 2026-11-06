@@ -33,6 +33,10 @@ The separation matters: category answers “what is this?”, while recall mode 
 
 Top-level sessions receive always-on Memory plus eligible contextual retrieval. Child sessions receive the always-on Memory block but do not independently perform the full experience/contextual recall path. Agents can use Library tools to search for additional `search_only` or non-retrieved context.
 
+The built-in Anima and Chronicler receive each always entry's editable ID, category, recall mode and numeric update revision with its existing content. Ordinary sessions receive no maintenance metadata. Chronicler extracts meaningful additions or corrections from its conversation; Anima reviews duplicate rules, mixed-purpose entries and accumulated incident history during its existing routine. Their guidance retains complete identity, interaction and authorization rules in always memory, separates narrower lessons and useful evidence, and verifies preservation before shortening an original. This guidance is not a token quota or an automatic rewrite of existing memories.
+
+`memory_get` returns a numeric `updatedAt`. Passing it as `expectedUpdatedAt` to `memory_edit` makes the update conditional on that revision still being current, including changes during embedding generation. A conflict leaves both the record and vector index unchanged and requires a fresh read and reconsideration. Successful updates advance the revision even within the same millisecond. Omitting the condition retains unconditional editing for existing callers.
+
 ### Experience
 
 Experience is learned from completed top-level turns. Synergy distills the user's intent and the execution trajectory, stores source model and Scope metadata, and records which earlier experiences were retrieved for the turn. Synthetic turns and child-session turns are not encoded as new experiences.
@@ -49,13 +53,13 @@ An experience retains:
 
 The reward dimensions are outcome, intent understanding, execution, orchestration, and expression. Their configured weights produce a composite reward, while per-dimension Q-values evolve as related outcomes are observed. This supports retrieval based on both semantic similarity and accumulated usefulness rather than treating every past turn equally.
 
-Memory and Experience retrieval run in parallel during prompt preparation. An embedding failure does not prevent always-on Memory from being injected; experience retrieval simply contributes no result when its required vector path is unavailable.
+Memory and Experience retrieval share one query embedding and then run in parallel during prompt preparation. Automatic recall has a three-second budget; timeout cancels the request and keeps always-on Memory. An embedding failure is not retried independently by the two retrieval branches and does not prevent always-on Memory from being injected; experience retrieval contributes no result when its required vector path is unavailable. Explicit Library searches retain their separate execution budget.
 
 When the session loop detects the same context-pressure signal that can initiate compaction, the hidden `chronicler` may start a silent, unattended child session. It receives the current model-visible conversation, searches existing Memory, and writes or refines durable knowledge when `library.memory.enabled` is active and its model role is available. This job is asynchronous and best-effort: it does not block compaction or guarantee that every conversation becomes Memory.
 
 ### Library Inspection
 
-The Library surface exposes memories, experiences, filters, health, and aggregate statistics. Experience records can be inspected by Scope or session and sorted by recency, reward, learned value, or visits. The adjacent Usage view summarizes session and tool activity rather than Library records; see [Activity and Statistics](activity-and-statistics.md).
+The Library opens on Statistics, followed by Memories, Experiences and Skills. The Statistics header provides unified search with grouped Memory, Experience and Skill matches; clearing the search restores statistics. A failed search group retains its own last successful results and can retry independently. Skills have no update timestamp in their public summaries and are not assigned a synthetic recency. Experience records can be inspected by Scope or session and sorted by recency, reward, learned value, or visits. Compact cards show intent, an available stored trajectory preview, and source, time and reward status, with two columns on wide content areas and one on narrow areas. Previews are read in a batch from stored scripts without new model calls; full trajectories remain in details. Cards use the persisted `encoding_failed`, `pending` and `evaluated` reward statuses; pending is not an error. Technical reward and Q-value metrics are secondary details. A failed detail read keeps the card available and offers a read-only retry; it does not start encoding. Skill source overrides and compatibility notices are collapsed after the list; actual loading failures stay above it, while complete source paths and diagnostics remain available in each skill's details. The adjacent Usage view summarizes session and tool activity rather than Library records; see [Activity and Statistics](activity-and-statistics.md).
 
 ### Encoding Health and Re-encoding
 
@@ -153,7 +157,7 @@ Agents can create, read, search, edit, archive, restore, and delete Notes throug
 
 ## Blueprints
 
-A Blueprint has `kind: "blueprint"` and can add a description and default execution agent. Its content is an authored, decision-complete plan intended for later execution. The audit reviewer is host-selected: user-owned BlueprintLoops are audited by `supervisor` and Light Loops by `lightloop-reviewer`; only plugin Protocol 5 `blueprint.start` requests may select the audit agent explicitly.
+A Blueprint has `kind: "blueprint"` and can add a description and default execution agent. Its content is an authored, decision-complete plan intended for later execution. The audit reviewer is host-selected: user-owned BlueprintLoops are audited by `supervisor`; only plugin Protocol 5 `blueprint.start` requests may select the audit agent explicitly.
 
 Blueprints remain readable everywhere, but note tools may create or modify them only while the session is in Plan or Lattice. This prevents an execution session from quietly rewriting the contract it is supposed to satisfy. BlueprintLoop stores the selected note ID and optional version separately from the Note itself, so execution history and document history remain distinct.
 
@@ -167,3 +171,5 @@ For the full lifecycle, see [Workflows](workflows.md) and the [workflow runtime]
 - Notes are authored documents; they are not injected automatically merely because they exist.
 - Blueprints are executable Notes; BlueprintLoop is the runtime that executes and audits them.
 - Scope ownership is preserved even when global knowledge is visible from project contexts.
+
+Usage statistics show the last completed snapshot. Sync refreshes changed evidence with visible progress while Library navigation remains usable; the first visit without a snapshot starts that refresh automatically. Opening Library does not recompute all historical usage. The CLI stats command continues to request an incremental refresh, and explicit full recomputation remains available.

@@ -1,0 +1,81 @@
+import { expect, test } from "bun:test"
+import { summarize } from "../../script/ci/metrics"
+
+test("first failure counts completed failures from the measured attempt", () => {
+  const row = {
+    id: 1,
+    name: "linux",
+    status: "completed",
+    conclusion: "failure",
+    created_at: "2026-10-04T00:00:00Z",
+    started_at: "2026-10-04T00:01:00Z",
+    completed_at: "2026-10-04T00:03:00Z",
+    runner_name: "runner",
+    labels: [],
+    run_attempt: 2,
+  }
+  const result = summarize(
+    "2026-10-04T00:00:00Z",
+    [
+      { ...row, id: 2, completed_at: "2026-10-04T00:02:00Z", run_attempt: 1 },
+      row,
+      { ...row, id: 3, completed_at: "2026-10-04T00:04:00Z" },
+    ],
+    Date.parse("2026-10-04T00:05:00Z"),
+    2,
+  )
+  expect(result.firstFailureSeconds).toBe(180)
+  expect(result.endToEndSeconds).toBe(240)
+})
+
+test("cancelled queue records with synthetic start timestamps consume no runner time", () => {
+  const value = summarize("2026-10-04T00:00:00Z", [
+    {
+      id: 10,
+      name: "queued",
+      status: "completed",
+      conclusion: "cancelled",
+      created_at: "2026-10-04T00:00:00Z",
+      started_at: "2026-10-04T00:10:00Z",
+      completed_at: "2026-10-04T00:15:00Z",
+      runner_name: "",
+      labels: [],
+    },
+  ])
+  expect(value.runnerSeconds).toBe(0)
+  expect(value.jobs[0]!.queueSeconds).toBe(900)
+  expect(value.endToEndSeconds).toBe(900)
+  expect(value.firstFailureSeconds).toBeNull()
+})
+
+test("queue and compute accounting ignore inherited attempts, duplicates and unstarted jobs", () => {
+  const row = {
+    id: 1,
+    name: "linux",
+    status: "completed",
+    conclusion: "success",
+    created_at: "2026-09-24T00:01:00Z",
+    started_at: "2026-09-24T00:02:00Z",
+    completed_at: "2026-09-24T00:04:00Z",
+    runner_name: "runner",
+    labels: ["ubuntu-24.04"],
+    run_attempt: 2,
+  }
+  const value = summarize(
+    "2026-09-24T00:00:00Z",
+    [
+      row,
+      row,
+      { ...row, id: 2, run_attempt: 1 },
+      { ...row, id: 4, created_at: "2026-09-24T00:05:00Z" },
+      { ...row, id: 3, started_at: null, completed_at: null, status: "queued" },
+    ],
+    Date.parse("2026-09-24T00:05:00Z"),
+    2,
+  )
+  expect(value.runnerSeconds).toBe(120)
+  expect(value.endToEndSeconds).toBe(300)
+  expect(value.jobs).toHaveLength(2)
+  expect(value.jobs[0]!.queueSeconds).toBe(60)
+  expect(value.jobs[1]!.queueSeconds).toBe(240)
+})

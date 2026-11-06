@@ -1,28 +1,65 @@
 ---
 name: develop-frontend
-description: Implement or review Synergy Web and shared UI changes across packages/app and packages/ui. Use for components, contexts/stores, navigation, settings, dialogs, workbench surfaces, semantic icons, themes, responsive behavior, accessibility, frontend API calls, event sync, and product interaction changes.
+description: Implement or review Synergy Web and shared UI changes across apps/web and packages/ui. Use for components, contexts/stores, navigation, settings, dialogs, workbench surfaces, semantic icons, themes, responsive behavior, accessibility, frontend API calls, event sync, and product interaction changes.
 ---
 
 # Develop the Frontend
 
+Preserve domain state and generated API ownership, public theme tokens, localization, real provider lifetimes and the current product contract. Use the verification table before choosing expensive checks. Read only references for the affected domain.
+
 ## Read the Contracts
 
-1. Read `packages/app/AGENTS.md` and [Web product contract](../../../packages/app/PRODUCT.md).
+1. Read `apps/web/AGENTS.md` and [Web product contract](../../../apps/web/PRODUCT.md).
 2. Read [Frontend data sync](../../../docs/architecture/frontend-data-sync.md) for contexts, snapshots, events, streaming, composer intent, or loaded buckets.
 3. Read [Browser runtime](../../../docs/architecture/browser-runtime.md) for Browser UI or Desktop/Web presentation changes.
 4. Load `change-server-api` when the UI needs a new or changed server contract; load `add-tool` for tool-card presentation.
 
+Composer assistance uses the shared document completion and generic input-assistance metadata. Preserve provenance through edits, draft transfer, failed-submit restoration and ordinary message submission. Test late completion events against synchronized history, source edits and same-URL reconnects; completion status and historical rendering alone must never initiate automatic inference.
+
+Keep cancellation of pending inference separate from the lifetime of a completed suggestion. When the product retains suggestions, use one feature-owned saved record scoped to server, Scope and Session, restore it through the existing completion service, and distinguish explicit dismissal from renderer disposal. Draft editing, completion acceptance, IME and temporary blockers hide the saved suggestion until the draft is eligible again. Verify restoration without inference after clearing an unsent or failed draft, navigation and reload, owner isolation, and non-resurrection after explicit dismissal or confirmed new input. Optimistic message display and busy status alone are not submission confirmation; use canonical messages and accepted Inbox state.
+
+When a background producer shares a saved record with a mounted consumer, test remount before as well as after its response. Same-window storage writes do not update another persisted store automatically. Keep completion claims owner-scoped and bounded, and verify cancellation on configuration, capability and connection changes without erasing completed results.
+
+Manual composer assistance returns focus at invocation, before disabling its trigger. Do not steal focus on asynchronous completion. Verify the real button-to-editor path, including moving to another control before the response arrives.
+
+Keep staged workflow choices visibly separate from bound execution status. Exercise native drop through the real Composer controller, verify cancellation versus draft removal, and assert no start or metadata request before submission. Optional plugin icons must tolerate absent values throughout reactive updates.
+
+Global events must not hydrate unviewed Scopes merely to update sidebar status, Cortex or pending requests. Test cold metadata delivery and genuine sequence-gap/reset recovery together; preserving one must not suppress the other.
+
+## Verify
+
+Start with `bun run verify plan`. During iteration run the narrow component, model or context test; before publication use `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` with all relevant tests explicitly selected. The entry point uses canonical coverage executors and static gates; it leaves complete package thresholds and platform acceptance to CI.
+
+| Change                                                      | Additional local evidence                                                                                                                                                             |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New source or test fixture                                  | Fresh focused LCOV includes each new measurable source; read [browser fixtures](references/browser-fixtures.md) for real layout, virtualization and provider ownership.               |
+| Coverage policy, instrumentation, removed coverage          | `bun run verify coverage --package apps/web` (or the actual owner).                                                                                                                   |
+| Bootstrap, browser capabilities, bundler or package exports | Web production build, browser crypto contract and private HTTP smoke; `verify local` runs these for its known entry paths. Inspect the plan for other affected boundaries.            |
+| Copy, translations or locale formatting                     | Extract catalogs and run `localization:check`; verify cold start, switching, errors and lazy catalogs as described in [presentation](references/presentation.md#localize-product-ui). |
+| Visible interaction or layout                               | Inspect changed states, themes, focus and narrow geometry in one isolated runtime.                                                                                                    |
+| Native Browser, window chrome, protocol or Electron         | Exercise the actual Desktop boundary using its owning skill.                                                                                                                          |
+
+Run static gates after browser tests and builds finish; they mutate shared generated artifacts. Do not run both whole Web/UI suites on every edit. Broaden only for unresolved failures or affected shared behavior. Load the relevant domain reference below before changing its contract.
+
+## Message process and execution details
+
+Read [the domain guidance](references/conversation.md#message-process-and-execution-details) when this area is affected.
+
+For request-context views, share one estimate/actual display projection across charts and source browsing. Keep actual-only API fields intact. Follow the last displayable request with its original identity until the next is ready; reset retention on Scope, Session or round changes and preserve explicit historical selection. Test both arrival orders, stale history responses, category-node identity and source-body fetch counts. Update values without adding lifecycle status text or remounting disclosures.
+
+## Settings recovery
+
+Directory recovery must complete the captured task selection after confirmation, preserve its draft and clear obsolete retry actions without sending automatically. Test a completed rebind followed immediately by send, a stale implicit main-folder snapshot, background changes to an explicit selection, cancellation and late completion after changing owners.
+
+Read [the domain guidance](references/state-and-recovery.md#settings-recovery) when this area is affected.
+
+## Library and statistics recovery
+
+Read [the domain guidance](references/state-and-recovery.md#library-and-statistics-recovery) when this area is affected.
+
 ## Preserve State and API Ownership
 
-1. Use stores for coherent keyed collections and signals for independent scalar state.
-2. Apply entity updates with targeted setters and `reconcile`; do not replace a whole stored object for a one-field event.
-3. Keep derived values one-way. Preserve composer resolution as explicit draft → session default → fallback; only explicit user choices persist upward.
-4. Use generated SDK methods for ordinary internal HTTP routes. Keep raw browser transports only for WebSocket/EventSource/WebRTC, external URLs, platform fetch injection, and browser file/blob/download flows that the SDK should not represent.
-5. Preserve Scope/directory parameters, authentication, error semantics, asset URLs, event `seq`/`epoch`, replay, and loading/error states.
-6. For append-only LLM streams, keep the full snapshot as recovery state while imperative renderers track an offset and consume only the appended suffix through the dependency's typed live-update API. Do not rescan the accumulated prefix or insert an independent character-rate playback backlog; reset from a checkpoint only when the append invariant breaks. Derive terminal presentation from explicit part or message lifecycle markers, not coarse session status or the presence of a later timeline part. Key imperative terminal transitions and enhancements by content identity so unrelated sibling updates cannot restart them.
-7. Do not key the whole turn or message-role boundary by object identity: `message.updated` events land as fresh objects on every update, so a keyed `Show`/`Match` destroys and rebuilds the entire turn (tool-card expansion, scroll, and Markdown state included) several times per reply. Keep those boundaries non-keyed responsive updates, and instead isolate failures inside `Part` with an identity snapshot: capture session/message/part/type before child evaluation, render the ErrorBoundary fallback from that snapshot only, and never re-read the failed child's live props. Log the original error with stable IDs only; exclude message content, tool payloads, and workspace paths. Cover this with a real Solid lifecycle test that proves a secondary stale read cannot escape the local boundary.
-8. Read session-shaped store fields through the session data view only: ui components use `useData().view` (`partsFor`/`messagesFor`/`permissionsFor`/`statusFor`/`inboxFor`/`hasInboxBucket`/`todosFor`/`dagNodesFor`/`questionsFor`/`cortexTasks`/`sessions`/`sessionFor`), app components use `useSessionDataView()`. Do not read `data.store.part/permission/...` or `sync.data.<field>[sessionID]` directly in render code — session switches race store intermediate states (missing buckets, released scope stores) and `createMemo` defaults stop applying after first compute, so a direct read can surface `undefined` and crash with a rotating set of TypeErrors. The view accessors apply their empty fallback inside the function body. Missing array buckets must resolve to the shared constants in `packages/ui/src/context/session-data-view.ts` (`EMPTY_PARTS`, `EMPTY_MESSAGES`, …) — never a fresh array literal, because the render chain's `same()` equality guards short-circuit on reference identity and a fresh literal would invalidate every downstream memo on each store tick. `hasInboxBucket` is the only accessor that reports bucket presence: use it to preserve an "not loaded yet" gate when `undefined` semantics matter (e.g. inbox loading state).
-9. Callback parameters are accessors or raw values depending on the control: non-keyed `<Show>` and `<Index>` pass an accessor — call it (`param()`) before rendering or passing it into i18n values, formatters, or attributes — while `<Show keyed>` and `<For>` pass the raw value itself. Passing an accessor uncalled renders its minified source (the crash-page footer once displayed `Version: () => { if (!untrack(condition)) … }`), and calling a keyed `<Show>` or `For` parameter fails typechecking. Prefer the non-callback form reading the source signal directly when no narrowing is needed.
+Read [the domain guidance](references/state-and-recovery.md#preserve-state-and-api-ownership) when this area is affected.
 
 ## Preserve Browser Capability Boundaries
 
@@ -33,96 +70,74 @@ description: Implement or review Synergy Web and shared UI changes across packag
 
 ## Localize Product UI
 
-Read [Frontend localization](../../../docs/architecture/localization.md) before adding product copy, accessibility text, locale-sensitive formatting, or language settings.
-
-1. Use the App-owned Lingui runtime and explicit semantic message IDs in the form `{domain}.{component}.{semanticKey}`. Use runtime descriptors or `<Trans>`; do not use Lingui macros, dynamic IDs, language branches, module-load translation calls, or sentence fragments assembled in code.
-2. Keep descriptors statically extractable with an English default message and a translator comment when product context is not obvious. Use ICU variables, plural/select syntax, and component placeholders for complete messages.
-3. Translate Synergy-owned chrome, actions, states, recovery guidance, and accessibility labels together. Keep user, LLM, Note, source-code, terminal, browser-page, plugin-author, brand, path, identifier, and raw diagnostic content verbatim.
-4. Use the shared active-locale formatter for dates, time, numbers, percentages, currency, lists, and relative time. Do not hard-code locale tags or use a regional locale to imply an unrelated preference such as 24-hour time.
-5. `packages/app` owns locale state, catalog loading, Settings, persistence, bootstrap mirror reconciliation, and the global `I18nProvider`. `packages/ui` consumes that provider through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
-6. Keep the Settings language control global, responsive, and recoverable: Follow System, English, and Simplified Chinese apply without refresh, do not follow project Scope, and must preserve language self-names so a user can switch back after a mistake.
-7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
+Read [the domain guidance](references/presentation.md#localize-product-ui) when this area is affected.
 
 ## Use Semantic Icons
 
-Non-tool product UI expresses meaning through `packages/ui/src/components/semantic-icon.tsx`.
-
-1. Name the user-facing meaning before choosing a glyph.
-2. Reuse an existing token only when the new control has the same meaning. Similar appearance or location is not enough.
-3. Add a new token to `packages/ui/src/components/semantic-icon.tsx` before using an icon for a new product entity, navigation concept, state, setting, command, or action.
-4. Choose a built-in glyph that is not already mapped to another semantic token. Reuse the existing token when the meaning is truly identical; do not create a second token that aliases its glyph.
-5. When the glyph is new to the shared Icon component, register it in both `packages/ui/src/components/icon.tsx` and `packages/ui/src/plugin/builtin-icons.ts` before referencing it from the semantic map.
-6. Render through `getSemanticIcon(token)` and type stored metadata as `SemanticIconTokenName`.
-7. Keep raw icon names inside base icon controls, file-type/icon registries, tool-card plumbing, or plugin-provided icon paths. Built-in Plugin host UI still uses semantic tokens. Tool icons follow `add-tool`, not the product semantic-token registry.
-8. Route Composer completion, annotation, revision-checked edits, and normal-message preflight through the single `ComposerDocumentController`; do not let features or plugin adapters read and mutate contenteditable independently. Keep Composer and selected-text snapshots transient and out of sync/replay stores.
-
-Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplicate glyph mappings, missing shared registrations, raw JSX icon literals, and raw icon object metadata outside the documented base/tool/plugin-data exceptions.
+Read [the domain guidance](references/presentation.md#use-semantic-icons) when this area is affected.
 
 ## Preserve Product Presentation
 
-1. Reuse shared workbench, dialog, form, toolbar, and surface primitives before creating local variants.
-2. Preserve polarity: dark content/selection surfaces step brighter inward; light surfaces step darker inward.
-3. Use semantic color/type/spacing tokens. Reserve state colors for real state rather than decoration.
-4. Keep controls labeled, keyboard reachable, focus-visible, WCAG AA, reduced-motion safe, and usable at narrow widths.
-5. Implement loading, empty, error, disabled, and reconnect states as first-class behavior.
-6. Update `PRODUCT.md` when an interaction or visual rule should survive refactors.
-7. For imperative renderers, use the dependency's typed live-update API and cover it with a boundary test. Do not hide an unsupported method behind a cast; same-mode theme changes must repaint already-mounted renderers.
+Read [the domain guidance](references/presentation.md#preserve-product-presentation) when this area is affected.
+
+## Execution details
+
+Read [the domain guidance](references/conversation.md#execution-details) when this area is affected.
 
 ## Preserve Loading Boundaries
 
-1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.
-2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
-3. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
-4. Preserve `packages/app/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+Read [the domain guidance](references/state-and-recovery.md#preserve-loading-boundaries) when this area is affected.
 
 ## Change Themes and Color Tokens
 
-Read `docs/reference/frontend-theming.md` before changing the color contract, adding a semantic token, integrating an imperative renderer, or authoring a selectable theme.
-
-1. Use `packages/ui/src/theme/tokens.ts` as the exhaustive color-token catalog and `resolve.ts` as the only palette resolver. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
-2. Use a canonical token in Tailwind utilities and CSS variables. If the required meaning is absent, add it to the token catalog and resolver before using it. Do not invent consumer aliases such as `surface-*-soft`, `surface-muted`, or unregistered status text names.
-3. Edit `packages/ui/src/theme/themes/synergy.json` for Synergy-specific seed or override values. Run `bun run --cwd packages/ui generate:theme`; never hand-edit `theme.generated.css`, `tailwind/colors.css`, or `theme.schema.json`.
-4. Keep common text/background and status foreground/surface pairs at WCAG AA contrast in both modes. Preserve the product polarity rule independently of accent hue.
-5. Plugin themes are complete structured JSON themes validated by the same schema and resolved by the same runtime. Do not add arbitrary plugin CSS theme overrides or theme-only token paths.
-6. Imperative consumers such as Canvas, Monaco, terminals, and embedded documents must use the resolved theme tokens and react to the canonical theme-change event. Do not maintain component-local light/dark palettes or infer a theme change only from `data-color-scheme`.
-7. Run the theme contract, artifact parity, and consumer-utility tests before visual inspection:
-
-```bash
-bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
-bun test --cwd packages/app test/testing/color-token-contract.test.ts
-```
-
-## Verify
-
-1. Run the narrow component, model, or context test first.
-2. Run:
-
-```bash
-bun run --cwd packages/app test
-bun run --cwd packages/app typecheck
-bun run --cwd packages/ui test
-bun run --cwd packages/app build
-```
-
-For browser capability or bootstrap changes, also run:
-
-```bash
-bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
-bun packages/app/script/private-http-smoke.ts
-```
-
-For localized UI changes, also run:
-
-```bash
-bun run --cwd packages/app i18n:extract
-bun run localization:check
-```
-
-3. Inspect both themes, keyboard/focus, narrow layout, and loading/error behavior in an existing app or isolated second runtime.
-4. At 375 px, check that overlay surfaces are named and keyboard-contained and that every interactive control remains inside the viewport. Open each changed lazy panel once to prove its implementation and resources still load.
-5. Exercise Desktop when native Browser, window chrome, protocol, or Electron behavior changed.
-6. Finish with `bun run quality:quick` when the change is ready for repository review.
+Read [the domain guidance](references/presentation.md#change-themes-and-color-tokens) when this area is affected.
 
 ## Handoff
 
-Report state ownership, API path, semantic icon token, shared primitives, accessibility states, tests, visual checks, and any durable `PRODUCT.md` or Skill update.
+Report changed behavior, ownership, focused tests, visual evidence and pending CI or platform checks. Distinguish local verification from merge readiness.
+
+## Replaceable plugin presentation
+
+Read [the domain guidance](references/workbench-acceptance.md#replaceable-plugin-presentation) when this area is affected.
+
+## Complete workbench acceptance
+
+Read [the domain guidance](references/workbench-acceptance.md#complete-workbench-acceptance) when this area is affected.
+
+## Large-history verification
+
+Read [the domain guidance](references/workbench-acceptance.md#large-history-verification) when this area is affected.
+
+## Resource Workspace changes
+
+Read [the domain guidance](references/resources.md#resource-workspace-changes) when this area is affected.
+
+## Conversation navigation motion
+
+Read [the domain guidance](references/conversation.md#conversation-navigation-motion) when this area is affected.
+
+## Conversation process and read-only evidence
+
+Read [the domain guidance](references/conversation.md#conversation-process-and-read-only-evidence) when this area is affected.
+
+## Verify File Review and Restoration
+
+Read [the domain guidance](references/resources.md#verify-file-review-and-restoration) when this area is affected.
+
+## Retained view changes
+
+Read [Memory residency scope](../../../docs/operations/memory-residency-scope.md) for the retain, boundary, and hot globs and the admission lint.
+
+Bind retained trees to immutable server/Scope/Session/plugin owners; audit descendant router reads, callbacks, async responses and native presentation when adding residency. Keep one active composer. Test A→B→A across Scopes with real DOM identity, reading/selection/draft continuity and bounded inactive work. Registry module promises and presentation instances have separate lifetimes. Eviction must preserve domain-owned drafts and native resources. Exercise portalled decisions, menus and dialogs while switching by keyboard or router action, not only outside clicks. Verify that inactive callbacks cannot reopen overlays, pending decisions survive return, focus stays with the new owner, and document-level shortcuts neither act on hidden panels nor consume another editor's input. Reuse the shared `ViewActivityProvider` rather than deriving activity from DOM visibility.
+
+For projected transport changes, exercise real WebSocket clients and replay with intentional omissions, genuine gaps, old subscription generations, oversized content and disconnect cleanup. Do not equate replay success with complete tool bodies: validate retained page generations after recovery. Keep performance fixtures semantic by creating user messages through `MessageV2.deriveSemantics()` with actual user Parts. Validate fixture visibility before recording timing. Compare identical workloads sequentially against production builds and retain invalid/failed samples separately from accepted measurements.
+
+For demand tiers, trace each consumer through interest merging, capability negotiation, projection opening and the owning shared read. Test downgrade after the last expensive reader leaves while a cheaper reader remains, shared cancellation, progress without metadata revision changes, and immutable checkpoints of every state. A partial projection must never enter a complete-summary event or overwrite accepted statistics. Preserve legacy consumers on a capable server as well as new consumers on an older server.
+
+For retained-view catch-up, measure HTTP bodies separately from event traffic and cache/prefetch budgets. Hold body responses while leaving the viewport and confirm cancellation reaches the generated SDK; queued obsolete reads must never dispatch and a shared active reader must survive another reader's release. Measure browser long tasks and mounted DOM separately from compressed transfer bytes; huge live snapshots must remain virtualized and converge while inference stays open. Test crossing from a short rendered prefix into a long snapshot: preserve the reading point and keep the unseen tail reachable without treating it as measured. Verify nested reading owners transfer accepted geometry instead of restoring detached DOM fallbacks over a completed inner restoration. Exercise punctuation-heavy streaming catch-up with preserved DOM/source positions, using mutation counts instead of CI latency thresholds. Async selection actions must retain their captured selection identity so a late clipboard or plugin completion cannot close a newer menu.
+
+For live file-change presentation, verify complete totals beyond the message projection, baseline cancellation, continuation, failed refresh and final publication, stable Review revisions, cold root discovery, reconnect and removal races. Measure dirty capture and comparison together on a large real source corpus, both before and after thousands of files have accumulated net changes; count bytes read and native commands separately from latency. Cover file/directory replacement and omission recovery when incremental results inherit prior statistics. Exercise wide and 375 px activity wrapping, expanded Composer, keyboard activation and mobile Review without the root loaded in the transcript. Include intermediate conversation widths within a wide viewport: compact controls that fit together must share a row above longer wrapped summaries, with keyboard order matching visual order. Check large Review mount and disposal, bounded row/body work, keyboard navigation beyond the mounted range and retained focus or selection. Refresh metadata without remounting file disclosures, reopen after an earlier variable-height row, verify comparison-scoped reading anchors, and cancel offscreen reads without aborting other readers of the same file; summary timing alone cannot establish detail-view responsiveness. Hold lazy mobile content under the real page Suspense owner and verify that loading leaves the original conversation and modal entry mounted.
+
+For experimental product UI, load [develop-feature](../develop-feature/SKILL.md). Use the feature catalog for experimental settings and effective capabilities for ordinary entrypoints. Verify disabled deep links, restored panels and reconnect responses.
+
+Browser cost and flaky fixture repairs follow [the stability workflow](../testing-guide/references/stability.md). Reuse compiled fixtures with fresh pages; measure cold and warm preparation before extending a DOM matrix.

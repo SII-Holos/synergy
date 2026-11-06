@@ -1,0 +1,607 @@
+import { describe, expect, test } from "bun:test"
+import type { WorkbenchPanelTab } from "../../../src/plugin/registries/workbench-panel-registry"
+import {
+  closeOtherWorkbenchPanelTabs,
+  closeWorkbenchPanelTab,
+  isEditableEscapeTarget,
+  isWorkbenchPanelLaunchable,
+  moveWorkbenchPanelTab,
+  openWorkbenchPanelTab,
+  resolveWorkbenchEscapeAction,
+  updateWorkbenchPanelTab,
+  workbenchPanelMountKey,
+  workbenchForNewSession,
+  mergeVisibleWorkbenchTabs,
+} from "../../../src/context/workbench/panel-model"
+
+test("starting a session preserves resources and dimensions while closing both surfaces", () => {
+  const source = {
+    side: {
+      opened: true,
+      active: "note",
+      size: 620,
+      resized: true,
+      fullscreen: true,
+      tabs: [{ id: "note", panelId: "notes", resourceId: "one", source: "project" }],
+    },
+    bottom: { opened: true, tabs: [{ id: "terminal", panelId: "terminal" }] },
+  }
+  const next = workbenchForNewSession(source)
+  expect(next.side).toMatchObject({
+    opened: false,
+    active: "note",
+    size: 620,
+    resized: true,
+    fullscreen: true,
+    tabs: source.side.tabs,
+  })
+  expect(next.bottom?.opened).toBe(false)
+  expect(source.side.opened).toBe(true)
+})
+
+describe("openWorkbenchPanelTab", () => {
+  test("choosing a resource fills its empty tab without adding an intermediate tab", () => {
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "multi",
+      tabs: [
+        { id: "retained", panelId: "file", resourceId: "a.md", dirty: true },
+        { id: "empty", panelId: "resource-home" },
+      ],
+      replaceTab: "empty",
+      init: { resourceId: "note", source: "project" },
+      createId: () => "unexpected",
+    })
+    expect(result.tabs).toHaveLength(2)
+    expect(result.active).toBe("empty")
+    expect(result.tabs[1]).toMatchObject({ id: "empty", panelId: "notes", resourceId: "note" })
+    expect(result.tabs[0]?.dirty).toBe(true)
+  })
+
+  test("a stale empty-tab action cannot replace a document or duplicate an open resource", () => {
+    const tabs: WorkbenchPanelTab[] = [
+      { id: "used", panelId: "file", resourceId: "draft.md", dirty: true },
+      { id: "note", panelId: "notes", resourceId: "one", source: "project" },
+    ]
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "multi",
+      tabs,
+      replaceTab: "used",
+      init: { resourceId: "one", source: "project" },
+      createId: () => "unexpected",
+    })
+    expect(result.tabs).toEqual(tabs)
+    expect(result.active).toBe("note")
+  })
+
+  test("document navigation replaces the current same-type tab without accumulating resources", () => {
+    let tabs: WorkbenchPanelTab[] = [{ id: "notes", panelId: "notes", resourceId: "note", source: "home" }]
+    let active = "notes"
+    for (let index = 0; index < 20; index++) {
+      const next = openWorkbenchPanelTab({
+        panelId: "file",
+        cardinality: "multi",
+        tabs,
+        active,
+        replaceCurrent: true,
+        init: { resourceId: `src/${index}.ts` },
+        createId: () => `file:${index}`,
+      })
+      tabs = next.tabs
+      active = next.active
+    }
+    expect(tabs).toHaveLength(2)
+    expect(tabs[1]).toMatchObject({ id: "file:0", resourceId: "src/19.ts" })
+    const retained = openWorkbenchPanelTab({
+      panelId: "file",
+      cardinality: "multi",
+      tabs,
+      active,
+      init: { resourceId: "src/retained.ts" },
+      createId: () => "retained",
+    })
+    expect(retained.tabs).toHaveLength(3)
+    const deduplicated = openWorkbenchPanelTab({
+      panelId: "file",
+      cardinality: "multi",
+      tabs: retained.tabs,
+      active: "retained",
+      replaceCurrent: true,
+      init: { resourceId: "src/19.ts" },
+      createId: () => "duplicate",
+    })
+    expect(deduplicated.tabs).toHaveLength(3)
+    expect(deduplicated.active).toBe("file:0")
+  })
+
+  test("notes with the same local ID in different Scopes remain distinct resources", () => {
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "multi",
+      tabs: [{ id: "home", panelId: "notes", resourceId: "note-1", source: "home" }],
+      init: { resourceId: "note-1", source: "project-1" },
+      createId: () => "project",
+    })
+    expect(result.tabs).toHaveLength(2)
+    expect(result.active).toBe("project")
+  })
+
+  test("exclusive panels replace existing tabs", () => {
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "exclusive",
+      tabs: [{ id: "browser", panelId: "browser" }],
+      createId: () => "notes-tab",
+    })
+
+    expect(result.tabs).toEqual([{ id: "notes-tab", panelId: "notes" }])
+    expect(result.active).toBe("notes-tab")
+  })
+
+  test("singleton panels reuse an existing tab", () => {
+    const tabs = [{ id: "notes-tab", panelId: "notes" }]
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "singleton",
+      tabs,
+      createId: () => "new-notes-tab",
+    })
+
+    expect(result.tabs).toBe(tabs)
+    expect(result.active).toBe("notes-tab")
+  })
+
+  test("singleton panels update an existing tab target when init is provided", () => {
+    const tabs = [{ id: "notes-tab", panelId: "notes", resourceId: "note_old", source: "home" }]
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "singleton",
+      tabs,
+      init: { resourceId: "note_blueprint", title: "Blueprint plan", source: "C:/repo/main" },
+      createId: () => "new-notes-tab",
+    })
+
+    expect(result.tabs).toEqual([
+      {
+        id: "notes-tab",
+        panelId: "notes",
+        resourceId: "note_blueprint",
+        title: "Blueprint plan",
+        source: "C:/repo/main",
+      },
+    ])
+    expect(result.active).toBe("notes-tab")
+  })
+
+  test("different singleton panels can coexist", () => {
+    const result = openWorkbenchPanelTab({
+      panelId: "browser",
+      cardinality: "singleton",
+      tabs: [{ id: "notes-tab", panelId: "notes" }],
+      createId: () => "browser-tab",
+    })
+
+    expect(result.tabs).toEqual([
+      { id: "notes-tab", panelId: "notes" },
+      { id: "browser-tab", panelId: "browser" },
+    ])
+    expect(result.active).toBe("browser-tab")
+  })
+
+  test("multi panels create new tabs unless reuse is requested", () => {
+    const tabs = [{ id: "terminal:1", panelId: "terminal", resourceId: "pty-1" }]
+    const created = openWorkbenchPanelTab({
+      panelId: "terminal",
+      cardinality: "multi",
+      tabs,
+      init: { resourceId: "pty-2" },
+      createId: () => "terminal:2",
+    })
+
+    expect(created.tabs).toHaveLength(2)
+    expect(created.active).toBe("terminal:2")
+
+    const reused = openWorkbenchPanelTab({
+      panelId: "terminal",
+      cardinality: "multi",
+      tabs: created.tabs,
+      createId: () => "terminal:3",
+      reuseExisting: true,
+    })
+
+    expect(reused.tabs).toBe(created.tabs)
+    expect(reused.active).toBe("terminal:1")
+  })
+
+  test("multi panels reuse the same resource without changing its position", () => {
+    const tabs = [
+      { id: "file:a", panelId: "file", resourceId: "src/a.ts", title: "a.ts" },
+      { id: "notes", panelId: "notes" },
+    ]
+    const result = openWorkbenchPanelTab({
+      panelId: "file",
+      cardinality: "multi",
+      tabs,
+      init: { resourceId: "src/a.ts", title: "a.ts · src" },
+      createId: () => "file:duplicate",
+    })
+
+    expect(result.tabs).toEqual([
+      { id: "file:a", panelId: "file", resourceId: "src/a.ts", title: "a.ts · src" },
+      { id: "notes", panelId: "notes" },
+    ])
+    expect(result.active).toBe("file:a")
+    expect(result.created).toBeUndefined()
+  })
+
+  test("resource tabs preserve opaque plugin state and keep distinct resources separate", () => {
+    const first = openWorkbenchPanelTab({
+      panelId: "plugin:truthward:research-map",
+      cardinality: "multi",
+      tabs: [],
+      init: { resourceId: "map", title: "Research map", state: { view: "map" } },
+      createId: () => "map-tab",
+    })
+    const second = openWorkbenchPanelTab({
+      panelId: "plugin:truthward:research-map",
+      cardinality: "multi",
+      tabs: first.tabs,
+      init: {
+        resourceId: "node:N01_InterpretResearchIntent",
+        title: "Interpret research intent",
+        state: { view: "node", nodeID: "N01_InterpretResearchIntent" },
+      },
+      createId: () => "node-tab",
+    })
+
+    expect(second.tabs).toEqual([
+      {
+        id: "map-tab",
+        panelId: "plugin:truthward:research-map",
+        resourceId: "map",
+        title: "Research map",
+        state: { view: "map" },
+      },
+      {
+        id: "node-tab",
+        panelId: "plugin:truthward:research-map",
+        resourceId: "node:N01_InterpretResearchIntent",
+        title: "Interpret research intent",
+        state: { view: "node", nodeID: "N01_InterpretResearchIntent" },
+      },
+    ])
+  })
+
+  test("resource panels can replace an empty tab in place", () => {
+    const tabs = [
+      { id: "file:empty", panelId: "file", title: "Open file" },
+      { id: "notes", panelId: "notes" },
+    ]
+    const result = openWorkbenchPanelTab({
+      panelId: "file",
+      cardinality: "multi",
+      tabs,
+      init: { resourceId: "src/app.ts", title: "app.ts", source: "workspace" },
+      createId: () => "file:new",
+      replaceEmpty: true,
+    })
+
+    expect(result.tabs).toEqual([
+      { id: "file:empty", panelId: "file", resourceId: "src/app.ts", title: "app.ts", source: "workspace" },
+      { id: "notes", panelId: "notes" },
+    ])
+    expect(result.active).toBe("file:empty")
+    expect(result.created).toBeUndefined()
+  })
+})
+
+describe("closeWorkbenchPanelTab", () => {
+  test("activates a neighboring tab when the active tab closes", () => {
+    const result = closeWorkbenchPanelTab(
+      [
+        { id: "a", panelId: "terminal" },
+        { id: "b", panelId: "terminal" },
+      ],
+      "b",
+      "b",
+    )
+
+    expect(result.tabs).toEqual([{ id: "a", panelId: "terminal" }])
+    expect(result.active).toBe("a")
+  })
+
+  test("returns to launcher when the last tab closes", () => {
+    const result = closeWorkbenchPanelTab([{ id: "a", panelId: "notes" }], "a", "a")
+
+    expect(result.tabs).toEqual([])
+    expect(result.active).toBeUndefined()
+  })
+})
+
+describe("closeOtherWorkbenchPanelTabs", () => {
+  test("keeps only the requested tab and activates it", () => {
+    const tabs = [
+      { id: "file:a", panelId: "file", resourceId: "src/a.ts", title: "a.ts" },
+      { id: "notes", panelId: "notes" },
+      { id: "file:b", panelId: "file", resourceId: "src/b.ts", title: "b.ts" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "file:a", "notes")
+
+    expect(result.tabs).toEqual([{ id: "notes", panelId: "notes" }])
+    expect(result.active).toBe("notes")
+  })
+
+  test("activates the kept tab even when another tab was active", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "b", "a")
+
+    expect(result.active).toBe("a")
+  })
+
+  test("preserves opaque tab state on the kept tab", () => {
+    const tabs = [
+      { id: "map", panelId: "plugin:research-map", resourceId: "map", state: { view: "map" } },
+      { id: "node", panelId: "plugin:research-map" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "map", "map")
+
+    expect(result.tabs).toEqual([
+      { id: "map", panelId: "plugin:research-map", resourceId: "map", state: { view: "map" } },
+    ])
+  })
+
+  test("is a no-op when the kept tab is missing", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "b", "missing")
+
+    expect(result.tabs).toBe(tabs)
+    expect(result.active).toBe("b")
+  })
+
+  test("bounded closing set removes exactly the snapshot and keeps tabs opened during the window", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+      { id: "late", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "late", "b", new Set(["a"]))
+
+    expect(result.tabs.map((tab) => tab.id)).toEqual(["b", "late"])
+    expect(result.active).toBe("b")
+  })
+
+  test("kept tab removed concurrently leaves the bounded result untouched", () => {
+    const result = closeOtherWorkbenchPanelTabs([{ id: "c", panelId: "notes" }], "c", "a", new Set(["a", "b"]))
+
+    expect(result.tabs).toEqual([{ id: "c", panelId: "notes" }])
+    expect(result.active).toBe("c")
+  })
+
+  test("a bounded close of the last tab empties the surface", () => {
+    const result = closeOtherWorkbenchPanelTabs([{ id: "a", panelId: "file" }], "a", "missing", new Set(["a"]))
+
+    expect(result.tabs).toEqual([])
+    expect(result.active).toBeUndefined()
+  })
+})
+
+describe("workbench tab updates", () => {
+  test("updates a tab in place and preserves its identity", () => {
+    const tabs = [{ id: "file:a", panelId: "file", resourceId: "old.ts", title: "old.ts" }]
+    const result = updateWorkbenchPanelTab(tabs, "file:a", {
+      resourceId: "src/new.ts",
+      title: "new.ts",
+    })
+
+    expect(result).toEqual([{ id: "file:a", panelId: "file", resourceId: "src/new.ts", title: "new.ts" }])
+  })
+
+  test("keeps panel content mounted while tab metadata changes", () => {
+    const before = { id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }
+    const after = { ...before, title: "Renamed note", dirty: true }
+
+    expect(workbenchPanelMountKey(after)).toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ id: "notes:2", panelId: "notes" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, panelId: "resource-home" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, resourceId: "note_b" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, source: "another-scope" })).not.toBe(workbenchPanelMountKey(before))
+  })
+
+  test("moves a tab to the requested stable index", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+      { id: "c", panelId: "notes" },
+    ]
+    expect(moveWorkbenchPanelTab(tabs, "a", 2).map((tab) => tab.id)).toEqual(["b", "c", "a"])
+  })
+})
+
+describe("notes workbench tab state", () => {
+  test("tracks the opened note and restores the same target after a session round trip", () => {
+    let tabs: WorkbenchPanelTab[] = [{ id: "notes:1", panelId: "notes" }]
+
+    tabs = updateWorkbenchPanelTab(tabs, "notes:1", { resourceId: "note_a", source: "/repo" })
+    tabs = updateWorkbenchPanelTab(tabs, "notes:1", { resourceId: "note_b", source: "/repo" })
+
+    expect(tabs).toEqual([{ id: "notes:1", panelId: "notes", resourceId: "note_b", source: "/repo" }])
+  })
+
+  test("records the list view as an explicit marker instead of a stale note", () => {
+    const tabs = [{ id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }]
+
+    const result = updateWorkbenchPanelTab(tabs, "notes:1", { resourceId: "notes:list" })
+
+    expect(result[0]!.resourceId).toBe("notes:list")
+  })
+
+  test("reopening the notes panel without a resource keeps the tracked note", () => {
+    const tabs = [{ id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }]
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "singleton",
+      tabs,
+      createId: () => "notes:new",
+    })
+
+    expect(result.tabs).toBe(tabs)
+    expect(result.active).toBe("notes:1")
+  })
+})
+
+describe("workbench Escape routing", () => {
+  test("keeps the workspace open while a nested dialog owns Escape", () => {
+    expect(
+      resolveWorkbenchEscapeAction({
+        key: "Escape",
+        opened: true,
+        menuOpen: false,
+        dialogActive: true,
+      }),
+    ).toBe("none")
+  })
+
+  test("leaves open menus to their overlay and ignores unrelated keys", () => {
+    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, menuOpen: true, dialogActive: false })).toBe(
+      "none",
+    )
+    expect(
+      resolveWorkbenchEscapeAction({
+        key: "Escape",
+        opened: true,
+        menuOpen: false,
+        dialogActive: false,
+        focusWithin: true,
+      }),
+    ).toBe("close-surface")
+    expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, menuOpen: false, dialogActive: false })).toBe(
+      "none",
+    )
+  })
+
+  test("lets Escape through to editable targets instead of closing the workspace", () => {
+    expect(
+      resolveWorkbenchEscapeAction({
+        key: "Escape",
+        opened: true,
+        menuOpen: false,
+        dialogActive: false,
+        editableFocus: true,
+      }),
+    ).toBe("none")
+    expect(
+      resolveWorkbenchEscapeAction({
+        key: "Escape",
+        opened: true,
+        menuOpen: true,
+        dialogActive: false,
+        editableFocus: true,
+      }),
+    ).toBe("none")
+  })
+})
+
+describe("isEditableEscapeTarget", () => {
+  test("treats form controls as editable", () => {
+    const input = document.createElement("input")
+    const textarea = document.createElement("textarea")
+    const select = document.createElement("select")
+    expect(isEditableEscapeTarget(input)).toBe(true)
+    expect(isEditableEscapeTarget(textarea)).toBe(true)
+    expect(isEditableEscapeTarget(select)).toBe(true)
+  })
+
+  test("treats contentEditable regions as editable", () => {
+    const editable = document.createElement("div")
+    editable.contentEditable = "true"
+    expect(isEditableEscapeTarget(editable)).toBe(true)
+  })
+
+  test("treats elements inside a protected region as editable", () => {
+    const protectedRoot = document.createElement("div")
+    protectedRoot.setAttribute("data-prevent-autofocus", "")
+    const child = document.createElement("span")
+    protectedRoot.appendChild(child)
+    expect(isEditableEscapeTarget(child)).toBe(true)
+    expect(isEditableEscapeTarget(protectedRoot)).toBe(true)
+  })
+
+  test("leaves ordinary targets untouched", () => {
+    const button = document.createElement("button")
+    expect(isEditableEscapeTarget(button)).toBe(false)
+    expect(isEditableEscapeTarget(null)).toBe(false)
+    expect(isEditableEscapeTarget(undefined)).toBe(false)
+  })
+})
+
+describe("workbench panel launchability", () => {
+  test("keeps programmatic resource panels out of launchers without affecting existing panels", () => {
+    expect(
+      isWorkbenchPanelLaunchable({
+        id: "attachment",
+        label: "Attachment",
+        icon: "file",
+        pluginId: "builtin",
+        surface: "side",
+        cardinality: "multi",
+        launchable: false,
+      }),
+    ).toBe(false)
+    expect(
+      isWorkbenchPanelLaunchable({
+        id: "plugin-panel",
+        label: "Plugin",
+        icon: "file",
+        pluginId: "plugin",
+        surface: "side",
+        cardinality: "multi",
+      }),
+    ).toBe(true)
+  })
+})
+
+test("Escape only collapses the workspace containing focus", () => {
+  expect(
+    resolveWorkbenchEscapeAction({
+      key: "Escape",
+      opened: true,
+      menuOpen: false,
+      dialogActive: false,
+      focusWithin: false,
+    }),
+  ).toBe("none")
+  expect(
+    resolveWorkbenchEscapeAction({
+      key: "Escape",
+      opened: true,
+      menuOpen: false,
+      dialogActive: false,
+      focusWithin: true,
+    }),
+  ).toBe("close-surface")
+})
+
+test("closing visible resources preserves hidden drafts for a later capability selection", () => {
+  const note = { id: "note", panelId: "notes", resourceId: "one", dirty: true, state: { kind: "note" } }
+  const tabs = [note, { id: "file", panelId: "file", resourceId: "readme" }]
+  const available = (tab: WorkbenchPanelTab) => tab.panelId !== "notes"
+  const next = mergeVisibleWorkbenchTabs(tabs, [{ id: "new", panelId: "file", resourceId: "two" }], available)
+  expect(next).toEqual([note, { id: "new", panelId: "file", resourceId: "two" }])
+  expect(mergeVisibleWorkbenchTabs(next, [], () => true)).toEqual([])
+  expect(tabs).toHaveLength(2)
+})
+
+test("a newly classified Blueprint remains saved when its feature is absent", () => {
+  const previous = { id: "note", panelId: "notes", resourceId: "one" }
+  const classified = { ...previous, state: { kind: "blueprint" } }
+  const available = (tab: WorkbenchPanelTab) =>
+    !tab.state || typeof tab.state !== "object" || !("kind" in tab.state) || tab.state.kind !== "blueprint"
+  expect(mergeVisibleWorkbenchTabs([previous], [classified], available)).toEqual([classified])
+})

@@ -1,0 +1,99 @@
+{
+  "tag": "v2.4.4",
+  "commit": "32a25fac05ab0b3362ab90b809888b0aad4391e2",
+  "sources": [
+    "packages/synergy/src/storage/path.ts",
+    "packages/synergy/src/session/types.ts",
+    "packages/synergy/src/session/message-v2.ts"
+  ],
+  "records": [
+    {
+      "key": ["sessions", "home", "ses_00000000000000000000000001", "info"],
+      "value": {
+        "id": "ses_00000000000000000000000001",
+        "scope": {
+          "id": "home",
+          "type": "home"
+        },
+        "title": "Historical conversation",
+        "version": "2.4.4",
+        "time": {
+          "created": 1700000000000,
+          "updated": 1700000000000
+        },
+        "futureOwner": {
+          "retained": true
+        },
+        "controlProfile": "guarded",
+        "completionNotice": {
+          "unread": true,
+          "silent": false,
+          "unreadCount": 1
+        }
+      }
+    },
+    {
+      "key": ["session_index", "ses_00000000000000000000000001"],
+      "value": {
+        "id": "ses_00000000000000000000000001",
+        "scopeID": "home"
+      }
+    },
+    {
+      "key": [
+        "sessions",
+        "home",
+        "ses_00000000000000000000000001",
+        "messages",
+        "msg_00000000000000000000000001",
+        "info"
+      ],
+      "value": {
+        "id": "msg_00000000000000000000000001",
+        "sessionID": "ses_00000000000000000000000001",
+        "role": "user",
+        "time": {
+          "created": 1700000000000
+        },
+        "agent": "synergy",
+        "model": {
+          "providerID": "openai",
+          "modelID": "gpt-4.1"
+        },
+        "metadata": {
+          "fixture": "released-writer"
+        },
+        "isRoot": true,
+        "visible": true,
+        "includeInContext": true,
+        "origin": {
+          "type": "user"
+        }
+      }
+    },
+    {
+      "key": [
+        "sessions",
+        "home",
+        "ses_00000000000000000000000001",
+        "messages",
+        "msg_00000000000000000000000001",
+        "parts",
+        "prt_00000000000000000000000001"
+      ],
+      "value": {
+        "id": "prt_00000000000000000000000001",
+        "sessionID": "ses_00000000000000000000000001",
+        "messageID": "msg_00000000000000000000000001",
+        "type": "text",
+        "text": "Keep the original transcript."
+      }
+    },
+    {
+      "key": ["meta", "migration", "log"],
+      "value": {
+        "unloaded-fixture-owner": 1700000000000
+      }
+    }
+  ]
+}

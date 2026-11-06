@@ -1,0 +1,356 @@
+import { logo } from "./branding"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { createLocalHost, registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
+import {
+  ObservabilityMetrics,
+  ObservabilityStore,
+  ObservabilityWriter,
+} from "@ericsanchezok/synergy-harness/observability"
+import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
+import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
+import { ProviderCatalog } from "@ericsanchezok/synergy-harness/provider/catalog"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { coreCommands, type CommandEntry } from "./cli/commands"
+import type { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
+import type { CommandModule } from "yargs"
+import yargs from "yargs"
+import { hideBin } from "yargs/helpers"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
+import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { EOL } from "os"
+import { withCliMaintenance } from "./cli/maintenance-progress"
+
+import { parse as parseJsonc } from "jsonc-parser"
+import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
+
+async function flushCliOutput() {
+  await Bun.sleep(25)
+}
+
+function printUnhandledFailure(kind: string, error: unknown) {
+  const detail = error instanceof Error ? error.stack : String(error)
+  const logfile = (() => {
+    try {
+      return Log.file()
+    } catch {
+      return undefined
+    }
+  })()
+  const lines = [
+    `${kind}: ${error instanceof Error ? error.message : String(error)}`,
+    detail,
+    logfile ? `Check log file at ${logfile} for more details.` : undefined,
+  ].filter(Boolean)
+  console.error(lines.join(EOL))
+}
+
+export interface CliOptions {
+  register?(): void
+  runtimeFactory: typeof openLocalRuntime
+  commands?: CommandEntry[]
+  dataCommands?(): Promise<CommandModule[]>
+  defaultCommand?: string
+  argv?: string[]
+  beforeCommand?(command: string): Promise<void>
+  pluginCommands?(directory: string): Promise<CommandModule[]>
+}
+
+export async function runCli(options: CliOptions): Promise<void> {
+  const host = createLocalHost()
+  const context = RuntimeContext.create(host)
+  try {
+    await context.run(async () => {
+      if (options.register) options.register()
+      else registerLocalRuntime({ workers: false })
+      try {
+        const run = () =>
+          runCliImplementation({
+            ...options,
+            runtimeFactory: (input) => options.runtimeFactory({ ...input, host: input.host ?? host }),
+          })
+        const argv = options.argv ?? hideBin(process.argv)
+        if (
+          (argv.includes("migration") &&
+            argv.includes("run") &&
+            argv.some((arg) => arg === "--maintenance" || arg === "--maintenance=true")) ||
+          (argv.includes("data") &&
+            argv.includes("storage") &&
+            (argv.includes("reclaim") || argv.includes("prune") || argv.includes("compact-rollout")))
+        )
+          await withCliMaintenance(() => run())
+        else await run()
+      } finally {
+        const errors: unknown[] = []
+        for (const close of [
+          () => ModelsCatalog.stop(),
+          () => ProviderCatalog.stop(),
+          () => ScopeRuntime.stop(),
+          () => ObservabilityWriter.stop(),
+          () => ObservabilityMetrics.stop(),
+          () => ObservabilityStore.stop(),
+          () => Log.close(),
+        ]) {
+          try {
+            await close()
+          } catch (error) {
+            errors.push(error)
+          }
+        }
+        if (errors.length) throw new AggregateError(errors, "CLI resources cleanup failed")
+      }
+    })
+  } catch (error) {
+    console.error(error instanceof Error ? (error.stack ?? error.message) : error)
+    process.exitCode = 1
+  } finally {
+    context.dispose()
+  }
+}
+
+async function runCliImplementation(options: CliOptions): Promise<void> {
+  const argv = options.argv ?? hideBin(process.argv)
+  let storage:
+    | Awaited<ReturnType<typeof import("@ericsanchezok/synergy-harness/storage/maintenance").StorageMaintenance.open>>
+    | undefined
+  const builtinCommands = [...coreCommands(options.runtimeFactory, options.dataCommands), ...(options.commands ?? [])]
+  const commandNames = new Set<string>()
+  for (const entry of builtinCommands) {
+    for (const name of (Array.isArray(entry.command) ? entry.command : [entry.command]).map(
+      (command) => command.split(" ")[0],
+    )) {
+      if (commandNames.has(name)) throw new Error(`CLI namespace ${name} conflicts with an existing command`)
+      commandNames.add(name)
+    }
+  }
+  const onRejection = (error: unknown) => {
+    process.exitCode = 1
+    Log.Default.error("rejection", { error: error instanceof Error ? error.message : error })
+    printUnhandledFailure("Unhandled rejection", error)
+  }
+  const onException = (error: Error) => {
+    process.exitCode = 1
+    Log.Default.error("exception", { error: error.message })
+    printUnhandledFailure("Uncaught exception", error)
+  }
+
+  const cli = yargs(argv)
+    .exitProcess(false)
+    .parserConfiguration({ "populate--": true })
+    .scriptName("synergy")
+    .wrap(100)
+    .help("help", "show help")
+    .alias("help", "h")
+    .version("version", "show version number", Installation.VERSION)
+    .alias("version", "v")
+    .option("print-logs", {
+      describe: "print logs to stderr",
+      type: "boolean",
+    })
+    .option("log-level", {
+      describe: "log level",
+      type: "string",
+      choices: ["DEBUG", "INFO", "WARN", "ERROR"],
+    })
+    .middleware(async (opts) => {
+      if (informational) return
+      const entry = builtinCommands.find((entry) =>
+        (Array.isArray(entry.command) ? entry.command : [entry.command]).some(
+          (name) => name.split(" ")[0] === selectedCommand,
+        ),
+      )
+      const storageMode = typeof entry?.storage === "function" ? entry.storage(opts._) : entry?.storage
+      if (storageMode === "maintenance" && !storage) {
+        const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+        const inspect = selectedCommand === "migration" && (argv.includes("status") || argv.includes("--dry-run"))
+        storage = await StorageMaintenance.open({ readonly: inspect, migrate: selectedCommand !== "migration" })
+      }
+      if (!["send", "server"].includes(selectedCommand ?? "server"))
+        await Global.initialize({ cache: false, configSchema: JSON.stringify(Config.jsonSchema(), null, 2) + "\n" })
+      let configLogLevel: string | undefined
+      try {
+        const { ConfigDomain } = await import("@ericsanchezok/synergy-harness/config/domain")
+        const configText = await Bun.file(ConfigDomain.filepath("general"))
+          .text()
+          .catch(() => "")
+        if (configText) {
+          const config = parseJsonc(configText)
+          if (config.logLevel && ["DEBUG", "INFO", "WARN", "ERROR"].includes(config.logLevel)) {
+            configLogLevel = config.logLevel
+          }
+        }
+      } catch {}
+
+      await Log.init({
+        print: process.argv.includes("--print-logs"),
+        dev: Installation.isLocal() && isServerCommand(),
+        level: (() => {
+          if (opts.logLevel) return opts.logLevel as Log.Level
+          if (process.env.LOG_LEVEL && ["DEBUG", "INFO", "WARN", "ERROR"].includes(process.env.LOG_LEVEL))
+            return process.env.LOG_LEVEL as Log.Level
+          if (configLogLevel) return configLogLevel as Log.Level
+          return "INFO"
+        })(),
+      })
+
+      Log.Default.info("synergy", {
+        version: Installation.VERSION,
+        args: process.argv.slice(2),
+      })
+    })
+    .usage("\n" + logo())
+    .completion("completion", "generate shell completion script")
+
+  const informational =
+    (argv.length === 0 && !options.defaultCommand) ||
+    argv.some((arg) => ["--help", "-h", "--version", "-v"].includes(arg))
+  const requestedCommand = firstPositionalArg()
+  const selectedCommand = requestedCommand ?? (informational ? undefined : options.defaultCommand)
+  const hasCommand = builtinCommands.some((entry) =>
+    (Array.isArray(entry.command) ? entry.command : [entry.command]).some(
+      (name) => name.split(" ")[0] === selectedCommand,
+    ),
+  )
+  if (!informational && selectedCommand && hasCommand) await options.beforeCommand?.(selectedCommand)
+  for (const entry of builtinCommands) {
+    const names = (Array.isArray(entry.command) ? entry.command : [entry.command]).map((name) => name.split(" ")[0])
+    cli.command(
+      names.includes(selectedCommand ?? "")
+        ? await entry.load()
+        : { command: entry.command, describe: entry.describe, handler() {} },
+    )
+  }
+
+  const registered = new Set(
+    builtinCommands.flatMap((entry) =>
+      (Array.isArray(entry.command) ? entry.command : [entry.command]).map((name) => name.split(" ")[0]),
+    ),
+  )
+  const directory = Flag.SYNERGY_CWD || process.cwd()
+  const version = argv.some((arg) => arg === "--version" || arg === "-v")
+  const pluginCommands = hasCommand || version ? [] : ((await options.pluginCommands?.(directory)) ?? [])
+  for (const command of pluginCommands) {
+    const names = (Array.isArray(command.command) ? command.command : [command.command])
+      .filter((name): name is string => typeof name === "string")
+      .map((name) => name.split(" ")[0])
+    for (const name of names) {
+      if (registered.has(name)) throw new Error(`Plugin CLI namespace ${name} conflicts with Synergy`)
+      registered.add(name)
+    }
+    cli.command(command)
+  }
+
+  // Installed plugin commands are registered from generated manifest metadata.
+
+  cli
+    .fail((msg, err) => {
+      if (
+        msg?.startsWith("Unknown argument") ||
+        msg?.startsWith("Not enough non-option arguments") ||
+        msg?.startsWith("Invalid values:")
+      ) {
+        cli.showHelp("error")
+      }
+      throw (
+        err ??
+        new Error(
+          msg?.startsWith("Unknown argument") && requestedCommand
+            ? `Command "${requestedCommand}" is unavailable in this installation.`
+            : msg || "Command failed",
+        )
+      )
+    })
+    .strict()
+
+  function firstPositionalArg() {
+    const args = argv
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index]
+      if (arg === "--log-level") {
+        index++
+        continue
+      }
+      if (!arg.startsWith("-")) return arg
+    }
+    return
+  }
+
+  function isLongRunningCommand() {
+    const command = firstPositionalArg() ?? options.defaultCommand
+    if (command === "server") return true
+    if (command === "logs") {
+      return process.argv.includes("-f") || process.argv.includes("--follow")
+    }
+    return false
+  }
+
+  function isServerCommand() {
+    return (firstPositionalArg() ?? options.defaultCommand) === "server"
+  }
+
+  process.on("unhandledRejection", onRejection)
+  process.on("uncaughtException", onException)
+  try {
+    if (argv.length === 0 && !options.defaultCommand) cli.showHelp()
+    else {
+      const parsed = await cli.parse()
+      if (
+        parsed._.length === 2 &&
+        parsed._[0] === "migration" &&
+        parsed._[1] === "run" &&
+        !parsed["dry-run"] &&
+        storage &&
+        "activate" in storage
+      )
+        await storage.activate()
+    }
+  } catch (e) {
+    let data: Record<string, unknown> = {}
+    if (e instanceof NamedError) {
+      const obj = e.toObject()
+      Object.assign(data, {
+        ...obj.data,
+      })
+    }
+
+    if (e instanceof Error) {
+      Object.assign(data, {
+        name: e.name,
+        message: e.message,
+        cause: e.cause?.toString(),
+        stack: e.stack,
+      })
+    }
+
+    if (e instanceof ResolveMessage) {
+      Object.assign(data, {
+        name: e.name,
+        message: e.message,
+        code: e.code,
+        specifier: e.specifier,
+        referrer: e.referrer,
+        position: e.position,
+        importKind: e.importKind,
+      })
+    }
+    Log.Default.error("fatal", data)
+    const { FormatError } = await import("./cli/error")
+    const formatted = FormatError(e)
+    if (formatted) UI.error(formatted)
+    if (formatted === undefined) {
+      UI.error("Unexpected error, check log file at " + Log.file() + " for more details" + EOL)
+      console.error(e)
+    }
+    if (firstPositionalArg() === "send") {
+      const { findRecordingError } = await import("@ericsanchezok/synergy-harness/session/rollout/error")
+      process.exitCode = findRecordingError(e) ? 5 : process.exitCode || 2
+    } else process.exitCode = 1
+  } finally {
+    await storage?.close()
+    if (!isLongRunningCommand()) await flushCliOutput()
+    process.removeListener("unhandledRejection", onRejection)
+    process.removeListener("uncaughtException", onException)
+  }
+}

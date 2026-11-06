@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   resolveTurnDiffPanelState,
-  TURN_DIFF_PENDING_DELAY_MS,
   turnChangeSummaryHiddenCount,
+  turnChangeSummaryFiles,
   turnChangeSummaryTitle,
   turnChangeSummaryToggleLabel,
   turnChangeSummaryVisibleDiffs,
@@ -11,7 +11,7 @@ import {
 } from "../../src/components/turn-change-summary-panel-model"
 
 const diffs: TurnChangeSummaryDiff[] = [
-  { file: "packages/app/src/pages/session.tsx", additions: 10, deletions: 2 },
+  { file: "apps/web/src/pages/session.tsx", additions: 10, deletions: 2 },
   { file: "packages/ui/src/components/session-turn.tsx", additions: 5, deletions: 1 },
   { file: "README.md", additions: 1, deletions: 0 },
   { file: "assets/logo.png", additions: 0, deletions: 0, binary: true },
@@ -26,7 +26,7 @@ describe("TurnChangeSummaryPanel helpers", () => {
   test("shows first three files while collapsed and all files while expanded", () => {
     expect(turnChangeSummaryHiddenCount(diffs)).toBe(1)
     expect(turnChangeSummaryVisibleDiffs(diffs).map((diff) => diff.file)).toEqual([
-      "packages/app/src/pages/session.tsx",
+      "apps/web/src/pages/session.tsx",
       "packages/ui/src/components/session-turn.tsx",
       "README.md",
     ])
@@ -38,7 +38,7 @@ describe("TurnChangeSummaryPanel helpers", () => {
   test("supports custom preview limits and footer labels", () => {
     expect(turnChangeSummaryHiddenCount(diffs, 2)).toBe(2)
     expect(turnChangeSummaryVisibleDiffs(diffs, { previewLimit: 2 }).map((diff) => diff.file)).toEqual([
-      "packages/app/src/pages/session.tsx",
+      "apps/web/src/pages/session.tsx",
       "packages/ui/src/components/session-turn.tsx",
     ])
     expect(turnChangeSummaryToggleLabel({ expanded: false, hiddenCount: 1 })).toBe("Show 1 more file")
@@ -46,23 +46,32 @@ describe("TurnChangeSummaryPanel helpers", () => {
     expect(turnChangeSummaryToggleLabel({ expanded: true, hiddenCount: 2 })).toBe("Hide files")
   })
 
-  test("delays pending without delaying ready or error", () => {
-    expect(TURN_DIFF_PENDING_DELAY_MS).toBe(150)
-    expect(resolveTurnDiffPanelState("pending", false)).toBe("hidden")
-    expect(resolveTurnDiffPanelState("pending", true)).toBe("pending")
-    expect(resolveTurnDiffPanelState("ready", false)).toBe("ready")
-    expect(resolveTurnDiffPanelState("error", false)).toBe("error")
-  })
-
-  test("keeps settled states immediate and hides absent state", () => {
-    const states: Array<[TurnDiffPanelState, TurnDiffPanelState]> = [
-      ["hidden", "hidden"],
-      ["ready", "ready"],
-      ["error", "error"],
-    ]
-
-    for (const [input, expected] of states) {
-      expect(resolveTurnDiffPanelState(input, false)).toBe(expected)
+  test("shows a change card only when recorded files exist", () => {
+    const states: TurnDiffPanelState[] = ["hidden", "pending", "ready", "partial", "error"]
+    for (const state of states) {
+      expect(resolveTurnDiffPanelState(state, false)).toBe("hidden")
+      expect(resolveTurnDiffPanelState(state, true)).toBe(state)
     }
   })
+
+  test("retains confirmed binary and empty-file changes with zero line counts", () => {
+    const files = turnChangeSummaryFiles([
+      { file: "empty.txt", additions: 0, deletions: 0 },
+      { file: "image.png", additions: 0, deletions: 0, binary: true },
+    ])
+    expect(files).toHaveLength(2)
+    expect(resolveTurnDiffPanelState("partial", files.length > 0)).toBe("partial")
+  })
+})
+
+test("the summary preserves backend net counts without adding obsolete operation totals", () => {
+  const workspace = { id: "wsp_a", generation: 1, root: "/a" }
+  const files = turnChangeSummaryFiles([
+    { file: "same.txt", workspace, operationID: "first", additions: 1, deletions: 2 },
+    { file: "same.txt", workspace, operationID: "last", additions: 3, deletions: 4 },
+    { file: "same.txt", workspace: { ...workspace, id: "wsp_b", root: "/b" }, additions: 1, deletions: 0 },
+  ])
+  expect(files).toHaveLength(2)
+  expect(files[0]).toMatchObject({ file: "same.txt", workspace, additions: 3, deletions: 4 })
+  expect(files[0]?.operationID).toBeUndefined()
 })

@@ -1,0 +1,88 @@
+{
+  "name": "@ericsanchezok/synergy-connections",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./component": "./src/component.ts",
+    "./channel/provider/feishu/svg-raster-runtime": "./src/compat/channel/provider/feishu/svg-raster-runtime.ts",
+    "./channel/cli/channel": "./src/compat/channel/cli/channel.ts",
+    "./channel/migration": "./src/compat/channel/migration.ts",
+    "./email/tools": "./src/compat/email/tools.ts",
+    "./channel/tools": "./src/compat/channel/tools.ts",
+    "./channel/session-projects": "./src/compat/channel/session-projects.ts",
+    "./channel/workspace-transfer": "./src/compat/channel/workspace-transfer.ts",
+    "./channel": "./src/compat/channel.ts",
+    "./channel/outbound": "./src/compat/channel/outbound.ts",
+    "./channel/response-card": "./src/compat/channel/response-card.ts",
+    "./channel/types": "./src/compat/channel/types.ts",
+    "./channel/managed-project-ownership": "./src/compat/channel/managed-project-ownership.ts",
+    "./channel/routes/channel": "./src/compat/channel/routes/channel.ts",
+    "./channel/app": "./src/compat/channel/app.ts",
+    "./channel/tools/channel-push": "./src/compat/channel/tools/channel-push.ts",
+    "./channel/host": "./src/compat/channel/host.ts",
+    "./email/tools/email-read": "./src/compat/email/tools/email-read.ts",
+    "./channel/provider/github": "./src/compat/channel/provider/github.ts",
+    "./channel/tools/github-deliver-fix": "./src/compat/channel/tools/github-deliver-fix.ts",
+    "./channel/tools/response-card": "./src/compat/channel/tools/response-card.ts",
+    "./agents": "./src/compat/agents.ts",
+    "./github/identity": "./src/compat/github/identity.ts",
+    "./github/routes": "./src/compat/github/routes.ts",
+    "./channel/command": "./src/compat/channel/command.ts",
+    "./script/svg-raster-runtime-assets": "./src/compat/script/svg-raster-runtime-assets.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./startup-status": "./src/startup-status.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/connections",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-boss-feishu": "workspace:*",
+    "@ericsanchezok/synergy-channel-feishu": "workspace:*",
+    "@ericsanchezok/synergy-channel-github": "workspace:*",
+    "@ericsanchezok/synergy-channels": "workspace:*",
+    "@ericsanchezok/synergy-email": "workspace:*",
+    "@ericsanchezok/synergy-github": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-agenda": "workspace:*",
+    "@ericsanchezok/synergy-blueprint": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "preset",
+    "id": "connections",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-channels": "1.1.26",
+      "@ericsanchezok/synergy-channel-feishu": "1.1.26",
+      "@ericsanchezok/synergy-github": "1.1.26",
+      "@ericsanchezok/synergy-channel-github": "1.1.26",
+      "@ericsanchezok/synergy-email": "1.1.26"
+    }
+  }
+}

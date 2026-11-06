@@ -1,0 +1,642 @@
+import { RuntimeContext } from "../lifecycle/context"
+import { authLockDirectory, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
+import { Global } from "../global"
+import fs from "fs/promises"
+import path from "path"
+import { z } from "zod"
+import { ProviderAuthHealth } from "./auth-health"
+import { readFileWithRetry } from "@ericsanchezok/synergy-util/io-retry"
+
+export namespace Auth {
+  const runtimeState = RuntimeContext.state(() => ({
+    removalRevisions: new Map<string, number>(),
+    locks: new Map<string, Promise<unknown>>(),
+  }))
+
+  function recordRemoval(providerID: string) {
+    const instanceState = runtimeState()
+
+    instanceState.removalRevisions.set(providerID, (instanceState.removalRevisions.get(providerID) ?? 0) + 1)
+  }
+
+  export function removalRevision(providerID: string) {
+    const instanceState = runtimeState()
+
+    return instanceState.removalRevisions.get(providerID) ?? 0
+  }
+
+  export const Oauth = z
+    .object({
+      type: z.literal("oauth"),
+      refresh: z.string(),
+      access: z.string(),
+      expires: z.number(),
+      enterpriseUrl: z.string().optional(),
+      metadata: z.record(z.string(), z.any()).optional(),
+    })
+    .meta({ ref: "OAuth" })
+
+  export const Api = z
+    .object({
+      type: z.literal("api"),
+      key: z.string(),
+      metadata: z.record(z.string(), z.any()).optional(),
+    })
+    .meta({ ref: "ApiAuth" })
+
+  export const WellKnown = z
+    .object({
+      type: z.literal("wellknown"),
+      key: z.string(),
+      token: z.string(),
+      metadata: z.record(z.string(), z.any()).optional(),
+    })
+    .meta({ ref: "WellKnownAuth" })
+
+  export const Info = z.discriminatedUnion("type", [Oauth, Api, WellKnown]).meta({ ref: "Auth" })
+  export type Info = z.infer<typeof Info>
+
+  export const AuthKind = z.enum(["api_key", "oauth", "wellknown"])
+  export type AuthKind = z.infer<typeof AuthKind>
+
+  export const Tokens = z
+    .object({
+      apiKey: z.string().optional(),
+      accessToken: z.string().optional(),
+      refreshToken: z.string().optional(),
+      token: z.string().optional(),
+      key: z.string().optional(),
+    })
+    .meta({ ref: "ProviderAuthTokens" })
+  export type Tokens = z.infer<typeof Tokens>
+
+  export const Source = z.enum(["migration", "api", "cli", "web", "env", "import", "plugin"])
+  export type Source = z.infer<typeof Source>
+
+  export const PoolEntry = z
+    .object({
+      id: z.string(),
+      status: z.enum(["active", "exhausted", "dead"]),
+      authKind: AuthKind,
+      tokens: Tokens,
+      expiresAt: z.number().optional(),
+      metadata: z.record(z.string(), z.any()).optional(),
+      source: Source.optional(),
+      cooldownUntil: z.number().optional(),
+      resetAt: z.number().optional(),
+      failureCode: z.string().optional(),
+      rejectedAt: z.number().optional(),
+      usageCount: z.number().int().min(0).optional(),
+      updatedAt: z.number(),
+    })
+    .meta({ ref: "ProviderAuthPoolEntry" })
+  export type PoolEntry = z.infer<typeof PoolEntry>
+
+  export const StoreEntry = z
+    .object({
+      providerID: z.string(),
+      authKind: AuthKind,
+      tokens: Tokens,
+      expiresAt: z.number().optional(),
+      metadata: z.record(z.string(), z.any()).optional(),
+      source: Source.optional(),
+      updatedAt: z.number(),
+      pool: z.array(PoolEntry).optional(),
+    })
+    .meta({ ref: "ProviderAuthStoreEntry" })
+  export type StoreEntry = z.infer<typeof StoreEntry>
+
+  export const Store = z
+    .object({
+      schemaVersion: z.literal(2),
+      credentials: z.record(z.string(), StoreEntry),
+    })
+    .meta({ ref: "ProviderAuthStore" })
+  export type Store = z.infer<typeof Store>
+
+  const LegacyStoreEntry = z.object({
+    providerID: z.string(),
+    authKind: z.enum(["api", "oauth", "wellknown"]).optional(),
+    auth: Info,
+    source: Source.optional(),
+    updatedAt: z.number(),
+    pool: z
+      .array(
+        z.object({
+          id: z.string(),
+          status: z.enum(["active", "exhausted", "dead"]),
+          auth: Info,
+          cooldownUntil: z.number().optional(),
+          resetAt: z.number().optional(),
+          failureCode: z.string().optional(),
+          usageCount: z.number().int().min(0).optional(),
+          updatedAt: z.number(),
+        }),
+      )
+      .optional(),
+  })
+
+  function filepath() {
+    return Global.Path.authProvider
+  }
+
+  export function legacyFilepath() {
+    return Global.Path.authApiKey
+  }
+
+  function nowSeconds() {
+    return Math.floor(Date.now() / 1000)
+  }
+
+  function authKindFromInfo(info: Info): AuthKind {
+    if (info.type === "api") return "api_key"
+    return info.type
+  }
+
+  function tokensFromInfo(info: Info): Tokens {
+    switch (info.type) {
+      case "api":
+        return { apiKey: info.key }
+      case "oauth":
+        return {
+          accessToken: info.access,
+          refreshToken: info.refresh,
+        }
+      case "wellknown":
+        return {
+          key: info.key,
+          token: info.token,
+        }
+    }
+  }
+
+  export function infoFromEntry(entry: StoreEntry | PoolEntry): Info | undefined {
+    switch (entry.authKind) {
+      case "api_key": {
+        const key = entry.tokens.apiKey ?? entry.tokens.key
+        return key ? { type: "api", key, metadata: entry.metadata } : undefined
+      }
+      case "oauth": {
+        if (!entry.tokens.accessToken || !entry.tokens.refreshToken) return undefined
+        return {
+          type: "oauth",
+          access: entry.tokens.accessToken,
+          refresh: entry.tokens.refreshToken,
+          expires: entry.expiresAt ?? 0,
+          enterpriseUrl: entry.metadata?.enterpriseUrl,
+          metadata: entry.metadata,
+        }
+      }
+      case "wellknown": {
+        if (!entry.tokens.key || !entry.tokens.token) return undefined
+        return {
+          type: "wellknown",
+          key: entry.tokens.key,
+          token: entry.tokens.token,
+          metadata: entry.metadata,
+        }
+      }
+    }
+  }
+
+  function entryFromInfo(providerID: string, info: Info, source?: Source): StoreEntry {
+    return {
+      providerID,
+      authKind: authKindFromInfo(info),
+      tokens: tokensFromInfo(info),
+      expiresAt: info.type === "oauth" ? info.expires : undefined,
+      metadata: info.metadata,
+      source,
+      updatedAt: Date.now(),
+    }
+  }
+
+  function poolEntryFromInfo(id: string, info: Info, source?: Source): PoolEntry {
+    const entry = entryFromInfo(id, info, source)
+    return {
+      id,
+      status: "active",
+      authKind: entry.authKind,
+      tokens: entry.tokens,
+      expiresAt: entry.expiresAt,
+      metadata: entry.metadata,
+      source: entry.source,
+      usageCount: 0,
+      updatedAt: entry.updatedAt,
+    }
+  }
+
+  function normalizeEntry(providerID: string, value: unknown): StoreEntry | undefined {
+    const current = StoreEntry.safeParse(value)
+    if (current.success) return { ...current.data, providerID }
+
+    const legacy = LegacyStoreEntry.safeParse(value)
+    if (legacy.success) {
+      const entry = entryFromInfo(providerID, legacy.data.auth, legacy.data.source)
+      return {
+        ...entry,
+        updatedAt: legacy.data.updatedAt,
+        pool: legacy.data.pool?.map((item) => ({
+          ...poolEntryFromInfo(item.id, item.auth, legacy.data.source),
+          status: item.status,
+          cooldownUntil: item.cooldownUntil,
+          resetAt: item.resetAt,
+          failureCode: item.failureCode,
+          usageCount: item.usageCount,
+          updatedAt: item.updatedAt,
+        })),
+      }
+    }
+
+    const info = Info.safeParse(value)
+    if (info.success) return entryFromInfo(providerID, info.data, "migration")
+    return undefined
+  }
+
+  async function readStore(): Promise<Store> {
+    let raw: string
+    try {
+      raw = await readFileWithRetry(filepath())
+    } catch (error) {
+      // A missing store is a fresh install; any other read failure must not
+      // be treated as an empty store, or a later write would wipe credentials.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { schemaVersion: 2, credentials: {} }
+      }
+      throw error
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      parsed = undefined
+    }
+    const rawCredentials =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as { credentials?: unknown }).credentials
+        : undefined
+    const credentials: Record<string, StoreEntry> = {}
+    if (rawCredentials && typeof rawCredentials === "object" && !Array.isArray(rawCredentials)) {
+      for (const [providerID, value] of Object.entries(rawCredentials)) {
+        const normalized = normalizeEntry(providerID, value)
+        if (normalized) credentials[providerID] = normalized
+      }
+    }
+    return {
+      schemaVersion: 2,
+      credentials,
+    }
+  }
+
+  async function writeStore(store: Store) {
+    const filename = filepath()
+    await fs.mkdir(Global.Path.auth, { recursive: true })
+    const tmp = `${filename}.${process.pid}.${Date.now()}.tmp`
+    const handle = await fs.open(tmp, "wx", 0o600)
+    try {
+      await handle.writeFile(JSON.stringify(store, null, 2))
+    } finally {
+      await handle.close()
+    }
+    await fs.rename(tmp, filename)
+  }
+
+  async function mutateStore(providerID: string, mutate: (store: Store) => void | Promise<void>) {
+    await withLock("provider-auth-store:write", async () => {
+      const store = await readStore()
+      const previous = ProviderAuthHealth.fromEntry(providerID, store.credentials[providerID])
+      const existed = store.credentials[providerID] !== undefined
+      await mutate(store)
+      await writeStore(store)
+      if (existed && store.credentials[providerID] === undefined) recordRemoval(providerID)
+      await ProviderAuthHealth.commitStored(previous, providerID, store.credentials[providerID])
+    })
+  }
+
+  export async function migrateLegacy(input?: { backup?: boolean }): Promise<{ migrated: boolean; count: number }> {
+    const oldFile = Bun.file(legacyFilepath())
+    if (!(await oldFile.exists())) return { migrated: false, count: 0 }
+    const legacy = await oldFile.json().catch(() => undefined)
+    if (!legacy || typeof legacy !== "object" || Array.isArray(legacy)) return { migrated: false, count: 0 }
+
+    const store = await readStore()
+    let count = 0
+    for (const [providerID, value] of Object.entries(legacy)) {
+      if (store.credentials[providerID]) continue
+      const parsed = Info.safeParse(value)
+      if (!parsed.success) continue
+      store.credentials[providerID] = entryFromInfo(providerID, parsed.data, "migration")
+      count++
+    }
+    if (count > 0) await writeStore(store)
+    if (input?.backup !== false) {
+      const backup = `${legacyFilepath()}.bak`
+      await fs.copyFile(legacyFilepath(), backup).catch(() => {})
+      await fs.chmod(backup, 0o600).catch(() => {})
+    }
+    return { migrated: count > 0, count }
+  }
+
+  function materializePool(entry: StoreEntry): PoolEntry[] {
+    if (entry.pool?.length) return entry.pool
+    const info = infoFromEntry(entry)
+    return info ? [poolEntryFromInfo(entry.providerID, info, entry.source)] : []
+  }
+
+  function usablePoolEntry(entry: PoolEntry, now = nowSeconds()) {
+    if (entry.status === "dead") return false
+    if (entry.status === "active") return true
+    const cooldownActive = entry.cooldownUntil !== undefined && entry.cooldownUntil > now
+    const resetActive = entry.resetAt !== undefined && entry.resetAt > now
+    return !cooldownActive && !resetActive
+  }
+
+  function selectPoolEntry(entry: StoreEntry): PoolEntry | undefined {
+    const pool = materializePool(entry)
+    return pool.find((item) => usablePoolEntry(item))
+  }
+
+  export function hasUsableAlternative(entry: StoreEntry, credentialID: string) {
+    return materializePool(entry).some((item) => item.id !== credentialID && usablePoolEntry(item))
+  }
+
+  export async function select(providerID: string): Promise<
+    | {
+        providerID: string
+        credentialID: string
+        auth: Info
+        entry: StoreEntry
+        poolEntry?: PoolEntry
+      }
+    | undefined
+  > {
+    const entry = (await readStore()).credentials[providerID]
+    if (!entry) return undefined
+    const poolEntry = selectPoolEntry(entry)
+    if (entry.pool?.length && !poolEntry) return undefined
+    const auth = poolEntry ? infoFromEntry(poolEntry) : infoFromEntry(entry)
+    if (!auth) return undefined
+    return {
+      providerID,
+      credentialID: poolEntry?.id ?? providerID,
+      auth,
+      entry,
+      poolEntry,
+    }
+  }
+
+  export async function get(providerID: string) {
+    return (await select(providerID))?.auth
+  }
+
+  export async function all(): Promise<Record<string, Info>> {
+    const data = (await readStore()).credentials
+    const result: Record<string, Info> = {}
+    for (const providerID of Object.keys(data)) {
+      const selected = await select(providerID)
+      if (selected) result[providerID] = selected.auth
+    }
+    return result
+  }
+
+  export async function entries(): Promise<Record<string, StoreEntry>> {
+    return (await readStore()).credentials
+  }
+
+  export async function set(key: string, info: Info, options?: { source?: Source }) {
+    await mutateStore(key, (store) => {
+      const primary = poolEntryFromInfo(key, info, options?.source)
+      store.credentials[key] = {
+        ...entryFromInfo(key, info, options?.source),
+        pool: [primary],
+      }
+    })
+  }
+
+  export async function addToPool(providerID: string, credentialID: string, info: Info, options?: { source?: Source }) {
+    await mutateStore(providerID, (store) => {
+      const existing = store.credentials[providerID]
+      const next = poolEntryFromInfo(credentialID, info, options?.source)
+      if (!existing) {
+        store.credentials[providerID] = {
+          ...entryFromInfo(providerID, info, options?.source),
+          pool: [next],
+        }
+        return
+      }
+      const pool = materializePool(existing).filter((item) => item.id !== credentialID)
+      existing.pool = [...pool, next]
+      existing.updatedAt = Date.now()
+    })
+  }
+
+  export async function replaceSelectedCredential(
+    providerID: string,
+    info: Info,
+    options?: { credentialID?: string; source?: Source },
+  ) {
+    await mutateStore(providerID, (store) => {
+      const existing = store.credentials[providerID]
+      if (!existing) {
+        const credentialID = options?.credentialID ?? providerID
+        store.credentials[providerID] = {
+          ...entryFromInfo(providerID, info, options?.source),
+          pool: [poolEntryFromInfo(credentialID, info, options?.source)],
+        }
+        return
+      }
+
+      const selectedID = options?.credentialID ?? selectPoolEntry(existing)?.id ?? providerID
+      const pool = materializePool(existing)
+      const current = pool.find((item) => item.id === selectedID)
+      const replacement = poolEntryFromInfo(selectedID, info, options?.source ?? current?.source ?? existing.source)
+      existing.pool = pool.some((item) => item.id === selectedID)
+        ? pool.map((item) => (item.id === selectedID ? replacement : item))
+        : [...pool, replacement]
+      existing.updatedAt = Date.now()
+
+      if (selectedID === providerID) {
+        const primary = entryFromInfo(providerID, info, options?.source ?? current?.source ?? existing.source)
+        existing.authKind = primary.authKind
+        existing.tokens = primary.tokens
+        existing.expiresAt = primary.expiresAt
+        existing.metadata = primary.metadata
+        existing.source = primary.source
+      }
+    })
+  }
+
+  export async function remove(key: string) {
+    await mutateStore(key, (store) => {
+      delete store.credentials[key]
+    })
+  }
+
+  export async function removeIf(key: string, predicate: (entry: StoreEntry) => boolean) {
+    return withLock("provider-auth-store:write", async () => {
+      const store = await readStore()
+      const entry = store.credentials[key]
+      if (!entry) return "missing" as const
+      if (!predicate(entry)) return "retained" as const
+      const previous = ProviderAuthHealth.fromEntry(key, entry)
+      delete store.credentials[key]
+      await writeStore(store)
+      recordRemoval(key)
+      await ProviderAuthHealth.commitStored(previous, key)
+      return "removed" as const
+    })
+  }
+
+  export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const instanceState = runtimeState()
+
+    const previous = instanceState.locks.get(key) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const next = previous.catch(() => {}).then(() => current)
+    instanceState.locks.set(key, next)
+    await previous.catch(() => {})
+    try {
+      return await withFileLock(
+        {
+          directory: authLockDirectory(Global.Path.root),
+          key,
+          timeoutMessage: `Timed out acquiring provider credential lock for ${key}`,
+        },
+        fn,
+      )
+    } finally {
+      release()
+      if (instanceState.locks.get(key) === next) instanceState.locks.delete(key)
+    }
+  }
+
+  export async function markExhausted(
+    providerID: string,
+    input: { failureCode: string; cooldownUntil?: number; resetAt?: number; credentialID?: string },
+  ) {
+    await mutateStore(providerID, (store) => {
+      const entry = store.credentials[providerID]
+      if (!entry) return
+      const selected = input.credentialID ?? selectPoolEntry(entry)?.id
+      const pool = materializePool(entry)
+      entry.pool = pool.map((item) =>
+        item.id === selected
+          ? {
+              ...item,
+              status: "exhausted" as const,
+              failureCode: input.failureCode,
+              cooldownUntil: input.cooldownUntil,
+              resetAt: input.resetAt,
+              updatedAt: Date.now(),
+            }
+          : item,
+      )
+      entry.updatedAt = Date.now()
+    })
+  }
+
+  export async function markDead(providerID: string, failureCode: string, input?: { credentialID?: string }) {
+    await mutateStore(providerID, (store) => {
+      const entry = store.credentials[providerID]
+      if (!entry) return
+      const selected = input?.credentialID ?? selectPoolEntry(entry)?.id
+      const pool = materializePool(entry)
+      entry.pool = pool.map((item) =>
+        item.id === selected
+          ? {
+              ...item,
+              status: "dead" as const,
+              failureCode,
+              cooldownUntil: undefined,
+              resetAt: undefined,
+              rejectedAt: undefined,
+              updatedAt: Date.now(),
+            }
+          : item,
+      )
+      entry.updatedAt = Date.now()
+    })
+  }
+
+  export const RejectionPolicy = {
+    cooldownSeconds: 60,
+    maxCooldownSeconds: 600,
+    escalationWindowSeconds: 30 * 60,
+  } as const
+
+  export async function markRejected(
+    providerID: string,
+    input: { failureCode: string; credentialID?: string; cooldownUntil?: number; rejectedAt?: number },
+  ): Promise<boolean> {
+    let escalated = false
+    await mutateStore(providerID, (store) => {
+      const entry = store.credentials[providerID]
+      if (!entry) return
+      const selected = input.credentialID ?? selectPoolEntry(entry)?.id
+      if (selected === undefined) return
+      const now = nowSeconds()
+      const pool = materializePool(entry)
+      entry.pool = pool.map((item) => {
+        if (item.id !== selected || item.status === "dead") return item
+        const cooling = item.status === "exhausted" && item.rejectedAt !== undefined
+        const cooldownElapsed = (item.cooldownUntil ?? 0) <= now
+        let rejectedAt = cooling ? (item.rejectedAt ?? now) : (input.rejectedAt ?? now)
+        if (cooling && cooldownElapsed) {
+          if (now - rejectedAt <= RejectionPolicy.escalationWindowSeconds) {
+            escalated = true
+            return {
+              ...item,
+              status: "dead" as const,
+              failureCode: input.failureCode,
+              cooldownUntil: undefined,
+              resetAt: undefined,
+              rejectedAt: undefined,
+              updatedAt: Date.now(),
+            }
+          }
+          rejectedAt = now
+        }
+        return {
+          ...item,
+          status: "exhausted" as const,
+          failureCode: input.failureCode,
+          cooldownUntil: input.cooldownUntil ?? now + RejectionPolicy.cooldownSeconds,
+          rejectedAt,
+          updatedAt: Date.now(),
+        }
+      })
+      entry.updatedAt = Date.now()
+    })
+    return escalated
+  }
+
+  export async function markRecovered(providerID: string): Promise<boolean> {
+    let recovered = false
+    await mutateStore(providerID, (store) => {
+      const entry = store.credentials[providerID]
+      if (!entry) return
+      const pool = materializePool(entry)
+      if (!pool.some((item) => item.rejectedAt !== undefined)) return
+      entry.pool = pool.map((item) =>
+        item.rejectedAt === undefined
+          ? item
+          : {
+              ...item,
+              status: "active" as const,
+              failureCode: undefined,
+              cooldownUntil: undefined,
+              resetAt: undefined,
+              rejectedAt: undefined,
+              updatedAt: Date.now(),
+            },
+      )
+      entry.updatedAt = Date.now()
+      recovered = true
+    })
+    return recovered
+  }
+}

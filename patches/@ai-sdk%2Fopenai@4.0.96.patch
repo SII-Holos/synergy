@@ -1,0 +1,98 @@
+diff --git a/dist/index.js b/dist/index.js
+index 742e9e47df902dcefa26d0aeea8995ca9b7291c7..42fdc1a234e241dfea1be01678814ebbf2b478f2 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -321,7 +321,6 @@ function createOpenAIProviderStreamError(frame) {
+ async function throwIfOpenAIStreamErrorBeforeOutput({ stream, getError, isOutputChunk, isAcceptedChunk, acceptedGraceMs = 50, url, requestBodyValues, responseHeaders }) {
+ 	const [streamForEarlyError, streamForConsumer] = stream.tee();
+ 	const reader = streamForEarlyError.getReader();
+-	let drainAfterError = false;
+ 	try {
+ 		let accepted = false;
+ 		while (true) {
+@@ -336,11 +335,9 @@ async function throwIfOpenAIStreamErrorBeforeOutput({ stream, getError, isOutput
+ 			if (!chunk.success) return streamForConsumer;
+ 			const errorFrame = getError(chunk.value);
+ 			if (errorFrame != null) {
+-				drainAfterError = true;
+-				drainReader(reader).catch(() => {});
+-				drainReader(streamForConsumer.getReader()).catch(() => {});
++				streamForConsumer.cancel().catch(() => {});
+ 				throw createOpenAIStreamError({
+-					frame: errorFrame,
++					frame: chunk.rawValue,
+ 					url,
+ 					requestBodyValues,
+ 					responseHeaders
+@@ -350,16 +347,7 @@ async function throwIfOpenAIStreamErrorBeforeOutput({ stream, getError, isOutput
+ 			if (!accepted && isAcceptedChunk?.(chunk.value) === true) accepted = true;
+ 		}
+ 	} finally {
+-		if (!drainAfterError) {
+-			reader.cancel().catch(() => {});
+-			reader.releaseLock();
+-		}
+-	}
+-}
+-async function drainReader(reader) {
+-	try {
+-		while (!(await reader.read()).done);
+-	} catch {} finally {
++		reader.cancel().catch(() => {});
+ 		reader.releaseLock();
+ 	}
+ }
+diff --git a/src/openai-stream-error.ts b/src/openai-stream-error.ts
+index c8ffea50baef22c643a12045da94b3d13d24c1ac..d141ad5268a4de313df14e15fd971443d6774353 100644
+--- a/src/openai-stream-error.ts
++++ b/src/openai-stream-error.ts
+@@ -70,7 +70,6 @@ export async function throwIfOpenAIStreamErrorBeforeOutput<T>({
+ }): Promise<ReadableStream<ParseResult<T>>> {
+   const [streamForEarlyError, streamForConsumer] = stream.tee();
+   const reader = streamForEarlyError.getReader();
+-  let drainAfterError = false;
+ 
+   try {
+     let accepted = false;
+@@ -101,14 +100,9 @@ export async function throwIfOpenAIStreamErrorBeforeOutput<T>({
+       const errorFrame = getError(chunk.value);
+ 
+       if (errorFrame != null) {
+-        // Let the source finish instead of cancelling its transform pipeline.
+-        // Node.js 26 can otherwise leave a queued pipe write rejected with
+-        // the cancellation reason after the API error has already surfaced.
+-        drainAfterError = true;
+-        drainReader(reader).catch(() => {});
+-        drainReader(streamForConsumer.getReader()).catch(() => {});
++        streamForConsumer.cancel().catch(() => {});
+         throw createOpenAIStreamError({
+-          frame: errorFrame,
++          frame: chunk.rawValue,
+           url,
+           requestBodyValues,
+           responseHeaders,
+@@ -124,23 +118,7 @@ export async function throwIfOpenAIStreamErrorBeforeOutput<T>({
+       }
+     }
+   } finally {
+-    if (!drainAfterError) {
+-      reader.cancel().catch(() => {});
+-      reader.releaseLock();
+-    }
+-  }
+-}
+-
+-async function drainReader<T>(
+-  reader: ReadableStreamDefaultReader<T>,
+-): Promise<void> {
+-  try {
+-    while (!(await reader.read()).done) {
+-      // Drain the source without retaining its remaining chunks.
+-    }
+-  } catch {
+-    // The API error has already been reported to the caller.
+-  } finally {
++    reader.cancel().catch(() => {});
+     reader.releaseLock();
+   }
+ }

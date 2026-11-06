@@ -4,11 +4,13 @@ Status: implemented
 
 ## Problem
 
-`packages/synergy/src` is a single 52-module strongly connected component: every product module (blueprint, lattice, boss flows, plugin, channel, …) is transitively reachable from the session/tool execution core and vice versa, so no directory can be tested, replaced, or evolved in isolation. The core currently holds 56 module-level import edges into product directories (session→14 product modules, tool→17, migration→8, scope→5) and 8 into assembly directories, and nothing in the toolchain notices when a new one appears. There was no dependency-rule tooling at all (no dependency-cruiser, madge, or eslint import restrictions), so the inversion grew silently through `registerBuiltins()`-style static registration points.
+This record preserves the initial dependency measurements and the decisions taken at that baseline. The enforced package rules and completed ownership design are defined by [Runtime and business package ownership](2026-09-08-runtime-package-ownership.md).
+
+At the recorded baseline, `packages/synergy/src` was a single 52-module strongly connected component: every product module (blueprint, lattice, boss flows, plugin, channel, …) is transitively reachable from the session/tool execution core and vice versa, so no directory can be tested, replaced, or evolved in isolation. The core held 56 module-level import edges into product directories (session→14 product modules, tool→17, migration→8, scope→5) and 8 into assembly directories, and nothing in the toolchain notices when a new one appears. There was no dependency-rule tooling at all (no dependency-cruiser, madge, or eslint import restrictions), so the inversion grew silently through `registerBuiltins()`-style static registration points.
 
 ## Decision
 
-Introduce a layering baseline and machine-checked rules for the harness-core refactor (S0 of the S0–S10 program):
+The initial refactor introduced the following layering baseline and rules:
 
 - **Layer vocabulary** in `script/dep-analyze.ts`: L0 shared base (util/id/flag/global/asset/hashline/vector/process/stats), L1 harness-core (agent/session/tool/enforcement/permission/sandbox/control-profile/bus/scope/storage/migration/file/workspace-file/provider/config/observability/instruction), product layer (blueprint/lattice/superplan/boss/light-loop/channel/cortex/agenda/browser/library/note/mcp/plugin/plugin-runtime/holos/email/synergy-link/remote/acp/external-agent/project/question/lsp/performance/skill/command), L4 assembly (server/cli/daemon/runtime). The analyzer builds the module-level import graph (statement, side-effect, and dynamic imports; `@/` alias aware; type-only imports tracked separately), reports SCCs and layer-edge counts, and writes the committed snapshot `.deps-snapshot.json`.
 - **R1** L1 must not import product modules — `warn` until S10, then `error`.

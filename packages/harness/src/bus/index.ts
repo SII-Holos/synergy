@@ -1,0 +1,262 @@
+import { AsyncLocalStorage } from "node:async_hooks"
+import { RuntimeContext } from "../lifecycle/context"
+import { Storage } from "../storage/storage"
+import { z } from "zod"
+import { Log } from "../util/log"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
+import { BusEvent } from "./bus-event"
+import { GlobalBus } from "./global"
+import { SyncSequencer } from "./sequencer"
+
+export namespace Bus {
+  const log = Log.create({ service: "bus" })
+  const STREAMING_PUBLISH_LOG_INTERVAL = 5_000
+  type Subscription = (event: any) => void
+  type StreamingPublishStats = {
+    count: number
+    started: number
+    lastLogged: number
+  }
+  const runtimeState = RuntimeContext.state(() => ({
+    streamingPublishStats: new Map<string, StreamingPublishStats>(),
+    globalSubscriptions: new Map<string, Subscription[]>(),
+  }))
+
+  // Cross-scope subscriptions. The scoped Bus above is keyed by the current
+  // scope, so subscribers that must observe events published from sessions
+  // running in OTHER scopes (e.g. the Channel outbound bridge watching
+  // terminal assistant messages in per-thread checkout scopes) register here.
+
+  export const ScopeRuntimeDisposed = BusEvent.define(
+    "scope.runtime.disposed",
+    z.object({
+      scopeID: z.string(),
+      directory: z.string().optional(),
+    }),
+  )
+
+  const state = ScopedState.create(
+    () => {
+      const subscriptions = new Map<any, Subscription[]>()
+      // Per scope-runtime: a fresh epoch (so a client that reconnects across a
+      // runtime restart is told to resync) and a monotonic sequencer + journal.
+      const sequencer = new SyncSequencer(crypto.randomUUID())
+
+      return {
+        subscriptions,
+        sequencer,
+      }
+    },
+    async (entry) => {
+      entry.sequencer.dispose()
+      const wildcard = entry.subscriptions.get("*")
+      entry.subscriptions.clear()
+      if (!wildcard) return
+      const event = {
+        type: ScopeRuntimeDisposed.type,
+        properties: {
+          scopeID: ScopeContext.current.scope.id,
+          directory: ScopeContext.current.scope.local?.directory,
+        },
+      }
+      for (const sub of [...wildcard]) {
+        sub(event)
+      }
+    },
+  )
+
+  export async function publish<Definition extends BusEvent.Definition>(
+    def: Definition,
+    properties: z.output<Definition["properties"]>,
+  ): Promise<void> {
+    const instanceState = runtimeState()
+
+    if (Storage.inTransaction()) {
+      const scope = ScopeContext.current.scope
+      const workspace = ScopeContext.tryWorkspace()
+      const value = structuredClone(properties)
+      return Storage.enqueue(
+        {
+          id: crypto.randomUUID(),
+          scopeID: scope.id,
+          type: def.type,
+          payload: { scope, workspace, properties: value },
+        },
+        () => ScopeContext.provide({ scope, workspace, fn: () => publish(def, value) }),
+      )
+    }
+    const payload: {
+      type: string
+      properties: unknown
+      seq?: number
+      epoch?: string
+      streaming?: boolean
+    } = {
+      type: def.type,
+      properties,
+    }
+    // Stamp state events with a scope-monotonic seq + epoch so the client can
+    // detect gaps, replay, and reject stale snapshots. Streaming events (part
+    // deltas) are intentionally left unsequenced.
+    const sequencer = state().sequencer
+    if (def.streaming) {
+      payload.streaming = true
+    } else {
+      payload.epoch = sequencer.epoch
+      sequencer.stamp(payload as { seq: number }, Date.now())
+    }
+    if (def.streaming) {
+      recordStreamingPublish(def.type)
+    } else {
+      log.debug("publishing", {
+        type: def.type,
+      })
+    }
+    const pending: Promise<void>[] = []
+    const dispatch = (sub: Subscription) => {
+      const task = Promise.resolve()
+        .then(() => sub(payload))
+        .catch((err) => {
+          log.error("subscriber threw during publish", {
+            type: def.type,
+            error: err,
+          })
+        })
+      if (def.streaming) task.catch(() => {})
+      else pending.push(task)
+    }
+    for (const key of [def.type, "*"]) {
+      const match = state().subscriptions.get(key)
+      for (const sub of match ?? []) {
+        dispatch(sub)
+      }
+    }
+    // Cross-scope subscribers receive every published event regardless of the
+    // scope it was published from.
+    for (const key of [def.type, "*"]) {
+      const match = instanceState.globalSubscriptions.get(key)
+      for (const sub of match ?? []) {
+        dispatch(sub)
+      }
+    }
+    GlobalBus().emit("event", {
+      scopeID: ScopeContext.current.scope.id,
+      payload,
+    })
+    if (def.streaming) return
+    await Promise.all(pending)
+  }
+
+  function recordStreamingPublish(type: string) {
+    const instanceState = runtimeState()
+
+    const now = Date.now()
+    const stats = instanceState.streamingPublishStats.get(type)
+    if (!stats) {
+      instanceState.streamingPublishStats.set(type, {
+        count: 1,
+        started: now,
+        lastLogged: now,
+      })
+      return
+    }
+
+    stats.count++
+    if (now - stats.lastLogged < STREAMING_PUBLISH_LOG_INTERVAL) return
+
+    const windowMs = now - stats.started
+    log.debug("streaming publish stats", {
+      type,
+      count: stats.count,
+      windowMs,
+      ratePerSecond: Math.round((stats.count / (windowMs / 1000)) * 100) / 100,
+    })
+    stats.count = 0
+    stats.started = now
+    stats.lastLogged = now
+  }
+
+  export function subscribe<Definition extends BusEvent.Definition>(
+    def: Definition,
+    callback: (event: { type: Definition["type"]; properties: z.infer<Definition["properties"]> }) => void,
+  ) {
+    return raw(def.type, callback)
+  }
+
+  /**
+   * Subscribe to an event across every scope. The scoped Bus only delivers
+   * events published within the subscriber's own scope; cross-scope bridges
+   * (e.g. the Channel outbound bridge observing terminal assistant messages
+   * in per-thread checkout scopes) must use this instead.
+   */
+  export function subscribeGlobal<Definition extends BusEvent.Definition>(
+    def: Definition,
+    callback: (event: { type: Definition["type"]; properties: z.infer<Definition["properties"]> }) => void,
+  ) {
+    const instanceState = runtimeState()
+
+    const type = def.type
+    log.debug("subscribing globally", { type })
+    const match = instanceState.globalSubscriptions.get(type) ?? []
+    match.push(callback as Subscription)
+    instanceState.globalSubscriptions.set(type, match)
+    return AsyncLocalStorage.bind(() => {
+      log.debug("unsubscribing globally", { type })
+      const current = instanceState.globalSubscriptions.get(type)
+      if (!current) return
+      const index = current.indexOf(callback as Subscription)
+      if (index === -1) return
+      current.splice(index, 1)
+      if (current.length === 0) instanceState.globalSubscriptions.delete(type)
+    })
+  }
+
+  export function once<Definition extends BusEvent.Definition>(
+    def: Definition,
+    callback: (event: {
+      type: Definition["type"]
+      properties: z.infer<Definition["properties"]>
+    }) => "done" | undefined,
+  ) {
+    const unsub = subscribe(def, (event) => {
+      if (callback(event)) unsub()
+    })
+  }
+
+  export function subscribeAll(callback: (event: any) => void) {
+    return raw("*", callback)
+  }
+
+  /** Current scope's event epoch (identifies this runtime instance). */
+  export function epoch() {
+    return state().sequencer.epoch
+  }
+
+  /** Highest state-event seq published in the current scope. */
+  export function currentSeq() {
+    return state().sequencer.current
+  }
+
+  /** Replay state events after `sinceSeq` for the current scope (see SyncSequencer). */
+  export function replay(sinceSeq: number) {
+    return state().sequencer.replay(sinceSeq, Date.now())
+  }
+
+  function raw(type: string, callback: (event: any) => void) {
+    log.debug("subscribing", { type })
+    const subscriptions = state().subscriptions
+    let match = subscriptions.get(type) ?? []
+    match.push(callback)
+    subscriptions.set(type, match)
+
+    return AsyncLocalStorage.bind(() => {
+      log.debug("unsubscribing", { type })
+      const match = subscriptions.get(type)
+      if (!match) return
+      const index = match.indexOf(callback)
+      if (index === -1) return
+      match.splice(index, 1)
+    })
+  }
+}

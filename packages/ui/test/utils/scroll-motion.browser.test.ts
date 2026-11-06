@@ -1,0 +1,199 @@
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { chromium, type Browser, type Page } from "playwright"
+import path from "node:path"
+
+let server: ReturnType<typeof Bun.serve>
+let browser: Browser
+let page: Page
+beforeAll(async () => {
+  const build = await Bun.build({
+    entrypoints: [path.resolve(import.meta.dir, "../../src/utils/scroll-motion.ts")],
+    target: "browser",
+  })
+  expect(build.success).toBe(true)
+  const script = await build.outputs[0].text()
+  server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () =>
+      new Response(
+        `<!doctype html><style>
+    #viewport {height:100px;width:300px;overflow:auto} #content {overflow:clip} #target {height:300px} #anchor {padding-top:200px}
+    </style><div id="viewport"><div id="content"><div id="target"><div id="anchor">Stable paragraph</div></div></div></div>
+    <script type="module">${script.replace(/export\s*\{[^}]*\};?\s*$/, "")}
+    const viewport=document.querySelector('#viewport'), target=document.querySelector('#target');
+    window.motion=createScrollMotion(()=>target); window.motion.move(viewport, viewport.scrollHeight, false);
+    </script>`,
+        { headers: { "content-type": "text/html" } },
+      ),
+  })
+  browser = await chromium.launch({ headless: true })
+  page = await browser.newPage()
+}, 30000)
+afterAll(async () => {
+  await browser?.close()
+  server?.stop(true)
+})
+
+test("growth pins canonical geometry while preserving the painted paragraph, retargets and yields to reading", async () => {
+  await page.goto(server.url.href)
+  await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
+  const result = await page.evaluate(async () => {
+    const motion = (
+      window as unknown as {
+        motion: { move(v: HTMLElement, top: number, animate: boolean): void; interrupt(v: HTMLElement): void }
+      }
+    ).motion
+    const viewport = document.querySelector<HTMLElement>("#viewport")!
+    const target = document.querySelector<HTMLElement>("#target")!
+    const anchor = document.querySelector<HTMLElement>("#anchor")!
+    const y = () => anchor.getBoundingClientRect().top
+    const advance = async () => {
+      const animation = target.getAnimations()[0]
+      animation.pause()
+      animation.currentTime = 60
+      await new Promise(requestAnimationFrame)
+    }
+    const before = y()
+    target.style.height = "332px"
+    motion.move(viewport, viewport.scrollHeight, true)
+    const first = { y: y(), top: viewport.scrollTop, height: viewport.scrollHeight }
+    await advance()
+    const intermediate = y()
+    target.style.height = "364px"
+    motion.move(viewport, viewport.scrollHeight, true)
+    const retargeted = y()
+    await advance()
+    const interruptedFrom = y()
+    motion.interrupt(viewport)
+    return {
+      before,
+      first,
+      intermediate,
+      retargeted,
+      interruptedFrom,
+      after: y(),
+      remaining: target.getAnimations().length,
+    }
+  })
+  expect(result.first.top).toBe(232)
+  expect(result.first.height).toBe(332)
+  expect(Math.abs(result.before - result.first.y)).toBeLessThan(1)
+  expect(result.intermediate).toBeLessThan(result.before)
+  expect(Math.abs(result.intermediate - result.retargeted)).toBeLessThan(1)
+  expect(Math.abs(result.interruptedFrom - result.after)).toBeLessThan(1)
+  expect(result.remaining).toBe(0)
+})
+
+test("a dynamic reduced-motion preference settles a running transition", async () => {
+  await page.goto(server.url.href)
+  await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
+  await page.evaluate(() => {
+    const viewport = document.querySelector<HTMLElement>("#viewport")!
+    document.querySelector<HTMLElement>("#target")!.style.height = "332px"
+    ;(window as unknown as { motion: { move(v: HTMLElement, top: number, animate: boolean): void } }).motion.move(
+      viewport,
+      viewport.scrollHeight,
+      true,
+    )
+  })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.waitForFunction(() => document.querySelector("#target")!.getAnimations().length === 0)
+  expect(await page.locator("#viewport").evaluate((node) => node.scrollTop)).toBe(232)
+})
+
+test("a growing viewport compensates native scroll clamping before the resize delivery", async () => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.goto(server.url.href)
+  await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
+  const result = await page.evaluate(() => {
+    const viewport = document.querySelector<HTMLElement>("#viewport")!
+    const anchor = document.querySelector<HTMLElement>("#anchor")!
+    const before = anchor.getBoundingClientRect().top
+    viewport.style.height = "132px"
+    ;(window as unknown as { motion: { move(v: HTMLElement, top: number, animate: boolean): void } }).motion.move(
+      viewport,
+      viewport.scrollHeight,
+      true,
+    )
+    return { before, after: anchor.getBoundingClientRect().top, top: viewport.scrollTop }
+  })
+  expect(result.top).toBe(168)
+  expect(Math.abs(result.after - result.before)).toBeLessThan(1)
+})
+
+test.each([
+  { running: false, viewportGrowth: false },
+  { running: true, viewportGrowth: false },
+  { running: false, viewportGrowth: true },
+  { running: true, viewportGrowth: true },
+])("collapsing disclosure compensates only concurrent viewport growth (%j)", async (input) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.goto(server.url.href)
+  await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
+  const shifts = await page.evaluate(async ({ running, viewportGrowth }) => {
+    const viewport = document.querySelector<HTMLElement>("#viewport")!
+    const target = document.querySelector<HTMLElement>("#target")!
+    const anchor = document.querySelector<HTMLElement>("#anchor")!
+    const motion = (
+      window as unknown as {
+        motion: { move(v: HTMLElement, top: number, animate: boolean, resizing?: boolean): void }
+      }
+    ).motion
+    const range = document.createRange()
+    range.selectNodeContents(anchor)
+    const y = () => range.getBoundingClientRect().top
+    let height = 300
+    if (running) {
+      height += 32
+      target.style.height = `${height}px`
+      motion.move(viewport, viewport.scrollHeight, true)
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    }
+    const shifts = []
+    for (let step = 1; step <= 4; step++) {
+      const before = y()
+      target.style.height = `${height - step * 16}px`
+      anchor.style.paddingTop = `${200 - step * 16}px`
+      if (viewportGrowth) viewport.style.height = `${100 + step * 8}px`
+      motion.move(viewport, viewport.scrollHeight, true, true)
+      shifts.push(y() - before)
+      await new Promise(requestAnimationFrame)
+    }
+    const before = y()
+    motion.move(viewport, viewport.scrollHeight, true)
+    shifts.push(y() - before)
+    return shifts
+  }, input)
+  expect(Math.max(...shifts.map(Math.abs)), JSON.stringify(shifts)).toBeLessThan(1)
+})
+
+test.each(["growth", "navigation"])("distant %s keeps the destination visible and fully opaque", async (mode) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.goto(server.url.href)
+  await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
+  const result = await page.evaluate((mode) => {
+    const viewport = document.querySelector<HTMLElement>("#viewport")!
+    const target = document.querySelector<HTMLElement>("#target")!
+    const anchor = document.querySelector<HTMLElement>("#anchor")!
+    target.style.height = "3000px"
+    anchor.style.paddingTop = "2960px"
+    if (mode === "navigation") viewport.scrollTop = 0
+    ;(window as unknown as { motion: { move(v: HTMLElement, top: number, animate: boolean): void } }).motion.move(
+      viewport,
+      viewport.scrollHeight,
+      true,
+    )
+    const text = document.createRange()
+    text.selectNodeContents(anchor)
+    return {
+      text: text.getBoundingClientRect().top,
+      top: viewport.getBoundingClientRect().top,
+      bottom: viewport.getBoundingClientRect().bottom,
+      opacity: Number(getComputedStyle(target).opacity),
+    }
+  }, mode)
+  expect(result.text).toBeGreaterThanOrEqual(result.top)
+  expect(result.text).toBeLessThan(result.bottom)
+  expect(result.opacity).toBe(1)
+})

@@ -1,0 +1,14 @@
+.example-launcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--skin-control-gap, 8px);
+  padding: 8px;
+}
+.example-note {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}

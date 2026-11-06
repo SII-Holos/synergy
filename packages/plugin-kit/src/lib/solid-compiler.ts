@@ -1,7 +1,7 @@
-import { transformAsync, type PluginItem } from "@babel/core"
+import { transformAsync, type PresetTarget } from "@babel/core"
 import type { BunPlugin, Loader } from "bun"
 
-const solidPreset = require("babel-preset-solid") as PluginItem
+const solidPreset = require("babel-preset-solid") as PresetTarget
 
 export function solidCompilerPlugin(): BunPlugin {
   return {

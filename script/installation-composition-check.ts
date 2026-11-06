@@ -1,0 +1,241 @@
+#!/usr/bin/env bun
+import assert from "node:assert/strict"
+import path from "node:path"
+import { readPackedArchives, withInstalledPackages } from "./package-install-check"
+
+export async function checkInstalledComposition(
+  archiveDirectory: string,
+  scenario: "all" | "components" | "company" | "web" | "features" = "all",
+) {
+  const archives = await readPackedArchives(archiveDirectory)
+  const prefix = "@ericsanchezok/synergy-"
+  const version = archives.find((pkg) => pkg.name === prefix + "cli")!.version
+  await withInstalledPackages(archives, [prefix + "cli"], async (directory, installedEnv) => {
+    const root = path.join(directory, "home/.synergy")
+    const env = {
+      ...installedEnv,
+      SYNERGY_HOME: path.join(directory, "home"),
+      SYNERGY_RUNTIME_ROOT: root,
+      SYNERGY_TEST_HOME: path.join(directory, "home"),
+      SYNERGY_BUN_EXECUTABLE: process.execPath,
+      SYNERGY_FIXTURE_VERSION: version,
+      SYNERGY_CONFIG_CONTENT: JSON.stringify({
+        execution: { agentWorkerMinIdle: 0 },
+        pluginMarketplace: { enabled: false },
+        anima: { enabled: false },
+      }),
+    }
+    async function run(command: string[], overrides: Record<string, string> = {}) {
+      const child = Bun.spawn(command, {
+        cwd: directory,
+        env: { ...env, ...overrides },
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const timeout = setTimeout(() => child.kill(), 180_000)
+      try {
+        const [code, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ])
+        assert.equal(code, 0, `${command.slice(1).join(" ")} failed: ${stderr}\n${stdout}`)
+        return stdout
+      } finally {
+        clearTimeout(timeout)
+      }
+    }
+    const cli = (...args: string[]) =>
+      run([process.execPath, path.join(directory, "node_modules/.bin/synergy"), ...args])
+    const list = async () =>
+      JSON.parse(await cli("list", "--json")) as Array<{ id: string; explicit: boolean; requiredBy: string[] }>
+    const nativeInput = () =>
+      run([process.execPath, "owned-input.ts"], {
+        SYNERGY_CONFIG_CONTENT: JSON.stringify({
+          execution: { agentWorkerMinIdle: 0 },
+        }),
+      })
+    assert.match(await cli("--help"), /send/)
+    assert.deepEqual((await list()).map((pkg) => pkg.id).sort(), [])
+    await Bun.write(
+      path.join(directory, "owned-input.ts"),
+      await Bun.file(new URL("../test/package/fixture/owned-input.ts", import.meta.url)).text(),
+    )
+    await Bun.write(
+      path.join(directory, "managed-runtime.mjs"),
+      await Bun.file(new URL("../test/package/fixture/managed-runtime.mjs", import.meta.url)).text(),
+    )
+    if (scenario === "all" || scenario === "features") {
+      await cli("install", "server", "workbench", "boss-feishu", "channel-lattice", "--trust-host-code")
+      await Bun.write(
+        path.join(directory, "feature-runtime.mjs"),
+        await Bun.file(new URL("../test/package/fixture/feature-runtime.mjs", import.meta.url)).text(),
+      )
+      console.log((await run(["node", "feature-runtime.mjs"])).trim())
+      await cli("remove", "server", "workbench", "boss-feishu", "channel-lattice")
+      assert.deepEqual(
+        (await list()).map((pkg) => pkg.id),
+        [],
+      )
+    }
+    if (scenario === "all" || scenario === "components") {
+      console.log((await nativeInput()).trim())
+      await cli("install", "mcp", "lsp", "server", "--trust-host-code")
+      const independent = await list()
+      for (const id of ["mcp", "lsp", "server"]) assert.ok(independent.some((pkg) => pkg.id === id && pkg.explicit))
+      console.log("PASS installed CLI: core → independent MCP/LSP/HTTP")
+      console.log((await run(["node", "managed-runtime.mjs"])).trim())
+      await cli("update", "mcp", "--trust-host-code")
+      await cli("remove", "mcp")
+      const remaining = await list()
+      assert.ok(!remaining.some((pkg) => pkg.id === "mcp"))
+      assert.ok(remaining.some((pkg) => pkg.id === "lsp"))
+      await cli("remove", "lsp", "server")
+      assert.deepEqual((await list()).map((pkg) => pkg.id).sort(), [])
+      console.log("PASS installed CLI: independent component update/removal returns to core")
+
+      await cli("install", "agenda", "light-loop", "email", "channels", "workbench", "--trust-host-code")
+      const leaves = await list()
+      for (const id of ["agenda", "light-loop", "email", "channels", "workbench"])
+        assert.ok(leaves.some((pkg) => pkg.id === id && pkg.explicit))
+      for (const id of ["note", "library", "blueprint", "browser-runtime", "mcp"])
+        assert.ok(!leaves.some((pkg) => pkg.id === id), `Independent leaves unexpectedly selected ${id}`)
+      await cli("remove", "agenda", "light-loop", "email", "channels", "workbench")
+      assert.deepEqual(
+        (await list()).map((pkg) => pkg.id),
+        [],
+      )
+      console.log("PASS installed CLI: independent scheduling, review, messages and statistics without Note/Library")
+
+      await cli("install", "note", "server", "--trust-host-code")
+      const managedNote = (action: string, enabled: boolean) =>
+        run(["node", "managed-runtime.mjs"], {
+          SYNERGY_FIXTURE_COMPONENTS: JSON.stringify({ server: version, ...(enabled ? { note: version } : {}) }),
+          SYNERGY_FIXTURE_NOTE: action,
+        })
+      console.log((await managedNote("create", true)).trim())
+      await cli("remove", "note")
+      console.log((await managedNote("absent", false)).trim())
+      await cli("install", "note", "--trust-host-code")
+      console.log((await managedNote("restore", true)).trim())
+      await cli("remove", "note", "server")
+      assert.deepEqual(
+        (await list()).map((pkg) => pkg.id),
+        [],
+      )
+
+      for (const preset of ["workflows", "connections"]) {
+        await cli("install", preset, "--trust-host-code")
+        const selected = await list()
+        assert.ok(selected.some((pkg) => pkg.id === preset && pkg.explicit))
+        for (const id of preset === "workflows"
+          ? ["agenda", "light-loop", "blueprint", "lattice", "boss", "anima"]
+          : ["channels", "channel-feishu", "channel-github", "email"])
+          assert.ok(
+            selected.some((pkg) => pkg.id === id),
+            `${preset} is missing ${id}`,
+          )
+        await cli("remove", preset)
+        assert.deepEqual(
+          (await list()).map((pkg) => pkg.id),
+          [],
+        )
+      }
+      console.log("PASS installed CLI: complete Workflows/Connections presets expand and prune explicitly")
+    }
+
+    if (scenario === "all" || scenario === "company") {
+      const preset = path.join(directory, "company-preset")
+      const packages = { [prefix + "mcp"]: version, [prefix + "lsp"]: version }
+      await Bun.write(
+        path.join(preset, "package.json"),
+        JSON.stringify({
+          name: "company-agent-preset",
+          version: "1.0.0",
+          dependencies: packages,
+          synergy: {
+            formatVersion: 1,
+            kind: "preset",
+            id: "company-agent",
+            version: "1.0.0",
+            compatibility: { synergy: version },
+            packages,
+          },
+        }),
+      )
+      await cli("install", preset, "--trust-host-code")
+      assert.ok(
+        (await list()).some(
+          (pkg) => pkg.id === "mcp" && !pkg.explicit && pkg.requiredBy.includes("company-agent-preset"),
+        ),
+      )
+      await cli("remove", "company-agent")
+      assert.deepEqual((await list()).map((pkg) => pkg.id).sort(), [])
+      console.log("PASS installed CLI: update/remove and company preset dependency pruning")
+
+      const component = path.join(directory, "company-settings")
+      await Bun.write(
+        path.join(component, "package.json"),
+        JSON.stringify({
+          name: "company-settings-component",
+          version: "1.0.0",
+          type: "module",
+          exports: { "./component": "./index.js" },
+          peerDependencies: { [prefix + "harness"]: version },
+          dependencies: { zod: "4.1.8" },
+          synergy: {
+            formatVersion: 1,
+            kind: "component",
+            id: "company-settings",
+            version: "1.0.0",
+            compatibility: { synergy: version },
+            apiVersion: 1,
+            entry: "./index.js",
+            export: "companySettings",
+            requires: { "local-runtime": version },
+          },
+        }),
+      )
+      await Bun.write(
+        path.join(component, "index.js"),
+        `import {ConfigExtensions} from "@ericsanchezok/synergy-harness/config";
+import {z} from "zod";
+export function companySettings() { return { id: "company-settings", version: "1.0.0", apiVersion: 1, requires: {"local-runtime": ${JSON.stringify(version)}}, register() { ConfigExtensions.register("company-settings", {shape:{company: z.object({team:z.string()}).optional()}}); } }; }`,
+      )
+      await cli("install", component, "--trust-host-code")
+      assert.ok((await list()).some((pkg) => pkg.id === "company-settings"))
+      assert.ok((await Bun.file(path.join(root, "schema/config.schema.json")).json()).properties.company)
+      await cli("remove", "company-settings")
+      await list()
+      assert.ok(!(await Bun.file(path.join(root, "schema/config.schema.json")).json()).properties.company)
+      console.log("PASS installed CLI: company component registers and removes its active schema")
+    }
+
+    if (scenario === "all" || scenario === "web") {
+      await cli("install", "web", "--trust-host-code")
+      const selected = await list()
+      for (const id of ["web", "full", "web-app", "mcp", "lsp", "library", "server"])
+        assert.ok(
+          selected.some((pkg) => pkg.id === id),
+          `Web preset missing ${id}`,
+        )
+      assert.ok(!selected.some((pkg) => pkg.id === "browser-runtime"), "Web preset must not select Desktop Browser")
+      console.log((await run(["node", "managed-runtime.mjs"], { SYNERGY_FIXTURE_WEB: "1" })).trim())
+      console.log((await nativeInput()).trim())
+      await cli("remove", "web")
+      assert.deepEqual((await list()).map((pkg) => pkg.id).sort(), [])
+      console.log("PASS installed CLI: Web/full installation and return to core preserve the Home")
+    }
+  })
+}
+
+if (import.meta.main) {
+  const scenario = process.argv[3] ?? "all"
+  if (!["all", "components", "company", "web", "features"].includes(scenario))
+    throw new Error("Unknown installed composition scenario")
+  await checkInstalledComposition(
+    path.resolve(process.argv[2] ?? ".artifacts/packages"),
+    scenario as "all" | "components" | "company" | "web" | "features",
+  )
+}

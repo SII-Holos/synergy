@@ -1,6 +1,7 @@
 export * from "./gen/types.gen.js"
 
 import { createClient } from "./gen/client/client.gen.js"
+import { mergeHeaders } from "./gen/client/utils.gen.js"
 import { type Config } from "./gen/client/types.gen.js"
 import { Plugin as GeneratedPlugin, SynergyClient } from "./gen/sdk.gen.js"
 export { type Config as SynergyClientConfig }
@@ -42,17 +43,15 @@ export function createSynergyClient(config?: Config & { directory?: string; scop
   if (config?.directory) {
     const isNonASCII = /[^\x00-\x7F]/.test(config.directory)
     const encodedDirectory = isNonASCII ? encodeURIComponent(config.directory) : config.directory
-    config.headers = {
-      ...config.headers,
+    config.headers = mergeHeaders(config.headers, {
       "x-synergy-directory": encodedDirectory,
-    }
+    })
   }
 
   if (config?.scopeID) {
-    config.headers = {
-      ...config.headers,
+    config.headers = mergeHeaders(config.headers, {
       "x-synergy-scope-id": encodeURIComponent(config.scopeID),
-    }
+    })
   }
 
   const client = createClient(config)

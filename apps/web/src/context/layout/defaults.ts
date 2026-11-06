@@ -1,0 +1,34 @@
+export const SIDEBAR_WIDTH_DEFAULT = 260
+// The persisted band starts at the collapse threshold so a reopened sidebar can
+// never sit below it and re-collapse on the next press-and-release.
+export const SIDEBAR_WIDTH_MIN = 230
+export const SIDEBAR_WIDTH_MAX = 420
+export const SIDEBAR_COLLAPSE_THRESHOLD = 230
+
+export function clampSidebarWidth(width: number) {
+  return Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, Math.round(width)))
+}
+
+export function effectiveSidebarWidth(state: { width?: number; resized?: boolean } | undefined) {
+  if (state?.resized !== true || typeof state.width !== "number" || !Number.isFinite(state.width)) {
+    return SIDEBAR_WIDTH_DEFAULT
+  }
+  return clampSidebarWidth(state.width)
+}
+
+export function createInitialLayoutDefaults() {
+  return {
+    sidebar: {
+      opened: true,
+      width: SIDEBAR_WIDTH_DEFAULT,
+      resized: false,
+    },
+    conversation: { width: 800 },
+    mobileSidebar: {
+      opened: false,
+    },
+    rightSidebar: {
+      opened: false,
+    },
+  }
+}

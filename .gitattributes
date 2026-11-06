@@ -14,3 +14,19 @@
 *.woff binary
 *.woff2 binary
 *.zip binary
+
+# Preserve retained upstream trailing whitespace in versioned benchmark payloads.
+benchmark/tasks/local24-repro-v6/build-cython-ext/solution/solve.sh whitespace=-blank-at-eol
+benchmark/tasks/local24-repro-v6/mcmc-sampling-stan/instruction.md whitespace=-blank-at-eol
+benchmark/tasks/local24-repro-v6/mcmc-sampling-stan/solution/solve.sh whitespace=-blank-at-eol
+
+# A unified diff represents empty context lines with a single space.
+apps/desktop/native/cua/observation.patch whitespace=-blank-at-eol
+patches/virtua@0.42.3.patch whitespace=-blank-at-eol
+
+# Preserve upstream space/tab literals in the compiled parser's patch context.
+patches/streaming-markdown@0.2.15.patch whitespace=-space-before-tab
+
+# Preserve upstream tab indentation following the unified diff context prefix.
+patches/@pierre%2Fdiffs@1.5.2.patch whitespace=-space-before-tab
+patches/@ai-sdk%2Fopenai@4.0.96.patch whitespace=-blank-at-eol,-space-before-tab

@@ -1,0 +1,381 @@
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { resolveThemeColor, useTheme, type ResolvedTheme } from "@ericsanchezok/synergy-ui/theme"
+import { useFile } from "@/context/file"
+import { getFileSourceModel, pruneFileSourceModels, setFileSourceModel } from "./source-model-cache"
+import { fileWorkbench as F } from "@/locales/messages"
+import { textSelectionController } from "@/context/text-selection"
+
+type Monaco = typeof import("monaco-editor")
+let monacoPromise: Promise<Monaco> | undefined
+const FONT_CHANGE_EVENT = "synergy:font-change"
+
+function getConfiguredMonoFontFamily(): string {
+  if (typeof document === "undefined") return "monospace"
+  return getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono").trim() || "monospace"
+}
+
+function loadMonaco() {
+  if (monacoPromise) return monacoPromise
+  monacoPromise = Promise.all([
+    import("monaco-editor/editor/editor.api.js"),
+    import("monaco-editor/editor/editor.worker?worker"),
+    Promise.all([
+      import("monaco-editor/languages/definitions/cpp/register.js"),
+      import("monaco-editor/languages/definitions/css/register.js"),
+      import("monaco-editor/languages/definitions/go/register.js"),
+      import("monaco-editor/languages/definitions/html/register.js"),
+      import("monaco-editor/languages/definitions/ini/register.js"),
+      import("monaco-editor/languages/definitions/java/register.js"),
+      import("monaco-editor/languages/definitions/javascript/register.js"),
+      import("monaco-editor/languages/definitions/markdown/register.js"),
+      import("monaco-editor/languages/definitions/python/register.js"),
+      import("monaco-editor/languages/definitions/rust/register.js"),
+      import("monaco-editor/languages/definitions/shell/register.js"),
+      import("monaco-editor/languages/definitions/sql/register.js"),
+      import("monaco-editor/languages/definitions/xml/register.js"),
+      import("monaco-editor/languages/definitions/yaml/register.js"),
+    ]),
+  ])
+    .then(([monaco, worker]) => {
+      ;(self as typeof self & { MonacoEnvironment?: unknown }).MonacoEnvironment = {
+        getWorker: () => new worker.default(),
+      }
+      return monaco as unknown as Monaco
+    })
+    .catch((error) => {
+      monacoPromise = undefined
+      throw error
+    })
+  return monacoPromise
+}
+
+function languageForPath(path: string) {
+  const extension = path.split(".").at(-1)?.toLowerCase()
+  const languages: Record<string, string> = {
+    c: "c",
+    cc: "cpp",
+    cpp: "cpp",
+    css: "css",
+    go: "go",
+    html: "html",
+    java: "java",
+    js: "javascript",
+    json: "javascript",
+    jsonc: "javascript",
+    jsx: "javascript",
+    md: "markdown",
+    mdx: "markdown",
+    py: "python",
+    rs: "rust",
+    sh: "shell",
+    sql: "sql",
+    svg: "xml",
+    toml: "ini",
+    ts: "javascript",
+    tsx: "javascript",
+    xml: "xml",
+    yaml: "yaml",
+    yml: "yaml",
+  }
+  return extension ? (languages[extension] ?? "plaintext") : "plaintext"
+}
+
+function defineSourceTheme(monaco: Monaco, tokens: ResolvedTheme, mode: "light" | "dark") {
+  const dark = mode === "dark"
+  const theme = dark ? "synergy-file-readonly-dark" : "synergy-file-readonly-light"
+  monaco.editor.defineTheme(theme, {
+    base: dark ? "vs-dark" : "vs",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": resolveThemeColor(tokens, "surface-raised-base"),
+      "editor.foreground": resolveThemeColor(tokens, "text-base"),
+      "editorLineNumber.foreground": resolveThemeColor(tokens, "text-weaker"),
+      "editorLineNumber.activeForeground": resolveThemeColor(tokens, "text-strong"),
+      "editor.selectionBackground": resolveThemeColor(tokens, "surface-info-base"),
+      "editor.lineHighlightBackground": resolveThemeColor(tokens, "surface-raised-base-hover"),
+      "editorCursor.foreground": resolveThemeColor(tokens, "text-strong"),
+    },
+  })
+  return theme
+}
+
+export type FileSourceViewApi = {
+  getContent: () => string
+  applyContent: (content: string) => void
+}
+
+export function FileSourceView(props: {
+  path: string
+  content: string
+  editable?: boolean
+  wordWrap?: boolean
+  onDirtyChange?: (dirty: boolean) => void
+  onRegister?: (api: FileSourceViewApi) => void
+}) {
+  const file = useFile()
+  const theme = useTheme()
+  const lingui = useLingui()
+  const [status, setStatus] = createSignal<"loading" | "failed" | "ready">("loading")
+  let host!: HTMLDivElement
+  let monacoInstance: Monaco | undefined
+  let editor: import("monaco-editor").editor.IStandaloneCodeEditor | undefined
+  let disposed = false
+  let handleFontChange: ((event: Event) => void) | undefined
+  let baseline = props.content
+  let applying = false
+  let modelListener: import("monaco-editor").IDisposable | undefined
+  const [dirty, setDirty] = createSignal(false)
+
+  createEffect(() => {
+    const request = file.navigation(props.path)
+    if (status() !== "ready" || !request || request.location.kind !== "text" || !editor) return
+    const location = request.location
+    const model = editor.getModel()
+    if (!model) return
+    const requested = {
+      startLineNumber: location.line,
+      startColumn: location.column ?? 1,
+      endLineNumber: location.endLine ?? location.line,
+      endColumn:
+        location.endColumn ?? model.getLineMaxColumn(Math.min(model.getLineCount(), location.endLine ?? location.line)),
+    }
+    const range = model.validateRange(requested)
+    if (
+      range.startLineNumber !== requested.startLineNumber ||
+      range.endLineNumber !== requested.endLineNumber ||
+      (location.column !== undefined && range.startColumn !== location.column) ||
+      (location.endColumn !== undefined && range.endColumn !== location.endColumn)
+    ) {
+      showToast({
+        type: "info",
+        title: lingui._({
+          id: "app.reference.locationUnavailable",
+          message: "The requested position is outside the available content. Showing the nearest position.",
+        }),
+      })
+    }
+    if (request.origin !== "agent" || !host.contains(document.activeElement)) editor.setSelection(range)
+    editor.revealRangeInCenter(range)
+    if (
+      request.origin !== "agent" &&
+      (document.activeElement === document.body ||
+        host.contains(document.activeElement) ||
+        document.activeElement === request.focusTarget?.())
+    )
+      editor.focus()
+  })
+
+  async function initialize() {
+    if (disposed || status() === "ready") return
+    setStatus("loading")
+    try {
+      const monaco = await loadMonaco()
+      if (disposed) return
+      monacoInstance = monaco
+      const scope = encodeURIComponent(file.resourceKey)
+      const uri = monaco.Uri.parse(`synergy-file://${scope}/${props.path.split("/").map(encodeURIComponent).join("/")}`)
+      const key = uri.toString()
+      const draft = file.draft.get(props.path)
+      const initialContent = draft?.content ?? props.content
+      baseline = draft?.baseContent ?? props.content
+      setDirty(initialContent !== baseline)
+      let cached = getFileSourceModel(key)
+      if (!cached || cached.model.isDisposed()) {
+        const model = monaco.editor.createModel(initialContent, languageForPath(props.path), uri)
+        cached = { model, bytes: new Blob([initialContent]).size, touched: Date.now() }
+        setFileSourceModel(key, cached)
+      } else {
+        cached.touched = Date.now()
+        if (cached.model.getValue(undefined, true) !== initialContent) cached.model.setValue(initialContent)
+      }
+
+      const sourceTheme = defineSourceTheme(monaco, theme.tokens(), theme.mode())
+      editor = monaco.editor.create(host, {
+        model: cached.model,
+        theme: sourceTheme,
+        readOnly: !props.editable,
+        domReadOnly: !props.editable,
+        minimap: { enabled: false },
+        automaticLayout: true,
+        folding: true,
+        lineNumbers: "on",
+        glyphMargin: false,
+        renderLineHighlight: "line",
+        scrollBeyondLastLine: false,
+        smoothScrolling: false,
+        wordWrap: (props.wordWrap ?? true) ? "on" : "off",
+        quickSuggestions: false,
+        suggest: { showWords: false },
+        fontFamily: getConfiguredMonoFontFamily(),
+        fontSize: 14,
+        lineHeight: 22,
+        padding: { top: 12, bottom: 18 },
+        scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+      })
+      const activeEditor = editor
+      editor.setScrollPosition({
+        scrollTop: file.view.sourceScrollTop(props.path) ?? 0,
+        scrollLeft: file.view.sourceScrollLeft(props.path) ?? 0,
+      })
+      const selected = file.view.selectedLines(props.path)
+      if (selected) {
+        editor.setSelection({
+          startLineNumber: selected.start,
+          startColumn: 1,
+          endLineNumber: selected.end,
+          endColumn: cached.model.getLineMaxColumn(selected.end),
+        })
+      }
+      setStatus("ready")
+      editor.onDidScrollChange((event) => {
+        file.view.setSourceScroll(props.path, event.scrollTop, event.scrollLeft)
+      })
+      editor.onDidChangeCursorSelection((event) => {
+        const selection = event.selection
+        file.view.setSelectedLines(props.path, {
+          start: selection.startLineNumber,
+          end: selection.endLineNumber,
+        })
+        const rect = host.getBoundingClientRect()
+        const position = activeEditor.getScrolledVisiblePosition(selection.getStartPosition())
+        textSelectionController.update(selection.isEmpty() ? undefined : cached.model.getValueInRange(selection), {
+          source: "code",
+          origin: "other",
+          editable: false,
+          wholeContainer: false,
+          owner: host,
+          anchor: position
+            ? {
+                x: rect.left + position.left,
+                y: rect.top + position.top,
+                width: 1,
+                height: position.height,
+              }
+            : { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        })
+      })
+      editor.onDidBlurEditorText(() => textSelectionController.update(undefined))
+      const modelRef = cached.model
+      modelListener = modelRef.onDidChangeContent(() => {
+        if (applying) return
+        const content = modelRef.getValue(undefined, true)
+        const next = content !== baseline
+        if (props.editable || file.draft.get(props.path)) file.draft.update(props.path, content)
+        cached.bytes = new Blob([content]).size
+        cached.touched = Date.now()
+        setDirty(next)
+        props.onDirtyChange?.(next)
+      })
+      props.onRegister?.({
+        getContent: () => modelRef.getValue(undefined, true),
+        applyContent: (content: string) => {
+          baseline = content
+          const state = editor?.saveViewState()
+          applying = true
+          try {
+            modelRef.setValue(content)
+          } finally {
+            applying = false
+          }
+          setDirty(false)
+          props.onDirtyChange?.(false)
+          if (state) editor?.restoreViewState(state)
+        },
+      })
+      pruneFileSourceModels(key)
+    } catch {
+      if (disposed) return
+      modelListener?.dispose()
+      modelListener = undefined
+      editor?.dispose()
+      editor = undefined
+      setStatus("failed")
+    }
+  }
+
+  onMount(() => {
+    handleFontChange = (event: Event) => {
+      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+      if (kind === "mono") editor?.updateOptions({ fontFamily: getConfiguredMonoFontFamily() })
+    }
+    document.addEventListener(FONT_CHANGE_EVENT, handleFontChange)
+    void initialize()
+  })
+
+  createEffect(() => {
+    // Read `props.editable` unconditionally: when `editor` is still undefined the
+    // optional chain below short-circuits, and Solid must still track the prop so
+    // the effect re-runs once Monaco exists and the edit toggle changes.
+    const editable = props.editable
+    editor?.updateOptions({ readOnly: !editable, domReadOnly: !editable })
+  })
+
+  createEffect(() => {
+    const wordWrap = props.wordWrap ?? true
+    if (status() !== "ready" || !editor) return
+    editor.updateOptions({ wordWrap: wordWrap ? "on" : "off" })
+  })
+
+  createEffect(() => {
+    if (dirty() || file.draft.get(props.path) || props.content === baseline) return
+    baseline = props.content
+    const model = editor?.getModel()
+    if (!model || model.getValue(undefined, true) === props.content) return
+    const state = editor?.saveViewState()
+    applying = true
+    try {
+      model.setValue(props.content)
+    } finally {
+      applying = false
+    }
+    setDirty(false)
+    props.onDirtyChange?.(false)
+    if (state) editor?.restoreViewState(state)
+  })
+
+  createEffect(() => {
+    const mode = theme.mode()
+    const tokens = theme.tokens()
+    if (!monacoInstance || !editor) return
+    monacoInstance.editor.setTheme(defineSourceTheme(monacoInstance, tokens, mode))
+  })
+
+  onCleanup(() => {
+    disposed = true
+    if (handleFontChange) document.removeEventListener(FONT_CHANGE_EVENT, handleFontChange)
+    textSelectionController.update(undefined)
+    modelListener?.dispose()
+    editor?.dispose()
+  })
+
+  return (
+    <div class="file-source-view">
+      <div ref={host} class="file-source-view-editor" />
+      {status() !== "ready" && (
+        <div class="file-workbench-loading" classList={{ "file-workbench-state": status() === "failed" }} role="status">
+          <Show
+            when={status() === "failed"}
+            fallback={
+              <>
+                <Spinner class="size-5" />
+                <span>{lingui._({ id: F.loadingSourceViewer.id, message: F.loadingSourceViewer.message })}</span>
+              </>
+            }
+          >
+            <FileIcon node={{ path: props.path, type: "file" }} class="size-10" aria-hidden="true" />
+            <strong>{lingui._({ id: F.unableToOpen.id, message: F.unableToOpen.message })}</strong>
+            <p>{lingui._({ id: F.sourceLoadFailedHint.id, message: F.sourceLoadFailedHint.message })}</p>
+            <button type="button" onClick={() => void initialize()}>
+              {lingui._({ id: F.retry.id, message: F.retry.message })}
+            </button>
+          </Show>
+        </div>
+      )}
+    </div>
+  )
+}

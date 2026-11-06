@@ -1,0 +1,68 @@
+import { SessionLibraryRecall } from "./library-recall"
+import { ExperienceEncoder } from "./experience-encoder"
+import { ExperienceRecall } from "./experience-recall"
+import { LibraryDB } from "./database"
+import { MemoryRecall } from "./memory-recall"
+import { readConfig } from "./config-schema"
+import { SessionContextContributions } from "@ericsanchezok/synergy-harness/session/context-contributions"
+import { buildMemoryContext, buildAlwaysOnlyMemoryResult, RECALL_TIMEOUT_MS } from "./recall"
+
+function isMemoryMaintainer(input: SessionContextContributions.Input): boolean {
+  const identity = input.agentIdentity
+  return (
+    identity?.source === "builtin" &&
+    ((identity.owner === "anima" && identity.registrationKey === "anima") ||
+      (identity.owner === "library" && identity.registrationKey === "chronicler"))
+  )
+}
+
+export function registerLibrarySessionRecall() {
+  ExperienceEncoder.register()
+  SessionLibraryRecall.register({
+    listAlwaysMemories: () => LibraryDB.Memory.list({ recallModes: ["always"] }),
+    searchMemories: (input) => MemoryRecall.search(input),
+    retrieveExperiences: (scopeID, query, options) =>
+      ExperienceRecall.retrieve(scopeID, query, {
+        ...(options?.simThreshold !== undefined ? { simThreshold: options.simThreshold } : {}),
+        ...(options?.vector !== undefined ? { vector: options.vector } : {}),
+        ...(options?.requireScript !== undefined ? { requireScript: options.requireScript } : {}),
+      }),
+    trackExperienceRetrieval: (sessionID, experienceIDs) => ExperienceRecall.trackRetrieval(sessionID, experienceIDs),
+    commitExperienceRetrieval: (sessionID) => ExperienceRecall.commitRetrieval(sessionID),
+    buildExperienceEvaluation: (rewards, snapThreshold) =>
+      ExperienceRecall.buildEvaluation(rewards as LibraryDB.Experience.Rewards, snapThreshold),
+    writeExperienceDebugLog: (sessionID, scopeID, query, results, injected) =>
+      ExperienceRecall.writeDebugLog(sessionID, scopeID, query, results as ExperienceRecall.Result[], injected),
+  })
+  return SessionContextContributions.register("library", {
+    timeoutMs: RECALL_TIMEOUT_MS,
+    async enabled({ isTopSession }) {
+      const { library } = await readConfig()
+      return library?.memory?.enabled !== false || (isTopSession && library?.experience?.retrieve !== false)
+    },
+    async contribute(input) {
+      const { library } = await readConfig()
+      const maintenance = isMemoryMaintainer(input)
+      if (!input.isTopSession) {
+        const result = buildAlwaysOnlyMemoryResult(maintenance)
+        return result ? { ...result, injection: {} } : undefined
+      }
+      return buildMemoryContext(input.sessionID, input.scopeID, input.messages, library, input.signal, maintenance)
+    },
+    async fallback(input) {
+      const { library } = await readConfig()
+      if (library?.memory?.enabled === false) return undefined
+      const result = buildAlwaysOnlyMemoryResult(isMemoryMaintainer(input))
+      if (result?.knowledge && input.isTopSession)
+        result.knowledge.unavailable = [
+          "contextual",
+          ...(library?.experience?.retrieve !== false ? ["experience"] : []),
+        ]
+      return result
+    },
+    committed(sessionID, injection) {
+      if (injection.experience) ExperienceRecall.commitRetrieval(sessionID)
+    },
+    onAssistantComplete: (message) => ExperienceEncoder.onComplete(message),
+  })
+}

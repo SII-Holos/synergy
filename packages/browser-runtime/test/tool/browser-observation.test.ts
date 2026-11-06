@@ -1,0 +1,277 @@
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
+import { afterEach, beforeEach, expect, test } from "bun:test"
+import { BrowserToolHelper } from "../../src/tools/browser-shared"
+import { BrowserAnnotateTool } from "../../src/tools/browser-annotate"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { BrowserOwner } from "../../src/owner"
+import { BrowserStorage } from "../../src/storage"
+import { BrowserEvent } from "../../src/event"
+import { BrowserReadTool } from "../../src/tools/browser-read"
+import { BrowserConsoleTool } from "../../src/tools/browser-console"
+import { BrowserNetworkTool } from "../../src/tools/browser-network"
+import { BrowserEvalTool } from "../../src/tools/browser-eval"
+import { BrowserClipboardTool } from "../../src/tools/browser-clipboard"
+import { BrowserDialogTool } from "../../src/tools/browser-dialog"
+import { BrowserAuditTool } from "../../src/tools/browser-audit"
+import { BrowserInspectTool } from "../../src/tools/browser-inspect"
+import { BrowserPerformanceTool } from "../../src/tools/browser-performance"
+import { BrowserSnapshotTool } from "../../src/tools/browser-snapshot"
+import type { BrowserBackendCommand, BrowserBackendResult } from "@ericsanchezok/synergy-browser-core"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
+const runtime = await testRuntime(registerLocalRuntime)
+
+const original = {
+  getOrCreateSession: BrowserToolHelper.getOrCreateSession,
+  getPage: BrowserToolHelper.getPage,
+  resolvePage: BrowserToolHelper.resolvePage,
+  execute: BrowserToolHelper.execute,
+}
+const context = {
+  sessionID: "ses_observation",
+  messageID: "msg_observation",
+  agent: PrimaryAgentIdentity.names.general,
+  abort: new AbortController().signal,
+  metadata() {},
+  async ask() {},
+}
+let response: BrowserBackendResult
+let commands: BrowserBackendCommand[]
+beforeEach(() =>
+  runtime.run(() => {
+    commands = []
+    response = { type: "data", pageId: "page-test", data: { value: "observed" } }
+    BrowserToolHelper.resolvePage = async () =>
+      ({ id: "page-test", url: "https://example.com", title: "Example" }) as never
+    BrowserToolHelper.execute = async (_ctx, _pageId, command) => {
+      commands.push(command)
+      return response
+    }
+  }),
+)
+afterEach(() => runtime.run(() => Object.assign(BrowserToolHelper, original)))
+
+test("read reports bounded content and empty pages without exposing a transport object", () =>
+  runtime.run(async () => {
+    const tool = await BrowserReadTool.init()
+    response = { type: "data", pageId: "page-test", data: { content: "Visible text", truncated: true } }
+    const result = await tool.execute({ pageId: "page-test", format: "text", maxChars: 10 }, context)
+    expect(result.output).toBe("Visible text")
+    expect(result.metadata.truncated).toBe(true)
+    response = { type: "data", pageId: "page-test", data: {} }
+    expect((await tool.execute({ pageId: "page-test", format: "html", maxChars: 10 }, context)).output).toBe(
+      "(empty page)",
+    )
+    response = { type: "void" }
+    await expect(tool.execute({ pageId: "page-test", format: "text", maxChars: 10 }, context)).rejects.toThrow(
+      "unexpected result",
+    )
+  }))
+
+test("console and network queries reject inconsistent filters and preserve bounded evidence", () =>
+  runtime.run(async () => {
+    const consoleTool = await BrowserConsoleTool.init()
+    expect(consoleTool.parameters.safeParse({ pageId: "page-test", action: "get", entryId: "entry-1" }).success).toBe(
+      true,
+    )
+    expect(consoleTool.parameters.safeParse({ pageId: "page-test", action: "get", id: "entry-1" }).success).toBe(false)
+    const network = await BrowserNetworkTool.init()
+    for (const params of [{ action: "get" }, { action: "clear", id: "x" }, { action: "clear", level: "error" }])
+      expect(consoleTool.parameters.safeParse(params).success).toBe(false)
+    for (const params of [{ action: "get" }, { action: "clear", id: "x" }, { action: "list", includeBody: true }])
+      expect(network.parameters.safeParse(params).success).toBe(false)
+    expect(
+      (await consoleTool.execute({ pageId: "page-test", action: "list", filter: "error" }, context)).output,
+    ).toContain("observed")
+    expect(
+      (
+        await network.execute(
+          { pageId: "page-test", action: "get", requestId: "request-1", includeBody: true, maxBodyBytes: 100 },
+          context,
+        )
+      ).metadata.action,
+    ).toBe("get")
+    expect(commands.at(-1)).toMatchObject({ type: "network", id: "request-1", maxBodyBytes: 100 })
+    response = { type: "void" }
+    await expect(consoleTool.execute({ pageId: "page-test", action: "clear" }, context)).rejects.toThrow(
+      "unexpected result",
+    )
+    await expect(network.execute({ pageId: "page-test", action: "clear" }, context)).rejects.toThrow(
+      "unexpected result",
+    )
+  }))
+
+test("evaluation and clipboard bound model output and reject oversized UTF-8 writes", () =>
+  runtime.run(async () => {
+    const evaluate = await BrowserEvalTool.init()
+    response = { type: "evaluation", pageId: "page-test", value: "abcdefghijklmnop" }
+    const result = await evaluate.execute(
+      { pageId: "page-test", expression: "document.title", mode: "readonly", maxChars: 4 },
+      context,
+    )
+    expect(result.metadata.truncated).toBe(true)
+    expect(result.output).toContain("truncated")
+    expect(commands.at(-1)).toMatchObject({ type: "evaluate", mode: "readonly" })
+    const clipboard = await BrowserClipboardTool.init()
+    expect(clipboard.parameters.safeParse({ action: "write" }).success).toBe(false)
+    expect(clipboard.parameters.safeParse({ action: "read", text: "x" }).success).toBe(false)
+    await expect(
+      clipboard.execute({ pageId: "page-test", action: "write", text: "界".repeat(400_000) }, context),
+    ).rejects.toThrow("1 MB")
+    response = { type: "data", pageId: "page-test", data: { text: "hello" } }
+    expect((await clipboard.execute({ pageId: "page-test", action: "read" }, context)).metadata.byteLength).toBe(5)
+    response = { type: "data", pageId: "page-test", data: {} }
+    expect((await clipboard.execute({ pageId: "page-test", action: "read" }, context)).output).toBe("(clipboard empty)")
+    response = { type: "void" }
+    await expect(
+      evaluate.execute({ pageId: "page-test", expression: "1", mode: "trusted", maxChars: 4 }, context),
+    ).rejects.toThrow("unexpected result")
+    await expect(clipboard.execute({ pageId: "page-test", action: "clear" }, context)).rejects.toThrow(
+      "unexpected result",
+    )
+  }))
+
+test("dialog audit and inspection retain page identity and do not accept unrelated results", () =>
+  runtime.run(async () => {
+    const dialog = await BrowserDialogTool.init()
+    const audit = await BrowserAuditTool.init()
+    const inspect = await BrowserInspectTool.init()
+    expect(dialog.parameters.safeParse({ action: "dismiss", promptText: "ignored" }).success).toBe(false)
+    expect(
+      (await dialog.execute({ pageId: "page-test", action: "accept", promptText: "yes" }, context)).metadata.pageId,
+    ).toBe("page-test")
+    expect((await audit.execute({ pageId: "page-test" }, context)).metadata.categories).toHaveLength(4)
+    const target = { kind: "css" as const, value: "button" }
+    expect(
+      (await inspect.execute({ pageId: "page-test", target, computedStyles: ["color"] }, context)).metadata.target,
+    ).toEqual(target)
+    response = { type: "void" }
+    await expect(dialog.execute({ pageId: "page-test", action: "status" }, context)).rejects.toThrow(
+      "unexpected result",
+    )
+    await expect(audit.execute({ pageId: "page-test" }, context)).rejects.toThrow("unexpected result")
+    await expect(inspect.execute({ pageId: "page-test", target }, context)).rejects.toThrow("unexpected result")
+  }))
+
+test("performance exports preserve trace data on disk while model output contains only the count", () =>
+  runtime.run(async () => {
+    const performance = await BrowserPerformanceTool.init()
+    expect(performance.parameters.safeParse({ action: "measure", exportPath: "trace.json" }).success).toBe(false)
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        response = {
+          type: "data",
+          pageId: "page-test",
+          data: { traceEvents: [{ name: "Render" }, { name: "Layout" }], duration: 10 },
+        }
+        const result = await performance.execute(
+          { pageId: "page-test", action: "stopTrace", exportPath: "trace.json" },
+          context,
+        )
+        expect(result.metadata.traceEventCount).toBe(2)
+        expect(result.output).not.toContain("Render")
+        expect((await Bun.file(`${tmp.path}/trace.json`).json()).traceEvents).toHaveLength(2)
+        await expect(
+          performance.execute({ pageId: "page-test", action: "stopTrace", exportPath: "trace.json" }, context),
+        ).rejects.toThrow()
+        response = { type: "void" }
+        await expect(performance.execute({ pageId: "page-test", action: "measure" }, context)).rejects.toThrow(
+          "unexpected result",
+        )
+      },
+    })
+  }))
+
+test("snapshot evidence includes snapshot identity even for an empty document", () =>
+  runtime.run(async () => {
+    const snapshot = await BrowserSnapshotTool.init()
+    response = { type: "snapshot", pageId: "page-test", snapshotId: "snapshot-1", elements: [], truncated: false }
+    const result = await snapshot.execute({ pageId: "page-test", maxNodes: 100, interactiveOnly: true }, context)
+    expect(result.output).toContain("snapshotId: snapshot-1")
+    expect(result.metadata.elementsCount).toBe(0)
+    response = { type: "void" }
+    await expect(
+      snapshot.execute({ pageId: "page-test", maxNodes: 100, interactiveOnly: false }, context),
+    ).rejects.toThrow("unexpected result")
+  }))
+
+test("annotation tools persist creation and resolution while paging only pending annotations", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const task = await Session.create({})
+        const ctx = { ...context, sessionID: task.id }
+        const owner = BrowserOwner.shared()
+        await BrowserStorage.save(owner, {
+          timestamp: 1,
+          pages: [
+            {
+              id: "page-test",
+              url: "https://example.com/",
+              title: "Example",
+              profileId: "personal",
+              status: "suspended",
+              isLoading: false,
+              lastActiveAt: 1,
+            },
+          ],
+        })
+        const session = await BrowserToolHelper.getOrCreateSession(owner)
+        BrowserToolHelper.getPage = async () => ({ id: "page-test", url: "https://example.com/" }) as never
+        try {
+          const tool = await BrowserAnnotateTool.init()
+          for (const params of [
+            { action: "read" },
+            { action: "create" },
+            { action: "list", comment: "ignored" },
+            { action: "create", comment: "test", page: 1 },
+            { action: "list", annotationId: "bad" },
+          ])
+            expect(tool.parameters.safeParse(params).success).toBe(false)
+          expect((await tool.execute({ action: "list" }, ctx)).metadata.count).toBe(0)
+          const created = await tool.execute(
+            {
+              pageId: "page-test",
+              action: "create",
+              comment: "Improve contrast",
+              ref: "button-1",
+              styleFeedback: { color: "darker" },
+            },
+            ctx,
+          )
+          const annotationId = created.metadata.id!
+          expect((await BrowserStorage.load(owner))?.annotations?.[0]).toMatchObject({
+            id: annotationId,
+            pageID: "page-test",
+            resolved: false,
+          })
+          expect((await tool.execute({ action: "read", annotationId }, ctx)).output).toContain("Improve contrast")
+          expect((await tool.execute({ action: "list", pageSize: 1 }, ctx)).output).toContain("darker")
+          expect((await tool.execute({ action: "list", page: 1, pageSize: 1 }, ctx)).output).toBe(
+            "No pending annotations.",
+          )
+          await tool.execute({ action: "resolve", annotationId }, ctx)
+          expect((await BrowserStorage.load(owner))?.annotations?.[0]?.resolved).toBe(true)
+          expect((await tool.execute({ action: "list" }, ctx)).metadata).toMatchObject({ count: 1, pending: 0 })
+          expect((await tool.execute({ action: "resolve", annotationId: "missing" }, ctx)).title).toBe(
+            "Annotation not found",
+          )
+          expect((await tool.execute({ action: "read", annotationId: "missing" }, ctx)).title).toBe(
+            "Annotation not found",
+          )
+        } finally {
+          await session.clearAnnotations()
+          BrowserEvent.remove(owner)
+        }
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

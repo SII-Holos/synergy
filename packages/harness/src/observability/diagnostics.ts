@@ -1,0 +1,543 @@
+import { RuntimeContext } from "../lifecycle/context"
+import fs from "fs/promises"
+import path from "path"
+import { tmpdir } from "os"
+import { Log } from "../util/log"
+import { Global } from "../global"
+import { DaemonPaths } from "../util/daemon-paths"
+import { ServerProcessLock } from "../util/server-process-lock"
+import { ProcessRegistry } from "../process/registry"
+import { ProcessMemory } from "../process/memory-usage"
+import { Observability } from "."
+import { ObservabilityEvents } from "./events"
+import { ObservabilityIssues } from "./issues"
+import { ObservabilityRedaction } from "./redaction"
+import { ObservabilitySchema } from "./schema"
+import { ObservabilityStore } from "./store"
+import { parseJson } from "../util/json-parse"
+import { readFileWithRetry } from "@ericsanchezok/synergy-util/io-retry"
+import {
+  RuntimeStartupProgress,
+  RUNTIME_STARTUP_PREFIX,
+  RUNTIME_STARTUP_MAX_LINE_LENGTH,
+} from "@ericsanchezok/synergy-util/runtime-startup"
+import { Installation } from "../global/installation"
+
+export namespace Diagnostics {
+  export type Summary = ObservabilitySchema.DiagnosticsSummary
+
+  export interface PackageOptions {
+    sessionID?: string
+    sinceMs?: number
+    output?: string
+  }
+
+  export async function createStartupPackage(options: Pick<PackageOptions, "output"> = {}) {
+    const output = path.resolve(options.output ?? path.join(process.cwd(), `synergy-startup-${timestamp()}.tar.gz`))
+    const root = await fs.mkdtemp(path.join(tmpdir(), "synergy-startup-diagnostics-"))
+    try {
+      await fs.mkdir(path.join(root, "logs"))
+      const files = [
+        process.env.SYNERGY_DESKTOP_STARTUP_LOG ?? "",
+        Log.file(),
+        Log.devFile(),
+        DaemonPaths.logFile(),
+        ...(await Log.listDevArchives().catch(() => [])).slice(-2),
+      ]
+      for (const file of unique(files.filter(Boolean)))
+        await copyLogSummary(file, path.join(root, "logs", path.basename(file))).catch(async () => {
+          await fs.writeFile(
+            path.join(root, "logs", `${path.basename(file)}.unavailable`),
+            "This log could not be read.\n",
+          )
+        })
+      await copyLockSummary(ServerProcessLock.path(), path.join(root, "runtime-lock.json")).catch(() => {})
+      await Bun.write(
+        path.join(root, "startup.json"),
+        JSON.stringify(
+          {
+            generatedAt: new Date().toISOString(),
+            version: Installation.VERSION,
+            platform: process.platform,
+            architecture: process.arch,
+            storage: { inspected: false, reason: "Startup diagnostics does not open the database" },
+            telemetry: { inspected: false, reason: "Startup diagnostics contains bounded redacted log summaries only" },
+          },
+          null,
+          2,
+        ),
+      )
+      await fs.mkdir(path.dirname(output), { recursive: true })
+      const child = Bun.spawn(["tar", "-czf", output, "-C", root, "."], { stdout: "pipe", stderr: "pipe" })
+      const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      if (code !== 0) throw new Error(`Could not create startup diagnostics: ${stderr}`)
+      await fs.chmod(output, 0o600)
+      return { output }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  }
+
+  export async function summary(input: { freshPendingSessions?: boolean } = {}): Promise<Summary> {
+    const lock = await ServerProcessLock.read().catch(() => undefined)
+    const inspection = lock ? await ServerProcessLock.inspect(lock).catch(() => undefined) : undefined
+    const recentErrors = ObservabilityStore.queryEvents({ limit: 200 })
+      .map(ObservabilityEvents.fromRow)
+      .filter((event) => event.level === "error" || event.type.endsWith(".error") || event.type.includes("error"))
+      .slice(0, 50)
+    const issues = ObservabilityIssues.list({ status: "open", limit: 50 })
+    const inflight = ObservabilityStore.queryInflight({ limit: 100 }).map(inflightFromRow)
+    const until = Date.now() + 1
+    const since = until - 15 * 60_000
+    const resourceRows = ObservabilityStore.resourceSince(since, { until, limit: 500 })
+    const resourceSamples = resourceRows.map(resourceFromRow)
+    const first = ObservabilityStore.resourceSince(since, { role: "server", until, limit: 1 })[0]
+    const latest = ObservabilityStore.resourceSince(0, { role: "server", until, limit: 1, newestFirst: true })[0]
+    for (const row of [first, latest]) {
+      if (row && !resourceSamples.some((sample) => sample.sampleId === row.sample_id)) {
+        resourceSamples.push(resourceFromRow(row))
+      }
+    }
+    resourceSamples.sort((left, right) => left.time - right.time)
+
+    return ObservabilitySchema.DiagnosticsSummary.parse({
+      generatedAt: new Date().toISOString(),
+      logs: {
+        current: Log.file(),
+        dev: Log.devFile(),
+        daemon: DaemonPaths.logFile(),
+        devArchives: await Log.listDevArchives().catch(() => []),
+      },
+      traces: {
+        directory: Observability.dir(),
+        files: await Observability.listFiles().catch(() => []),
+        recentErrors,
+      },
+      issues,
+      inflight,
+      resources: {
+        latest: latest ? resourceFromRow(latest) : undefined,
+        samples: resourceSamples,
+        pressure: resourcePressure(resourceSamples),
+      },
+      lock: {
+        path: ServerProcessLock.path(),
+        lock: summarizeLock(lock),
+        inspection: summarizeInspection(inspection),
+      },
+      processes: {
+        active: ProcessRegistry.listActive().map(summarizeProcess),
+        finished: ProcessRegistry.listFinished().map(summarizeFinishedProcess),
+      },
+      sessions: {
+        paused: await pausedSessions(input.freshPendingSessions).catch(() => []),
+      },
+    })
+  }
+
+  export async function createPackage(options: PackageOptions = {}) {
+    const stamp = timestamp()
+    const output = path.resolve(options.output ?? path.join(process.cwd(), `synergy-diagnostics-${stamp}.tar.gz`))
+    const tmp = await fs.mkdtemp(path.join(tmpdir(), "synergy-diagnostics-"))
+    const root = path.join(tmp, "bundle")
+    await fs.mkdir(path.join(root, "logs"), { recursive: true })
+    await fs.mkdir(path.join(root, "observability"), { recursive: true })
+    await fs.mkdir(path.join(root, "runtime"), { recursive: true })
+
+    // Diagnostic packages are on-demand support snapshots: bypass the
+    // dashboard's pending-session cache so a stuck session that changed in
+    // the last 15s is still captured (or a finished one omitted).
+    const info = await summary({ freshPendingSessions: true })
+    await fs.writeFile(path.join(root, "summary.json"), JSON.stringify(info, null, 2) + "\n")
+
+    const logFiles = [info.logs.current, info.logs.dev, info.logs.daemon, ...info.logs.devArchives].filter(
+      (item): item is string => Boolean(item),
+    )
+    for (const file of unique(logFiles)) {
+      await copyLogSummary(file, path.join(root, "logs", path.basename(file)))
+    }
+
+    const events = ObservabilityStore.queryEvents({
+      sessionID: options.sessionID,
+      since: options.sinceMs,
+      limit: 5000,
+    }).map(ObservabilityEvents.fromRow)
+    await fs.writeFile(
+      path.join(root, "observability", "events.jsonl"),
+      events.map((event) => JSON.stringify(event)).join("\n") + (events.length ? "\n" : ""),
+    )
+
+    const issues = ObservabilityStore.queryIssues({ limit: 500 })
+      .map(ObservabilityIssues.fromRow)
+      .filter(
+        (issue) =>
+          (!options.sessionID || issue.sessionID === options.sessionID) &&
+          (!options.sinceMs || issue.lastSeenTime >= options.sinceMs),
+      )
+    await fs.writeFile(path.join(root, "observability", "issues.json"), JSON.stringify(issues, null, 2) + "\n")
+
+    const inflight = ObservabilityStore.queryInflight({ sessionID: options.sessionID, limit: 500 }).map(inflightFromRow)
+    await fs.writeFile(path.join(root, "observability", "inflight.json"), JSON.stringify(inflight, null, 2) + "\n")
+
+    const resourceSamples = ObservabilityStore.resourceSince(options.sinceMs ?? Date.now() - 15 * 60_000, {
+      limit: 5000,
+    }).map(resourceFromRow)
+    await fs.writeFile(
+      path.join(root, "observability", "resources.json"),
+      JSON.stringify(resourceSamples, null, 2) + "\n",
+    )
+    await fs.writeFile(path.join(root, "runtime", "processes.json"), JSON.stringify(info.processes, null, 2) + "\n")
+    await fs.writeFile(
+      path.join(root, "runtime", "pending-sessions.json"),
+      JSON.stringify(info.sessions.paused, null, 2) + "\n",
+    )
+
+    const pluginState = path.join(Global.Path.data, "plugin-runtime-state.json")
+    await copyPluginStateSummary(pluginState, path.join(root, "plugin-runtime-state.json")).catch(() => {})
+
+    const lockFile = ServerProcessLock.path()
+    await copyLockSummary(lockFile, path.join(root, "runtime-lock.json")).catch(() => {})
+
+    await fs.mkdir(path.dirname(output), { recursive: true })
+    const outputDir = path.dirname(output)
+    const archiveName = path.basename(output)
+    const proc = Bun.spawn(["tar", "-czf", archiveName, "-C", root, "."], {
+      cwd: outputDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const code = await proc.exited
+    if (code !== 0) {
+      const stderr = await new Response(proc.stderr).text().catch(() => "")
+      throw new Error(`failed to create diagnostics package: ${stderr || `tar exited ${code}`}`)
+    }
+    await fs.rm(tmp, { recursive: true, force: true }).catch(() => {})
+    return { output, summary: info }
+  }
+
+  function summarizeProcess(proc: ProcessRegistry.Process) {
+    return {
+      id: proc.id,
+      pid: proc.pid,
+      command: ObservabilityRedaction.commandSummary(proc.command),
+      description: proc.description ? ObservabilityRedaction.text(proc.description, 160) : undefined,
+      cwd: ObservabilityRedaction.cwdScope(proc.cwd),
+      startedAt: proc.startedAt,
+      backgrounded: proc.backgrounded,
+      outputChars: ProcessRegistry.outputChars(proc),
+      tailOmitted: true,
+      tailChars: proc.tail.length,
+      truncated: proc.truncated,
+    }
+  }
+
+  function summarizeFinishedProcess(proc: ProcessRegistry.FinishedProcess) {
+    return {
+      id: proc.id,
+      command: ObservabilityRedaction.commandSummary(proc.command),
+      description: proc.description ? ObservabilityRedaction.text(proc.description, 160) : undefined,
+      cwd: ObservabilityRedaction.cwdScope(proc.cwd),
+      status: proc.status,
+      startedAt: proc.startedAt,
+      endedAt: proc.endedAt,
+      exitCode: proc.exitCode,
+      exitSignal: proc.exitSignal,
+      outputChars: proc.output.length,
+      tailOmitted: true,
+      tailChars: proc.tail.length,
+      truncated: proc.truncated,
+    }
+  }
+
+  function inflightFromRow(
+    row: ReturnType<typeof ObservabilityStore.queryInflight>[number],
+  ): ObservabilitySchema.InflightSpan {
+    return ObservabilitySchema.InflightSpan.parse({
+      traceId: row.trace_id,
+      correlationId: row.correlation_id ?? undefined,
+      spanId: row.span_id,
+      parentSpanId: row.parent_span_id ?? undefined,
+      kind: row.kind,
+      name: row.name,
+      module: row.module,
+      source: row.source,
+      startTime: row.start_time,
+      endTime: row.end_time ?? undefined,
+      durationMs: row.duration_ms ?? undefined,
+      lastActivityTime: row.last_activity_time ?? row.start_time,
+      heartbeatTime: row.heartbeat_time ?? undefined,
+      heartbeatCount: row.heartbeat_count ?? 0,
+      stalled: Boolean(row.stalled),
+      status: row.status,
+      errorCode: row.error_code ?? undefined,
+      errorMessage: row.error_message ?? undefined,
+      scopeID: row.scope_id ?? undefined,
+      sessionID: row.session_id ?? undefined,
+      messageID: row.message_id ?? undefined,
+      callID: row.call_id ?? undefined,
+      rid: row.rid ?? undefined,
+      processId: row.process_id ?? undefined,
+      pid: row.pid ?? undefined,
+      tool: row.tool ?? undefined,
+      attributes: parseJson(row.attributes_json),
+      redaction: parseRedaction(row.redaction_json),
+      ageMs: row.age_ms,
+      idleMs: row.idle_ms,
+      stale: row.stale,
+    })
+  }
+
+  function resourceFromRow(row: ObservabilityStore.StoredResource): ObservabilitySchema.ResourceSample {
+    return ObservabilitySchema.ResourceSample.parse({
+      sampleId: row.sample_id,
+      time: row.time,
+      iso: row.iso,
+      source: row.source,
+      correlationId: row.correlation_id ?? undefined,
+      traceId: row.trace_id ?? undefined,
+      scopeID: row.scope_id ?? undefined,
+      sessionID: row.session_id ?? undefined,
+      process: {
+        pid: row.pid ?? undefined,
+        processId: row.process_id ?? undefined,
+        role: resourceRole(row.process_role),
+      },
+      cpu: {
+        userMicros: row.cpu_user_micros ?? undefined,
+        systemMicros: row.cpu_system_micros ?? undefined,
+        utilizationRatio: row.cpu_utilization_ratio ?? undefined,
+      },
+      memory: {
+        rssBytes: row.memory_rss_bytes ?? undefined,
+        heapTotalBytes: row.memory_heap_total_bytes ?? undefined,
+        heapUsedBytes: row.memory_heap_used_bytes ?? undefined,
+        externalBytes: row.memory_external_bytes ?? undefined,
+        arrayBuffersBytes: row.memory_array_buffers_bytes ?? undefined,
+      },
+      eventLoop: { lagMs: row.event_loop_lag_ms ?? undefined, sampleWindowMs: row.event_loop_sample_window_ms ?? 0 },
+      io: {
+        appReadBytes: row.app_read_bytes ?? undefined,
+        appWrittenBytes: row.app_written_bytes ?? undefined,
+        appReadOps: row.app_read_ops ?? undefined,
+        appWriteOps: row.app_write_ops ?? undefined,
+        osReadBytes: row.os_read_bytes ?? undefined,
+        osWrittenBytes: row.os_written_bytes ?? undefined,
+        osAvailable: Boolean(row.os_available),
+      },
+      labels: parseJson(row.labels_json ?? "{}"),
+      redaction: parseRedaction(row.redaction_json),
+    })
+  }
+
+  function resourcePressure(samples: ObservabilitySchema.ResourceSample[]) {
+    const serverSamples = samples.filter((sample) => sample.process.role === "server")
+    const latest = serverSamples.at(-1)
+    const pressure: ObservabilitySchema.Labels = {}
+    const store = ObservabilityStore.stats()
+    pressure.observabilityStoreAvailable = store.available
+    pressure.observabilityPendingWrites = store.pending
+    pressure.observabilityDroppedWrites = store.dropped
+    pressure.observabilityUncertainObservations = store.uncertain
+    pressure.observabilityCapExceededBytes = store.capExceededBytes
+    if (store.lastOpenError) pressure.observabilityStoreError = ObservabilityRedaction.text(store.lastOpenError, 160)
+    if (!latest) return pressure
+    const heapRatio = ProcessMemory.heapUsageRatio({
+      heapUsedBytes: latest.memory.heapUsedBytes,
+      heapTotalBytes: latest.memory.heapTotalBytes,
+    })
+    if (heapRatio.available) pressure.heapUsedRatio = heapRatio.ratio
+    else pressure.heapUsedRatioUnavailableReason = heapRatio.reason
+    if (latest.cpu.utilizationRatio !== undefined) pressure.cpuUtilizationRatio = latest.cpu.utilizationRatio
+    if (latest.eventLoop.lagMs !== undefined) pressure.eventLoopLagMs = latest.eventLoop.lagMs
+    if (latest.memory.rssBytes !== undefined) pressure.rssBytes = latest.memory.rssBytes
+    const first = serverSamples.find((sample) => sample.memory.rssBytes !== undefined)
+    if (first?.memory.rssBytes !== undefined && latest.memory.rssBytes !== undefined && latest.time > first.time) {
+      pressure.rssGrowthBytesPerMin =
+        ((latest.memory.rssBytes - first.memory.rssBytes) / Math.max(1, latest.time - first.time)) * 60_000
+    }
+    return pressure
+  }
+
+  async function copyLogSummary(src: string, dest: string) {
+    const stat = await fs.stat(src).catch(() => undefined)
+    if (!stat) return
+    if (!stat.isFile()) return
+    const file = await fs.open(src, "r")
+    let text: string
+    try {
+      const buffer = Buffer.alloc(Math.min(stat.size, 256 * 1024))
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, Math.max(0, stat.size - buffer.length))
+      text = buffer.subarray(0, bytesRead).toString("utf8")
+      if (stat.size > buffer.length) text = text.slice(text.indexOf("\n") + 1)
+    } finally {
+      await file.close()
+    }
+    const lines = text.split(/\r?\n/).filter(Boolean)
+    const recent = lines.slice(-200).map(summarizeLogLine)
+    await fs.writeFile(
+      dest,
+      [
+        `# redacted log summary`,
+        `source=${path.basename(src)}`,
+        `bytes=${stat.size}`,
+        `tailLines=${lines.length}`,
+        ...recent,
+      ].join("\n") + "\n",
+    )
+  }
+
+  async function copyLockSummary(src: string, dest: string) {
+    const text = await fs.readFile(src, "utf8").catch(() => "")
+    const parsed = JSON.parse(text) as ServerProcessLock.LockInfo
+    await fs.writeFile(dest, JSON.stringify(summarizeLock(parsed), null, 2) + "\n")
+  }
+
+  async function copyPluginStateSummary(src: string, dest: string) {
+    const text = await fs.readFile(src, "utf8").catch(() => "")
+    const parsed = JSON.parse(text) as Array<Record<string, unknown>>
+    const summary = parsed.slice(0, 100).map((entry) => ({
+      pluginId: typeof entry.pluginId === "string" ? ObservabilityRedaction.text(entry.pluginId, 120) : undefined,
+      mode: typeof entry.mode === "string" ? ObservabilityRedaction.text(entry.mode, 40) : undefined,
+      pid: typeof entry.pid === "number" ? entry.pid : undefined,
+      state: typeof entry.state === "string" ? ObservabilityRedaction.text(entry.state, 40) : undefined,
+      restarts: typeof entry.restarts === "number" ? entry.restarts : undefined,
+      lastHeartbeatAt: typeof entry.lastHeartbeatAt === "number" ? entry.lastHeartbeatAt : undefined,
+      startedAt: typeof entry.startedAt === "number" ? entry.startedAt : undefined,
+      lastError: typeof entry.lastError === "string" ? ObservabilityRedaction.text(entry.lastError, 256) : undefined,
+      source: typeof entry.source === "string" ? ObservabilityRedaction.text(entry.source, 80) : undefined,
+    }))
+    await fs.writeFile(dest, JSON.stringify(summary, null, 2) + "\n")
+  }
+
+  function summarizeLogLine(line: string) {
+    if (line.startsWith(RUNTIME_STARTUP_PREFIX) && line.length <= RUNTIME_STARTUP_MAX_LINE_LENGTH) {
+      try {
+        const progress = RuntimeStartupProgress.safeParse(JSON.parse(line.slice(RUNTIME_STARTUP_PREFIX.length)))
+        if (progress.success) return RUNTIME_STARTUP_PREFIX + JSON.stringify(progress.data)
+      } catch {}
+    }
+    const match = line.match(/^(DEBUG|INFO|WARN|ERROR)\s+(\S+)\s+\+\d+ms\s+([\s\S]*)$/)
+    if (!match) return `[redacted-log-line] chars=${line.length}`
+    const service = match[3]?.match(/\bservice=([^\s]+)/)?.[1]
+    return [
+      match[1],
+      match[2],
+      service ? `service=${ObservabilityRedaction.text(service, 80)}` : undefined,
+      `chars=${line.length}`,
+      "message=[omitted]",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  }
+
+  function summarizeLock(lock: ServerProcessLock.LockInfo | undefined) {
+    if (!lock) return undefined
+    return {
+      pid: lock.pid,
+      startedAt: lock.startedAt,
+      command: ObservabilityRedaction.commandSummary(lock.command.join(" ")),
+      cwd: ObservabilityRedaction.cwdScope(lock.cwd),
+      mode: lock.mode,
+    }
+  }
+
+  function summarizeInspection(inspection: ServerProcessLock.ProcessInspection | undefined) {
+    if (!inspection) return undefined
+    return {
+      alive: inspection.alive,
+      pid: inspection.pid,
+      ppid: inspection.ppid,
+      pgid: inspection.pgid,
+      stat: inspection.stat,
+      cpu: inspection.cpu,
+      memory: inspection.memory,
+      elapsed: inspection.elapsed,
+      command: ObservabilityRedaction.commandSummary(inspection.command),
+      listeningPorts: inspection.listeningPorts,
+      healthy: inspection.healthy,
+      healthUrl: inspection.healthUrl ? ObservabilityRedaction.routePath(inspection.healthUrl) : undefined,
+      error: inspection.error ? ObservabilityRedaction.text(inspection.error, 256) : undefined,
+    }
+  }
+
+  const runtimeState = RuntimeContext.state(() => ({
+    pausedSessionsCache: undefined as { at: number; root: string; value: Summary["sessions"]["paused"] } | undefined,
+  }))
+  const PAUSED_SESSIONS_CACHE_MS = 15_000
+
+  async function pausedSessions(fresh = false) {
+    const instanceState = runtimeState()
+
+    const now = Date.now()
+    const root = path.join(Global.Path.data, "sessions")
+    if (
+      !fresh &&
+      instanceState.pausedSessionsCache &&
+      instanceState.pausedSessionsCache.root === root &&
+      now - instanceState.pausedSessionsCache.at < PAUSED_SESSIONS_CACHE_MS
+    ) {
+      return instanceState.pausedSessionsCache.value
+    }
+    const result: Summary["sessions"]["paused"] = []
+    // Only session-level info.json files carry the pause latch; message-level
+    // files under messages/ never do. Skipping them turns an O(all messages)
+    // scan into an O(sessions) scan for the dashboard's 5s polling.
+    await walk(root, async (file) => {
+      if (!file.endsWith("info.json")) return
+      // Cross-process read: on Windows a concurrent atomic rename can fail
+      // this read transiently; retry keeps the dashboard scan accurate (#1247).
+      const data = await readFileWithRetry(file).catch(() => "")
+      if (!data.includes('"paused"')) return
+      const json = JSON.parse(data) as { id?: string; paused?: unknown; time?: { updated?: number } }
+      if (!json.paused || !json.id) return
+      result.push({ sessionID: json.id, path: file, updated: json.time?.updated })
+    })
+    const value = result.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50)
+    instanceState.pausedSessionsCache = { at: now, root, value }
+    return value
+  }
+
+  async function walk(dir: string, visit: (file: string) => Promise<void>) {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+    await Promise.all(
+      entries.map(async (entry) => {
+        const full = path.join(dir, entry.name)
+        // Message payloads live under messages/ and never carry the pause latch;
+        // skipping them bounds the scan to session-level info.json files.
+        if (entry.isDirectory()) {
+          if (entry.name === "messages") return
+          return walk(full, visit)
+        }
+        if (entry.isFile()) return visit(full)
+      }),
+    )
+  }
+
+  function parseRedaction(text: string | null | undefined): ObservabilitySchema.RedactionSummary {
+    const parsed = text ? parseJson(text) : {}
+    return ObservabilitySchema.RedactionSummary.parse({ applied: true, omittedKeys: 0, truncatedValues: 0, ...parsed })
+  }
+
+  function resourceRole(input: string | null | undefined): ObservabilitySchema.ResourceSample["process"]["role"] {
+    const roles = new Set(["server", "tool", "pty", "mcp", "plugin", "desktop", "browser", "unknown"])
+    return input && roles.has(input) ? (input as ObservabilitySchema.ResourceSample["process"]["role"]) : "unknown"
+  }
+
+  function unique(items: string[]) {
+    return [...new Set(items)]
+  }
+
+  function timestamp() {
+    const date = new Date()
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return (
+      String(date.getFullYear()) +
+      pad(date.getMonth() + 1) +
+      pad(date.getDate()) +
+      "-" +
+      pad(date.getHours()) +
+      pad(date.getMinutes()) +
+      pad(date.getSeconds())
+    )
+  }
+}

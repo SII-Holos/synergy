@@ -1,0 +1,398 @@
+import { $ } from "bun"
+import { describe, expect, mock, spyOn, test } from "bun:test"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Server } from "../../src/server/server"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
+import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
+import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
+describe("session input acceptance", () => {
+  test("persists idle user input before returning an accepted response", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      const originalRequest = SessionDrive.request
+      let finishRequest: (handled: boolean) => void = () => {}
+      const blockedRequest = new Promise<boolean>((resolve) => {
+        finishRequest = resolve
+      })
+      ;(SessionDrive.request as any) = mock(() => blockedRequest)
+
+      let sessionID = ""
+      try {
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            const session = await Session.create({ title: "Durable First Input" })
+            sessionID = session.id
+            const response = await Server.App().request(
+              `/session/${session.id}/input?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ parts: [{ type: "text", text: "Start slowly" }] }),
+              },
+            )
+
+            expect(response.status).toBe(200)
+            const result = (await response.json()) as {
+              status: string
+              item?: { id: string; messageID: string }
+            }
+            expect(result.status).toBe("queued")
+            const item = result.item
+            expect(item?.messageID).toBeDefined()
+            if (!item) throw new Error("Expected a durable inbox item")
+            expect((await SessionInbox.list(session.id)).map((entry) => entry.id)).toEqual([item.id])
+            expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
+            const progress = await Server.App().request(
+              `/session/${session.id}/input/${item.messageID}/status?directory=${encodeURIComponent(scope.local!.worktree)}`,
+            )
+            expect(progress.status).toBe(200)
+            expect(await progress.json()).toMatchObject({
+              state: "accepted",
+              durable: true,
+              canonical: false,
+              itemID: item.id,
+            })
+            const missing = await Server.App().request(
+              `/session/${session.id}/input/msg_missing/status?directory=${encodeURIComponent(scope.local!.worktree)}`,
+            )
+            expect(missing.status).toBe(404)
+            finishRequest(true)
+          },
+        })
+      } finally {
+        finishRequest(true)
+        ;(SessionDrive.request as any) = originalRequest
+        if (sessionID) SessionManager.unregisterRuntime(sessionID)
+      }
+    }))
+
+  test("moves accepted input to the top of recent navigation before the session drive starts", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      const originalRequest = SessionDrive.request
+      let finishRequest: (handled: boolean) => void = () => {}
+      const blockedRequest = new Promise<boolean>((resolve) => {
+        finishRequest = resolve
+      })
+      ;(SessionDrive.request as any) = mock(() => blockedRequest)
+
+      const sessionIDs: string[] = []
+      let stopUpdated = () => {}
+      try {
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            const older = await Session.create({ title: "Older Session" })
+            sessionIDs.push(older.id)
+            await Bun.sleep(5)
+            const newer = await Session.create({ title: "Newer Session" })
+            sessionIDs.push(newer.id)
+
+            const initialEntries = (await SessionNav.queryScope(scope.id, { limit: 2 })).items
+            expect(initialEntries.map((entry) => entry.id)).toEqual([newer.id, older.id])
+            const olderActivityAt = initialEntries.find((entry) => entry.id === older.id)?.lastActivityAt
+            if (olderActivityAt === undefined) throw new Error("Expected the older session in recent navigation")
+            const updates: Array<{
+              info: Session.Info
+              navEntry?: { id: string; lastActivityAt: number }
+            }> = []
+            stopUpdated = Bus.subscribe(SessionEvent.Updated, (event) => {
+              if (event.properties.info.id !== older.id) return
+              updates.push(event.properties as (typeof updates)[number])
+            })
+
+            await Bun.sleep(5)
+            const response = await Server.App().request(
+              `/session/${older.id}/input?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ parts: [{ type: "text", text: "Bring this session forward" }] }),
+              },
+            )
+
+            expect(response.status).toBe(200)
+            expect((await response.json()) as { status: string }).toMatchObject({ status: "queued" })
+            const reordered = (await SessionNav.queryScope(scope.id, { limit: 2 })).items
+            expect(reordered.map((entry) => entry.id)).toEqual([older.id, newer.id])
+            expect(updates.at(-1)?.navEntry?.id).toBe(older.id)
+            expect(updates.at(-1)?.navEntry?.lastActivityAt).toBe(reordered[0]?.lastActivityAt)
+            expect(updates.at(-1)?.navEntry?.lastActivityAt).toBeGreaterThan(olderActivityAt)
+            finishRequest(true)
+          },
+        })
+      } finally {
+        stopUpdated()
+        finishRequest(true)
+        ;(SessionDrive.request as any) = originalRequest
+        for (const sessionID of sessionIDs) SessionManager.unregisterRuntime(sessionID)
+      }
+    }))
+
+  test("retries an existing durable inbox item without creating a duplicate", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      const originalRequest = SessionDrive.request
+      const requests: Array<{ sessionID: string; reason: string }> = []
+      ;(SessionDrive.request as any) = mock(async (sessionID: string, reason: string) => {
+        requests.push({ sessionID, reason })
+        return true
+      })
+
+      let sessionID = ""
+      try {
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            const session = await Session.create({ title: "Retry Durable Input" })
+            sessionID = session.id
+            const item = await SessionInbox.enqueueUser({
+              sessionID,
+              parts: [{ type: "text", text: "Resume this message" }],
+            })
+            await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
+
+            const response = await Server.App().request(
+              `/session/${sessionID}/inbox/${item.id}/retry?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              { method: "POST" },
+            )
+
+            expect(response.status).toBe(200)
+            expect((await response.json()) as { id: string; messageID: string }).toMatchObject({
+              id: item.id,
+              messageID: item.messageID,
+            })
+            expect((await SessionInbox.list(sessionID)).map((entry) => entry.id)).toEqual([item.id])
+            expect(requests).toEqual([{ sessionID, reason: "user-input-retry" }])
+            expect(await SessionLifecycle.snapshot(sessionID)).toBeUndefined()
+          },
+        })
+      } finally {
+        ;(SessionDrive.request as any) = originalRequest
+        if (sessionID) SessionManager.unregisterRuntime(sessionID)
+      }
+    }))
+
+  test("returns not found when retrying a missing inbox item", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Missing Retry Item" })
+          try {
+            const response = await Server.App().request(
+              `/session/${session.id}/inbox/inb_missing/retry?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              { method: "POST" },
+            )
+            expect(response.status).toBe(404)
+          } finally {
+            SessionManager.unregisterRuntime(session.id)
+          }
+        },
+      })
+    }))
+
+  test("rejects guide and withdrawal while the first task has no canonical root", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Locked First Task" })
+          try {
+            const item = await SessionInbox.enqueueUser({
+              sessionID: session.id,
+              parts: [{ type: "text", text: "Keep this root durable" }],
+            })
+            const path = `/session/${session.id}/inbox/${item.id}`
+            const guide = await Server.App().request(
+              `${path}/guide?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              {
+                method: "POST",
+              },
+            )
+            const remove = await Server.App().request(
+              `${path}?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              {
+                method: "DELETE",
+              },
+            )
+
+            expect(guide.status).toBe(409)
+            expect(remove.status).toBe(409)
+            expect((await guide.json()) as { name: string }).toMatchObject({
+              name: "SessionInboxFirstTaskLockedError",
+            })
+            expect((await remove.json()) as { name: string }).toMatchObject({
+              name: "SessionInboxFirstTaskLockedError",
+            })
+            expect((await SessionInbox.list(session.id)).map((entry) => entry.id)).toEqual([item.id])
+          } finally {
+            SessionManager.unregisterRuntime(session.id)
+          }
+        },
+      })
+    }))
+
+  test("advances recent activity when input is queued behind a running session", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Running Input" })
+          const lease = SessionManager.acquire(session.id)
+          if (!lease) throw new Error("Expected to acquire the session")
+
+          const activityBeforeInput = (await SessionNav.queryScope(scope.id, { limit: 1 })).items[0]?.lastActivityAt
+          if (activityBeforeInput === undefined) throw new Error("Expected running session navigation activity")
+          await Bun.sleep(5)
+
+          try {
+            const response = await Server.App().request(
+              `/session/${session.id}/input?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ parts: [{ type: "text", text: "Queue behind the active turn" }] }),
+              },
+            )
+
+            const result = (await response.json()) as { status: string; item?: { id: string } }
+            expect(result.status).toBe("queued")
+            const item = result.item
+            if (!item) throw new Error("Expected a queued inbox item")
+            expect((await SessionInbox.list(session.id)).map((entry) => entry.id)).toEqual([item.id])
+            const activityAfterInput = (await SessionNav.queryScope(scope.id, { limit: 1 })).items[0]?.lastActivityAt
+            expect(activityAfterInput).toBeGreaterThan(activityBeforeInput)
+          } finally {
+            await SessionManager.release(lease, { requestNextWork: false })
+            SessionManager.unregisterRuntime(session.id)
+          }
+        },
+      })
+    }))
+
+  test("durably accepts idle no-reply input before passive materialization without model work", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+      using invoke = spyOn(SessionInvoke, "invoke").mockRejectedValue(new Error("Passive input cannot invoke a model"))
+      using loop = spyOn(SessionInvoke, "loop").mockRejectedValue(new Error("Passive input cannot start a model loop"))
+
+      let sessionID = ""
+      try {
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            const session = await Session.create({ title: "No Reply Input" })
+            await Session.update(session.id, (draft) => {
+              draft.modelOverride = { providerID: "fixture", modelID: "fixture" }
+            })
+            sessionID = session.id
+            const response = await Server.App().request(
+              `/session/${session.id}/input?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  noReply: true,
+                  parts: [{ type: "text", text: "Record without a reply" }],
+                }),
+              },
+            )
+
+            expect(response.status).toBe(200)
+            const result = (await response.json()) as { status: string; item: { id: string; messageID: string } }
+            expect(result.status).toBe("queued")
+            expect(result.item.messageID).toBeDefined()
+            expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([result.item.id])
+            expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
+            expect(schedule).toHaveBeenCalledWith(session.id, "durable-no-reply-input")
+            await SessionManager.wake(session.id)
+            expect(await SessionInbox.list(session.id)).toHaveLength(0)
+            const messages = await Session.messages({ sessionID: session.id })
+            expect(messages).toHaveLength(1)
+            expect(messages[0].info).toMatchObject({ id: result.item.messageID, isRoot: false })
+            expect(messages[0].parts).toContainEqual(expect.objectContaining({ text: "Record without a reply" }))
+            expect(invoke).not.toHaveBeenCalled()
+            expect(loop).not.toHaveBeenCalled()
+          },
+        })
+      } finally {
+        if (sessionID) SessionManager.unregisterRuntime(sessionID)
+      }
+    }))
+
+  test("durably accepts conversation input while its deleted worktree remains unavailable", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Missing Worktree Input" })
+          const worktree = await Worktree.create({
+            sessionID: session.id,
+            name: "missing-input",
+            baseRef: "current",
+            bind: true,
+          })
+
+          const drive = spyOn(SessionDrive, "request").mockResolvedValue(true)
+          try {
+            await $`git worktree remove --force ${worktree.path}`.cwd(scope.local!.worktree).quiet()
+
+            const response = await Server.App().request(
+              `/session/${session.id}/input?directory=${encodeURIComponent(scope.local!.worktree)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ parts: [{ type: "text", text: "Continue" }] }),
+              },
+            )
+
+            expect(response.status).toBe(200)
+            const result = (await response.json()) as { status: string; item: { id: string } }
+            expect(result.status).toBe("queued")
+            expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([result.item.id])
+            expect((await Session.get(session.id)).workspace?.path).toBe(worktree.path)
+            await expect(Session.assertWorkspaceAvailable(session.id)).rejects.toThrow("unavailable")
+            expect((await Environment.get(session.environmentID!, scope.id)).state).toBe("idle")
+            expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
+            expect(SessionManager.isRunning(session.id)).toBe(false)
+          } finally {
+            drive.mockRestore()
+            await Worktree.remove({ sessionID: session.id, target: worktree.id, force: true }).catch(() => undefined)
+            await Session.remove(session.id)
+          }
+        },
+      })
+    }))
+})
+
+afterRuntimeTests(() => runtime.close())

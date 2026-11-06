@@ -1,6 +1,5 @@
 import fs from "fs"
 import path from "path"
-import { fileURLToPath } from "url"
 import type { PluginDefinition } from "@ericsanchezok/synergy-plugin"
 
 export function resolveDefinitionEntry(pluginDir: string): string {
@@ -38,17 +37,28 @@ function isPluginDefinition(value: unknown): value is PluginDefinition {
   )
 }
 
-export function resolveDefinitionLoaderPath(
-  baseUrl: string | URL = import.meta.url,
-  exists: (candidate: string) => boolean = fs.existsSync,
-) {
-  const compiled = fileURLToPath(new URL("./definition-loader-child.js", baseUrl))
-  if (exists(compiled)) return compiled
-  return fileURLToPath(new URL("./definition-loader-child.ts", baseUrl))
-}
-
-const loaderPath = resolveDefinitionLoaderPath()
 const marker = "__SYNERGY_PLUGIN_DEFINITION__"
+
+// Bun's documented CLI mode resolves author dependencies from disk even when
+// Plugin Kit is embedded in a standalone executable: https://bun.com/docs/bundler/executables
+const loaderSource = `
+import { schemaToJsonSchema } from "@ericsanchezok/synergy-plugin"
+import { pathToFileURL } from "node:url"
+const entry = process.argv.at(-1)
+const module = await import(pathToFileURL(entry).href)
+const definition = [module.default, ...Object.values(module)].find(value =>
+  value && typeof value === "object" && typeof value.id === "string" &&
+  typeof value.version === "string" && Array.isArray(value.contributions) && Array.isArray(value.handlerIds))
+if (!definition) throw new Error("No definePlugin() definition exported by " + entry)
+const contributions = definition.contributions.map(item => {
+  if (item.kind === "operation") return { ...item, input: schemaToJsonSchema(item.input), output: schemaToJsonSchema(item.output) }
+  if (item.kind === "event") return { ...item, payload: schemaToJsonSchema(item.payload) }
+  if (item.kind === "tool") return { ...item, input: schemaToJsonSchema(item.input) }
+  return item
+})
+process.stdout.write(${JSON.stringify(marker)} + JSON.stringify({ ...definition, contributions,
+  __hasActivate: typeof definition.activate === "function", __hasDeactivate: typeof definition.deactivate === "function" }))
+`
 
 export async function loadPluginDefinition(pluginDir: string): Promise<{
   entry: string
@@ -56,7 +66,8 @@ export async function loadPluginDefinition(pluginDir: string): Promise<{
 }> {
   const entry = resolveDefinitionEntry(pluginDir)
   const child = Bun.spawn({
-    cmd: [process.execPath, "run", loaderPath, entry],
+    cmd: [process.execPath, "--eval", loaderSource, entry],
+    env: { ...process.env, BUN_BE_BUN: "1" },
     cwd: pluginDir,
     stdout: "pipe",
     stderr: "pipe",

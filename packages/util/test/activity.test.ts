@@ -1,5 +1,18 @@
 import { describe, expect, test } from "bun:test"
-import { activityScopeForTool, isActivityGroupableTool, toolDisplayPolicy } from "../src/activity"
+import {
+  activityFamilyForTool,
+  activityScopeForTool,
+  isActivityGroupableTool,
+  isActivityReceiptTool,
+  toolDisplayPolicy,
+  semanticCategoryForKnownTool,
+} from "../src/activity"
+
+test("image and document inspection is reported as inspection rather than production", () => {
+  for (const tool of ["look_at", "view_image", "scan_document"])
+    expect(activityFamilyForTool(tool)).toBe("inspect-local")
+  expect(activityFamilyForTool("openai_image_gen")).toBe("produce")
+})
 
 describe("activityScopeForTool", () => {
   test("groups modified files by package or top-level workspace directory", () => {
@@ -51,5 +64,44 @@ describe("isActivityGroupableTool", () => {
       toolCardHidden: true,
       mediaGeneration: true,
     })
+  })
+
+  test("folds built-in MCP search family tools like ordinary tools", () => {
+    expect(isActivityGroupableTool("mcp__anysearch__search", {})).toBe(true)
+    expect(isActivityGroupableTool("mcp__anysearch__batch_search", {})).toBe(true)
+    expect(isActivityGroupableTool("mcp__scholight__search_papers", {})).toBe(true)
+    expect(isActivityGroupableTool("mcp__scholight__extract_url", {})).toBe(true)
+    // Every MCP family folds like ordinary tools now.
+    expect(isActivityGroupableTool("mcp__other__search", {})).toBe(true)
+  })
+
+  test("classifies built-in MCP search tools as web research", () => {
+    expect(activityFamilyForTool("mcp__anysearch__search", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__anysearch__batch_search", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__anysearch__extract", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__anysearch__get_sub_domains", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__scholight__search_papers", {})).toBe("research-web")
+    expect(activityFamilyForTool("mcp__scholight__extract_url", {})).toBe("research-web")
+  })
+})
+
+test("worktree archive stays in workspace coordination rather than conversation control", () => {
+  expect(semanticCategoryForKnownTool("worktree_archive")).toBe("config")
+  expect(activityFamilyForTool("worktree_archive", {})).toBe("coordination")
+  expect(isActivityGroupableTool("worktree_archive", {})).toBe(true)
+})
+
+describe("activity classification for media-generation tools", () => {
+  test("classifies speak as a production communication tool", () => {
+    expect(activityFamilyForTool("speak", { text: "Hello" })).toBe("produce")
+    expect(isActivityReceiptTool("speak", "produce")).toBe(true)
+  })
+
+  test("keeps hidden speak deliveries outside ordinary activity groups", () => {
+    expect(
+      isActivityGroupableTool("speak", {
+        display: { kind: "media-generation", toolCard: "hidden" },
+      }),
+    ).toBe(false)
   })
 })
