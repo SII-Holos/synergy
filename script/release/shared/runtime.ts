@@ -137,11 +137,26 @@ export async function npmTagMatches(
   return false
 }
 
-export async function npmEnsureDistTag(name: string, version: string, tag: string) {
-  if (await npmTagMatches(name, tag, version)) {
+export async function npmEnsureDistTag(
+  name: string,
+  version: string,
+  tag: string,
+  {
+    attempts,
+    delay,
+    addTag = () => retry(() => $`npm dist-tag add ${`${name}@${version}`} ${tag}`),
+  }: {
+    attempts?: number
+    delay?: number
+    addTag?: () => Promise<unknown>
+  } = {},
+) {
+  if (await npmTagMatches(name, tag, version, { attempts: 1 })) {
     return false
   }
-  await retry(() => $`npm dist-tag add ${`${name}@${version}`} ${tag}`)
+  await addTag()
+  if (!(await npmTagMatches(name, tag, version, { attempts, delay })))
+    throw new Error(`Published module is not tagged ${tag}: ${name}@${version}`)
   return true
 }
 

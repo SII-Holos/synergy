@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   computeStableVersion,
+  npmEnsureDistTag,
   npmTagMatches,
   npmVersionExists,
   waitForNpmVersion,
@@ -45,6 +46,63 @@ describe("release npm registry waits", () => {
     try {
       expect(await npmTagMatches("@ericsanchezok/synergy-sdk", "next", "3.0.1", { attempts: 2, delay: 1 })).toBe(true)
       expect(calls).toBe(2)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("repairs a mismatched tag promptly and waits for its read-back before reporting readiness", async () => {
+    const originalFetch = globalThis.fetch
+    let additions = 0
+    let beforeWrite = 0
+    let afterWrite = 0
+    globalThis.fetch = (async () => {
+      if (!additions) {
+        beforeWrite += 1
+        return Response.json({ next: "3.0.0" })
+      }
+      afterWrite += 1
+      return Response.json({ next: afterWrite === 1 ? "3.0.0" : "3.1.3" })
+    }) as typeof fetch
+    const options = {
+      attempts: 3,
+      delay: 0,
+      addTag: async () => {
+        additions += 1
+      },
+    }
+    try {
+      expect(await npmEnsureDistTag("@ericsanchezok/synergy-sdk", "3.1.3", "next", options)).toBe(true)
+      expect(beforeWrite).toBe(1)
+      expect(afterWrite).toBe(2)
+      expect(additions).toBe(1)
+      expect(await npmEnsureDistTag("@ericsanchezok/synergy-sdk", "3.1.3", "next", options)).toBe(false)
+      expect(additions).toBe(1)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("an accepted tag write that never becomes visible fails the publication readiness check", async () => {
+    const originalFetch = globalThis.fetch
+    let reads = 0
+    let additions = 0
+    globalThis.fetch = (async () => {
+      reads += 1
+      return Response.json({ next: "3.0.0" })
+    }) as typeof fetch
+    try {
+      await expect(
+        npmEnsureDistTag("@ericsanchezok/synergy-sdk", "3.1.3", "next", {
+          attempts: 3,
+          delay: 0,
+          addTag: async () => {
+            additions += 1
+          },
+        }),
+      ).rejects.toThrow("not tagged next")
+      expect(additions).toBe(1)
+      expect(reads).toBe(4)
     } finally {
       globalThis.fetch = originalFetch
     }

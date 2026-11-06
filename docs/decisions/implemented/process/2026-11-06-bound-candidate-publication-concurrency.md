@@ -12,6 +12,8 @@ The module phase and the subsequent platform/wrapper phase each run at most four
 
 The scheduler validates the entire phase's graph, selected version and archive budgets before registry writes. It publishes the prepared archives unchanged. The first failed task stops further scheduling; active tasks finish before the original error is returned. Ready consumers can fill a free slot while unrelated tasks remain active. Registry polling budgets, signing, notarization, upgrade acceptance and stable promotion remain owned by their existing checks.
 
+Tag repair probes the requested tag once, writes it when mismatched, and waits for read-back within the existing visibility budget. Waiting before initiating the repair adds delay without causing a tag change; accepting a successful write without read-back would let dependent tasks start before the repaired tag is observable.
+
 ## Alternatives considered
 
 **Serial publication.** It simplifies sequencing but adds every independent registry visibility delay to the release duration.
@@ -26,4 +28,4 @@ The scheduler validates the entire phase's graph, selected version and archive b
 
 Independent registry waits overlap while concurrent uploads remain bounded. Up to four started tasks may still finish after a failure, so failure reporting waits for their outcomes and recovery continues to inspect accepted versions. Actual savings depend on registry scanning, network throughput and the dependency graph; controlled scheduling tests and historical timing models do not establish production speedups.
 
-Behavioral tests retain graph validation and real archive packing, and cover the concurrency bound, required and optional dependency completion, immediate slot reuse, preflight before any write, and draining multiple failures without replacing the first error.
+Behavioral tests retain graph validation and real archive packing, and cover the concurrency bound, required and optional dependency completion, immediate slot reuse, preflight before any write, and draining multiple failures without replacing the first error. Tag tests cover delayed read-back, repeated readiness checks without another write, and a successful write that never becomes observable.
