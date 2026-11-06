@@ -27,6 +27,7 @@ const recoverableFiles = new Set([
   "script/release/shared/module-seed.ts",
   "script/release/shared/seed-payload.ts",
   "script/release/shared/publish-generic.ts",
+  "script/release/shared/desktop-app-package.ts",
   "script/release/shared/publish-modules.ts",
   "script/release/nodes/publish-synergy-candidate.ts",
   "script/release/nodes/package-binary-assets.ts",

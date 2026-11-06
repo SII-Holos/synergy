@@ -1,9 +1,13 @@
 import { expect, test } from "bun:test"
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import {
   createDesktopAppPackage,
   desktopApplicationArtifacts,
   assertDesktopUpgradeReceipt,
 } from "../../../script/release/shared/desktop-app-package"
+import { packPublicationDirectory } from "../../../script/release/shared/publish-generic"
 
 const version = "4.1.0"
 const repository = "example/synergy"
@@ -29,6 +33,35 @@ test("Desktop package selects five supported portable applications with verified
   expect(manifest.synergy.artifacts.find((item) => item.target === "linux-x64")?.url).toEndWith(
     "Synergy-linux-x86_64-4.1.0.AppImage",
   )
+})
+
+test("Desktop application metadata packs with Bun without including unrelated build files", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-desktop-package-test-"))
+  try {
+    const manifest = createDesktopAppPackage({ version, repository, receipts: receipts() })
+    const source = path.join(directory, "source")
+    await Bun.write(path.join(source, "package.json"), JSON.stringify(manifest))
+    await Bun.write(path.join(source, "unpublished-build-output.bin"), "excluded build output")
+    const packed = await packPublicationDirectory({
+      dir: source,
+      name: manifest.name,
+      version,
+      archive: path.join(directory, "desktop.tgz"),
+    })
+    const list = Bun.spawn(["tar", "-tzf", packed.archive], { stdout: "pipe", stderr: "pipe" })
+    const members = await new Response(list.stdout).text()
+    expect(await list.exited).toBe(0)
+    expect(members.trim().split("\n")).toEqual(["package/package.json"])
+    const read = Bun.spawn(["tar", "-xOf", packed.archive, "package/package.json"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const published = await new Response(read.stdout).json()
+    expect(await read.exited).toBe(0)
+    expect(published).toEqual(manifest)
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true })
+  }
 })
 
 test("final-artifact upgrade evidence must match the release, baseline and uploaded bytes", () => {
