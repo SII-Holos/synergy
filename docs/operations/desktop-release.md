@@ -95,6 +95,8 @@ The candidate publishes generic workspace modules and all eight target-specific 
 
 Each native Desktop packaging job writes a `synergy-desktop-app-<platform>.json` receipt binding its portable archive checksum and executable to the actual signing identity. macOS requires the configured team and notarization. Windows records a valid Authenticode publisher when signed; the existing unsigned-distribution policy records checksum-only verification, and signing continuity still prevents a signed release from becoming unsigned. The upload job verifies the receipts against the uploaded files and publishes `@ericsanchezok/synergy-desktop-app`. Finalization verifies and promotes every declared module and the Desktop application package before completing the release.
 
+The Desktop application npm archive contains only `package.json`, which declares the five portable application targets. Its explicit file selection is exercised through the real Bun packer before release; staging files and native application archives stay outside this metadata package.
+
 Windows receipt generation shares the installation signature inspector. It removes inherited `PSModulePath` only from the Windows PowerShell child environment and treats inspection errors as failures, preserving their diagnostics. Only an explicit `NotSigned` result can use the unsigned-distribution policy. Windows CI exercises real signature inspection from a Bun child carrying PowerShell 7 module paths before publication.
 
 `synergy install desktop` can therefore add the native application to a core installation. It installs a portable application into a new generation; the embedded application uses the Web preset and does not include another Desktop application package.

@@ -76,7 +76,7 @@ export function createDesktopAppPackage(options: { version: string; repository: 
     name: DESKTOP_APP_PACKAGE,
     version: options.version,
     license: "MIT",
-    files: [] as string[],
+    files: ["package.json"],
     synergy: SynergyPackage.parse({
       formatVersion: 1,
       kind: "app",
