@@ -36,7 +36,11 @@ test("platform publication prepares every bounded archive and preserves its exec
   for (const name of [platform, "synergy"])
     await Bun.write(
       path.join(directory, name, "package.json"),
-      JSON.stringify({ name: `@ericsanchezok/${name}`, version: "3.1.0" }),
+      JSON.stringify({
+        name: `@ericsanchezok/${name}`,
+        version: "3.1.0",
+        ...(name === "synergy" ? { optionalDependencies: { [`@ericsanchezok/${platform}`]: "3.1.0" } } : {}),
+      }),
     )
   for (const file of requiredRuntimeArtifactPaths(platform)) await Bun.write(path.join(directory, platform, file), file)
   const executable = path.join(directory, platform, "bin/synergy")
@@ -45,8 +49,15 @@ test("platform publication prepares every bounded archive and preserves its exec
   await Bun.write(path.join(directory, platform, "runtime/node_modules/dependency/data.wasm"), "runtime payload")
   await writeRuntimeManifest(path.join(directory, platform), platform)
   const candidate = await prepareSynergyCandidate("3.1.0", directory)
+  expect(candidate.version).toBe("3.1.0")
   expect(candidate.platformNames).toEqual([platform])
   expect(candidate.archives.map((pkg) => pkg.name)).toEqual([`@ericsanchezok/${platform}`, "@ericsanchezok/synergy"])
+  const wrapper = candidate.archives[1]!
+  const manifest = Bun.spawn(["tar", "-xOf", wrapper.archive, "package/package.json"], { stdout: "pipe" })
+  const [manifestCode, manifestText] = await Promise.all([manifest.exited, new Response(manifest.stdout).text()])
+  expect(manifestCode).toBe(0)
+  expect(wrapper.manifest).toEqual(JSON.parse(manifestText))
+  expect(wrapper.manifest.optionalDependencies).toEqual({ [`@ericsanchezok/${platform}`]: "3.1.0" })
   const extract = path.join(directory, "extracted")
   await fs.mkdir(extract)
   const process = Bun.spawn(["tar", "-xzf", candidate.archives[0]!.archive, "-C", extract])

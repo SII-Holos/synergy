@@ -2,7 +2,7 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { PRESETS_DIST_DIR } from "../shared/packages"
 import { packPublicationDirectory } from "../shared/publish-generic"
-import { assertNpmArchiveSize, publishPackedArchive } from "../shared/publish-modules"
+import { assertNpmArchiveSize, publishPackedArchives } from "../shared/publish-modules"
 import { readPackedArchives } from "../../package-install-check"
 import { validatePackagedRuntimeArchive } from "./package-binary-assets"
 
@@ -32,13 +32,13 @@ export async function prepareSynergyCandidate(version: string, dist = PRESETS_DI
     if (archive.version !== version) throw new Error(`Stale module publication version: ${archive.name}`)
     await assertNpmArchiveSize(archive)
   }
-  return { archives, platformPackages: platformNames.map((name) => `@ericsanchezok/${name}`), platformNames }
+  return { version, archives, platformPackages: platformNames.map((name) => `@ericsanchezok/${name}`), platformNames }
 }
 
 export async function publishSynergyCandidate(
   candidate: Awaited<ReturnType<typeof prepareSynergyCandidate>>,
   channel: string,
 ) {
-  for (const archive of candidate.archives) await publishPackedArchive(archive, channel)
+  await publishPackedArchives(candidate.archives, candidate.version, channel)
   return candidate
 }
