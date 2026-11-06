@@ -54,11 +54,11 @@ export async function packPublicationDirectory(options: {
   version: string
   archive: string
 }) {
-  const manifest = await Bun.file(path.join(options.dir, "package.json")).json()
+  const manifest: Record<string, unknown> = await Bun.file(path.join(options.dir, "package.json")).json()
   if (manifest.name !== options.name || manifest.version !== options.version)
     throw new Error(`Publication identity differs from the prepared package: ${options.name}`)
   await $`bun pm pack --ignore-scripts --filename ${options.archive}`.cwd(options.dir).quiet()
-  const packed = { name: options.name, version: options.version, archive: options.archive }
+  const packed = { name: options.name, version: options.version, archive: options.archive, manifest }
   await assertNpmArchiveSize(packed)
   return packed
 }
