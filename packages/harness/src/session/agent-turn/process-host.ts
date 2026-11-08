@@ -43,7 +43,13 @@ export function resolveAgentWorkerCommand(): string[] {
   if (installed) return installed
 
   if (instanceState.runtimeEntrypoint && fs.existsSync(instanceState.runtimeEntrypoint))
-    return [process.execPath, "run", instanceState.runtimeEntrypoint]
+    return [
+      process.execPath,
+      "run",
+      "--no-env-file",
+      `--config=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+      instanceState.runtimeEntrypoint,
+    ]
   if (!instanceState.runtimeEntrypoint) throw new Error("No agent worker host is registered")
   return [process.execPath, "__agent-turn-runner"]
 }
@@ -52,6 +58,7 @@ export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions)
   const owner = RuntimeContext.current()
   const processHandle = Bun.spawn({
     cmd: resolveAgentWorkerCommand(),
+    cwd: owner.host.root,
     env: {
       ...owner.host.env,
       ...runtimeState().environment,

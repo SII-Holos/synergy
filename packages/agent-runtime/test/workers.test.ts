@@ -9,6 +9,7 @@ import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime
 import { registerWorkerComponents, workerPlan } from "../src/workers"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 
 test("real agent and policy workers start from the host's explicit component selection", async () => {
   await using fixture = await runtimeHome()
@@ -51,6 +52,31 @@ test("worker entrypoints refuse to guess a composition without the owning host's
     context.dispose()
   }
 })
+
+for (const role of ["agent", "policy"] as const) {
+  test(`${role} workers reject a marked Home whose owner is absent from the pinned composition`, async () => {
+    await using fixture = await runtimeHome()
+    const preparation = RuntimeContext.create(fixture.host)
+    try {
+      await preparation.run(async () => {
+        HomeOwnership.select({ owner: "test-organization", identity: "a".repeat(64) })
+        await HomeOwnership.persist()
+      })
+    } finally {
+      preparation.dispose()
+    }
+    const plan = workerPlan([], FeatureSelection.resolve([]))
+    const context = RuntimeContext.create({
+      ...fixture.host,
+      env: { ...fixture.host.env, SYNERGY_WORKER_COMPONENTS: JSON.stringify(plan) },
+    })
+    try {
+      await expect(context.run(() => registerWorkerComponents(role))).rejects.toThrow("Home owner")
+    } finally {
+      context.dispose()
+    }
+  })
+}
 
 for (const invalid of ["version", "duplicate"] as const)
   test(`workers reject a ${invalid} mismatch in their pinned composition`, async () => {

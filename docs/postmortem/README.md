@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0095](0095-member-runtime-implicit-source-discovery.md)
+
 - [0094](0094-compaction-attachment-default-drift.md)
 
 - [0093](0093-hidden-browser-capture-presentation.md)

@@ -34,7 +34,14 @@ export function resolvePolicyWorkerCommand(): string[] {
   if (installed) return installed
   const entrypoint = state().entrypoint
   if (!entrypoint) throw new Error("No policy worker host is registered")
-  if (fs.existsSync(entrypoint)) return [process.execPath, "run", entrypoint]
+  if (fs.existsSync(entrypoint))
+    return [
+      process.execPath,
+      "run",
+      "--no-env-file",
+      `--config=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+      entrypoint,
+    ]
   return [process.execPath, "__policy-worker-runner"]
 }
 
@@ -42,6 +49,7 @@ export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOption
   const owner = RuntimeContext.current()
   const processHandle = Bun.spawn({
     cmd: resolvePolicyWorkerCommand(),
+    cwd: owner.host.root,
     env: {
       ...owner.host.env,
       ...state().environment,

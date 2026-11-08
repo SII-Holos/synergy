@@ -10,6 +10,41 @@ import { SystemPrompt } from "../../src/session/system"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
+test.skipIf(process.platform === "win32")(
+  "instruction discovery stops at the physical project root when its path has an alias",
+  async () => {
+    await using files = await tmpdir()
+    const project = path.join(files.path, "project")
+    const alias = path.join(files.path, "alias")
+    await Bun.write(path.join(files.path, "AGENTS.md"), "private ancestor rules")
+    await Bun.write(path.join(project, "AGENTS.md"), "project rules")
+    await fs.symlink(project, alias, "dir")
+    for (const exclusive of [false, true]) {
+      await using runtime = await testRuntime({
+        register() {
+          ConfigSource.register({ resolve: async () => ({}) })
+          if (exclusive) InstructionSource.register({ load: () => InstructionFiles.project() })
+        },
+      })
+      await runtime.run(async () => {
+        const scope: Scope.Project = {
+          type: "project",
+          id: "alias-project",
+          local: { directory: alias, worktree: alias, sandboxes: [] },
+          time: { created: 1, updated: 1 },
+        }
+        const parts = await ScopeContext.provide({
+          scope,
+          workspace: { type: "main", path: project, scopeID: scope.id },
+          fn: SystemPrompt.custom,
+        })
+        expect(parts.join("\n")).toContain("project rules")
+        expect(parts.join("\n")).not.toContain("private ancestor rules")
+      })
+    }
+  },
+)
+
 test("a host instruction source replaces implicit sources per Runtime and preserves source failure", async () => {
   await using files = await tmpdir()
   const privateFile = path.join(files.path, "private.md")

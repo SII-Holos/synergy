@@ -23,6 +23,8 @@
   "packages/organization-protocol": [],
   "packages/organization": ["packages/organization-protocol", "packages/harness", "packages/util"],
   "packages/organization-runtime": [
+    "packages/agent-runtime",
+    "packages/local-runtime",
     "packages/organization-protocol",
     "packages/harness",
     "packages/util",

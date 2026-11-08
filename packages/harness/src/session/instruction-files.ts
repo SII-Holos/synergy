@@ -1,6 +1,6 @@
 import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
-import { constants } from "node:fs"
+import { constants, realpathSync } from "node:fs"
 import os from "os"
 import path from "path"
 import { Config } from "../config/config"
@@ -39,11 +39,11 @@ export namespace InstructionFiles {
 
   function searchDirsWithinScope() {
     if (!ScopeContext.current.workspace) return []
-    const cwd = path.resolve(ScopeContext.current.directory)
+    const cwd = realpathSync.native(path.resolve(ScopeContext.current.directory))
     const scope = ScopeContext.current.scope
     if (scope.type !== "project") return [cwd]
 
-    const root = path.resolve(scope.local?.directory ?? cwd)
+    const root = realpathSync.native(path.resolve(scope.local?.directory ?? cwd))
     if (!isPathContained(root, cwd)) return [cwd]
 
     const dirs: string[] = []
