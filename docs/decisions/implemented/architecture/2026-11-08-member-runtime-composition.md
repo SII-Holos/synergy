@@ -12,6 +12,8 @@ An enrolled machine identity does not isolate model configuration, instruction d
 
 The host selects empty configuration and provider catalogs, project-only instructions and no filesystem or bundled Skills. Its environment permits executable lookup and locale variables and binds user directories to the member Home. Agent and policy workers receive only public member identity metadata and repeat the source registrations; generic worker startup verifies the persisted Home owner before readiness. Source workers disable automatic dotenv and Bun configuration loading and use their owning Runtime directory.
 
+SQLite drivers capture the owning host when they open and retain that environment for lazy maintenance readers and reader replacement. PostgreSQL connection variables resolve within the current host; only detached storage utilities use the process environment. SQLite and telemetry source workers also disable Bun's automatic loader inputs. Telemetry ignores callbacks from retired workers before reentering Runtime context, including callbacks delivered after shutdown has disposed that context.
+
 Project instruction traversal resolves both the Scope root and Workspace path physically before comparing its stopping point. File aliases cannot make an otherwise bounded upward walk pass its root. The registration and bridge APIs retain independent lifecycles and confer no execution authority.
 
 ## Alternatives considered

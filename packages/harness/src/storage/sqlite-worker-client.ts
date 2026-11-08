@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
+import { RuntimeContext } from "../lifecycle/context"
 import { StorageBusyError, StorageClosedError, StorageUnavailableError } from "./errors"
 import { StorageBudgets } from "./budgets"
 import { Log } from "../util/log"
@@ -14,6 +15,17 @@ import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/ru
 import type { SqliteMaintenanceResult, SqliteRequest, SqliteResponse, SqlRow } from "./sql-contract"
 
 const log = Log.create({ service: "storage.worker" })
+
+export function captureSqliteWorkerHost() {
+  const host = RuntimeContext.tryCurrent()?.host
+  return Object.freeze({
+    cwd: host?.root,
+    env: Object.freeze({
+      ...(host?.env ?? process.env),
+      ...(host ? { SYNERGY_HOME: host.home, SYNERGY_RUNTIME_ROOT: host.root } : {}),
+    }),
+  })
+}
 
 // The worker answers one statement at a time from one event loop, so an
 // unanswered probe means only that the loop is occupied — it cannot by itself
@@ -55,13 +67,25 @@ export class SqliteWorkerClient {
   private state: "healthy" | "busy" | "exited" | "latched" = "healthy"
   private monitoring?: Promise<boolean>
 
-  constructor(readonly role: "reader" | "maintenance-reader" | "observability-reader" | "writer") {
+  constructor(
+    readonly role: "reader" | "maintenance-reader" | "observability-reader" | "writer",
+    host = captureSqliteWorkerHost(),
+  ) {
     const entry = fileURLToPath(new URL("./sqlite-worker.ts", import.meta.url))
     this.worker = Bun.spawn({
       cmd:
-        installedWorkerCommand(process.env, "__storage-worker-runner") ??
-        (existsSync(entry) ? [process.execPath, "run", entry] : [process.execPath, "__storage-worker-runner"]),
-      env: { ...process.env, SYNERGY_STORAGE_PARENT_PID: String(process.pid) },
+        installedWorkerCommand(host.env, "__storage-worker-runner") ??
+        (existsSync(entry)
+          ? [
+              process.execPath,
+              "run",
+              "--no-env-file",
+              `--config=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+              entry,
+            ]
+          : [process.execPath, "__storage-worker-runner"]),
+      cwd: host.cwd,
+      env: { ...host.env, SYNERGY_STORAGE_PARENT_PID: String(process.pid) },
       // Group cancellation must leave storage alive until its owner drains terminal writes.
       detached: process.platform !== "win32",
       serialization: "advanced",

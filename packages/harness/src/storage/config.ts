@@ -4,6 +4,7 @@ import { parse, type ParseError } from "jsonc-parser"
 import { z } from "zod"
 import { StorageIntegrityError } from "./errors"
 import type { StoreOptions } from "./sql-contract"
+import { RuntimeContext } from "../lifecycle/context"
 
 const Namespace = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/)
 export const StorageConfiguration = z.discriminatedUnion("backend", [
@@ -54,7 +55,8 @@ export function resolveStoreOptions(
         ? path.resolve(root, configuration.filename)
         : path.join(root, "data", "storage", "agent.sqlite"),
     }
-  const url = process.env[configuration.connectionEnv]
+  const environment = RuntimeContext.tryCurrent()?.host.env ?? process.env
+  const url = environment[configuration.connectionEnv]
   if (!url)
     throw new StorageIntegrityError(
       `Storage connection environment variable ${configuration.connectionEnv} is unavailable`,
