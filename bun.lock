@@ -1145,6 +1145,25 @@
         "typescript": "catalog:",
       },
     },
+    "packages/organization-runtime": {
+      "name": "@ericsanchezok/synergy-organization-runtime",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+        "@ericsanchezok/synergy-sdk": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-organization": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugin": {
       "name": "@ericsanchezok/synergy-plugin",
       "version": "1.1.26",
@@ -1946,6 +1965,8 @@
     "@ericsanchezok/synergy-organization": ["@ericsanchezok/synergy-organization@workspace:packages/organization"],
 
     "@ericsanchezok/synergy-organization-protocol": ["@ericsanchezok/synergy-organization-protocol@workspace:packages/organization-protocol"],
+
+    "@ericsanchezok/synergy-organization-runtime": ["@ericsanchezok/synergy-organization-runtime@workspace:packages/organization-runtime"],
 
     "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-plugin@workspace:packages/plugin"],
 

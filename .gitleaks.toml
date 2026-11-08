@@ -18,6 +18,7 @@ paths = [
   '''packages/plugin-host/test/.*/fixtures/.*''',
   '''packages/presets/test/.*/fixtures/.*''',
   '''packages/local-runtime/test/.*/fixtures/.*''',
+  '''packages/organization-runtime/test/support/fixtures/tls\.ts''',
   '''packages/server/test/.*/fixtures/.*''',
   '''packages/testing/test/.*/fixtures/.*''',
   '''packages/workbench/test/.*/fixtures/.*''',

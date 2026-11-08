@@ -121,7 +121,8 @@
       "packages/channel-light-loop",
       "packages/channel-lattice",
       "packages/organization-protocol",
-      "packages/organization"
+      "packages/organization",
+      "packages/organization-runtime"
     ],
     "catalog": {
       "@babel/core": "8.0.7",

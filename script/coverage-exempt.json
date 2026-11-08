@@ -3237,6 +3237,15 @@
         "functions": 75
       },
       "exempt": []
+    },
+    "packages/organization-runtime": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
     }
   }
 }

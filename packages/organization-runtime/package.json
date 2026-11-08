@@ -1,0 +1,34 @@
+{
+  "name": "@ericsanchezok/synergy-organization-runtime",
+  "version": "1.1.26",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./home": "./src/home.ts",
+    "./enrollment": "./src/enrollment.ts",
+    "./error": "./src/error.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bun ../../script/build-workspace.ts packages/organization-runtime",
+    "test": "bun ../testing/script/test-ci.ts",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-organization": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

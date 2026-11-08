@@ -40,6 +40,11 @@ export const RELEASE_CATALOG = {
     registry: "@ericsanchezok/synergy-organization",
     versioned: true,
   },
+  organizationRuntime: {
+    directory: "packages/organization-runtime",
+    registry: "@ericsanchezok/synergy-organization-runtime",
+    versioned: true,
+  },
   localRuntime: {
     directory: "packages/local-runtime",
     registry: "@ericsanchezok/synergy-local-runtime",

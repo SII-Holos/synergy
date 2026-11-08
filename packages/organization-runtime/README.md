@@ -1,0 +1,11 @@
+# Organization Runtime adapter
+
+The member adapter provisions a stable, dedicated Home for an organization, account and device. It consumes a short-lived registration ticket through the generated organization client. These APIs establish machine identity; they do not start an Agent Runtime or grant execution authority.
+
+`prepareMemberHome({ baseDirectory, identity, origin })` requires an absolute managed base directory and an exact HTTPS origin. The directory key hashes the three identity fields, independent of the service address. Existing personal directories and symbolic-link Homes are refused. Provisioning publishes the generic Harness ownership marker before any Runtime initialization, then durably records its initial state and machine key. Interrupted initial provisioning resumes with the same key. Established identities with missing, mismatched or unsupported records fail closed.
+
+`readMemberHome(home, identity)` returns public binding metadata only. The Ed25519 private key stays in the Home's private credential file. `enrollMemberRuntime({ home, identity, ticket, ca?, signal? })` verifies the ticket's organization, account, device and public key before signing its registration proof. The request uses verified TLS, a dedicated connection pool, no ambient proxy, no browser credentials and no redirects. A supplied CA adds explicit deployment trust without disabling certificate verification.
+
+The ticket is not persisted. Only public registration metadata is saved after the service returns a matching active receipt. Lost responses can be retried with the same ticket while it remains available; the service's immutable receipt prevents duplicate activation. `readMemberRegistration(home, identity)` reads this local cache, which never substitutes for current service authorization. Changed deployment or Runtime identities require explicit recovery.
+
+Run `bun run typecheck`, focused `bun test test/home.test.ts test/enrollment.test.ts`, or `bun run test:coverage`. The tests use isolated Homes, real organization storage and HTTPS listeners with a test-only certificate. Organization execution composition, source isolation, Desktop supervision and Session coordination remain separate adapter responsibilities.

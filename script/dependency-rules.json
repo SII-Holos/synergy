@@ -21,5 +21,11 @@
   "packages/sdk/js": [],
   "packages/secret-detection": [],
   "packages/organization-protocol": [],
-  "packages/organization": ["packages/organization-protocol", "packages/harness", "packages/util"]
+  "packages/organization": ["packages/organization-protocol", "packages/harness", "packages/util"],
+  "packages/organization-runtime": [
+    "packages/organization-protocol",
+    "packages/harness",
+    "packages/util",
+    "packages/sdk/js"
+  ]
 }

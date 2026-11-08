@@ -17,6 +17,7 @@ export const runtimePackages = new Set(
     "local-runtime",
     "agent-runtime",
     "organization",
+    "organization-runtime",
     "cli",
     "server",
     "presets",
