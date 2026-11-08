@@ -202,6 +202,8 @@ The built-in Browser is Desktop-local and uses Electron's bundled Chromium, with
 
 The Personal space menu in the sidebar opens Settings, Providers and the repository. It hides with the built-in sidebar. Local work does not require a network identity.
 
+The experimental [organization service](packages/organization/README.md) provides independent team accounts and project authorization through its own API and `synergy org` commands. It uses a dedicated Home and does not execute Agents.
+
 See the [CLI reference](docs/reference/cli.md), [configuration reference](docs/reference/configuration.md), and [release notes](https://github.com/SII-Holos/synergy/releases) for complete setup and runtime details.
 
 For headless tasks, versioned experiment settings, durable execution evidence and cost comparisons, see [Rollout execution](docs/reference/rollout.md).

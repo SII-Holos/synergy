@@ -127,12 +127,12 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
   }
   const onRejection = (error: unknown) => {
     process.exitCode = 1
-    Log.Default.error("rejection", { error: error instanceof Error ? error.message : error })
+    logger.error("rejection", { error: error instanceof Error ? error.message : error })
     printUnhandledFailure("Unhandled rejection", error)
   }
   const onException = (error: Error) => {
     process.exitCode = 1
-    Log.Default.error("exception", { error: error.message })
+    logger.error("exception", { error: error.message })
     printUnhandledFailure("Uncaught exception", error)
   }
 
@@ -161,6 +161,7 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
           (name) => name.split(" ")[0] === selectedCommand,
         ),
       )
+      if (entry?.initialization === "owner") return
       const storageMode = typeof entry?.storage === "function" ? entry.storage(opts._) : entry?.storage
       if (storageMode === "maintenance" && !storage) {
         const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
@@ -208,6 +209,14 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
     argv.some((arg) => ["--help", "-h", "--version", "-v"].includes(arg))
   const requestedCommand = firstPositionalArg()
   const selectedCommand = requestedCommand ?? (informational ? undefined : options.defaultCommand)
+  const ownsInitialization = builtinCommands.some(
+    (entry) =>
+      entry.initialization === "owner" &&
+      (Array.isArray(entry.command) ? entry.command : [entry.command]).some(
+        (name) => name.split(" ")[0] === selectedCommand,
+      ),
+  )
+  const logger = ownsInitialization ? Log.create({ service: "cli", mirror: false }) : Log.Default
   const hasCommand = builtinCommands.some((entry) =>
     (Array.isArray(entry.command) ? entry.command : [entry.command]).some(
       (name) => name.split(" ")[0] === selectedCommand,
@@ -335,7 +344,7 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
         importKind: e.importKind,
       })
     }
-    Log.Default.error("fatal", data)
+    logger.error("fatal", data)
     const { FormatError } = await import("./cli/error")
     const formatted = FormatError(e)
     if (formatted) UI.error(formatted)

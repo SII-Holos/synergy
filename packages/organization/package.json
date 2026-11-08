@@ -26,6 +26,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",

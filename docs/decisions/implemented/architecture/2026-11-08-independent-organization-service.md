@@ -10,6 +10,8 @@ Team identity and authorization need durable service-owned records without anoth
 
 The organization service uses an explicit Harness Runtime context and Storage Handle, the existing Home process lock and the central migration runner. It owns a separate SQL namespace and registers only organization migrations. Its startup never opens the Agent Runtime lifecycle. Strict protocol schemas and an independent generated SDK separate organization transport from Runtime transport.
 
+The installable component contributes lazy commands to the single CLI parser and has no service migration registration hook. Its command entry declares owner initialization, bypassing the parser's ambient Home initialization and log mirroring. The handler validates an explicit absolute Home, then opens the independent service. Initialization secrets go to an exclusively created private file, and readiness output contains no credentials. The listener owns its signals, admitted work and shutdown.
+
 ## Alternatives considered
 
 **Open the complete Agent Runtime with fewer routes.** Route visibility does not remove execution recovery, background services or implicit model discovery.
@@ -17,6 +19,8 @@ The organization service uses an explicit Harness Runtime context and Storage Ha
 **Build another storage engine and migration framework.** This would duplicate the existing SQLite/PostgreSQL transactions, fencing, receipts and migration guarantees.
 
 **Mount organization routes on the Runtime server.** Deployment ownership and authentication differ; coupling them would make it harder to deploy the organization service independently and keep member machines away from organization storage.
+
+**Use a second CLI parser or ambient Home setup.** Another parser duplicates installed command dispatch and help. Ambient initialization can write configuration or telemetry before the independent service validates its Home or acquires ownership; owner initialization preserves the existing parser while keeping those writes with the service.
 
 ## Consequences
 

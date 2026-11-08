@@ -5,3 +5,5 @@ Own organization identity, project authorization, resource grants, shared projec
 Use an explicit isolated Storage Handle, the central migration runner and owner-local storage keys. Authorization and durable admission share the organization transaction; Runtime receipt is a separate fact. Do not persist private member Session bodies in forwarding records. Keep all read paths and downloads behind current authorization.
 
 Tests live under `test/` and use real temporary storage. Run `bun run typecheck` and focused `bun test` suites, then root dependency, package and generated-contract checks. All service processes use a dedicated Home and explicit ports; preserve the active user Runtime.
+
+The component contributes lazy CLI commands only. Register service migrations inside the independent service context, never in the surrounding Agent Runtime. Commands declare owner initialization and require an explicit absolute Home before writes. Keep initialization secrets out of argv and stdout. Verify `test/cli.test.ts` with real child processes and `test/service.test.ts` for migration and lifecycle isolation.

@@ -31,6 +31,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `migrate` | move synergy data to a new location (alias for 'data move') |
 | `migration` | manage schema and data migrations |
 | `models` | list all available models |
+| `org` | initialize or serve an organization in an explicit SYNERGY_HOME |
 | `plugin` | install, remove, update, and inspect plugins |
 | `remove` | remove packages and unused dependencies |
 | `secrets` | manage the secret vault |
@@ -368,6 +369,14 @@ import config from URL or file
 show detailed plugin status and metadata
 
 
+## init
+
+create a single-use initialization token in a new private file; print JSON metadata
+
+| Option | Description |
+| --- | --- |
+| `--output` (string) | absolute path for a new private token file |
+
 ## inspect
 
 show snapshot ownership and logical/allocated storage usage
@@ -522,6 +531,11 @@ move synergy data to a new location
 ## operations <workspaceID>
 
 list unfinished Workspace mutations
+
+
+## org
+
+initialize or serve an organization in an explicit SYNERGY_HOME
 
 
 ## pack [output]
@@ -795,6 +809,16 @@ send a message to synergy
 | `--port` (number) | accepted for compatibility; local execution does not open an HTTP listener |
 | `--variant` (string) | model variant (provider-specific reasoning effort, e.g., high, max, minimal) |
 | `--workflow` (string) | run the message as a Light Loop workflow task: the executor verifies the full goal and completes it with loop_stop, and send exits when the workflow reaches a terminal state |
+
+## serve
+
+serve organization APIs without Agent execution; print JSON readiness
+
+| Option | Description |
+| --- | --- |
+| `--origin` (string) | exact public HTTPS origin served by the TLS reverse proxy |
+| `--port` (number) | explicit local HTTP port (0 selects an available port) |
+| `--hostname` (string) | HTTP listening address behind the TLS reverse proxy |
 
 ## session
 

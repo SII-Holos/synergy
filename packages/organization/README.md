@@ -13,6 +13,15 @@ await server.stop(true)
 
 The health endpoint is `/org/v1/health`. Clients use the independent `@ericsanchezok/synergy-sdk/organization` entry. See [organization architecture](../../docs/architecture/organization.md) for storage ownership.
 
+The optional organization component contributes `synergy org init` and `synergy org serve` to the existing CLI. Enable its `organization` experiment in the dedicated Home's `config/synergy.d/140-features.jsonc` using the [feature selection format](../../docs/architecture/feature-lifecycle.md). Both commands require an explicit absolute `SYNERGY_HOME`; the component itself registers no service migrations in an Agent Runtime.
+
+```bash
+SYNERGY_HOME=/srv/synergy-org synergy org init --output /srv/org-bootstrap.json
+SYNERGY_HOME=/srv/synergy-org synergy org serve --origin https://org.example.com --port 4080
+```
+
+`init` creates a mode-0600 file containing the one-time token and organization identity, and prints only JSON metadata. It refuses to overwrite an existing output file. Consume the token through the initialization API within 30 minutes and remove the token file after use. `serve` binds loopback by default behind the configured HTTPS reverse proxy. It prints JSON readiness with its actual listening URL, drains its service on SIGINT/SIGTERM and releases its Home lock. It does not initialize personal configuration, model providers or Agent execution. An explicitly set `SYNERGY_RUNTIME_ROOT` must match this Home's `.synergy` directory.
+
 Set `publicOrigin` to the exact externally served HTTPS origin to enable browser identity routes. `service.bootstrapToken()` creates a short-lived initialization secret only before initialization; deliver it privately to the initializer. `/org/v1/setup/bootstrap` consumes it once. Login, invitation, password reset, account ownership and project endpoints are described by `packages/sdk/organization.openapi.json`. Initialization and invitation consumption use stable request IDs for explicit retry. The server stores token digests and password hashes; never log token responses or put them in project configuration.
 
 Authentication settings control initialization (30 minutes), invitation (7 days), reset (30 minutes) and browser login (30 days) lifetimes. Password hashes use Argon2id with 64 MiB and time cost 3; the default service admits two simultaneous jobs and a bounded waiting queue. Project list APIs accept a cursor and a limit up to 100. Account and project mutations require the current revision. There is no destructive project-delete endpoint.

@@ -22,6 +22,8 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
    Installation commands use Plugin Host's installation manager. Keep module trust separate from API4 grants, preserve activation journals, and verify both next-start selection and workers pinned to an older running generation.
 7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
+For an independent service with its own storage lifecycle, declare `CommandEntry.initialization: "owner"`. Validate its explicit Home and transport options before opening storage; do not initialize the ambient Agent Home or mirror parser errors into its telemetry. Verify missing/relative Home rejection leaves the ambient Home empty, command registration does not install service migrations in an Agent Runtime, private token output cannot be overwritten, and real child-process shutdown releases only the service's lock. Keep credentials out of arguments and stdout.
+
 ## Command Contract
 
 1. Separate the command kinds: discovery commands (list accounts, projects, or queues), resolve commands (name or URL to a stable ID), read commands (exact object fetch plus a bounded list/search with `--limit` or a cursor), and narrow write commands (one named action each; prefer `--dry-run` or draft mode when the service allows).

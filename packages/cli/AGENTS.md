@@ -14,6 +14,8 @@ Model setup writes optional Library and Anima defaults only when their configura
 
 Command contributions may select maintenance storage from parsed positionals; HTTP-only subcommands must not acquire the local Home lock.
 
+An independent service contribution declares `initialization: "owner"` to own its Home, store, logs and cleanup. The parser must not create ambient configuration or mirror failures into ambient telemetry for it. Keep the single parser and verify failure paths before ownership is acquired.
+
 Workspace and Environment commands require an attached server and explicit Scope, use generated SDK operations, and retain mutation preconditions and structured errors. Verify with `bun test test/cli/resources.test.ts`.
 
 Own server process lifetime, managed startup reporting, signals and terminal presentation through an injected runtime factory. Keep `runCli()` as the sole parser. Agent Runtime opens the explicit composition; Harness supplies execution, and Plugin Host supplies plugin hosting when selected. Optional product domains contribute through component adapters. The CLI must not import optional product implementations. Test command-load failures and preserve send cancellation and recording-error exit codes. Poll the shared durable input projection through admission; a queued input need not have a Run record.

@@ -186,6 +186,52 @@ test("command-loading failures set nonzero status and leave no process listeners
     }
   }))
 
+test("owner-initialized commands do not create an ambient Home even when their handler fails", async () => {
+  const { runCli } = await import("../../src/main")
+  const isolation = await createIsolatedTestEnv()
+  const home = process.env.SYNERGY_HOME
+  const root = process.env.SYNERGY_RUNTIME_ROOT
+  const exit = process.exitCode
+  const error = console.error
+  const errors: string[] = []
+  process.env.SYNERGY_HOME = isolation.env.SYNERGY_TEST_HOME
+  delete process.env.SYNERGY_RUNTIME_ROOT
+  console.error = (...args) => errors.push(args.map(String).join(" "))
+  try {
+    await runCli({
+      argv: ["independent"],
+      register() {},
+      runtimeFactory: async () => {
+        throw new Error("Agent Runtime must not open")
+      },
+      commands: [
+        {
+          command: "independent",
+          describe: "service with its own lifecycle",
+          initialization: "owner",
+          load: async () => ({
+            command: "independent",
+            handler() {
+              throw new Error("explicit service Home required")
+            },
+          }),
+        },
+      ],
+    })
+    expect(process.exitCode).toBe(1)
+    expect(errors.join("\n")).toContain("explicit service Home required")
+    expect(await fs.readdir(isolation.env.SYNERGY_TEST_HOME!, { recursive: true })).toEqual([])
+  } finally {
+    if (home === undefined) delete process.env.SYNERGY_HOME
+    else process.env.SYNERGY_HOME = home
+    if (root === undefined) delete process.env.SYNERGY_RUNTIME_ROOT
+    else process.env.SYNERGY_RUNTIME_ROOT = root
+    process.exitCode = exit ?? 0
+    console.error = error
+    await isolation.dispose()
+  }
+})
+
 test("version is available when plugin storage cannot be opened", () =>
   runtime.run(async () => {
     const { runCli } = await import("../../src/main")

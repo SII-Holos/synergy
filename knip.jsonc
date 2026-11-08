@@ -165,8 +165,8 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
     },
     "packages/organization": {
-      "entry": ["test/**/*.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "entry": ["test/**/*.ts", "test/fixtures/*.mjs"],
+      "project": ["src/**/*.ts", "test/**/*.ts", "test/fixtures/*.mjs"],
       "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
     "packages/organization-protocol": {

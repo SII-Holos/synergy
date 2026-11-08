@@ -65,6 +65,7 @@
     "@ericsanchezok/synergy-mcp": "workspace:*",
     "@ericsanchezok/synergy-media": "workspace:*",
     "@ericsanchezok/synergy-note": "workspace:*",
+    "@ericsanchezok/synergy-organization": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-plugin-agenda": "workspace:*",
     "@ericsanchezok/synergy-plugin-blueprint": "workspace:*",

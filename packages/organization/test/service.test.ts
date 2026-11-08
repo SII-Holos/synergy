@@ -8,6 +8,8 @@ import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { OrganizationStoragePath } from "../src/storage/path"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 
 const homes: string[] = []
 const services: Awaited<ReturnType<typeof openOrganizationService>>[] = []
@@ -141,6 +143,24 @@ test("the organization component stays off until selected explicitly", () => {
   const components = [organization()]
   expect(FeatureSelection.resolve(components).components).toEqual([])
   expect(FeatureSelection.resolve(components, { optIn: ["organization"] }).components).toEqual(["organization"])
+})
+
+test("installing organization commands does not register service migrations in an Agent Runtime", async () => {
+  const home = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "organization-component-"))
+  homes.push(home)
+  const context = RuntimeContext.create({
+    home,
+    root: path.join(home, ".synergy"),
+    env: { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME },
+  })
+  try {
+    context.run(() => {
+      organization().register()
+      expect(MigrationRegistry.list().has("organization")).toBe(false)
+    })
+  } finally {
+    context.dispose()
+  }
 })
 
 test("failed storage startup releases only its own Home lock", async () => {

@@ -22,27 +22,43 @@ async function cliHelp(args: string[], env?: Record<string, string>) {
 }
 
 describe("product CLI help", () => {
-  test("help and version leave broken configuration, caches and migration state untouched", () =>
+  ;(test("organization commands require opt-in and expose initialization and independent serving", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()
-      const cache = `${tmp.path}/.synergy/cache`
-      const config = `${tmp.path}/.synergy/config/synergy.d/120-runtime.jsonc`
-      await Bun.write(`${cache}/version`, "outdated")
-      await Bun.write(`${cache}/keep`, "sentinel")
-      await Bun.write(config, "{ invalid }")
-      await Bun.write(`${tmp.path}/.synergy/plugin.lock`, "{ invalid }")
-      const files = () =>
-        Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: tmp.path, onlyFiles: true, dot: true })).then((files) =>
-          files.sort(),
-        )
-      const before = await files()
-      for (const args of [["--help"], ["send", "--help"], ["--version"]])
-        await cliHelp(args, { SYNERGY_HOME: tmp.path, SYNERGY_CWD: tmp.path })
-      expect(await files()).toEqual(before)
-      expect(await Bun.file(`${cache}/version`).text()).toBe("outdated")
-      expect(await Bun.file(`${cache}/keep`).text()).toBe("sentinel")
-      expect(await Bun.file(config).text()).toBe("{ invalid }")
-    }))
+      const env = { SYNERGY_HOME: tmp.path, SYNERGY_CWD: tmp.path }
+      expect(await cliHelp(["--help"], env)).not.toContain("synergy org")
+      await Bun.write(
+        `${tmp.path}/.synergy/config/synergy.d/140-features.jsonc`,
+        JSON.stringify({ features: { optIn: ["organization"] } }),
+      )
+      expect(await cliHelp(["--help"], env)).toContain("synergy org")
+      expect(await cliHelp(["org", "init", "--help"], env)).toContain("--output")
+      const serve = await cliHelp(["org", "serve", "--help"], env)
+      for (const flag of ["--origin", "--port", "--hostname"]) expect(serve).toContain(flag)
+      const files = await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: tmp.path, onlyFiles: true, dot: true }))
+      expect(files).toEqual([".synergy/config/synergy.d/140-features.jsonc"])
+    })),
+    test("help and version leave broken configuration, caches and migration state untouched", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir()
+        const cache = `${tmp.path}/.synergy/cache`
+        const config = `${tmp.path}/.synergy/config/synergy.d/120-runtime.jsonc`
+        await Bun.write(`${cache}/version`, "outdated")
+        await Bun.write(`${cache}/keep`, "sentinel")
+        await Bun.write(config, "{ invalid }")
+        await Bun.write(`${tmp.path}/.synergy/plugin.lock`, "{ invalid }")
+        const files = () =>
+          Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: tmp.path, onlyFiles: true, dot: true })).then((files) =>
+            files.sort(),
+          )
+        const before = await files()
+        for (const args of [["--help"], ["send", "--help"], ["--version"]])
+          await cliHelp(args, { SYNERGY_HOME: tmp.path, SYNERGY_CWD: tmp.path })
+        expect(await files()).toEqual(before)
+        expect(await Bun.file(`${cache}/version`).text()).toBe("outdated")
+        expect(await Bun.file(`${cache}/keep`).text()).toBe("sentinel")
+        expect(await Bun.file(config).text()).toBe("{ invalid }")
+      })))
   test("snapshot maintenance exposes scope selection and explicit collection controls", () =>
     runtime.run(async () => {
       const group = await cliHelp(["data", "snapshots", "--help"])
