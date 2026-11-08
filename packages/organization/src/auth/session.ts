@@ -54,12 +54,13 @@ export async function authenticate(credentials: Credentials) {
       account: result.account,
       login: result.login,
       expiresAt: Math.min(access.expiresAt, result.login.expiresAt),
+      clientKind: result.client.kind,
     }
   }
   const result = await authenticateLogin(digest(credentials.token))
   if (credentials.csrf !== undefined && !matches(credentials.csrf, result.login.csrfHash))
     fail("PERMISSION_DENIED", "Invalid request token")
-  return { ...result, expiresAt: result.login.expiresAt }
+  return { ...result, expiresAt: result.login.expiresAt, clientKind: "web" as const }
 }
 
 export async function authenticateLogin(hash: string) {

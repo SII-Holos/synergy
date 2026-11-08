@@ -12,6 +12,43 @@ export namespace OrganizationRecord {
   export const SigningIdentity = Command.SigningIdentity.extend({
     pkcs8: z.string().regex(/^(?:[a-f0-9]{2}){1,1024}$/),
   })
+  export const CommandRequest = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      first: Command.Permit,
+      lastAttemptID: Identity.ID,
+      accepted: Command.Accepted.optional(),
+    })
+    .refine(
+      (value) =>
+        !value.accepted ||
+        (value.first.actor.subjectID === value.accepted.permit.actor.subjectID &&
+          (["orgID", "requestID", "sessionID", "projectID", "runtimeID", "operation", "payloadHash"] as const).every(
+            (key) => value.first[key] === value.accepted!.permit[key],
+          )),
+      "Accepted command must belong to the retained logical request",
+    )
+  export const CommandAttempt = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      authorization: Command.SignedPermit,
+      state: z.enum(["admitted", "dispatching", "not_dispatched", "unknown", "accepted", "rejected"]),
+      updatedAt: z.number().int().nonnegative(),
+      result: Command.Result.optional(),
+      skip: Command.SignedSkip.optional(),
+    })
+    .refine(
+      (value) =>
+        !value.result || JSON.stringify(value.result.attempt.permit) === JSON.stringify(value.authorization.permit),
+      "Runtime result must belong to the retained admission",
+    )
+  export type CommandAttempt = z.infer<typeof CommandAttempt>
+  export const CommandAttemptIndex = z.strictObject({ attemptID: Identity.ID })
+  export const CommandState = z.strictObject({
+    schemaVersion: z.literal(1),
+    commandSeq: Identity.Revision,
+    pendingAttemptID: Identity.ID.optional(),
+  })
   export const Info = Identity.Organization.extend({ schemaVersion: z.literal(1), owners: z.array(Identity.ID).min(1) })
   export const Account = Identity.Account.extend({ schemaVersion: z.literal(1), passwordHash: z.string().min(1) })
   export type Account = z.infer<typeof Account>

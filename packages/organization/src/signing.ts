@@ -77,5 +77,18 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
         fail("PERMISSION_DENIED", "Command permit is outside its signing window")
       return { permit, signature: await Command.sign(permit, privateKey) }
     },
+    async signSkip(value: Command.SkipPermit): Promise<Command.SignedSkip> {
+      const permit = Command.SkipPermit.parse(value)
+      if (
+        permit.command.orgID !== identity.orgID ||
+        permit.command.deploymentIncarnation !== identity.deploymentIncarnation ||
+        permit.command.keyID !== identity.keyID
+      )
+        fail("PERMISSION_DENIED", "Command skip belongs to another signing authority")
+      if (permit.authorizedAt > Date.now() || permit.deadline <= Date.now())
+        fail("PERMISSION_DENIED", "Command skip is outside its signing window")
+      return { permit, signature: await Command.signSkip(permit, privateKey) }
+    },
   }
 }
+export type CommandSigningAuthority = Awaited<ReturnType<typeof loadSigningAuthority>>

@@ -1,6 +1,33 @@
 export namespace OrganizationStoragePath {
   export const deployment = () => ["organization", "deployment"]
   export const signingIdentity = () => ["organization", "signing-identity"]
+  export const commandRequest = (subjectID: string, requestID: string) => [
+    "organization",
+    "command-requests",
+    subjectID,
+    requestID,
+  ]
+  export const commandAttempt = (attemptID: string) => ["organization", "command-attempts", attemptID]
+  export const commandState = (sessionID: string) => ["organization", "command-states", sessionID]
+  export const commandSkip = (attemptID: string, proofHash: string) => [
+    "organization",
+    "command-skips",
+    attemptID,
+    proofHash,
+  ]
+  export const sessionCommand = (sessionID: string, sequence: number) => [
+    "organization",
+    "session-commands",
+    sessionID,
+    String(sequence).padStart(16, "0"),
+  ]
+  export const requestAttempt = (subjectID: string, requestID: string, sequence: number) => [
+    "organization",
+    "request-attempts",
+    subjectID,
+    requestID,
+    String(sequence).padStart(16, "0"),
+  ]
   export const info = () => ["organization", "info"]
   export const bootstrap = () => ["organization", "bootstrap"]
   export const account = (id: string) => ["organization", "accounts", id]

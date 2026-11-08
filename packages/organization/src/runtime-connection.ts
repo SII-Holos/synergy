@@ -273,6 +273,23 @@ export function createRuntimeConnections(input: {
   }
   return {
     websocket,
+    capture(runtimeID: string) {
+      const socket = active.get(runtimeID)
+      if (!socket) fail("RUNTIME_OFFLINE", "Runtime is not connected")
+      const handshake = structuredClone(current(socket))
+      if (!handshake.capabilities.includes("commands") || handshake.schemas.commands !== 1)
+        fail("PROTOCOL_MISMATCH", "Runtime does not support organization command intake")
+      Object.freeze(handshake.capabilities)
+      Object.freeze(handshake.schemas)
+      Object.freeze(handshake)
+      return Object.freeze({
+        handshake,
+        assertCurrent() {
+          const value = current(socket)
+          if (value.connectionEpoch !== handshake.connectionEpoch) stale(value.connectionEpoch)
+        },
+      })
+    },
     socket(): RuntimeSocket {
       if (closed) fail("SERVICE_UNAVAILABLE", "Organization service is closed")
       return {
@@ -321,3 +338,4 @@ export function createRuntimeConnections(input: {
   }
 }
 export type RuntimeConnections = ReturnType<typeof createRuntimeConnections>
+export type RuntimeConnectionLease = ReturnType<RuntimeConnections["capture"]>
