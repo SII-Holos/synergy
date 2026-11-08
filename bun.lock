@@ -8,6 +8,7 @@
         "@arethetypeswrong/cli": "0.18.5",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-organization": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
@@ -1109,6 +1110,40 @@
         "@ericsanchezok/synergy-server",
       ],
     },
+    "packages/organization": {
+      "name": "@ericsanchezok/synergy-organization",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-sdk": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/organization-protocol": {
+      "name": "@ericsanchezok/synergy-organization-protocol",
+      "version": "1.1.26",
+      "dependencies": {
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugin": {
       "name": "@ericsanchezok/synergy-plugin",
       "version": "1.1.26",
@@ -1905,6 +1940,10 @@
     "@ericsanchezok/synergy-media": ["@ericsanchezok/synergy-media@workspace:packages/media"],
 
     "@ericsanchezok/synergy-note": ["@ericsanchezok/synergy-note@workspace:packages/note"],
+
+    "@ericsanchezok/synergy-organization": ["@ericsanchezok/synergy-organization@workspace:packages/organization"],
+
+    "@ericsanchezok/synergy-organization-protocol": ["@ericsanchezok/synergy-organization-protocol@workspace:packages/organization-protocol"],
 
     "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-plugin@workspace:packages/plugin"],
 

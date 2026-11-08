@@ -19,5 +19,7 @@
   "packages/computer-protocol": [],
   "packages/util": [],
   "packages/sdk/js": [],
-  "packages/secret-detection": []
+  "packages/secret-detection": [],
+  "packages/organization-protocol": [],
+  "packages/organization": ["packages/organization-protocol", "packages/harness", "packages/util"]
 }

@@ -1,0 +1,32 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Synergy Organization API", "description": "Development documentation", "version": "1" },
+  "paths": {
+    "/org/v1/health": {
+      "get": {
+        "operationId": "orgHealth.get",
+        "summary": "Read organization service readiness",
+        "responses": {
+          "200": {
+            "description": "Ready",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHealth" } } }
+          },
+          "503": {
+            "description": "Not ready",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHealth" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "OrgHealth": {
+        "type": "object",
+        "properties": { "ready": { "type": "boolean" }, "protocolVersion": { "type": "number", "const": 1 } },
+        "required": ["ready", "protocolVersion"],
+        "additionalProperties": false
+      }
+    }
+  }
+}

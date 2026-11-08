@@ -15,6 +15,7 @@
     "packages/**/dist/**",
     "packages/**/release/**",
     "packages/sdk/js/src/gen/**",
+    "packages/sdk/js/src/organization-gen/**",
     "apps/**/dist/**",
     "apps/**/release/**",
     "apps/web/test/**/.*-fixture-*/**",
@@ -162,6 +163,16 @@
     "packages/harness": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/organization": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/organization-protocol": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
     "packages/agent-runtime": {
       "ignoreDependencies": ["@ericsanchezok/synergy-testing"],

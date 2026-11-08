@@ -13061,6 +13061,14 @@ msgid "features.note.name"
 msgstr "笔记"
 
 #. js-lingui-explicit-id
+msgid "features.organization.description"
+msgstr "连接自托管组织，共享项目并协作。"
+
+#. js-lingui-explicit-id
+msgid "features.organization.name"
+msgstr "团队协作"
+
+#. js-lingui-explicit-id
 msgid "features.plugin-blueprint.description"
 msgstr "提供插件 Blueprint相关功能。"
 

@@ -2049,6 +2049,66 @@
         {
           "glob": "src/gen/sdk.gen.ts",
           "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/organization-gen/client/client.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/client/index.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/client/types.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/client/utils.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/client.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/auth.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/bodySerializer.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/params.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/pathSerializer.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/queryKeySerializer.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/serverSentEvents.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/types.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/utils.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/sdk.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/types.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
         }
       ]
     },
@@ -3156,6 +3216,24 @@
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/organization": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/organization-protocol": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
         "functions": 75
       },
       "exempt": []

@@ -1,0 +1,61 @@
+{
+  "name": "@ericsanchezok/synergy-organization",
+  "version": "1.1.26",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./service": "./src/service.ts",
+    "./component": "./src/component.ts",
+    "./features": "./src/features.ts",
+    "./http": "./src/http.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bun ../../script/build-workspace.ts packages/organization",
+    "test": "bun ../testing/script/test-ci.ts",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "organization",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "organization",
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "organization",
+          "owner": "organization",
+          "maturity": "experimental",
+          "activation": "restart",
+          "name": "Team collaboration",
+          "description": "Connect to a self-hosted organization for shared project work.",
+          "component": "organization"
+        }
+      ]
+    }
+  }
+}

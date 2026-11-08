@@ -13061,6 +13061,14 @@ msgid "features.note.name"
 msgstr "Note"
 
 #. js-lingui-explicit-id
+msgid "features.organization.description"
+msgstr "Connect to a self-hosted organization for shared project work."
+
+#. js-lingui-explicit-id
+msgid "features.organization.name"
+msgstr "Team collaboration"
+
+#. js-lingui-explicit-id
 msgid "features.plugin-blueprint.description"
 msgstr "Provide plugin blueprint capabilities."
 

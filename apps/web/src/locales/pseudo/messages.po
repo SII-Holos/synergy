@@ -13061,6 +13061,14 @@ msgid "features.note.name"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "features.organization.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.organization.name"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "features.plugin-blueprint.description"
 msgstr ""
 

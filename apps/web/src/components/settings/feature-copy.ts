@@ -291,4 +291,14 @@ export const featureCopy: Record<string, { name: MessageDescriptor; description:
       message: "Provide note capabilities.",
     },
   },
+  organization: {
+    name: {
+      id: "features.organization.name",
+      message: "Team collaboration",
+    },
+    description: {
+      id: "features.organization.description",
+      message: "Connect to a self-hosted organization for shared project work.",
+    },
+  },
 }
