@@ -2,6 +2,7 @@ import { z } from "zod"
 import { OrganizationDesktop as Desktop } from "@ericsanchezok/synergy-organization-protocol"
 import type { DesktopOrganizationAccounts } from "./accounts.js"
 import type { DesktopOrganizationAuthorization } from "./authorization.js"
+import type { DesktopMemberRuntimes } from "./member-runtimes.js"
 import { DesktopOrganizationError as Failure } from "./error.js"
 
 type Action = keyof Desktop.Bridge
@@ -88,6 +89,7 @@ export class DesktopOrganizationIPC<Event = unknown> {
     private options: {
       accounts: DesktopOrganizationAccounts
       authorization: DesktopOrganizationAuthorization
+      members?: DesktopMemberRuntimes
       fetch?: typeof fetch
       trusted(event: Event): boolean
     },
@@ -187,6 +189,18 @@ export class DesktopOrganizationIPC<Event = unknown> {
         if (connection) this.options.authorization.cancel(connection)
         return this.options.accounts.signOut(connectionID)
       }
+      case "memberStatus": {
+        const { connectionID } = parse(Desktop.Account, input)
+        if (!this.options.members) throw new Failure("unavailable")
+        return this.options.members.status(connectionID)
+      }
+      case "startMember": {
+        const request = parse(Desktop.MemberStart, input)
+        if (!this.options.members) throw new Failure("unavailable")
+        return this.run(request.requestID, request.connectionID, (signal) =>
+          this.options.members!.start(request.connectionID, signal),
+        )
+      }
     }
   }
 
@@ -221,6 +235,6 @@ export function registerOrganizationIPC<Event>(
   },
   owner: DesktopOrganizationIPC<Event>,
 ) {
-  for (const action of ["list", "connect", "request", "cancel", "signOut"] as const)
+  for (const action of ["list", "connect", "request", "cancel", "signOut", "memberStatus", "startMember"] as const)
     host.handle(`desktop.organization.${action}`, (event, input) => owner.handle(event, action, input))
 }

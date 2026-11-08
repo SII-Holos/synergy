@@ -39,6 +39,12 @@ export namespace OrganizationDesktop {
   export type Start = z.infer<typeof Start>
   export const Cancel = z.strictObject({ requestID: Identity.ID })
   export const Account = z.strictObject({ connectionID: Identity.Token })
+  export const MemberStart = Account.extend({ requestID: Identity.ID })
+  export const MemberRuntime = Account.extend({
+    state: z.enum(["stopped", "starting", "running", "failed"]),
+    runtimeID: Identity.ID.optional(),
+  })
+  export type MemberRuntime = z.infer<typeof MemberRuntime>
   export const ErrorCode = z.enum([
     "invalid_request",
     "invalid_response",
@@ -63,5 +69,7 @@ export namespace OrganizationDesktop {
     request(input: Request): Promise<Result<Response>>
     cancel(input: z.infer<typeof Cancel>): Promise<Result<void>>
     signOut(input: z.infer<typeof Account>): Promise<Result<Connection>>
+    memberStatus(input: z.infer<typeof Account>): Promise<Result<MemberRuntime>>
+    startMember(input: z.infer<typeof MemberStart>): Promise<Result<MemberRuntime>>
   }
 }

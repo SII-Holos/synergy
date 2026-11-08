@@ -7,33 +7,11 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { readMemberHome, type MemberHome, type MemberIdentity } from "./home"
+import { readMemberHome, type MemberIdentity } from "./home"
 import { readCredentials } from "./credentials"
-import { MemberHomeError, readRecord, writeRecord } from "./record"
+import { MemberHomeError, writeRecord } from "./record"
 import { OrganizationRuntimeError } from "./error"
-
-const Enrollment = z.strictObject({ schemaVersion: z.literal(1), registration: Protocol.Registration })
-function filename(root: string) {
-  return path.join(root, "organization-registration.json")
-}
-
-function checkIdentity(member: MemberHome, registration: Protocol.Registration) {
-  if (
-    registration.orgID !== member.identity.orgID ||
-    registration.accountID !== member.identity.accountID ||
-    registration.deviceID !== member.identity.deviceID ||
-    registration.publicKey !== member.publicKey
-  )
-    throw new MemberHomeError("Runtime registration does not match this Home identity")
-}
-
-export async function readMemberRegistration(home: string, identity: MemberIdentity) {
-  const member = await readMemberHome(home, identity)
-  const stored = await readRecord(filename(member.root), Enrollment, "registration records")
-  if (!stored) return
-  checkIdentity(member, stored.registration)
-  return stored.registration
-}
+import { checkMemberRegistration, readMemberRegistration, registrationFilename } from "./registration"
 
 export async function enrollMemberRuntime(input: {
   home: string
@@ -44,7 +22,7 @@ export async function enrollMemberRuntime(input: {
 }) {
   const member = await readMemberHome(input.home, input.identity)
   const ticket = Protocol.Ticket.parse(input.ticket)
-  checkIdentity(member, ticket.runtime)
+  checkMemberRegistration(member, ticket.runtime)
   return withFileLock(
     { directory: path.join(member.root, "state", ".locks"), key: "organization-enrollment", signal: input.signal },
     async () => {
@@ -104,7 +82,7 @@ export async function enrollMemberRuntime(input: {
           )
         }
         const registration = Protocol.Registration.parse(response.data)
-        checkIdentity(member, registration)
+        checkMemberRegistration(member, registration)
         if (
           registration.runtimeID !== ticket.runtime.runtimeID ||
           registration.deploymentIncarnation !== ticket.runtime.deploymentIncarnation ||
@@ -115,7 +93,7 @@ export async function enrollMemberRuntime(input: {
           ...registration,
           connectionEpoch: Math.max(existing?.connectionEpoch ?? 0, registration.connectionEpoch),
         }
-        await writeRecord(filename(member.root), { schemaVersion: 1, registration: saved })
+        await writeRecord(registrationFilename(member.root), { schemaVersion: 1, registration: saved })
         return saved
       } finally {
         transport.close()

@@ -244,6 +244,8 @@ test("native connections retain the exact IPC descriptor and cancel requests at 
       return { ok: true, value: undefined }
     },
     signOut: async () => ({ ok: true, value: { ...descriptor, state: "signed_out" } }),
+    memberStatus: async () => ({ ok: true, value: { connectionID: descriptor.id, state: "stopped" } }),
+    startMember: async () => ({ ok: false, error: { code: "unavailable" } }),
   }
   const registry = createOrganizationConnections({
     storage: storage(),

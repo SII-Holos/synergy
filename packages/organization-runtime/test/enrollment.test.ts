@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { prepareMemberHome } from "../src/home"
-import { enrollMemberRuntime, readMemberRegistration } from "../src/enrollment"
+import { enrollMemberRuntime } from "../src/enrollment"
+import { readMemberRegistration } from "../src/registration"
 import { fixture } from "./support/organization"
 
 test("member registration uses its own machine proof over verified TLS and persists only public registration data", async () => {

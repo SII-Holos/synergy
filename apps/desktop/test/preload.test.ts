@@ -25,7 +25,10 @@ await import("../src/preload.js")
 
 type SynergyDesktop = {
   platform: string
-  organization: Record<"list" | "connect" | "request" | "cancel" | "signOut", (input?: unknown) => Promise<unknown>>
+  organization: Record<
+    "list" | "connect" | "request" | "cancel" | "signOut" | "memberStatus" | "startMember",
+    (input?: unknown) => Promise<unknown>
+  >
   openDirectoryPickerDialog: (opts?: { title?: string; multiple?: boolean }) => Promise<unknown>
   server: {
     status(): Promise<unknown>
@@ -86,8 +89,16 @@ function expectInvoke<T>(channel: string, args: unknown[], result: T) {
 
 describe("desktop preload bridge", () => {
   test("exposes organization connection actions without a credential getter", async () => {
-    expect(Object.keys(desktop.organization).sort()).toEqual(["cancel", "connect", "list", "request", "signOut"])
-    for (const action of ["list", "connect", "request", "cancel", "signOut"] as const) {
+    expect(Object.keys(desktop.organization).sort()).toEqual([
+      "cancel",
+      "connect",
+      "list",
+      "memberStatus",
+      "request",
+      "signOut",
+      "startMember",
+    ])
+    for (const action of ["list", "connect", "request", "cancel", "signOut", "memberStatus", "startMember"] as const) {
       const input = action === "list" ? [] : [{ requestID: "organization-request" }]
       const result = { ok: false, error: { code: "signed_out" } }
       expectInvoke(`desktop.organization.${action}`, input, result)

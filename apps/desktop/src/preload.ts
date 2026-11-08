@@ -29,6 +29,8 @@ const organization: OrganizationDesktop.Bridge = {
   request: (input) => ipcRenderer.invoke("desktop.organization.request", input),
   cancel: (input) => ipcRenderer.invoke("desktop.organization.cancel", input),
   signOut: (input) => ipcRenderer.invoke("desktop.organization.signOut", input),
+  memberStatus: (input) => ipcRenderer.invoke("desktop.organization.memberStatus", input),
+  startMember: (input) => ipcRenderer.invoke("desktop.organization.startMember", input),
 }
 
 const browserNative = {

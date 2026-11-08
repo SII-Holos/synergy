@@ -9,7 +9,8 @@ import {
   createManagedRecoveryReporter,
 } from "@ericsanchezok/synergy-cli/cli/managed-startup"
 import { readMemberHome } from "../home"
-import { readMemberRegistration, enrollMemberRuntime } from "../enrollment"
+import { enrollMemberRuntime } from "../enrollment"
+import { readMemberRegistration } from "../registration"
 import { MemberHomeError } from "../record"
 import { MemberLaunchRequest } from "../launch"
 import { openMemberRuntime } from "../runtime"

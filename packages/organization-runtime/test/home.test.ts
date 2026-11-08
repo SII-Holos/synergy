@@ -19,8 +19,14 @@ test("the Desktop Node host provisions the same member identity before a Bun ser
   const identity = { orgID: "organization", accountID: "member", deviceID: "desktop" }
   const origin = "https://organization.example"
   const output = path.join(baseDirectory, "home.mjs")
+  const metadata = path.join(baseDirectory, "metadata.ts")
+  await fs.writeFile(
+    metadata,
+    `export * from ${JSON.stringify(fileURLToPath(new URL("../src/home.ts", import.meta.url)))};\n` +
+      `export { readMemberRegistration } from ${JSON.stringify(fileURLToPath(new URL("../src/registration.ts", import.meta.url)))};\n`,
+  )
   const bundle = await Bun.build({
-    entrypoints: [fileURLToPath(new URL("../src/home.ts", import.meta.url))],
+    entrypoints: [metadata],
     target: "node",
   })
   expect(bundle.success).toBe(true)
@@ -30,7 +36,7 @@ test("the Desktop Node host provisions the same member identity before a Bun ser
   await fs.writeFile(
     entry,
     `
-        import { prepareMemberHome, readMemberHome } from ${JSON.stringify(pathToFileURL(output).href)};
+        import { prepareMemberHome, readMemberHome, readMemberRegistration } from ${JSON.stringify(pathToFileURL(output).href)};
         import assert from "node:assert/strict";
         import fs from "node:fs/promises";
         import path from "node:path";
@@ -38,10 +44,12 @@ test("the Desktop Node host provisions the same member identity before a Bun ser
         const [first, again] = await Promise.all([prepareMemberHome(input), prepareMemberHome(input)]);
         if (first.publicKey !== again.publicKey) throw new Error("Concurrent provisioning replaced the key");
         const restored = await readMemberHome(first.home, input.identity);
+        assert.equal(await readMemberRegistration(first.home, input.identity), undefined);
         if (JSON.stringify(restored) !== JSON.stringify(first)) throw new Error("Node identity changed");
         console.log(JSON.stringify(first));
         delete process.env.SYNERGY_TEST_HOME;
         await assert.rejects(readMemberHome(first.home, input.identity), {name: "TestHomeGuardError"});
+        await assert.rejects(readMemberRegistration(first.home, input.identity), {name: "TestHomeGuardError"});
         const unmarked = { ...input, baseDirectory: path.join(input.baseDirectory, "unmarked") };
         await assert.rejects(prepareMemberHome(unmarked), {name: "TestHomeGuardError"});
         await assert.rejects(fs.access(unmarked.baseDirectory), {code: "ENOENT"});

@@ -7,7 +7,7 @@ import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { version } from "../package.json" with { type: "json" }
 import { readMemberHome, type MemberIdentity } from "./home"
-import { readMemberRegistration } from "./enrollment"
+import { readMemberRegistration } from "./registration"
 import { MemberHomeError } from "./record"
 import { registerMemberSources } from "./sources"
 import { MemberListener } from "./launch"

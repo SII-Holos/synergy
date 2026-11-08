@@ -7,6 +7,7 @@
   "exports": {
     "./home": "./src/home.ts",
     "./enrollment": "./src/enrollment.ts",
+    "./registration": "./src/registration.ts",
     "./connection": "./src/connection.ts",
     "./runtime": "./src/runtime.ts",
     "./error": "./src/error.ts",

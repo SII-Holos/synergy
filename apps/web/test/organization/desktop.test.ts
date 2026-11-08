@@ -28,6 +28,8 @@ function fixture() {
     list: async () => ({ ok: true, value: [connection] }),
     connect: async () => ({ ok: true, value: connection }),
     signOut: async () => ({ ok: true, value: { ...connection, state: "signed_out" } }),
+    memberStatus: async () => ({ ok: true, value: { connectionID: connection.id, state: "stopped" } }),
+    startMember: async () => ({ ok: false, error: { code: "unavailable" } }),
     cancel: async (input) => {
       cancelled.push(input.requestID)
       return { ok: true, value: undefined }

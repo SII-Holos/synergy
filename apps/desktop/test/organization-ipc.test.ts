@@ -58,7 +58,7 @@ test("organization IPC rejects untrusted frames and credential or arbitrary-targ
     calls++
     return f.transport(...args)
   }) as typeof fetch)
-  for (const action of ["list", "request", "connect", "signOut", "cancel"] as const)
+  for (const action of ["list", "request", "connect", "signOut", "cancel", "memberStatus", "startMember"] as const)
     expect(await ipc.handle({}, action, {})).toEqual({ ok: false, error: { code: "untrusted_sender" } })
   const base = { requestID: "request-a", connectionID: connection.id, method: "GET", path: "/org/v1/projects" }
   for (const changed of [
@@ -83,6 +83,28 @@ test("organization IPC rejects untrusted frames and credential or arbitrary-targ
   expect(calls).toBe(0)
   expect(await ipc.handle(trusted, "list", undefined)).toEqual({ ok: true, value: [connection] })
   ipc.dispose()
+})
+
+test("member process requests require a main-owned Runtime registry and reject caller-selected launch inputs", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const { trusted, ipc } = bridge(f)
+  try {
+    expect(await ipc.handle(trusted, "memberStatus", { connectionID: connection.id })).toEqual({
+      ok: false,
+      error: { code: "unavailable" },
+    })
+    expect(
+      await ipc.handle(trusted, "startMember", {
+        requestID: "start-member",
+        connectionID: connection.id,
+        home: "/untrusted-home",
+        token: "renderer-supplied-credential",
+      }),
+    ).toEqual({ ok: false, error: { code: "invalid_request" } })
+  } finally {
+    ipc.dispose()
+  }
 })
 
 test("the native organization bridge preserves generated SDK results and never repeats a rejected write", async () => {

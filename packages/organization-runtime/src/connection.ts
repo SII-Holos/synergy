@@ -5,7 +5,7 @@ import {
   OrganizationRuntimeProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { readMemberHome, type MemberHome, type MemberIdentity } from "./home"
-import { readMemberRegistration } from "./enrollment"
+import { readMemberRegistration } from "./registration"
 import { readCredentials } from "./credentials"
 import { MemberHomeError } from "./record"
 import { OrganizationRuntimeError } from "./error"

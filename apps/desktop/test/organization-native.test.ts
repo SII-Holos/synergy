@@ -92,6 +92,7 @@ nativeTest(
         trustedFrame: true,
         navigationCancellation: true,
         logout: true,
+        memberIPC: true,
       })
     } finally {
       clearTimeout(timeout)

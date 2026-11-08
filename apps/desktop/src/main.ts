@@ -124,6 +124,7 @@ import { applyDesktopUnreadUpdate, desktopUnreadAssetPaths, desktopUnreadPresent
 import { DesktopOrganizationAccounts } from "./organization/accounts.js"
 import { DesktopOrganizationAuthorization } from "./organization/authorization.js"
 import { DesktopOrganizationIPC, registerOrganizationIPC } from "./organization/ipc.js"
+import { DesktopMemberRuntimes } from "./organization/member-runtimes.js"
 import { organizationEncryption } from "./organization/encryption.js"
 
 installDesktopStdioHandlers()
@@ -166,6 +167,7 @@ let recoveryURL: string | null = null
 let serverDocumentGeneration = 0
 let organizationAuthorization: DesktopOrganizationAuthorization | undefined
 let organizationIPC: DesktopOrganizationIPC<Parameters<typeof trustedServerFrame>[0]> | undefined
+let memberRuntimes: DesktopMemberRuntimes | undefined
 let cancellingMaintenance = false
 const serverActions = new DesktopServerActions()
 let shouldStart = true
@@ -287,6 +289,7 @@ async function createWindow() {
       currentVersion: app.getVersion(),
       userDataDir: app.getPath("userData"),
       stopServer: async () => {
+        await memberRuntimes?.stopAll()
         await stopLocalBrowserBroker()
         await stopLocalComputerBroker()
         await serverManager?.stop()
@@ -1290,6 +1293,7 @@ app.on("before-quit", (event) => {
   void (async () => {
     const results = await Promise.allSettled([
       organizationIPC?.settle() ?? Promise.resolve(),
+      memberRuntimes?.close() ?? Promise.resolve(),
       browserBroker?.close() ?? Promise.resolve(),
       stopLocalComputerBroker(),
       serverManager?.stop() ?? Promise.resolve(),
@@ -1348,9 +1352,15 @@ async function start() {
     accounts: organizationAccounts,
     openExternal: (url) => shell.openExternal(url),
   })
+  memberRuntimes = new DesktopMemberRuntimes({
+    root: path.join(app.getPath("userData"), "organization-runtimes"),
+    accounts: organizationAccounts,
+    server: { channel, resourcesPath: process.resourcesPath },
+  })
   organizationIPC = new DesktopOrganizationIPC({
     accounts: organizationAccounts,
     authorization: organizationAuthorization,
+    members: memberRuntimes,
     trusted: (event) => trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null),
   })
   registerOrganizationIPC(ipcMain, organizationIPC)

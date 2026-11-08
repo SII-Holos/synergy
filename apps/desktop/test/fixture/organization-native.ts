@@ -133,6 +133,10 @@ async function run() {
     )
     assert.equal(visible.ok, true)
     assert.equal(visible.value.status, 200)
+    const memberStatus = await window.webContents.executeJavaScript(
+      `window.synergyDesktop.organization.memberStatus(${JSON.stringify({ connectionID: connection.id })})`,
+    )
+    assert.deepEqual(memberStatus, { ok: false, error: { code: "unavailable" } })
     child = new BrowserWindow({
       show: false,
       webPreferences: { preload, sandbox: true, contextIsolation: true, nodeIntegration: false },
@@ -141,6 +145,10 @@ async function run() {
     const denied = await child.webContents.executeJavaScript("window.synergyDesktop.organization.list()")
     console.error("organization-native: cancelling navigation")
     assert.deepEqual(denied, { ok: false, error: { code: "untrusted_sender" } })
+    const memberDenied = await child.webContents.executeJavaScript(
+      `window.synergyDesktop.organization.startMember(${JSON.stringify({ requestID: "foreign-member", connectionID: connection.id })})`,
+    )
+    assert.deepEqual(memberDenied, { ok: false, error: { code: "untrusted_sender" } })
     hold = true
     const pending = window.webContents
       .executeJavaScript(
@@ -170,6 +178,7 @@ async function run() {
         trustedFrame: true,
         navigationCancellation: true,
         logout: true,
+        memberIPC: true,
       }),
     )
   } catch (error) {
