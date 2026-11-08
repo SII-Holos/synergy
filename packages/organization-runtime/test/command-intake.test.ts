@@ -3,11 +3,13 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationSessionProtocol as Sessions,
+  OrganizationExecutionProtocol as Execution,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
@@ -149,6 +151,70 @@ async function session() {
     fn: () => Session.create({ organization: binding, workspaceID: null }),
   })
 }
+
+test("execution binding proves a materialized native task and never turns an Inbox receipt into an arbitrary root", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const native = await session()
+    const receiver = service.receiver()
+    const lookup = { subjectID: binding.creatorID, requestID: "request-intake" }
+    const delivery = await service.input(native.id, { provisionalGrantID: "grant-intake" }, "Grant task", "task")
+    const receipt = await receiver.input(delivery)
+    const rootID = receipt.accepted!.effect.messageID
+    await expect(receiver.bindingProof(lookup, rootID)).rejects.toMatchObject({
+      data: { code: "RESOURCE_UNAVAILABLE" },
+    })
+    await RolloutLedger.beginRun(RolloutLifecycle.owner(native), rootID)
+    await ScopeContext.provide({
+      scope: native.scope,
+      workspace: null,
+      fn: () =>
+        Session.updateMessage(
+          MessageV2.User.parse({
+            id: rootID,
+            sessionID: native.id,
+            role: "user",
+            isRoot: true,
+            rootID,
+            actor: delivery.authorization.permit.actor,
+            origin: { type: "user" },
+            time: { created: Date.now() },
+            agent: "fixture",
+            model: { providerID: "fixture", modelID: "model" },
+          }),
+        ),
+    })
+    const proof = await receiver.bindingProof(lookup, rootID)
+    expect(Execution.BindingProof.parse(proof)).toMatchObject({
+      rootID,
+      runtimeID: binding.driverRuntimeID,
+      connectionEpoch: 1,
+      receipt: { accepted: receipt.accepted },
+    })
+    const resumed = await service.receiver(2).bindingProof(lookup, rootID)
+    expect(resumed.connectionEpoch).toBe(2)
+    expect(resumed.receipt).toEqual(proof.receipt)
+    expect(await SessionInbox.list(native.id)).toHaveLength(1)
+    await expect(receiver.bindingProof(lookup, "msg_forged")).rejects.toMatchObject({
+      data: { code: "PERMISSION_DENIED" },
+    })
+    await Storage.write(["session_transfer_gate", native.id], {
+      version: 1,
+      migrationID: "transfer-grant",
+      scopeID: binding.projectID,
+      targetID: "target",
+      phase: "preparing",
+    })
+    await expect(receiver.bindingProof(lookup, rootID)).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    await Storage.remove(["session_transfer_gate", native.id])
+    await RolloutLedger.finishRun(RolloutLifecycle.owner(native), rootID, "cancelled")
+    await expect(receiver.bindingProof(lookup, rootID)).rejects.toMatchObject({
+      data: { code: "RESOURCE_UNAVAILABLE" },
+    })
+  })
+})
 
 test("cancel commits a native receipt before drainage and survives disconnection without repeating the effect", async () => {
   const service = await authority()

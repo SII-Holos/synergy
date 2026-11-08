@@ -6,10 +6,18 @@ import {
   OrganizationSessionProtocol as Session,
   OrganizationCommandProtocol as Command,
   OrganizationResourceProtocol as ResourceProtocol,
+  OrganizationExecutionProtocol as Execution,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 export namespace OrganizationRecord {
+  export const SessionResources = Execution.Contract.extend({ schemaVersion: z.literal(1), orgID: Identity.ID }).refine(
+    (value) => value.selection !== null && value.revision > 0,
+    "Stored resource contracts require a selection",
+  )
+  export type SessionResources = z.infer<typeof SessionResources>
+  export const ExecutionGrant = Execution.Grant
+  export const RootGrant = z.strictObject({ grantID: Identity.ID })
   export const Resource = ResourceProtocol.AdminView.safeExtend({
     schemaVersion: z.literal(1),
     secretID: Identity.ID.optional(),

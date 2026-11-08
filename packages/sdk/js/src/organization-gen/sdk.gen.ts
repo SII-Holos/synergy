@@ -46,6 +46,9 @@ import type {
   OrgCommandsLookupErrors,
   OrgCommandsLookupResponses,
   OrgEmptyInput,
+  OrgExecutionBindErrors,
+  OrgExecutionBindingRequest,
+  OrgExecutionBindResponses,
   OrgHealthGetErrors,
   OrgHealthGetResponses,
   OrgInviteConsume,
@@ -109,6 +112,11 @@ import type {
   OrgRuntimeRevoke,
   OrgRuntimeRevokeErrors,
   OrgRuntimeRevokeResponses,
+  OrgSessionResourceChange,
+  OrgSessionResourcesGetErrors,
+  OrgSessionResourcesGetResponses,
+  OrgSessionResourcesSetErrors,
+  OrgSessionResourcesSetResponses,
   OrgSessionsCreateErrors,
   OrgSessionsCreateResponses,
   OrgSessionsGetErrors,
@@ -874,6 +882,66 @@ export class OrgRuntime extends HeyApiClient {
   }
 }
 
+export class OrgSessionResources extends HeyApiClient {
+  /**
+   * Read a Session resource selection
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      OrgSessionResourcesGetResponses,
+      OrgSessionResourcesGetErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/resources",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Select resources for an idle Session
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgSessionResourceChange: OrgSessionResourceChange
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgSessionResourceChange", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      OrgSessionResourcesSetResponses,
+      OrgSessionResourcesSetErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/resources",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgSessions extends HeyApiClient {
   /**
    * List authorized Session directory entries
@@ -1275,6 +1343,30 @@ export class OrgCommands extends HeyApiClient {
   }
 }
 
+export class OrgExecution extends HeyApiClient {
+  /**
+   * Bind an admitted execution grant to a proven native root
+   */
+  public bind<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgExecutionBindingRequest: OrgExecutionBindingRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgExecutionBindingRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgExecutionBindResponses, OrgExecutionBindErrors, ThrowOnError>({
+      url: "/runtime/v1/execution/bind",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgHealth extends HeyApiClient {
   /**
    * Read organization service readiness
@@ -1309,6 +1401,8 @@ export class OrganizationClient extends HeyApiClient {
 
   orgRuntime = new OrgRuntime({ client: this.client })
 
+  orgSessionResources = new OrgSessionResources({ client: this.client })
+
   orgSessions = new OrgSessions({ client: this.client })
 
   orgResources = new OrgResources({ client: this.client })
@@ -1318,6 +1412,8 @@ export class OrganizationClient extends HeyApiClient {
   orgProjectResources = new OrgProjectResources({ client: this.client })
 
   orgCommands = new OrgCommands({ client: this.client })
+
+  orgExecution = new OrgExecution({ client: this.client })
 
   orgHealth = new OrgHealth({ client: this.client })
 }

@@ -17,6 +17,8 @@ import { clientAuthenticationRoutes } from "./routes/client-auth"
 import { sessionDirectoryRoutes } from "./routes/session-directory"
 import { commandRoutes } from "./routes/commands"
 import { resourceRoutes } from "./routes/resources"
+import { executionRoutes } from "./routes/execution"
+import type { ExecutionGrants } from "./execution-grants"
 import type { CommandForwarder } from "./command-forwarding"
 
 export function organizationOpenApi() {
@@ -38,6 +40,7 @@ export function organizationApp(
   connections?: RuntimeConnections,
   clientAuthentication?: ClientAuthentication,
   commands?: CommandForwarder,
+  execution?: ExecutionGrants,
 ) {
   function registry() {
     if (!registrations) fail("SERVICE_UNAVAILABLE", "Runtime registration is unavailable")
@@ -117,6 +120,13 @@ export function organizationApp(
       }, publicOrigin),
     )
     .route("/runtime/v1", machineRegistrationRoutes(registry))
+    .route(
+      "/runtime/v1",
+      executionRoutes(() => {
+        if (!execution) fail("SERVICE_UNAVAILABLE", "Execution binding is unavailable")
+        return execution
+      }),
+    )
     .route(
       "/",
       runtimeConnectionRoutes(() => {

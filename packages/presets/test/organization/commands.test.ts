@@ -2,6 +2,8 @@ import { expect, spyOn, test } from "bun:test"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationExecutionProtocol as Execution,
+  OrganizationResourceProtocol as Resource,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -9,12 +11,16 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { commandFixture } from "../../../organization/test/support/commands"
 import { createCommandIntake } from "../../../organization-runtime/src/command-intake"
 import { registerSessionSchema } from "../../../organization-runtime/src/session-schema"
+import { OrganizationResources } from "../../../organization/src/resources"
+import { OrganizationSessionResources } from "../../../organization/src/session-resources"
 
 const binding = {
   schemaVersion: 1 as const,
@@ -24,6 +30,103 @@ const binding = {
   driverRuntimeID: "runtime-alice",
   bindingEpoch: 1,
 }
+
+test("a lost command ACK binds the actual materialized native root through machine HTTP without replaying input", async () => {
+  await using home = await tmpdir()
+  await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+  await using f = await commandFixture({ timeoutMs: 150 })
+  const native = await nativeSession(runtime, f.sessionID)
+  using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+  await f.run(async () => {
+    const resource = await OrganizationResources.create(
+      f.credentials.admin,
+      Resource.Create.parse({
+        name: "Fixture model",
+        scope: { kind: "organization" },
+        credential: { kind: "bearer", value: "upstream-fixture-key" },
+        configuration: {
+          protocol: "openai-compatible",
+          endpoint: "https://provider.example/v1",
+          model: { id: "test", name: "Test", limit: { context: 8192, output: 1024 } },
+        },
+      }),
+    )
+    await OrganizationResources.grant(
+      f.credentials.admin,
+      resource.resourceID,
+      { kind: "account", id: "alice" },
+      { expectedRevision: 0, enabled: true },
+    )
+    await OrganizationSessionResources.set(f.credentials.alice, f.sessionID, {
+      expectedRevision: 0,
+      selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+    })
+  })
+  await using receiver = await peer(f, runtime)
+  receiver.loseReply()
+  const client = createOrganizationClient({ baseUrl: f.baseUrl, headers: f.apiHeaders() })
+  const request = f.request("root-grant")
+  request.input.mode = "task"
+  expect(
+    (await client.orgCommands.input({ sessionID: f.sessionID, orgCommandInputRequest: request })).response.status,
+  ).toBe(504)
+  const signed = await runtime.run(() =>
+    ScopeContext.provide({
+      scope: native.scope,
+      workspace: null,
+      fn: async () => {
+        const item = (await SessionInbox.list(native.id))[0]!
+        const rootID = item.messageID
+        await expect(
+          receiver.intake.bindingProof({ subjectID: "alice", requestID: request.requestID }, rootID),
+        ).rejects.toMatchObject({ data: { code: "RESOURCE_UNAVAILABLE" } })
+        await Session.update(native.id, (draft) => {
+          draft.modelOverride = { providerID: "test", modelID: "test" }
+        })
+        expect((await SessionInbox.materializeNextTask(native.id)).status).toBe("materialized")
+        await RolloutLedger.beginRun(RolloutLifecycle.owner(native), rootID)
+        const proof = await receiver.intake.bindingProof({ subjectID: "alice", requestID: request.requestID }, rootID)
+        return { proof, signature: await Execution.signBinding(proof, f.machineKeys.privateKey) }
+      },
+    }),
+  )
+  const machine = createOrganizationClient({ baseUrl: f.baseUrl })
+  const response = await machine.orgExecution.bind({ orgExecutionBindingRequest: signed }, { throwOnError: true })
+  expect(response.response.status).toBe(200)
+  const bound = Execution.BoundGrant.parse(response.data)
+  expect(bound.rootID).toBe(signed.proof.rootID)
+  expect(
+    (await client.orgCommands.get({ sessionID: f.sessionID, requestID: request.requestID }, { throwOnError: true }))
+      .data.state,
+  ).toBe("accepted")
+  expect(receiver.inputs).toHaveLength(1)
+  await runtime.run(async () => expect(await SessionInbox.list(native.id)).toHaveLength(0))
+  await f.run(async () => {
+    const records = await Storage.current().store.query({ prefix: ["organization", "execution-grants"] })
+    expect(records).toHaveLength(1)
+    expect(JSON.stringify(records.map((record) => record.value))).not.toContain(
+      "Private input stays out of service storage",
+    )
+  })
+  await receiver[Symbol.asyncDispose]()
+  await runtime.close()
+  await using restored = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+  await using reconnected = await peer(f, restored, 2)
+  const currentProof = await restored.run(() =>
+    reconnected.intake.bindingProof({ subjectID: "alice", requestID: request.requestID }, bound.rootID),
+  )
+  const current = await machine.orgExecution.bind(
+    {
+      orgExecutionBindingRequest: {
+        proof: currentProof,
+        signature: await Execution.signBinding(currentProof, f.machineKeys.privateKey),
+      },
+    },
+    { throwOnError: true },
+  )
+  expect(current.data).toEqual(bound)
+  expect(reconnected.inputs).toHaveLength(0)
+})
 
 test("HTTP control returns native facts, reconciles a lost ACK and refuses changed or stale Continue intent", async () => {
   await using home = await tmpdir()

@@ -11,3 +11,5 @@ Input and control digests bind the logical request, organization, complete targe
 Cancellation queries may carry a current execution observation beside the immutable result. Its root and observation window must match the accepted cancellation. Unavailable evidence is explicit; execution observations are excluded from persisted command results.
 
 Resource schemas separate administrator configuration and credential input from portable member descriptors. They declare supported protocols, fixed ownership, model capabilities and revisioned account/project use grants. Public descriptors contain neither upstream endpoints nor secret values; command and execution authority remain separate.
+
+Execution schemas distinguish Session resource selection, provisional/bound/closed grants and finite machine root-binding proofs. The proof signs the complete accepted task receipt and exact root/connection identity in a separate domain; selection rejects duplicate identities and arbitrary transport settings.

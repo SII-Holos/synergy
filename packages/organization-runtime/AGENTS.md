@@ -8,7 +8,7 @@ Tests live under `test/`. Run `bun run typecheck` and focused tests with isolate
 
 Keep Session organization bindings in the registered domain schema. Validate immutable ownership and parent inheritance before transactional publication; ordinary import cannot grant organization ownership. Verify real storage, restart and unloaded-owner retention in `test/session-binding.test.ts`.
 
-Compose through Agent Runtime with explicit features and exclusive sources. Register member identity and source selection in both worker roles. Keep execution denied until accepted commands have execution grants; enrollment and bridge availability do not authorize work. Verify personal/A/B source separation and actual workers in `test/runtime.test.ts`.
+Compose through Agent Runtime with explicit features and exclusive sources in both worker roles. Keep execution denied until accepted commands have grants and gateway access; enrollment and bridge availability do not authorize work. Verify personal/A/B isolation and actual workers in `test/runtime.test.ts`.
 
 Read local project configuration only through Harness `ProjectConfig` with an explicit field selection. Keep the permitted fields in the organization architecture and test selected values alongside excluded private settings. Never invoke the personal config loader to fill an absent organization value.
 
@@ -24,6 +24,6 @@ Resident connections belong to component services. Keep local readiness independ
 
 Validate the service's signing identity against the verified connection's organization and deployment before publishing its checkpoint. A matching key or valid signature does not bypass command, binding or transfer admission.
 
-Separate logical effects from attempt/skip receipts; commit native effects atomically. Continue checks pause/version. Cancel publishes after commit and holds its lock through drainage. Observe activity separately; recheck binding and control version. Verify rollback, restart and fencing in `test/command-intake.test.ts`; bind callbacks to their Runtime without activating grants.
+Separate logical effects from attempt/skip receipts; commit native effects atomically. Continue checks pause/version. Cancel publishes after commit and holds its lock through drainage. Observe activity separately; recheck binding/control version. Root proofs require retained B, canonical message/Run identity and current fences; never substitute queued input. Verify rollback, restart and fencing in `test/command-intake.test.ts`; bind callbacks to their Runtime.
 
 Desktop Browser selection requires explicit private launch data and a managed Desktop listener. Preserve both local HTTP and Browser registration authentication, reject inherited native credentials, and keep page creation lazy. Verify real sockets and rejected non-Desktop selection in `test/desktop.test.ts`.

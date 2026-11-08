@@ -13,6 +13,7 @@ import { OrganizationRecord as Record } from "../../src/storage/records"
 import { OrganizationSessionDirectory } from "../../src/session-directory"
 import { createCommandAdmissions } from "../../src/command-admission"
 import { createCommandForwarder } from "../../src/command-forwarding"
+import { createExecutionGrants } from "../../src/execution-grants"
 import { organizationApp } from "../../src/http"
 
 export async function commandFixture(options: { timeoutMs?: number } = {}) {
@@ -33,6 +34,7 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
   })
   const commands = createCommandAdmissions({ connections, signing })
   const forwarder = createCommandForwarder({ admissions: commands, connections, timeoutMs: options.timeoutMs })
+  const execution = createExecutionGrants({ admissions: commands, connections })
   const app = organizationApp(
     () => true,
     undefined,
@@ -41,6 +43,7 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
     connections,
     undefined,
     forwarder,
+    execution,
   )
   let wire: Parameters<NonNullable<typeof connections.websocket.open>>[0] | undefined
   const server = Bun.serve({
@@ -77,6 +80,8 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
       return { ...f.headers(id), origin: "https://organization.example", "x-csrf-token": "f".repeat(64) }
     },
     forwarder,
+    execution,
+    machineKeys: key,
     commands,
     connections,
     signing,

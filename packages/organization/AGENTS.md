@@ -12,7 +12,7 @@ Client grants bind the first-party login, exact registered callback and deployme
 
 The optional Web adapter serves the built authorization document and local assets only. Keep API failures out of HTML fallback, restrict its scripts and connections to the organization origin, and preserve popup opener communication. Verify `test/web.test.ts` and the Web authorization browser suite after changing these headers or paths.
 
-Tests belong in `test/` and use isolated storage, Homes and ports. Run focused tests and typechecks, then root package, dependency and contract checks; preserve the active Runtime.
+Tests in `test/` use isolated storage, Homes and ports. Run focused tests/typechecks and root package/dependency/contract checks; preserve active Runtimes.
 
 The component contributes configuration schemas and lazy CLI commands. Register service migrations inside the independent service context, never in the surrounding Agent Runtime. Commands declare owner initialization and require an explicit absolute Home before writes. Read only the canonical organization domain using its owning schema; do not invoke Agent configuration resolution. Keep initialization secrets out of argv and stdout. Verify `test/configuration.test.ts`, `test/cli.test.ts` with real child processes and `test/service.test.ts` for migration and lifecycle isolation.
 
@@ -24,4 +24,4 @@ Command admission derives actors from validated credentials and checks current r
 
 Forward active requests through bounded exchanges; distinguish dropped, enqueued and unknown sends. Never replay after reconnect. Observe cancellation independently; recheck access and binding after replies. Verify capacity, late receipts, skip recovery and generated HTTP in `test/command-forwarding.test.ts` and Presets integration.
 
-Resource configuration and secret rotation belong to `resources.ts`. Keep secrets separate from public descriptors; retain revoked grant revisions and update access indexes atomically. Selection requires current project roles and grants. Verify rollback, pagination and generated HTTP in `test/resources.test.ts`.
+Resource catalog and Session selection belong to their owners. Keep secrets separate, grants versioned and indexes atomic. Bind execution only with B and signed native root evidence; recheck driver, project role, epoch and resource availability. Verify `test/resources.test.ts`, `test/execution-grants.test.ts` and Presets integration.

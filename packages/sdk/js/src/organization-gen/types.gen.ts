@@ -212,6 +212,23 @@ export type OrgRuntimeRevoke = {
   expectedRevision: number
 }
 
+export type OrgSessionResourceContract = {
+  sessionID: string
+  revision: number
+  selection: {
+    modelResourceID: string
+    connectionResourceIDs: Array<string>
+  } | null
+}
+
+export type OrgSessionResourceChange = {
+  expectedRevision: number
+  selection: {
+    modelResourceID: string
+    connectionResourceIDs: Array<string>
+  }
+}
+
 export type OrgSessionDirectoryView = {
   sessionID: string
   projectID: string
@@ -825,6 +842,104 @@ export type OrgRuntimeRegistrationProof = {
 export type OrgRuntimeConsumeTicket = {
   token: string
   proof: OrgRuntimeRegistrationProof
+  signature: string
+}
+
+export type OrgBoundExecutionGrant = {
+  schemaVersion: 1
+  grantID: string
+  orgID: string
+  deploymentIncarnation: string
+  sessionID: string
+  projectID: string
+  runtimeID: string
+  bindingEpoch: number
+  selectionRevision: number
+  selection: {
+    modelResourceID: string
+    connectionResourceIDs: Array<string>
+  }
+  limits: {
+    calls: number
+    requestBytes: number
+    responseBytes: number
+  }
+  actor: {
+    subjectID: string
+    displayName: string
+    clientKind: "web" | "desktop" | "cli" | "api"
+    requestID: string
+    kind: "account"
+    orgID: string
+  }
+  admissionID: string
+  attemptID: string
+  createdAt: number
+  state: "bound"
+  rootID: string
+  boundAt: number
+}
+
+export type OrgExecutionBindingProof = {
+  schemaVersion: 1
+  purpose: "execution-root-binding"
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  rootID: string
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+}
+
+export type OrgExecutionBindingRequest = {
+  proof: OrgExecutionBindingProof
   signature: string
 }
 
@@ -1857,6 +1972,100 @@ export type OrgRuntimeRevokeResponses = {
 
 export type OrgRuntimeRevokeResponse = OrgRuntimeRevokeResponses[keyof OrgRuntimeRevokeResponses]
 
+export type OrgSessionResourcesGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/resources"
+}
+
+export type OrgSessionResourcesGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionResourcesGetError = OrgSessionResourcesGetErrors[keyof OrgSessionResourcesGetErrors]
+
+export type OrgSessionResourcesGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgSessionResourceContract
+}
+
+export type OrgSessionResourcesGetResponse = OrgSessionResourcesGetResponses[keyof OrgSessionResourcesGetResponses]
+
+export type OrgSessionResourcesSetData = {
+  body: OrgSessionResourceChange
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/resources"
+}
+
+export type OrgSessionResourcesSetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionResourcesSetError = OrgSessionResourcesSetErrors[keyof OrgSessionResourcesSetErrors]
+
+export type OrgSessionResourcesSetResponses = {
+  /**
+   * Success
+   */
+  200: OrgSessionResourceContract
+}
+
+export type OrgSessionResourcesSetResponse = OrgSessionResourcesSetResponses[keyof OrgSessionResourcesSetResponses]
+
 export type OrgSessionsListData = {
   body?: never
   path: {
@@ -2867,6 +3076,51 @@ export type OrgRuntimeConsumeTicketResponses = {
 }
 
 export type OrgRuntimeConsumeTicketResponse = OrgRuntimeConsumeTicketResponses[keyof OrgRuntimeConsumeTicketResponses]
+
+export type OrgExecutionBindData = {
+  body: OrgExecutionBindingRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/execution/bind"
+}
+
+export type OrgExecutionBindErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgExecutionBindError = OrgExecutionBindErrors[keyof OrgExecutionBindErrors]
+
+export type OrgExecutionBindResponses = {
+  /**
+   * Success
+   */
+  200: OrgBoundExecutionGrant
+}
+
+export type OrgExecutionBindResponse = OrgExecutionBindResponses[keyof OrgExecutionBindResponses]
 
 export type OrgRuntimeConnectionData = {
   body?: never

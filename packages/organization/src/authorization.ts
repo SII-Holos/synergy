@@ -143,7 +143,7 @@ export function sessionView(
   )
     fail("NOT_FOUND", "Session not found")
   const execute = project.permissions.execute && !session.handoffID
-  const stop = (project.role === "maintainer" || project.role === "collaborator") && !session.handoffID
+  const stop = projectExecutionRole(project.role) && !session.handoffID
   if (action !== "session.read" && !(action === "session.execute" && execute) && !(action === "session.stop" && stop))
     fail("PERMISSION_DENIED", "This action is not allowed")
   return Session.View.parse({
@@ -214,6 +214,10 @@ export function requireAdministrator(value: Identity.Account) {
     fail("PERMISSION_DENIED", "Organization administrator access is required")
 }
 
+export function projectExecutionRole(role: z.infer<typeof Identity.ProjectRole> | undefined) {
+  return role === "maintainer" || role === "collaborator"
+}
+
 export function projectView(
   account: Identity.Account,
   project: z.infer<typeof Record.Project>,
@@ -226,7 +230,7 @@ export function projectView(
   const permissions = {
     read: !!membership || account.role !== "member",
     manage: membership?.role === "maintainer" || account.role !== "member",
-    execute: !!membership && membership.role !== "reader" && project.state === "active",
+    execute: projectExecutionRole(membership?.role) && project.state === "active",
   }
   if (!permissions.read) fail("NOT_FOUND", "Project not found")
   const allowed =

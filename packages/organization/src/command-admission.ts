@@ -14,6 +14,7 @@ import { fail, OrganizationError } from "./error"
 import type { RuntimeConnections, RuntimeConnectionLease } from "./runtime-connection"
 import type { CommandSigningAuthority } from "./signing"
 import { digest } from "./auth/secret"
+import { OrganizationExecutionGrants } from "./execution-grants"
 
 const Lookup = z.strictObject({ sessionID: Identity.ID.optional(), requestID: Identity.ID })
 type Target = Pick<Command.Permit, "orgID" | "requestID" | "sessionID" | "projectID" | "runtimeID">
@@ -80,7 +81,9 @@ export function createCommandAdmissions(options: {
   async function admit(
     credentials: Credentials,
     operation: Command.Permit["operation"],
-    resolve: () => Promise<Awaited<ReturnType<typeof lookupTarget>> & { request: Target; payloadHash: string }>,
+    resolve: () => Promise<
+      Awaited<ReturnType<typeof lookupTarget>> & { request: Target; payloadHash: string; execution?: boolean }
+    >,
   ): Promise<Prepared | Accepted> {
     standalone()
     let connection: RuntimeConnectionLease | undefined
@@ -89,7 +92,7 @@ export function createCommandAdmissions(options: {
       async () => {
         connection = undefined
         deadline = undefined
-        const { current, previous, request, payloadHash } = await resolve()
+        const { current, previous, request, payloadHash, execution } = await resolve()
         const { account, session } = current
         const requestKey = Keys.commandRequest(account.accountID, request.requestID)
         if (previous?.accepted) return { kind: "accepted" as const, receipt: previous.accepted }
@@ -134,7 +137,7 @@ export function createCommandAdmissions(options: {
           fail("STALE_CONNECTION", "Runtime registration and active connection do not match")
         const authorizedAt = Date.now()
         deadline = authorizedAt + 30_000
-        const permit = Command.Permit.parse({
+        const prepared = Command.Permit.parse({
           schemaVersion: 1,
           purpose: "session-command",
           orgID: account.orgID,
@@ -165,6 +168,10 @@ export function createCommandAdmissions(options: {
           authorizedAt,
           deadline,
         })
+        const provisionalGrantID = execution
+          ? await OrganizationExecutionGrants.provision(session, prepared)
+          : undefined
+        const permit = Command.Permit.parse({ ...prepared, ...(provisionalGrantID ? { provisionalGrantID } : {}) })
         const authorization = await signing.sign(permit)
         await Storage.write(
           Keys.commandAttempt(permit.attemptID),
@@ -359,6 +366,7 @@ export function createCommandAdmissions(options: {
           updatedAt: Date.now(),
         })
         await Storage.write(Keys.commandAttempt(permit.attemptID), updated)
+        if (result.accepted?.permit.attemptID !== permit.attemptID) await OrganizationExecutionGrants.reject(permit)
         if (result.attempt.status === "accepted" || observed.skip) {
           const stateKey = Keys.commandState(permit.sessionID)
           const state = await Record.read(Record.CommandState, stateKey)
@@ -400,6 +408,7 @@ export function createCommandAdmissions(options: {
       const result = await admit(credentials, "input", async () => ({
         request,
         payloadHash,
+        execution: request.input.mode === "task",
         ...(await lookupTarget(credentials, request, payloadHash, "input")),
       }))
       if (result.kind === "accepted")

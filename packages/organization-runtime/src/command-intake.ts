@@ -3,16 +3,20 @@ import { createHash } from "node:crypto"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationIdentity as Identity,
+  OrganizationExecutionProtocol as Execution,
   OrganizationProtocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
 import { SessionTransfer } from "@ericsanchezok/synergy-harness/session/transfer"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { prepareSessionMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/rollout"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
@@ -566,6 +570,90 @@ export function createCommandIntake(options: {
 
   return {
     control,
+    async bindingProof(value: z.infer<typeof Lookup>, root: string): Promise<Execution.BindingProof> {
+      assertStandalone()
+      const lookup = Lookup.parse(value)
+      const rootID = Identity.ID.parse(root)
+      const prior = await read(Request, Keys.request(authority.orgID, lookup.subjectID, lookup.requestID))
+      if (!prior?.accepted) throw failure("NOT_FOUND", "Accepted task receipt not found")
+      assertAuthority(prior.accepted.permit)
+      const initial = await Session.get(prior.accepted.permit.sessionID)
+      await prepareSessionMigrations({ scopeID: initial.scope.id, sessionID: initial.id })
+      return Storage.snapshot(async () => {
+        assertActive()
+        const request = await read(Request, Keys.request(authority.orgID, lookup.subjectID, lookup.requestID))
+        const accepted = request?.accepted
+        if (
+          !accepted ||
+          accepted.permit.actor.subjectID !== lookup.subjectID ||
+          accepted.permit.requestID !== lookup.requestID
+        )
+          throw failure("NOT_FOUND", "Accepted task receipt not found")
+        const permit = accepted.permit
+        assertAuthority(permit)
+        if (
+          permit.connectionEpoch > connectionEpoch ||
+          !permit.provisionalGrantID ||
+          accepted.effect.kind !== "inbox" ||
+          accepted.effect.mode !== "task" ||
+          accepted.effect.messageID !== rootID
+        )
+          throw failure("PERMISSION_DENIED", "Execution binding requires the accepted task root")
+        if (await binding(permit)) throw failure("STALE_BINDING", "Execution binding Session changed")
+        if (await SessionTransfer.isFrozen(permit.sessionID))
+          throw failure("HANDOFF_BLOCKED", "Session transfer blocks root binding")
+        const session = await Session.get(permit.sessionID)
+        if (session.time.archived) throw failure("PERMISSION_DENIED", "Archived Session cannot bind execution")
+        const [message, run] = await Promise.all([
+          MessageV2.readInfo({ scopeID: session.scope.id, sessionID: session.id, messageID: rootID }).catch((error) => {
+            if (error instanceof Storage.NotFoundError) return
+            throw error
+          }),
+          RolloutLedger.getRun(RolloutLifecycle.owner(session), rootID).catch((error) => {
+            if (error instanceof Storage.NotFoundError) return
+            throw error
+          }),
+        ])
+        const actor = Command.Actor.safeParse(message?.actor)
+        if (
+          !message ||
+          message.role !== "user" ||
+          !message.isRoot ||
+          message.id !== rootID ||
+          message.sessionID !== session.id ||
+          message.rootID !== rootID ||
+          !actor.success ||
+          JSON.stringify(actor.data) !== JSON.stringify(permit.actor) ||
+          !run ||
+          run.id !== rootID ||
+          run.owner.kind !== "session" ||
+          run.owner.sessionID !== session.id ||
+          run.owner.scopeID !== session.scope.id ||
+          run.status === "cancelled" ||
+          run.status === "failed" ||
+          run.cancelRequestedAt ||
+          run.recording === "failed"
+        )
+          throw failure("RESOURCE_UNAVAILABLE", "Accepted task has no available materialized root")
+        const current = await records(permit)
+        if (!current.matches || current.attempt?.status !== "accepted")
+          throw failure("PROTOCOL_MISMATCH", "Accepted root has no matching native attempt")
+        assertActive()
+        const issuedAt = Date.now()
+        return Execution.BindingProof.parse({
+          schemaVersion: 1,
+          purpose: "execution-root-binding",
+          orgID: authority.orgID,
+          deploymentIncarnation: authority.deploymentIncarnation,
+          runtimeID,
+          connectionEpoch,
+          rootID,
+          receipt: result(current, current.attempt),
+          issuedAt,
+          expiresAt: issuedAt + 30_000,
+        })
+      })
+    },
     async input(value: Command.InputDelivery): Promise<Command.InputResult> {
       const delivery = parse(Command.InputDelivery, value)
       const { permit } = delivery.authorization

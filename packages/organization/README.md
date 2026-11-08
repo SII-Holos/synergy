@@ -1,5 +1,7 @@
 # Organization service
 
+`orgSessionResources.get/set` owns a revisioned selection of the Session's model and business connections. The actual selector needs current resource authorization; later shared tasks inherit the established contract. Task admission reserves a provisional grant, and `orgExecution.bind` verifies a signed machine proof of B and the materialized native root. Binding preserves current driver/resource checks and reconciles lost ACKs without replay. Release, gateway invocation and execution activation remain separate integrations. See [execution grants](../../docs/architecture/organization.md#session-resources-and-execution-grants).
+
 The organization service owns a dedicated Home and SQL namespace. Its storage lifecycle uses Harness transactions and the central migration runner without starting Agent execution, model discovery or Session recovery.
 
 ```ts

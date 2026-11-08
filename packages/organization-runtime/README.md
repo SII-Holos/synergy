@@ -1,5 +1,7 @@
 # Organization Runtime adapter
 
+The command receiver's `bindingProof` verifies a retained accepted task, exact canonical root message and Rollout record before producing finite machine-signable evidence. It reads metadata only, preserves the original actor, and rejects transfer, binding and cancellation conflicts. This proof lets the organization service reconcile a lost receipt and bind its provisional grant without input replay. It does not open the member execution source or dispatch a model. See [execution grants](../../docs/architecture/organization.md#session-resources-and-execution-grants).
+
 The member adapter provisions a stable, dedicated Home for an organization, account and device, enrolls its machine identity, and opens an explicitly selected Agent Runtime. Enrollment and startup do not grant Session execution authority.
 
 `prepareMemberHome({ baseDirectory, identity, origin })` requires an absolute managed base directory and an exact HTTPS origin. The directory key hashes the three identity fields, independent of the service address. Existing personal directories and symbolic-link Homes are refused. Provisioning publishes the generic Harness ownership marker before any Runtime initialization, then durably records its initial state and machine key. Interrupted initial provisioning resumes with the same key. Established identities with missing, mismatched or unsupported records fail closed.

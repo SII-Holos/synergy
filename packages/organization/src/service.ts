@@ -31,6 +31,7 @@ import { organizationWeb } from "./web"
 import { loadSigningAuthority } from "./signing"
 import { createCommandAdmissions } from "./command-admission"
 import { createCommandForwarder } from "./command-forwarding"
+import { createExecutionGrants } from "./execution-grants"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -155,6 +156,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       })
       const admissions = createCommandAdmissions({ connections, signing })
       const commands = createCommandForwarder({ admissions, connections })
+      const execution = createExecutionGrants({ admissions, connections })
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
       const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)
@@ -166,6 +168,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
         connections,
         clientAuthentication,
         commands,
+        execution,
       )
       if (web) app.route("/", web)
       ready = true

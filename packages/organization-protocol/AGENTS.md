@@ -13,3 +13,5 @@ Hash the complete strict input and target. Keep skip authorization in a separate
 Current execution observations belong beside immutable receipts. Bind their root and observation window to acceptance; reject observation fields in durable results.
 
 Resource definitions declare fixed supported protocols and portable model capabilities. Keep upstream configuration, public descriptors and secret input distinct. No arbitrary Runtime options, caller-selected ownership changes or transport-routing credential headers. Verify strict contracts in `test/resource.test.ts`.
+
+Execution proofs bind the full accepted task receipt, exact native root and finite machine authority in a separate signature domain. Keep selection revisions and grant state distinct from command acceptance. Verify altered claims and bounded contracts in `test/execution.test.ts`.
