@@ -1,11 +1,10 @@
-import { afterAll, expect } from "bun:test"
+import { expect } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { openOrganizationService, type OrganizationServiceOptions } from "../../src/service"
 
 const origin = "https://organization.example"
 export const password = "correct horse battery staple"
-const fixtures: Array<{ home: string; service: Awaited<ReturnType<typeof openOrganizationService>> }> = []
 
 export async function fixture(
   authentication?: OrganizationServiceOptions["authentication"],
@@ -14,9 +13,13 @@ export async function fixture(
   const home = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "organization-auth-"))
   const state = {
     home,
-    service: await openOrganizationService({ ...options, home, publicOrigin: origin, authentication }),
+    service: await openOrganizationService({ ...options, home, publicOrigin: origin, authentication }).catch(
+      async (error: unknown) => {
+        await fs.rm(home, { recursive: true, force: true })
+        throw error
+      },
+    ),
   }
-  fixtures.push(state)
   function client() {
     let cookie = ""
     let csrf = ""
@@ -62,18 +65,13 @@ export async function fixture(
     },
     client,
     initialize,
+    async [Symbol.asyncDispose]() {
+      await state.service.close()
+      await fs.rm(home, { recursive: true, force: true })
+    },
     async restart() {
       await state.service.close()
       state.service = await openOrganizationService({ ...options, home, publicOrigin: origin, authentication })
     },
   }
 }
-
-afterAll(async () => {
-  await Promise.all(
-    fixtures.map(async ({ service, home }) => {
-      await service.close()
-      await fs.rm(home, { recursive: true, force: true })
-    }),
-  )
-})

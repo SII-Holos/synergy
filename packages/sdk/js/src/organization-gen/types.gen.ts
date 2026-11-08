@@ -212,6 +212,79 @@ export type OrgRuntimeRevoke = {
   expectedRevision: number
 }
 
+export type OrgAuthClient =
+  | {
+      clientID: string
+      kind: "web"
+      redirectUri: string
+    }
+  | {
+      clientID: string
+      kind: "desktop"
+      redirectUri: "synergy://organization-auth/callback"
+    }
+
+export type OrgAuthDiscovery = {
+  issuer: string
+  orgID: string
+  deploymentIncarnation: string
+  client: OrgAuthClient
+  codeChallengeMethod: "S256"
+}
+
+export type OrgAuthorizationCode = {
+  issuer: string
+  orgID: string
+  deploymentIncarnation: string
+  clientID: string
+  redirectUri: string
+  state: string
+  code: string
+  expiresAt: number
+}
+
+export type OrgAuthorizeInput = {
+  issuer: string
+  orgID: string
+  deploymentIncarnation: string
+  clientID: string
+  redirectUri: string
+  state: string
+  codeChallenge: string
+  codeChallengeMethod: "S256"
+}
+
+export type OrgClientTokens = {
+  issuer: string
+  orgID: string
+  deploymentIncarnation: string
+  clientID: string
+  account: OrgAccount
+  tokenType: "Bearer"
+  accessToken: string
+  expiresAt: number
+  refreshToken?: string
+  refreshExpiresAt?: number
+}
+
+export type OrgCodeExchangeInput = {
+  issuer: string
+  orgID: string
+  deploymentIncarnation: string
+  clientID: string
+  redirectUri: string
+  code: string
+  verifier: string
+}
+
+export type OrgTokenRefreshInput = {
+  issuer: string
+  orgID: string
+  deploymentIncarnation: string
+  clientID: string
+  refreshToken: string
+}
+
 export type OrgRuntimeRegistrationProof = {
   purpose: "runtime-register"
   protocolVersion: 1
@@ -1255,6 +1328,188 @@ export type OrgRuntimeRevokeResponses = {
 }
 
 export type OrgRuntimeRevokeResponse = OrgRuntimeRevokeResponses[keyof OrgRuntimeRevokeResponses]
+
+export type OrgAuthDiscoveryData = {
+  body?: never
+  path?: never
+  query: {
+    clientID: string
+  }
+  url: "/org/v1/auth/discovery"
+}
+
+export type OrgAuthDiscoveryErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthDiscoveryError = OrgAuthDiscoveryErrors[keyof OrgAuthDiscoveryErrors]
+
+export type OrgAuthDiscoveryResponses = {
+  /**
+   * Success
+   */
+  200: OrgAuthDiscovery
+}
+
+export type OrgAuthDiscoveryResponse = OrgAuthDiscoveryResponses[keyof OrgAuthDiscoveryResponses]
+
+export type OrgAuthAuthorizeData = {
+  body: OrgAuthorizeInput
+  path?: never
+  query?: never
+  url: "/org/v1/auth/authorize"
+}
+
+export type OrgAuthAuthorizeErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthAuthorizeError = OrgAuthAuthorizeErrors[keyof OrgAuthAuthorizeErrors]
+
+export type OrgAuthAuthorizeResponses = {
+  /**
+   * Success
+   */
+  200: OrgAuthorizationCode
+}
+
+export type OrgAuthAuthorizeResponse = OrgAuthAuthorizeResponses[keyof OrgAuthAuthorizeResponses]
+
+export type OrgAuthExchangeData = {
+  body: OrgCodeExchangeInput
+  path?: never
+  query?: never
+  url: "/org/v1/auth/exchange"
+}
+
+export type OrgAuthExchangeErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthExchangeError = OrgAuthExchangeErrors[keyof OrgAuthExchangeErrors]
+
+export type OrgAuthExchangeResponses = {
+  /**
+   * Success
+   */
+  200: OrgClientTokens
+}
+
+export type OrgAuthExchangeResponse = OrgAuthExchangeResponses[keyof OrgAuthExchangeResponses]
+
+export type OrgAuthRefreshData = {
+  body: OrgTokenRefreshInput
+  path?: never
+  query?: never
+  url: "/org/v1/auth/refresh"
+}
+
+export type OrgAuthRefreshErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthRefreshError = OrgAuthRefreshErrors[keyof OrgAuthRefreshErrors]
+
+export type OrgAuthRefreshResponses = {
+  /**
+   * Success
+   */
+  200: OrgClientTokens
+}
+
+export type OrgAuthRefreshResponse = OrgAuthRefreshResponses[keyof OrgAuthRefreshResponses]
 
 export type OrgRuntimeConsumeTicketData = {
   body: OrgRuntimeConsumeTicket

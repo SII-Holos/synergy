@@ -2,6 +2,7 @@ import { z } from "zod"
 import {
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationClientAuth as ClientAuth,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
@@ -39,6 +40,26 @@ export namespace OrganizationRecord {
     expiresAt: z.number().int(),
     revokedAt: z.number().int().optional(),
   })
+  export const ClientGrant = ClientAuth.Authority.extend({
+    schemaVersion: z.literal(1),
+    grantID: Identity.ID,
+    clientID: Identity.ID,
+    clientHash: Identity.Token,
+    loginHash: Identity.Token,
+    expiresAt: z.number().int(),
+    revokedAt: z.number().int().optional(),
+  })
+  export type ClientGrant = z.infer<typeof ClientGrant>
+  export const AuthorizationCode = ClientAuth.Authorize.extend({
+    schemaVersion: z.literal(1),
+    tokenHash: Identity.Token,
+    clientHash: Identity.Token,
+    loginHash: Identity.Token,
+    expiresAt: z.number().int(),
+    consumedAt: z.number().int().optional(),
+  })
+  export const ClientAccess = tokenState.extend({ grantID: Identity.ID })
+  export const ClientRefresh = tokenState.extend({ grantID: Identity.ID, consumedAt: z.number().int().optional() })
   export const Project = Identity.Project.extend({ schemaVersion: z.literal(1) })
   export const RuntimeRegistration = Runtime.Registration.extend({ schemaVersion: z.literal(1) })
   export type RuntimeRegistration = z.infer<typeof RuntimeRegistration>

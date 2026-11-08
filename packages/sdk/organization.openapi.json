@@ -954,6 +954,170 @@
         ]
       }
     },
+    "/org/v1/auth/discovery": {
+      "get": {
+        "operationId": "orgAuth.discovery",
+        "summary": "Read the registered organization client and issuer",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgAuthDiscovery" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "clientID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/auth/authorize": {
+      "post": {
+        "operationId": "orgAuth.authorize",
+        "summary": "Authorize a registered client from the organization sign-in session",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgAuthorizeInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgAuthorizationCode" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/auth/exchange": {
+      "post": {
+        "operationId": "orgAuth.exchange",
+        "summary": "Exchange a single-use S256 authorization code",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCodeExchangeInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgClientTokens" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/auth/refresh": {
+      "post": {
+        "operationId": "orgAuth.refresh",
+        "summary": "Rotate a Desktop authorization refresh token",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgTokenRefreshInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgClientTokens" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/runtime/v1/register": {
       "post": {
         "operationId": "orgRuntime.consumeTicket",
@@ -1399,6 +1563,172 @@
         "type": "object",
         "properties": { "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } },
         "required": ["expectedRevision"],
+        "additionalProperties": false
+      },
+      "OrgAuthClient": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "clientID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "kind": { "type": "string", "const": "web" },
+              "redirectUri": { "type": "string", "maxLength": 2048 }
+            },
+            "required": ["clientID", "kind", "redirectUri"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "clientID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "kind": { "type": "string", "const": "desktop" },
+              "redirectUri": { "type": "string", "const": "synergy://organization-auth/callback" }
+            },
+            "required": ["clientID", "kind", "redirectUri"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgAuthDiscovery": {
+        "type": "object",
+        "properties": {
+          "issuer": { "type": "string", "maxLength": 2048 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "client": { "$ref": "#/components/schemas/OrgAuthClient" },
+          "codeChallengeMethod": { "type": "string", "const": "S256" }
+        },
+        "required": ["issuer", "orgID", "deploymentIncarnation", "client", "codeChallengeMethod"],
+        "additionalProperties": false
+      },
+      "OrgAuthorizationCode": {
+        "type": "object",
+        "properties": {
+          "issuer": { "type": "string", "maxLength": 2048 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "clientID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "redirectUri": { "type": "string" },
+          "state": { "type": "string", "minLength": 32, "maxLength": 256, "pattern": "^[A-Za-z0-9_-]+$" },
+          "code": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "expiresAt": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "issuer",
+          "orgID",
+          "deploymentIncarnation",
+          "clientID",
+          "redirectUri",
+          "state",
+          "code",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgAuthorizeInput": {
+        "type": "object",
+        "properties": {
+          "issuer": { "type": "string", "maxLength": 2048 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "clientID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "redirectUri": { "type": "string", "maxLength": 2048 },
+          "state": { "type": "string", "minLength": 32, "maxLength": 256, "pattern": "^[A-Za-z0-9_-]+$" },
+          "codeChallenge": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+          "codeChallengeMethod": { "type": "string", "const": "S256" }
+        },
+        "required": [
+          "issuer",
+          "orgID",
+          "deploymentIncarnation",
+          "clientID",
+          "redirectUri",
+          "state",
+          "codeChallenge",
+          "codeChallengeMethod"
+        ],
+        "additionalProperties": false
+      },
+      "OrgClientTokens": {
+        "type": "object",
+        "properties": {
+          "issuer": { "type": "string", "maxLength": 2048 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "clientID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "account": { "$ref": "#/components/schemas/OrgAccount" },
+          "tokenType": { "type": "string", "const": "Bearer" },
+          "accessToken": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "expiresAt": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+          "refreshToken": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "refreshExpiresAt": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "issuer",
+          "orgID",
+          "deploymentIncarnation",
+          "clientID",
+          "account",
+          "tokenType",
+          "accessToken",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgCodeExchangeInput": {
+        "type": "object",
+        "properties": {
+          "issuer": { "type": "string", "maxLength": 2048 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "clientID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "redirectUri": { "type": "string", "maxLength": 2048 },
+          "code": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "verifier": { "type": "string", "minLength": 43, "maxLength": 128, "pattern": "^[A-Za-z0-9._~-]+$" }
+        },
+        "required": ["issuer", "orgID", "deploymentIncarnation", "clientID", "redirectUri", "code", "verifier"],
+        "additionalProperties": false
+      },
+      "OrgTokenRefreshInput": {
+        "type": "object",
+        "properties": {
+          "issuer": { "type": "string", "maxLength": 2048 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "clientID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "refreshToken": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "required": ["issuer", "orgID", "deploymentIncarnation", "clientID", "refreshToken"],
         "additionalProperties": false
       },
       "OrgRuntimeRegistrationProof": {

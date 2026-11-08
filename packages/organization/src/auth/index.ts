@@ -168,11 +168,11 @@ export async function createAuthentication(
     },
     async current(credentials: Credentials) {
       return Storage.snapshot(async () => {
-        const { account, login } = await authenticate(credentials)
+        const { account, expiresAt } = await authenticate(credentials)
         return {
           account: Record.publicAccount(account),
           csrfToken: fingerprint(credentials.token, ["csrf"]),
-          expiresAt: login.expiresAt,
+          expiresAt,
         }
       })
     },

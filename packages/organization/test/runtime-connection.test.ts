@@ -55,7 +55,7 @@ async function peer(url: URL) {
 }
 
 test("real Runtime connections authenticate, fence replacements and revoke independently of human cookies", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const key = await keys()
   const ticket = await register(owner, "connection-device", key.publicKey)
@@ -110,7 +110,7 @@ test("real Runtime connections authenticate, fence replacements and revoke indep
 })
 
 test("simultaneous handshakes have one winner and account removal closes that machine's current connection", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const invitation = (await (await owner.request("POST", "/invites", { role: "member" })).json()) as { token: string }
   const member = f.client()
@@ -158,7 +158,7 @@ test("simultaneous handshakes have one winner and account removal closes that ma
 })
 
 test("the machine bridge refuses browser credentials, incompatible versions and invalid or oversized frames", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const key = await keys()
   const ticket = await register(owner, "validation-device", key.publicKey)
@@ -212,7 +212,7 @@ test("the machine bridge refuses browser credentials, incompatible versions and 
 })
 
 test("restart keeps connection epochs, rejects altered machine claims and expires silent peers", async () => {
-  const f = await fixture(undefined, { connections: { authenticateMs: 400, heartbeatMs: 100, offlineMs: 600 } })
+  await using f = await fixture(undefined, { connections: { authenticateMs: 400, heartbeatMs: 100, offlineMs: 600 } })
   const owner = await f.initialize()
   const key = await keys()
   const ticket = await register(owner, "restart-device", key.publicKey)
@@ -264,7 +264,7 @@ test("restart keeps connection epochs, rejects altered machine claims and expire
 })
 
 test("dropped and throwing native sends disconnect only the affected Runtime and leave no false online state", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const key = await keys()
   const first = await register(owner, "healthy-device", key.publicKey)
@@ -313,7 +313,7 @@ test("dropped and throwing native sends disconnect only the affected Runtime and
 })
 
 test("a socket closed at the SQL commit boundary cannot publish a successful connection epoch", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const key = await keys()
   const ticket = await register(owner, "commit-device", key.publicKey)

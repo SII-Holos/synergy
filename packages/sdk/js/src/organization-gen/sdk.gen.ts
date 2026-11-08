@@ -10,17 +10,27 @@ import type {
   OrgAccountsResetResponses,
   OrgAccountsUpdateErrors,
   OrgAccountsUpdateResponses,
+  OrgAuthAuthorizeErrors,
+  OrgAuthAuthorizeResponses,
+  OrgAuthDiscoveryErrors,
+  OrgAuthDiscoveryResponses,
+  OrgAuthExchangeErrors,
+  OrgAuthExchangeResponses,
   OrgAuthLoginErrors,
   OrgAuthLoginResponses,
   OrgAuthLogoutErrors,
   OrgAuthLogoutResponses,
+  OrgAuthorizeInput,
   OrgAuthPasswordErrors,
   OrgAuthPasswordResponses,
+  OrgAuthRefreshErrors,
+  OrgAuthRefreshResponses,
   OrgAuthResetErrors,
   OrgAuthResetResponses,
   OrgAuthSessionErrors,
   OrgAuthSessionResponses,
   OrgBootstrapInput,
+  OrgCodeExchangeInput,
   OrgEmptyInput,
   OrgHealthGetErrors,
   OrgHealthGetResponses,
@@ -68,6 +78,7 @@ import type {
   OrgRuntimeRevokeResponses,
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
+  OrgTokenRefreshInput,
   OrgTransferOwner,
 } from "./types.gen.js"
 
@@ -227,6 +238,89 @@ export class OrgAuth extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ key: "orgResetConsume", map: "body" }] }])
     return (options?.client ?? this.client).post<OrgAuthResetResponses, OrgAuthResetErrors, ThrowOnError>({
       url: "/org/v1/auth/reset",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read the registered organization client and issuer
+   */
+  public discovery<ThrowOnError extends boolean = false>(
+    parameters: {
+      clientID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "clientID" }] }])
+    return (options?.client ?? this.client).get<OrgAuthDiscoveryResponses, OrgAuthDiscoveryErrors, ThrowOnError>({
+      url: "/org/v1/auth/discovery",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Authorize a registered client from the organization sign-in session
+   */
+  public authorize<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgAuthorizeInput: OrgAuthorizeInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgAuthorizeInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgAuthAuthorizeResponses, OrgAuthAuthorizeErrors, ThrowOnError>({
+      url: "/org/v1/auth/authorize",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Exchange a single-use S256 authorization code
+   */
+  public exchange<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCodeExchangeInput: OrgCodeExchangeInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgCodeExchangeInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgAuthExchangeResponses, OrgAuthExchangeErrors, ThrowOnError>({
+      url: "/org/v1/auth/exchange",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Rotate a Desktop authorization refresh token
+   */
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgTokenRefreshInput: OrgTokenRefreshInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgTokenRefreshInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgAuthRefreshResponses, OrgAuthRefreshErrors, ThrowOnError>({
+      url: "/org/v1/auth/refresh",
       ...options,
       ...params,
       headers: {

@@ -41,6 +41,12 @@ export function browserCredentials(publicOrigin?: string) {
   // Provenance: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
   // Local adaptation: revocable opaque cookies plus an exact configured Origin and session-bound CSRF token.
   function credentials(c: Context): Credentials {
+    const authorization = c.req.header("authorization")
+    if (authorization) {
+      const token = /^Bearer ([a-f0-9]{64})$/.exec(authorization)?.[1]
+      if (!token) fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")
+      return { token, kind: "access", origin: c.req.header("origin") }
+    }
     const token = getCookie(c, cookie)
     if (!token || !Identity.Token.safeParse(token).success)
       fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")

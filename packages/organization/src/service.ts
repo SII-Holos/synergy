@@ -12,6 +12,8 @@ import { registerOrganizationMigrations } from "./migration"
 import { OrganizationStoragePath } from "./storage/path"
 import { organizationApp } from "./http"
 import { createAuthentication, type AuthenticationSettings } from "./auth"
+import { createClientAuthentication } from "./auth/client"
+import { ClientAuthenticationSettings } from "./auth/client-policy"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { createRuntimeRegistrations, type RuntimeRegistrationSettings } from "./runtime-registration"
@@ -29,12 +31,16 @@ export interface OrganizationServiceOptions {
   database?: Extract<StoreOptions, { backend: "postgres" }>
   publicOrigin?: string
   authentication?: AuthenticationSettings
+  clientAuthentication?: ClientAuthenticationSettings
   registration?: RuntimeRegistrationSettings
   connections?: RuntimeConnectionSettings
 }
 
 export async function openOrganizationService(options: OrganizationServiceOptions) {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
+  const clientSettings = ClientAuthenticationSettings.parse(options.clientAuthentication ?? {})
+  if (clientSettings.clients.length && !options.publicOrigin)
+    throw new Error("Client authentication requires an organization public origin")
   if (options.publicOrigin) {
     const url = new URL(options.publicOrigin)
     if (url.origin !== options.publicOrigin || url.protocol !== "https:")
@@ -128,8 +134,16 @@ export async function openOrganizationService(options: OrganizationServiceOption
       OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
       connections = createRuntimeConnections({ run, settings: options.connections })
       const authentication = await createAuthentication(options.authentication, connections.removeAccount)
+      const clientAuthentication = createClientAuthentication(clientSettings, options.publicOrigin)
       const registrations = createRuntimeRegistrations(options.registration, connections.revoke)
-      const app = organizationApp(() => ready, authentication, options.publicOrigin, registrations, connections)
+      const app = organizationApp(
+        () => ready,
+        authentication,
+        options.publicOrigin,
+        registrations,
+        connections,
+        clientAuthentication,
+      )
       ready = true
       RuntimeContext.setReady(true)
       return {

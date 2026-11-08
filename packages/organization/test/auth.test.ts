@@ -4,7 +4,7 @@ import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/trans
 import { fixture, password } from "./support/organization"
 
 test("bootstrap and invite consumption are atomic and replay only the identical logical request", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const token = await f.service.bootstrapToken()
   const anonymous = f.client()
   const input = {
@@ -67,7 +67,7 @@ test("bootstrap and invite consumption are atomic and replay only the identical 
 })
 
 test("login cookies enforce Origin and CSRF, logout and password change revoke existing sessions", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const second = f.client()
   const login = await second.login("owner")
@@ -125,7 +125,7 @@ async function member(
 }
 
 test("last-owner protection serializes role changes and retains removed account attribution", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const other = await member(f, owner, "successor")
   const first = (await (await owner.request("GET", "/auth/session")).json()) as {
@@ -188,7 +188,7 @@ test("last-owner protection serializes role changes and retains removed account 
 })
 
 test("project roles are independent, administrator access never implies execution, archive preserves roles", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const collaborator = await member(f, owner, "collaborator")
   const admin = await member(f, owner, "admin", "admin")
@@ -279,7 +279,7 @@ test("project roles are independent, administrator access never implies executio
 })
 
 test("reset links are one-time, preserve idempotent retry, revoke every previous login and protect owners", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const target = await member(f, owner, "reset-target")
   const admin = await member(f, owner, "reset-admin", "admin")
@@ -312,7 +312,7 @@ test("reset links are one-time, preserve idempotent retry, revoke every previous
 })
 
 test("two owners cannot concurrently remove each other and transfer to a removed account fails atomically", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const target = await member(f, owner, "second-owner")
   const a = (await (await owner.request("GET", "/auth/session")).json()) as {
@@ -359,8 +359,8 @@ test("two owners cannot concurrently remove each other and transfer to a removed
 })
 
 test("same normalized login is unique per organization and never merges across organizations", async () => {
-  const first = await fixture()
-  const second = await fixture()
+  await using first = await fixture()
+  await using second = await fixture()
   const a = await first.initialize("ＳＡＭＥ")
   const b = await second.initialize("same")
   const one = (await (await a.request("GET", "/auth/session")).json()) as {
@@ -386,7 +386,7 @@ test("same normalized login is unique per organization and never merges across o
 })
 
 test("credentials remain hashed at rest and revocation survives restart", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const login = await owner.login("owner")
   const secret = login.headers.get("set-cookie")!.split(";")[0].split("=")[1]
@@ -415,7 +415,7 @@ test("credentials remain hashed at rest and revocation survives restart", async 
 })
 
 test("expired initialization, invitations and login sessions refuse admission", async () => {
-  const expiringBootstrap = await fixture({ bootstrapMs: 1 })
+  await using expiringBootstrap = await fixture({ bootstrapMs: 1 })
   const bootstrap = await expiringBootstrap.service.bootstrapToken()
   expect(
     (
@@ -429,7 +429,7 @@ test("expired initialization, invitations and login sessions refuse admission", 
       })
     ).status,
   ).toBe(401)
-  const f = await fixture({ inviteMs: 1 })
+  await using f = await fixture({ inviteMs: 1 })
   const owner = await f.initialize()
   const invite = (await (await owner.request("POST", "/invites", { role: "member" })).json()) as { token: string }
   expect(
@@ -443,14 +443,14 @@ test("expired initialization, invitations and login sessions refuse admission", 
       })
     ).status,
   ).toBe(401)
-  const expiringLogin = await fixture({ loginMs: 1 })
+  await using expiringLogin = await fixture({ loginMs: 1 })
   const signedIn = await expiringLogin.initialize()
   await Bun.sleep(3)
   expect((await signedIn.request("GET", "/auth/session")).status).toBe(401)
 })
 
 test("malformed credential bodies return structured errors without echoing secrets", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const secret = "synthetic secret that must not appear in a response"
   const response = await f
     .client()
@@ -467,7 +467,7 @@ test("malformed credential bodies return structured errors without echoing secre
 })
 
 test("project pagination includes only the caller's current memberships before applying the limit", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const reader = await member(f, owner, "paged-reader")
   const account = (await (await reader.request("GET", "/auth/session")).json()) as { account: { accountID: string } }

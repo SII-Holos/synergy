@@ -11,6 +11,9 @@ import type { RuntimeRegistrations } from "./runtime-registration"
 import { registrationRoutes, machineRegistrationRoutes } from "./routes/runtime-registration"
 import type { RuntimeConnections } from "./runtime-connection"
 import { runtimeConnectionRoutes, type RuntimeBindings } from "./routes/runtime-connection"
+import { ClientPolicy } from "./auth/client-policy"
+import type { ClientAuthentication } from "./auth/client"
+import { clientAuthenticationRoutes } from "./routes/client-auth"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -29,6 +32,7 @@ export function organizationApp(
   publicOrigin?: string,
   registrations?: RuntimeRegistrations,
   connections?: RuntimeConnections,
+  clientAuthentication?: ClientAuthentication,
 ) {
   function registry() {
     if (!registrations) fail("SERVICE_UNAVAILABLE", "Runtime registration is unavailable")
@@ -42,6 +46,15 @@ export function organizationApp(
       c.header("Cache-Control", "no-store")
       c.header("Referrer-Policy", "no-referrer")
       c.header("X-Content-Type-Options", "nosniff")
+      const origin = c.req.header("origin")
+      if (origin && origin !== publicOrigin) {
+        c.header("Vary", "Origin")
+        if (!ClientPolicy.allowsOrigin(origin)) fail("PERMISSION_DENIED", "The request origin is not allowed")
+        c.header("Access-Control-Allow-Origin", origin)
+        c.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
+        c.header("Access-Control-Allow-Headers", "Authorization,Content-Type")
+        if (c.req.method === "OPTIONS") return c.body(null, 204)
+      }
       await next()
     })
     .use("*", bodyLimit({ maxSize: 64 * 1024, onError: () => fail("INVALID_REQUEST", "Request body is too large") }))
@@ -82,6 +95,13 @@ export function organizationApp(
       }, publicOrigin),
     )
     .route("/org/v1", registrationRoutes(registry, publicOrigin))
+    .route(
+      "/org/v1",
+      clientAuthenticationRoutes(() => {
+        if (!clientAuthentication) fail("SERVICE_UNAVAILABLE", "Client authentication is unavailable")
+        return clientAuthentication
+      }, publicOrigin),
+    )
     .route("/runtime/v1", machineRegistrationRoutes(registry))
     .route(
       "/",

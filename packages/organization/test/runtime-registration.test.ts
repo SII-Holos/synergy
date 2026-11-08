@@ -7,7 +7,7 @@ import { fixture, password } from "./support/organization"
 import { keys, proof, consume, register } from "./support/runtime"
 
 test("member Runtime tickets bind the authenticated account and machine key, and consumption has one durable result", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const key = await keys()
   const [first, second] = await Promise.all([
@@ -48,7 +48,7 @@ test("member Runtime tickets bind the authenticated account and machine key, and
 })
 
 test("registration visibility, revocation, pending account removal and expiry use current authority", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const owner = await f.initialize()
   const invitation = (await (await owner.request("POST", "/invites", { role: "member" })).json()) as { token: string }
   const member = f.client()
@@ -94,7 +94,7 @@ test("registration visibility, revocation, pending account removal and expiry us
     ).status,
   ).toBe(200)
   expect((await consume(f, await proof(other, key.privateKey))).status).toBe(401)
-  const expired = await fixture(undefined, { registration: { ticketMs: 1 } })
+  await using expired = await fixture(undefined, { registration: { ticketMs: 1 } })
   const expiring = await register(await expired.initialize(), "device", key.publicKey)
   await Bun.sleep(5)
   expect((await consume(expired, await proof(expiring, key.privateKey))).status).toBe(401)
