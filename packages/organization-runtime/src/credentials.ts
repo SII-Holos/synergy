@@ -2,7 +2,7 @@ import { createPrivateKey, createPublicKey } from "node:crypto"
 import path from "node:path"
 import { z } from "zod"
 import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
-import { MemberHomeError, readRecord, writeRecord } from "./record"
+import { MemberHomeError, readRecord, writeRecord } from "./record.js"
 
 const Credentials = z.strictObject({
   schemaVersion: z.literal(1),

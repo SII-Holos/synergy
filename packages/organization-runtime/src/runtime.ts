@@ -1,4 +1,5 @@
 import { z } from "zod"
+import type { RuntimeLaunch } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { openAgentRuntime, type AgentRuntimeOptions } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
@@ -25,6 +26,7 @@ export type MemberRuntimeOptions = Pick<
   home: string
   identity: MemberIdentity
   environment?: Readonly<Record<string, string | undefined>>
+  entry?: RuntimeLaunch["entry"]
   listen?: z.infer<typeof MemberListener>
 }
 
@@ -51,6 +53,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
     host: createLocalHost({
       home: member.home,
       root: member.root,
+      entry: input.entry,
       env: {
         ...memberEnvironment(member, input.environment ?? process.env),
         ...(listener.data ? { SYNERGY_SERVER_TOKEN: listener.data.token } : {}),

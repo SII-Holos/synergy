@@ -32,6 +32,8 @@ test("the Desktop Node host provisions the same member identity before a Bun ser
     `
         import { prepareMemberHome, readMemberHome } from ${JSON.stringify(pathToFileURL(output).href)};
         import assert from "node:assert/strict";
+        import fs from "node:fs/promises";
+        import path from "node:path";
         const input = JSON.parse(process.argv[2]);
         const [first, again] = await Promise.all([prepareMemberHome(input), prepareMemberHome(input)]);
         if (first.publicKey !== again.publicKey) throw new Error("Concurrent provisioning replaced the key");
@@ -40,11 +42,14 @@ test("the Desktop Node host provisions the same member identity before a Bun ser
         console.log(JSON.stringify(first));
         delete process.env.SYNERGY_TEST_HOME;
         await assert.rejects(readMemberHome(first.home, input.identity), {name: "TestHomeGuardError"});
+        const unmarked = { ...input, baseDirectory: path.join(input.baseDirectory, "unmarked") };
+        await assert.rejects(prepareMemberHome(unmarked), {name: "TestHomeGuardError"});
+        await assert.rejects(fs.access(unmarked.baseDirectory), {code: "ENOENT"});
       `,
   )
   const child = Bun.spawn(
     ["node", entry, JSON.stringify({ baseDirectory: path.join(baseDirectory, "members"), identity, origin })],
-    { stdout: "pipe", stderr: "pipe", timeout: 10_000 },
+    { env: { ...process.env }, stdout: "pipe", stderr: "pipe", timeout: 10_000 },
   )
   try {
     const [exit, stdout, stderr] = await Promise.all([

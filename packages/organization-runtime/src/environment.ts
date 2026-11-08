@@ -1,7 +1,7 @@
 import path from "node:path"
-import type { MemberHome } from "./home"
+import type { MemberHome } from "./home.js"
 import { installedWorkerCommand, installedWorkerEnvironment } from "@ericsanchezok/synergy-util/installed-launcher"
-import { MemberHomeError } from "./record"
+import { MemberHomeError } from "./record.js"
 
 export function memberEnvironment(
   member: MemberHome,

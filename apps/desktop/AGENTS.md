@@ -10,7 +10,8 @@ Load `change-browser-runtime` for native Browser pages, profiles or popup work a
 - Keep `contextIsolation: true`, `nodeIntegration: false`, and renderer sandboxing. Expose narrow typed preload methods; validate every IPC payload in the main process and keep privileged Electron objects out of the renderer.
 - Preserve production URL/navigation, permission, external-link, download, and window-creation policy. Do not replace blocked navigation with a permissive fallback.
 - HTML fullscreen requires the current trusted App main-frame document.
-- Keep external-server development mode and packaged managed-server mode distinct. Never stop or reuse the runtime carrying the current task.
+- Keep external-server and packaged managed modes distinct. Never stop or reuse the Runtime carrying this task.
+- Member profiles reuse `DesktopServerManager`; keep credentials main-only. Verify `test/member-supervisor.test.ts`.
 - Native Browser creates one real `WebContentsView` per page and adopts native popups with their opener. Profile resources are shared by reference count; page commands never change human tab selection. The broker requires a local server.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
 - Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
@@ -18,9 +19,9 @@ Load `change-browser-runtime` for native Browser pages, profiles or popup work a
 
 ## Verify
 
-Organization credentials stay in main-owned `src/organization`. Load `change-server-api` for authorization invariants; run its unit suites and `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/organization-native.test.ts` in isolation.
+Organization credentials belong to main-owned `src/organization`; follow `change-server-api`. Verify its unit suites and isolated `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/organization-native.test.ts`.
 
-Run `bun run typecheck`, focused `test/` suites, `bun run desktop:test`, and root `bun run quality:quick`. Verify affected modes in an isolated home; Browser changes additionally require `test:runtime` and core/Web tests.
+Run `bun run desktop:test`, affected `test/` suites, and root `bun run quality:quick`. Verify affected modes in an isolated home; Browser changes additionally require `test:runtime` and core/Web tests.
 
 For background-only Browser checks use `SYNERGY_DESKTOP_RUNTIME_TEST=1 SYNERGY_DESKTOP_BACKGROUND_TEST=1 bun test test/browser-runtime-smoke.test.ts`; visible-window and focus-dependent fixtures are explicitly skipped and remain unverified.
 

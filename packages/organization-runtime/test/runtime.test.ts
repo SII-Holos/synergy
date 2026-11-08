@@ -57,6 +57,7 @@ test("member HTTP services bind explicit loopback ports and keep credentials, id
     home: first.home,
     identity: first.identity,
     listen: { port: portA, token: tokenA },
+    entry: "desktop-managed",
   })
   const portB = await availablePort()
   await using two = await openMemberRuntime({
@@ -67,6 +68,8 @@ test("member HTTP services bind explicit loopback ports and keep credentials, id
   expect(one.server?.hostname).toBe("127.0.0.1")
   expect(one.server?.port).toBe(portA)
   expect(two.server?.port).toBe(portB)
+  expect(one.run(() => RuntimeContext.current().host.launch?.entry)).toBe("desktop-managed")
+  expect(two.run(() => RuntimeContext.current().host.launch?.entry)).toBe("embedded")
   const baseUrl = `http://127.0.0.1:${portA}`
   const apiA = createSynergyClient({ baseUrl, headers: { authorization: `Bearer ${tokenA}` } })
   const apiB = createSynergyClient({

@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { OrganizationIdentity, OrganizationRuntimeProtocol } from "@ericsanchezok/synergy-organization-protocol"
-import { MemberIdentity } from "./home"
+import { MemberIdentity } from "./home.js"
 
 export const MemberListener = z.strictObject({
   port: z.number().int().min(1).max(65535),

@@ -31,6 +31,7 @@
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-computer-protocol": "workspace:*",
     "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+    "@ericsanchezok/synergy-organization-runtime": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@trycua/cua-driver": "0.36.0",

@@ -2,15 +2,14 @@ import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
-import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
-import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import {
   OrganizationIdentity,
   OrganizationRuntimeProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { createCredentials, readCredentials } from "./credentials"
-import { MemberHomeError, readRecord, writeRecord } from "./record"
+import { createCredentials, readCredentials } from "./credentials.js"
+import { MemberHomeError, readRecord, writeRecord } from "./record.js"
 
 export const MemberIdentity = z.strictObject({
   orgID: OrganizationIdentity.ID,
@@ -67,24 +66,25 @@ async function entries(directory: string) {
   })
 }
 
-function withOwner<T>(home: string, identity: MemberIdentity, body: (root: string) => Promise<T>) {
+async function withOwner<T>(
+  home: string,
+  identity: MemberIdentity,
+  body: (root: string, owner: ReturnType<typeof HomeOwnershipFile.open>) => Promise<T>,
+) {
   const root = path.join(home, ".synergy")
-  const context = RuntimeContext.create({ home, root, env: { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME } })
-  return context.run(async () => {
-    try {
-      for (const directory of [home, root]) {
-        const stat = await fs.lstat(directory).catch((error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return undefined
-          throw error
-        })
-        if (stat?.isSymbolicLink()) throw new MemberHomeError("Member Runtime Home cannot be a symbolic link")
-      }
-      HomeOwnership.select({ owner: "organization-runtime", identity: memberIdentityDigest(identity) })
-      return await body(root)
-    } finally {
-      context.dispose()
-    }
+  const owner = HomeOwnershipFile.open({
+    root,
+    env: { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME },
+    selected: { schemaVersion: 1, owner: "organization-runtime", identity: memberIdentityDigest(identity) },
   })
+  for (const directory of [home, root]) {
+    const stat = await fs.lstat(directory).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined
+      throw error
+    })
+    if (stat?.isSymbolicLink()) throw new MemberHomeError("Member Runtime Home cannot be a symbolic link")
+  }
+  return body(root, owner)
 }
 
 function checkIdentity(current: Binding, identity: MemberIdentity) {
@@ -104,8 +104,8 @@ async function ready(home: string, root: string, current: Binding): Promise<Memb
 export async function readMemberHome(input: string, expected: MemberIdentity) {
   const home = absolute(input)
   const identity = MemberIdentity.parse(expected)
-  return withOwner(home, identity, async (root) => {
-    await HomeOwnership.assert({ required: true })
+  return withOwner(home, identity, async (root, owner) => {
+    await owner.assert({ required: true })
     const current = await readRecord(filename(root), Binding, "identity records")
     if (!current) throw new MemberHomeError("Member Runtime identity is missing")
     checkIdentity(current, identity)
@@ -119,12 +119,12 @@ export async function prepareMemberHome(input: { baseDirectory: string; identity
   const address = origin(input.origin)
   const digest = memberIdentityDigest(identity)
   const home = path.join(baseDirectory, digest)
-  return withFileLock({ directory: path.join(baseDirectory, ".locks"), key: digest }, () =>
-    withOwner(home, identity, async (root) => {
-      const owner = await HomeOwnership.assert()
+  return withOwner(home, identity, (root, ownership) =>
+    withFileLock({ directory: path.join(baseDirectory, ".locks"), key: digest }, async () => {
+      const owner = await ownership.assert()
       if (!owner) {
         if ((await entries(home)).length) throw new MemberHomeError("Member Runtime requires a new dedicated Home")
-        await HomeOwnership.persist()
+        await ownership.persist()
       }
       let current = await readRecord(filename(root), Binding, "identity records")
       if (!current) {
