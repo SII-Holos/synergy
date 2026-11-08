@@ -39,8 +39,8 @@ test("service admission requires a live capable Runtime and stores only authoriz
   })
 })
 
-function accepted(permit: Command.Permit): Command.Result {
-  return Command.Result.parse({
+function accepted(permit: Command.Permit): Command.InputResult {
+  return Command.InputResult.parse({
     attempt: {
       schemaVersion: 1,
       permit,
@@ -57,6 +57,58 @@ function accepted(permit: Command.Permit): Command.Result {
     },
   })
 }
+
+test("creation reserves its directory and authorization atomically for the current member's own Runtime", async () => {
+  await using f = await fixture()
+  await f.connect()
+  await f.run(async () => {
+    const request: Command.CreateRequest = {
+      schemaVersion: 1,
+      orgID: "org",
+      projectID: "project",
+      runtimeID: "runtime-alice",
+      requestID: "create",
+      creation: { operation: "create", title: "Private service creation" },
+    }
+    await expect(f.commands.create(f.credentials.owner, request)).rejects.toMatchObject({
+      data: { code: "PERMISSION_DENIED" },
+    })
+    await expect(f.commands.create(f.credentials.bob, request)).rejects.toMatchObject({ data: { code: "NOT_FOUND" } })
+    const write = Storage.write
+    const failed = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+      await write(key, value)
+      if (key[1] === "command-attempts") throw new Error("Admission write failed")
+    })
+    try {
+      await expect(f.commands.create(f.credentials.alice, request)).rejects.toThrow("Admission write failed")
+    } finally {
+      failed.mockRestore()
+    }
+    expect(await Storage.count({ prefix: ["organization", "sessions"] })).toBe(1)
+    expect(await Storage.count({ prefix: ["organization", "command-attempts"] })).toBe(0)
+    const results = await Promise.allSettled([
+      f.commands.create(f.credentials.alice, request),
+      f.commands.create(f.credentials.alice, request),
+    ])
+    expect(results.filter((value) => value.status === "fulfilled")).toHaveLength(1)
+    expect(results.filter((value) => value.status === "rejected")).toHaveLength(1)
+    const original = await f.commands.get(f.credentials.alice, { requestID: "create" })
+    expect(original.attempt.state).toBe("admitted")
+    const permit = original.attempt.authorization.permit
+    expect(permit.sessionID).toStartWith("ses_")
+    expect(permit.operation).toBe("create")
+    expect(permit.actor.subjectID).toBe("alice")
+    expect(permit.payloadHash).toBe(await Command.digestCreate({ ...request, sessionID: permit.sessionID }))
+    expect(await Storage.count({ prefix: ["organization", "sessions"] })).toBe(2)
+    expect(await Storage.count({ prefix: ["organization", "command-attempts"] })).toBe(1)
+    await expect(
+      f.commands.inspectCreate(f.credentials.alice, {
+        ...request,
+        creation: { operation: "create", title: "Changed" },
+      }),
+    ).rejects.toMatchObject({ data: { code: "REVISION_CONFLICT" } })
+  })
+})
 
 test("current project access and capable connections gate A without granting administrators private content", async () => {
   await using f = await fixture()

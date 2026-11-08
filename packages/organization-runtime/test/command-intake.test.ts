@@ -38,7 +38,13 @@ async function authority() {
   return {
     identity,
     receiver(connectionEpoch = 1, signal = new AbortController().signal) {
-      return createCommandIntake({ identity, runtimeID: binding.driverRuntimeID, connectionEpoch, signal })
+      return createCommandIntake({
+        identity,
+        runtimeID: binding.driverRuntimeID,
+        accountID: binding.creatorID,
+        connectionEpoch,
+        signal,
+      })
     },
     async input(
       sessionID: string,
@@ -95,6 +101,13 @@ async function authority() {
       }
       return { permit: proof, signature: await Command.signSkip(proof, keys.privateKey) }
     },
+    async create(sessionID: string, options: Partial<Command.Permit> = {}): Promise<Command.CreateDelivery> {
+      const permit = (await this.input(sessionID, { requestID: "create-intake", ...options, operation: "create" }))
+        .authorization.permit
+      const creation: Command.Creation = { operation: "create", title: "Native creation title" }
+      permit.payloadHash = await Command.digestCreate(Command.createRequest(permit, creation))
+      return { authorization: { permit, signature: await Command.sign(permit, keys.privateKey) }, creation }
+    },
   }
 }
 
@@ -111,6 +124,81 @@ async function session() {
     fn: () => Session.create({ organization: binding, workspaceID: null }),
   })
 }
+
+test("creation rolls back the real Session and Scope with its receipt and never adopts an existing Session", async () => {
+  await using home = await tmpdir()
+  const service = await authority()
+  await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const receiver = service.receiver()
+    const delivery = await service.create("ses_create_intake")
+    const write = Storage.write
+    const failure = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+      await write(key, value)
+      if (
+        key.join("/") ===
+        Keys.request(binding.orgID, binding.creatorID, delivery.authorization.permit.requestID).join("/")
+      )
+        throw new Error("Receipt publication failed")
+    })
+    try {
+      await expect(receiver.create(delivery)).rejects.toThrow("Receipt publication failed")
+    } finally {
+      failure.mockRestore()
+    }
+    await expect(Session.get(delivery.authorization.permit.sessionID)).rejects.toBeInstanceOf(Storage.NotFoundError)
+    expect((await Scope.list()).find((value) => value.id === binding.projectID)).toBeUndefined()
+    expect(await receiver.query(delivery.authorization)).toEqual({ authorization: delivery.authorization })
+    const [first, duplicate] = await Promise.all([receiver.create(delivery), receiver.create(delivery)])
+    expect(first).toEqual(duplicate)
+    expect(first.accepted?.intakeSeq).toBe(1)
+    expect((await Session.get(delivery.authorization.permit.sessionID)).organization).toEqual(binding)
+    const collision = await service.create(delivery.authorization.permit.sessionID, {
+      requestID: "collision",
+      attemptID: "collision",
+      commandSeq: 2,
+    })
+    expect((await receiver.create(collision)).attempt).toMatchObject({
+      status: "rejected",
+      reason: "SESSION_UNAVAILABLE",
+    })
+    expect(await SessionInbox.list(delivery.authorization.permit.sessionID)).toHaveLength(0)
+    const other = await service.create("ses_wrong_creator", {
+      requestID: "other",
+      attemptID: "other",
+      actor: {
+        ...delivery.authorization.permit.actor,
+        subjectID: "other-member",
+        requestID: "other",
+      },
+    })
+    expect((await receiver.create(other)).attempt).toMatchObject({ status: "rejected", reason: "REQUEST_CONFLICT" })
+    await expect(Session.get("ses_wrong_creator")).rejects.toBeInstanceOf(Storage.NotFoundError)
+  })
+})
+
+test("a committed creation survives restart and replay cannot recreate a removed Session", async () => {
+  await using home = await tmpdir()
+  const service = await authority()
+  const delivery = await service.create("ses_retained_creation")
+  let receipt: Command.CreatedResult
+  {
+    await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+    receipt = await runtime.run(() => service.receiver().create(delivery))
+  }
+  await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const receiver = service.receiver(2)
+    expect(await receiver.query(delivery.authorization)).toEqual({
+      authorization: delivery.authorization,
+      result: receipt,
+    })
+    expect((await Session.get(delivery.authorization.permit.sessionID)).title).toBe(delivery.creation.title!)
+    await Session.remove(delivery.authorization.permit.sessionID)
+    expect(await receiver.create(delivery)).toEqual(receipt)
+    await expect(Session.get(delivery.authorization.permit.sessionID)).rejects.toBeInstanceOf(Storage.NotFoundError)
+  })
+})
 
 test("signed receipt queries survive expiry and reconnect without accepting or skipping input", async () => {
   await using home = await tmpdir()
@@ -163,7 +251,7 @@ test("accepted input has one durable effect, fixed actor and intake order across
   const service = await authority()
   let sessionID = ""
   let delivery: Awaited<ReturnType<typeof service.input>>
-  let accepted: Command.Accepted | undefined
+  let accepted: Command.InputAccepted | undefined
   {
     await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
     await runtime.run(async () => {
@@ -278,7 +366,7 @@ test("explicit skip receipts close ordered gaps and fence late frames without pr
     const result = await receiver.skip(skippedFirst)
     expect(result.attempt.status).toBe("skipped")
     expect(result.skip?.permit.connectionEpoch).toBe(2)
-    expect(await receiver.input(first)).toEqual(result)
+    expect(await receiver.input(first)).toEqual(Command.InputResult.parse(result))
     const closedSecond = await receiver.skip(skippedSecond)
     expect(closedSecond.attempt).toMatchObject({ status: "rejected", reason: "SEQUENCE_GAP" })
     expect(closedSecond.skip).toBeDefined()
@@ -565,7 +653,7 @@ test("invalid skip proofs cannot close a slot and a corrupted retained skip cann
     await Storage.write(key, { ...skipped.skip, permit: valid.permit })
     await expect(receiver.input(next)).rejects.toBeInstanceOf(OrganizationRuntimeError)
     await Storage.write(key, retained)
-    expect(await receiver.input(next)).toEqual(skipped)
+    expect(await receiver.input(next)).toEqual(Command.InputResult.parse(skipped))
     expect(await SessionInbox.list(id)).toHaveLength(1)
   })
 })

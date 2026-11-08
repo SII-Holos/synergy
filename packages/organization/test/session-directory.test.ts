@@ -9,7 +9,7 @@ import { authorize } from "../src/authorization"
 import { directoryFixture } from "./support/session-directory"
 import { fixture } from "./support/organization"
 
-test("the organization exposes an authorized empty Session directory without an execution route", async () => {
+test("the organization exposes an authorized empty Session directory and rejects incomplete creation", async () => {
   await using f = await fixture()
   const owner = await f.initialize()
   const created = await owner.request("POST", "/projects", { name: "Private work" })
@@ -20,7 +20,7 @@ test("the organization exposes an authorized empty Session directory without an 
   const capacity = await owner.request("GET", "/organization/session-capacity")
   expect(capacity.status).toBe(200)
   expect(await capacity.json()).toEqual({ privateSessions: 0, sharedSessions: 0 })
-  expect((await owner.request("POST", "/sessions", { projectID: project.projectID })).status).toBe(404)
+  expect((await owner.request("POST", "/sessions", { projectID: project.projectID })).status).toBe(400)
 })
 
 test("private metadata reservation derives ownership and joins the surrounding admission transaction", async () => {

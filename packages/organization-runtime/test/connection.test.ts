@@ -75,6 +75,9 @@ test("verified WSS supplies the command factory, orders exchanges and redacts un
       signal = currentSignal
       identity = connected.signingIdentity
       return {
+        async create() {
+          throw new Error("private creation storage details")
+        },
         async input() {
           throw new Error("private intake storage details")
         },

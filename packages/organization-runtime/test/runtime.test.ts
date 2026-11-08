@@ -11,6 +11,7 @@ import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
@@ -80,6 +81,117 @@ async function availablePort() {
   await server.stop(true)
   return port
 }
+
+test("the public service creates a bound Session through the resident Runtime and reconciles an aborted input caller", async () => {
+  await using service = await fixture()
+  const member = await enrolled(service)
+  const registration = (await readMemberRegistration(member.home, member.identity))!
+  const project = (
+    await service.client.orgProjects.create(
+      { orgProjectCreate: { name: "Online creation", description: "" } },
+      { headers: service.headers, throwOnError: true },
+    )
+  ).data
+  const online = Promise.withResolvers<void>()
+  const accepted = Promise.withResolvers<void>()
+  let loseReply = false
+  service.interceptFrames((_socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "heartbeat") online.resolve()
+    if (
+      loseReply &&
+      frame.type === "receipt" &&
+      frame.reply.kind === "result" &&
+      frame.reply.result.attempt.permit.operation === "input"
+    ) {
+      accepted.resolve()
+      return true
+    }
+    return false
+  })
+  await using runtime = await openMemberRuntime({
+    home: member.home,
+    identity: member.identity,
+    ca: service.ca,
+    listen: { port: await availablePort(), token: "d".repeat(64) },
+  })
+  async function observed<T>(promise: Promise<T>) {
+    const timeout = Promise.withResolvers<never>()
+    const timer = setTimeout(() => timeout.reject(new Error("Native command observation timed out")), 3000)
+    try {
+      return await Promise.race([promise, timeout.promise])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  await observed(online.promise)
+  const create = {
+    orgCommandCreateRequest: {
+      schemaVersion: 1 as const,
+      orgID: member.identity.orgID,
+      projectID: project.projectID,
+      runtimeID: registration.runtimeID,
+      requestID: "native-create",
+      creation: { operation: "create" as const, title: "Native private title" },
+    },
+  }
+  const result = await observed(
+    service.client.orgSessions.create(create, { headers: service.headers, throwOnError: true }),
+  )
+  expect(result.response.status).toBe(202)
+  const sessionID = result.data.effect.sessionID
+  expect(await runtime.run(() => Session.get(sessionID))).toMatchObject({
+    title: "Native private title",
+    organization: {
+      orgID: member.identity.orgID,
+      projectID: project.projectID,
+      creatorID: member.identity.accountID,
+      driverRuntimeID: registration.runtimeID,
+      bindingEpoch: 1,
+    },
+  })
+  const controller = new AbortController()
+  const input = {
+    sessionID,
+    orgCommandInputRequest: {
+      schemaVersion: 1 as const,
+      orgID: member.identity.orgID,
+      projectID: project.projectID,
+      sessionID,
+      runtimeID: registration.runtimeID,
+      requestID: "native-input",
+      input: {
+        operation: "input" as const,
+        mode: "context" as const,
+        parts: [{ type: "text" as const, text: "Retain this accepted context" }],
+      },
+    },
+  }
+  loseReply = true
+  const pending = service.client.orgCommands
+    .input(input, { headers: service.headers, signal: controller.signal, throwOnError: true })
+    .then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    )
+  await observed(accepted.promise)
+  controller.abort()
+  expect(await observed(pending)).toHaveProperty("error")
+  loseReply = false
+  const receipt = await observed(
+    service.client.orgCommands.lookup({ requestID: "native-input" }, { headers: service.headers, throwOnError: true }),
+  )
+  expect(receipt.data.state).toBe("accepted")
+  expect(
+    (await service.client.orgCommands.input(input, { headers: service.headers, throwOnError: true })).response.status,
+  ).toBe(200)
+  expect(
+    (await service.client.orgSessions.create(create, { headers: service.headers, throwOnError: true })).response.status,
+  ).toBe(200)
+  const inbox = await runtime.run(() => SessionInbox.list(sessionID))
+  expect(inbox).toHaveLength(1)
+  expect(inbox[0].message?.actor).toMatchObject({ subjectID: member.identity.accountID, requestID: "native-input" })
+})
 
 test("resident member startup reconnects its outbound bridge without blocking local readiness", async () => {
   await using service = await fixture()

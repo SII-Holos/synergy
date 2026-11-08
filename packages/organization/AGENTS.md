@@ -6,7 +6,7 @@ Use an explicit isolated Storage Handle, the central migration runner and owner-
 
 Route object actions through `authorization.ts` inside the caller's transaction or snapshot. Resolve stored ownership before applying roles and deny unknown actions. Credential authentication and one-time token consumption belong to `auth/`; do not duplicate the authorization matrix in routes or the Runtime adapter.
 
-Session directory reads use current project access and canonical creator visibility. Page authorized creator/shared indexes before loading records; administrator capacity exposes counts only. A directory reservation is metadata, never a Runtime receipt or execution grant. Verify rollback, revocation and mixed-owner pagination in `test/session-directory.test.ts`.
+Session directory reads use current project access and canonical creator visibility. Page authorized creator/shared indexes before loading records; administrator capacity exposes counts only. Creation commits directory reservation with admission; metadata is never a Runtime receipt or execution grant. Verify rollback, revocation and mixed-owner pagination in `test/session-directory.test.ts`.
 
 Client grants bind the first-party login, exact registered callback and deployment identity. Keep authorization-code consumption and token creation atomic. Refresh replay must commit grant revocation before returning its error. Expired proof may revoke its own login, never authorize business access. Cross-origin clients use access tokens, never ambient cookie credentials. Preserve the separate generated organization client and verify real HTTP exchange in `test/client-auth.test.ts`.
 

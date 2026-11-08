@@ -271,7 +271,30 @@ export type OrgCommandPermit = {
   provisionalGrantID?: string
 }
 
-export type OrgCommandAccepted = {
+export type OrgCommandCreatedAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect: {
+    kind: "session"
+    sessionID: string
+  }
+}
+
+export type OrgCommandCreateRequest = {
+  schemaVersion: 1
+  orgID: string
+  requestID: string
+  projectID: string
+  runtimeID: string
+  creation: {
+    operation: "create"
+    title?: string
+  }
+}
+
+export type OrgCommandInputAccepted = {
   schemaVersion: 1
   permit: OrgCommandPermit
   acceptedAt: number
@@ -302,6 +325,8 @@ export type OrgCommandInputRequest = {
   runtimeID: string
   input: OrgCommandInput
 }
+
+export type OrgCommandAccepted = OrgCommandInputAccepted | OrgCommandCreatedAccepted
 
 export type OrgCommandView = {
   requestID: string
@@ -1625,6 +1650,59 @@ export type OrgOrganizationSessionCapacityResponses = {
 export type OrgOrganizationSessionCapacityResponse =
   OrgOrganizationSessionCapacityResponses[keyof OrgOrganizationSessionCapacityResponses]
 
+export type OrgSessionsCreateData = {
+  body: OrgCommandCreateRequest
+  path?: never
+  query?: never
+  url: "/org/v1/sessions"
+}
+
+export type OrgSessionsCreateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+  /**
+   * Organization error
+   */
+  504: OrgError
+}
+
+export type OrgSessionsCreateError = OrgSessionsCreateErrors[keyof OrgSessionsCreateErrors]
+
+export type OrgSessionsCreateResponses = {
+  /**
+   * Success
+   */
+  200: OrgCommandCreatedAccepted
+  /**
+   * Runtime durably received the command
+   */
+  202: OrgCommandCreatedAccepted
+}
+
+export type OrgSessionsCreateResponse = OrgSessionsCreateResponses[keyof OrgSessionsCreateResponses]
+
 export type OrgCommandsInputData = {
   body: OrgCommandInputRequest
   path: {
@@ -1671,11 +1749,11 @@ export type OrgCommandsInputResponses = {
   /**
    * Success
    */
-  200: OrgCommandAccepted
+  200: OrgCommandInputAccepted
   /**
    * Runtime durably received the command
    */
-  202: OrgCommandAccepted
+  202: OrgCommandInputAccepted
 }
 
 export type OrgCommandsInputResponse = OrgCommandsInputResponses[keyof OrgCommandsInputResponses]
@@ -1727,6 +1805,53 @@ export type OrgCommandsGetResponses = {
 }
 
 export type OrgCommandsGetResponse = OrgCommandsGetResponses[keyof OrgCommandsGetResponses]
+
+export type OrgCommandsLookupData = {
+  body?: never
+  path: {
+    requestID: string
+  }
+  query?: never
+  url: "/org/v1/commands/{requestID}"
+}
+
+export type OrgCommandsLookupErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCommandsLookupError = OrgCommandsLookupErrors[keyof OrgCommandsLookupErrors]
+
+export type OrgCommandsLookupResponses = {
+  /**
+   * Success
+   */
+  200: OrgCommandView
+}
+
+export type OrgCommandsLookupResponse = OrgCommandsLookupResponses[keyof OrgCommandsLookupResponses]
 
 export type OrgAuthDiscoveryData = {
   body?: never

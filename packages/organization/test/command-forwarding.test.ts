@@ -204,6 +204,24 @@ test("command OpenAPI declares required input and separates B acceptance from un
   expect(post?.requestBody).toMatchObject({ required: true })
   expect(Object.keys(post?.responses ?? {})).toEqual(expect.arrayContaining(["200", "202", "409", "503", "504"]))
   expect(spec.paths?.["/org/v1/sessions/{sessionID}/commands/{requestID}"]?.get?.operationId).toBe("orgCommands.get")
+  expect(spec.paths?.["/org/v1/sessions"]?.post?.operationId).toBe("orgSessions.create")
+  expect(spec.paths?.["/org/v1/commands/{requestID}"]?.get?.operationId).toBe("orgCommands.lookup")
+})
+
+test("an unavailable receipt store retains the caller's request ID and internal failure cause", async () => {
+  await using f = await commandFixture()
+  const original = new Error("private storage failure")
+  await f.run(async () => {
+    const failed = spyOn(Storage, "readMany").mockRejectedValueOnce(original)
+    try {
+      await expect(f.forwarder.input(f.credentials.alice, f.request())).rejects.toMatchObject({
+        data: { code: "COMMAND_OUTCOME_UNKNOWN", requestID: "request", outcome: "unknown" },
+        cause: original,
+      })
+    } finally {
+      failed.mockRestore()
+    }
+  })
 })
 
 test("a correlated receipt for another attempt cannot settle the dispatched request", async () => {

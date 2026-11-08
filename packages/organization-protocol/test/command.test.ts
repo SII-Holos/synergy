@@ -35,6 +35,35 @@ const permit: Command.Permit = {
   provisionalGrantID: "grant",
 }
 
+test("creation binds the service-selected identity and private title without accepting caller ownership fields", async () => {
+  const target = Command.createRequest(
+    { ...permit, operation: "create" },
+    { operation: "create", title: "Private title" },
+  )
+  const hash = await Command.digestCreate(target)
+  for (const changed of [
+    { ...target, sessionID: "another-session" },
+    { ...target, runtimeID: "another-runtime" },
+    { ...target, creation: { operation: "create" as const, title: "Changed" } },
+  ])
+    expect(await Command.digestCreate(changed)).not.toBe(hash)
+  const { sessionID: _, ...request } = target
+  expect(Command.CreateRequest.safeParse({ ...request, sessionID: "caller-session" }).success).toBe(false)
+  expect(Command.CreateRequest.safeParse({ ...request, creatorID: "another-account" }).success).toBe(false)
+  const accepted: Command.CreatedAccepted = {
+    schemaVersion: 1,
+    permit: { ...permit, operation: "create", payloadHash: hash },
+    acceptedAt: 2,
+    intakeSeq: 1,
+    effect: { kind: "session", sessionID: permit.sessionID },
+  }
+  expect(Command.Accepted.parse(accepted)).toEqual(accepted)
+  expect(
+    Command.Accepted.safeParse({ ...accepted, effect: { kind: "session", sessionID: "another-session" } }).success,
+  ).toBe(false)
+  expect(Command.Accepted.safeParse({ ...accepted, permit }).success).toBe(false)
+})
+
 test("command permits sign every authority, sequence, actor and request claim", async () => {
   const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
   const publicKey = await Runtime.publicKey(keys.publicKey)

@@ -5,6 +5,8 @@ import {
   OrganizationProtocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionTransfer } from "@ericsanchezok/synergy-harness/session/transfer"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -75,11 +77,13 @@ class PermitExpired extends Error {}
 export function createCommandIntake(options: {
   identity: Command.SigningIdentity
   runtimeID: string
+  accountID: string
   connectionEpoch: number
   signal: AbortSignal
 }) {
   const authority = Command.SigningIdentity.parse(options.identity)
   const runtimeID = Identity.ID.parse(options.runtimeID)
+  const accountID = Identity.ID.parse(options.accountID)
   const connectionEpoch = OrganizationProtocol.Epoch.parse(options.connectionEpoch)
   const signal = options.signal
 
@@ -100,12 +104,15 @@ export function createCommandIntake(options: {
     )
       throw failure("PERMISSION_DENIED", "Command authority does not match this Runtime")
   }
-  async function binding(permit: Command.Permit): Promise<Command.Rejection | undefined> {
-    const session = await Session.get(permit.sessionID).catch((error) => {
+  function readSession(sessionID: string) {
+    return Session.get(sessionID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
-    if (!session) return "SESSION_UNAVAILABLE"
+  }
+  async function binding(permit: Command.Permit): Promise<Command.Rejection | undefined> {
+    const session = await readSession(permit.sessionID)
+    if (!session) return permit.operation === "create" ? undefined : "SESSION_UNAVAILABLE"
     const current = session.organization
     if (
       !current ||
@@ -115,6 +122,7 @@ export function createCommandIntake(options: {
       current.bindingEpoch !== permit.bindingEpoch
     )
       return "STALE_BINDING"
+    if (permit.operation === "create" && current.creatorID !== accountID) return "STALE_BINDING"
   }
   async function records(permit: Command.Permit) {
     const expected = identity(permit)
@@ -204,16 +212,18 @@ export function createCommandIntake(options: {
     })
   }
 
-  async function input(value: Command.InputDelivery): Promise<Command.Result> {
+  async function receive(
+    authorization: Command.SignedPermit,
+    digest: () => Promise<string>,
+    effect: () => Promise<Command.Accepted["effect"]>,
+  ): Promise<Command.Result> {
     assertStandalone()
-    const delivery = parse(Command.InputDelivery, value)
-    const { permit, signature } = delivery.authorization
+    const { permit, signature } = authorization
     assertAuthority(permit)
     if (!(await Command.verify(permit, signature, authority.publicKey)))
       throw failure("PERMISSION_DENIED", "Command signature is invalid")
-    const payloadMatches =
-      (await Command.digestInput(Command.inputRequest(permit, delivery.input))) === permit.payloadHash
-    const receive = () => {
+    const payloadMatches = (await digest()) === permit.payloadHash
+    const commit = () => {
       let accepting = false
       return Storage.transaction(
         async () => {
@@ -227,6 +237,7 @@ export function createCommandIntake(options: {
           const bindingReason = await binding(permit)
           let reason: Command.Rejection | undefined
           if (!current.matches) reason = "REQUEST_CONFLICT"
+          else if (permit.operation === "create" && permit.actor.subjectID !== accountID) reason = "REQUEST_CONFLICT"
           else if (!payloadMatches) reason = "PAYLOAD_MISMATCH"
           else if (permit.connectionEpoch !== connectionEpoch) reason = "STALE_CONNECTION"
           else if (expired(permit)) reason = "EXPIRED_PERMIT"
@@ -236,7 +247,10 @@ export function createCommandIntake(options: {
             if (permit.commandSeq <= current.state.commandSeq || current.slot) reason = "SEQUENCE_CLOSED"
             else if (permit.commandSeq !== current.state.commandSeq + 1) reason = "SEQUENCE_GAP"
             else if (await SessionTransfer.isFrozen(permit.sessionID)) reason = "TRANSFER_BLOCKED"
-            else if ((await Session.get(permit.sessionID)).time.archived) reason = "SESSION_UNAVAILABLE"
+            else if (permit.operation === "create") {
+              const existing = await readSession(permit.sessionID)
+              if (existing && !current.request?.accepted) reason = "SESSION_UNAVAILABLE"
+            } else if ((await Session.get(permit.sessionID)).time.archived) reason = "SESSION_UNAVAILABLE"
           }
           if (reason) {
             const attempt: Command.Attempt = {
@@ -255,13 +269,7 @@ export function createCommandIntake(options: {
             const counterKey = Keys.intake(permit.orgID, permit.runtimeID)
             const counter = await read(Counter, counterKey)
             const intakeSeq = OrganizationProtocol.Epoch.parse((counter?.intakeSeq ?? 0) + 1)
-            // The receipt transaction owns uniqueness; taking the Inbox delivery lock here would invert lock order.
-            const effect = await SessionInbox.deliver({
-              sessionID: permit.sessionID,
-              deliveryKey: `organization:${permit.orgID}:${permit.actor.subjectID}:${permit.requestID}`,
-              mode: delivery.input.mode,
-              message: { role: "user", actor: permit.actor, origin: { type: "user" }, parts: delivery.input.parts },
-            })
+            const applied = await effect()
             const acceptedAt = Date.now()
             if (acceptedAt < permit.authorizedAt || acceptedAt >= permit.deadline) throw new PermitExpired()
             accepted = Command.Accepted.parse({
@@ -269,7 +277,7 @@ export function createCommandIntake(options: {
               permit,
               acceptedAt,
               intakeSeq,
-              effect: { kind: "inbox", itemID: effect.itemID, messageID: effect.messageID, mode: delivery.input.mode },
+              effect: applied,
             })
             await Storage.write(counterKey, { schemaVersion: 1, intakeSeq })
           }
@@ -292,10 +300,10 @@ export function createCommandIntake(options: {
       )
     }
     try {
-      return await receive()
+      return await commit()
     } catch (error) {
       if (!(error instanceof PermitExpired)) throw error
-      return receive()
+      return commit()
     }
   }
 
@@ -344,7 +352,66 @@ export function createCommandIntake(options: {
   }
 
   return {
-    input,
+    async input(value: Command.InputDelivery): Promise<Command.InputResult> {
+      const delivery = parse(Command.InputDelivery, value)
+      const { permit } = delivery.authorization
+      return Command.InputResult.parse(
+        await receive(
+          delivery.authorization,
+          () => Command.digestInput(Command.inputRequest(permit, delivery.input)),
+          async () => {
+            // The receipt transaction owns uniqueness; taking the Inbox delivery lock here would invert lock order.
+            const effect = await SessionInbox.deliver({
+              sessionID: permit.sessionID,
+              deliveryKey: `organization:${permit.orgID}:${permit.actor.subjectID}:${permit.requestID}`,
+              mode: delivery.input.mode,
+              message: { role: "user", actor: permit.actor, origin: { type: "user" }, parts: delivery.input.parts },
+            })
+            return { kind: "inbox", itemID: effect.itemID, messageID: effect.messageID, mode: delivery.input.mode }
+          },
+        ),
+      )
+    },
+    async create(value: Command.CreateDelivery): Promise<Command.CreatedResult> {
+      const delivery = parse(Command.CreateDelivery, value)
+      const { permit } = delivery.authorization
+      return Command.CreatedResult.parse(
+        await receive(
+          delivery.authorization,
+          () => Command.digestCreate(Command.createRequest(permit, delivery.creation)),
+          async () => {
+            const now = Date.now()
+            const scope = await Scope.registerProject({
+              type: "project",
+              id: permit.projectID,
+              local: null,
+              time: { created: now, updated: now },
+            })
+            const created = await ScopeContext.provide({
+              scope,
+              workspace: null,
+              fn: () =>
+                Session.create({
+                  id: permit.sessionID,
+                  scope,
+                  title: delivery.creation.title,
+                  workspaceID: null,
+                  environmentID: null,
+                  organization: {
+                    schemaVersion: 1,
+                    orgID: permit.orgID,
+                    projectID: permit.projectID,
+                    creatorID: accountID,
+                    driverRuntimeID: runtimeID,
+                    bindingEpoch: permit.bindingEpoch,
+                  },
+                }),
+            })
+            return { kind: "session", sessionID: created.id }
+          },
+        ),
+      )
+    },
     skip,
     async query(value: Command.SignedPermit): Promise<Command.QueryResult> {
       assertStandalone()

@@ -34,6 +34,7 @@ export interface MemberConnectionOptions {
     connection: Connected,
     signal: AbortSignal,
   ) => {
+    create(delivery: Command.CreateDelivery): Promise<Command.CreatedResult>
     input(delivery: Command.InputDelivery): Promise<Command.Result>
     query(authorization: Command.SignedPermit): Promise<Command.QueryResult>
     skip(authorization: Command.SignedSkip): Promise<Command.Result>
@@ -205,11 +206,13 @@ async function attempt(input: {
       try {
         const command = frame.command
         reply =
-          command.kind === "input"
-            ? { kind: "result", result: await commands.input(command.delivery) }
-            : command.kind === "skip"
-              ? { kind: "result", result: await commands.skip(command.authorization) }
-              : { kind: "query", query: await commands.query(command.authorization) }
+          command.kind === "create"
+            ? { kind: "result", result: await commands.create(command.delivery) }
+            : command.kind === "input"
+              ? { kind: "result", result: await commands.input(command.delivery) }
+              : command.kind === "skip"
+                ? { kind: "result", result: await commands.skip(command.authorization) }
+                : { kind: "query", query: await commands.query(command.authorization) }
         reply = Command.Reply.parse(reply)
       } catch (error) {
         reply = {

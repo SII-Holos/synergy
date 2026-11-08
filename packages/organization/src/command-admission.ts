@@ -4,8 +4,10 @@ import {
   OrganizationIdentity as Identity,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { authorize } from "./authorization"
-import type { Credentials } from "./auth/session"
+import { authenticate, type Credentials } from "./auth/session"
+import { OrganizationSessionDirectory } from "./session-directory"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail, OrganizationError } from "./error"
@@ -13,8 +15,9 @@ import type { RuntimeConnections, RuntimeConnectionLease } from "./runtime-conne
 import type { CommandSigningAuthority } from "./signing"
 import { digest } from "./auth/secret"
 
-const Lookup = z.strictObject({ sessionID: Identity.ID, requestID: Identity.ID })
-type Prepared = { kind: "admitted"; delivery: Command.InputDelivery; connection: RuntimeConnectionLease }
+const Lookup = z.strictObject({ sessionID: Identity.ID.optional(), requestID: Identity.ID })
+type Target = Pick<Command.Permit, "orgID" | "requestID" | "sessionID" | "projectID" | "runtimeID">
+type Prepared = { kind: "admitted"; authorization: Command.SignedPermit; connection: RuntimeConnectionLease }
 type Accepted = { kind: "accepted"; receipt: Command.Accepted }
 
 function unknown(requestID: string): never {
@@ -43,7 +46,12 @@ export function createCommandAdmissions(options: {
     if (!current || current.authorization.permit.attemptID !== attemptID) fail("NOT_FOUND", "Command attempt not found")
     return current
   }
-  async function lookupInput(credentials: Credentials, request: Command.InputRequest, payloadHash: string) {
+  async function lookupTarget(
+    credentials: Credentials,
+    request: Target,
+    payloadHash: string,
+    operation: Command.Permit["operation"],
+  ) {
     const current = await authorize(credentials, "session.read", { sessionID: request.sessionID })
     const { account, session } = current
     if (
@@ -62,25 +70,26 @@ export function createCommandAdmissions(options: {
         original.sessionID !== request.sessionID ||
         original.projectID !== request.projectID ||
         original.runtimeID !== request.runtimeID ||
-        original.operation !== request.input.operation ||
+        original.operation !== operation ||
         original.payloadHash !== payloadHash
       )
         fail("REVISION_CONFLICT", "Logical command identity cannot change its payload or target")
     }
     return { current, previous }
   }
-  async function input(credentials: Credentials, value: Command.InputRequest): Promise<Prepared | Accepted> {
+  async function admit(
+    credentials: Credentials,
+    operation: Command.Permit["operation"],
+    resolve: () => Promise<Awaited<ReturnType<typeof lookupTarget>> & { request: Target; payloadHash: string }>,
+  ): Promise<Prepared | Accepted> {
     standalone()
-    credentials = { ...credentials }
-    const request = Command.InputRequest.parse(value)
-    const payloadHash = await Command.digestInput(request)
     let connection: RuntimeConnectionLease | undefined
     let deadline: number | undefined
     return Storage.transaction(
       async () => {
         connection = undefined
         deadline = undefined
-        const { current, previous } = await lookupInput(credentials, request, payloadHash)
+        const { current, previous, request, payloadHash } = await resolve()
         const { account, session } = current
         const requestKey = Keys.commandRequest(account.accountID, request.requestID)
         if (previous?.accepted) return { kind: "accepted" as const, receipt: previous.accepted }
@@ -138,7 +147,7 @@ export function createCommandAdmissions(options: {
           authRevision: account.authRevision,
           admissionID: crypto.randomUUID(),
           attemptID: crypto.randomUUID(),
-          operation: request.input.operation,
+          operation,
           actor: {
             kind: "account",
             orgID: account.orgID,
@@ -179,7 +188,7 @@ export function createCommandAdmissions(options: {
             pendingAttemptID: permit.attemptID,
           }),
         )
-        return { kind: "admitted" as const, delivery: { authorization, input: request.input }, connection }
+        return { kind: "admitted" as const, authorization, connection }
       },
       {
         commitGuard() {
@@ -359,7 +368,54 @@ export function createCommandAdmissions(options: {
   }
 
   return {
-    input,
+    async input(credentials: Credentials, value: Command.InputRequest) {
+      standalone()
+      credentials = { ...credentials }
+      const request = Command.InputRequest.parse(value)
+      const payloadHash = await Command.digestInput(request)
+      const result = await admit(credentials, "input", async () => ({
+        request,
+        payloadHash,
+        ...(await lookupTarget(credentials, request, payloadHash, "input")),
+      }))
+      if (result.kind === "accepted")
+        return { kind: "accepted" as const, receipt: Command.InputAccepted.parse(result.receipt) }
+      return {
+        kind: "admitted" as const,
+        delivery: { authorization: result.authorization, input: request.input },
+        connection: result.connection,
+      }
+    },
+    async create(credentials: Credentials, value: Command.CreateRequest) {
+      standalone()
+      credentials = { ...credentials }
+      const request = Command.CreateRequest.parse(value)
+      const sessionID = Identifier.descending("session")
+      const result = await admit(credentials, "create", async () => {
+        const { account } = await authorize(credentials, "project.read", { projectID: request.projectID })
+        if (account.orgID !== request.orgID) fail("REVISION_CONFLICT", "Creation targets another organization")
+        const previous = await Record.read(
+          Record.CommandRequest,
+          Keys.commandRequest(account.accountID, request.requestID),
+        )
+        const target = Command.CreateTarget.parse({ ...request, sessionID: previous?.first.sessionID ?? sessionID })
+        const payloadHash = await Command.digestCreate(target)
+        if (!previous)
+          await OrganizationSessionDirectory.reservePrivate(credentials, {
+            sessionID: target.sessionID,
+            projectID: target.projectID,
+            runtimeID: target.runtimeID,
+          })
+        return { request: target, payloadHash, ...(await lookupTarget(credentials, target, payloadHash, "create")) }
+      })
+      if (result.kind === "accepted")
+        return { kind: "accepted" as const, receipt: Command.CreatedAccepted.parse(result.receipt) }
+      return {
+        kind: "admitted" as const,
+        delivery: { authorization: result.authorization, creation: request.creation },
+        connection: result.connection,
+      }
+    },
     observe,
     prepareSkip,
     async inspectInput(credentials: Credentials, value: Command.InputRequest) {
@@ -367,8 +423,24 @@ export function createCommandAdmissions(options: {
       const request = Command.InputRequest.parse(value)
       const payloadHash = await Command.digestInput(request)
       return Storage.snapshot(async () => {
-        const { previous } = await lookupInput(credentials, request, payloadHash)
+        const { previous } = await lookupTarget(credentials, request, payloadHash, "input")
         return previous ? { attempt: await attempt(previous.lastAttemptID), accepted: previous.accepted } : undefined
+      })
+    },
+    async inspectCreate(credentials: Credentials, value: Command.CreateRequest) {
+      credentials = { ...credentials }
+      const request = Command.CreateRequest.parse(value)
+      return Storage.snapshot(async () => {
+        const { account } = await authorize(credentials, "project.read", { projectID: request.projectID })
+        if (account.orgID !== request.orgID) fail("REVISION_CONFLICT", "Creation targets another organization")
+        const prior = await Record.read(
+          Record.CommandRequest,
+          Keys.commandRequest(account.accountID, request.requestID),
+        )
+        if (!prior) return undefined
+        const target = Command.CreateTarget.parse({ ...request, sessionID: prior.first.sessionID })
+        const { previous } = await lookupTarget(credentials, target, await Command.digestCreate(target), "create")
+        return { attempt: await attempt(previous!.lastAttemptID), accepted: previous!.accepted }
       })
     },
     async absent(connection: RuntimeConnectionLease, value: Command.QueryResult) {
@@ -413,20 +485,22 @@ export function createCommandAdmissions(options: {
     notDispatched: (attemptID: string) => transition(attemptID, "not_dispatched"),
     unknown: (attemptID: string) => transition(attemptID, "unknown"),
     async get(credentials: Credentials, value: z.infer<typeof Lookup>) {
+      credentials = { ...credentials }
       const query = Lookup.parse(value)
       return Storage.snapshot(async () => {
-        const { account } = await authorize(credentials, "session.read", { sessionID: query.sessionID })
+        const { account } = await authenticate(credentials)
         const request = await Record.read(
           Record.CommandRequest,
           Keys.commandRequest(account.accountID, query.requestID),
         )
         if (
           !request ||
-          request.first.sessionID !== query.sessionID ||
+          (query.sessionID !== undefined && request.first.sessionID !== query.sessionID) ||
           request.first.orgID !== account.orgID ||
           request.first.actor.subjectID !== account.accountID
         )
           fail("NOT_FOUND", "Command request not found")
+        await authorize(credentials, "session.read", { sessionID: request.first.sessionID })
         return { attempt: await attempt(request.lastAttemptID), accepted: request.accepted }
       })
     },

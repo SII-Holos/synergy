@@ -72,10 +72,12 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
                   const intake = createCommandIntake({
                     identity: connection.signingIdentity,
                     runtimeID: connection.runtimeID,
+                    accountID: member.identity.accountID,
                     connectionEpoch: connection.connectionEpoch,
                     signal,
                   })
                   return {
+                    create: context.bind(intake.create),
                     input: context.bind(intake.input),
                     query: context.bind(intake.query),
                     skip: context.bind(intake.skip),

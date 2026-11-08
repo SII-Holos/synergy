@@ -34,11 +34,14 @@ import type {
   OrgBootstrapInput,
   OrgClientRevocationInput,
   OrgCodeExchangeInput,
+  OrgCommandCreateRequest,
   OrgCommandInputRequest,
   OrgCommandsGetErrors,
   OrgCommandsGetResponses,
   OrgCommandsInputErrors,
   OrgCommandsInputResponses,
+  OrgCommandsLookupErrors,
+  OrgCommandsLookupResponses,
   OrgEmptyInput,
   OrgHealthGetErrors,
   OrgHealthGetResponses,
@@ -86,6 +89,8 @@ import type {
   OrgRuntimeRevoke,
   OrgRuntimeRevokeErrors,
   OrgRuntimeRevokeResponses,
+  OrgSessionsCreateErrors,
+  OrgSessionsCreateResponses,
   OrgSessionsGetErrors,
   OrgSessionsGetResponses,
   OrgSessionsListErrors,
@@ -896,6 +901,28 @@ export class OrgSessions extends HeyApiClient {
       ...params,
     })
   }
+
+  /**
+   * Create a private Session on an online member Runtime
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCommandCreateRequest: OrgCommandCreateRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgCommandCreateRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgSessionsCreateResponses, OrgSessionsCreateErrors, ThrowOnError>({
+      url: "/org/v1/sessions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
 }
 
 export class OrgCommands extends HeyApiClient {
@@ -955,6 +982,23 @@ export class OrgCommands extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<OrgCommandsGetResponses, OrgCommandsGetErrors, ThrowOnError>({
       url: "/org/v1/sessions/{sessionID}/commands/{requestID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Find the caller's command receipt by its original request ID
+   */
+  public lookup<ThrowOnError extends boolean = false>(
+    parameters: {
+      requestID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "requestID" }] }])
+    return (options?.client ?? this.client).get<OrgCommandsLookupResponses, OrgCommandsLookupErrors, ThrowOnError>({
+      url: "/org/v1/commands/{requestID}",
       ...options,
       ...params,
     })

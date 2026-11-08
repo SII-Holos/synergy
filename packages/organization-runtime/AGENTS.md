@@ -8,7 +8,7 @@ Tests live under `test/`. Run `bun run typecheck` and focused tests with isolate
 
 Keep Session organization bindings in the registered domain schema. Validate immutable ownership and parent inheritance before transactional publication; ordinary import cannot grant organization ownership. Verify real storage, restart and unloaded-owner retention in `test/session-binding.test.ts`.
 
-Compose through Agent Runtime with explicit features and exclusive sources. Register member identity and source selection in both worker roles. Keep execution denied until trusted command admission is available; enrollment and bridge availability do not authorize work. Verify personal/A/B source separation and actual workers in `test/runtime.test.ts`.
+Compose through Agent Runtime with explicit features and exclusive sources. Register member identity and source selection in both worker roles. Keep execution denied until accepted commands have execution grants; enrollment and bridge availability do not authorize work. Verify personal/A/B source separation and actual workers in `test/runtime.test.ts`.
 
 Read local project configuration only through Harness `ProjectConfig` with an explicit field selection. Keep the permitted fields in the organization architecture and test selected values alongside excluded private settings. Never invoke the personal config loader to fill an absent organization value.
 
@@ -24,6 +24,6 @@ Resident connections belong to component services. Keep local readiness independ
 
 Validate the service's signing identity against the verified connection's organization and deployment before publishing its checkpoint. A matching key or valid signature does not bypass command, binding or transfer admission.
 
-Keep logical accepted effects separate from attempt and skip receipts. Intake owns its outer SQL commit, rechecks Session fences and preserves native Inbox modes. Verify retries, gaps, restart, deadline crossing and connection loss with real storage in `test/command-intake.test.ts`; bind resident bridge callbacks to their Runtime context without activating resource grants.
+Separate logical effects from attempt and skip receipts. Intake atomically creates member-owned Sessions or delivers native Inbox input; never adopt an existing Session. Verify rollback, retry, restart and connection fencing in `test/command-intake.test.ts`; bind resident bridge callbacks to their Runtime context without activating resource grants.
 
 Desktop Browser selection requires explicit private launch data and a managed Desktop listener. Preserve both local HTTP and Browser registration authentication, reject inherited native credentials, and keep page creation lazy. Verify real sockets and rejected non-Desktop selection in `test/desktop.test.ts`.

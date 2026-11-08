@@ -111,6 +111,42 @@ export namespace OrganizationCommandProtocol {
     .strictObject({ authorization: SignedPermit, input: Input })
     .refine((value) => value.authorization.permit.operation === "input", "Input requires an input permit")
   export type InputDelivery = z.infer<typeof InputDelivery>
+  export const Creation = z.strictObject({
+    operation: z.literal("create"),
+    title: z.string().min(1).max(512).optional(),
+  })
+  export type Creation = z.infer<typeof Creation>
+  export const CreateRequest = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      orgID: Identity.ID,
+      requestID: Identity.ID,
+      projectID: Identity.ID,
+      runtimeID: Identity.ID,
+      creation: Creation,
+    })
+    .meta({ ref: "OrgCommandCreateRequest" })
+  export type CreateRequest = z.infer<typeof CreateRequest>
+  export const CreateTarget = CreateRequest.extend({ sessionID: Identity.ID })
+  export type CreateTarget = z.infer<typeof CreateTarget>
+  export function createRequest(permit: Permit, creation: Creation): CreateTarget {
+    return CreateTarget.parse({
+      schemaVersion: 1,
+      orgID: permit.orgID,
+      requestID: permit.requestID,
+      projectID: permit.projectID,
+      runtimeID: permit.runtimeID,
+      sessionID: permit.sessionID,
+      creation,
+    })
+  }
+  export function digestCreate(request: CreateTarget) {
+    return digestProtocol(CreateTarget, "synergy.organization.command.create.v1\n", request)
+  }
+  export const CreateDelivery = z
+    .strictObject({ authorization: SignedPermit, creation: Creation })
+    .refine((value) => value.authorization.permit.operation === "create", "Creation requires a create permit")
+  export type CreateDelivery = z.infer<typeof CreateDelivery>
 
   export const SkipPermit = z
     .strictObject({
@@ -144,12 +180,15 @@ export namespace OrganizationCommandProtocol {
     "PAYLOAD_MISMATCH",
   ])
   export type Rejection = z.infer<typeof Rejection>
-  export const Accepted = z
+  const acceptance = {
+    schemaVersion: z.literal(1),
+    permit: Permit,
+    acceptedAt: z.number().int().nonnegative(),
+    intakeSeq: Protocol.Epoch,
+  }
+  export const InputAccepted = z
     .strictObject({
-      schemaVersion: z.literal(1),
-      permit: Permit,
-      acceptedAt: z.number().int().nonnegative(),
-      intakeSeq: Protocol.Epoch,
+      ...acceptance,
       effect: z.strictObject({
         kind: z.literal("inbox"),
         itemID: Identity.ID,
@@ -164,7 +203,24 @@ export namespace OrganizationCommandProtocol {
         value.acceptedAt < value.permit.deadline,
       "Accepted input must identify an input permit and its valid reception window",
     )
-    .meta({ ref: "OrgCommandAccepted" })
+    .meta({ ref: "OrgCommandInputAccepted" })
+  export type InputAccepted = z.infer<typeof InputAccepted>
+  export const CreatedAccepted = z
+    .strictObject({
+      ...acceptance,
+      effect: z.strictObject({ kind: z.literal("session"), sessionID: Identity.ID }),
+    })
+    .refine(
+      (value) =>
+        value.permit.operation === "create" &&
+        value.effect.sessionID === value.permit.sessionID &&
+        value.acceptedAt >= value.permit.authorizedAt &&
+        value.acceptedAt < value.permit.deadline,
+      "Created Session must match its permit and reception window",
+    )
+    .meta({ ref: "OrgCommandCreatedAccepted" })
+  export type CreatedAccepted = z.infer<typeof CreatedAccepted>
+  export const Accepted = z.union([InputAccepted, CreatedAccepted]).meta({ ref: "OrgCommandAccepted" })
   export type Accepted = z.infer<typeof Accepted>
   const attempt = {
     schemaVersion: z.literal(1),
@@ -188,6 +244,10 @@ export namespace OrganizationCommandProtocol {
     skip: SkipReceipt.optional(),
   })
   export type Result = z.infer<typeof Result>
+  export const InputResult = Result.extend({ accepted: InputAccepted.optional() })
+  export type InputResult = z.infer<typeof InputResult>
+  export const CreatedResult = Result.extend({ accepted: CreatedAccepted.optional() })
+  export type CreatedResult = z.infer<typeof CreatedResult>
   export const QueryResult = z
     .strictObject({ authorization: SignedPermit, result: Result.optional() })
     .refine((value) => {
@@ -204,6 +264,7 @@ export namespace OrganizationCommandProtocol {
   export type QueryResult = z.infer<typeof QueryResult>
   export const Delivery = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("input"), delivery: InputDelivery }),
+    z.strictObject({ kind: z.literal("create"), delivery: CreateDelivery }),
     z.strictObject({ kind: z.literal("query"), authorization: SignedPermit }),
     z.strictObject({ kind: z.literal("skip"), authorization: SignedSkip }),
   ])

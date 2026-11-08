@@ -41,7 +41,9 @@ export function createCommandTransport(input: {
       return
     }
     const permit =
-      command.kind === "input" ? command.delivery.authorization.permit : command.authorization.permit.command
+      command.kind === "input" || command.kind === "create"
+        ? command.delivery.authorization.permit
+        : command.authorization.permit.command
     if (reply.kind !== "result" || JSON.stringify(reply.result.attempt.permit) !== JSON.stringify(permit))
       fail("PROTOCOL_MISMATCH", "Runtime receipt does not match the dispatched attempt")
   }
