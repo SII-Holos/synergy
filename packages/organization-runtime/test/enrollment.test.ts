@@ -5,7 +5,7 @@ import { enrollMemberRuntime, readMemberRegistration } from "../src/enrollment"
 import { fixture } from "./support/organization"
 
 test("member registration uses its own machine proof over verified TLS and persists only public registration data", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const member = await prepareMemberHome({
     baseDirectory: path.join(f.root, "members"),
     identity: f.identity,
@@ -33,7 +33,7 @@ test("member registration uses its own machine proof over verified TLS and persi
 })
 
 test("a missing registration response can be reconciled with the same ticket without changing identity", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const member = await prepareMemberHome({
     baseDirectory: path.join(f.root, "members"),
     identity: f.identity,
@@ -52,7 +52,7 @@ test("a missing registration response can be reconciled with the same ticket wit
 })
 
 test("registration refuses foreign identity and untrusted TLS before publishing enrollment", async () => {
-  const f = await fixture()
+  await using f = await fixture()
   const member = await prepareMemberHome({
     baseDirectory: path.join(f.root, "members"),
     identity: f.identity,

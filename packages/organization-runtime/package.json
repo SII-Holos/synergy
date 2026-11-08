@@ -7,6 +7,7 @@
   "exports": {
     "./home": "./src/home.ts",
     "./enrollment": "./src/enrollment.ts",
+    "./connection": "./src/connection.ts",
     "./error": "./src/error.ts"
   },
   "scripts": {

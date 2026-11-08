@@ -119,6 +119,8 @@ The central runner invokes startup callbacks without a method receiver. Reuse a 
 
 For pre-execution machine identity provisioning, publish explicit Home ownership before ordinary Runtime initialization and separate recoverable first creation from an established identity. Missing established credentials must block admission instead of minting replacement keys. Test concurrent creation, interrupted initial writes, mismatched public/private keys, damaged metadata and network response loss after external registration commits. Keep short-lived enrollment tickets out of durable snapshots; cached registration receipts are not current authorization.
 
+For transport acknowledgment checkpoints, preserve monotonic epochs across missing replies and reject a lower remote snapshot. Propagate connection cancellation into file-lock admission, then drain any already-entered atomic write before disposal. Hold a real competing lock and observe the blocked acquisition; cancellation must settle without the test releasing that owner.
+
 ## File Snapshot Storage
 
 When changing snapshot Git commands, verify them with an actual supported older Git executable as well as the current version. Run the snapshot suites with that executable first on `PATH`; keep test homes isolated. Initialization must select and verify SHA-1 before publishing repository metadata, preserve existing objects, and retain exit code and stderr on failure. Avoid introducing a version-specific CLI option when the same operation has a compatible form.
