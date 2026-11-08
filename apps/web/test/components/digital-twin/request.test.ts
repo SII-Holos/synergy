@@ -85,7 +85,7 @@ test("completion waits for the matching synchronized anchor without replaying a 
 test("completion ownership is bounded and a late background result reaches only its mounted owner", async () => {
   const { claimCompletion, registerComposer, composerMounted, saveSuggestion } =
     await import("../../../src/components/digital-twin/presence")
-  const owner = { url: "https://fixture.invalid", scopeKey: "ownership", sessionID: "session" }
+  const owner = { connectionKey: "personal-fixture", scopeKey: "ownership", sessionID: "session" }
   const received: string[] = []
   const unregister = registerComposer(owner, (suggestion) => received.push(suggestion.text))
   const peer = { ...owner, scopeKey: "another-scope" }

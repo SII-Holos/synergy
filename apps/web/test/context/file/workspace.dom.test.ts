@@ -31,7 +31,7 @@ beforeAll(async () => {
     const result = (query) => ({ data: { kind: "text", path: query.path, content: disk[query.workspaceID]?.content ?? query.workspaceID ?? "wsp_a",
       contentVersion: disk[query.workspaceID]?.version ?? "sha256:" + "a".repeat(64),
       node: { path: query.path, mtime: 1, size: 5, type: "file" }, encoding: "utf-8" } })
-    export const useSDK = () => ({ scopeID: "scope", scopeKey: "scope", url: "http://server",
+    export const useSDK = () => ({ scopeID: "scope", scopeKey: "scope", url: "http://server", cacheKey: "personal-fixture",
       client: { workspace: { files: { read(query) { requests.push(query); if (disk[query.workspaceID]?.missing) return Promise.reject({ name: "NotFoundError", data: { message: "file missing" } }); const response = result(query); return new Promise(resolve => pending.push(() => resolve(response))) },
         async write(query) { writes.push(query);
           if (writeState.mode === "conflict") throw { name: "WorkspaceFileWriteConflictError", data: { message: "changed" } }

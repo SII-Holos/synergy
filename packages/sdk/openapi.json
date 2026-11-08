@@ -37796,6 +37796,11 @@
             "type": "number",
             "const": 1
           },
+          "runtimeID": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
           "hostVersion": {
             "type": "string"
           },
@@ -37830,7 +37835,7 @@
             "required": ["displayManifest"]
           }
         },
-        "required": ["apiVersion", "hostVersion", "components", "features"]
+        "required": ["apiVersion", "runtimeID", "hostVersion", "components", "features"]
       },
       "GlobalPaths": {
         "type": "object",

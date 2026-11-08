@@ -67,7 +67,7 @@ beforeAll(async () => {
     const listeners=new Map(), requests=[]
     export const events={on(type,handler){const entries=listeners.get(type)||new Set();entries.add(handler);listeners.set(type,entries);return ()=>entries.delete(handler)}}
     export const emit=(type,properties)=>listeners.get(type)?.forEach(handler=>handler({properties}))
-    export const sdk={get url(){return connection()},get scopeKey(){return scope()},connected:()=>true,capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false},event:events,client:{
+    export const sdk={get url(){return connection()},get cacheKey(){return JSON.stringify(["personal-fixture",connection()])},get scopeKey(){return scope()},connected:()=>true,capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false},event:events,client:{
       session:{turnExecution:async ({rootIDs})=>({data:rootIDs.map(rootID=>({rootID,status:"completed"}))})},
       digitalTwin:{predictNextInput:({digitalTwinInput},options)=>new Promise((resolve,reject)=>requests.push({input:digitalTwinInput,signal:options.signal,resolve,reject}))}
     }}

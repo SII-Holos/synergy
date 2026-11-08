@@ -20,7 +20,7 @@ import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dia
 import { GlobalSyncProvider } from "@/context/global-sync"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider, useGlobalSDK } from "@/context/global-sdk"
-import { ServerProvider, useServer } from "@/context/server"
+import { ServerProvider, ServerView, useServer } from "@/context/server"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
 import { ProductUpdateProvider } from "@/context/product-update"
@@ -141,25 +141,14 @@ export function AppBaseProviders(props: ParentProps) {
   )
 }
 
-function ServerKey(props: ParentProps) {
-  const server = useServer()
-  return (
-    <Show when={server.url} keyed>
-      {(_url) => props.children}
-    </Show>
-  )
-}
-
 export function AppInterface() {
   return (
     <PluginUIRecoveryProvider>
-      <AuthProvider>
-        <ServerProvider defaultUrl={defaultAccess.attachUrl}>
-          <ServerKey>
-            <ConnectedApp />
-          </ServerKey>
-        </ServerProvider>
-      </AuthProvider>
+      <ServerProvider defaultUrl={defaultAccess.attachUrl}>
+        <ServerView>
+          <ConnectedApp />
+        </ServerView>
+      </ServerProvider>
     </PluginUIRecoveryProvider>
   )
 }
@@ -206,138 +195,140 @@ function ConnectedApp() {
   }
 
   return (
-    <GlobalSDKProvider>
-      <ProductUpdateProvider>
-        <InputProvider>
-          <Switch>
-            <Match when={startupView() === "loading"}>
-              <Loading />
-            </Match>
-            <Match when={startupView() === "connection-error"}>
-              <ServerConnectionErrorPage
-                serverUrl={server.url}
-                retrying={server.healthy() === undefined}
-                onRetry={retry}
-                onChangeServer={changeServer}
-              />
-            </Match>
-            <Match when={startupView() === "ready"}>
-              <NoteDocumentsProvider>
-                <Router
-                  base={proxyPrefix()}
-                  root={(props) => (
-                    <WelcomeProvider connection={server.url}>
-                      <SessionTransitionProvider>
-                        <CommandProvider>
-                          <PluginRouteScope>
-                            {(scopeKey) => (
-                              <GlobalSyncProvider>
-                                <DesktopPowerSync />
-                                <LayoutProvider>
-                                  <ViewResidencyProvider>
-                                    <WorkbenchPanelsProvider>
-                                      <PluginHostProvider scopeKey={scopeKey}>
-                                        <PluginComposerSlotBridge />
-                                        <PluginThemeConfigBridge />
-                                        <PluginTextInteractionBridge />
-                                        <GlobalPluginThemesRegistrar />
-                                        <NotificationProvider>
-                                          <Layout>{props.children}</Layout>
-                                        </NotificationProvider>
-                                      </PluginHostProvider>
-                                    </WorkbenchPanelsProvider>
-                                  </ViewResidencyProvider>
-                                </LayoutProvider>
-                              </GlobalSyncProvider>
-                            )}
-                          </PluginRouteScope>
-                        </CommandProvider>
-                      </SessionTransitionProvider>
-                    </WelcomeProvider>
-                  )}
-                >
-                  <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
-                  <Route
-                    path="/agenda"
-                    component={() => (
-                      <RuntimePage navigation="agenda">
-                        <PluginPageOutlet
-                          page="agenda"
-                          fallback={() => <BuiltinNavigationPage navigationId="agenda" />}
-                        />
-                      </RuntimePage>
+    <Switch>
+      <Match when={startupView() === "loading"}>
+        <Loading />
+      </Match>
+      <Match when={startupView() === "connection-error"}>
+        <ServerConnectionErrorPage
+          serverUrl={server.url}
+          retrying={server.healthy() === undefined}
+          onRetry={retry}
+          onChangeServer={changeServer}
+        />
+      </Match>
+      <Match when={startupView() === "ready"}>
+        <GlobalSDKProvider>
+          <AuthProvider>
+            <ProductUpdateProvider>
+              <InputProvider>
+                <NoteDocumentsProvider>
+                  <Router
+                    base={proxyPrefix()}
+                    root={(props) => (
+                      <WelcomeProvider connection={server.cacheKey}>
+                        <SessionTransitionProvider>
+                          <CommandProvider>
+                            <PluginRouteScope>
+                              {(scopeKey) => (
+                                <GlobalSyncProvider>
+                                  <DesktopPowerSync />
+                                  <LayoutProvider>
+                                    <ViewResidencyProvider>
+                                      <WorkbenchPanelsProvider>
+                                        <PluginHostProvider scopeKey={scopeKey}>
+                                          <PluginComposerSlotBridge />
+                                          <PluginThemeConfigBridge />
+                                          <PluginTextInteractionBridge />
+                                          <GlobalPluginThemesRegistrar />
+                                          <NotificationProvider>
+                                            <Layout>{props.children}</Layout>
+                                          </NotificationProvider>
+                                        </PluginHostProvider>
+                                      </WorkbenchPanelsProvider>
+                                    </ViewResidencyProvider>
+                                  </LayoutProvider>
+                                </GlobalSyncProvider>
+                              )}
+                            </PluginRouteScope>
+                          </CommandProvider>
+                        </SessionTransitionProvider>
+                      </WelcomeProvider>
                     )}
-                  />
-                  <Route
-                    path="/kanban"
-                    component={() => (
-                      <RuntimePage navigation="kanban">
-                        <PluginPageOutlet
-                          page="kanban"
-                          fallback={() => <BuiltinNavigationPage navigationId="kanban" />}
-                        />
-                      </RuntimePage>
-                    )}
-                  />
-                  <Route
-                    path="/library"
-                    component={() => (
-                      <RuntimePage navigation="library">
-                        <PluginPageOutlet
-                          page="library"
-                          fallback={() => <BuiltinNavigationPage navigationId="library" />}
-                        />
-                      </RuntimePage>
-                    )}
-                  />
-                  <Route
-                    path="/performance"
-                    component={() => (
-                      <RuntimePage navigation="performance">
-                        <PluginPageOutlet
-                          page="performance"
-                          fallback={() => <BuiltinNavigationPage navigationId="performance" />}
-                        />
-                      </RuntimePage>
-                    )}
-                  />
-                  <Route
-                    path="/plugins/marketplace"
-                    component={() => (
-                      <RuntimePage navigation="plugins">
-                        <PluginPageOutlet
-                          page="plugins"
-                          fallback={() => <BuiltinNavigationPage navigationId="plugins" />}
-                        />
-                      </RuntimePage>
-                    )}
-                  />
-                  <Route
-                    path="/plugins/:pluginId/:navigationId"
-                    component={() => (
-                      <RuntimePage navigation="plugins">
-                        <PluginPageOutlet page="plugin-page" fallback={() => <PluginNavigationPage />} />
-                      </RuntimePage>
-                    )}
-                  />
-                  <Route
-                    path="/plugins/:pluginId"
-                    component={() => (
-                      <RuntimePage navigation="plugins">
-                        <PluginPageOutlet page="plugin-detail" fallback={() => <PluginDetailPage />} />
-                      </RuntimePage>
-                    )}
-                  />
-                  <Route path="/:dir">
-                    <Route path="/" component={() => <Navigate href="session" />} />
-                    <Route path="/session/:id?" component={SessionRoute} />
-                  </Route>
-                </Router>
-              </NoteDocumentsProvider>
-            </Match>
-          </Switch>
-        </InputProvider>
-      </ProductUpdateProvider>
-    </GlobalSDKProvider>
+                  >
+                    <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
+                    <Route
+                      path="/agenda"
+                      component={() => (
+                        <RuntimePage navigation="agenda">
+                          <PluginPageOutlet
+                            page="agenda"
+                            fallback={() => <BuiltinNavigationPage navigationId="agenda" />}
+                          />
+                        </RuntimePage>
+                      )}
+                    />
+                    <Route
+                      path="/kanban"
+                      component={() => (
+                        <RuntimePage navigation="kanban">
+                          <PluginPageOutlet
+                            page="kanban"
+                            fallback={() => <BuiltinNavigationPage navigationId="kanban" />}
+                          />
+                        </RuntimePage>
+                      )}
+                    />
+                    <Route
+                      path="/library"
+                      component={() => (
+                        <RuntimePage navigation="library">
+                          <PluginPageOutlet
+                            page="library"
+                            fallback={() => <BuiltinNavigationPage navigationId="library" />}
+                          />
+                        </RuntimePage>
+                      )}
+                    />
+                    <Route
+                      path="/performance"
+                      component={() => (
+                        <RuntimePage navigation="performance">
+                          <PluginPageOutlet
+                            page="performance"
+                            fallback={() => <BuiltinNavigationPage navigationId="performance" />}
+                          />
+                        </RuntimePage>
+                      )}
+                    />
+                    <Route
+                      path="/plugins/marketplace"
+                      component={() => (
+                        <RuntimePage navigation="plugins">
+                          <PluginPageOutlet
+                            page="plugins"
+                            fallback={() => <BuiltinNavigationPage navigationId="plugins" />}
+                          />
+                        </RuntimePage>
+                      )}
+                    />
+                    <Route
+                      path="/plugins/:pluginId/:navigationId"
+                      component={() => (
+                        <RuntimePage navigation="plugins">
+                          <PluginPageOutlet page="plugin-page" fallback={() => <PluginNavigationPage />} />
+                        </RuntimePage>
+                      )}
+                    />
+                    <Route
+                      path="/plugins/:pluginId"
+                      component={() => (
+                        <RuntimePage navigation="plugins">
+                          <PluginPageOutlet page="plugin-detail" fallback={() => <PluginDetailPage />} />
+                        </RuntimePage>
+                      )}
+                    />
+                    <Route path="/:dir">
+                      <Route path="/" component={() => <Navigate href="session" />} />
+                      <Route path="/session/:id?" component={SessionRoute} />
+                    </Route>
+                  </Router>
+                </NoteDocumentsProvider>
+              </InputProvider>
+            </ProductUpdateProvider>
+          </AuthProvider>
+        </GlobalSDKProvider>
+      </Match>
+    </Switch>
   )
 }

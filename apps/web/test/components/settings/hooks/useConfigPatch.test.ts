@@ -29,6 +29,7 @@ describe("settings config patch", () => {
     const cfg = { anima: { enabled: false } } as Config
     const [state, setSettings] = createStore(defaultSettingsState("enter"))
     ensureInit({
+      cacheKey: "personal-fixture",
       cfg,
       setName: "global",
       initialized: () => false,
@@ -53,6 +54,7 @@ describe("settings config patch", () => {
       const cfg = saved === undefined ? {} : { preferWorkBrief: saved }
       const [state, setSettings] = createStore(defaultSettingsState("enter"))
       ensureInit({
+        cacheKey: "personal-fixture",
         cfg,
         setName: "global",
         initialized: () => false,
@@ -75,6 +77,7 @@ describe("settings config patch", () => {
   test("an untouched configuration without explicit timeout overrides stays clean", () => {
     const [state, setSettings] = createStore(defaultSettingsState("enter", "system"))
     ensureInit({
+      cacheKey: "personal-fixture",
       cfg: {},
       setName: "global",
       initialized: () => false,
@@ -1541,6 +1544,7 @@ describe("settings config patch builtin mcp", () => {
     const [state, setSettings] = createStore(defaultSettingsState("enter"))
 
     ensureInit({
+      cacheKey: "personal-fixture",
       cfg,
       setName: "global",
       refreshing: () => false,

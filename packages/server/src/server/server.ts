@@ -51,6 +51,7 @@ import { errors, RuntimeShuttingDownError, StorageServiceError } from "./error"
 import { QuestionRoute } from "./question"
 import { SessionTransferRoute } from "./session-transfer"
 import { HostConnectionRoute } from "./host-connection"
+import { HostIdentity } from "@ericsanchezok/synergy-harness/host/identity"
 import { SessionExportRoute } from "./session-export"
 import { CortexRoute } from "./cortex"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
@@ -919,6 +920,7 @@ export namespace Server {
                     z
                       .object({
                         apiVersion: z.literal(1),
+                        runtimeID: z.uuid(),
                         hostVersion: z.string(),
                         components: z.array(RuntimeComponents.Info),
                         features: z.array(z.string()),
@@ -950,10 +952,11 @@ export namespace Server {
             },
           },
         }),
-        (c) => {
+        async (c) => {
           if (!RuntimeContext.isReady()) return c.json({ error: "Runtime services are not ready" }, 503)
           return c.json({
             apiVersion: 1 as const,
+            runtimeID: (await HostIdentity.describe()).id,
             hostVersion: Installation.VERSION,
             components: RuntimeComponents.selected(),
             features: features(),

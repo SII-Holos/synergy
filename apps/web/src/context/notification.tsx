@@ -62,7 +62,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
     const { _: translate } = useLingui()
 
     const [store, setStore, _, ready] = persisted(
-      Persist.connection(globalSDK.url, "notification"),
+      Persist.connection(globalSDK.cacheKey, "notification"),
       createStore({
         list: [] as Notification[],
       }),

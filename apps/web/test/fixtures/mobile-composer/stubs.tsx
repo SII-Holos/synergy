@@ -106,10 +106,11 @@ export const useSDK = () => ({
   scopeID: "scope_fixture",
   scopeKey: "scope_fixture",
   url: "http://127.0.0.1:1",
+  cacheKey: "personal-fixture",
   event: { on: () => () => {}, listen: () => () => {} },
 })
 
-export const useGlobalSDK = () => ({ url: "http://127.0.0.1:1", client, capabilities })
+export const useGlobalSDK = () => ({ url: "http://127.0.0.1:1", cacheKey: "personal-fixture", client, capabilities })
 
 // `useProviders` reads a full provider snapshot and destructures the scope
 // state accessor pair, so both shapes are spelled out rather than left empty.
@@ -273,6 +274,7 @@ export const useCommand = () => ({
 
 export const useServer = () => ({
   url: "http://127.0.0.1:1",
+  cacheKey: "personal-fixture",
   list: [],
   setActive: () => {},
   scopes: { open: () => {} },

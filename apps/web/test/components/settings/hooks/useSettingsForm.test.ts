@@ -1,6 +1,7 @@
 import { TEST_AGENT_NAME, SECONDARY_TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { describe, expect, test } from "bun:test"
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
+import { Persist } from "../../../../src/utils/persist"
 import { createStore } from "solid-js/store"
 import {
   ensureInit,
@@ -13,6 +14,7 @@ test("refreshing a saved file group does not create an unrelated default Agent o
   const cfg: Config = { fileToolGroup: "hashline" }
   const [state, setSettings] = createStore(defaultSettingsState("enter"))
   ensureInit({
+    cacheKey: "personal-fixture",
     cfg,
     setName: "global",
     refreshing: () => false,
@@ -32,7 +34,7 @@ test("refreshing a saved file group does not create an unrelated default Agent o
 })
 
 describe("settings form legacy quick switcher migration", () => {
-  test("reads current quick switcher preferences from the legacy localStorage key", () => {
+  test("reads migrated quick switcher preferences only from the current identity", () => {
     const storage = storageWithModel({
       quickSwitcher: [
         { providerID: "openai", modelID: "gpt-5.5", state: "add" },
@@ -41,10 +43,11 @@ describe("settings form legacy quick switcher migration", () => {
       ],
     })
 
-    expect(readLegacyQuickSwitcherPreferences(storage)).toEqual([
+    expect(readLegacyQuickSwitcherPreferences("personal-fixture", storage)).toEqual([
       { providerID: "openai", modelID: "gpt-5.5", state: "add" },
       { providerID: "anthropic", modelID: "claude-sonnet", state: "remove" },
     ])
+    expect(readLegacyQuickSwitcherPreferences("another-personal-fixture", storage)).toEqual([])
   })
 
   test("converts older user visibility preferences", () => {
@@ -55,7 +58,7 @@ describe("settings form legacy quick switcher migration", () => {
       ],
     })
 
-    expect(readLegacyQuickSwitcherPreferences(storage)).toEqual([
+    expect(readLegacyQuickSwitcherPreferences("personal-fixture", storage)).toEqual([
       { providerID: "openai", modelID: "gpt-5.5", state: "add" },
       { providerID: "anthropic", modelID: "claude-sonnet", state: "remove" },
     ])
@@ -282,6 +285,7 @@ function initializedGithub(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
   ensureInit({
+    cacheKey: "personal-fixture",
     cfg: config as Config,
     setName: "global",
     refreshing: () => false,
@@ -301,6 +305,7 @@ function initializedRuntime(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
   ensureInit({
+    cacheKey: "personal-fixture",
     cfg: config as Config,
     setName: "global",
     refreshing: () => false,
@@ -320,6 +325,7 @@ function initializedChannels(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
   ensureInit({
+    cacheKey: "personal-fixture",
     cfg: config as Config,
     setName: "global",
     refreshing: () => false,
@@ -336,7 +342,8 @@ function initializedChannels(config: Record<string, unknown>) {
 }
 
 function storageWithModel(value: unknown): Storage {
-  const entries = new Map<string, string>([["synergy.global.dat:model", JSON.stringify(value)]])
+  const target = Persist.connection("personal-fixture", "model")
+  const entries = new Map<string, string>([[`${target.storage}:${target.key}`, JSON.stringify(value)]])
   return {
     get length() {
       return entries.size
@@ -430,6 +437,7 @@ function initializedSkills(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
   ensureInit({
+    cacheKey: "personal-fixture",
     cfg: config as Config,
     setName: "global",
     refreshing: () => false,
@@ -449,6 +457,7 @@ function initializedActivityDisplay(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
   ensureInit({
+    cacheKey: "personal-fixture",
     cfg: config as Config,
     setName: "global",
     refreshing: () => false,
@@ -468,6 +477,7 @@ function initializedWelcomeGames(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
   ensureInit({
+    cacheKey: "personal-fixture",
     cfg: config as Config,
     setName: "global",
     refreshing: () => false,
@@ -487,6 +497,7 @@ function initializedGeneral(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
   ensureInit({
+    cacheKey: "personal-fixture",
     cfg: config as Config,
     setName: "global",
     refreshing: () => false,

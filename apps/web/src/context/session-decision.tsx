@@ -23,7 +23,7 @@ type Reply = "once" | "session" | "always" | "reject"
 type Operation = Parameters<ReturnType<typeof createRequestSubmission>["run"]>[1] & { settled?(): void }
 
 export type DecisionRuntime = {
-  serverURL: string
+  connectionKey: string
   scopeID: string
   client: SDKContext["client"]
   questions(): readonly QuestionRequest[]
@@ -48,7 +48,7 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
     try {
       return persisted<Drafts>(
         {
-          ...Persist.workspace(Persist.scopeKey(runtime.serverURL, runtime.scopeID), "question-drafts-v1"),
+          ...Persist.workspace(Persist.scopeKey(runtime.connectionKey, runtime.scopeID), "question-drafts-v1"),
           migrate: (value) => {
             const result = DraftsSchema.safeParse(value)
             return result.success ? result.data : { version: 1, entries: {} }
@@ -67,7 +67,7 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
   const draftKey = (request: RequestIdentity) => JSON.stringify([request.sessionID, request.id])
   const key = (kind: Kind, request: RequestIdentity) =>
     decisionIdentity({
-      serverURL: runtime.serverURL,
+      connectionKey: runtime.connectionKey,
       scopeID: runtime.scopeID,
       sessionID: request.sessionID,
       requestID: request.id,
@@ -218,7 +218,7 @@ export function SessionDecisionProvider(props: ParentProps<{ value?: SessionDeci
       const sdk = useSDK()
       const sync = useGlobalSync()
       const state = createSessionDecisionState({
-        serverURL: sdk.url,
+        connectionKey: sdk.cacheKey,
         scopeID: sdk.scopeID,
         client: sdk.client,
         questions: () => Object.values(sync.questions).flat(),

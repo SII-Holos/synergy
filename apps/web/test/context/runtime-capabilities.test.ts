@@ -6,6 +6,7 @@ import { runtimeFeatureAvailable } from "../../src/components/runtime-features"
 
 const snapshot = (...ids: string[]): RuntimeCapabilities => ({
   apiVersion: 1,
+  runtimeID: "94497ff6-b2b3-478e-a3aa-ce77665f0626",
   hostVersion: "2.0.0",
   components: [{ id: "product-bundle", version: "2.0.0", apiVersion: 1 }],
   features: ids,

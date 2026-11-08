@@ -123,3 +123,7 @@ Navigation summaries must not evaluate deferred execution data. Keep command tem
 6. Keep the Web HTML entry in Tailwind's explicit source inputs when moving package roots. Validate the built HTML and CSS together in a browser with overflowing sidebar content and composer focus: the root must stay within the viewport and the list must scroll without moving the document or navigation header.
 
 When a retained view replaces an input service, key the presentation binding by the service identity. A truthy-to-truthy replacement must not retain an editor mounted against a disposed controller; ordinary readiness updates within one service must retain its editing state.
+
+## Verify connection identity changes
+
+Separate persisted cache ownership from transport URLs. Exercise one Home through two addresses, a replacement Home at the same address, and A → B → A with delayed reads. Mount business providers only after identity discovery; include the provider lifetime in globally shared in-flight requests and preserve caller cancellation. Test migration with newer destination data, storage failure and a competing identity before resuming the original claim. Include input history, recent models, plugin selections, file/Note/question drafts and settings hydration when tracing caches; searching only `Persist` callers misses direct storage reads. Keep organization credentials outside the personal UI auth store.

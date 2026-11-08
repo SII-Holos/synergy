@@ -24,6 +24,7 @@ const playwrightIsolated = [
   "test/context/workbench/residency-capabilities.dom.test.ts",
   "test/plugin/host-capabilities.dom.test.ts",
   "test/context/global-sync-lifecycle.dom.test.ts",
+  "test/context/server-identity.dom.test.ts",
   "test/context/layout/project-navigation.dom.test.ts",
   "test/context/sync-history-transition.dom.test.ts",
   "test/testing/focus-presentation.browser.test.ts",

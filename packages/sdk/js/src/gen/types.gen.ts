@@ -43,6 +43,7 @@ export type RuntimeShuttingDownError = {
 
 export type RuntimeCapabilities = {
   apiVersion: 1
+  runtimeID: string
   hostVersion: string
   components: Array<RuntimeComponentInfo>
   features: Array<string>

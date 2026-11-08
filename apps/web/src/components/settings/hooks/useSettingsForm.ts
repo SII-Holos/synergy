@@ -1,3 +1,4 @@
+import { Persist } from "@/utils/persist"
 import { defaultPrimaryAgent } from "../../agent-selection"
 import type { Agent } from "@ericsanchezok/synergy-sdk/client"
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
@@ -15,6 +16,7 @@ import {
 import { builtinServerEnabled } from "./useConfigPatch"
 
 export type EnsureInitParams = {
+  cacheKey: string
   cfg: Config | undefined
   setName: string | undefined
   refreshing: () => boolean
@@ -67,7 +69,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     thinking_model: cfg.thinking_model ?? MODEL_DEFAULTS.thinking_model,
     long_context_model: cfg.long_context_model ?? MODEL_DEFAULTS.long_context_model,
     creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,
-    quick_switcher: cfg.quick_switcher?.models ?? readLegacyQuickSwitcherPreferences(),
+    quick_switcher: cfg.quick_switcher?.models ?? readLegacyQuickSwitcherPreferences(params.cacheKey),
   })
 
   params.setSettings("agents", {
@@ -288,8 +290,12 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   return setName
 }
 
-export function readLegacyQuickSwitcherPreferences(storage: Storage = localStorage): QuickSwitcherPreference[] {
-  const raw = storage.getItem("synergy.global.dat:model")
+export function readLegacyQuickSwitcherPreferences(
+  connection: string,
+  storage: Storage = localStorage,
+): QuickSwitcherPreference[] {
+  const target = Persist.connection(connection, "model")
+  const raw = storage.getItem(`${target.storage}:${target.key}`)
   if (!raw) return []
 
   let parsed: unknown

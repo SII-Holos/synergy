@@ -35,7 +35,7 @@ export function DigitalTwinBackground() {
   const predict = async (sessionID: string, anchor: { rootID: string; assistantID: string }) => {
     if (sync.data.config.digitalTwin?.automatic !== true) return
     if (!sdk.connected() || !sdk.capabilities.has("digital-twin")) return
-    const owner: DigitalTwinOwner = { url: sdk.url, scopeKey: sdk.scopeKey, sessionID }
+    const owner: DigitalTwinOwner = { connectionKey: sdk.cacheKey, scopeKey: sdk.scopeKey, sessionID }
     if (composerMounted(owner)) return
     const session = sync.data.session.find((value) => value.id === sessionID)
     if (!session || session.parentID) return

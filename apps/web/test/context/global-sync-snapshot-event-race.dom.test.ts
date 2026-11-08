@@ -102,7 +102,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
         session:{files:{current:()=>new Promise(resolve=>turnRequests.push(resolve))},list:()=>ok({total:0,data:[]}),inbox:()=>ok([])},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>({transports:{projection:"projection-v2"}})},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>({transports:{projection:"projection-v2"}})},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',cacheKey:'personal-fixture',requestKey:'global-sync-snapshot-event-race.dom.test',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>statusesHeld ? new Promise(resolve=>statusRequests.push(resolve)) : stamped({})},
       cortex:{list:()=>ok([])},

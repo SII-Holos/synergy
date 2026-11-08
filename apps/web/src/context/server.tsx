@@ -1,13 +1,17 @@
 import { createSynergyClient, type Scope } from "@ericsanchezok/synergy-sdk/client"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
-import { createStore } from "solid-js/store"
+import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+import { batch, createEffect, createMemo, createSignal, onCleanup, Show, type ParentProps } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
 import { migrateScopeState } from "@/utils/scope-state-migration"
 import { Persist, persisted } from "@/utils/persist"
 
 import { migrateServerPreferences, type StoredScope, type LegacyScope } from "./server-preferences"
 import { resolveLegacyScopeID } from "@/utils/session-reference"
+import { discoverRuntimeCapabilities } from "./runtime-capabilities"
+import { migrateRuntimeIdentity } from "@/utils/runtime-identity-migration"
+import { spaceKey } from "./space-state"
 
 const HEALTH_TIMEOUT = 8000
 
@@ -26,9 +30,13 @@ export function serverDisplayName(url: string) {
     .split("/")[0]
 }
 
-function projectsKey(url: string) {
-  if (!url) return ""
-  return normalizeServerUrl(url) ?? ""
+export function ServerView(props: ParentProps) {
+  const server = useServer()
+  return (
+    <Show when={server.url && JSON.stringify([server.url, server.runtimeID])} keyed>
+      {(_identity) => <DialogProvider>{props.children}</DialogProvider>}
+    </Show>
+  )
 }
 
 export const { use: useServer, provider: ServerProvider } = createSimpleContext({
@@ -107,17 +115,42 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     const [healthy, setHealthy] = createSignal<boolean | undefined>(undefined)
     const [refreshToken, setRefreshToken] = createSignal(0)
+    const [runtimeID, setRuntimeID] = createSignal<string>()
+    const [legacyDefault, setLegacyDefault] = createSignal(false)
+    const cacheKey = createMemo(() => {
+      const id = runtimeID()
+      return id ? spaceKey({ kind: "personal", localRuntimeID: id }) : ""
+    })
 
-    const check = (url: string) => {
+    function acceptIdentity(connection: string, id: string) {
+      if (connection !== active()) return false
+      const identity = migrateRuntimeIdentity({
+        connection,
+        runtimeID: id,
+        legacyDefault: connection === normalizeServerUrl(props.defaultUrl),
+      })
+      batch(() => {
+        if (identity.adopted) {
+          if (!store.scopes[identity.key] && store.scopes[connection])
+            setStore("scopes", identity.key, reconcile([...store.scopes[connection]!]))
+          if (!store.legacyScopes[identity.key] && store.legacyScopes[connection])
+            setStore("legacyScopes", identity.key, reconcile([...store.legacyScopes[connection]!]))
+        }
+        setLegacyDefault(identity.legacyDefault)
+        setRuntimeID(id)
+      })
+      return true
+    }
+
+    const check = async (url: string, signal: AbortSignal) => {
       const sdk = createSynergyClient({
         baseUrl: url,
         fetch: platform.fetch,
-        signal: AbortSignal.timeout(HEALTH_TIMEOUT),
+        signal,
       })
-      return sdk.global
-        .health()
-        .then((x) => ({ healthy: x.data?.healthy === true }))
-        .catch(() => ({ healthy: false }))
+      const health = await sdk.global.health()
+      if (health.data?.healthy !== true) throw new Error("Runtime is unavailable")
+      return discoverRuntimeCapabilities(sdk, signal)
     }
 
     createEffect(() => {
@@ -125,19 +158,30 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       refreshToken()
       if (!url) return
 
-      setHealthy(undefined)
+      batch(() => {
+        setHealthy(undefined)
+        setRuntimeID(undefined)
+      })
 
       let current = true
-      check(url).then((result) => {
-        if (!current) return
-        setHealthy(result.healthy)
-      })
+      const controller = new AbortController()
+      check(url, AbortSignal.any([controller.signal, AbortSignal.timeout(HEALTH_TIMEOUT)]))
+        .then((result) => {
+          if (!current) return
+          batch(() => {
+            if (acceptIdentity(url, result.runtimeID)) setHealthy(true)
+          })
+        })
+        .catch(() => {
+          if (current) setHealthy(false)
+        })
       onCleanup(() => {
         current = false
+        controller.abort()
       })
     })
 
-    const origin = createMemo(() => projectsKey(active()))
+    const origin = cacheKey
     const scopesList = createMemo(() => store.scopes[origin()] ?? [])
     const isLocal = createMemo(
       () =>
@@ -149,6 +193,13 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     return {
       ready: isReady,
       healthy,
+      get runtimeID() {
+        return runtimeID()
+      },
+      get cacheKey() {
+        return cacheKey()
+      },
+      acceptIdentity,
       isLocal,
       get url() {
         return active()
@@ -180,7 +231,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         list: scopesList,
         prepare(metadata: Scope[]) {
           const connection = origin()
-          const isDefault = connection === normalizeServerUrl(props.defaultUrl)
+          const isDefault = legacyDefault() && active() === normalizeServerUrl(props.defaultUrl)
           const legacyKey = store.legacyScopes[connection] ? connection : isDefault ? "local" : undefined
           const legacy = legacyKey ? (store.legacyScopes[legacyKey] ?? []) : []
           const resolved: StoredScope[] = []

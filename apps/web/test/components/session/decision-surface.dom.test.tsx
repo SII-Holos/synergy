@@ -44,6 +44,7 @@ beforeAll(async () => {
           capabilities: { has: () => false, current: () => undefined },
           connected: () => true,
           url: "http://fixture",
+          cacheKey: "personal-fixture",
           scopeID: "scope-one",
           scopeKey: "scope-one",
           event: { on: () => () => {} },
@@ -216,7 +217,7 @@ beforeAll(async () => {
         const [snapshot, setSnapshot] = createSignal()
         const scopeID = new URLSearchParams(location.search).get("scope") ?? "scope-one"
         const decisions = createSessionDecisionState({
-          serverURL: new URLSearchParams(location.search).get("server") ?? "http://fixture",
+          connectionKey: new URLSearchParams(location.search).get("server") ?? "http://fixture",
           scopeID,
           client: useSDK().client,
           questions: () => Object.values(questions()).flat(),

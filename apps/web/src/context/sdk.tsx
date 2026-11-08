@@ -4,19 +4,17 @@ import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { onCleanup } from "solid-js"
 import { useGlobalSDK } from "./global-sdk"
 import { useGlobalSync } from "./global-sync"
-import { usePlatform } from "./platform"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 
 export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   name: "SDK",
   init: (props: { scopeKey: string }) => {
-    const platform = usePlatform()
     const globalSDK = useGlobalSDK()
     const globalSync = useGlobalSync()
     const isHome = isHomeScope(props.scopeKey)
     const sdk = createSynergyClient({
       baseUrl: globalSDK.url,
-      fetch: platform.fetch,
+      fetch: globalSDK.fetch,
       scopeID: props.scopeKey,
       throwOnError: true,
     })
@@ -41,6 +39,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       content: globalSDK.content,
       event: emitter,
       url: globalSDK.url,
+      cacheKey: globalSDK.cacheKey,
       connected: globalSDK.connected,
       capabilities: globalSDK.capabilities,
     }

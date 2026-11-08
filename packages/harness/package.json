@@ -404,6 +404,7 @@
     "./session/transfer": "./src/session/transfer.ts",
     "./session/transfer-workspace": "./src/session/transfer-workspace.ts",
     "./host/connection": "./src/host/connection.ts",
+    "./host/identity": "./src/host/identity.ts",
     "./agent/prompt/agent-table": "./src/agent/prompt/agent-table.ts",
     "./agent/prompt/types": "./src/agent/prompt/types.ts",
     "./agent/prompt-contributions": "./src/agent/prompt-contributions.ts",

@@ -5,6 +5,7 @@ import { createBlueprintLoopsResource } from "../../../src/components/note/bluep
 
 const selection = (...features: string[]): RuntimeCapabilities => ({
   apiVersion: 1,
+  runtimeID: "94497ff6-b2b3-478e-a3aa-ce77665f0626",
   hostVersion: "test",
   components: [],
   features,

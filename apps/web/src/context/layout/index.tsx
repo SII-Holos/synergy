@@ -174,7 +174,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const server = useServer()
     const platform = usePlatform()
     const [store, setStore, _, ready] = persisted(
-      { ...Persist.connection(globalSdk.url, "layout"), migrate: migrateWorkbenchLayout },
+      { ...Persist.connection(globalSdk.cacheKey, "layout"), migrate: migrateWorkbenchLayout },
       createStore({
         ...createInitialLayoutDefaults(),
         version: 2,
@@ -208,7 +208,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         if (!dir) continue
 
         for (const entry of SESSION_STATE_KEYS) {
-          const owner = Persist.scopeKey(globalSdk.url, base64Decode(dir))
+          const owner = Persist.scopeKey(globalSdk.cacheKey, base64Decode(dir))
           const target = session ? Persist.session(owner, session, entry.key) : Persist.workspace(owner, entry.key)
           void removePersisted(target)
 

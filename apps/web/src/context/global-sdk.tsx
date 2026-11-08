@@ -17,6 +17,8 @@ import { streamingTokenReceipt } from "./streaming-token-event"
 import { createRuntimeCapabilities, discoverRuntimeCapabilities } from "./runtime-capabilities"
 import { createContentSubscriptions, projectContentSummary } from "./content-subscriptions"
 import { createSessionPreparationCache } from "./session-preparation-cache"
+import { spaceFetch } from "./space-fetch"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 const PING_INTERVAL = 20_000
 const PONG_TIMEOUT = 10_000
@@ -27,9 +29,22 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
   init: () => {
     const server = useServer()
     const platform = usePlatform()
-    const sdk = createSynergyClient({ baseUrl: server.url, fetch: platform.fetch, throwOnError: true })
-    const capabilities = createRuntimeCapabilities((signal) => discoverRuntimeCapabilities(sdk, signal))
-    const drafts = createDraftSessionIndex(server.url)
+    const url = server.url
+    const runtimeID = server.runtimeID
+    const cacheKey = server.cacheKey
+    if (!runtimeID || !cacheKey) throw new Error("Runtime identity is not ready")
+    const lifetime = new AbortController()
+    const fetch = spaceFetch(lifetime.signal, platform.fetch)
+    const sdk = createSynergyClient({ baseUrl: url, fetch, throwOnError: true })
+    const capabilities = createRuntimeCapabilities(async (signal) => {
+      const next = await discoverRuntimeCapabilities(sdk, signal)
+      if (next.runtimeID !== runtimeID) {
+        server.acceptIdentity(url, next.runtimeID)
+        throw new Error("Runtime identity changed")
+      }
+      return next
+    })
+    const drafts = createDraftSessionIndex(cacheKey)
     const sessionPreparation = createSessionPreparationCache()
     onCleanup(() => drafts.dispose())
     const emitter = createGlobalEmitter<{
@@ -299,7 +314,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       // Opt into the compact streaming protocol (#350 D1): the server sends
       // `message.part.delta` frames during streaming plus periodic full-part
       // checkpoints, instead of the full accumulated part on every delta.
-      const wsUrl = `${server.url}/global/event/ws?stream=${mode}`
+      const wsUrl = `${url}/global/event/ws?stream=${mode}`
       const socket = new WebSocket(wsUrl)
       ws = socket
 
@@ -399,6 +414,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     onCleanup(() => {
       disposed = true
+      lifetime.abort()
       setConnected(false)
       clientMessageListeners.clear()
       capabilities.dispose()
@@ -414,7 +430,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     })
 
     return {
-      url: server.url,
+      url,
+      cacheKey,
+      requestKey: JSON.stringify([cacheKey, generateUUID()]),
+      fetch,
       client: sdk,
       capabilities,
       event: emitter,
@@ -442,6 +461,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       },
       sessionPreparation,
       prepareScopeState(scopes: Parameters<typeof server.scopes.prepare>[0]) {
+        if (disposed || server.cacheKey !== cacheKey || server.url !== url) return
         server.scopes.prepare(scopes)
         drafts.rebuildDraftSessionIndex()
       },
