@@ -81,6 +81,7 @@ test("member Browser ownership uses the account connection and keeps colliding r
   const inputs: BrowserNativePageInput[] = []
   const destroyed: BrowserNativePageInput[] = []
   const nativePool = {
+    async drain() {},
     async create(input: BrowserNativePageInput) {
       inputs.push(input)
       return {

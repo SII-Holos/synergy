@@ -41,6 +41,7 @@ export class BrowserHostBrokerClient {
   private pages = new Map<string, ManagedPageEntry>()
   private commandTails = new Map<string, Promise<void>>()
   private operations = new Set<Promise<void>>()
+  private nativeLifetime = new AbortController()
   private closed = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private connectionEpoch = 0
@@ -72,6 +73,7 @@ export class BrowserHostBrokerClient {
 
   connect(): void {
     if (this.closed || this.socket || this.disconnecting) return
+    this.nativeLifetime = new AbortController()
     this.options.onStatus?.("connecting")
     const url = new URL("/browser/host/broker", this.options.serverUrl)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -113,9 +115,9 @@ export class BrowserHostBrokerClient {
     socket.addEventListener("close", () => {
       if (this.socket !== socket) return
       this.connectionEpoch++
+      this.nativeLifetime.abort()
       this.socket = null
       this.options.dataContexts?.disconnect()
-      if (!this.closed) this.options.onStatus?.("restarting")
       const pages = this.takePages()
       this.commandTails.clear()
       const disconnecting = this.drain(pages)
@@ -126,6 +128,7 @@ export class BrowserHostBrokerClient {
           if (this.disconnecting === disconnecting) this.disconnecting = null
           if (!this.closed) this.reconnectTimer = setTimeout(() => this.connect(), 1_000)
         })
+      if (!this.closed) this.options.onStatus?.("restarting")
     })
   }
 
@@ -136,6 +139,7 @@ export class BrowserHostBrokerClient {
   private async dispose(): Promise<void> {
     this.closed = true
     this.connectionEpoch++
+    this.nativeLifetime.abort()
     this.options.dataContexts?.disconnect()
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     const socket = this.socket
@@ -153,6 +157,7 @@ export class BrowserHostBrokerClient {
     const results = await Promise.allSettled([
       destroyPages(pages),
       this.options.dataContexts?.drain(),
+      this.options.nativePool?.drain(this.nativeLifetime.signal),
       ...this.operations,
     ])
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
@@ -267,7 +272,7 @@ export class BrowserHostBrokerClient {
     if (message.type === "page.create") {
       try {
         if (this.pages.has(key)) throw new Error("Browser page already exists.")
-        const page = await this.createNativePage(message)
+        const page = await this.createNativePage(message, epoch)
         if (epoch !== this.connectionEpoch || this.socket?.readyState !== WebSocket.OPEN) {
           await page.destroy()
           return
@@ -337,10 +342,12 @@ export class BrowserHostBrokerClient {
 
   private async createNativePage(
     message: Extract<BrowserHostMessage, { type: "page.create" }>,
+    epoch: number,
   ): Promise<BrowserNativePageHandle> {
     if (!this.options.nativePool) throw new Error("This Browser Host has no native page capability.")
     return this.options.nativePool.create({
       ownerKey: browserRuntimeOwnerKey(this.options.runtimeKey, message.ownerKey),
+      signal: this.nativeLifetime.signal,
       requestId: message.requestId,
       page: message.page,
       profile: {
@@ -348,6 +355,10 @@ export class BrowserHostBrokerClient {
         partition: browserRuntimePartition(this.options.runtimeKey, message.profile.partition),
       },
       onPopup: (input, page) => {
+        if (epoch !== this.connectionEpoch || this.closed) {
+          void page.destroy().catch(() => console.error("Retired Browser popup cleanup failed."))
+          return
+        }
         const key = `${message.ownerKey}:${input.page.id}`
         this.pages.set(key, { pageId: input.page.id, page })
         this.send({
@@ -360,7 +371,10 @@ export class BrowserHostBrokerClient {
       },
       networkProxy: message.networkProxy,
       downloadDir: message.downloadDir,
-      emit: (event) => this.event(message.ownerKey, "page" in event ? event.page.id : event.pageId, event),
+      emit: (event) => {
+        if (epoch === this.connectionEpoch && !this.closed)
+          this.event(message.ownerKey, "page" in event ? event.page.id : event.pageId, event)
+      },
     })
   }
 

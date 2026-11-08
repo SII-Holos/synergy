@@ -17,6 +17,10 @@ import { desktopThemeSnapshot } from "../../src/theme"
 
 const owner = { mode: "session" as const, scopeID: "fixture", sessionID: "fixture", directory: null }
 const ownerKey = browserOwnerKey(owner)
+process.on("unhandledRejection", (error) => {
+  console.error(error)
+  app.exit(1)
+})
 void run().catch((error) => {
   console.error(error)
   app.exit(1)
@@ -141,10 +145,10 @@ async function run() {
     await services[0]!.close()
     assert.equal(contents[1]!.isDestroyed(), false)
     assert.equal(await contents[1]!.executeJavaScript("document.getElementById('draft').value"), "member-1")
-    await services[1]!.close()
+    await closeWithPendingPopup(contents[1]!, () => services[1]!.close())
     assert.equal(contents[1]!.isDestroyed(), true)
     console.log(
-      "Member native broker passed: Node upgrade authentication, native token separation, colliding identities, reconnect without replay, independent close and drained WebContents.",
+      "Member native broker passed: Node upgrade authentication, native token separation, colliding identities, reconnect without replay, independent close and drained pending popup WebContents.",
     )
   } finally {
     await Promise.allSettled(services.map((service) => service.close()))
@@ -153,4 +157,50 @@ async function run() {
     await Promise.all(hosts.map((server) => server.close()))
   }
   app.exit(0)
+}
+
+async function closeWithPendingPopup(opener: Electron.WebContents, close: () => Promise<void>) {
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let entered = false,
+    closed = false
+  let popup: Electron.WebContents | undefined
+  let restore: (() => void) | undefined
+  let closing: Promise<void> | undefined
+  const created = (_event: Electron.Event, contents: Electron.WebContents) => {
+    if (popup) return
+    popup = contents
+    const send = contents.debugger.sendCommand.bind(contents.debugger)
+    restore = () => {
+      if (!contents.isDestroyed()) contents.debugger.sendCommand = send
+    }
+    contents.debugger.sendCommand = async (method, ...args) => {
+      const result = await send(method, ...args)
+      if (method === "Page.enable") {
+        entered = true
+        await held
+      }
+      return result
+    }
+  }
+  app.on("web-contents-created", created)
+  try {
+    await opener.executeJavaScript("window.open(location.href + 'popup'); true", true)
+    await until(() => entered)
+    closing = close().then(() => {
+      closed = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(closed, false, "Member close waits for its pending native popup")
+    release()
+    await closing
+    assert(popup?.isDestroyed(), "The late popup is destroyed before member close returns")
+  } finally {
+    release()
+    app.off("web-contents-created", created)
+    restore?.()
+    await closing
+  }
 }

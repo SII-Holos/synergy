@@ -104,6 +104,7 @@ async function fixture(
     },
   })
   const nativePool = {
+    async drain() {},
     async create(input: BrowserNativePageInput): Promise<BrowserNativePageHandle> {
       inputs.push(input)
       await beforeCreate()
@@ -520,4 +521,41 @@ test("disconnect destroys all owned pages before reconnection", async () => {
   expect(f.destroyed.toSorted()).toEqual(["first", "second"])
   await f.client.close()
   expect(f.destroyed).toHaveLength(2)
+})
+
+test("retired broker callbacks cannot replace a new page or publish a late popup", async () => {
+  const f = await fixture()
+  f.send(create("old", "same-page"))
+  await f.result("old")
+  const retired = f.inputs[0]
+  f.disconnect()
+  await until(() => f.status.filter((status) => status === "ready").length === 2)
+  f.send(create("new", "same-page"))
+  await f.result("new")
+  const before = f.messages.length
+  let popupClosed = false
+  retired.emit({ type: "page.closed", pageId: "same-page" })
+  const page = { ...retired.page, id: "late-popup" }
+  retired.onPopup!(
+    { page, openerId: "same-page" },
+    {
+      state: () => page,
+      isAlive: () => !popupClosed,
+      async destroy() {
+        popupClosed = true
+      },
+      async execute() {
+        return { type: "void" }
+      },
+    },
+  )
+  f.send(command("still-current", "same-page", { type: "stop" }))
+  const result = await f.result("still-current")
+  expect({
+    result: result.result,
+    popupClosed,
+    staleEvents: f.messages
+      .slice(before)
+      .filter((message) => message.type === "page.opened" || message.type === "page.event"),
+  }).toEqual({ result: { type: "void" }, popupClosed: true, staleEvents: [] })
 })

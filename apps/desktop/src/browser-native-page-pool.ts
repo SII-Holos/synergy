@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url"
-import { app, WebContentsView, type BrowserWindow, type WebContents } from "electron"
+import { app, session, WebContentsView, type BrowserWindow, type WebContents } from "electron"
 import {
   BrowserProtocolError,
   browserNativeRecoveryFailureMessage,
@@ -18,6 +18,7 @@ import { BrowserWebContentsControl } from "./browser-webcontents-control.js"
 
 export interface BrowserNativePageInput {
   ownerKey: string
+  signal?: AbortSignal
   requestId?: string
   profile: { id: string; partition: string; revision: number }
   onPopup?(input: { page: BrowserPage; openerId: string }, page: BrowserNativePageHandle): void
@@ -81,8 +82,11 @@ const DEFAULT_NAVIGATION_TIMEOUT_MS = 30_000
 
 export class BrowserNativePagePool {
   private entries = new Map<string, Entry>()
-  private creating = new Set<string>()
-  private destroying = new Map<string, Promise<void>>()
+  private creating = new Map<string, { input: BrowserNativePageInput; active: boolean; done: Promise<void> }>()
+  private destroying = new Map<string, { entry: Entry; operation: Promise<void> }>()
+  private clearing = new Map<string, Promise<void>>()
+  private closed = false
+  private closing: Promise<void> | undefined
 
   constructor(
     private readonly options: {
@@ -123,15 +127,31 @@ export class BrowserNativePagePool {
   }
 
   async create(input: BrowserNativePageInput, existingView?: WebContentsView): Promise<BrowserNativePageHandle> {
+    if (this.closed || input.signal?.aborted) throw new Error("Native Browser lifetime is closed.")
     const key = `${input.ownerKey}:${input.page.id}`
     if (this.entries.has(key) || this.creating.has(key) || this.destroying.has(key)) {
       throw new Error("Browser page already exists.")
     }
     if (this.entries.size + this.creating.size >= MAX_NATIVE_PAGES)
       throw new Error("Desktop Browser page limit reached.")
-    this.creating.add(key)
+    let resolveDone!: () => void
+    let rejectDone!: (reason: unknown) => void
+    const done = new Promise<void>((resolve, reject) => {
+      resolveDone = resolve
+      rejectDone = reject
+    })
+    void done.catch(() => {})
+    const reservation = { input, active: true, done }
+    this.creating.set(key, reservation)
+    let accepted = false
     try {
+      await this.clearing.get(input.profile.partition)
+      if (this.closed || input.signal?.aborted) throw new Error("Native Browser lifetime is closed.")
       const generation = await this.createGeneration(input, 1, input.page.url, undefined, existingView)
+      if (this.closed || input.signal?.aborted) {
+        await this.closeGeneration(generation)
+        throw new Error("Native Browser lifetime is closed.")
+      }
       const entry = {} as Entry
       Object.assign(entry, {
         ownerKey: input.ownerKey,
@@ -152,10 +172,20 @@ export class BrowserNativePagePool {
         isAlive: () => !entry.closing,
       } satisfies Partial<Entry>)
       this.entries.set(key, entry)
+      accepted = true
       this.bindRecoveryEvents(entry, generation)
       return entry
     } finally {
-      this.creating.delete(key)
+      try {
+        reservation.active = false
+        if (!accepted) await this.clearTemporary(input.profile.partition)
+        resolveDone()
+      } catch (error) {
+        rejectDone(error)
+        throw error
+      } finally {
+        this.creating.delete(key)
+      }
     }
   }
 
@@ -224,9 +254,28 @@ export class BrowserNativePagePool {
     await this.beginRecovery(entry, "manual-retry")
   }
 
-  async destroy(): Promise<void> {
-    this.creating.clear()
-    const results = await Promise.allSettled(Array.from(this.entries.keys(), (key) => this.destroyEntry(key)))
+  destroy(): Promise<void> {
+    this.closed = true
+    return (this.closing ??= this.dispose())
+  }
+
+  drain(signal: AbortSignal): Promise<void> {
+    if (!signal.aborted) throw new Error("Native Browser lifetime must be closed before draining.")
+    return this.dispose(signal)
+  }
+
+  private async dispose(signal?: AbortSignal): Promise<void> {
+    const owned = () => [...this.entries].filter(([, entry]) => !signal || entry.input.signal === signal)
+    const results = await Promise.allSettled([
+      ...[...this.destroying.values()]
+        .filter(({ entry }) => !signal || entry.input.signal === signal)
+        .map(({ operation }) => operation),
+      ...owned().map(([key]) => this.destroyEntry(key)),
+      ...[...this.creating.values()]
+        .filter((entry) => !signal || entry.input.signal === signal)
+        .map((entry) => entry.done),
+    ])
+    results.push(...(await Promise.allSettled(owned().map(([key]) => this.destroyEntry(key)))))
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     if (failures.length) throw new AggregateError(failures, "One or more native Browser pages could not be closed.")
   }
@@ -439,8 +488,14 @@ export class BrowserNativePagePool {
   ): Electron.WindowOpenHandlerResponse {
     const ownerPages =
       [...this.entries.values()].filter((entry) => entry.ownerKey === parent.ownerKey).length +
-      [...this.creating].filter((key) => key.startsWith(`${parent.ownerKey}:`)).length
-    if (!parent.onPopup || ownerPages >= 16 || this.entries.size + this.creating.size >= MAX_NATIVE_PAGES)
+      [...this.creating.keys()].filter((key) => key.startsWith(`${parent.ownerKey}:`)).length
+    if (
+      this.closed ||
+      parent.signal?.aborted ||
+      !parent.onPopup ||
+      ownerPages >= 16 ||
+      this.entries.size + this.creating.size >= MAX_NATIVE_PAGES
+    )
       return { action: "deny" }
     return {
       action: "allow",
@@ -468,6 +523,7 @@ export class BrowserNativePagePool {
           },
         })
         const pending: BrowserHostPageEvent[] = []
+        const contents = view.webContents
         let ready = false
         const input = {
           ...parent,
@@ -476,20 +532,25 @@ export class BrowserNativePagePool {
           emit: (event: BrowserHostPageEvent) => (ready ? parent.emit(event) : pending.push(event)),
         }
         void this.create(input, view)
-          .then((handle) => {
+          .then(async (handle) => {
+            if (this.closed || input.signal?.aborted) {
+              await handle.destroy()
+              return
+            }
             parent.onPopup!({ page: handle.state(), openerId: parent.page.id }, handle)
             ready = true
             for (const event of pending) parent.emit(event)
           })
           .catch((error) => {
-            if (!view.webContents.isDestroyed()) view.webContents.close()
+            if (!contents.isDestroyed()) contents.close()
+            if (this.closed || input.signal?.aborted) return
             parent.emit({
               type: "page.error",
               pageId: parent.page.id,
               message: `Popup could not open: ${error instanceof Error ? error.message : String(error)}`,
             })
           })
-        return view.webContents
+        return contents
       },
     }
   }
@@ -798,28 +859,40 @@ export class BrowserNativePagePool {
 
   private async destroyEntry(ownerKey: string): Promise<void> {
     const active = this.destroying.get(ownerKey)
-    if (active) return active
+    if (active) return active.operation
     const entry = this.entries.get(ownerKey)
     if (!entry) return
     entry.closing = true
     const operation = (async () => {
       try {
         await entry.recovery?.catch(() => undefined)
-        const profileSession = entry.generation.session
         await this.closeGeneration(entry.generation)
         this.entries.delete(ownerKey)
-        if (
-          !entry.input.profile.partition.startsWith("persist:") &&
-          ![...this.entries.values()].some((other) => other.input.profile.partition === entry.input.profile.partition)
-        ) {
-          await profileSession.clearStorageData()
-        }
+        await this.clearTemporary(entry.input.profile.partition)
       } finally {
         this.entries.delete(ownerKey)
         this.destroying.delete(ownerKey)
       }
     })()
-    this.destroying.set(ownerKey, operation)
+    this.destroying.set(ownerKey, { entry, operation })
+    return operation
+  }
+
+  private clearTemporary(partition: string): Promise<void> | undefined {
+    const active = this.clearing.get(partition)
+    if (active) return active
+    if (
+      partition.startsWith("persist:") ||
+      [...this.entries.values()].some((entry) => entry.input.profile.partition === partition) ||
+      [...this.creating.values()].some((entry) => entry.active && entry.input.profile.partition === partition)
+    )
+      return
+    const operation = Promise.resolve()
+      .then(() => session.fromPartition(partition).clearStorageData())
+      .finally(() => {
+        if (this.clearing.get(partition) === operation) this.clearing.delete(partition)
+      })
+    this.clearing.set(partition, operation)
     return operation
   }
 
