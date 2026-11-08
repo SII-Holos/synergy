@@ -260,9 +260,22 @@ test("the public service creates, reconciles and cancels native work through the
       { headers: service.headers, throwOnError: true },
     )
     expect(read.data.accepted).toEqual(receipt.data)
+    expect(read.data.execution).toMatchObject({
+      state: "observed",
+      runID,
+      controlVersion: 2,
+      activity: { run: { status: "running", active: true }, activeExecutions: 1, scope: "recorded_subtree" },
+    })
   } finally {
     await runtime.run(() => SessionManager.release(active.lease, { requestNextWork: false }))
   }
+  await runtime.close()
+  const offline = await service.client.orgCommands.get(
+    { sessionID, requestID: "native-cancel" },
+    { headers: service.headers, throwOnError: true },
+  )
+  expect(offline.data.accepted?.effect).toMatchObject({ operation: "cancel", runID, runStatusAtReception: "running" })
+  expect(offline.data.execution).toEqual({ state: "unavailable", runID, reason: "runtime_offline" })
 })
 
 test("resident member startup reconnects its outbound bridge without blocking local readiness", async () => {

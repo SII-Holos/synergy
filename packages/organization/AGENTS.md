@@ -22,4 +22,4 @@ Create service signing identity through its central startup migration. Validate 
 
 Command admission derives actors from validated credentials and checks current roles and live connection inside its writer. Keep authorization, dispatch and Runtime acceptance separate; a blocked new request is definitely unsent. Retain issued skip proofs across reconnect and verify reconciliation in `test/command-admission.test.ts`. Metadata records never authorize automatic replay.
 
-Forward only active requests through bounded, cancellable exchanges. Distinguish dropped frames from enqueued backpressure and unknown sends; never replay after reconnect. Verify late receipts, explicit skip recovery and generated HTTP calls in `test/command-forwarding.test.ts` and the Presets organization integration suite.
+Forward active requests through bounded exchanges; distinguish dropped, enqueued and unknown sends. Never replay after reconnect. Observe cancellation independently; recheck access and binding after replies. Verify capacity, late receipts, skip recovery and generated HTTP in `test/command-forwarding.test.ts` and Presets integration.

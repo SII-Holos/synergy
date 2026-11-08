@@ -20,6 +20,7 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
       authorizedAt: permit.authorizedAt,
       result: result.attempt.result,
       accepted: result.accepted,
+      execution: result.execution,
     })
   }
   return new Hono()
@@ -72,7 +73,7 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
     )
     .get(
       "/sessions/:sessionID/commands/:requestID",
-      operation("orgCommands.get", "Query the caller's existing command receipt", Command.View),
+      operation("orgCommands.get", "Query the caller's receipt and current cancellation activity", Command.View),
       validator("param", z.strictObject({ sessionID: Identity.ID, requestID: Identity.ID }), validation),
       async (c) => {
         const result = await owner().get(credentials(c), c.req.valid("param"), c.req.raw.signal)

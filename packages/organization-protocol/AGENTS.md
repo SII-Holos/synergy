@@ -9,3 +9,5 @@ Machine proofs bind a strict purpose and all authority-bearing claims with a ver
 Reuse the portable account actor schema from Util. Command permits bind the logical request, actor, deployment, target, epochs, sequences and finite signing window; signature validity alone does not establish current execution admission. Preserve existing proof bytes when sharing signing primitives, and verify compiled Node imports across package boundaries.
 
 Hash the complete strict input and target. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
+
+Current execution observations belong beside immutable receipts. Bind their root and observation window to acceptance; reject observation fields in durable results.

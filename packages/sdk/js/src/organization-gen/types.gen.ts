@@ -386,6 +386,43 @@ export type OrgCommandInputRequest = {
 
 export type OrgCommandAccepted = OrgCommandInputAccepted | OrgCommandCreatedAccepted | OrgCommandControlAccepted
 
+export type OrgCommandExecutionObservation =
+  | {
+      state: "observed"
+      runID: string
+      controlVersion: number
+      activity: {
+        observedAt: number
+        run: {
+          id: string
+          status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+          recording: "partial" | "complete" | "failed"
+          cancelRequestedAt?: number
+          active: boolean
+        }
+        runsObserved: number
+        activeExecutions: number
+        processes: {
+          active: number
+          exited: number
+          unknown: number
+        }
+        scope: "recorded_subtree"
+        truncated: boolean
+      }
+    }
+  | {
+      state: "unavailable"
+      runID: string
+      reason:
+        | "runtime_offline"
+        | "binding_changed"
+        | "transfer_in_progress"
+        | "state_changed"
+        | "run_unavailable"
+        | "query_failed"
+    }
+
 export type OrgCommandView = {
   requestID: string
   attemptID: string
@@ -438,6 +475,7 @@ export type OrgCommandView = {
     }
   }
   accepted?: OrgCommandAccepted
+  execution?: OrgCommandExecutionObservation
 }
 
 export type OrgAuthClient =

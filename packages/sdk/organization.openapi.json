@@ -1259,7 +1259,7 @@
     "/org/v1/sessions/{sessionID}/commands/{requestID}": {
       "get": {
         "operationId": "orgCommands.get",
-        "summary": "Query the caller's existing command receipt",
+        "summary": "Query the caller's receipt and current cancellation activity",
         "responses": {
           "200": {
             "description": "Success",
@@ -2340,6 +2340,85 @@
           { "$ref": "#/components/schemas/OrgCommandControlAccepted" }
         ]
       },
+      "OrgCommandExecutionObservation": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "state": { "type": "string", "const": "observed" },
+              "runID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "controlVersion": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "activity": {
+                "type": "object",
+                "properties": {
+                  "observedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "run": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "status": {
+                        "type": "string",
+                        "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+                      },
+                      "recording": { "type": "string", "enum": ["partial", "complete", "failed"] },
+                      "cancelRequestedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "active": { "type": "boolean" }
+                    },
+                    "required": ["id", "status", "recording", "active"],
+                    "additionalProperties": false
+                  },
+                  "runsObserved": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                  "activeExecutions": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "processes": {
+                    "type": "object",
+                    "properties": {
+                      "active": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "exited": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "unknown": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                    },
+                    "required": ["active", "exited", "unknown"],
+                    "additionalProperties": false
+                  },
+                  "scope": { "type": "string", "const": "recorded_subtree" },
+                  "truncated": { "type": "boolean" }
+                },
+                "required": [
+                  "observedAt",
+                  "run",
+                  "runsObserved",
+                  "activeExecutions",
+                  "processes",
+                  "scope",
+                  "truncated"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": ["state", "runID", "controlVersion", "activity"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": { "type": "string", "const": "unavailable" },
+              "runID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "runtime_offline",
+                  "binding_changed",
+                  "transfer_in_progress",
+                  "state_changed",
+                  "run_unavailable",
+                  "query_failed"
+                ]
+              }
+            },
+            "required": ["state", "runID", "reason"],
+            "additionalProperties": false
+          }
+        ]
+      },
       "OrgCommandView": {
         "type": "object",
         "properties": {
@@ -2438,7 +2517,8 @@
             "required": ["attempt"],
             "additionalProperties": false
           },
-          "accepted": { "$ref": "#/components/schemas/OrgCommandAccepted" }
+          "accepted": { "$ref": "#/components/schemas/OrgCommandAccepted" },
+          "execution": { "$ref": "#/components/schemas/OrgCommandExecutionObservation" }
         },
         "required": ["requestID", "attemptID", "state", "authorizedAt"],
         "additionalProperties": false

@@ -262,6 +262,7 @@ export namespace OrganizationCommandProtocol {
     controlVersion: ControlVersion.positive(),
     pausedSince: PausedSince,
   }
+  const RunStatus = z.enum(["running", "completed", "failed", "cancelled", "interrupted"])
   export const ControlAccepted = z
     .strictObject({
       ...acceptance,
@@ -279,7 +280,7 @@ export namespace OrganizationCommandProtocol {
           operation: z.literal("cancel"),
           controlVersion: ControlVersion.positive(),
           runID: Identity.ID,
-          runStatusAtReception: z.enum(["running", "completed", "failed", "cancelled", "interrupted"]),
+          runStatusAtReception: RunStatus,
           cancelRequestedAt: z.number().int().nonnegative().optional(),
         }),
       ]),
@@ -323,8 +324,67 @@ export namespace OrganizationCommandProtocol {
   export type CreatedResult = z.infer<typeof CreatedResult>
   export const ControlResult = Result.extend({ accepted: ControlAccepted.optional() })
   export type ControlResult = z.infer<typeof ControlResult>
+  export const ExecutionObservation = z
+    .discriminatedUnion("state", [
+      z.strictObject({
+        state: z.literal("observed"),
+        runID: Identity.ID,
+        controlVersion: ControlVersion,
+        activity: z.strictObject({
+          observedAt: z.number().int().nonnegative(),
+          run: z.strictObject({
+            id: Identity.ID,
+            status: RunStatus,
+            recording: z.enum(["partial", "complete", "failed"]),
+            cancelRequestedAt: z.number().int().nonnegative().optional(),
+            active: z.boolean(),
+          }),
+          runsObserved: z.number().int().positive(),
+          activeExecutions: z.number().int().nonnegative(),
+          processes: z.strictObject({
+            active: z.number().int().nonnegative(),
+            exited: z.number().int().nonnegative(),
+            unknown: z.number().int().nonnegative(),
+          }),
+          scope: z.literal("recorded_subtree"),
+          truncated: z.boolean(),
+        }),
+      }),
+      z.strictObject({
+        state: z.literal("unavailable"),
+        runID: Identity.ID,
+        reason: z.enum([
+          "runtime_offline",
+          "binding_changed",
+          "transfer_in_progress",
+          "state_changed",
+          "run_unavailable",
+          "query_failed",
+        ]),
+      }),
+    ])
+    .refine(
+      (value) => value.state !== "observed" || value.runID === value.activity.run.id,
+      "Execution observation must identify its root",
+    )
+    .meta({ ref: "OrgCommandExecutionObservation" })
+  export type ExecutionObservation = z.infer<typeof ExecutionObservation>
+  function matchesExecution(execution: ExecutionObservation | undefined, accepted: Accepted | undefined) {
+    if (!execution) return true
+    if (accepted?.effect.kind !== "control" || accepted.effect.operation !== "cancel") return false
+    return (
+      execution.runID === accepted.effect.runID &&
+      (execution.state !== "observed" ||
+        (execution.controlVersion >= accepted.effect.controlVersion &&
+          execution.activity.observedAt >= accepted.acceptedAt))
+    )
+  }
   export const QueryResult = z
-    .strictObject({ authorization: SignedPermit, result: Result.optional() })
+    .strictObject({
+      authorization: SignedPermit,
+      result: Result.optional(),
+      execution: ExecutionObservation.optional(),
+    })
     .refine((value) => {
       if (!value.result) return true
       const original = value.authorization.permit
@@ -336,6 +396,10 @@ export namespace OrganizationCommandProtocol {
         )
       )
     }, "Receipt query must return the same logical command")
+    .refine(
+      (value) => matchesExecution(value.execution, value.result?.accepted),
+      "Execution observation must belong to the accepted cancellation",
+    )
   export type QueryResult = z.infer<typeof QueryResult>
   export const Delivery = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("input"), delivery: InputDelivery }),
@@ -360,6 +424,11 @@ export namespace OrganizationCommandProtocol {
       authorizedAt: z.number().int().nonnegative(),
       result: Result.optional(),
       accepted: Accepted.optional(),
+      execution: ExecutionObservation.optional(),
     })
+    .refine(
+      (value) => matchesExecution(value.execution, value.accepted),
+      "Execution observation must belong to the accepted cancellation",
+    )
     .meta({ ref: "OrgCommandView" })
 }

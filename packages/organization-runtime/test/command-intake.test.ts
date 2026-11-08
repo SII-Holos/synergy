@@ -12,6 +12,7 @@ import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecyc
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
+import { RolloutQuery } from "@ericsanchezok/synergy-harness/rollout"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
@@ -187,7 +188,14 @@ test("cancel commits a native receipt before drainage and survives disconnection
         runStatusAtReception: "running",
         cancelRequestedAt: expect.any(Number),
       })
-      expect((await service.receiver().query(delivery.authorization)).result).toEqual(receipt)
+      const draining = await service.receiver().query(delivery.authorization)
+      expect(draining.result).toEqual(receipt)
+      expect(draining.execution).toMatchObject({
+        state: "observed",
+        runID,
+        controlVersion: 1,
+        activity: { run: { id: runID, status: "running", active: true }, activeExecutions: 1 },
+      })
       expect(settled).toBeFalse()
       expect((await SessionInbox.list(native.id)).some((item) => item.messageID === runID)).toBeFalse()
       expect((await Session.get(native.id)).paused).toBeUndefined()
@@ -205,6 +213,11 @@ test("cancel commits a native receipt before drainage and survives disconnection
       await SessionManager.release(lease, { requestNextWork: false })
       expect(await pending).toEqual(receipt)
       expect((await RolloutLedger.getRun(owner, runID)).status).toBe("cancelled")
+      expect((await service.receiver().query(delivery.authorization)).execution).toMatchObject({
+        state: "observed",
+        runID,
+        activity: { run: { status: "cancelled", active: false }, activeExecutions: 0 },
+      })
       await RolloutLedger.resumeRun(owner, runID)
       const later = SessionManager.acquire(native.id)!
       SessionManager.bindRootTask(later, runID)
@@ -213,6 +226,13 @@ test("cancel commits a native receipt before drainage and survives disconnection
         expect(await service.receiver().control(delivery)).toEqual(receipt)
         expect(later.signal.aborted).toBeFalse()
         expect((await RolloutLedger.getRun(owner, runID)).cancelRequestedAt).toBeUndefined()
+        const resumed = await service.receiver().query(delivery.authorization)
+        expect(resumed.result).toEqual(receipt)
+        expect(resumed.execution).toMatchObject({
+          state: "observed",
+          runID,
+          activity: { run: { status: "running", active: true } },
+        })
       } finally {
         clearTimeout(rescue)
         await SessionManager.release(later, { requestNextWork: false })
@@ -222,6 +242,60 @@ test("cancel commits a native receipt before drainage and survives disconnection
       await SessionManager.release(lease, { requestNextWork: false })
       await Promise.allSettled([pending])
     }
+  })
+})
+
+test("cancel observations preserve reception while rejecting changed or unreadable current evidence", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const native = await session()
+    const receiver = service.receiver()
+    const input = await receiver.input(await service.input(native.id, {}, "Queued task", "task"))
+    const runID = input.accepted!.effect.messageID
+    const delivery = await service.control(native.id, { operation: "cancel", runID, controlVersion: 0 }, 2)
+    const receipt = await receiver.control(delivery)
+    {
+      using unavailable = spyOn(RolloutQuery, "activity").mockRejectedValue(new Error("Private observation failure"))
+      expect(await receiver.query(delivery.authorization)).toMatchObject({
+        result: receipt,
+        execution: { state: "unavailable", runID, reason: "query_failed" },
+      })
+    }
+    {
+      const activity = RolloutQuery.activity
+      using changed = spyOn(RolloutQuery, "activity").mockImplementation(async (...args) => {
+        const result = await activity(...args)
+        await Storage.write(Keys.control(binding.orgID, native.id), { schemaVersion: 1, controlVersion: 2 })
+        return result
+      })
+      expect(await receiver.query(delivery.authorization)).toMatchObject({
+        result: receipt,
+        execution: { state: "unavailable", runID, reason: "state_changed" },
+      })
+    }
+    expect((await receiver.query(delivery.authorization)).execution).toMatchObject({
+      state: "observed",
+      controlVersion: 2,
+    })
+    await Storage.write(["session_transfer_gate", native.id], {
+      version: 1,
+      migrationID: "observation-transfer",
+      scopeID: native.scope.id,
+      targetID: "target",
+      phase: "preparing",
+    })
+    expect(await receiver.query(delivery.authorization)).toMatchObject({
+      result: receipt,
+      execution: { state: "unavailable", runID, reason: "transfer_in_progress" },
+    })
+    await Storage.remove(["session_transfer_gate", native.id])
+    await Session.remove(native.id)
+    expect(await receiver.query(delivery.authorization)).toMatchObject({
+      result: receipt,
+      execution: { state: "unavailable", runID, reason: "binding_changed" },
+    })
   })
 })
 

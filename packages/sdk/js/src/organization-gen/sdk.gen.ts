@@ -996,7 +996,7 @@ export class OrgCommands extends HeyApiClient {
   }
 
   /**
-   * Query the caller's existing command receipt
+   * Query the caller's receipt and current cancellation activity
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {

@@ -33,6 +33,9 @@ export function createCommandTransport(input: {
       retryable: outcome === "not_dispatched",
     })
   }
+  function window(command: Command.Delivery) {
+    return command.kind === "query" || command.kind === "skip" ? "reconciliation" : "command"
+  }
   function validate(command: Command.Delivery, reply: Command.Reply) {
     if (reply.kind === "error") return
     if (command.kind === "query") {
@@ -53,7 +56,8 @@ export function createCommandTransport(input: {
       const handshake = input.current()
       if (options.signal.aborted || options.deadline <= Date.now())
         throw failure("not_dispatched", "Command request ended before transmission")
-      if (pending.size >= 16 || input.buffered() > 64 * 1024)
+      const occupied = [...pending.values()].filter((request) => window(request.command) === window(command)).length
+      if (occupied >= 16 || input.buffered() > 64 * 1024)
         throw failure("not_dispatched", "Runtime command transport is busy; retry the active request")
       const exchangeID = crypto.randomUUID()
       return new Promise((resolve, reject) => {

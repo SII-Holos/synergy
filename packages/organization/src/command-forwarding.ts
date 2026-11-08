@@ -18,7 +18,7 @@ export function createCommandForwarder(options: {
     .positive()
     .max(30_000)
     .parse(options.timeoutMs ?? 10_000)
-  let active = 0
+  const active = { commands: 0, queries: 0 }
   function unknown(requestID: string, cause?: unknown): never {
     throw new OrganizationError(
       {
@@ -31,13 +31,14 @@ export function createCommandForwarder(options: {
       { cause },
     )
   }
-  async function serial<T>(
-    sessionID: string,
+  async function bounded<T>(
+    kind: keyof typeof active,
     caller: AbortSignal | undefined,
     body: (work: { signal: AbortSignal; deadline: number }) => Promise<T>,
   ) {
-    if (active >= 64) fail("SERVICE_UNAVAILABLE", "Command transport is busy; retry the active request")
-    active++
+    if (active[kind] >= (kind === "commands" ? 64 : 16))
+      fail("SERVICE_UNAVAILABLE", "Command transport is busy; retry the active request")
+    active[kind]++
     const controller = new AbortController()
     const deadline = Date.now() + timeoutMs
     const cancel = () => controller.abort()
@@ -46,17 +47,71 @@ export function createCommandForwarder(options: {
     const timer = setTimeout(cancel, timeoutMs)
     timer.unref()
     try {
-      using lock = await Lock.writeWithSignal(`organization-command:${sessionID}`, controller.signal)
-      if (!lock || controller.signal.aborted) fail("RUNTIME_OFFLINE", "Command request ended before transmission")
+      if (controller.signal.aborted) fail("RUNTIME_OFFLINE", "Command request ended before transmission")
       return await body({ signal: controller.signal, deadline })
     } finally {
-      active--
+      active[kind]--
       clearTimeout(timer)
       caller?.removeEventListener("abort", cancel)
     }
   }
   type Query = { sessionID?: string; requestID: string }
   type Work = { signal: AbortSignal; deadline: number }
+  function serial<T>(sessionID: string, caller: AbortSignal | undefined, body: (work: Work) => Promise<T>) {
+    return bounded("commands", caller, async (work) => {
+      using lock = await Lock.writeWithSignal(`organization-command:${sessionID}`, work.signal)
+      if (!lock || work.signal.aborted) fail("RUNTIME_OFFLINE", "Command request ended before transmission")
+      return await body(work)
+    })
+  }
+  type Current = Awaited<ReturnType<CommandAdmissions["get"]>>
+  type View = Current & { execution?: Command.ExecutionObservation }
+  async function observe(credentials: Credentials, query: Query, prior: Current, signal?: AbortSignal): Promise<View> {
+    const accepted = prior.accepted
+    if (accepted?.effect.kind !== "control" || accepted.effect.operation !== "cancel") return prior
+    const { runID } = accepted.effect
+    const { permit } = accepted
+    function unavailable(reason: Extract<Command.ExecutionObservation, { state: "unavailable" }>["reason"]) {
+      return { state: "unavailable" as const, runID, reason }
+    }
+    function binding(current: Current) {
+      const session = current.session
+      if (
+        session.orgID !== permit.orgID ||
+        session.projectID !== permit.projectID ||
+        session.driverRuntimeID !== permit.runtimeID ||
+        session.bindingEpoch !== permit.bindingEpoch
+      )
+        return unavailable("binding_changed")
+      if (session.handoffID) return unavailable("transfer_in_progress")
+    }
+    const blocked = binding(prior)
+    if (blocked) return { ...prior, execution: blocked }
+    let execution: Command.ExecutionObservation
+    try {
+      const connection = connections.capture(permit.runtimeID)
+      execution = await bounded("queries", signal, async (work) => {
+        const reply = await connection.exchange({ kind: "query", authorization: prior.attempt.authorization }, work)
+        connection.assertCurrent()
+        if (reply.kind !== "query" || JSON.stringify(reply.query.result?.accepted) !== JSON.stringify(accepted))
+          return unavailable("query_failed")
+        return reply.query.execution ?? unavailable("query_failed")
+      }).catch(() => unavailable("query_failed"))
+    } catch (error) {
+      execution = unavailable(
+        error instanceof OrganizationError && error.data.code === "RUNTIME_OFFLINE"
+          ? "runtime_offline"
+          : "query_failed",
+      )
+    }
+    const current = await admissions.get(credentials, query)
+    return {
+      ...current,
+      execution:
+        binding(current) ??
+        (current.session.rowRevision !== prior.session.rowRevision ? unavailable("state_changed") : execution),
+    }
+  }
   async function reconcile(credentials: Credentials, query: Query, work: Work) {
     const previous = await admissions.get(credentials, query)
     if (previous.accepted) return previous
@@ -256,13 +311,14 @@ export function createCommandForwarder(options: {
       )
       return { ...result, receipt: Command.CreatedAccepted.parse(result.receipt) }
     },
-    async get(credentials: Credentials, query: Query, signal?: AbortSignal) {
+    async get(credentials: Credentials, query: Query, signal?: AbortSignal): Promise<View> {
       credentials = { ...credentials }
       query = { ...query }
       const initial = await admissions.get(credentials, query)
+      if (initial.accepted) return observe(credentials, query, initial, signal)
       const permit = initial.attempt.authorization.permit
       const key = permit.operation === "create" ? `create:${permit.orgID}:${permit.requestID}` : permit.sessionID
-      return serial(key, signal, async (work) => {
+      const found = await serial(key, signal, async (work) => {
         const prior = await admissions.get(credentials, query)
         if (prior.accepted) return prior
         try {
@@ -276,6 +332,7 @@ export function createCommandForwarder(options: {
           return admissions.get(credentials, query)
         }
       })
+      return observe(credentials, query, found, signal)
     },
   }
 }

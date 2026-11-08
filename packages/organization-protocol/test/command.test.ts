@@ -257,3 +257,67 @@ test("skip authorization has a separate signature domain and binds the original 
   expect(await Command.verifySkip(proof, confused, publicKey)).toBe(false)
   expect(await Command.verify(permit, signature, publicKey)).toBe(false)
 })
+
+test("current execution is independent from acceptance and bound to the cancelled task", () => {
+  const accepted: Command.ControlAccepted = {
+    schemaVersion: 1,
+    permit: { ...permit, operation: "cancel" },
+    acceptedAt: 2,
+    intakeSeq: 1,
+    effect: { kind: "control", operation: "cancel", runID: "root", controlVersion: 1, runStatusAtReception: "running" },
+  }
+  const result: Command.Result = {
+    attempt: {
+      schemaVersion: 1,
+      permit: accepted.permit,
+      receivedAt: 2,
+      status: "accepted",
+      acceptedAttemptID: permit.attemptID,
+    },
+    accepted,
+  }
+  const execution: Command.ExecutionObservation = {
+    state: "observed",
+    runID: "root",
+    controlVersion: 2,
+    activity: {
+      observedAt: 4,
+      run: { id: "root", status: "running", recording: "partial", active: true },
+      runsObserved: 1,
+      activeExecutions: 1,
+      processes: { active: 0, exited: 1, unknown: 1 },
+      scope: "recorded_subtree",
+      truncated: false,
+    },
+  }
+  const authorization = { permit: accepted.permit, signature: "a".repeat(128) }
+  expect(Command.QueryResult.parse({ authorization, result, execution })).toEqual({ authorization, result, execution })
+  expect(Command.Result.safeParse({ ...result, execution }).success).toBeFalse()
+  for (const changed of [
+    { ...execution, runID: "unrelated" },
+    { ...execution, controlVersion: 0 },
+    { ...execution, activity: { ...execution.activity, run: { ...execution.activity.run, id: "unrelated" } } },
+    { ...execution, activity: { ...execution.activity, observedAt: 1 } },
+    { ...execution, activity: { ...execution.activity, processes: { active: -1, exited: 0, unknown: 0 } } },
+  ])
+    expect(Command.QueryResult.safeParse({ authorization, result, execution: changed }).success).toBeFalse()
+  expect(Command.QueryResult.safeParse({ authorization, execution }).success).toBeFalse()
+  expect(
+    Command.QueryResult.parse({
+      authorization,
+      result,
+      execution: { state: "unavailable", runID: "root", reason: "runtime_offline" },
+    }),
+  ).toMatchObject({ result })
+  const view = {
+    requestID: permit.requestID,
+    attemptID: permit.attemptID,
+    state: "accepted" as const,
+    authorizedAt: 1,
+    accepted,
+    result,
+    execution,
+  }
+  expect(Command.View.parse(view)).toEqual(view)
+  expect(Command.View.safeParse({ ...view, execution: { ...execution, runID: "unrelated" } }).success).toBeFalse()
+})

@@ -13,6 +13,7 @@ import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecyc
 import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
 import { SessionTransfer } from "@ericsanchezok/synergy-harness/session/transfer"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
+import { RolloutQuery } from "@ericsanchezok/synergy-harness/rollout"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { OrganizationRuntimeError } from "./error"
@@ -234,6 +235,36 @@ export function createCommandIntake(options: {
     const next = Command.ControlVersion.parse((await controlVersion(permit)) + 1)
     await Storage.write(Keys.control(permit.orgID, permit.sessionID), { schemaVersion: 1, controlVersion: next })
     return next
+  }
+  async function execution(accepted: Command.Accepted): Promise<Command.ExecutionObservation | undefined> {
+    if (accepted.effect.kind !== "control" || accepted.effect.operation !== "cancel") return
+    const { runID } = accepted.effect
+    const { permit } = accepted
+    function unavailable(reason: Extract<Command.ExecutionObservation, { state: "unavailable" }>["reason"]) {
+      return { state: "unavailable" as const, runID, reason }
+    }
+    async function checkpoint() {
+      return Storage.snapshot(async () => {
+        assertActive()
+        if (await binding(permit)) return unavailable("binding_changed")
+        if (await SessionTransfer.isFrozen(permit.sessionID)) return unavailable("transfer_in_progress")
+        return controlVersion(permit)
+      })
+    }
+    try {
+      const before = await checkpoint()
+      if (typeof before !== "number") return before
+      const activity = await RolloutQuery.activity(permit.sessionID, runID, signal)
+      const after = await checkpoint()
+      if (typeof after !== "number") return after
+      if (before !== after || after < accepted.effect.controlVersion) return unavailable("state_changed")
+      if (!activity) return unavailable("run_unavailable")
+      if (activity.observedAt < accepted.acceptedAt) return unavailable("state_changed")
+      return Command.ExecutionObservation.parse({ state: "observed", runID, controlVersion: after, activity })
+    } catch {
+      assertActive()
+      return unavailable("query_failed")
+    }
   }
   async function inspect(permit: Command.Permit, payloadMatches: boolean, control?: Command.Control) {
     assertActive()
@@ -603,7 +634,7 @@ export function createCommandIntake(options: {
       assertAuthority(permit)
       if (permit.connectionEpoch > connectionEpoch || !(await Command.verify(permit, signature, authority.publicKey)))
         throw failure("PERMISSION_DENIED", "Command query authorization is invalid")
-      return Storage.snapshot(async () => {
+      const receipt = await Storage.snapshot(async () => {
         assertActive()
         const current = await records(permit)
         if (!current.matches) throw failure("REVISION_CONFLICT", "Logical command payload changed")
@@ -618,6 +649,10 @@ export function createCommandIntake(options: {
           authorization,
           result: original ? result(original, original.attempt!) : undefined,
         })
+      })
+      return Command.QueryResult.parse({
+        ...receipt,
+        ...(receipt.result?.accepted ? { execution: await execution(receipt.result.accepted) } : {}),
       })
     },
     async accepted(input: z.infer<typeof Lookup>) {

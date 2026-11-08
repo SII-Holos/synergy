@@ -533,8 +533,8 @@ export function createCommandAdmissions(options: {
           request.first.actor.subjectID !== account.accountID
         )
           fail("NOT_FOUND", "Command request not found")
-        await authorize(credentials, "session.read", { sessionID: request.first.sessionID })
-        return { attempt: await attempt(request.lastAttemptID), accepted: request.accepted }
+        const { session } = await authorize(credentials, "session.read", { sessionID: request.first.sessionID })
+        return { attempt: await attempt(request.lastAttemptID), accepted: request.accepted, session }
       })
     },
   }
