@@ -12,6 +12,8 @@ The organization Runtime adapter selects a managed directory using a digest of o
 
 The adapter signs the strict registration proof using its own key and consumes the ticket through the generated organization SDK. A dedicated verified-TLS connection pool excludes ambient proxy selection, browser credentials and redirects. Explicit CA configuration retains certificate validation. Tickets remain in memory. Only a matching public registration receipt is cached; changed deployment or Runtime identities require explicit recovery. Retrying a lost response relies on the service's immutable receipt, and the cached state never grants current execution permission.
 
+The machine-key directory participates in the existing sensitive-path classifier and shared sandbox credential protections. A private file mode protects it from other OS users but cannot by itself isolate a tool running as the same user. Verification includes an actual macOS sandbox read denial and an ordinary-file positive control; the common policy supplies the corresponding deny paths to the other sandbox backends.
+
 ## Alternatives considered
 
 **Use the service URL as the directory identity.** Address changes would fork one account's history and allow aliases to create accidental duplicate identities.

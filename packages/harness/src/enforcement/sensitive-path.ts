@@ -70,7 +70,9 @@ function isSynergyPluginAuth(candidate: string, synergyRoot: string | undefined)
 
 function isSynergyAuthRoot(candidate: string, synergyRoot: string | undefined): boolean {
   if (!synergyRoot) return false
-  return Filesystem.contains(path.join(path.resolve(synergyRoot), "data", "auth"), path.resolve(candidate))
+  return [path.join(synergyRoot, "auth"), path.join(synergyRoot, "data", "auth")].some((root) =>
+    Filesystem.contains(path.resolve(root), path.resolve(candidate)),
+  )
 }
 
 function isCredentialRoot(normalized: string): boolean {

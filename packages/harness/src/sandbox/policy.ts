@@ -253,6 +253,7 @@ export function controlledTempRoot(workspace: string, sessionKey?: string): stri
 // ------------------------------------------------------------------
 export const CREDENTIAL_PATHS = (homedir: string): string[] => [
   // ── Synergy internal auth secrets ───────────────────────────────
+  joinPathLike(homedir, ".synergy", "auth"),
   joinPathLike(homedir, ".synergy", "data", "auth"),
   // Plugin OAuth/API tokens live under data/plugin/<id>/auth.json
   joinPathLike(homedir, ".synergy", "data", "plugin"),
