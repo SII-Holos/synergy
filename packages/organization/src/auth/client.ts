@@ -139,6 +139,31 @@ export function createClientAuthentication(options: ClientAuthenticationSettings
         return mint(grant, account, client)
       })
     },
+    async revoke(input: Protocol.Revoke, origin?: string) {
+      if (origin !== undefined) fail("PERMISSION_DENIED", "Desktop revocation does not accept browser origins")
+      await Storage.transaction(async () => {
+        await authority(input)
+        const refresh = await Record.read(Record.ClientRefresh, Keys.clientRefresh(digest(input.refreshToken)))
+        if (!refresh) return
+        const grant = await Record.read(Record.ClientGrant, Keys.clientGrant(refresh.grantID))
+        if (
+          !grant ||
+          grant.clientID !== input.clientID ||
+          grant.issuer !== input.issuer ||
+          grant.orgID !== input.orgID ||
+          grant.deploymentIncarnation !== input.deploymentIncarnation
+        )
+          return
+        // Provenance: RFC 7009 §2, https://www.rfc-editor.org/rfc/rfc7009.html#section-2
+        // Consumed tokens can revoke their originating login without replaying an uncertain rotation.
+        const revokedAt = Date.now()
+        if (grant.revokedAt === undefined) await Storage.write(Keys.clientGrant(grant.grantID), { ...grant, revokedAt })
+        const login = await Record.read(Record.Login, Keys.login(grant.loginHash))
+        if (login && login.revokedAt === undefined)
+          await Storage.write(Keys.login(login.tokenHash), { ...login, revokedAt })
+      })
+      return { ok: true as const }
+    },
     async refresh(input: Protocol.Refresh, origin?: string) {
       const result = await Storage.transaction(async () => {
         await authority(input)

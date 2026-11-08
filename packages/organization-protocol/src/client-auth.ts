@@ -75,6 +75,8 @@ export namespace OrganizationClientAuth {
     ref: "OrgTokenRefreshInput",
   })
   export type Refresh = z.infer<typeof Refresh>
+  export const Revoke = Refresh.clone().meta({ ref: "OrgClientRevocationInput" })
+  export type Revoke = z.infer<typeof Revoke>
   export const Tokens = Authority.extend({
     clientID: Identity.ID,
     account: Identity.Account,

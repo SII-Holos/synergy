@@ -27,9 +27,12 @@ import type {
   OrgAuthRefreshResponses,
   OrgAuthResetErrors,
   OrgAuthResetResponses,
+  OrgAuthRevokeErrors,
+  OrgAuthRevokeResponses,
   OrgAuthSessionErrors,
   OrgAuthSessionResponses,
   OrgBootstrapInput,
+  OrgClientRevocationInput,
   OrgCodeExchangeInput,
   OrgEmptyInput,
   OrgHealthGetErrors,
@@ -299,6 +302,28 @@ export class OrgAuth extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ key: "orgCodeExchangeInput", map: "body" }] }])
     return (options?.client ?? this.client).post<OrgAuthExchangeResponses, OrgAuthExchangeErrors, ThrowOnError>({
       url: "/org/v1/auth/exchange",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Revoke the login that issued a Desktop refresh token
+   */
+  public revoke<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgClientRevocationInput: OrgClientRevocationInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgClientRevocationInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgAuthRevokeResponses, OrgAuthRevokeErrors, ThrowOnError>({
+      url: "/org/v1/auth/revoke",
       ...options,
       ...params,
       headers: {

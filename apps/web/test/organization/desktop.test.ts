@@ -1,0 +1,107 @@
+import { expect, test } from "bun:test"
+import type { OrganizationDesktop as Desktop } from "@ericsanchezok/synergy-organization-protocol"
+import { createDesktopOrganizationClient, desktopOrganizationFetch } from "../../src/organization/desktop"
+
+const connection: Desktop.Connection = {
+  id: "a".repeat(64),
+  issuer: "https://organization.example",
+  orgID: "org",
+  deploymentIncarnation: "deployment",
+  clientID: "desktop",
+  state: "ready",
+  account: {
+    accountID: "account",
+    orgID: "org",
+    loginName: "owner",
+    displayName: "Owner",
+    role: "owner",
+    state: "active",
+    revision: 0,
+    authRevision: 0,
+    createdAt: 1,
+  },
+}
+function fixture() {
+  const requests: Desktop.Request[] = []
+  const cancelled: string[] = []
+  const bridge: Desktop.Bridge = {
+    list: async () => ({ ok: true, value: [connection] }),
+    connect: async () => ({ ok: true, value: connection }),
+    signOut: async () => ({ ok: true, value: { ...connection, state: "signed_out" } }),
+    cancel: async (input) => {
+      cancelled.push(input.requestID)
+      return { ok: true, value: undefined }
+    },
+    request: async (request) => {
+      requests.push(request)
+      return { ok: true, value: { status: 200, body: JSON.stringify({ items: [] }) } }
+    },
+  }
+  return { bridge, requests, cancelled }
+}
+
+test("the organization SDK uses an identity-bound native fetch without exposing bearer credentials", async () => {
+  const f = fixture()
+  const client = createDesktopOrganizationClient(f.bridge, connection)
+  expect((await client.orgProjects.list({ limit: 10 }, { throwOnError: true })).data).toEqual({ items: [] })
+  expect(f.requests[0]).toMatchObject({ connectionID: connection.id, method: "GET", path: "/org/v1/projects?limit=10" })
+  await client.orgProjects.create({ orgProjectCreate: { name: "Team project" } })
+  expect(f.requests[1]).toMatchObject({ connectionID: connection.id, method: "POST", body: '{"name":"Team project"}' })
+  expect(f.requests[0]!.requestID).not.toBe(f.requests[1]!.requestID)
+  expect(JSON.stringify(f.requests)).not.toContain("authorization")
+})
+
+test("the native fetch rejects cross-organization targets, caller credentials and non-JSON request bodies", async () => {
+  const f = fixture()
+  const native = desktopOrganizationFetch(f.bridge, connection)
+  for (const [url, init] of [
+    ["https://other.example/org/v1/projects", undefined],
+    ["https://organization.example/org/v1/projects#private", undefined],
+    ["https://organization.example/org/v1/projects", { headers: { authorization: "Bearer injected" } }],
+    ["https://organization.example/org/v1/projects", { headers: { cookie: "injected" } }],
+    ["https://organization.example/org/v1/projects", { method: "POST", body: "x".repeat(65_537) }],
+  ] as const)
+    await expect(native(url, init), JSON.stringify({ url, init: init && Object.keys(init) })).rejects.toMatchObject({
+      code: "invalid_request",
+    })
+  expect(f.requests).toHaveLength(0)
+})
+
+test("native request cancellation reaches main and cannot return a late response to a new view", async () => {
+  const f = fixture()
+  const started = Promise.withResolvers<void>()
+  const result = Promise.withResolvers<Desktop.Result<Desktop.Response>>()
+  f.bridge.request = async (request) => {
+    f.requests.push(request)
+    started.resolve()
+    return result.promise
+  }
+  const native = desktopOrganizationFetch(f.bridge, connection)
+  const controller = new AbortController()
+  const pending = native(`${connection.issuer}/org/v1/projects`, { signal: controller.signal })
+  const failed = pending.catch((error: unknown) => error)
+  await started.promise
+  controller.abort()
+  result.resolve({ ok: true, value: { status: 200, body: "{}" } })
+  expect(await failed).toMatchObject({ name: "AbortError" })
+  expect(f.cancelled).toEqual([f.requests[0]!.requestID])
+})
+
+test("native API errors preserve their status and payload while bridge errors remain structured", async () => {
+  const f = fixture()
+  const body = {
+    code: "PERMISSION_DENIED",
+    message: "Permission denied",
+    outcome: "not_dispatched",
+    retryable: false,
+  } as const
+  f.bridge.request = async () => ({ ok: true, value: { status: 403, body: JSON.stringify(body) } })
+  const client = createDesktopOrganizationClient(f.bridge, connection)
+  const response = await client.orgProjects.list()
+  expect(response.response.status).toBe(403)
+  expect(response.error).toEqual(body)
+  f.bridge.request = async () => ({ ok: false, error: { code: "revocation_pending" } })
+  await expect(
+    desktopOrganizationFetch(f.bridge, connection)(`${connection.issuer}/org/v1/projects`),
+  ).rejects.toMatchObject({ code: "revocation_pending" })
+})

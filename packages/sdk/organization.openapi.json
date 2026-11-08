@@ -1078,6 +1078,46 @@
         }
       }
     },
+    "/org/v1/auth/revoke": {
+      "post": {
+        "operationId": "orgAuth.revoke",
+        "summary": "Revoke the login that issued a Desktop refresh token",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgClientRevocationInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSuccess" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/org/v1/auth/refresh": {
       "post": {
         "operationId": "orgAuth.refresh",
@@ -1712,6 +1752,23 @@
           "verifier": { "type": "string", "minLength": 43, "maxLength": 128, "pattern": "^[A-Za-z0-9._~-]+$" }
         },
         "required": ["issuer", "orgID", "deploymentIncarnation", "clientID", "redirectUri", "code", "verifier"],
+        "additionalProperties": false
+      },
+      "OrgClientRevocationInput": {
+        "type": "object",
+        "properties": {
+          "issuer": { "type": "string", "maxLength": 2048 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "clientID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "refreshToken": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "required": ["issuer", "orgID", "deploymentIncarnation", "clientID", "refreshToken"],
         "additionalProperties": false
       },
       "OrgTokenRefreshInput": {

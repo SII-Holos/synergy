@@ -1,4 +1,5 @@
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import type { OrganizationDesktop } from "@ericsanchezok/synergy-organization-protocol"
 import type {
   BrowserNativeAttachRequest,
   BrowserNativePageRequest,
@@ -214,6 +215,7 @@ export type Platform = {
 
   /** Desktop managed server bridge, provided by the desktop shell. */
   desktopServer?: DesktopServerBridge
+  organization?: OrganizationDesktop.Bridge
 
   /** Desktop window controls bridge, provided by the desktop shell. */
   desktopWindow?: DesktopWindowBridge

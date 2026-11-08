@@ -12,7 +12,10 @@ import pkg from "../package.json"
 
 declare global {
   interface Window {
-    synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "clipboard" | "openDirectoryPickerDialog"> & {
+    synergyDesktop?: Pick<
+      Platform,
+      "platform" | "browserNative" | "clipboard" | "openDirectoryPickerDialog" | "organization"
+    > & {
       update?: Platform["desktopUpdate"]
       server?: Platform["desktopServer"]
       shell?: {
@@ -58,6 +61,7 @@ const platform: Platform = {
   browserNative: window.synergyDesktop?.browserNative,
   desktopUpdate: window.synergyDesktop?.update,
   desktopServer: window.synergyDesktop?.server,
+  organization: window.synergyDesktop?.organization,
   desktopWindow: window.synergyDesktop?.window,
   desktopTheme: window.synergyDesktop?.theme,
   desktopBadge: window.synergyDesktop?.badge,

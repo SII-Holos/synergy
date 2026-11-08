@@ -168,6 +168,70 @@ test("Desktop refresh rotates once and replay durably revokes the whole grant wi
   expect((await owner.request("GET", "/auth/session")).status).toBe(200)
 })
 
+test("Desktop can revoke a lost refresh rotation and its originating login without replaying the refresh", async () => {
+  const configuration = { clients: [web, desktop] }
+  await using f = await fixture(undefined, { clientAuthentication: configuration })
+  const owner = await f.initialize()
+  const native = await tokens(f, owner)
+  const browser = await tokens(f, owner, web)
+  const independent = f.client()
+  await independent.login("owner")
+  const other = await tokens(f, independent, web)
+  const input = { ...native.authority, clientID: desktop.clientID, refreshToken: native.tokens.refreshToken! }
+  const rotation = await request(f, "/auth/refresh", { body: input })
+  expect(rotation.status).toBe(200)
+  const rotated = Protocol.Tokens.parse(await rotation.json())
+  configuration.clients = [web]
+  await f.restart()
+  const revoked = await request(f, "/auth/revoke", { body: input })
+  expect(revoked.status).toBe(200)
+  expect(await revoked.json()).toEqual({ ok: true })
+  await f.restart()
+  expect((await request(f, "/auth/revoke", { body: input })).status).toBe(200)
+  expect((await owner.request("GET", "/auth/session")).status).toBe(401)
+  expect(
+    (await request(f, "/projects", { token: browser.tokens.accessToken, origin: "https://work.example" })).status,
+  ).toBe(401)
+  configuration.clients = [web, desktop]
+  await f.restart()
+  expect((await request(f, "/projects", { token: rotated.accessToken })).status).toBe(401)
+  expect((await request(f, "/auth/refresh", { body: { ...input, refreshToken: rotated.refreshToken } })).status).toBe(
+    401,
+  )
+  expect((await independent.request("GET", "/auth/session")).status).toBe(200)
+  expect(
+    (await request(f, "/projects", { token: other.tokens.accessToken, origin: "https://work.example" })).status,
+  ).toBe(200)
+})
+
+test("Desktop revocation binds authority and client, rejects browser origins and conceals unknown tokens", async () => {
+  await using f = await fixture(undefined, { clientAuthentication: clients })
+  const owner = await f.initialize()
+  const grant = await tokens(f, owner)
+  const input = { ...grant.authority, clientID: desktop.clientID, refreshToken: grant.tokens.refreshToken! }
+  expect((await request(f, "/auth/revoke", { body: input, origin: "https://work.example" })).status).toBe(403)
+  for (const changed of [
+    { ...input, orgID: "another_organization" },
+    { ...input, deploymentIncarnation: "another_deployment" },
+    { ...input, issuer: "https://another.example" },
+  ])
+    expect((await request(f, "/auth/revoke", { body: changed })).status).toBe(401)
+  for (const changed of [
+    { ...input, clientID: web.clientID },
+    { ...input, refreshToken: randomBytes(32).toString("hex") },
+    { ...input, refreshToken: grant.tokens.accessToken },
+  ]) {
+    const response = await request(f, "/auth/revoke", { body: changed })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true })
+  }
+  const malformed = await request(f, "/auth/revoke", { body: { ...input, unexpected: "synthetic-hidden-secret" } })
+  expect(malformed.status).toBe(400)
+  expect(await malformed.text()).not.toContain("synthetic-hidden-secret")
+  expect((await owner.request("GET", "/auth/session")).status).toBe(200)
+  expect((await request(f, "/projects", { token: grant.tokens.accessToken })).status).toBe(200)
+})
+
 test("exact clients and origins constrain discovery, authorization, preflight and bearer credentials", async () => {
   await using f = await fixture(undefined, { clientAuthentication: clients })
   const owner = await f.initialize()
@@ -313,7 +377,8 @@ test("authorization codes, access tokens and Desktop refresh tokens honor their 
   await Bun.sleep(Math.max(1, access.tokens.expiresAt - Date.now() + 1))
   expect((await request(accessFixture, "/projects", { token: access.tokens.accessToken })).status).toBe(401)
   await using refreshFixture = await fixture(undefined, { clientAuthentication: { ...clients, refreshMs: 10 } })
-  const refresh = await tokens(refreshFixture, await refreshFixture.initialize())
+  const refreshOwner = await refreshFixture.initialize()
+  const refresh = await tokens(refreshFixture, refreshOwner)
   await Bun.sleep(Math.max(1, refresh.tokens.refreshExpiresAt! - Date.now() + 1))
   expect(
     (
@@ -322,6 +387,15 @@ test("authorization codes, access tokens and Desktop refresh tokens honor their 
       })
     ).status,
   ).toBe(401)
+  expect((await refreshOwner.request("GET", "/auth/session")).status).toBe(200)
+  expect(
+    (
+      await request(refreshFixture, "/auth/revoke", {
+        body: { ...refresh.authority, clientID: desktop.clientID, refreshToken: refresh.tokens.refreshToken },
+      })
+    ).status,
+  ).toBe(200)
+  expect((await refreshOwner.request("GET", "/auth/session")).status).toBe(401)
 })
 
 test("persisted client authentication records contain no bearer secrets or PKCE verifier", async () => {
@@ -419,9 +493,14 @@ test("the generated client performs discovery, authorization, exchange and refre
     expect(logout.response.status).toBe(200)
     expect(logout.data).toEqual({ ok: true })
     expect((await client.orgAuth.session({ headers })).response.status).toBe(401)
+    const revoked = await client.orgAuth.revoke({
+      orgClientRevocationInput: { ...authority, clientID: desktop.clientID, refreshToken: grant.refreshToken! },
+    })
+    expect(revoked.response.status).toBe(200)
+    expect(revoked.data).toEqual({ ok: true })
     const spec = await organizationOpenApi()
     expect(spec.paths?.["/org/v1/auth/discovery"]?.get?.operationId).toBe("orgAuth.discovery")
-    for (const action of ["authorize", "exchange", "refresh"]) {
+    for (const action of ["authorize", "exchange", "refresh", "revoke"]) {
       expect(spec.paths?.[`/org/v1/auth/${action}`]?.post?.operationId).toBe(`orgAuth.${action}`)
       expect(spec.paths?.[`/org/v1/auth/${action}`]?.post?.requestBody).toMatchObject({ required: true })
     }

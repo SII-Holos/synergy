@@ -25,6 +25,7 @@ await import("../src/preload.js")
 
 type SynergyDesktop = {
   platform: string
+  organization: Record<"list" | "connect" | "request" | "cancel" | "signOut", (input?: unknown) => Promise<unknown>>
   openDirectoryPickerDialog: (opts?: { title?: string; multiple?: boolean }) => Promise<unknown>
   server: {
     status(): Promise<unknown>
@@ -84,6 +85,15 @@ function expectInvoke<T>(channel: string, args: unknown[], result: T) {
 }
 
 describe("desktop preload bridge", () => {
+  test("exposes organization connection actions without a credential getter", async () => {
+    expect(Object.keys(desktop.organization).sort()).toEqual(["cancel", "connect", "list", "request", "signOut"])
+    for (const action of ["list", "connect", "request", "cancel", "signOut"] as const) {
+      const input = action === "list" ? [] : [{ requestID: "organization-request" }]
+      const result = { ok: false, error: { code: "signed_out" } }
+      expectInvoke(`desktop.organization.${action}`, input, result)
+      expect(await desktop.organization[action](...input)).toEqual(result)
+    }
+  })
   test("exposes the desktop platform with server and shell surfaces", async () => {
     expect(desktop.platform).toBe("desktop")
 

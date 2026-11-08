@@ -32,6 +32,17 @@ export function clientAuthenticationRoutes(authentication: () => ClientAuthentic
       async (c) => c.json(await authentication().exchange(c.req.valid("json"), c.req.header("origin"))),
     )
     .post(
+      "/auth/revoke",
+      operation(
+        "orgAuth.revoke",
+        "Revoke the login that issued a Desktop refresh token",
+        OrganizationIdentity.Success,
+        true,
+      ),
+      validator("json", Protocol.Revoke, validation),
+      async (c) => c.json(await authentication().revoke(c.req.valid("json"), c.req.header("origin"))),
+    )
+    .post(
       "/auth/refresh",
       operation("orgAuth.refresh", "Rotate a Desktop authorization refresh token", Protocol.Tokens, true),
       validator("json", Protocol.Refresh, validation),

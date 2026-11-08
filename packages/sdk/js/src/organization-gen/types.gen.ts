@@ -277,6 +277,14 @@ export type OrgCodeExchangeInput = {
   verifier: string
 }
 
+export type OrgClientRevocationInput = {
+  issuer: string
+  orgID: string
+  deploymentIncarnation: string
+  clientID: string
+  refreshToken: string
+}
+
 export type OrgTokenRefreshInput = {
   issuer: string
   orgID: string
@@ -1465,6 +1473,51 @@ export type OrgAuthExchangeResponses = {
 }
 
 export type OrgAuthExchangeResponse = OrgAuthExchangeResponses[keyof OrgAuthExchangeResponses]
+
+export type OrgAuthRevokeData = {
+  body: OrgClientRevocationInput
+  path?: never
+  query?: never
+  url: "/org/v1/auth/revoke"
+}
+
+export type OrgAuthRevokeErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthRevokeError = OrgAuthRevokeErrors[keyof OrgAuthRevokeErrors]
+
+export type OrgAuthRevokeResponses = {
+  /**
+   * Success
+   */
+  200: OrgSuccess
+}
+
+export type OrgAuthRevokeResponse = OrgAuthRevokeResponses[keyof OrgAuthRevokeResponses]
 
 export type OrgAuthRefreshData = {
   body: OrgTokenRefreshInput

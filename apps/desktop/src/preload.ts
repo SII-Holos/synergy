@@ -21,6 +21,15 @@ import type { DesktopSkinUpdateV2, DesktopThemeEvent, DesktopThemeSnapshot, Desk
 import type { DesktopServerStatus } from "./server-manager.js"
 import type { DesktopBadgeState } from "./ipc-contract.js"
 import type { DesktopPowerEvent, DesktopPowerSnapshot, DesktopPowerUpdate } from "./power-save.js"
+import type { OrganizationDesktop } from "@ericsanchezok/synergy-organization-protocol"
+
+const organization: OrganizationDesktop.Bridge = {
+  list: () => ipcRenderer.invoke("desktop.organization.list"),
+  connect: (input) => ipcRenderer.invoke("desktop.organization.connect", input),
+  request: (input) => ipcRenderer.invoke("desktop.organization.request", input),
+  cancel: (input) => ipcRenderer.invoke("desktop.organization.cancel", input),
+  signOut: (input) => ipcRenderer.invoke("desktop.organization.signOut", input),
+}
 
 const browserNative = {
   fileAction(input: import("@ericsanchezok/synergy-browser-core").BrowserFileAction) {
@@ -219,6 +228,7 @@ const desktopPower = {
 }
 
 contextBridge.exposeInMainWorld("synergyDesktop", {
+  organization,
   platform: "desktop",
   openDirectoryPickerDialog,
   server,

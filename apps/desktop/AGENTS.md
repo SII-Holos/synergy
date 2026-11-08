@@ -1,6 +1,6 @@
 # Desktop Package Rules
 
-Root `AGENTS.md` and Web/runtime rules also apply to code reached through this Electron shell.
+Root `AGENTS.md` and Web/runtime rules also apply.
 
 Load `change-browser-runtime` for native Browser pages, profiles or popup work and `develop-synergy` for manual Desktop verification. Read [Desktop release](../../docs/operations/desktop-release.md) before packaging, signing, updating, or changing release assets.
 
@@ -18,7 +18,9 @@ Load `change-browser-runtime` for native Browser pages, profiles or popup work a
 
 ## Verify
 
-Run `bun run typecheck` and the focused test under `test/`, then `bun run desktop:test`. For Browser changes, run `test:runtime` and the relevant core/Web tests. Exercise the affected external or managed mode through an isolated home, and finish with root `bun run quality:quick`.
+Organization credentials stay in main-owned `src/organization`. Load `change-server-api` for authorization invariants; run its unit suites and `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/organization-native.test.ts` in isolation.
+
+Run `bun run typecheck`, focused `test/` suites, `bun run desktop:test`, and root `bun run quality:quick`. Verify affected modes in an isolated home; Browser changes additionally require `test:runtime` and core/Web tests.
 
 For background-only Browser checks use `SYNERGY_DESKTOP_RUNTIME_TEST=1 SYNERGY_DESKTOP_BACKGROUND_TEST=1 bun test test/browser-runtime-smoke.test.ts`; visible-window and focus-dependent fixtures are explicitly skipped and remain unverified.
 

@@ -121,6 +121,10 @@ import {
   desktopWindowState,
 } from "./window-chrome.js"
 import { applyDesktopUnreadUpdate, desktopUnreadAssetPaths, desktopUnreadPresentation } from "./unread-indicator.js"
+import { DesktopOrganizationAccounts } from "./organization/accounts.js"
+import { DesktopOrganizationAuthorization } from "./organization/authorization.js"
+import { DesktopOrganizationIPC, registerOrganizationIPC } from "./organization/ipc.js"
+import { organizationEncryption } from "./organization/encryption.js"
 
 installDesktopStdioHandlers()
 configureDesktopChromium(app)
@@ -160,6 +164,8 @@ let desktopTray: Tray | null = null
 let currentAppURL: string | null = null
 let recoveryURL: string | null = null
 let serverDocumentGeneration = 0
+let organizationAuthorization: DesktopOrganizationAuthorization | undefined
+let organizationIPC: DesktopOrganizationIPC<Parameters<typeof trustedServerFrame>[0]> | undefined
 let cancellingMaintenance = false
 const serverActions = new DesktopServerActions()
 let shouldStart = true
@@ -214,7 +220,7 @@ async function loadStartupIconDataURL(iconPath: string): Promise<string | undefi
   }
 }
 
-runtimeLog("mainLoaded", { argv: process.argv })
+runtimeLog("mainLoaded", { argumentCount: process.argv.length })
 
 function loadDesktopUnreadImage(assetPath: string | undefined, asset: string) {
   if (!assetPath) return null
@@ -339,8 +345,12 @@ async function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions)
   mainWindow.webContents.on("did-start-navigation", (event) => {
-    if (event.isMainFrame && !event.isSameDocument) serverDocumentGeneration++
+    if (event.isMainFrame && !event.isSameDocument) {
+      serverDocumentGeneration++
+      organizationIPC?.invalidate()
+    }
   })
+  mainWindow.webContents.on("render-process-gone", () => organizationIPC?.invalidate())
   applyDesktopZoom()
   mainWindow.webContents.on("did-finish-load", () => applyDesktopZoom())
   applyDesktopUnreadState()
@@ -383,6 +393,7 @@ async function createWindow() {
   }
 
   mainWindow.on("closed", () => {
+    organizationIPC?.invalidate()
     windowStateEvents?.dispose()
     if (emitDesktopWindowState === windowStateEvents?.emit) emitDesktopWindowState = null
     rendererDelivery.dispose()
@@ -1223,7 +1234,18 @@ function findDeepLinks(argv: string[]): string[] {
 function handleDeepLinks(urls: string[]) {
   if (!urls.length) return
   focusMainWindow()
-  for (const url of urls) mainRendererDelivery?.enqueue("desktop.deepLink", url)
+  for (const url of urls) {
+    try {
+      const address = new URL(url)
+      if (address.protocol === "synergy:" && address.hostname === "organization-auth") {
+        void organizationAuthorization?.callback(url)
+        continue
+      }
+    } catch {
+      continue
+    }
+    mainRendererDelivery?.enqueue("desktop.deepLink", url)
+  }
 }
 
 app.on("second-instance", (_event, argv) => {
@@ -1253,10 +1275,12 @@ updateQuitApp.on("before-quit-for-update", () => {
 })
 
 app.on("will-quit", () => {
+  organizationIPC?.dispose()
   releaseDesktopPower()
 })
 
 app.on("before-quit", (event) => {
+  organizationIPC?.dispose()
   setDesktopUnreadCount(0)
   releaseDesktopPower()
   if (isUpdateQuit) return
@@ -1265,6 +1289,7 @@ app.on("before-quit", (event) => {
   isQuitting = true
   void (async () => {
     const results = await Promise.allSettled([
+      organizationIPC?.settle() ?? Promise.resolve(),
       browserBroker?.close() ?? Promise.resolve(),
       stopLocalComputerBroker(),
       serverManager?.stop() ?? Promise.resolve(),
@@ -1315,6 +1340,20 @@ async function start() {
   })
   installDesktopTray(channel)
   registerProtocolHandler()
+  const organizationAccounts = new DesktopOrganizationAccounts({
+    root: path.join(app.getPath("userData"), "organization-accounts"),
+    encryption: organizationEncryption(safeStorage),
+  })
+  organizationAuthorization = new DesktopOrganizationAuthorization({
+    accounts: organizationAccounts,
+    openExternal: (url) => shell.openExternal(url),
+  })
+  organizationIPC = new DesktopOrganizationIPC({
+    accounts: organizationAccounts,
+    authorization: organizationAuthorization,
+    trusted: (event) => trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null),
+  })
+  registerOrganizationIPC(ipcMain, organizationIPC)
   registerIpcHandlers()
   await ensureMainWindow()
 }

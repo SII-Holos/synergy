@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { captureOutput } from "./fixture/process-output"
 
 const runtimeTest = process.env.SYNERGY_DESKTOP_RUNTIME_TEST === "1" ? test : test.skip
 const temporaryDirectories: string[] = []
@@ -101,24 +102,6 @@ describe("Electron Browser Host broker contract", () => {
       45_000,
     )
 })
-
-function captureOutput(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  let output = ""
-  const done = (async () => {
-    try {
-      while (true) {
-        const chunk = await reader.read()
-        if (chunk.done) break
-        output = (output + decoder.decode(chunk.value, { stream: true })).slice(-100_000)
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  })().catch(() => undefined)
-  return { done, text: () => output, cancel: () => void reader.cancel().catch(() => undefined) }
-}
 
 test("keeps Electron failure output available while a descendant holds the pipe open", async () => {
   let cancelled = false

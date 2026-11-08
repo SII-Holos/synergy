@@ -33,6 +33,8 @@
       "dependencies": {
         "@ericsanchezok/synergy-browser-core": "workspace:*",
         "@ericsanchezok/synergy-computer-protocol": "workspace:*",
+        "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+        "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@trycua/cua-driver": "0.36.0",
         "electron-updater": "6.8.10",
@@ -40,7 +42,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@ericsanchezok/synergy-sdk": "workspace:*",
+        "@ericsanchezok/synergy-organization": "workspace:*",
         "@types/node": "catalog:",
         "electron": "44.9.0",
         "electron-builder": "26.17.0",

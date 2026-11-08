@@ -20,7 +20,7 @@
     "desktop:dist": "bun run desktop:build && bun run desktop:prepare-runtime && electron-builder",
     "desktop:test": "bun run typecheck && bun test test/*.test.ts test/computer/*.test.ts",
     "dev": "SYNERGY_DESKTOP_CHANNEL=dev bun run desktop:build && electron dist/main.js",
-    "test:runtime": "bun run build && SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/browser-runtime-smoke.test.ts test/startup-progress-runtime.test.ts",
+    "test:runtime": "bun run build && SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/browser-runtime-smoke.test.ts test/startup-progress-runtime.test.ts test/organization-native.test.ts",
     "typecheck": "tsc --noEmit",
     "desktop:prepare-computer": "bun run script/prepare-computer.ts",
     "test:coverage": "SYNERGY_BATCH_SHARDS=1 bun ../../packages/testing/script/run.ts --coverage",
@@ -30,6 +30,8 @@
   "dependencies": {
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-computer-protocol": "workspace:*",
+    "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+    "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@trycua/cua-driver": "0.36.0",
     "electron-updater": "6.8.10",
@@ -37,7 +39,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-organization": "workspace:*",
     "@types/node": "catalog:",
     "electron": "44.9.0",
     "electron-builder": "26.17.0",
