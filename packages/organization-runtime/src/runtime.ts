@@ -10,7 +10,7 @@ import { readMemberHome, type MemberIdentity } from "./home"
 import { readMemberRegistration } from "./registration"
 import { MemberHomeError } from "./record"
 import { registerMemberSources } from "./sources"
-import { MemberListener } from "./launch"
+import { MemberDesktop, MemberDesktopEntry, MemberListener } from "./launch"
 import { organizationRuntime } from "./component"
 import { memberEnvironment } from "./environment"
 import { startMemberBridge } from "./bridge"
@@ -32,6 +32,7 @@ export type MemberRuntimeOptions = Pick<
   entry?: RuntimeLaunch["entry"]
   ca?: string | string[]
   listen?: z.infer<typeof MemberListener>
+  desktop?: z.infer<typeof MemberDesktop>
 }
 
 export async function openMemberRuntime(input: MemberRuntimeOptions) {
@@ -39,6 +40,9 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
   const listener = MemberListener.optional().safeParse(input.listen)
   if (!listener.success)
     throw new MemberHomeError("Member Runtime listener requires an explicit port and private credential")
+  const desktop = MemberDesktop.optional().safeParse(input.desktop)
+  if (!desktop.success || (desktop.data && (!listener.data || !MemberDesktopEntry.safeParse(input.entry).success)))
+    throw new MemberHomeError("Member Desktop capabilities require a managed Desktop listener and private credential")
   const member = await readMemberHome(input.home, input.identity)
   const registration = await readMemberRegistration(member.home, member.identity)
   if (!registration || registration.state !== "active")
@@ -46,6 +50,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
   const components = [
     localRuntime({ workers: false, environment: false }),
     ...(listener.data ? [(await import("@ericsanchezok/synergy-server/component")).server()] : []),
+    ...(desktop.data ? [(await import("@ericsanchezok/synergy-browser-runtime/component")).browser()] : []),
     {
       ...organizationRuntime(),
       workers: { agent: new URL("./worker.ts", import.meta.url), policy: new URL("./worker.ts", import.meta.url) },
@@ -87,6 +92,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
       env: {
         ...memberEnvironment(member, input.environment ?? process.env),
         ...(listener.data ? { SYNERGY_SERVER_TOKEN: listener.data.token } : {}),
+        ...(desktop.data ? { SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: desktop.data.browserToken } : {}),
       },
     }),
     components,

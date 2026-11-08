@@ -66,6 +66,7 @@ test("a supervised member command enrolls from private input, serves its own Hom
   const port = listener.port!
   await listener.stop(true)
   const token = crypto.getRandomValues(new Uint8Array(32)).toHex()
+  const browserToken = crypto.getRandomValues(new Uint8Array(32)).toHex()
   const request = {
     version: 1,
     identity: member.identity,
@@ -85,6 +86,7 @@ test("a supervised member command enrolls from private input, serves its own Hom
     SYNERGY_RUNTIME_ROOT: member.root,
     SYNERGY_DESKTOP_PARENT_PID: String(supervisor.pid),
     SYNERGY_DESKTOP_STARTUP_PROGRESS: "1",
+    SYNERGY_RUNTIME_ENTRY: "desktop-managed",
   }
   let runtimeID: string | undefined
   try {
@@ -95,7 +97,15 @@ test("a supervised member command enrolls from private input, serves its own Hom
         if (frame.type === "heartbeat") heartbeat.resolve(frame.connectionEpoch)
         return false
       })
-      const { child, output } = spawn(env, [], JSON.stringify({ ...request, ticket: restart ? undefined : ticket }))
+      const { child, output } = spawn(
+        env,
+        [],
+        JSON.stringify({
+          ...request,
+          ticket: restart ? undefined : ticket,
+          desktop: restart ? { browserToken } : undefined,
+        }),
+      )
       try {
         const client = createSynergyClient({
           baseUrl: `http://127.0.0.1:${port}`,
@@ -116,7 +126,9 @@ test("a supervised member command enrolls from private input, serves its own Hom
         } finally {
           clearTimeout(bridgeDeadline)
         }
-        const current = (await client.global.capabilities({ throwOnError: true })).data.runtimeID
+        const capabilities = (await client.global.capabilities({ throwOnError: true })).data
+        expect(capabilities.features.includes("browser")).toBe(restart)
+        const current = capabilities.runtimeID
         if (restart) {
           if (!runtimeID) throw new Error("The first member process did not provide an identity")
           expect(current).toBe(runtimeID)
@@ -130,6 +142,7 @@ test("a supervised member command enrolls from private input, serves its own Hom
         const printed = (await output).join("\n")
         expect(printed).not.toContain(token)
         expect(printed).not.toContain(ticket.token)
+        expect(printed).not.toContain(browserToken)
         expect(printed).toContain('"state":"ready"')
       } finally {
         if (child.exitCode === null) child.kill("SIGKILL")
@@ -184,6 +197,29 @@ test("a supervisor cannot silently enroll a different deployment into a prepared
     expect(printed).not.toContain(ticket.token)
     expect(service.requests).toEqual([])
     expect(await Bun.file(path.join(member.root, "authority.sqlite")).exists()).toBe(false)
+    const nonDesktop = spawn(
+      {
+        ...process.env,
+        SYNERGY_HOME: member.home,
+        SYNERGY_RUNTIME_ROOT: member.root,
+        SYNERGY_RUNTIME_ENTRY: "cli-server",
+      },
+      [],
+      JSON.stringify({
+        ...input,
+        deploymentIncarnation: ticket.runtime.deploymentIncarnation,
+        desktop: { browserToken: "c".repeat(64) },
+      }),
+    )
+    try {
+      expect(await nonDesktop.child.exited).toBe(1)
+      expect((await nonDesktop.output).join("\n")).toContain("Desktop")
+      expect(service.requests).toEqual([])
+    } finally {
+      if (nonDesktop.child.exitCode === null) nonDesktop.child.kill("SIGKILL")
+      await nonDesktop.child.exited
+      await nonDesktop.output
+    }
   } finally {
     if (child.exitCode === null) child.kill("SIGKILL")
     await child.exited

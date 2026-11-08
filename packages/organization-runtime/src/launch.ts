@@ -7,11 +7,15 @@ export const MemberListener = z.strictObject({
   token: z.string().regex(/^[a-f0-9]{64}$/),
 })
 
+export const MemberDesktop = z.strictObject({ browserToken: z.string().regex(/^[a-f0-9]{64}$/) })
+export const MemberDesktopEntry = z.enum(["desktop-managed", "dev-desktop-managed"])
+
 export const MemberLaunchRequest = z.strictObject({
   version: z.literal(1),
   identity: MemberIdentity,
   deploymentIncarnation: OrganizationIdentity.ID,
   ...MemberListener.shape,
+  desktop: MemberDesktop.optional(),
   ticket: OrganizationRuntimeProtocol.Ticket.optional(),
   ca: z
     .string()

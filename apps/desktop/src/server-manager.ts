@@ -19,7 +19,7 @@ import { ManagedServerOutput } from "./server-output.js"
 import { DesktopServerStartup } from "./server-startup.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
 
-const MemberProfile = MemberLaunchRequest.omit({ version: true, port: true, token: true }).extend({
+const MemberProfile = MemberLaunchRequest.omit({ version: true, port: true, token: true, desktop: true }).extend({
   home: z.string().refine(path.isAbsolute),
 })
 
@@ -83,6 +83,7 @@ export class DesktopServerManager {
   private port: number | null = null
   private url: string | null = null
   private credential: string | null = null
+  private browserCredential: string | null = null
   private lastError: string | null = null
   private logFile: string | null = null
   private startPromise: Promise<string> | null = null
@@ -139,6 +140,11 @@ export class DesktopServerManager {
   connection(): { url: string; headers: Record<string, string> } | undefined {
     if (this.state !== "running" || !this.url) return
     return { url: this.url, headers: this.credential ? { authorization: `Bearer ${this.credential}` } : {} }
+  }
+
+  browserConnection() {
+    const connection = this.connection()
+    return connection && this.browserCredential ? { ...connection, token: this.browserCredential } : undefined
   }
 
   async start(): Promise<string> {
@@ -257,6 +263,7 @@ export class DesktopServerManager {
   private async stopServer(): Promise<void> {
     if (!this.child) {
       this.credential = null
+      this.browserCredential = null
       if (this.state !== "failed") {
         this.state = this.options.mode === "external" ? "external" : "stopped"
       }
@@ -271,6 +278,7 @@ export class DesktopServerManager {
     }
     if (this.child === child) this.child = null
     this.credential = null
+    this.browserCredential = null
     this.state = "stopped"
     this.port = null
     this.url = null
@@ -350,6 +358,7 @@ export class DesktopServerManager {
           ca: this.options.member!.ca,
           port,
           token: randomBytes(32).toString("hex"),
+          desktop: { browserToken: randomBytes(32).toString("hex") },
         })
       : undefined
     this.assertGeneration(generation)
@@ -380,6 +389,7 @@ export class DesktopServerManager {
     })
     this.child = child
     this.credential = request?.token ?? null
+    this.browserCredential = request?.desktop?.browserToken ?? null
     const startup = new DesktopServerStartup({ onStatus: this.options.onStartupStatus })
     const output = new ManagedServerOutput((text) => startup.receive(text))
     const onOutput = (chunk: Buffer) => output.receive("stdout", chunk)
@@ -392,6 +402,7 @@ export class DesktopServerManager {
       if (this.child === child) {
         this.child = null
         this.credential = null
+        this.browserCredential = null
         this.state = "failed"
         this.lastError = `Synergy server ${details}`
       }

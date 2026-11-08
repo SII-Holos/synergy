@@ -1156,6 +1156,7 @@
       "version": "1.1.26",
       "dependencies": {
         "@ericsanchezok/synergy-agent-runtime": "workspace:*",
+        "@ericsanchezok/synergy-browser-runtime": "workspace:*",
         "@ericsanchezok/synergy-cli": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
@@ -1166,6 +1167,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@ericsanchezok/synergy-browser-core": "workspace:*",
         "@ericsanchezok/synergy-organization": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@tsconfig/bun": "catalog:",

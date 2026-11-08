@@ -23,15 +23,20 @@ afterAll(async () => {
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-member-supervisor-"))
   const previous = Object.fromEntries(
-    ["SYNERGY_TEST_HOME", "MEMBER_TEST_PERSONAL_SECRET", "SYNERGY_INSTALLATION_ROOT", "SYNERGY_INSTALLATION_PIN"].map(
-      (key) => [key, process.env[key]],
-    ),
+    [
+      "SYNERGY_TEST_HOME",
+      "MEMBER_TEST_PERSONAL_SECRET",
+      "SYNERGY_INSTALLATION_ROOT",
+      "SYNERGY_INSTALLATION_PIN",
+      "SYNERGY_BROWSER_HOST_REGISTRATION_SECRET",
+    ].map((key) => [key, process.env[key]]),
   )
   Object.assign(process.env, {
     SYNERGY_TEST_HOME: root,
     MEMBER_TEST_PERSONAL_SECRET: "personal-credential-sentinel",
     SYNERGY_INSTALLATION_ROOT: path.join(root, "personal"),
     SYNERGY_INSTALLATION_PIN: "personal-pin-sentinel",
+    SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: "personal-native-secret",
   })
   const managers: DesktopServerManager[] = []
   try {
@@ -108,20 +113,46 @@ test("member supervisors isolate child environments, credentials and lifecycle w
       loaderValue: null,
       inheritedPin: null,
       parent: String(process.pid),
+      desktop: true,
+      ambientBrowserToken: null,
     })
     expect((await fetch(endpoint.url + "/global/health")).status).toBe(401)
     expect(JSON.stringify(manager.status())).not.toContain(endpoint.headers.authorization)
     expect((await fs.readFile(path.join(member.root, "fixture-starts"), "utf8")).trim().split("\n")).toHaveLength(1)
     expect(await fs.readFile(manager.status().logFile!, "utf8")).not.toContain(endpoint.headers.authorization.slice(7))
   }
+  const nativeA = a.browserConnection()!
+  const nativeB = b.browserConnection()!
+  expect(nativeA.token).not.toBe(nativeB.token)
+  expect(nativeA.headers.authorization).toBe(first.headers.authorization)
+  expect(nativeA.headers.authorization).not.toContain(nativeA.token)
+  for (const [token, status] of [
+    [nativeA.token, 200],
+    [nativeB.token, 403],
+  ] as const)
+    expect(
+      (await fetch(nativeA.url + "/native", { headers: { ...nativeA.headers, "x-fixture-browser-token": token } }))
+        .status,
+    ).toBe(status)
+  expect(JSON.stringify(a.status())).not.toContain(nativeA.token)
+  expect(await fs.readFile(a.status().logFile!, "utf8")).not.toContain(nativeA.token)
   expect((await fetch(first.url + "/probe", { headers: other.headers })).status).toBe(401)
   await a.stop()
   expect(a.connection()).toBeUndefined()
+  expect(a.browserConnection()).toBeUndefined()
   expect((await fetch(other.url + "/global/health", { headers: other.headers })).status).toBe(200)
   await a.start()
   const restarted = a.connection()!
   expect(restarted.url).toBe(first.url)
   expect(restarted.headers.authorization).not.toBe(first.headers.authorization)
+  expect(a.browserConnection()!.token).not.toBe(nativeA.token)
+  expect(
+    (
+      await fetch(restarted.url + "/native", {
+        headers: { ...restarted.headers, "x-fixture-browser-token": nativeA.token },
+      })
+    ).status,
+  ).toBe(403)
   expect((await fetch(restarted.url + "/global/health", { headers: first.headers })).status).toBe(401)
   expect((await fetch(other.url + "/global/health", { headers: other.headers })).status).toBe(200)
   expect(a.status().logFile).not.toBe(b.status().logFile)

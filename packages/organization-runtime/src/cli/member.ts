@@ -12,7 +12,7 @@ import { readMemberHome } from "../home"
 import { enrollMemberRuntime } from "../enrollment"
 import { readMemberRegistration } from "../registration"
 import { MemberHomeError } from "../record"
-import { MemberLaunchRequest } from "../launch"
+import { MemberDesktopEntry, MemberLaunchRequest } from "../launch"
 import { openMemberRuntime } from "../runtime"
 
 function explicitHome() {
@@ -54,6 +54,8 @@ export const MemberRuntimeCommand = cmd({
   async handler() {
     const home = explicitHome()
     const input = await request()
+    if (input.desktop && !MemberDesktopEntry.safeParse(process.env.SYNERGY_RUNTIME_ENTRY).success)
+      throw new MemberHomeError("Member Desktop capabilities require a managed Desktop launch")
     const member = await readMemberHome(home, input.identity)
     if (input.ticket && input.ticket.runtime.deploymentIncarnation !== input.deploymentIncarnation)
       throw new MemberHomeError("Member supervisor deployment does not match its ticket")
@@ -87,6 +89,7 @@ export const MemberRuntimeCommand = cmd({
           entry: options.host?.launch?.entry,
           ca: input.ca,
           listen: { port: input.port, token: input.token },
+          desktop: input.desktop,
           startupReporter: options.startupReporter,
           storageReporter: options.storageReporter,
           maintenanceReporter: options.maintenanceReporter,

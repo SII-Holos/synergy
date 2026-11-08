@@ -19,3 +19,5 @@ The owner-initialized `member-runtime` command consumes bounded private stdin an
 The outbound bridge declares only implemented capabilities. Persist a matching acknowledged epoch before returning a connected handle; never lower a checkpoint to satisfy a stale service snapshot. Preserve received protocol errors through socket close, propagate cancellation into checkpoint lock waits and drain pending writes before disposal. Verify real WSS fencing, reconnection, revocation and failure paths in `test/connection.test.ts`.
 
 Resident connections belong to component services. Keep local readiness independent of the remote service, stop reconnect on replacement or authorization/protocol failure, and drain connection work on Runtime close. One-shot discovery never starts a bridge.
+
+Desktop Browser selection requires explicit private launch data and a managed Desktop listener. Preserve both local HTTP and Browser registration authentication, reject inherited native credentials, and keep page creation lazy. Verify real sockets and rejected non-Desktop selection in `test/desktop.test.ts`.

@@ -15,6 +15,11 @@ const server = Bun.serve({
   fetch(request) {
     if (request.headers.get("authorization") !== "Bearer " + input.token)
       return new Response("Unauthorized", { status: 401 })
+    if (new URL(request.url).pathname === "/native")
+      return new Response(null, {
+        status:
+          input.desktop && request.headers.get("x-fixture-browser-token") === input.desktop.browserToken ? 200 : 403,
+      })
     if (new URL(request.url).pathname === "/probe")
       return Response.json({
         home,
@@ -27,6 +32,8 @@ const server = Bun.serve({
         loaderValue: process.env.MEMBER_TEST_DOTENV ?? null,
         inheritedPin: process.env.SYNERGY_INSTALLATION_PIN ?? null,
         parent: process.env.SYNERGY_DESKTOP_PARENT_PID,
+        desktop: !!input.desktop,
+        ambientBrowserToken: process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET ?? null,
       })
     return Response.json({ healthy: true })
   },

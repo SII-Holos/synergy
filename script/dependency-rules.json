@@ -25,6 +25,7 @@
   "packages/organization-runtime": [
     "packages/cli",
     "packages/agent-runtime",
+    "packages/browser-runtime",
     "packages/local-runtime",
     "packages/organization-protocol",
     "packages/harness",
