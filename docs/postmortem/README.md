@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0098](0098-member-command-blocked-control-traffic.md)
+
 - [0097](0097-rejected-command-blocked-new-control.md)
 
 - [0096](0096-continue-admission-outlived-observed-pause.md)

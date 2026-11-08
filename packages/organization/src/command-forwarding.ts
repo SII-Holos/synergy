@@ -134,6 +134,20 @@ export function createCommandForwarder(options: {
         await admissions.unknown(attemptID)
         unknown(request.requestID, error)
       }
+      if (
+        reply.kind === "error" &&
+        reply.error.code === "SERVICE_UNAVAILABLE" &&
+        reply.error.outcome === "not_dispatched"
+      ) {
+        await admissions.dropped(attemptID)
+        throw new OrganizationError({
+          code: "SERVICE_UNAVAILABLE",
+          requestID: request.requestID,
+          outcome: "not_dispatched",
+          retryable: reply.error.retryable,
+          message: "Runtime did not admit the command; explicitly retry this request ID",
+        })
+      }
       if (reply.kind !== "result") {
         await admissions.unknown(attemptID)
         unknown(request.requestID)

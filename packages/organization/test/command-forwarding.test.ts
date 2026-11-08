@@ -134,6 +134,67 @@ test("native dropped sends are definitely unsent while send exceptions retain un
   }
 })
 
+test("an explicit Runtime capacity refusal remains unsent and recovers through query and skip", async () => {
+  await using f = await commandFixture({ timeoutMs: 1_000 })
+  const socket = await f.connect()
+  const exchanges: string[] = []
+  socket.onmessage = (event) => {
+    const frame = Runtime.ServerFrame.parse(JSON.parse(String(event.data)))
+    if (frame.type !== "command") return
+    const command = frame.command
+    exchanges.push(command.kind)
+    if (command.kind === "input" && exchanges.length === 1) {
+      socket.send(
+        JSON.stringify({
+          type: "receipt",
+          connectionEpoch: frame.connectionEpoch,
+          exchangeID: frame.exchangeID,
+          reply: {
+            kind: "error",
+            error: {
+              code: "SERVICE_UNAVAILABLE",
+              message: "private queue metadata",
+              outcome: "not_dispatched",
+              retryable: true,
+            },
+          },
+        }),
+      )
+    } else if (command.kind === "input") answer(socket, frame, accepted(command.delivery.authorization.permit))
+    else if (command.kind === "query")
+      socket.send(
+        JSON.stringify({
+          type: "receipt",
+          connectionEpoch: frame.connectionEpoch,
+          exchangeID: frame.exchangeID,
+          reply: { kind: "query", query: { authorization: command.authorization } },
+        }),
+      )
+    else if (command.kind === "skip")
+      answer(socket, frame, {
+        attempt: {
+          schemaVersion: 1,
+          permit: command.authorization.permit.command,
+          receivedAt: Date.now(),
+          status: "skipped",
+        },
+        skip: { schemaVersion: 1, permit: command.authorization.permit, receivedAt: Date.now() },
+      })
+  }
+  await f.run(async () => {
+    const error = await f.forwarder.input(f.credentials.alice, f.request()).catch((error: unknown) => error)
+    expect(error).toMatchObject({
+      data: { code: "SERVICE_UNAVAILABLE", outcome: "not_dispatched", requestID: "request", retryable: true },
+    })
+    expect(JSON.stringify(error)).not.toContain("private queue")
+    const stored = await f.commands.get(f.credentials.alice, { sessionID: f.sessionID, requestID: "request" })
+    expect(stored.attempt.state).toBe("not_dispatched")
+    expect(stored.accepted).toBeUndefined()
+    expect((await f.forwarder.input(f.credentials.alice, f.request())).receipt.permit.commandSeq).toBe(2)
+    expect(exchanges).toEqual(["input", "query", "skip", "input"])
+  })
+})
+
 test("an enqueued backpressured frame is sent once and late accepted receipts survive caller timeout", async () => {
   await using f = await commandFixture({ timeoutMs: 100 })
   const socket = await f.connect()

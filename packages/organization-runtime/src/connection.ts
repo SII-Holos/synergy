@@ -104,6 +104,8 @@ async function attempt(input: {
   let connected: Connected | undefined
   let commands: ReturnType<NonNullable<MemberConnectionOptions["commands"]>> | undefined
   let pending = Promise.resolve()
+  const executing = new Map<string, Promise<void>>()
+  const windows = { command: { count: 0, bytes: 0 }, reconciliation: { count: 0, bytes: 0 } }
   let queuedFrames = 0
   let queuedBytes = 0
   let sequence = 0
@@ -203,35 +205,38 @@ async function attempt(input: {
     if (frame.type === "command") {
       if (!connected || !commands || frame.connectionEpoch !== epoch)
         throw failure("PROTOCOL_MISMATCH", "Command does not match an active intake connection")
-      let reply: Command.Reply
-      try {
-        const command = frame.command
-        reply =
-          command.kind === "create"
-            ? { kind: "result", result: await commands.create(command.delivery) }
-            : command.kind === "control"
-              ? { kind: "result", result: await commands.control(command.delivery) }
-              : command.kind === "input"
-                ? { kind: "result", result: await commands.input(command.delivery) }
-                : command.kind === "skip"
-                  ? { kind: "result", result: await commands.skip(command.authorization) }
-                  : { kind: "query", query: await commands.query(command.authorization) }
-        reply = Command.Reply.parse(reply)
-      } catch (error) {
-        reply = {
-          kind: "error",
-          error:
-            error instanceof OrganizationRuntimeError
-              ? error.data
-              : {
-                  code: "SERVICE_UNAVAILABLE",
-                  message: "Runtime command receipt is unavailable",
-                  outcome: "unknown",
-                  retryable: false,
-                },
-        }
+      if (work.signal.aborted) return
+      const bytes = Buffer.byteLength(raw)
+      if (executing.has(frame.exchangeID)) throw failure("PROTOCOL_MISMATCH", "Duplicate active command exchange")
+      const window =
+        frame.command.kind === "query" || frame.command.kind === "skip" ? windows.reconciliation : windows.command
+      if (window.count >= 16 || window.bytes + bytes > frameLimit * 4) {
+        send({
+          type: "receipt",
+          connectionEpoch: epoch,
+          exchangeID: frame.exchangeID,
+          reply: {
+            kind: "error",
+            error: {
+              code: "SERVICE_UNAVAILABLE",
+              message: "Runtime command window is busy",
+              outcome: "not_dispatched",
+              retryable: true,
+            },
+          },
+        })
+        return
       }
-      if (!work.signal.aborted) send({ type: "receipt", connectionEpoch: epoch, exchangeID: frame.exchangeID, reply })
+      window.count++
+      window.bytes += bytes
+      const task = execute(frame, commands)
+        .catch(reject)
+        .finally(() => {
+          executing.delete(frame.exchangeID)
+          window.count--
+          window.bytes -= bytes
+        })
+      executing.set(frame.exchangeID, task)
       return
     }
     if (!connected || frame.connectionEpoch !== epoch || frame.sequence !== expectedSequence)
@@ -239,6 +244,44 @@ async function attempt(input: {
     expectedSequence = undefined
     lease(connected.offlineMs)
     scheduleHeartbeat()
+  }
+  async function execute(
+    frame: Extract<Protocol.ServerFrame, { type: "command" }>,
+    receiver: NonNullable<typeof commands>,
+  ) {
+    let reply: Command.Reply
+    try {
+      const command = frame.command
+      reply =
+        command.kind === "create"
+          ? { kind: "result", result: await receiver.create(command.delivery) }
+          : command.kind === "control"
+            ? { kind: "result", result: await receiver.control(command.delivery) }
+            : command.kind === "input"
+              ? { kind: "result", result: await receiver.input(command.delivery) }
+              : command.kind === "skip"
+                ? { kind: "result", result: await receiver.skip(command.authorization) }
+                : { kind: "query", query: await receiver.query(command.authorization) }
+      reply = Command.Reply.parse(reply)
+    } catch (error) {
+      reply = {
+        kind: "error",
+        error:
+          error instanceof OrganizationRuntimeError
+            ? error.data
+            : {
+                code: "SERVICE_UNAVAILABLE",
+                message: "Runtime command receipt is unavailable",
+                outcome: "unknown",
+                retryable: false,
+              },
+      }
+    }
+    if (!work.signal.aborted) send({ type: "receipt", connectionEpoch: epoch, exchangeID: frame.exchangeID, reply })
+  }
+  async function drain() {
+    await pending
+    await Promise.all(executing.values())
   }
   function disconnected(kind: MemberConnectionClosed["kind"]) {
     transportClosed = true
@@ -278,12 +321,12 @@ async function attempt(input: {
     const handshake = await ready.promise
     async function close() {
       stop({ kind: "closed" })
-      await pending
+      await drain()
     }
     return {
       connected: handshake,
       closed: closed.promise.then(async (result) => {
-        await pending
+        await drain()
         return result
       }),
       close,
@@ -291,7 +334,7 @@ async function attempt(input: {
     }
   } catch (error) {
     stop({ kind: "rejected" })
-    await pending
+    await drain()
     throw error
   }
 }

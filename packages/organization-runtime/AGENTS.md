@@ -18,7 +18,7 @@ Keep `./home` and `./registration` usable and typecheckable by Node provisioning
 
 `member-runtime` consumes bounded private stdin and reuses CLI lifecycle. Its component contributes command discovery only; member source and worker selection belong to explicit Runtime opening. Hosts use `./environment` before spawning and disable implicit loader inputs. Preserve only the member Home's verified installation pin for workers; test source commands and installed launchers separately.
 
-The outbound bridge declares only implemented capabilities. Persist a matching acknowledged epoch before returning a connected handle; never lower a checkpoint to satisfy a stale service snapshot. Preserve received protocol errors through socket close, propagate cancellation into checkpoint lock waits and drain pending writes before disposal. Verify real WSS fencing, reconnection, revocation and failure paths in `test/connection.test.ts`.
+The outbound bridge declares implemented capabilities. Persist a matching epoch before returning; never lower it for a stale service snapshot. Preserve received errors through socket close, cancel checkpoint waits and drain admitted callbacks before disposal. Bounded commands cannot block heartbeats or reconciliation; saturation retains the connection. Verify real WSS fencing, liveness, capacity and drainage in `test/connection.test.ts`.
 
 Resident connections belong to component services. Keep local readiness independent of the remote service, stop reconnect on replacement or authorization/protocol failure, and drain connection work on Runtime close. One-shot discovery never starts a bridge.
 

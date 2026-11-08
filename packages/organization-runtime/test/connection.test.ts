@@ -49,17 +49,64 @@ async function within<T>(promise: Promise<T>) {
   }
 }
 
-test("verified WSS supplies the command factory, orders exchanges and redacts unknown intake failures", async () => {
+function commandAuthorization(
+  f: Awaited<ReturnType<typeof enrolled>>,
+  connection: Awaited<ReturnType<typeof openMemberConnection>>,
+  requestID: string,
+): Command.SignedPermit {
+  return Command.SignedPermit.parse({
+    signature: "0".repeat(128),
+    permit: {
+      schemaVersion: 1,
+      purpose: "session-command",
+      orgID: f.identity.orgID,
+      deploymentIncarnation: connection.connected.deploymentIncarnation,
+      keyID: connection.connected.signingIdentity.keyID,
+      requestID,
+      payloadHash: "0".repeat(64),
+      sessionID: "session",
+      projectID: "project",
+      runtimeID: connection.connected.runtimeID,
+      bindingEpoch: 1,
+      connectionEpoch: connection.connected.connectionEpoch,
+      commandSeq: 1,
+      shareGeneration: 0,
+      controlRevision: 0,
+      authRevision: 1,
+      admissionID: requestID,
+      attemptID: requestID,
+      operation: "input",
+      actor: {
+        kind: "account",
+        orgID: f.identity.orgID,
+        subjectID: f.identity.accountID,
+        displayName: "Member",
+        clientKind: "web",
+        requestID,
+      },
+      authorizedAt: Date.now(),
+      deadline: Date.now() + 30_000,
+    },
+  })
+}
+
+test("verified WSS keeps heartbeats and receipt queries live while a control drains", async () => {
   await using f = await enrolled()
   const remote = Promise.withResolvers<Parameters<NonNullable<Parameters<typeof f.interceptFrames>[0]>>[0]>()
   const responses = new Map<string, ReturnType<typeof Promise.withResolvers<Command.Reply>>>()
+  const heartbeats = Promise.withResolvers<void>()
+  let holding = false
+  let receivedHeartbeats = 0
   let advertised = false
   f.interceptFrames((socket, raw) => {
     const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
     if (frame.type === "handshake")
       advertised =
         frame.proof.handshake.capabilities.includes("commands") && frame.proof.handshake.schemas.commands === 1
-    if (frame.type === "heartbeat") remote.resolve(socket)
+    if (frame.type === "heartbeat") {
+      remote.resolve(socket)
+      if (holding && ++receivedHeartbeats >= 14) heartbeats.resolve()
+    }
     if (frame.type !== "receipt") return false
     responses.get(frame.exchangeID)?.resolve(frame.reply)
     return true
@@ -79,6 +126,9 @@ test("verified WSS supplies the command factory, orders exchanges and redacts un
           throw new Error("private creation storage details")
         },
         async control() {
+          holding = true
+          entered.resolve()
+          await release.promise
           throw new Error("private control storage details")
         },
         async input() {
@@ -94,10 +144,6 @@ test("verified WSS supplies the command factory, orders exchanges and redacts un
         },
         async query(authorization) {
           queries.push(authorization.permit.requestID)
-          if (queries.length === 1) {
-            entered.resolve()
-            await release.promise
-          }
           return { authorization }
         },
       }
@@ -107,42 +153,7 @@ test("verified WSS supplies the command factory, orders exchanges and redacts un
   expect(advertised).toBe(true)
   expect(identity).toEqual(connection.connected.signingIdentity)
   const socket = await within(remote.promise)
-  function authorization(requestID: string): Command.SignedPermit {
-    return Command.SignedPermit.parse({
-      signature: "0".repeat(128),
-      permit: {
-        schemaVersion: 1,
-        purpose: "session-command",
-        orgID: f.identity.orgID,
-        deploymentIncarnation: connection.connected.deploymentIncarnation,
-        keyID: identity!.keyID,
-        requestID,
-        payloadHash: "0".repeat(64),
-        sessionID: "session",
-        projectID: "project",
-        runtimeID: connection.connected.runtimeID,
-        bindingEpoch: 1,
-        connectionEpoch: connection.connected.connectionEpoch,
-        commandSeq: 1,
-        shareGeneration: 0,
-        controlRevision: 0,
-        authRevision: 1,
-        admissionID: requestID,
-        attemptID: requestID,
-        operation: "input",
-        actor: {
-          kind: "account",
-          orgID: f.identity.orgID,
-          subjectID: f.identity.accountID,
-          displayName: "Member",
-          clientKind: "web",
-          requestID,
-        },
-        authorizedAt: Date.now(),
-        deadline: Date.now() + 30_000,
-      },
-    })
-  }
+  const authorization = (requestID: string) => commandAuthorization(f, connection, requestID)
   function send(exchangeID: string, command: Command.Delivery) {
     const response = Promise.withResolvers<Command.Reply>()
     responses.set(exchangeID, response)
@@ -151,14 +162,23 @@ test("verified WSS supplies the command factory, orders exchanges and redacts un
     )
     return response.promise
   }
-  const first = send("first", { kind: "query", authorization: authorization("first") })
-  const second = send("second", { kind: "query", authorization: authorization("second") })
+  const blocked = authorization("first")
+  blocked.permit.operation = "pause"
+  const first = send("first", {
+    kind: "control",
+    delivery: { authorization: blocked, control: { operation: "pause" } },
+  })
   await within(entered.promise)
-  expect(queries).toEqual(["first"])
-  release.resolve()
-  expect((await within(first)).kind).toBe("query")
+  const second = send("second", { kind: "query", authorization: authorization("second") })
   expect((await within(second)).kind).toBe("query")
-  expect(queries).toEqual(["first", "second"])
+  await within(heartbeats.promise)
+  expect(signal?.aborted).toBeFalse()
+  release.resolve()
+  expect(await within(first)).toMatchObject({
+    kind: "error",
+    error: { code: "SERVICE_UNAVAILABLE", outcome: "unknown" },
+  })
+  expect(queries).toEqual(["second"])
   const failed = await within(
     send("input", {
       kind: "input",
@@ -198,6 +218,158 @@ test("verified WSS supplies the command factory, orders exchanges and redacts un
   await connection.close()
   expect(signal?.aborted).toBe(true)
 })
+
+for (const limit of ["count", "bytes"] as const)
+  test(`command ${limit} saturation retains reconciliation capacity and drains accepted callbacks`, async () => {
+    await using f = await enrolled()
+    const remote = Promise.withResolvers<Parameters<NonNullable<Parameters<typeof f.interceptFrames>[0]>>[0]>()
+    const responses = new Map<string, ReturnType<typeof Promise.withResolvers<Command.Reply>>>()
+    const entered = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>()
+    const release = Promise.withResolvers<void>()
+    const releaseClosing = Promise.withResolvers<void>()
+    const aborted = Promise.withResolvers<void>()
+    let completed = 0
+    let signal: AbortSignal | undefined
+    f.interceptFrames((socket, raw) => {
+      const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+      if (frame.type === "heartbeat") remote.resolve(socket)
+      if (frame.type !== "receipt") return false
+      responses.get(frame.exchangeID)?.resolve(frame.reply)
+      return true
+    })
+    await using connection = await openMemberConnection({
+      ...f.options,
+      commands(_connected, currentSignal) {
+        signal = currentSignal
+        signal.addEventListener("abort", () => aborted.resolve(), { once: true })
+        return {
+          async create() {
+            throw new Error("unavailable")
+          },
+          async control() {
+            throw new Error("unavailable")
+          },
+          async skip() {
+            throw new Error("unavailable")
+          },
+          async query(authorization) {
+            return { authorization }
+          },
+          async input(delivery) {
+            entered.get(delivery.authorization.permit.requestID)?.resolve()
+            await (delivery.authorization.permit.requestID === "closing" ? releaseClosing.promise : release.promise)
+            completed++
+            throw new Error("private completion")
+          },
+        }
+      },
+    })
+    using unblock = {
+      [Symbol.dispose]() {
+        release.resolve()
+        releaseClosing.resolve()
+      },
+    }
+    const socket = await within(remote.promise)
+    let admitted = 0
+    let bytes = 0
+    for (let index = 0; index <= 16; index++) {
+      const id = `held-${index}`
+      const command: Command.Delivery = {
+        kind: "input",
+        delivery: {
+          authorization: commandAuthorization(f, connection, id),
+          input: {
+            operation: "input",
+            mode: "context",
+            parts: [{ type: "text", text: limit === "bytes" ? "x".repeat(32_000) : "held" }],
+          },
+        },
+      }
+      const raw = JSON.stringify({
+        type: "command",
+        connectionEpoch: connection.connected.connectionEpoch,
+        exchangeID: id,
+        command,
+      })
+      const response = Promise.withResolvers<Command.Reply>()
+      const started = Promise.withResolvers<void>()
+      responses.set(id, response)
+      entered.set(id, started)
+      socket.send(raw)
+      if (admitted === 16 || bytes + Buffer.byteLength(raw) > 256 * 1024) {
+        expect(await within(response.promise)).toMatchObject({
+          kind: "error",
+          error: { code: "SERVICE_UNAVAILABLE", outcome: "not_dispatched", retryable: true },
+        })
+        break
+      }
+      await within(started.promise)
+      admitted++
+      bytes += Buffer.byteLength(raw)
+    }
+    if (limit === "count") expect(admitted).toBe(16)
+    else {
+      expect(admitted).toBeGreaterThan(0)
+      expect(admitted).toBeLessThan(16)
+      expect(bytes).toBeLessThanOrEqual(256 * 1024)
+    }
+    expect(completed).toBe(0)
+    expect(signal?.aborted).toBeFalse()
+    const probe = Promise.withResolvers<Command.Reply>()
+    responses.set("probe", probe)
+    socket.send(
+      JSON.stringify({
+        type: "command",
+        connectionEpoch: connection.connected.connectionEpoch,
+        exchangeID: "probe",
+        command: { kind: "query", authorization: commandAuthorization(f, connection, "probe") },
+      }),
+    )
+    expect((await within(probe.promise)).kind).toBe("query")
+    release.resolve()
+    await within(Promise.all(Array.from({ length: admitted }, (_, index) => responses.get(`held-${index}`)!.promise)))
+    expect(completed).toBe(admitted)
+    const closingEntered = Promise.withResolvers<void>()
+    entered.set("closing", closingEntered)
+    socket.send(
+      JSON.stringify({
+        type: "command",
+        connectionEpoch: connection.connected.connectionEpoch,
+        exchangeID: "closing",
+        command: {
+          kind: "input",
+          delivery: {
+            authorization: commandAuthorization(f, connection, "closing"),
+            input: { operation: "input", mode: "context", parts: [{ type: "text", text: "close after refill" }] },
+          },
+        },
+      }),
+    )
+    await within(closingEntered.promise)
+    if (limit === "count") {
+      socket.send(
+        JSON.stringify({
+          type: "command",
+          connectionEpoch: connection.connected.connectionEpoch,
+          exchangeID: "closing",
+          command: { kind: "query", authorization: commandAuthorization(f, connection, "duplicate") },
+        }),
+      )
+      await within(aborted.promise)
+    }
+    let closed = false
+    const closing = connection.close().then(() => {
+      closed = true
+    })
+    await within(aborted.promise)
+    await Bun.sleep(0)
+    expect(closed).toBeFalse()
+    releaseClosing.resolve()
+    await within(closing)
+    expect(completed).toBe(admitted + 1)
+    expect((await connection.closed).kind).toBe(limit === "count" ? "rejected" : "closed")
+  })
 
 test("the resident bridge stops after replacement or revocation without competing for another connection", async () => {
   for (const action of ["replace", "revoke"] as const) {
