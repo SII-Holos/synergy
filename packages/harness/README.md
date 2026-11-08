@@ -31,3 +31,5 @@ The public `/rollout` entry provides `RolloutSnapshot.modelCalls()` for current 
 Selective tool catalogs use `cortexTools()` and register `registerCortexToolInputHistory()` from `./cortex/tools` before sealing the Runtime. The history registration keeps owned session migrations independent of product tool registration.
 
 Harness owns manual paused Session migration through `session/transfer` and the explicit `session/transfer-workspace` Host contract. The protocol does not execute historical calls; see [Session transfer](../../docs/architecture/session-transfer.md).
+
+Trusted hosts compose continuation authorization and receipts through `SessionResume.request()` admission hooks, with a separate actor and cancellation signal. See [Session recovery](../../docs/architecture/session-and-messages.md#one-active-loop) for transaction ownership and retained identity.

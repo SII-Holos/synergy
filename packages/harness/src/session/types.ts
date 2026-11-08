@@ -1,4 +1,5 @@
 import { SessionTransferState } from "./transfer-state"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { z } from "zod"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { ModelSelection } from "./model-selection-schema"
@@ -159,6 +160,7 @@ export type PausedInfo = z.infer<typeof PausedInfo>
 
 export const ResumeInfo = z.object({
   requestID: z.string(),
+  actor: ActorStamp.Info.optional(),
   rootID: z.string().optional(),
   itemID: z.string(),
   messageID: z.string(),

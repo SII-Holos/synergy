@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0096](0096-continue-admission-outlived-observed-pause.md)
+
 - [0095](0095-member-runtime-implicit-source-discovery.md)
 
 - [0094](0094-compaction-attachment-default-drift.md)

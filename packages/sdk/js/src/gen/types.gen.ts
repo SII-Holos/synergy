@@ -3455,6 +3455,56 @@ export type SessionPaused = {
   since: number
 }
 
+export type ActorStamp =
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "account"
+      orgID: string
+    }
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "local"
+    }
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "system"
+      orgID?: string
+      causedBy?: Array<
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "account"
+            orgID: string
+          }
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "local"
+          }
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "system"
+            orgID?: string
+          }
+      >
+    }
+
 export type SessionInteractionMode = "interactive" | "unattended"
 
 export type SessionInteraction = {
@@ -3746,6 +3796,7 @@ export type Session = {
   paused?: SessionPaused
   resume?: {
     requestID: string
+    actor?: ActorStamp
     rootID?: string
     itemID: string
     messageID: string
@@ -10000,6 +10051,7 @@ export type SessionContinueResult = {
   outcome: "accepted" | "already_accepted" | "running" | "idle" | "stale" | "blocked"
   receipt?: {
     requestID: string
+    actor?: ActorStamp
     rootID?: string
     itemID: string
     messageID: string
@@ -10059,56 +10111,6 @@ export type SessionAbortResult = {
    */
   paused: boolean
 }
-
-export type ActorStamp =
-  | {
-      subjectID: string
-      displayName: string
-      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
-      requestID: string
-      kind: "account"
-      orgID: string
-    }
-  | {
-      subjectID: string
-      displayName: string
-      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
-      requestID: string
-      kind: "local"
-    }
-  | {
-      subjectID: string
-      displayName: string
-      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
-      requestID: string
-      kind: "system"
-      orgID?: string
-      causedBy?: Array<
-        | {
-            subjectID: string
-            displayName: string
-            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
-            requestID: string
-            kind: "account"
-            orgID: string
-          }
-        | {
-            subjectID: string
-            displayName: string
-            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
-            requestID: string
-            kind: "local"
-          }
-        | {
-            subjectID: string
-            displayName: string
-            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
-            requestID: string
-            kind: "system"
-            orgID?: string
-          }
-      >
-    }
 
 export type OriginUser = {
   type: "user" | "cortex" | "agenda" | "blueprint" | "channel" | "compaction" | "agent" | "plugin" | "system"

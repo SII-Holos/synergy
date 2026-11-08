@@ -50845,6 +50845,219 @@
         },
         "required": ["reason", "since"]
       },
+      "ActorStamp": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "subjectID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "clientKind": {
+                "type": "string",
+                "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
+              },
+              "requestID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "kind": {
+                "type": "string",
+                "const": "account"
+              },
+              "orgID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "subjectID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "clientKind": {
+                "type": "string",
+                "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
+              },
+              "requestID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "kind": {
+                "type": "string",
+                "const": "local"
+              }
+            },
+            "required": ["subjectID", "displayName", "clientKind", "requestID", "kind"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "subjectID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "clientKind": {
+                "type": "string",
+                "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
+              },
+              "requestID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "kind": {
+                "type": "string",
+                "const": "system"
+              },
+              "orgID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "causedBy": {
+                "minItems": 1,
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "subjectID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "displayName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "clientKind": {
+                          "type": "string",
+                          "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
+                        },
+                        "requestID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "kind": {
+                          "type": "string",
+                          "const": "account"
+                        },
+                        "orgID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        }
+                      },
+                      "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "subjectID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "displayName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "clientKind": {
+                          "type": "string",
+                          "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
+                        },
+                        "requestID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "kind": {
+                          "type": "string",
+                          "const": "local"
+                        }
+                      },
+                      "required": ["subjectID", "displayName", "clientKind", "requestID", "kind"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "subjectID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "displayName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "clientKind": {
+                          "type": "string",
+                          "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
+                        },
+                        "requestID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "kind": {
+                          "type": "string",
+                          "const": "system"
+                        },
+                        "orgID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        }
+                      },
+                      "required": ["subjectID", "displayName", "clientKind", "requestID", "kind"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["subjectID", "displayName", "clientKind", "requestID", "kind"],
+            "additionalProperties": false
+          }
+        ]
+      },
       "SessionInteractionMode": {
         "type": "string",
         "enum": ["interactive", "unattended"]
@@ -51788,6 +52001,9 @@
             "properties": {
               "requestID": {
                 "type": "string"
+              },
+              "actor": {
+                "$ref": "#/components/schemas/ActorStamp"
               },
               "rootID": {
                 "type": "string"
@@ -67883,6 +68099,9 @@
               "requestID": {
                 "type": "string"
               },
+              "actor": {
+                "$ref": "#/components/schemas/ActorStamp"
+              },
               "rootID": {
                 "type": "string"
               },
@@ -67995,219 +68214,6 @@
           }
         },
         "required": ["outcome", "repaired", "abandoned", "paused"]
-      },
-      "ActorStamp": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "subjectID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128
-              },
-              "displayName": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "clientKind": {
-                "type": "string",
-                "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
-              },
-              "requestID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128
-              },
-              "kind": {
-                "type": "string",
-                "const": "account"
-              },
-              "orgID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128
-              }
-            },
-            "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "subjectID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128
-              },
-              "displayName": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "clientKind": {
-                "type": "string",
-                "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
-              },
-              "requestID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128
-              },
-              "kind": {
-                "type": "string",
-                "const": "local"
-              }
-            },
-            "required": ["subjectID", "displayName", "clientKind", "requestID", "kind"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "subjectID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128
-              },
-              "displayName": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "clientKind": {
-                "type": "string",
-                "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
-              },
-              "requestID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128
-              },
-              "kind": {
-                "type": "string",
-                "const": "system"
-              },
-              "orgID": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128
-              },
-              "causedBy": {
-                "minItems": 1,
-                "maxItems": 16,
-                "type": "array",
-                "items": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "subjectID": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        },
-                        "displayName": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 200
-                        },
-                        "clientKind": {
-                          "type": "string",
-                          "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
-                        },
-                        "requestID": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        },
-                        "kind": {
-                          "type": "string",
-                          "const": "account"
-                        },
-                        "orgID": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        }
-                      },
-                      "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "subjectID": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        },
-                        "displayName": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 200
-                        },
-                        "clientKind": {
-                          "type": "string",
-                          "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
-                        },
-                        "requestID": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        },
-                        "kind": {
-                          "type": "string",
-                          "const": "local"
-                        }
-                      },
-                      "required": ["subjectID", "displayName", "clientKind", "requestID", "kind"],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "subjectID": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        },
-                        "displayName": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 200
-                        },
-                        "clientKind": {
-                          "type": "string",
-                          "enum": ["web", "desktop", "cli", "api", "runtime", "system"]
-                        },
-                        "requestID": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        },
-                        "kind": {
-                          "type": "string",
-                          "const": "system"
-                        },
-                        "orgID": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
-                        }
-                      },
-                      "required": ["subjectID", "displayName", "clientKind", "requestID", "kind"],
-                      "additionalProperties": false
-                    }
-                  ]
-                }
-              }
-            },
-            "required": ["subjectID", "displayName", "clientKind", "requestID", "kind"],
-            "additionalProperties": false
-          }
-        ]
       },
       "OriginUser": {
         "type": "object",

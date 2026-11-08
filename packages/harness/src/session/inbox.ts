@@ -704,9 +704,20 @@ export namespace SessionInbox {
     },
     persistItem: (item: StoredItem) => Promise<unknown>,
   ): Promise<{ itemID: string; messageID: string; created: boolean }> {
-    const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
     using _ = await Lock.write(`session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`)
+    return deliverUniqueLocked(input, persistItem)
+  }
 
+  async function deliverUniqueLocked(
+    input: {
+      sessionID: string
+      deliveryKey: string
+      mode: z.infer<typeof Deliver.Input>["mode"]
+      prepareMessage: (messageID: string) => Promise<z.infer<typeof Deliver.Input>["message"]>
+    },
+    persistItem: (item: StoredItem) => Promise<unknown>,
+  ): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
     const existing = await findExistingDelivery(input.sessionID, input.deliveryKey)
     if (existing) return { ...existing, created: false }
 
@@ -729,16 +740,36 @@ export namespace SessionInbox {
   export async function deliverUnique(
     input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
   ): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    return withUniqueDelivery(input, (deliver) => deliver())
+  }
+
+  /** Acquire uniqueness before a caller enters its own receipt or Rollout transaction. */
+  export async function withUniqueDelivery<T>(
+    input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
+    body: (deliver: () => Promise<{ itemID: string; messageID: string; created: boolean }>) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
     input = { ...input, message: { ...input.message, actor: ActorStamp.Info.optional().parse(input.message.actor) } }
-    return deliverUniqueWithPreparedMessage(
-      {
-        sessionID: input.sessionID,
-        deliveryKey: input.deliveryKey,
-        mode: input.mode,
-        prepareMessage: async () => input.message,
-      },
-      persistDelivery,
-    )
+    const key = `session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`
+    using lock = signal ? await Lock.writeWithSignal(key, signal) : await Lock.write(key)
+    signal?.throwIfAborted()
+    let active = true
+    try {
+      return await body(() => {
+        if (!active) throw new Error("Inbox delivery admission has ended")
+        return deliverUniqueLocked(
+          {
+            sessionID: input.sessionID,
+            deliveryKey: input.deliveryKey,
+            mode: input.mode,
+            prepareMessage: async () => input.message,
+          },
+          persistDelivery,
+        )
+      })
+    } finally {
+      active = false
+    }
   }
 
   export async function deliverUniquePrepared(input: {
