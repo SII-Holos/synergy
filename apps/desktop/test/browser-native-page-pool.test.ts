@@ -42,7 +42,13 @@ class MockDebugger extends EventEmitter {
 }
 
 class MockWebContents extends EventEmitter {
-  readonly session = { setProxy: async () => undefined }
+  readonly session = {
+    setProxy: async () => undefined,
+    clearStorageData: async () => {
+      this.storageClears++
+    },
+  }
+  storageClears = 0
   readonly debugger = new MockDebugger()
   url = "about:blank"
   title = ""
@@ -207,6 +213,49 @@ async function until(predicate: () => boolean, timeoutMs = 500): Promise<void> {
 }
 
 describe("Browser native page pool", () => {
+  test("reserves the Desktop page limit across Runtime owners before asynchronous creation", async () => {
+    const pool = new BrowserNativePagePool()
+    const attempts = viewCreationAttempts
+    try {
+      const results = await Promise.allSettled(
+        Array.from({ length: 65 }, (_, index) => pool.create(input(`runtime-${index}`))),
+      )
+      const created = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+      expect(created).toHaveLength(64)
+      expect(viewCreationAttempts - attempts).toBe(64)
+      expect(results[64]).toMatchObject({
+        status: "rejected",
+        reason: { message: "Desktop Browser page limit reached." },
+      })
+      await created[0].destroy()
+      await pool.create(input("released-capacity"))
+      expect(viewCreationAttempts - attempts).toBe(65)
+    } finally {
+      await pool.destroy()
+    }
+  })
+
+  test("clears a temporary partition after its last page even when another Runtime reuses its profile ID", async () => {
+    const pool = new BrowserNativePagePool()
+    const profile = (partition: string) => ({ id: "shared-profile", partition, revision: 0 })
+    try {
+      const first = await pool.create({ ...input("member-a-first"), profile: profile("synergy-browser-member-a") })
+      const firstContents = views.at(-1)!.webContents
+      const second = await pool.create({ ...input("member-a-second"), profile: profile("synergy-browser-member-a") })
+      const secondContents = views.at(-1)!.webContents
+      await pool.create({ ...input("member-b"), profile: profile("synergy-browser-member-b") })
+      const otherContents = views.at(-1)!.webContents
+      await first.destroy()
+      expect(firstContents.storageClears).toBe(0)
+      await second.destroy()
+      expect(secondContents.storageClears).toBe(1)
+      expect(otherContents.storageClears).toBe(0)
+      expect(otherContents.destroyed).toBe(false)
+    } finally {
+      await pool.destroy()
+    }
+  })
+
   test("activates drawing in the mounted renderer without changing its background policy", async () => {
     const children = new Set<MockWebContentsView>()
     let drawable = false

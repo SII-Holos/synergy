@@ -12,11 +12,13 @@ import {
 import { type DesktopThemeSnapshot } from "./theme.js"
 import { BrowserNativePagePool, type BrowserNativePageHandle } from "./browser-native-page-pool.js"
 import { BrowserDataContexts } from "./browser-data-contexts.js"
+import { browserRuntimeOwnerKey, browserRuntimePartition } from "./browser-profile.js"
 
 export interface BrowserHostBrokerOptions {
   serverUrl: string
   token: string
   hostId?: string
+  runtimeKey?: string
   nativePool?: BrowserNativePagePool
   theme: DesktopThemeSnapshot
   onStatus?(status: BrowserNativeBrokerStatus): void
@@ -52,6 +54,7 @@ export class BrowserHostBrokerClient {
     )
       throw new Error("Native Browser requires a local Desktop server.")
     this.options = { ...options, token: BrowserRegistrationSecretSchema.parse(options.token) }
+    browserRuntimeOwnerKey(options.runtimeKey, "")
     this.theme = options.theme
   }
 
@@ -152,9 +155,21 @@ export class BrowserHostBrokerClient {
       try {
         const contexts = this.options.dataContexts
         if (!contexts) throw new Error("Browser profile data management is unavailable.")
-        if (message.type === "profile.data.prepare") contexts.prepare(message)
+        if (message.type === "profile.data.prepare")
+          contexts.prepare({
+            ...message,
+            ownerKey: browserRuntimeOwnerKey(this.options.runtimeKey, message.ownerKey),
+            profile: {
+              ...message.profile,
+              partition: browserRuntimePartition(this.options.runtimeKey, message.profile.partition),
+            },
+          })
         else if (message.type === "profile.data.release")
-          contexts.release(message.contextId, message.epoch, message.ownerKey)
+          contexts.release(
+            message.contextId,
+            message.epoch,
+            browserRuntimeOwnerKey(this.options.runtimeKey, message.ownerKey),
+          )
         else contexts.revokeProfile(message.profileId)
         this.result(message.requestId, { type: "void" })
       } catch {
@@ -167,18 +182,17 @@ export class BrowserHostBrokerClient {
     }
     if (message.type === "profile.clear") {
       try {
-        if (!/^(persist:)?synergy-browser-[a-zA-Z0-9._-]+$/.test(message.partition))
-          throw new Error("Invalid browser partition.")
+        const partition = browserRuntimePartition(this.options.runtimeKey, message.partition)
         this.options.dataContexts?.revokeProfile(message.profileId)
-        await this.options.dataContexts?.drain(message.partition)
-        const profile = session.fromPartition(message.partition)
+        await this.options.dataContexts?.drain(partition)
+        const profile = session.fromPartition(partition)
         await profile.clearStorageData()
         await profile.clearCache()
         await profile.clearAuthCache()
         await profile.closeAllConnections()
         if (message.removeSavedData) {
           if (!this.options.clearSavedData) throw new Error("Saved browser data cleanup is unavailable.")
-          await this.options.clearSavedData(message.partition)
+          await this.options.clearSavedData(partition)
         }
         this.result(message.requestId, { type: "void" })
       } catch (error) {
@@ -297,10 +311,13 @@ export class BrowserHostBrokerClient {
   ): Promise<BrowserNativePageHandle> {
     if (!this.options.nativePool) throw new Error("This Browser Host has no native page capability.")
     return this.options.nativePool.create({
-      ownerKey: message.ownerKey,
+      ownerKey: browserRuntimeOwnerKey(this.options.runtimeKey, message.ownerKey),
       requestId: message.requestId,
       page: message.page,
-      profile: message.profile,
+      profile: {
+        ...message.profile,
+        partition: browserRuntimePartition(this.options.runtimeKey, message.profile.partition),
+      },
       onPopup: (input, page) => {
         const key = `${message.ownerKey}:${input.page.id}`
         this.pages.set(key, { pageId: input.page.id, page })

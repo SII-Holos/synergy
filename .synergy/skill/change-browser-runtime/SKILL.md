@@ -18,6 +18,7 @@ description: Implement or review Desktop Browser pages, persistent identities, a
 3. Adopt the Electron-supplied popup WebContents via the window-open options. Install its initial navigation policy before asynchronous proxy/diagnostics setup; exercise main-frame redirects and grant cleanup without permitting later unrelated cross-origin or file navigation. Test opener, POST, postMessage, self-close and opener-close independence; loading only the popup URL is insufficient evidence.
 4. Keep profile identity immutable per page. Personal and named identities persist across tasks; temporary identities clear at last use and are excluded from saved state. Migration must preserve each historical native partition exactly without merging accounts.
 5. Reference-count shared partition resources: network grants, permission handlers, proxy configuration, download dispatch and login handlers. Closing a task or a recovering generation cannot revoke another live page's resources.
+   For multiple Runtime brokers, collide owner, page, profile and data-context IDs deliberately. Verify native namespace mapping, unchanged protocol identities, independent context revocation and import drains, global capacity reservations, and last-use temporary cleanup by physical partition. Run `browser-member-isolation` through the native smoke harness to check actual cookies/localStorage, reuse within one Runtime, restart identity, and another Runtime's unsaved page surviving closure.
 6. Recheck identity enablement and policy revision at dispatch and after asynchronous authorization. Denial and ask rules narrow ordinary task authority; preserve guarded/autonomous/full_access semantics. Human input remains independent. Do not infer current login success from cookies or a previous tool result.
 7. Keep file authority bound to the Session Workspace. Validate real upload bytes and pathname/open-handle identity; stage exports privately and publish through Harness file-import admission. Unknown outcomes cannot be retried automatically.
 8. Treat download collection and authorization as separate states. Chromium can finish a buffered file despite pause. Keep unaccepted files private, block export until acceptance, and remove them on cancellation/disposal. Exercise both buffered completion and a still-live transfer.
@@ -88,6 +89,8 @@ Native capture regressions must use the same early Chromium configuration as pro
 Report the implemented behavior, local commits, generated contracts, automated checks and observed Desktop acceptance. Do not substitute mock-only checks for native behavior.
 
 For native still covers, hold prefetch replies across hide-time covers, page changes and deactivation. Require successful image decoding within the same deadline as capture, retain newer evidence, and verify inactive panels neither publish late images nor start retries.
+
+Native fixtures that use OS encryption must set a unique application name and userData before readiness. On macOS, remove only that fixture's exact Safe Storage service/account afterward, including failure paths; an isolated directory alone does not isolate keychain identity. Wait for the owned Electron process to exit before removing its files.
 
 ## Local browser data
 

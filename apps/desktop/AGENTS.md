@@ -13,6 +13,7 @@ Load `change-browser-runtime` for native Browser pages, profiles or popup work a
 - Keep external-server and packaged managed modes distinct. Never stop or reuse the Runtime carrying this task.
 - Member profiles reuse `DesktopServerManager`; main owns device/Home selection, lazy starts and credentials. Verify `test/member-supervisor.test.ts` and `test/member-registry.test.ts`.
 - Native Browser creates one real `WebContentsView` per page and adopts native popups with their opener. Profile resources are shared by reference count; page commands never change human tab selection. The broker requires a local server.
+- Member brokers use main-owned Runtime keys and independent data contexts; keep protocol identities canonical.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
 - Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
 - `src/power-save.ts` owns the only `powerSaveBlocker` assertion and activity watcher. Read activity from the server's `/global/activity`; renderer requests only re-checks. Release on every quit path and keep the setting opt-in.

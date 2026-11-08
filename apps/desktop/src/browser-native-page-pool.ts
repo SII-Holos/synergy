@@ -70,6 +70,7 @@ interface Entry extends BrowserNativePageHandle {
 const INITIAL_NATIVE_PAGE_VIEWPORT = { width: 1280, height: 720 }
 const DEFAULT_RECOVERY_DELAYS_MS = [0, 500, 2_000] as const
 const MAX_RECOVERY_ROUNDS = 3
+const MAX_NATIVE_PAGES = 64
 export const MAX_RECOVERY_BUDGET = 5
 // Agent-driven resume retries are rate-limited: a page that keeps failing must
 // not be recovered in a tight loop through the Agent path. The native Retry
@@ -126,6 +127,8 @@ export class BrowserNativePagePool {
     if (this.entries.has(key) || this.creating.has(key) || this.destroying.has(key)) {
       throw new Error("Browser page already exists.")
     }
+    if (this.entries.size + this.creating.size >= MAX_NATIVE_PAGES)
+      throw new Error("Desktop Browser page limit reached.")
     this.creating.add(key)
     try {
       const generation = await this.createGeneration(input, 1, input.page.url, undefined, existingView)
@@ -437,7 +440,8 @@ export class BrowserNativePagePool {
     const ownerPages =
       [...this.entries.values()].filter((entry) => entry.ownerKey === parent.ownerKey).length +
       [...this.creating].filter((key) => key.startsWith(`${parent.ownerKey}:`)).length
-    if (!parent.onPopup || ownerPages >= 16 || this.entries.size + this.creating.size >= 64) return { action: "deny" }
+    if (!parent.onPopup || ownerPages >= 16 || this.entries.size + this.creating.size >= MAX_NATIVE_PAGES)
+      return { action: "deny" }
     return {
       action: "allow",
       outlivesOpener: true,
@@ -806,7 +810,7 @@ export class BrowserNativePagePool {
         this.entries.delete(ownerKey)
         if (
           !entry.input.profile.partition.startsWith("persist:") &&
-          ![...this.entries.values()].some((other) => other.input.profile.id === entry.input.profile.id)
+          ![...this.entries.values()].some((other) => other.input.profile.partition === entry.input.profile.partition)
         ) {
           await profileSession.clearStorageData()
         }

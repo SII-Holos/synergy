@@ -9,7 +9,17 @@ const temporaryDirectories: string[] = []
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })),
+    temporaryDirectories.splice(0).map(async (directory) => {
+      if (process.platform === "darwin") {
+        const name = path.basename(directory)
+        const cleanup = Bun.spawn(
+          ["/usr/bin/security", "delete-generic-password", "-s", `${name} Safe Storage`, "-a", name],
+          { stdout: "ignore", stderr: "ignore" },
+        )
+        expect([0, 44]).toContain(await cleanup.exited)
+      }
+      await fs.rm(directory, { recursive: true, force: true })
+    }),
   )
 })
 
@@ -23,6 +33,7 @@ describe("Electron Browser Host broker contract", () => {
     "browser-multi-page",
     "browser-native-import",
     "browser-profile-data",
+    "browser-member-isolation",
   ])
     (process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1" &&
       ![
@@ -30,6 +41,7 @@ describe("Electron Browser Host broker contract", () => {
         "browser-network",
         "browser-initialization",
         "browser-profile-data",
+        "browser-member-isolation",
         "browser-multi-page",
         "browser-presentation",
       ].includes(fixture)
@@ -87,7 +99,10 @@ describe("Electron Browser Host broker contract", () => {
         } catch (error) {
           child.kill("SIGTERM")
           await Promise.race([child.exited, new Promise((resolve) => setTimeout(resolve, 2_000))])
-          if (child.exitCode === null) child.kill("SIGKILL")
+          if (child.exitCode === null) {
+            child.kill("SIGKILL")
+            await child.exited
+          }
           stdout.cancel()
           stderr.cancel()
           throw new Error(
@@ -157,6 +172,7 @@ async function isolatedElectronEntry(directory: string, entry: string): Promise<
       'import { app } from "electron";',
       'import { pathToFileURL } from "node:url";',
       'import { configureDesktopChromium } from "./chromium.js";',
+      `app.setName(${JSON.stringify(path.basename(directory))});`,
       "configureDesktopChromium(app);",
       ...(process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1"
         ? ['app.once("ready", () => app.setActivationPolicy?.("accessory"));']

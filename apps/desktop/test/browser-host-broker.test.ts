@@ -17,7 +17,9 @@ import type {
 } from "../src/browser-native-page-pool"
 import { DEFAULT_DESKTOP_SHELL_SKIN } from "../src/default-shell-skin.generated"
 import { desktopThemeSnapshot } from "../src/theme"
-import { registerElectronMock } from "./electron-mock"
+import { BrowserDataContexts } from "../src/browser-data-contexts"
+import type { BrowserHostBrokerOptions } from "../src/browser-host-broker"
+import { electronMock, registerElectronMock } from "./electron-mock"
 
 registerElectronMock()
 const { BrowserHostBrokerClient } = await import("../src/browser-host-broker")
@@ -61,7 +63,7 @@ function command(requestId: string, pageId: string, command: BrowserBackendComma
   return BrowserHostMessageSchema.parse({ type: "page.command", protocolVersion, requestId, ownerKey, pageId, command })
 }
 
-async function fixture() {
+async function fixture(options: Pick<BrowserHostBrokerOptions, "runtimeKey" | "dataContexts" | "clearSavedData"> = {}) {
   const messages: BrowserHostMessage[] = []
   const inputs: BrowserNativePageInput[] = []
   const executed: Array<{ pageId: string; command: BrowserBackendCommand }> = []
@@ -111,6 +113,7 @@ async function fixture() {
     token,
     theme,
     nativePool,
+    ...options,
     onStatus: (value) => status.push(value),
   })
   cleanups.push(async () => {
@@ -153,6 +156,110 @@ test("broker rejects remote or credential-bearing servers before connecting", ()
     expect(() => new BrowserHostBrokerClient({ serverUrl, token, theme })).toThrow("local Desktop server")
   }
   expect(() => new BrowserHostBrokerClient({ serverUrl: "http://localhost", token: "invalid", theme })).toThrow()
+})
+
+test("member brokers isolate native owners and partitions while preserving canonical wire identity", async () => {
+  const personal = await fixture()
+  const one = await fixture({ runtimeKey: "member-one" })
+  const two = await fixture({ runtimeKey: "member-two" })
+  for (const f of [personal, one, two]) {
+    f.send(create("shared-page"))
+    expect((await f.result("shared-page")).result?.type).toBe("page")
+  }
+  const inputs = [personal, one, two].map((f) => f.inputs[0])
+  expect(new Set(inputs.map((input) => input.ownerKey)).size).toBe(3)
+  expect(new Set(inputs.map((input) => input.profile.partition)).size).toBe(3)
+  expect(personal.inputs[0].ownerKey).toBe(ownerKey)
+  expect(personal.inputs[0].profile.partition).toBe("persist:synergy-browser-fixture")
+  const event = { type: "page.closed" as const, pageId: "shared-page" }
+  one.inputs[0].emit(event)
+  await until(() => one.messages.some((message) => message.type === "page.event"))
+  expect(one.messages.find((message) => message.type === "page.event")).toMatchObject({ ownerKey, event })
+  await one.client.close()
+  expect(two.destroyed).toEqual([])
+  two.send(command("still-live", "shared-page", { type: "stop" }))
+  expect((await two.result("still-live")).result).toEqual({ type: "void" })
+})
+
+test("member profile contexts and clearing stay within the broker's native partition", async () => {
+  const cleared: string[] = []
+  const saved: string[] = []
+  const profileSession = (partition: string) => ({
+    clearStorageData: async () => {
+      cleared.push(partition)
+    },
+    clearCache: async () => {},
+    clearAuthCache: async () => {},
+    closeAllConnections: async () => {},
+  })
+  const previous = Reflect.get(electronMock.session, "fromPartition")
+  Reflect.set(electronMock.session, "fromPartition", profileSession)
+  cleanups.push(async () => {
+    if (previous === undefined) Reflect.deleteProperty(electronMock.session, "fromPartition")
+    else Reflect.set(electronMock.session, "fromPartition", previous)
+  })
+  const a = new BrowserDataContexts({ session: (partition) => profileSession(partition) as never })
+  const b = new BrowserDataContexts({ session: (partition) => profileSession(partition) as never })
+  const first = await fixture({
+    runtimeKey: "member-one",
+    dataContexts: a,
+    clearSavedData: async (partition) => {
+      saved.push(partition)
+    },
+  })
+  const second = await fixture({ runtimeKey: "member-two", dataContexts: b })
+  const contextId = crypto.randomUUID()
+  const epoch = crypto.randomUUID()
+  const profile = { id: "personal", partition: "persist:synergy-browser-fixture", revision: 0 }
+  for (const f of [first, second]) {
+    f.send({
+      type: "profile.data.prepare",
+      protocolVersion,
+      requestId: "prepare",
+      contextId,
+      epoch,
+      ownerKey,
+      expiresAt: Date.now() + 60_000,
+      profile,
+    })
+    expect((await f.result("prepare")).result).toEqual({ type: "void" })
+  }
+  const own = a.target(contextId)
+  const other = b.target(contextId)
+  expect(own.partition).not.toBe(other.partition)
+  expect(own.partition).not.toBe(profile.partition)
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const writing = own.write(async () => {
+    entered.resolve()
+    await release.promise
+  })
+  try {
+    await entered.promise
+    first.send({
+      type: "profile.clear",
+      protocolVersion,
+      requestId: "clear",
+      profileId: profile.id,
+      partition: profile.partition,
+      removeSavedData: true,
+    })
+    await until(() => own.signal.aborted)
+    expect(cleared).toEqual([])
+    release.resolve()
+    expect((await first.result("clear")).result).toEqual({ type: "void" })
+    expect(cleared).toEqual([own.partition])
+    expect(saved).toEqual([own.partition])
+    expect(other.current()).toBe(true)
+    second.send({ type: "profile.data.release", protocolVersion, requestId: "release", contextId, epoch, ownerKey })
+    expect((await second.result("release")).result).toEqual({ type: "void" })
+    expect(other.current()).toBe(false)
+  } finally {
+    release.resolve()
+    await writing
+    a.disconnect()
+    b.disconnect()
+  }
 })
 
 test("Node WebSocket closes incompatible or wrong-role broker messages without unhandled rejection", async () => {
