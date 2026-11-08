@@ -13,6 +13,8 @@ await server.stop(true)
 
 The health endpoint is `/org/v1/health`. Clients use the independent `@ericsanchezok/synergy-sdk/organization` entry. See [organization architecture](../../docs/architecture/organization.md) for storage ownership.
 
+The generated `orgSessions.get` and `orgSessions.list` methods read authorized directory metadata. Private entries require the creator's current project access; organization administrators receive no private-entry exception. `orgOrganization.sessionCapacity` returns anonymous counts. Directory entries contain ownership and resource references, not conversation content. They do not establish Runtime acceptance or execution permission. See [Session directory](../../docs/architecture/organization.md#session-directory).
+
 The dedicated Home retains an ownership marker through the central migration runner. It cannot be started as a personal Agent Runtime, and initial organization setup refuses a Home containing personal Runtime data. Preserve the marker with the rest of the Home when copying it.
 
 The optional organization component contributes `synergy org init` and `synergy org serve` to the existing CLI. Enable its `organization` experiment in the dedicated Home's `config/synergy.d/140-features.jsonc` using the [feature selection format](../../docs/architecture/feature-lifecycle.md). Both commands require an explicit absolute `SYNERGY_HOME`; the component itself registers no service migrations in an Agent Runtime.

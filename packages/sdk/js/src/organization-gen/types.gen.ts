@@ -212,6 +212,32 @@ export type OrgRuntimeRevoke = {
   expectedRevision: number
 }
 
+export type OrgSessionDirectoryView = {
+  sessionID: string
+  projectID: string
+  creatorID: string
+  driverRuntimeID: string
+  bindingEpoch: number
+  createdAt: number
+  shareState: "private" | "shared"
+  resourceIDs: Array<string>
+  executionGrantIDs: Array<string>
+  permissions: {
+    read: true
+    execute: boolean
+  }
+}
+
+export type OrgSessionDirectoryPage = {
+  items: Array<OrgSessionDirectoryView>
+  cursor?: string
+}
+
+export type OrgSessionCapacity = {
+  privateSessions: number
+  sharedSessions: number
+}
+
 export type OrgAuthClient =
   | {
       clientID: string
@@ -1336,6 +1362,150 @@ export type OrgRuntimeRevokeResponses = {
 }
 
 export type OrgRuntimeRevokeResponse = OrgRuntimeRevokeResponses[keyof OrgRuntimeRevokeResponses]
+
+export type OrgSessionsListData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/projects/{projectID}/sessions"
+}
+
+export type OrgSessionsListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionsListError = OrgSessionsListErrors[keyof OrgSessionsListErrors]
+
+export type OrgSessionsListResponses = {
+  /**
+   * Success
+   */
+  200: OrgSessionDirectoryPage
+}
+
+export type OrgSessionsListResponse = OrgSessionsListResponses[keyof OrgSessionsListResponses]
+
+export type OrgSessionsGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}"
+}
+
+export type OrgSessionsGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionsGetError = OrgSessionsGetErrors[keyof OrgSessionsGetErrors]
+
+export type OrgSessionsGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgSessionDirectoryView
+}
+
+export type OrgSessionsGetResponse = OrgSessionsGetResponses[keyof OrgSessionsGetResponses]
+
+export type OrgOrganizationSessionCapacityData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/org/v1/organization/session-capacity"
+}
+
+export type OrgOrganizationSessionCapacityErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgOrganizationSessionCapacityError =
+  OrgOrganizationSessionCapacityErrors[keyof OrgOrganizationSessionCapacityErrors]
+
+export type OrgOrganizationSessionCapacityResponses = {
+  /**
+   * Success
+   */
+  200: OrgSessionCapacity
+}
+
+export type OrgOrganizationSessionCapacityResponse =
+  OrgOrganizationSessionCapacityResponses[keyof OrgOrganizationSessionCapacityResponses]
 
 export type OrgAuthDiscoveryData = {
   body?: never

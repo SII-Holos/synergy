@@ -34,4 +34,26 @@ export namespace OrganizationStoragePath {
   ]
   export const accessibleProjects = (accountID: string) => ["organization", "project-access", accountID]
   export const projectAccess = (accountID: string, projectID: string) => [...accessibleProjects(accountID), projectID]
+  export const sessions = () => ["organization", "sessions"]
+  export const session = (id: string) => [...sessions(), id]
+  export const creatorSessions = (projectID: string, creatorID: string) => [
+    "organization",
+    "session-creators",
+    projectID,
+    creatorID,
+  ]
+  export const creatorSession = (projectID: string, creatorID: string, sessionID: string) => [
+    ...creatorSessions(projectID, creatorID),
+    sessionID,
+  ]
+  export const sessionVisibility = (state: "private" | "shared", projectID?: string) => [
+    "organization",
+    "session-visibility",
+    state,
+    ...(projectID ? [projectID] : []),
+  ]
+  export const visibleSession = (state: "private" | "shared", projectID: string, sessionID: string) => [
+    ...sessionVisibility(state, projectID),
+    sessionID,
+  ]
 }

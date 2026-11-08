@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { OrganizationIdentity } from "./identity.js"
 
 export namespace OrganizationProtocol {
   export const version = 1
@@ -28,15 +29,15 @@ export namespace OrganizationProtocol {
 
   export const PrivateSessionRegistration = z
     .strictObject({
-      sessionID: Identity,
-      projectID: Identity,
-      creatorID: Identity,
-      driverRuntimeID: Identity,
+      sessionID: OrganizationIdentity.ID,
+      projectID: OrganizationIdentity.ID,
+      creatorID: OrganizationIdentity.ID,
+      driverRuntimeID: OrganizationIdentity.ID,
       bindingEpoch: Epoch,
       createdAt: z.number().int().nonnegative(),
       shareState: z.literal("private"),
-      resourceIDs: z.array(Identity),
-      executionGrantIDs: z.array(Identity),
+      resourceIDs: z.array(OrganizationIdentity.ID),
+      executionGrantIDs: z.array(OrganizationIdentity.ID),
     })
     .meta({ ref: "OrgPrivateSessionRegistration" })
   export type PrivateSessionRegistration = z.infer<typeof PrivateSessionRegistration>

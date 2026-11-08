@@ -9,6 +9,9 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 
 1. Inspect the nearest route, its owning domain service, route tests, generated SDK method, and every first-party consumer.
 2. Decide whether the route is global, home-scoped, project-scoped, session-owned, or workspace-owned. Preserve Scope/directory resolution and authorization.
+
+   For private object catalogs, resolve stored ownership and current access before returning metadata. Page authorized identity indexes before loading bodies; test interleaved foreign records beyond one page, duplicate visible identities, removed membership and administrator accounts. Anonymous capacity endpoints must expose counts without loading private records. Keep metadata reservations distinct from execution acceptance.
+
 3. Decide whether the behavior is request/response state, a sequenced state event, or a streaming transport. Do not force WebSocket, SSE, WebRTC, file/blob, or external URL behavior into an ordinary SDK call.
 
 4. Check the `operationId` for a generated-method collision before implementing. The generator keys a method by the id's first two segments with a leading `global.` stripped, so `global.session.status` and `session.status` both resolve to `Session.status` — the generated method silently retargets one route and the other disappears from the SDK entirely, with no build error. Give the newer route a non-colliding id (`global.session.statuses`, not `global.session.status`) and confirm after regeneration that both methods exist and target their own paths.

@@ -47,6 +47,8 @@ import type {
   OrgMemberRuntimeRegistration,
   OrgOrganizationGetErrors,
   OrgOrganizationGetResponses,
+  OrgOrganizationSessionCapacityErrors,
+  OrgOrganizationSessionCapacityResponses,
   OrgOrganizationTransferOwnerErrors,
   OrgOrganizationTransferOwnerResponses,
   OrgPasswordChange,
@@ -79,6 +81,10 @@ import type {
   OrgRuntimeRevoke,
   OrgRuntimeRevokeErrors,
   OrgRuntimeRevokeResponses,
+  OrgSessionsGetErrors,
+  OrgSessionsGetResponses,
+  OrgSessionsListErrors,
+  OrgSessionsListResponses,
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
   OrgTokenRefreshInput,
@@ -438,6 +444,17 @@ export class OrgOrganization extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+
+  /**
+   * Read anonymous Session counts
+   */
+  public sessionCapacity<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      OrgOrganizationSessionCapacityResponses,
+      OrgOrganizationSessionCapacityErrors,
+      ThrowOnError
+    >({ url: "/org/v1/organization/session-capacity", ...options })
   }
 }
 
@@ -827,6 +844,55 @@ export class OrgRuntime extends HeyApiClient {
   }
 }
 
+export class OrgSessions extends HeyApiClient {
+  /**
+   * List authorized Session directory entries
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgSessionsListResponses, OrgSessionsListErrors, ThrowOnError>({
+      url: "/org/v1/projects/{projectID}/sessions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read an authorized Session directory entry
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<OrgSessionsGetResponses, OrgSessionsGetErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class OrgHealth extends HeyApiClient {
   /**
    * Read organization service readiness
@@ -860,6 +926,8 @@ export class OrganizationClient extends HeyApiClient {
   orgProjects = new OrgProjects({ client: this.client })
 
   orgRuntime = new OrgRuntime({ client: this.client })
+
+  orgSessions = new OrgSessions({ client: this.client })
 
   orgHealth = new OrgHealth({ client: this.client })
 }

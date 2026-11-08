@@ -1,6 +1,7 @@
 import {
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationSessionProtocol as Session,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { authenticate, account as resolveAccount, type Credentials } from "./auth/session"
 import { OrganizationRecord as Record } from "./storage/records"
@@ -27,13 +28,35 @@ export function authorize(
   action: string,
   target: { runtimeID: string },
 ): Promise<Authenticated & { runtime: Record.RuntimeRegistration; view: Runtime.Registration }>
+export function authorize(
+  credentials: Credentials,
+  action: string,
+  target: { sessionID: string },
+): Promise<
+  Authenticated & { session: Record.SessionDirectory; project: z.infer<typeof Record.Project>; view: Session.View }
+>
 export async function authorize(
   credentials: Credentials,
   action: string,
-  target?: { projectID: string } | { accountID: string } | { runtimeID: string },
+  target?: { projectID: string } | { accountID: string } | { runtimeID: string } | { sessionID: string },
 ) {
   const current = await authenticate(credentials)
   const { account } = current
+  if (target && "sessionID" in target) {
+    const session = await Record.read(Record.SessionDirectory, Keys.session(target.sessionID))
+    if (
+      !session ||
+      session.sessionID !== target.sessionID ||
+      session.orgID !== account.orgID ||
+      (session.shareState === "private" && session.creatorID !== account.accountID)
+    )
+      fail("NOT_FOUND", "Session not found")
+    const project = await Record.read(Record.Project, Keys.project(session.projectID))
+    if (!project) fail("NOT_FOUND", "Session not found")
+    const membership = await Record.read(Record.ProjectMember, Keys.projectMember(project.projectID, account.accountID))
+    const access = projectView(account, project, membership, "project.read")
+    return { ...current, session, project, view: sessionView(account, session, access, action) }
+  }
   if (target && "runtimeID" in target) {
     const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(target.runtimeID))
     if (!runtime) fail("NOT_FOUND", "Runtime not found")
@@ -59,12 +82,44 @@ export async function authorize(
     if (!allowed) fail("PERMISSION_DENIED", "This action is not allowed")
     return { ...current, target: subject }
   }
-  if (["accounts.list", "invites.create"].includes(action)) requireAdministrator(account)
+  if (["accounts.list", "invites.create", "sessions.capacity"].includes(action)) requireAdministrator(account)
   else if (
     !["organization.read", "project.create", "project.list", "runtimes.register", "runtimes.list"].includes(action)
   )
     fail("PERMISSION_DENIED", "This action is not allowed")
   return current
+}
+
+export function sessionView(
+  account: Identity.Account,
+  session: Record.SessionDirectory,
+  project: Identity.ProjectView,
+  action: string,
+): Session.View {
+  if (
+    account.state !== "active" ||
+    session.orgID !== account.orgID ||
+    project.orgID !== account.orgID ||
+    session.projectID !== project.projectID ||
+    !project.permissions.read ||
+    (session.shareState === "private" && session.creatorID !== account.accountID)
+  )
+    fail("NOT_FOUND", "Session not found")
+  const execute = project.permissions.execute && !session.handoffID
+  if (action !== "session.read" && (action !== "session.execute" || !execute))
+    fail("PERMISSION_DENIED", "This action is not allowed")
+  return Session.View.parse({
+    sessionID: session.sessionID,
+    projectID: session.projectID,
+    creatorID: session.creatorID,
+    driverRuntimeID: session.driverRuntimeID,
+    bindingEpoch: session.bindingEpoch,
+    createdAt: session.createdAt,
+    shareState: session.shareState,
+    resourceIDs: session.resourceIDs,
+    executionGrantIDs: session.executionGrantIDs,
+    permissions: { read: true, execute },
+  })
 }
 
 export function runtimeView(account: Identity.Account, runtime: Record.RuntimeRegistration, action: string) {

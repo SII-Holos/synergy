@@ -3,6 +3,7 @@ import {
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationClientAuth as ClientAuth,
+  OrganizationSessionProtocol as Session,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
@@ -84,6 +85,17 @@ export namespace OrganizationRecord {
     role: Identity.ProjectRole,
     revision: Identity.Revision,
   })
+  export const SessionDirectory = Session.Metadata.extend({
+    schemaVersion: z.literal(1),
+    orgID: Identity.ID,
+    nextBindingEpoch: z.number().int().positive(),
+    shareGeneration: Identity.Revision,
+    controlRevision: Identity.Revision,
+    handoffID: Identity.ID.optional(),
+    rowRevision: Identity.Revision,
+  }).refine((value) => value.nextBindingEpoch > value.bindingEpoch, "Next binding epoch must advance")
+  export type SessionDirectory = z.infer<typeof SessionDirectory>
+  export const SessionIndex = z.strictObject({ sessionID: Identity.ID })
 
   export async function read<T>(schema: z.ZodType<T>, key: string[]): Promise<T | undefined> {
     const [value] = await Storage.readMany<unknown>([key])

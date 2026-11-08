@@ -14,6 +14,7 @@ import { runtimeConnectionRoutes, type RuntimeBindings } from "./routes/runtime-
 import { ClientPolicy } from "./auth/client-policy"
 import type { ClientAuthentication } from "./auth/client"
 import { clientAuthenticationRoutes } from "./routes/client-auth"
+import { sessionDirectoryRoutes } from "./routes/session-directory"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -95,6 +96,7 @@ export function organizationApp(
       }, publicOrigin),
     )
     .route("/org/v1", registrationRoutes(registry, publicOrigin))
+    .route("/org/v1", sessionDirectoryRoutes(publicOrigin))
     .route(
       "/org/v1",
       clientAuthenticationRoutes(() => {
