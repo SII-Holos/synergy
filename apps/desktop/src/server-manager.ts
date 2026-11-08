@@ -144,7 +144,9 @@ export class DesktopServerManager {
 
   browserConnection() {
     const connection = this.connection()
-    return connection && this.browserCredential ? { ...connection, token: this.browserCredential } : undefined
+    const authorization = connection?.headers.authorization
+    if (!connection || !authorization || !this.browserCredential) return
+    return { url: connection.url, headers: { authorization }, token: this.browserCredential }
   }
 
   async start(): Promise<string> {

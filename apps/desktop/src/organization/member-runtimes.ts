@@ -19,7 +19,13 @@ import { DesktopOrganizationError as Failure } from "./error.js"
 const Device = z.strictObject({ version: z.literal(1), deviceID: z.uuid() })
 type Access = Awaited<ReturnType<DesktopOrganizationAccounts["access"]>>
 type Attempt = { controller: AbortController; users: Set<symbol>; result: Promise<Desktop.MemberRuntime> }
-type Entry = { manager: DesktopServerManager; runtimeID: string }
+type Services = { close(): Promise<void> }
+type Entry = { manager: DesktopServerManager; runtimeID: string; services?: Services }
+export type DesktopMemberConnection = {
+  connectionID: string
+  runtimeID: string
+  browser: NonNullable<ReturnType<DesktopServerManager["browserConnection"]>>
+}
 
 export class DesktopMemberRuntimes {
   private entries = new Map<string, Entry>()
@@ -35,6 +41,7 @@ export class DesktopMemberRuntimes {
       server: Pick<DesktopServerManagerOptions, "channel" | "resourcesPath">
       fetch?: typeof fetch
       ca?: string
+      services?: (member: DesktopMemberConnection) => Services | Promise<Services>
     },
   ) {
     if (!path.isAbsolute(options.root)) throw new Failure("invalid_request")
@@ -99,7 +106,7 @@ export class DesktopMemberRuntimes {
     for (const attempt of this.starts.values()) attempt.controller.abort()
     this.stopping = (async () => {
       await Promise.allSettled([...this.starts.values()].map((attempt) => attempt.result))
-      const results = await Promise.allSettled([...this.entries.values()].map((entry) => entry.manager.stop()))
+      const results = await Promise.allSettled([...this.entries.values()].map((entry) => this.stopEntry(entry)))
       const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
       if (errors.length) throw new AggregateError(errors, "Member Runtime shutdown failed")
     })().finally(() => {
@@ -119,6 +126,14 @@ export class DesktopMemberRuntimes {
 
   private check(signal?: AbortSignal) {
     if (this.closed || this.stopping || signal?.aborted) throw new Failure("cancelled")
+  }
+
+  private async stopEntry(entry: Entry, stopping?: Promise<void>) {
+    const services = entry.services
+    const results = await Promise.allSettled([services?.close(), stopping ?? entry.manager.stop()])
+    if (results[0].status === "fulfilled" && entry.services === services) entry.services = undefined
+    const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (errors.length) throw new AggregateError(errors, "Member Runtime services did not stop cleanly")
   }
 
   private snapshot(connectionID: string): Desktop.MemberRuntime {
@@ -142,7 +157,7 @@ export class DesktopMemberRuntimes {
     const id = connection.id
     const previous = this.entries.get(id)
     if (previous?.manager.connection()) return { connectionID: id, runtimeID: previous.runtimeID, state: "running" }
-    await previous?.manager.stop()
+    if (previous) await this.stopEntry(previous)
     this.check(signal)
     const deviceID = await this.device(signal)
     this.check(signal)
@@ -175,7 +190,8 @@ export class DesktopMemberRuntimes {
         ca: this.options.ca,
       },
     })
-    this.entries.set(id, { manager, runtimeID })
+    const entry: Entry = { manager, runtimeID }
+    this.entries.set(id, entry)
     let stopping: Promise<void> | undefined
     const cancel = () => {
       stopping ??= manager.stop()
@@ -186,9 +202,19 @@ export class DesktopMemberRuntimes {
       this.check(signal)
       await manager.start()
       this.check(signal)
+      if (this.options.services) {
+        const browser = manager.browserConnection()
+        if (!browser) throw new Failure("unavailable")
+        entry.services = await this.options.services({ connectionID: id, runtimeID, browser })
+        this.check(signal)
+      }
       return { connectionID: id, runtimeID, state: "running" }
     } catch (error) {
-      await (stopping ?? manager.stop())
+      try {
+        await this.stopEntry(entry, stopping)
+      } catch (cleanup) {
+        throw new AggregateError([error, cleanup], "Member Runtime startup cleanup failed")
+      }
       throw error
     } finally {
       signal.removeEventListener("abort", cancel)

@@ -63,19 +63,32 @@ function command(requestId: string, pageId: string, command: BrowserBackendComma
   return BrowserHostMessageSchema.parse({ type: "page.command", protocolVersion, requestId, ownerKey, pageId, command })
 }
 
-async function fixture(options: Pick<BrowserHostBrokerOptions, "runtimeKey" | "dataContexts" | "clearSavedData"> = {}) {
+async function fixture(
+  options: Pick<BrowserHostBrokerOptions, "runtimeKey" | "dataContexts" | "clearSavedData" | "headers"> = {},
+) {
   const messages: BrowserHostMessage[] = []
   const inputs: BrowserNativePageInput[] = []
   const executed: Array<{ pageId: string; command: BrowserBackendCommand }> = []
   const destroyed: string[] = []
   const status: string[] = []
+  const requests: Array<{ url: string; authorization: string | null; origin: string | null; cookie: string | null }> =
+    []
   let socket: ServerWebSocket<undefined> | undefined
   let beforeCreate: () => Promise<void> = async () => undefined
+  let beforeDestroy: () => Promise<void> = async () => undefined
   let execute: (command: BrowserBackendCommand) => Promise<void> = async () => undefined
   const server = Bun.serve<undefined>({
     hostname: "127.0.0.1",
     port: 0,
     fetch(request, server) {
+      requests.push({
+        url: request.url,
+        authorization: request.headers.get("authorization"),
+        origin: request.headers.get("origin"),
+        cookie: request.headers.get("cookie"),
+      })
+      if (options.headers?.authorization && request.headers.get("authorization") !== options.headers.authorization)
+        return new Response(null, { status: 401 })
       return server.upgrade(request) ? undefined : new Response(null, { status: 404 })
     },
     websocket: {
@@ -98,6 +111,7 @@ async function fixture(options: Pick<BrowserHostBrokerOptions, "runtimeKey" | "d
         state: () => input.page,
         isAlive: () => !destroyed.includes(input.page.id),
         async destroy() {
+          await beforeDestroy()
           destroyed.push(input.page.id)
         },
         async execute(command) {
@@ -129,8 +143,12 @@ async function fixture(options: Pick<BrowserHostBrokerOptions, "runtimeKey" | "d
     executed,
     destroyed,
     status,
+    requests,
     blockCreation(value: () => Promise<void>) {
       beforeCreate = value
+    },
+    blockDestruction(value: () => Promise<void>) {
+      beforeDestroy = value
     },
     interceptExecution(value: typeof execute) {
       execute = value
@@ -150,6 +168,82 @@ async function fixture(options: Pick<BrowserHostBrokerOptions, "runtimeKey" | "d
     },
   }
 }
+
+test("member broker sends its private listener credential only in the local upgrade headers", async () => {
+  const authorization = "Bearer " + "b".repeat(64)
+  const f = await fixture({ runtimeKey: "member-a", headers: { authorization } })
+  expect(f.requests[0]).toMatchObject({ authorization, cookie: null, origin: null })
+  expect(new URL(f.requests[0].url).search).toBe(`?protocolVersion=${protocolVersion}`)
+  expect(f.messages[0]).toMatchObject({ type: "host.register", token })
+  expect(JSON.stringify(f.messages)).not.toContain(authorization)
+  f.disconnect()
+  await until(() => f.requests.length === 2 && f.status.filter((value) => value === "ready").length === 2)
+  expect(f.requests[1].authorization).toBe(authorization)
+})
+
+test("concurrent broker close callers all wait for owned native pages to drain", async () => {
+  const f = await fixture()
+  f.send(create("closing-page"))
+  await f.result("closing-page")
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  f.blockDestruction(() => pending)
+  let closed = 0
+  const first = f.client.close().then(() => closed++)
+  const second = f.client.close().then(() => closed++)
+  try {
+    await Bun.sleep(10)
+    expect(closed).toBe(0)
+  } finally {
+    release()
+    await Promise.all([first, second])
+  }
+  expect(closed).toBe(2)
+  expect(f.destroyed).toEqual(["closing-page"])
+})
+
+test("broker close revokes profile writes immediately and drains an already-running physical write", async () => {
+  const contexts = new BrowserDataContexts({ session: () => ({}) as Electron.Session })
+  const f = await fixture({ runtimeKey: "member-a", dataContexts: contexts })
+  const contextId = crypto.randomUUID()
+  f.send({
+    type: "profile.data.prepare",
+    protocolVersion,
+    requestId: "prepare",
+    ownerKey,
+    contextId,
+    epoch: crypto.randomUUID(),
+    expiresAt: Date.now() + 60_000,
+    profile: { id: "personal", revision: 1, partition: "persist:synergy-browser-shared" },
+  })
+  await f.result("prepare")
+  const target = contexts.target(contextId)
+  let entered = false,
+    release!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const writing = target.write(async () => {
+    entered = true
+    await waiting
+  })
+  await until(() => entered)
+  let closed = false
+  const closing = f.client.close().then(() => {
+    closed = true
+  })
+  try {
+    expect(target.signal.aborted).toBe(true)
+    await Bun.sleep(10)
+    expect(closed).toBe(false)
+  } finally {
+    release()
+    await Promise.all([writing, closing])
+  }
+  expect(() => contexts.target(contextId)).toThrow("expired")
+})
 
 test("broker rejects remote or credential-bearing servers before connecting", () => {
   for (const serverUrl of ["https://example.com", "file:///tmp/browser", "http://user:secret@localhost"]) {
@@ -392,7 +486,7 @@ test("unknown and closed pages return structured failures without executing anot
   expect(f.destroyed).toEqual(["page"])
 })
 
-test("a page created after disconnect is destroyed and never acknowledged", async () => {
+test("closing drains a page still being created at disconnect without acknowledging it", async () => {
   const f = await fixture()
   const held = Promise.withResolvers<void>()
   f.blockCreation(() => held.promise)
@@ -400,8 +494,18 @@ test("a page created after disconnect is destroyed and never acknowledged", asyn
   await until(() => f.inputs.length === 1)
   f.disconnect()
   await until(() => f.status.includes("restarting"))
-  held.resolve()
-  await until(() => f.destroyed.includes("late"))
+  let closed = false
+  const closing = f.client.close().then(() => {
+    closed = true
+  })
+  try {
+    await Bun.sleep(10)
+    expect(closed).toBe(false)
+  } finally {
+    held.resolve()
+    await closing
+  }
+  expect(f.destroyed).toEqual(["late"])
   expect(f.messages.some((message) => message.type === "page.result" && message.requestId === "late")).toBe(false)
 })
 

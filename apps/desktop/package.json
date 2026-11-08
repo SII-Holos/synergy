@@ -37,11 +37,13 @@
     "@trycua/cua-driver": "0.36.0",
     "electron-updater": "6.8.10",
     "fflate": "0.8.3",
+    "ws": "8.22.0",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@ericsanchezok/synergy-organization": "workspace:*",
     "@types/node": "catalog:",
+    "@types/ws": "8.18.2",
     "electron": "44.9.0",
     "electron-builder": "26.17.0",
     "electron-builder-squirrel-windows": "26.17.0",

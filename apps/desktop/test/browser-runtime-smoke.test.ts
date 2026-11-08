@@ -34,6 +34,7 @@ describe("Electron Browser Host broker contract", () => {
     "browser-native-import",
     "browser-profile-data",
     "browser-member-isolation",
+    "browser-member-broker",
   ])
     (process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1" &&
       ![
@@ -42,6 +43,7 @@ describe("Electron Browser Host broker contract", () => {
         "browser-initialization",
         "browser-profile-data",
         "browser-member-isolation",
+        "browser-member-broker",
         "browser-multi-page",
         "browser-presentation",
       ].includes(fixture)

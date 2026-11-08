@@ -1,4 +1,7 @@
 import { session } from "electron"
+import WebSocket from "ws"
+import { Agent as HTTPAgent } from "node:http"
+import { Agent as HTTPSAgent } from "node:https"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserHostMessageSchema,
@@ -17,6 +20,7 @@ import { browserRuntimeOwnerKey, browserRuntimePartition } from "./browser-profi
 export interface BrowserHostBrokerOptions {
   serverUrl: string
   token: string
+  headers?: Readonly<{ authorization: string }>
   hostId?: string
   runtimeKey?: string
   nativePool?: BrowserNativePagePool
@@ -36,10 +40,13 @@ export class BrowserHostBrokerClient {
   private socket: WebSocket | null = null
   private pages = new Map<string, ManagedPageEntry>()
   private commandTails = new Map<string, Promise<void>>()
+  private operations = new Set<Promise<void>>()
   private closed = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private connectionEpoch = 0
   private disconnecting: Promise<void> | null = null
+  private closing: Promise<void> | undefined
+  private agent: HTTPAgent
 
   private options: BrowserHostBrokerOptions
   private theme: DesktopThemeSnapshot
@@ -55,6 +62,7 @@ export class BrowserHostBrokerClient {
       throw new Error("Native Browser requires a local Desktop server.")
     this.options = { ...options, token: BrowserRegistrationSecretSchema.parse(options.token) }
     browserRuntimeOwnerKey(options.runtimeKey, "")
+    this.agent = server.protocol === "https:" ? new HTTPSAgent() : new HTTPAgent()
     this.theme = options.theme
   }
 
@@ -68,10 +76,20 @@ export class BrowserHostBrokerClient {
     const url = new URL("/browser/host/broker", this.options.serverUrl)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
     url.searchParams.set("protocolVersion", String(BROWSER_PROTOCOL_VERSION))
-    const socket = new WebSocket(url)
+    // Provenance: https://github.com/websockets/ws/blob/master/doc/ws.md#new-websocketaddress-protocols-options
+    // Local adaptation: main-owned upgrade credentials require Node headers and must never follow redirects.
+    const socket = new WebSocket(url, {
+      headers: this.options.headers,
+      followRedirects: false,
+      perMessageDeflate: false,
+      handshakeTimeout: 5_000,
+      maxPayload: 80 * 1024 * 1024,
+      agent: this.agent,
+    })
     const epoch = ++this.connectionEpoch
     this.socket = socket
     socket.addEventListener("open", () => {
+      if (epoch !== this.connectionEpoch || this.socket !== socket || this.closed) return
       this.send({
         type: "host.register",
         protocolVersion: BROWSER_PROTOCOL_VERSION,
@@ -80,8 +98,15 @@ export class BrowserHostBrokerClient {
         capabilities: { native: Boolean(this.options.nativePool) },
       })
     })
-    socket.addEventListener("message", (event) => void this.handle(event.data, epoch))
+    socket.addEventListener("message", (event) => {
+      const operation = this.handle(event.data, epoch)
+      this.operations.add(operation)
+      void operation
+        .catch(() => console.error("Browser Host message handling failed."))
+        .finally(() => this.operations.delete(operation))
+    })
     socket.addEventListener("error", () => {
+      if (epoch !== this.connectionEpoch || this.socket !== socket || this.closed) return
       this.options.onStatus?.("failed")
       console.error("Browser Host broker connection failed.")
     })
@@ -93,7 +118,7 @@ export class BrowserHostBrokerClient {
       if (!this.closed) this.options.onStatus?.("restarting")
       const pages = this.takePages()
       this.commandTails.clear()
-      const disconnecting = destroyPages(pages)
+      const disconnecting = this.drain(pages)
       this.disconnecting = disconnecting
       void disconnecting
         .catch((error) => console.error("Browser Host page cleanup failed after broker disconnect.", error))
@@ -104,30 +129,34 @@ export class BrowserHostBrokerClient {
     })
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    return (this.closing ??= this.dispose())
+  }
+
+  private async dispose(): Promise<void> {
     this.closed = true
     this.connectionEpoch++
     this.options.dataContexts?.disconnect()
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     const socket = this.socket
     this.socket = null
-    socket?.close()
+    const closing = closeSocket(socket)
     const pages = this.takePages()
     this.commandTails.clear()
-    const failures: unknown[] = []
-    if (this.disconnecting) {
-      try {
-        await this.disconnecting
-      } catch (error) {
-        failures.push(error)
-      }
-    }
-    try {
-      await destroyPages(pages)
-    } catch (error) {
-      failures.push(error)
-    }
+    const results = await Promise.allSettled([closing, this.disconnecting, this.drain(pages)])
+    this.agent.destroy()
+    const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     if (failures.length) throw new AggregateError(failures, "Browser Host pages did not close cleanly.")
+  }
+
+  private async drain(pages: ManagedPage[]): Promise<void> {
+    const results = await Promise.allSettled([
+      destroyPages(pages),
+      this.options.dataContexts?.drain(),
+      ...this.operations,
+    ])
+    const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (failures.length) throw new AggregateError(failures, "Browser Host native operations did not drain cleanly.")
   }
 
   private async handle(data: unknown, epoch: number): Promise<void> {
@@ -339,6 +368,18 @@ export class BrowserHostBrokerClient {
     const pages = Array.from(this.pages.values(), (entry) => entry.page)
     this.pages.clear()
     return pages
+  }
+}
+
+async function closeSocket(socket: WebSocket | null): Promise<void> {
+  if (!socket || socket.readyState === WebSocket.CLOSED) return
+  const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()))
+  const timeout = setTimeout(() => socket.terminate(), 1_000)
+  try {
+    socket.close()
+    await closed
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

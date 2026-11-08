@@ -45,7 +45,12 @@ async function authorized(f: Awaited<ReturnType<typeof organizationFixture>>, ac
   return accounts.accept(grant.data)
 }
 
-function registry(root: string, accounts: DesktopOrganizationAccounts, fetch: typeof globalThis.fetch) {
+function registry(
+  root: string,
+  accounts: DesktopOrganizationAccounts,
+  fetch: typeof globalThis.fetch,
+  services?: ConstructorParameters<typeof DesktopMemberRuntimes>[0]["services"],
+) {
   const previous = process.env.SYNERGY_TEST_HOME
   process.env.SYNERGY_TEST_HOME = root
   const options = {
@@ -53,6 +58,7 @@ function registry(root: string, accounts: DesktopOrganizationAccounts, fetch: ty
     accounts,
     fetch,
     server: { channel: "dev" as const, resourcesPath },
+    services,
   }
   const owners: DesktopMemberRuntimes[] = []
   const create = () => {
@@ -74,6 +80,88 @@ function registry(root: string, accounts: DesktopOrganizationAccounts, fetch: ty
     },
   }
 }
+
+test("member native services receive private connections once and drain before shutdown completes", async () => {
+  await using service = await organizationFixture()
+  const account = await authorized(service)
+  const opened: Array<Parameters<NonNullable<ConstructorParameters<typeof DesktopMemberRuntimes>[0]["services"]>>[0]> =
+    []
+  let release!: () => void
+  let wait = Promise.resolve()
+  let closed = 0
+  await using f = registry(service.root, service.accounts, service.transport, (member) => {
+    opened.push(member)
+    return {
+      async close() {
+        await wait
+        closed++
+      },
+    }
+  })
+  expect((await f.owner.status(account.id)).state).toBe("stopped")
+  expect(opened).toHaveLength(0)
+  const [first, duplicate] = await Promise.all([f.owner.start(account.id), f.owner.start(account.id)])
+  expect(first).toEqual(duplicate)
+  expect(opened).toHaveLength(1)
+  const original = opened[0]
+  expect(original).toMatchObject({ connectionID: account.id, runtimeID: first.runtimeID })
+  expect(
+    (
+      await fetch(original.browser.url + "/native", {
+        headers: { ...original.browser.headers, "x-fixture-browser-token": original.browser.token },
+      })
+    ).status,
+  ).toBe(200)
+  expect(JSON.stringify(first)).not.toContain(original.browser.token)
+  wait = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let stopped = false
+  const stopping = f.owner.stopAll().then(() => {
+    stopped = true
+  })
+  try {
+    await Bun.sleep(15)
+    expect(stopped).toBe(false)
+  } finally {
+    release()
+    await stopping
+  }
+  expect(closed).toBe(1)
+  expect(f.owner.running()).toEqual([])
+  await f.owner.start(account.id)
+  expect(opened).toHaveLength(2)
+  expect(opened[1].browser.token).not.toBe(original.browser.token)
+  await f.owner.close()
+  expect(closed).toBe(2)
+}, 20_000)
+
+test("failed or cancelled native attachment releases its member child and late-created services", async () => {
+  await using service = await organizationFixture()
+  const account = await authorized(service)
+  const cancellation = new AbortController()
+  let attempts = 0,
+    closed = 0
+  await using f = registry(service.root, service.accounts, service.transport, () => {
+    attempts++
+    if (attempts === 1) throw new Error("Native attachment unavailable")
+    if (attempts === 2) cancellation.abort()
+    return {
+      async close() {
+        closed++
+      },
+    }
+  })
+  await expect(f.owner.start(account.id)).rejects.toThrow("Native attachment unavailable")
+  expect(f.owner.running()).toEqual([])
+  await expect(f.owner.start(account.id, cancellation.signal)).rejects.toMatchObject({ code: "cancelled" })
+  await f.owner.stopAll()
+  expect(closed).toBe(1)
+  expect(f.owner.running()).toEqual([])
+  expect((await f.owner.start(account.id)).state).toBe("running")
+  await f.owner.close()
+  expect(closed).toBe(2)
+}, 20_000)
 
 test("the main registry lazily provisions independent members and deduplicates actual child starts", async () => {
   await using a = await organizationFixture()

@@ -125,6 +125,7 @@ import { DesktopOrganizationAccounts } from "./organization/accounts.js"
 import { DesktopOrganizationAuthorization } from "./organization/authorization.js"
 import { DesktopOrganizationIPC, registerOrganizationIPC } from "./organization/ipc.js"
 import { DesktopMemberRuntimes } from "./organization/member-runtimes.js"
+import { DesktopMemberBrowsers } from "./organization/member-browsers.js"
 import { organizationEncryption } from "./organization/encryption.js"
 
 installDesktopStdioHandlers()
@@ -140,6 +141,7 @@ let mainRendererDelivery: DesktopRendererDelivery | null = null
 let startupOverlay: DesktopStartupOverlay | null = null
 let nativeViews: BrowserNativeViewManager | null = null
 let nativePagePool: BrowserNativePagePool | null = null
+let memberBrowsers: DesktopMemberBrowsers | undefined
 let browserData: BrowserDataStore | undefined
 let browserDataActions: BrowserDataActions | undefined
 const browserDataContexts = new BrowserDataContexts({ session: (partition) => session.fromPartition(partition) })
@@ -367,6 +369,11 @@ async function createWindow() {
     captureWindow: () => mainWindow,
     backgroundColor: () => desktopThemeBackground(getDesktopThemeSnapshot()),
     onVisit: (partition, url, title) => localBrowserData().visit(partition, url, title),
+  })
+  memberBrowsers ??= new DesktopMemberBrowsers({
+    nativePool: nativePagePool,
+    theme: getDesktopThemeSnapshot,
+    clearSavedData: (partition) => localBrowserData().clear(partition),
   })
   nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool, (event) => {
     rendererDelivery.send("browser-native:event", event)
@@ -1356,6 +1363,10 @@ async function start() {
     root: path.join(app.getPath("userData"), "organization-runtimes"),
     accounts: organizationAccounts,
     server: { channel, resourcesPath: process.resourcesPath },
+    services: (member) => {
+      if (!memberBrowsers) throw new Error("Member Browser is unavailable.")
+      return memberBrowsers.start(member)
+    },
   })
   organizationIPC = new DesktopOrganizationIPC({
     accounts: organizationAccounts,
