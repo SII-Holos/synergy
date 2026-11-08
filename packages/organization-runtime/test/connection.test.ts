@@ -6,6 +6,7 @@ import { fileLockPath, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberConnection } from "../src/connection"
+import { startMemberBridge } from "../src/bridge"
 import { fixture } from "./support/organization"
 
 async function enrolled() {
@@ -33,6 +34,93 @@ async function enrolled() {
     throw error
   }
 }
+
+async function within<T>(promise: Promise<T>) {
+  const expired = Promise.withResolvers<never>()
+  const timer = setTimeout(() => expired.reject(new Error("Member bridge observation expired")), 3_000)
+  try {
+    return await Promise.race([promise, expired.promise])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+test("the resident bridge stops after replacement or revocation without competing for another connection", async () => {
+  for (const action of ["replace", "revoke"] as const) {
+    await using f = await enrolled()
+    const heartbeat = Promise.withResolvers<void>()
+    f.interceptFrames((_socket, raw) => {
+      if (Protocol.ClientFrame.parse(JSON.parse(String(raw))).type === "heartbeat") heartbeat.resolve()
+      return false
+    })
+    await using bridge = startMemberBridge(f.options)
+    await within(heartbeat.promise)
+    if (action === "replace") {
+      await using newer = await openMemberConnection(f.options)
+      expect(await within(bridge.closed)).toMatchObject({ kind: "replaced" })
+      expect(newer.connected.connectionEpoch).toBe(2)
+    } else {
+      await f.client.orgRuntime.revoke(
+        { runtimeID: f.registration.runtimeID, orgRuntimeRevoke: { expectedRevision: f.registration.revision } },
+        { headers: f.headers, throwOnError: true },
+      )
+      expect(await within(bridge.closed)).toMatchObject({ kind: "rejected" })
+    }
+  }
+})
+
+test("resident retry handles transient service errors while cancellation ends the owned lifecycle", async () => {
+  await using f = await enrolled()
+  const heartbeat = Promise.withResolvers<number>()
+  let attempts = 0
+  f.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "heartbeat") heartbeat.resolve(frame.connectionEpoch)
+    else if (++attempts === 1) {
+      socket.send(
+        JSON.stringify({
+          type: "error",
+          error: { code: "SERVICE_UNAVAILABLE", message: "retry", retryable: true, outcome: "not_dispatched" },
+        }),
+      )
+      socket.close()
+      return true
+    }
+    return false
+  })
+  const controller = new AbortController()
+  await using bridge = startMemberBridge({ ...f.options, signal: controller.signal })
+  expect(await within(heartbeat.promise)).toBe(1)
+  expect(attempts).toBe(2)
+  controller.abort()
+  expect(await within(bridge.closed)).toEqual({ kind: "closed" })
+  await using cancelled = startMemberBridge({ ...f.options, signal: controller.signal })
+  expect(await cancelled.closed).toEqual({ kind: "closed" })
+  expect(attempts).toBe(2)
+})
+
+test("resident protocol and authorization failures remain terminal even with an invalid retry hint", async () => {
+  await using f = await enrolled()
+  let attempts = 0
+  for (const code of ["PERMISSION_DENIED", "PROTOCOL_MISMATCH"] as const) {
+    f.interceptFrames((socket) => {
+      attempts++
+      socket.send(
+        JSON.stringify({ type: "error", error: { code, message: "denied", retryable: true, outcome: "rejected" } }),
+      )
+      return true
+    })
+    await using bridge = startMemberBridge(f.options)
+    expect(await within(bridge.closed)).toMatchObject({ kind: "rejected", error: { code, outcome: "rejected" } })
+  }
+  expect(attempts).toBe(2)
+  await using invalid = startMemberBridge({ ...f.options, identity: { ...f.identity, deviceID: "foreign-device" } })
+  expect(await within(invalid.closed)).toMatchObject({
+    kind: "rejected",
+    error: { code: "SERVICE_UNAVAILABLE", retryable: false, outcome: "not_dispatched" },
+  })
+  expect(attempts).toBe(2)
+})
 
 test("the member bridge signs its own identity, heartbeats and durably advances its connection epoch", async () => {
   await using f = await enrolled()

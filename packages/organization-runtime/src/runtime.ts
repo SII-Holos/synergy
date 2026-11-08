@@ -4,6 +4,8 @@ import { openAgentRuntime, type AgentRuntimeOptions } from "@ericsanchezok/syner
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
 import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { version } from "../package.json" with { type: "json" }
 import { readMemberHome, type MemberIdentity } from "./home"
 import { readMemberRegistration } from "./enrollment"
 import { MemberHomeError } from "./record"
@@ -11,6 +13,7 @@ import { registerMemberSources } from "./sources"
 import { MemberListener } from "./launch"
 import { organizationRuntime } from "./component"
 import { memberEnvironment } from "./environment"
+import { startMemberBridge } from "./bridge"
 
 export type MemberRuntimeOptions = Pick<
   AgentRuntimeOptions,
@@ -27,6 +30,7 @@ export type MemberRuntimeOptions = Pick<
   identity: MemberIdentity
   environment?: Readonly<Record<string, string | undefined>>
   entry?: RuntimeLaunch["entry"]
+  ca?: string | string[]
   listen?: z.infer<typeof MemberListener>
 }
 
@@ -46,6 +50,32 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
       ...organizationRuntime(),
       workers: { agent: new URL("./worker.ts", import.meta.url), policy: new URL("./worker.ts", import.meta.url) },
       register: () => registerMemberSources(member.identity),
+      services() {
+        let bridge: ReturnType<typeof startMemberBridge> | undefined
+        return {
+          resident: {
+            async start() {
+              bridge = startMemberBridge({
+                home: member.home,
+                identity: member.identity,
+                buildVersion: version,
+                ca: input.ca,
+                signal: input.signal,
+              })
+              void bridge.closed.then((result) => {
+                if (result.kind === "closed") return
+                Log.create({ service: "organization-runtime" }).warn("Member bridge stopped", {
+                  kind: result.kind,
+                  code: result.error?.code,
+                })
+              })
+            },
+            async stop() {
+              await bridge?.close()
+            },
+          },
+        }
+      },
     },
   ]
   return openAgentRuntime({

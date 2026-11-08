@@ -4,6 +4,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
+import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { prepareMemberHome } from "../src/home"
 import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
@@ -88,6 +89,12 @@ test("a supervised member command enrolls from private input, serves its own Hom
   let runtimeID: string | undefined
   try {
     for (const restart of [false, true]) {
+      const heartbeat = Promise.withResolvers<number>()
+      service.interceptFrames((_socket, raw) => {
+        const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+        if (frame.type === "heartbeat") heartbeat.resolve(frame.connectionEpoch)
+        return false
+      })
       const { child, output } = spawn(env, [], JSON.stringify({ ...request, ticket: restart ? undefined : ticket }))
       try {
         const client = createSynergyClient({
@@ -103,6 +110,12 @@ test("a supervised member command enrolls from private input, serves its own Hom
         }
         if (child.exitCode !== null) throw new Error((await output).join("\n"))
         expect(ready).toBe(true)
+        const bridgeDeadline = setTimeout(() => heartbeat.reject(new Error("Member CLI bridge did not connect")), 3_000)
+        try {
+          expect(await heartbeat.promise).toBe(restart ? 2 : 1)
+        } finally {
+          clearTimeout(bridgeDeadline)
+        }
         const current = (await client.global.capabilities({ throwOnError: true })).data.runtimeID
         if (restart) {
           if (!runtimeID) throw new Error("The first member process did not provide an identity")
@@ -133,6 +146,7 @@ test("a supervised member command enrolls from private input, serves its own Hom
       home: member.home,
       identity: member.identity,
       listen: { port, token },
+      ca: service.ca,
     })
     expect((await client.global.capabilities({ throwOnError: true })).data.runtimeID).toBe(runtimeID)
   } finally {

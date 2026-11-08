@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
@@ -19,8 +19,10 @@ import { spawnAgentWorkerProcess } from "@ericsanchezok/synergy-harness/session/
 import { spawnPolicyWorkerProcess } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
+import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import { fileLockPath, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { prepareMemberHome } from "../src/home"
-import { enrollMemberRuntime } from "../src/enrollment"
+import { enrollMemberRuntime, readMemberRegistration } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
 
@@ -46,6 +48,89 @@ async function availablePort() {
   return port
 }
 
+test("resident member startup reconnects its outbound bridge without blocking local readiness", async () => {
+  await using service = await fixture()
+  const member = await enrolled(service)
+  const registration = (await readMemberRegistration(member.home, member.identity))!
+  const reconnected = Promise.withResolvers<number>()
+  let handshakes = 0
+  service.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "handshake") handshakes++
+    else if (frame.connectionEpoch === 1) socket.close()
+    else reconnected.resolve(frame.connectionEpoch)
+    return false
+  })
+  await using runtime = await openMemberRuntime({
+    home: member.home,
+    identity: member.identity,
+    ca: service.ca,
+    listen: { port: await availablePort(), token: "d".repeat(64) },
+  })
+  const deadline = setTimeout(() => reconnected.reject(new Error("Resident bridge did not reconnect")), 3_000)
+  try {
+    expect(await reconnected.promise).toBe(2)
+    expect(handshakes).toBe(2)
+    expect(
+      (
+        await service.client.orgRuntime.connection(
+          { runtimeID: registration.runtimeID },
+          { headers: service.headers, throwOnError: true },
+        )
+      ).data,
+    ).toMatchObject({ state: "online", connectionEpoch: 2 })
+  } finally {
+    clearTimeout(deadline)
+  }
+  await runtime.close()
+  await using oneshot = await openMemberRuntime({ home: member.home, identity: member.identity, ca: service.ca })
+  expect(handshakes).toBe(2)
+}, 15_000)
+
+test("resident readiness and shutdown do not wait for another owner of the connection checkpoint", async () => {
+  await using service = await fixture()
+  const member = await enrolled(service)
+  const directory = path.join(member.root, "state", ".locks")
+  const key = "organization-connection"
+  const acquired = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const waiting = Promise.withResolvers<void>()
+  const holding = withFileLock({ directory, key }, async () => {
+    acquired.resolve()
+    await release.promise
+  })
+  await acquired.promise
+  const open = fs.open.bind(fs)
+  const observer = spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+    if (args[0] === fileLockPath(directory, key) && args[1] === "wx") waiting.resolve()
+    return open(...args)
+  })
+  let rescued = false
+  const rescue = setTimeout(() => {
+    rescued = true
+    release.resolve()
+    waiting.reject(new Error("Member startup did not reach its connection checkpoint"))
+  }, 3_000)
+  try {
+    await using runtime = await openMemberRuntime({
+      home: member.home,
+      identity: member.identity,
+      ca: service.ca,
+      listen: { port: await availablePort(), token: "e".repeat(64) },
+    })
+    await waiting.promise
+    expect(runtime.server?.port).toBeGreaterThan(0)
+    await runtime.close()
+    expect(rescued).toBe(false)
+    expect(await Bun.file(path.join(member.root, "organization-connection.json")).exists()).toBe(false)
+  } finally {
+    clearTimeout(rescue)
+    observer.mockRestore()
+    release.resolve()
+    await holding
+  }
+}, 15_000)
+
 test("member HTTP services bind explicit loopback ports and keep credentials, identities and shutdown separate", async () => {
   await using a = await fixture()
   await using b = await fixture()
@@ -57,6 +142,7 @@ test("member HTTP services bind explicit loopback ports and keep credentials, id
     home: first.home,
     identity: first.identity,
     listen: { port: portA, token: tokenA },
+    ca: a.ca,
     entry: "desktop-managed",
   })
   const portB = await availablePort()
@@ -64,6 +150,7 @@ test("member HTTP services bind explicit loopback ports and keep credentials, id
     home: second.home,
     identity: second.identity,
     listen: { port: portB, token: tokenB },
+    ca: b.ca,
   })
   expect(one.server?.hostname).toBe("127.0.0.1")
   expect(one.server?.port).toBe(portA)
@@ -92,6 +179,7 @@ test("member HTTP services bind explicit loopback ports and keep credentials, id
     home: first.home,
     identity: first.identity,
     listen: { port: portA, token: "c".repeat(64) },
+    ca: a.ca,
   })
   expect((await apiA.global.capabilities()).response.status).toBe(401)
   const current = createSynergyClient({ baseUrl, headers: { authorization: `Bearer ${"c".repeat(64)}` } })
@@ -124,7 +212,12 @@ test("invalid listeners and occupied ports never retain a failed member Runtime'
   } finally {
     await blocker.stop(true)
   }
-  await using reopened = await openMemberRuntime({ home: member.home, identity: member.identity, listen })
+  await using reopened = await openMemberRuntime({
+    home: member.home,
+    identity: member.identity,
+    listen,
+    ca: service.ca,
+  })
   expect(reopened.server?.port).toBe(listen.port)
 }, 30_000)
 

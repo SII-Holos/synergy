@@ -84,6 +84,7 @@ export const MemberRuntimeCommand = cmd({
           home,
           identity: member.identity,
           entry: options.host?.launch?.entry,
+          ca: input.ca,
           listen: { port: input.port, token: input.token },
           startupReporter: options.startupReporter,
           storageReporter: options.storageReporter,
