@@ -5,10 +5,28 @@ import {
   OrganizationClientAuth as ClientAuth,
   OrganizationSessionProtocol as Session,
   OrganizationCommandProtocol as Command,
+  OrganizationResourceProtocol as ResourceProtocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 export namespace OrganizationRecord {
+  export const Resource = ResourceProtocol.AdminView.safeExtend({
+    schemaVersion: z.literal(1),
+    secretID: Identity.ID.optional(),
+  }).refine(
+    (value) => (value.credential.kind === "none") === (value.secretID === undefined),
+    "Configured credentials require a private secret reference",
+  )
+  export type Resource = z.infer<typeof Resource>
+  export const ResourceSecret = z.strictObject({
+    schemaVersion: z.literal(1),
+    orgID: Identity.ID,
+    resourceID: Identity.ID,
+    credential: ResourceProtocol.Credential.refine((value) => value.kind !== "none"),
+  })
+  export const ResourceGrant = ResourceProtocol.Grant.extend({ schemaVersion: z.literal(1) })
+  export type ResourceGrant = z.infer<typeof ResourceGrant>
+  export const ResourceAccess = z.strictObject({ resourceID: Identity.ID, subject: ResourceProtocol.Subject })
   export const SigningIdentity = Command.SigningIdentity.extend({
     pkcs8: z.string().regex(/^(?:[a-f0-9]{2}){1,1024}$/),
   })

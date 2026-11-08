@@ -1,4 +1,34 @@
 export namespace OrganizationStoragePath {
+  export const resources = (orgID: string) => ["organization", "resources", orgID]
+  export const resource = (orgID: string, resourceID: string) => [...resources(orgID), resourceID]
+  export const resourceSecret = (id: string) => ["organization", "resource-secrets", id]
+  export const resourceGrants = (orgID: string, resourceID: string, kind: "account" | "project") => [
+    "organization",
+    "resource-grants",
+    orgID,
+    resourceID,
+    kind,
+  ]
+  export const resourceGrant = (
+    orgID: string,
+    resourceID: string,
+    subject: { kind: "account" | "project"; id: string },
+  ) => [...resourceGrants(orgID, resourceID, subject.kind), subject.id]
+  export const accountResources = (orgID: string, accountID: string, projectID?: string) => [
+    "organization",
+    "resource-access",
+    orgID,
+    "account",
+    accountID,
+    ...(projectID === undefined ? ["organization"] : ["project", projectID]),
+  ]
+  export const projectResources = (orgID: string, projectID: string) => [
+    "organization",
+    "resource-access",
+    orgID,
+    "project",
+    projectID,
+  ]
   export const deployment = () => ["organization", "deployment"]
   export const signingIdentity = () => ["organization", "signing-identity"]
   export const commandRequest = (subjectID: string, requestID: string) => [

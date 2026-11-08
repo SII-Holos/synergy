@@ -66,6 +66,8 @@ import type {
   OrgProjectChange,
   OrgProjectCreate,
   OrgProjectMemberChange,
+  OrgProjectResourcesListErrors,
+  OrgProjectResourcesListResponses,
   OrgProjectsCreateErrors,
   OrgProjectsCreateResponses,
   OrgProjectsGetErrors,
@@ -78,6 +80,21 @@ import type {
   OrgProjectsUpdateResponses,
   OrgResetConsume,
   OrgResetCreate,
+  OrgResourceChange,
+  OrgResourceCreate,
+  OrgResourceGrantChange,
+  OrgResourceGrantsListErrors,
+  OrgResourceGrantsListResponses,
+  OrgResourceGrantsSetErrors,
+  OrgResourceGrantsSetResponses,
+  OrgResourcesCreateErrors,
+  OrgResourcesCreateResponses,
+  OrgResourcesGetErrors,
+  OrgResourcesGetResponses,
+  OrgResourcesListErrors,
+  OrgResourcesListResponses,
+  OrgResourcesUpdateErrors,
+  OrgResourcesUpdateResponses,
   OrgRuntimeConnectionErrors,
   OrgRuntimeConnectionResponses,
   OrgRuntimeConsumeTicket,
@@ -928,6 +945,223 @@ export class OrgSessions extends HeyApiClient {
   }
 }
 
+export class OrgResources extends HeyApiClient {
+  /**
+   * List resource configurations for an administrator
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgResourcesListResponses, OrgResourcesListErrors, ThrowOnError>({
+      url: "/org/v1/resources",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Configure an organization resource
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgResourceCreate: OrgResourceCreate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgResourceCreate", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgResourcesCreateResponses, OrgResourcesCreateErrors, ThrowOnError>({
+      url: "/org/v1/resources",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read a resource configuration without its secret
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      resourceID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "resourceID" }] }])
+    return (options?.client ?? this.client).get<OrgResourcesGetResponses, OrgResourcesGetErrors, ThrowOnError>({
+      url: "/org/v1/resources/{resourceID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update a resource configuration or rotate its credential
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      resourceID: string
+      orgResourceChange: OrgResourceChange
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "resourceID" },
+            { key: "orgResourceChange", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<OrgResourcesUpdateResponses, OrgResourcesUpdateErrors, ThrowOnError>({
+      url: "/org/v1/resources/{resourceID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class OrgResourceGrants extends HeyApiClient {
+  /**
+   * List resource use grants for an administrator
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      resourceID: string
+      kind: "account" | "project"
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "resourceID" },
+            { in: "path", key: "kind" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgResourceGrantsListResponses,
+      OrgResourceGrantsListErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/resources/{resourceID}/grants/{kind}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Grant or revoke resource use
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters: {
+      resourceID: string
+      kind: "account" | "project"
+      subjectID: string
+      orgResourceGrantChange: OrgResourceGrantChange
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "resourceID" },
+            { in: "path", key: "kind" },
+            { in: "path", key: "subjectID" },
+            { key: "orgResourceGrantChange", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      OrgResourceGrantsSetResponses,
+      OrgResourceGrantsSetErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/resources/{resourceID}/grants/{kind}/{subjectID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class OrgProjectResources extends HeyApiClient {
+  /**
+   * List the caller's available project resources
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgProjectResourcesListResponses,
+      OrgProjectResourcesListErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/projects/{projectID}/resources",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class OrgCommands extends HeyApiClient {
   /**
    * Pause, continue or cancel work in an online Session
@@ -1076,6 +1310,12 @@ export class OrganizationClient extends HeyApiClient {
   orgRuntime = new OrgRuntime({ client: this.client })
 
   orgSessions = new OrgSessions({ client: this.client })
+
+  orgResources = new OrgResources({ client: this.client })
+
+  orgResourceGrants = new OrgResourceGrants({ client: this.client })
+
+  orgProjectResources = new OrgProjectResources({ client: this.client })
 
   orgCommands = new OrgCommands({ client: this.client })
 

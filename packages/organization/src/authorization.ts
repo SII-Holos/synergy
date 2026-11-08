@@ -2,6 +2,7 @@ import {
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationSessionProtocol as Session,
+  OrganizationResourceProtocol as Resource,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { authenticate, account as resolveAccount, type Credentials } from "./auth/session"
 import { OrganizationRecord as Record } from "./storage/records"
@@ -26,6 +27,11 @@ export function authorize(credentials: Credentials, action: string): Promise<Aut
 export function authorize(
   credentials: Credentials,
   action: string,
+  target: { resourceID: string; projectID?: string },
+): Promise<Authenticated & { resource: Record.Resource; view?: Resource.View }>
+export function authorize(
+  credentials: Credentials,
+  action: string,
   target: { runtimeID: string },
 ): Promise<Authenticated & { runtime: Record.RuntimeRegistration; view: Runtime.Registration }>
 export function authorize(
@@ -38,10 +44,40 @@ export function authorize(
 export async function authorize(
   credentials: Credentials,
   action: string,
-  target?: { projectID: string } | { accountID: string } | { runtimeID: string } | { sessionID: string },
+  target?:
+    | { projectID: string }
+    | { accountID: string }
+    | { runtimeID: string }
+    | { sessionID: string }
+    | { resourceID: string; projectID?: string },
 ) {
   const current = await authenticate(credentials)
   const { account } = current
+  if (target && "resourceID" in target) {
+    if (action === "resource.manage") requireAdministrator(account)
+    const resource = await Record.read(Record.Resource, Keys.resource(account.orgID, target.resourceID))
+    if (!resource || resource.orgID !== account.orgID || resource.resourceID !== target.resourceID)
+      fail("NOT_FOUND", "Resource not found")
+    if (action === "resource.manage") {
+      return { ...current, resource }
+    }
+    if (!["resource.read", "resource.use"].includes(action) || !target.projectID)
+      fail("PERMISSION_DENIED", "This action is not allowed")
+    const project = await authorize(credentials, "project.read", { projectID: target.projectID })
+    const [personal, shared] = await Promise.all([
+      Record.read(
+        Record.ResourceGrant,
+        Keys.resourceGrant(account.orgID, resource.resourceID, { kind: "account", id: account.accountID }),
+      ),
+      Record.read(
+        Record.ResourceGrant,
+        Keys.resourceGrant(account.orgID, resource.resourceID, { kind: "project", id: target.projectID }),
+      ),
+    ])
+    const view = resourceView(account, resource, project.view, personal, shared)
+    if (action === "resource.use" && !view.permissions.use) fail("PERMISSION_DENIED", "Resource use is not allowed")
+    return { ...current, resource, view }
+  }
   if (target && "sessionID" in target) {
     const session = await Record.read(Record.SessionDirectory, Keys.session(target.sessionID))
     if (
@@ -82,7 +118,8 @@ export async function authorize(
     if (!allowed) fail("PERMISSION_DENIED", "This action is not allowed")
     return { ...current, target: subject }
   }
-  if (["accounts.list", "invites.create", "sessions.capacity"].includes(action)) requireAdministrator(account)
+  if (["accounts.list", "invites.create", "sessions.capacity", "resources.manage"].includes(action))
+    requireAdministrator(account)
   else if (
     !["organization.read", "project.create", "project.list", "runtimes.register", "runtimes.list"].includes(action)
   )
@@ -133,6 +170,43 @@ export function runtimeView(account: Identity.Account, runtime: Record.RuntimeRe
   if (!["runtime.read", "runtime.revoke"].includes(action)) fail("PERMISSION_DENIED", "This action is not allowed")
   const { schemaVersion: _, ...result } = runtime
   return Runtime.Registration.parse(result)
+}
+
+export function resourceView(
+  account: Identity.Account,
+  resource: Record.Resource,
+  project: Identity.ProjectView,
+  personal?: Record.ResourceGrant,
+  shared?: Record.ResourceGrant,
+): Resource.View {
+  if (
+    account.state !== "active" ||
+    !project.permissions.read ||
+    resource.orgID !== account.orgID ||
+    project.orgID !== account.orgID ||
+    (resource.scope.kind === "project" && resource.scope.projectID !== project.projectID)
+  )
+    fail("NOT_FOUND", "Resource not found")
+  for (const [grant, kind, id] of [
+    [personal, "account", account.accountID],
+    [shared, "project", project.projectID],
+  ] as const) {
+    if (
+      grant &&
+      (grant.orgID !== account.orgID ||
+        grant.resourceID !== resource.resourceID ||
+        grant.subject.kind !== kind ||
+        grant.subject.id !== id)
+    )
+      fail("PERMISSION_DENIED", "Invalid resource grant")
+  }
+  if (!personal?.enabled && !shared?.enabled) fail("NOT_FOUND", "Resource not found")
+  const { endpoint: _, ...definition } = resource.configuration
+  return Resource.View.parse({
+    ...Resource.Metadata.strip().parse(resource),
+    definition,
+    permissions: { use: project.permissions.execute && resource.state === "enabled" },
+  })
 }
 
 export function requireAdministrator(value: Identity.Account) {

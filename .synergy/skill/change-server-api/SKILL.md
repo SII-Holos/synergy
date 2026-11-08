@@ -12,6 +12,8 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 
    For private object catalogs, resolve stored ownership and current access before returning metadata. Page authorized identity indexes before loading bodies; test interleaved foreign records beyond one page, duplicate visible identities, removed membership and administrator accounts. Anonymous capacity endpoints must expose counts without loading private records. Keep metadata reservations distinct from execution acceptance.
 
+   For credentialed resource catalogs, separate administrator configuration, member descriptors and private secret records. Commit credential rotation and metadata together. Retain revoked grant revisions, update authorized indexes atomically, and merge bounded index pages before loading records. Verify current project roles independently of resource grants, endpoint/key redaction, restart, rollback and cross-project scope.
+
 3. Decide whether the behavior is request/response state, a sequenced state event, or a streaming transport. Do not force WebSocket, SSE, WebRTC, file/blob, or external URL behavior into an ordinary SDK call.
 
 4. Check the `operationId` for a generated-method collision before implementing. The generator keys a method by the id's first two segments with a leading `global.` stripped, so `global.session.status` and `session.status` both resolve to `Session.status` — the generated method silently retargets one route and the other disappears from the SDK entirely, with no build error. Give the newer route a non-colliding id (`global.session.statuses`, not `global.session.status`) and confirm after regeneration that both methods exist and target their own paths.

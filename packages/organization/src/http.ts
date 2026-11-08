@@ -16,6 +16,7 @@ import type { ClientAuthentication } from "./auth/client"
 import { clientAuthenticationRoutes } from "./routes/client-auth"
 import { sessionDirectoryRoutes } from "./routes/session-directory"
 import { commandRoutes } from "./routes/commands"
+import { resourceRoutes } from "./routes/resources"
 import type { CommandForwarder } from "./command-forwarding"
 
 export function organizationOpenApi() {
@@ -100,6 +101,7 @@ export function organizationApp(
     )
     .route("/org/v1", registrationRoutes(registry, publicOrigin))
     .route("/org/v1", sessionDirectoryRoutes(publicOrigin))
+    .route("/org/v1", resourceRoutes(publicOrigin))
     .route(
       "/org/v1",
       commandRoutes(() => {

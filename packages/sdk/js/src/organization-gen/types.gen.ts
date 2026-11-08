@@ -239,6 +239,260 @@ export type OrgSessionCapacity = {
   sharedSessions: number
 }
 
+export type OrgResourceAdminView = {
+  resourceID: string
+  orgID: string
+  scope:
+    | {
+        kind: "organization"
+      }
+    | {
+        kind: "project"
+        projectID: string
+      }
+  kind: "model" | "connection"
+  name: string
+  state: "enabled" | "disabled"
+  revision: number
+  createdAt: number
+  updatedAt: number
+  configuration:
+    | {
+        protocol: "openai-compatible" | "anthropic-compatible"
+        model: {
+          id: string
+          name: string
+          limit: {
+            context: number
+            input?: number
+            output: number
+          }
+          capabilities?: {
+            temperature?: boolean
+            reasoning?: boolean
+            tools?: boolean
+            input?: Array<"text" | "image" | "audio" | "video" | "pdf">
+            output?: Array<"text" | "image" | "audio" | "video" | "pdf">
+            interleaved?: false | "reasoning_content" | "reasoning_details"
+            reasoningEfforts?: Array<string>
+          }
+        }
+        endpoint: string
+      }
+    | {
+        protocol: "mcp-http" | "mcp-sse"
+        endpoint: string
+      }
+    | {
+        protocol: "fixed-http"
+        method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+        endpoint: string
+      }
+  credential:
+    | {
+        kind: "none"
+      }
+    | {
+        kind: "bearer"
+      }
+    | {
+        kind: "header"
+        name: string
+      }
+}
+
+export type OrgResourceAdminPage = {
+  items: Array<OrgResourceAdminView>
+  cursor?: string
+}
+
+export type OrgResourceCreate = {
+  name: string
+  scope:
+    | {
+        kind: "organization"
+      }
+    | {
+        kind: "project"
+        projectID: string
+      }
+  configuration:
+    | {
+        protocol: "openai-compatible" | "anthropic-compatible"
+        model: {
+          id: string
+          name: string
+          limit: {
+            context: number
+            input?: number
+            output: number
+          }
+          capabilities?: {
+            temperature?: boolean
+            reasoning?: boolean
+            tools?: boolean
+            input?: Array<"text" | "image" | "audio" | "video" | "pdf">
+            output?: Array<"text" | "image" | "audio" | "video" | "pdf">
+            interleaved?: false | "reasoning_content" | "reasoning_details"
+            reasoningEfforts?: Array<string>
+          }
+        }
+        endpoint: string
+      }
+    | {
+        protocol: "mcp-http" | "mcp-sse"
+        endpoint: string
+      }
+    | {
+        protocol: "fixed-http"
+        method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+        endpoint: string
+      }
+  credential:
+    | {
+        kind: "none"
+      }
+    | {
+        kind: "bearer"
+        value: string
+      }
+    | {
+        kind: "header"
+        name: string
+        value: string
+      }
+}
+
+export type OrgResourceChange = {
+  expectedRevision: number
+  name?: string
+  state?: "enabled" | "disabled"
+  configuration?:
+    | {
+        protocol: "openai-compatible" | "anthropic-compatible"
+        model: {
+          id: string
+          name: string
+          limit: {
+            context: number
+            input?: number
+            output: number
+          }
+          capabilities?: {
+            temperature?: boolean
+            reasoning?: boolean
+            tools?: boolean
+            input?: Array<"text" | "image" | "audio" | "video" | "pdf">
+            output?: Array<"text" | "image" | "audio" | "video" | "pdf">
+            interleaved?: false | "reasoning_content" | "reasoning_details"
+            reasoningEfforts?: Array<string>
+          }
+        }
+        endpoint: string
+      }
+    | {
+        protocol: "mcp-http" | "mcp-sse"
+        endpoint: string
+      }
+    | {
+        protocol: "fixed-http"
+        method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+        endpoint: string
+      }
+  credential?:
+    | {
+        kind: "none"
+      }
+    | {
+        kind: "bearer"
+        value: string
+      }
+    | {
+        kind: "header"
+        name: string
+        value: string
+      }
+}
+
+export type OrgResourceGrant = {
+  orgID: string
+  resourceID: string
+  subject: {
+    kind: "account" | "project"
+    id: string
+  }
+  enabled: boolean
+  revision: number
+  updatedAt: number
+  updatedBy: string
+}
+
+export type OrgResourceGrantPage = {
+  items: Array<OrgResourceGrant>
+  cursor?: string
+}
+
+export type OrgResourceGrantChange = {
+  expectedRevision: number
+  enabled: boolean
+}
+
+export type OrgResourceView = {
+  resourceID: string
+  orgID: string
+  scope:
+    | {
+        kind: "organization"
+      }
+    | {
+        kind: "project"
+        projectID: string
+      }
+  kind: "model" | "connection"
+  name: string
+  state: "enabled" | "disabled"
+  revision: number
+  createdAt: number
+  updatedAt: number
+  definition:
+    | {
+        protocol: "openai-compatible" | "anthropic-compatible"
+        model: {
+          id: string
+          name: string
+          limit: {
+            context: number
+            input?: number
+            output: number
+          }
+          capabilities?: {
+            temperature?: boolean
+            reasoning?: boolean
+            tools?: boolean
+            input?: Array<"text" | "image" | "audio" | "video" | "pdf">
+            output?: Array<"text" | "image" | "audio" | "video" | "pdf">
+            interleaved?: false | "reasoning_content" | "reasoning_details"
+            reasoningEfforts?: Array<string>
+          }
+        }
+      }
+    | {
+        protocol: "mcp-http" | "mcp-sse"
+      }
+    | {
+        protocol: "fixed-http"
+        method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+      }
+  permissions: {
+    use: boolean
+  }
+}
+
+export type OrgResourcePage = {
+  items: Array<OrgResourceView>
+  cursor?: string
+}
+
 export type OrgCommandPermit = {
   schemaVersion: 1
   purpose: "session-command"
@@ -1746,6 +2000,343 @@ export type OrgOrganizationSessionCapacityResponses = {
 
 export type OrgOrganizationSessionCapacityResponse =
   OrgOrganizationSessionCapacityResponses[keyof OrgOrganizationSessionCapacityResponses]
+
+export type OrgResourcesListData = {
+  body?: never
+  path?: never
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/resources"
+}
+
+export type OrgResourcesListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgResourcesListError = OrgResourcesListErrors[keyof OrgResourcesListErrors]
+
+export type OrgResourcesListResponses = {
+  /**
+   * Success
+   */
+  200: OrgResourceAdminPage
+}
+
+export type OrgResourcesListResponse = OrgResourcesListResponses[keyof OrgResourcesListResponses]
+
+export type OrgResourcesCreateData = {
+  body: OrgResourceCreate
+  path?: never
+  query?: never
+  url: "/org/v1/resources"
+}
+
+export type OrgResourcesCreateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgResourcesCreateError = OrgResourcesCreateErrors[keyof OrgResourcesCreateErrors]
+
+export type OrgResourcesCreateResponses = {
+  /**
+   * Success
+   */
+  200: OrgResourceAdminView
+}
+
+export type OrgResourcesCreateResponse = OrgResourcesCreateResponses[keyof OrgResourcesCreateResponses]
+
+export type OrgResourcesGetData = {
+  body?: never
+  path: {
+    resourceID: string
+  }
+  query?: never
+  url: "/org/v1/resources/{resourceID}"
+}
+
+export type OrgResourcesGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgResourcesGetError = OrgResourcesGetErrors[keyof OrgResourcesGetErrors]
+
+export type OrgResourcesGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgResourceAdminView
+}
+
+export type OrgResourcesGetResponse = OrgResourcesGetResponses[keyof OrgResourcesGetResponses]
+
+export type OrgResourcesUpdateData = {
+  body: OrgResourceChange
+  path: {
+    resourceID: string
+  }
+  query?: never
+  url: "/org/v1/resources/{resourceID}"
+}
+
+export type OrgResourcesUpdateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgResourcesUpdateError = OrgResourcesUpdateErrors[keyof OrgResourcesUpdateErrors]
+
+export type OrgResourcesUpdateResponses = {
+  /**
+   * Success
+   */
+  200: OrgResourceAdminView
+}
+
+export type OrgResourcesUpdateResponse = OrgResourcesUpdateResponses[keyof OrgResourcesUpdateResponses]
+
+export type OrgResourceGrantsListData = {
+  body?: never
+  path: {
+    resourceID: string
+    kind: "account" | "project"
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/resources/{resourceID}/grants/{kind}"
+}
+
+export type OrgResourceGrantsListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgResourceGrantsListError = OrgResourceGrantsListErrors[keyof OrgResourceGrantsListErrors]
+
+export type OrgResourceGrantsListResponses = {
+  /**
+   * Success
+   */
+  200: OrgResourceGrantPage
+}
+
+export type OrgResourceGrantsListResponse = OrgResourceGrantsListResponses[keyof OrgResourceGrantsListResponses]
+
+export type OrgResourceGrantsSetData = {
+  body: OrgResourceGrantChange
+  path: {
+    resourceID: string
+    kind: "account" | "project"
+    subjectID: string
+  }
+  query?: never
+  url: "/org/v1/resources/{resourceID}/grants/{kind}/{subjectID}"
+}
+
+export type OrgResourceGrantsSetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgResourceGrantsSetError = OrgResourceGrantsSetErrors[keyof OrgResourceGrantsSetErrors]
+
+export type OrgResourceGrantsSetResponses = {
+  /**
+   * Success
+   */
+  200: OrgResourceGrant
+}
+
+export type OrgResourceGrantsSetResponse = OrgResourceGrantsSetResponses[keyof OrgResourceGrantsSetResponses]
+
+export type OrgProjectResourcesListData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/projects/{projectID}/resources"
+}
+
+export type OrgProjectResourcesListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgProjectResourcesListError = OrgProjectResourcesListErrors[keyof OrgProjectResourcesListErrors]
+
+export type OrgProjectResourcesListResponses = {
+  /**
+   * Success
+   */
+  200: OrgResourcePage
+}
+
+export type OrgProjectResourcesListResponse = OrgProjectResourcesListResponses[keyof OrgProjectResourcesListResponses]
 
 export type OrgCommandsControlData = {
   body: OrgCommandControlRequest

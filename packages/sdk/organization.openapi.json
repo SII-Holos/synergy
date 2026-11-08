@@ -1088,6 +1088,356 @@
         }
       }
     },
+    "/org/v1/resources": {
+      "get": {
+        "operationId": "orgResources.list",
+        "summary": "List resource configurations for an administrator",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceAdminPage" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "orgResources.create",
+        "summary": "Configure an organization resource",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceCreate" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceAdminView" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/resources/{resourceID}": {
+      "get": {
+        "operationId": "orgResources.get",
+        "summary": "Read a resource configuration without its secret",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceAdminView" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "orgResources.update",
+        "summary": "Update a resource configuration or rotate its credential",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceChange" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceAdminView" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/resources/{resourceID}/grants/{kind}": {
+      "get": {
+        "operationId": "orgResourceGrants.list",
+        "summary": "List resource use grants for an administrator",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceGrantPage" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "schema": { "type": "string", "enum": ["account", "project"] },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          }
+        ]
+      }
+    },
+    "/org/v1/resources/{resourceID}/grants/{kind}/{subjectID}": {
+      "put": {
+        "operationId": "orgResourceGrants.set",
+        "summary": "Grant or revoke resource use",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceGrantChange" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourceGrant" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "schema": { "type": "string", "enum": ["account", "project"] },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "subjectID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/projects/{projectID}/resources": {
+      "get": {
+        "operationId": "orgProjectResources.list",
+        "summary": "List the caller's available project resources",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResourcePage" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          }
+        ]
+      }
+    },
     "/org/v1/sessions/{sessionID}/control": {
       "post": {
         "operationId": "orgCommands.control",
@@ -2060,6 +2410,633 @@
           "sharedSessions": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
         },
         "required": ["privateSessions", "sharedSessions"],
+        "additionalProperties": false
+      },
+      "OrgResourceAdminView": {
+        "type": "object",
+        "properties": {
+          "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "organization" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "project" },
+                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "projectID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "kind": { "type": "string", "enum": ["model", "connection"] },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "state": { "type": "string", "enum": ["enabled", "disabled"] },
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "updatedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "configuration": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "enum": ["openai-compatible", "anthropic-compatible"] },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+                      },
+                      "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                      "limit": {
+                        "type": "object",
+                        "properties": {
+                          "context": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "output": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["context", "output"],
+                        "additionalProperties": false
+                      },
+                      "capabilities": {
+                        "default": {},
+                        "type": "object",
+                        "properties": {
+                          "temperature": { "default": true, "type": "boolean" },
+                          "reasoning": { "default": false, "type": "boolean" },
+                          "tools": { "default": true, "type": "boolean" },
+                          "input": {
+                            "default": ["text"],
+                            "minItems": 1,
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                          },
+                          "output": {
+                            "default": ["text"],
+                            "minItems": 1,
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                          },
+                          "interleaved": {
+                            "default": false,
+                            "anyOf": [
+                              { "type": "boolean", "const": false },
+                              { "type": "string", "enum": ["reasoning_content", "reasoning_details"] }
+                            ]
+                          },
+                          "reasoningEfforts": {
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["id", "name", "limit"],
+                    "additionalProperties": false
+                  },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "model", "endpoint"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "enum": ["mcp-http", "mcp-sse"] },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "endpoint"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "const": "fixed-http" },
+                  "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "method", "endpoint"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "credential": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "none" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "bearer" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "header" },
+                  "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]{0,63}$" }
+                },
+                "required": ["kind", "name"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "resourceID",
+          "orgID",
+          "scope",
+          "kind",
+          "name",
+          "state",
+          "revision",
+          "createdAt",
+          "updatedAt",
+          "configuration",
+          "credential"
+        ],
+        "additionalProperties": false
+      },
+      "OrgResourceAdminPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrgResourceAdminView" } },
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
+      "OrgResourceCreate": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "organization" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "project" },
+                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "projectID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "configuration": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "enum": ["openai-compatible", "anthropic-compatible"] },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+                      },
+                      "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                      "limit": {
+                        "type": "object",
+                        "properties": {
+                          "context": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "output": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["context", "output"],
+                        "additionalProperties": false
+                      },
+                      "capabilities": {
+                        "default": {},
+                        "type": "object",
+                        "properties": {
+                          "temperature": { "default": true, "type": "boolean" },
+                          "reasoning": { "default": false, "type": "boolean" },
+                          "tools": { "default": true, "type": "boolean" },
+                          "input": {
+                            "default": ["text"],
+                            "minItems": 1,
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                          },
+                          "output": {
+                            "default": ["text"],
+                            "minItems": 1,
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                          },
+                          "interleaved": {
+                            "default": false,
+                            "anyOf": [
+                              { "type": "boolean", "const": false },
+                              { "type": "string", "enum": ["reasoning_content", "reasoning_details"] }
+                            ]
+                          },
+                          "reasoningEfforts": {
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["id", "name", "limit"],
+                    "additionalProperties": false
+                  },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "model", "endpoint"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "enum": ["mcp-http", "mcp-sse"] },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "endpoint"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "const": "fixed-http" },
+                  "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "method", "endpoint"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "credential": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "none" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "bearer" },
+                  "value": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "^[\\x20-\\x7e]+$" }
+                },
+                "required": ["kind", "value"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "header" },
+                  "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]{0,63}$" },
+                  "value": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "^[\\x20-\\x7e]+$" }
+                },
+                "required": ["kind", "name", "value"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["name", "scope", "configuration", "credential"],
+        "additionalProperties": false
+      },
+      "OrgResourceChange": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "state": { "type": "string", "enum": ["enabled", "disabled"] },
+          "configuration": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "enum": ["openai-compatible", "anthropic-compatible"] },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+                      },
+                      "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                      "limit": {
+                        "type": "object",
+                        "properties": {
+                          "context": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "output": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["context", "output"],
+                        "additionalProperties": false
+                      },
+                      "capabilities": {
+                        "default": {},
+                        "type": "object",
+                        "properties": {
+                          "temperature": { "default": true, "type": "boolean" },
+                          "reasoning": { "default": false, "type": "boolean" },
+                          "tools": { "default": true, "type": "boolean" },
+                          "input": {
+                            "default": ["text"],
+                            "minItems": 1,
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                          },
+                          "output": {
+                            "default": ["text"],
+                            "minItems": 1,
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                          },
+                          "interleaved": {
+                            "default": false,
+                            "anyOf": [
+                              { "type": "boolean", "const": false },
+                              { "type": "string", "enum": ["reasoning_content", "reasoning_details"] }
+                            ]
+                          },
+                          "reasoningEfforts": {
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["id", "name", "limit"],
+                    "additionalProperties": false
+                  },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "model", "endpoint"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "enum": ["mcp-http", "mcp-sse"] },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "endpoint"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "const": "fixed-http" },
+                  "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+                  "endpoint": { "type": "string", "minLength": 1, "maxLength": 4096, "format": "uri" }
+                },
+                "required": ["protocol", "method", "endpoint"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "credential": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "none" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "bearer" },
+                  "value": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "^[\\x20-\\x7e]+$" }
+                },
+                "required": ["kind", "value"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "header" },
+                  "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]{0,63}$" },
+                  "value": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "^[\\x20-\\x7e]+$" }
+                },
+                "required": ["kind", "name", "value"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["expectedRevision"],
+        "additionalProperties": false
+      },
+      "OrgResourceGrant": {
+        "type": "object",
+        "properties": {
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "subject": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["account", "project"] },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+            },
+            "required": ["kind", "id"],
+            "additionalProperties": false
+          },
+          "enabled": { "type": "boolean" },
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "updatedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["orgID", "resourceID", "subject", "enabled", "revision", "updatedAt", "updatedBy"],
+        "additionalProperties": false
+      },
+      "OrgResourceGrantPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrgResourceGrant" } },
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
+      "OrgResourceGrantChange": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "enabled": { "type": "boolean" }
+        },
+        "required": ["expectedRevision", "enabled"],
+        "additionalProperties": false
+      },
+      "OrgResourceView": {
+        "type": "object",
+        "properties": {
+          "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "organization" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "project" },
+                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "projectID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "kind": { "type": "string", "enum": ["model", "connection"] },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "state": { "type": "string", "enum": ["enabled", "disabled"] },
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "updatedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "definition": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "enum": ["openai-compatible", "anthropic-compatible"] },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+                      },
+                      "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                      "limit": {
+                        "type": "object",
+                        "properties": {
+                          "context": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "output": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["context", "output"],
+                        "additionalProperties": false
+                      },
+                      "capabilities": {
+                        "default": {},
+                        "type": "object",
+                        "properties": {
+                          "temperature": { "default": true, "type": "boolean" },
+                          "reasoning": { "default": false, "type": "boolean" },
+                          "tools": { "default": true, "type": "boolean" },
+                          "input": {
+                            "default": ["text"],
+                            "minItems": 1,
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                          },
+                          "output": {
+                            "default": ["text"],
+                            "minItems": 1,
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                          },
+                          "interleaved": {
+                            "default": false,
+                            "anyOf": [
+                              { "type": "boolean", "const": false },
+                              { "type": "string", "enum": ["reasoning_content", "reasoning_details"] }
+                            ]
+                          },
+                          "reasoningEfforts": {
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["id", "name", "limit"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["protocol", "model"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": { "protocol": { "type": "string", "enum": ["mcp-http", "mcp-sse"] } },
+                "required": ["protocol"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "const": "fixed-http" },
+                  "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }
+                },
+                "required": ["protocol", "method"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "permissions": {
+            "type": "object",
+            "properties": { "use": { "type": "boolean" } },
+            "required": ["use"],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "resourceID",
+          "orgID",
+          "scope",
+          "kind",
+          "name",
+          "state",
+          "revision",
+          "createdAt",
+          "updatedAt",
+          "definition",
+          "permissions"
+        ],
+        "additionalProperties": false
+      },
+      "OrgResourcePage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrgResourceView" } },
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["items"],
         "additionalProperties": false
       },
       "OrgCommandPermit": {

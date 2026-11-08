@@ -11,3 +11,5 @@ Reuse the portable account actor schema from Util. Command permits bind the logi
 Hash the complete strict input and target. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
 
 Current execution observations belong beside immutable receipts. Bind their root and observation window to acceptance; reject observation fields in durable results.
+
+Resource definitions declare fixed supported protocols and portable model capabilities. Keep upstream configuration, public descriptors and secret input distinct. No arbitrary Runtime options, caller-selected ownership changes or transport-routing credential headers. Verify strict contracts in `test/resource.test.ts`.
