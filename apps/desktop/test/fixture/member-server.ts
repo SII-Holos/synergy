@@ -22,6 +22,7 @@ const server = Bun.serve({
       })
     if (new URL(request.url).pathname === "/probe")
       return Response.json({
+        pid: process.pid,
         home,
         root,
         cwd: process.cwd(),

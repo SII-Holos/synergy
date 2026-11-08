@@ -20,7 +20,12 @@ const Device = z.strictObject({ version: z.literal(1), deviceID: z.uuid() })
 type Access = Awaited<ReturnType<DesktopOrganizationAccounts["access"]>>
 type Attempt = { controller: AbortController; users: Set<symbol>; result: Promise<Desktop.MemberRuntime> }
 type Services = { close(): Promise<void> }
-type Entry = { manager: DesktopServerManager; runtimeID: string; services?: Services }
+type Entry = {
+  manager: DesktopServerManager
+  runtimeID: string
+  services?: Services
+  servicesClosing?: Promise<void>
+}
 export type DesktopMemberConnection = {
   connectionID: string
   runtimeID: string
@@ -129,11 +134,20 @@ export class DesktopMemberRuntimes {
   }
 
   private async stopEntry(entry: Entry, stopping?: Promise<void>) {
-    const services = entry.services
-    const results = await Promise.allSettled([services?.close(), stopping ?? entry.manager.stop()])
-    if (results[0].status === "fulfilled" && entry.services === services) entry.services = undefined
+    const results = await Promise.allSettled([this.closeServices(entry), stopping ?? entry.manager.stop()])
     const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     if (errors.length) throw new AggregateError(errors, "Member Runtime services did not stop cleanly")
+  }
+
+  private closeServices(entry: Entry): Promise<void> {
+    if (entry.servicesClosing) return entry.servicesClosing
+    const services = entry.services
+    if (!services) return Promise.resolve()
+    return (entry.servicesClosing = Promise.resolve()
+      .then(() => services.close())
+      .then(() => {
+        if (entry.services === services) entry.services = undefined
+      }))
   }
 
   private snapshot(connectionID: string): Desktop.MemberRuntime {
@@ -182,6 +196,9 @@ export class DesktopMemberRuntimes {
       mode: "managed",
       userDataPath: path.join(member.root, "state", "desktop"),
       logDir: path.join(member.root, "log", "desktop"),
+      onExit: () => {
+        void this.closeServices(entry).catch(() => console.error("Member Runtime service cleanup failed after exit."))
+      },
       member: {
         home: member.home,
         identity: member.identity,
@@ -208,6 +225,7 @@ export class DesktopMemberRuntimes {
         entry.services = await this.options.services({ connectionID: id, runtimeID, browser })
         this.check(signal)
       }
+      if (!manager.connection()) throw new Failure("unavailable")
       return { connectionID: id, runtimeID, state: "running" }
     } catch (error) {
       try {

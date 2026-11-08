@@ -60,6 +60,7 @@ export interface DesktopServerManagerOptions {
   member?: z.infer<typeof MemberProfile>
   onStartupStatus?: (status: DesktopStartupStatus) => void
   onMaintenanceStatus?: (status: DesktopMaintenanceStatus) => void
+  onExit?: () => void
 }
 
 type ManagedServerLaunch = { ok: true } | { ok: false; portConflict: boolean; detail: string; error: unknown }
@@ -324,6 +325,8 @@ export class DesktopServerManager {
       await saveServerPort(this.options.userDataPath, this.options.channel, port).catch(() => undefined)
     }
     this.assertGeneration(generation)
+    if (!this.child || this.child.exitCode !== null || this.child.signalCode !== null)
+      throw new Error(this.lastError ?? "Synergy server exited before startup completed")
     if (this.options.member) this.options.member.ticket = undefined
     this.state = "running"
     this.lastError = null
@@ -407,6 +410,7 @@ export class DesktopServerManager {
         this.browserCredential = null
         this.state = "failed"
         this.lastError = `Synergy server ${details}`
+        this.options.onExit?.()
       }
     })
 

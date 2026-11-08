@@ -81,6 +81,111 @@ function registry(
   }
 }
 
+async function until(predicate: () => boolean) {
+  const deadline = Date.now() + 2_000
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Member lifecycle condition timed out")
+    await Bun.sleep(5)
+  }
+}
+
+async function exitChild(connection: { url: string; headers: Record<string, string> }) {
+  const response = await fetch(connection.url + "/probe", { headers: connection.headers })
+  expect(response.status).toBe(200)
+  const { pid } = await response.json()
+  expect(Number.isSafeInteger(pid) && pid > 0 && pid !== process.pid).toBe(true)
+  process.kill(pid, "SIGTERM")
+}
+
+test("an exited member drains its services once before explicit restart and leaves another member running", async () => {
+  await using a = await organizationFixture()
+  await using b = await organizationFixture()
+  const one = await authorized(a)
+  const two = await authorized(b, a.accounts)
+  const transport = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    const token = request.headers.get("authorization")?.slice(7)
+    return token === (await a.accounts.access(one.id)).accessToken ? a.transport(request) : b.transport(request)
+  }) as typeof fetch
+  const closed = new Map<string, number>()
+  const started = new Map<string, number>()
+  const held = Promise.withResolvers<void>()
+  await using f = registry(a.root, a.accounts, transport, ({ connectionID }) => {
+    const generation = (started.get(connectionID) ?? 0) + 1
+    started.set(connectionID, generation)
+    return {
+      async close() {
+        closed.set(connectionID, (closed.get(connectionID) ?? 0) + 1)
+        if (connectionID === one.id && generation === 1) await held.promise
+      },
+    }
+  })
+  let restarting: Promise<unknown> | undefined
+  try {
+    await Promise.all([f.owner.start(one.id), f.owner.start(two.id)])
+    await exitChild(f.owner.running().find((item) => item.connectionID === one.id)!.connection)
+    await until(() => closed.get(one.id) === 1)
+    expect((await f.owner.status(one.id)).state).toBe("failed")
+    expect(f.owner.running().map((item) => item.connectionID)).toEqual([two.id])
+    expect(closed.has(two.id)).toBe(false)
+    const other = f.owner.running()[0].connection
+    expect((await fetch(other.url + "/global/health", { headers: other.headers })).status).toBe(200)
+    let restarted = false
+    restarting = f.owner.start(one.id).then((result) => {
+      restarted = true
+      return result
+    })
+    await Bun.sleep(10)
+    expect(restarted).toBe(false)
+    expect(started.get(one.id)).toBe(1)
+    expect(closed.get(one.id)).toBe(1)
+    held.resolve()
+    expect(await restarting).toMatchObject({ state: "running" })
+    expect(started.get(one.id)).toBe(2)
+    expect(started.get(two.id)).toBe(1)
+    await f.owner.close()
+    expect(closed.get(one.id)).toBe(2)
+    expect(closed.get(two.id)).toBe(1)
+  } finally {
+    held.resolve()
+    await Promise.allSettled([restarting])
+  }
+}, 20_000)
+
+test("a child exiting during native attachment cannot publish a running member and drains the late service", async () => {
+  await using service = await organizationFixture()
+  const account = await authorized(service)
+  const entered = Promise.withResolvers<{ url: string; headers: Record<string, string> }>()
+  const held = Promise.withResolvers<void>()
+  let closed = 0
+  await using f = registry(service.root, service.accounts, service.transport, async (member) => {
+    entered.resolve(member.browser)
+    await held.promise
+    return {
+      async close() {
+        closed++
+      },
+    }
+  })
+  const starting = f.owner.start(account.id).then(
+    (result) => ({ result }),
+    (error: unknown) => ({ error }),
+  )
+  try {
+    await exitChild(await entered.promise)
+    await until(() => f.owner.running().length === 0)
+    held.resolve()
+    expect(await starting).toMatchObject({ error: { code: "unavailable" } })
+    expect((await f.owner.status(account.id)).state).toBe("failed")
+    expect(closed).toBe(1)
+    await f.owner.stopAll()
+    expect(closed).toBe(1)
+  } finally {
+    held.resolve()
+    await starting
+  }
+}, 20_000)
+
 test("member native services receive private connections once and drain before shutdown completes", async () => {
   await using service = await organizationFixture()
   const account = await authorized(service)

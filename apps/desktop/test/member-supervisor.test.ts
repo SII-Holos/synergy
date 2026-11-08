@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { prepareMemberHome, type MemberHome } from "@ericsanchezok/synergy-organization-runtime/home"
 import { DesktopServerManager } from "../src/server-manager"
+import * as PortState from "../src/server-port-state"
 
 let resourcesPath: string
 beforeAll(async () => {
@@ -103,6 +104,7 @@ test("member supervisors isolate child environments, credentials and lifecycle w
     const endpoint = manager.connection()!
     const probe = await (await fetch(endpoint.url + "/probe", { headers: endpoint.headers })).json()
     expect(probe).toEqual({
+      pid: manager.status().pid,
       home: member.home,
       root: member.root,
       cwd: await fs.realpath(member.home),
@@ -157,6 +159,50 @@ test("member supervisors isolate child environments, credentials and lifecycle w
   expect((await fetch(other.url + "/global/health", { headers: other.headers })).status).toBe(200)
   expect(a.status().logFile).not.toBe(b.status().logFile)
 }, 30000)
+
+test("a member exiting while its ready port is persisted cannot become running", async () => {
+  await using f = await fixture()
+  const member = f.members[0]
+  const manager = f.manager(member)
+  const directory = path.join(member.root, "state", "desktop")
+  const entered = Promise.withResolvers<void>()
+  const held = Promise.withResolvers<void>()
+  const persist = PortState.saveServerPort
+  using writing = spyOn(PortState, "saveServerPort").mockImplementation(async (...args) => {
+    if (args[0] === directory) {
+      entered.resolve()
+      await held.promise
+    }
+    return persist(...args)
+  })
+  const starting = manager.start().then(
+    (url) => ({ url }),
+    (error: unknown) => ({ error }),
+  )
+  try {
+    await Promise.race([
+      entered.promise,
+      starting.then(() => {
+        throw new Error("Member startup ended before reaching port persistence")
+      }),
+    ])
+    const pid = manager.status().pid
+    expect(pid).toBeNumber()
+    process.kill(pid!, "SIGTERM")
+    const deadline = Date.now() + 2_000
+    while (manager.status().state !== "failed") {
+      if (Date.now() >= deadline) throw new Error("Member exit was not observed")
+      await Bun.sleep(5)
+    }
+    held.resolve()
+    expect(await starting).toMatchObject({ error: expect.any(Error) })
+    expect(manager.connection()).toBeUndefined()
+    expect(manager.status().state).toBe("failed")
+  } finally {
+    held.resolve()
+    await starting
+  }
+}, 10_000)
 
 test("stopping member startup fences late work and leaves a later explicit start usable", async () => {
   await using f = await fixture()
