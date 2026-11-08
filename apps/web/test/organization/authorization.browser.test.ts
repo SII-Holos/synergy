@@ -65,17 +65,35 @@ beforeAll(async () => {
     document.getElementById("connect").onclick = () => void window.fixture.begin()
   `,
   )
+  await Bun.write(
+    path.join(directory, "app.html"),
+    '<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/app.tsx"></script></body></html>',
+  )
+  await Bun.write(
+    path.join(directory, "app.tsx"),
+    `
+    import { render } from "solid-js/web"
+    import { AppBaseProviders, AppInterface } from ${JSON.stringify(`/@fs/${source}/app.tsx`)}
+    import { PlatformProvider } from ${JSON.stringify(`/@fs/${source}/context/platform.tsx`)}
+    render(() => <PlatformProvider value={{platform:"web",openLink(){}}}><AppBaseProviders><AppInterface /></AppBaseProviders></PlatformProvider>, document.getElementById("root"))
+  `,
+  )
   const fixture = await createBrowserFixture({
     root: directory,
-    entries: ["index.html", "organization.html"],
+    entries: ["index.html", "organization.html", "app.html"],
     styled: true,
+    localized: true,
     aliases: [{ find: "@", replacement: source }],
   })
   resources.defer("compiled fixture HTTP listener", fixture.close)
   const server = createServer({ key, cert }, (request, response) => {
     void (async () => {
       const pathname = new URL(request.url ?? "/", "https://fixture.example").pathname
-      const filename = path.resolve(fixture.directory, `.${pathname === "/" ? "/index.html" : pathname}`)
+      const app = pathname === "/app.html" || pathname.startsWith("/organization/")
+      const filename = path.resolve(
+        fixture.directory,
+        `.${app ? "/app.html" : pathname === "/" ? "/index.html" : pathname}`,
+      )
       if (!filename.startsWith(fixture.directory + path.sep)) return response.writeHead(404).end()
       const file = Bun.file(filename)
       if (!(await file.exists())) return response.writeHead(404).end()
@@ -83,8 +101,15 @@ beforeAll(async () => {
       response.setHeader("referrer-policy", "no-referrer")
       response.setHeader(
         "content-security-policy",
-        `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${authority?.issuer ?? ""}; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'`,
+        `default-src 'self'; script-src 'self' ${app ? "'unsafe-inline' 'wasm-unsafe-eval'" : ""}; style-src 'self' 'unsafe-inline'; connect-src 'self' ${authority?.issuer ?? ""}; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'`,
       )
+      if (app)
+        return response.end(
+          (await file.text()).replace(
+            "<head>",
+            `<head><script>window.__SYNERGY_WEB_CONNECT_ORIGINS__=${JSON.stringify([authority.issuer])}</script>`,
+          ),
+        )
       response.end(Buffer.from(await file.arrayBuffer()))
     })().catch(() => response.writeHead(500).end())
   })
@@ -267,3 +292,61 @@ test("an isolated callback clears its code and offers recovery in both themes an
     }
   }
 }, 30_000)
+
+test("the real Web space signs in, restores its project deep link and stays signed out after reload", async () => {
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    locale: "en",
+    viewport: { width: 1100, height: 760 },
+  })
+  const page = await context.newPage()
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    page.setDefaultTimeout(15_000)
+    await page.goto(`${clientOrigin}/app.html`)
+    await page.getByRole("button", { name: "Current space" }).click()
+    await page.getByRole("menuitem", { name: "Connect organization" }).click()
+    expect(await page.getByLabel("Organization address").inputValue()).toBe(authority.issuer)
+    await page.getByLabel("Client ID").fill("web")
+    const opened = page.waitForEvent("popup")
+    await page.getByRole("button", { name: "Connect organization", exact: true }).click()
+    const popup = await opened
+    await popup.getByLabel("Account", { exact: true }).fill("owner")
+    await popup.getByLabel("Password", { exact: true }).fill("organization browser fixture password")
+    await popup.getByRole("button", { name: "Sign in", exact: true }).click()
+    await popup.getByRole("button", { name: "Continue", exact: true }).click()
+    await page.getByRole("button", { name: /Shared project/ }).click()
+    await page.getByRole("heading", { name: "Shared project" }).waitFor()
+    const projectURL = page.url()
+    const stored = await page.evaluate(() => localStorage.getItem("synergy.global.dat:organization-connections"))
+    expect(stored).toContain("Fixture owner")
+    expect(stored).not.toMatch(/accessToken|refreshToken|verifier|password/)
+    await page.reload()
+    await page.getByRole("button", { name: "Restore organization connection" }).waitFor()
+    expect(context.pages()).toHaveLength(1)
+    expect(await page.getByRole("heading", { name: "Shared project" }).count()).toBe(0)
+    const recovery = page.waitForEvent("popup")
+    await page.getByRole("button", { name: "Restore organization connection" }).click()
+    const restored = await recovery
+    await restored.getByRole("button", { name: "Continue", exact: true }).waitFor()
+    expect(await restored.getByLabel("Password", { exact: true }).count()).toBe(0)
+    await restored.getByRole("button", { name: "Continue", exact: true }).click()
+    await page.getByRole("heading", { name: "Shared project" }).waitFor()
+    expect(page.url()).toBe(projectURL)
+    await page.getByRole("button", { name: "Sign out", exact: true }).click()
+    await page.getByRole("dialog").getByRole("button", { name: "Sign out", exact: true }).click()
+    await page.getByRole("heading", { name: "Signed out", exact: true }).waitFor()
+    await page.reload()
+    await page.getByRole("heading", { name: "Signed out", exact: true }).waitFor()
+    expect(context.pages()).toHaveLength(1)
+    const relogin = page.waitForEvent("popup")
+    await page.getByRole("button", { name: "Restore organization connection" }).click()
+    const signedOut = await relogin
+    await signedOut.getByLabel("Password", { exact: true }).waitFor()
+    await signedOut.close()
+    expect(errors).toEqual([])
+  } finally {
+    await context.close()
+  }
+}, 45_000)

@@ -86,6 +86,7 @@ export function authorizeOrganization(options: {
   issuer: string
   orgID?: string
   deploymentIncarnation?: string
+  accountID?: string
   clientID: string
   redirectUri: string
   signal?: AbortSignal
@@ -183,6 +184,7 @@ export function authorizeOrganization(options: {
           tokens.data.clientID !== code.clientID ||
           tokens.data.account.orgID !== code.orgID ||
           tokens.data.account.state !== "active" ||
+          (options.accountID !== undefined && tokens.data.account.accountID !== options.accountID) ||
           tokens.data.expiresAt <= Date.now() ||
           tokens.data.refreshToken !== undefined ||
           tokens.data.refreshExpiresAt !== undefined

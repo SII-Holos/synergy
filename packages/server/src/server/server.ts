@@ -175,8 +175,10 @@ export namespace Server {
   // 'unsafe-inline' when either is present (CSP Level 2), which would break
   // third-party components that dynamically create scripts (e.g., Ghostty Web).
 
-  export function spaCsp(_nonce?: string): string {
-    return CSP_BASELINE
+  export function spaCsp(_nonce?: string, connectOrigins: string[] = []): string {
+    const origins = Config.Server.parse({ webConnectOrigins: connectOrigins }).webConnectOrigins!
+    if (!origins.length) return CSP_BASELINE
+    return CSP_BASELINE.replace("connect-src 'self'", `connect-src 'self' ${[...new Set(origins)].join(" ")}`)
   }
 
   export function cspMiddleware(): MiddlewareHandler {

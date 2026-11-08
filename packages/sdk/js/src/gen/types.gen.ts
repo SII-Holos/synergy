@@ -4451,6 +4451,10 @@ export type ServerConfig = {
    * Additional origins allowed for CORS and Browser viewer WebSockets
    */
   cors?: Array<string>
+  /**
+   * Trusted HTTPS service origins allowed by the Web app connection policy; read only from global config
+   */
+  webConnectOrigins?: Array<string>
 }
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"

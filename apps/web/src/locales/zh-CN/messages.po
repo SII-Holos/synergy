@@ -13449,6 +13449,134 @@ msgid "organization.auth.working"
 msgstr "正在连接…"
 
 #. js-lingui-explicit-id
+msgid "organization.space.address"
+msgstr "组织地址"
+
+#. js-lingui-explicit-id
+msgid "organization.space.archived"
+msgstr "已归档"
+
+#. js-lingui-explicit-id
+msgid "organization.space.back"
+msgstr "全部项目"
+
+#. js-lingui-explicit-id
+msgid "organization.space.client"
+msgstr "客户端 ID"
+
+#. js-lingui-explicit-id
+msgid "organization.space.clientHint"
+msgstr "使用组织管理员登记的客户端 ID。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.collaborator"
+msgstr "协作者"
+
+#. js-lingui-explicit-id
+msgid "organization.space.connect"
+msgstr "连接组织"
+
+#. js-lingui-explicit-id
+msgid "organization.space.connecting"
+msgstr "正在连接…"
+
+#. js-lingui-explicit-id
+msgid "organization.space.disconnected"
+msgstr "组织连接已断开"
+
+#. js-lingui-explicit-id
+msgid "organization.space.empty"
+msgstr "暂无可用项目"
+
+#. js-lingui-explicit-id
+msgid "organization.space.finishSignOut"
+msgstr "完成退出"
+
+#. js-lingui-explicit-id
+msgid "organization.space.identityChanged"
+msgstr "组织或账号已变化。请将其连接为新空间。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.invalidRequest"
+msgstr "请输入组织的 HTTPS 地址和已登记的客户端 ID。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.loading"
+msgstr "正在加载项目…"
+
+#. js-lingui-explicit-id
+msgid "organization.space.maintainer"
+msgstr "维护者"
+
+#. js-lingui-explicit-id
+msgid "organization.space.manage"
+msgstr "项目管理员"
+
+#. js-lingui-explicit-id
+msgid "organization.space.missing"
+msgstr "尚未连接此组织账号"
+
+#. js-lingui-explicit-id
+msgid "organization.space.more"
+msgstr "加载更多项目"
+
+#. js-lingui-explicit-id
+msgid "organization.space.originNotAllowed"
+msgstr "请 Web 应用管理员将此组织的 HTTPS 地址加入 server.webConnectOrigins，然后重新加载页面。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.popup"
+msgstr "请允许打开授权窗口，然后恢复组织连接。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.projectFailed"
+msgstr "无法加载项目。请检查连接和项目访问权限后重试。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.projects"
+msgstr "项目"
+
+#. js-lingui-explicit-id
+msgid "organization.space.reader"
+msgstr "只读"
+
+#. js-lingui-explicit-id
+msgid "organization.space.restore"
+msgstr "恢复组织连接"
+
+#. js-lingui-explicit-id
+msgid "organization.space.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "organization.space.secure"
+msgstr "请通过 HTTPS 打开此 Web 应用以授权组织连接。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.signedOut"
+msgstr "已退出登录"
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOut"
+msgstr "退出登录"
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOutDescription"
+msgstr "这会清除此浏览器中该账号的缓存内容和未发送草稿。正在运行的任务会继续。如果服务离线，请在恢复连接后完成退出。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOutPending"
+msgstr "退出尚未完成"
+
+#. js-lingui-explicit-id
+msgid "organization.space.storage"
+msgstr "无法保存连接设置。请检查浏览器存储后重试。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.unavailable"
+msgstr "无法连接组织。请检查网络连接后重试。"
+
+#. js-lingui-explicit-id
 msgid "project.entry.addFolder"
 msgstr "添加文件夹"
 

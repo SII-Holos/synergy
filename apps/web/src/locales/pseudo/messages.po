@@ -13449,6 +13449,134 @@ msgid "organization.auth.working"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.space.address"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.archived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.back"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.client"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.clientHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.collaborator"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.connect"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.connecting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.disconnected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.finishSignOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.identityChanged"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.invalidRequest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.maintainer"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.manage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.missing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.originNotAllowed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.popup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.projectFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.projects"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.reader"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.restore"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.secure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.signedOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOutDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOutPending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.storage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "project.entry.addFolder"
 msgstr "⟦Add folder⟧"
 

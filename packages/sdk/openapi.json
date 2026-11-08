@@ -53913,6 +53913,15 @@
             "items": {
               "type": "string"
             }
+          },
+          "webConnectOrigins": {
+            "description": "Trusted HTTPS service origins allowed by the Web app connection policy; read only from global config",
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2048
+            }
           }
         },
         "additionalProperties": false

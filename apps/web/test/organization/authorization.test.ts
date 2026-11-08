@@ -177,11 +177,13 @@ test("Web rejects refresh secrets and an account or deployment outside the captu
   for (const response of [
     { refreshToken: "c".repeat(64), refreshExpiresAt: Date.now() + 60_000 },
     { account: { ...account, orgID: "other" } },
+    { account: { ...account, accountID: "other" } },
     { deploymentIncarnation: "restored" },
   ]) {
     const f = fixture({ response })
     const pending = authorizeOrganization({
       ...authority,
+      accountID: account.accountID,
       clientID: client.clientID,
       redirectUri: client.redirectUri,
       host: f.host,

@@ -232,6 +232,40 @@ test("Desktop revocation binds authority and client, rejects browser origins and
   expect((await request(f, "/projects", { token: grant.tokens.accessToken })).status).toBe(200)
 })
 
+test("Web logout can revoke an expired access credential and retry a lost response without restoring a login", async () => {
+  const other = { ...web, clientID: "other", redirectUri: "https://other.example/callback" }
+  await using f = await fixture(undefined, { clientAuthentication: { clients: [web, other], accessMs: 10 } })
+  const owner = await f.initialize()
+  const independent = f.client()
+  await independent.login("owner")
+  const grant = await tokens(f, owner, web)
+  await Bun.sleep(Math.max(1, grant.tokens.expiresAt - Date.now() + 1))
+  expect(
+    (await request(f, "/projects", { token: grant.tokens.accessToken, origin: "https://work.example" })).status,
+  ).toBe(401)
+  expect([401, 403]).toContain(
+    (await request(f, "/auth/logout", { body: {}, token: grant.tokens.accessToken, origin: "https://other.example" }))
+      .status,
+  )
+  expect((await owner.request("GET", "/auth/session")).status).toBe(200)
+  const logout = () =>
+    request(f, "/auth/logout", { body: {}, token: grant.tokens.accessToken, origin: "https://work.example" })
+  expect((await logout()).status).toBe(200)
+  await f.restart()
+  expect((await logout()).status).toBe(200)
+  expect((await owner.request("GET", "/auth/session")).status).toBe(401)
+  expect((await independent.request("GET", "/auth/session")).status).toBe(200)
+  expect(
+    (
+      await request(f, "/auth/logout", {
+        body: {},
+        token: randomBytes(32).toString("hex"),
+        origin: "https://work.example",
+      })
+    ).status,
+  ).toBe(200)
+})
+
 test("exact clients and origins constrain discovery, authorization, preflight and bearer credentials", async () => {
   await using f = await fixture(undefined, { clientAuthentication: clients })
   const owner = await f.initialize()

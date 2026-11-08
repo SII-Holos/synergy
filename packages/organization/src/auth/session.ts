@@ -8,6 +8,25 @@ import { ClientPolicy } from "./client-policy"
 
 export type Credentials = { token: string; csrf?: string; kind?: "access"; origin?: string }
 
+export async function revokeAccessLogin(credentials: Credentials) {
+  const access = await Record.read(Record.ClientAccess, Keys.clientAccess(digest(credentials.token)))
+  if (!access) return
+  const grant = await Record.read(Record.ClientGrant, Keys.clientGrant(access.grantID))
+  if (!grant) return
+  const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
+  if (
+    grant.issuer !== ClientPolicy.issuer() ||
+    grant.orgID !== deployment.orgID ||
+    grant.deploymentIncarnation !== deployment.deploymentIncarnation
+  )
+    return
+  if (credentials.origin) ClientPolicy.checkOrigin(ClientPolicy.client(grant.clientID), credentials.origin)
+  const revokedAt = Date.now()
+  if (grant.revokedAt === undefined) await Storage.write(Keys.clientGrant(grant.grantID), { ...grant, revokedAt })
+  const login = await Record.read(Record.Login, Keys.login(grant.loginHash))
+  if (login && login.revokedAt === undefined) await Storage.write(Keys.login(login.tokenHash), { ...login, revokedAt })
+}
+
 export async function authenticateClientGrant(grantID: string, origin?: string) {
   const grant = await Record.read(Record.ClientGrant, Keys.clientGrant(grantID))
   if (!grant || grant.revokedAt || grant.expiresAt <= Date.now())

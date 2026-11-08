@@ -1,5 +1,5 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -179,10 +179,16 @@ beforeAll(async () => {
   await server.warmupRequest("/main.tsx")
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
+}, 60000)
+beforeEach(async () => {
+  errors.length = 0
   page = await browser.newPage({ viewport: { width: 960, height: 920 } })
   page.setDefaultTimeout(7000)
   page.on("pageerror", (error) => errors.push(error.message))
-}, 60000)
+})
+afterEach(async () => {
+  await page?.close()
+})
 afterAll(async () => {
   await browser?.close()
   await server?.close()
@@ -659,8 +665,8 @@ test("a fifth module needs no host changes and a late module cannot replace it",
   expect(await page.locator(".welcome-ambient").count()).toBe(0)
 })
 
-test("narrow and short layouts keep all four games and the editor reachable", async () => {
-  for (const scene of ["stack", "slingshot", "blocks", "flight"])
+for (const scene of ["stack", "slingshot", "blocks", "flight"])
+  test(`narrow and short layouts keep ${scene} and the editor reachable`, async () => {
     for (const width of [320, 375, 720])
       for (const height of [400, 580]) {
         await page.setViewportSize({ width, height })
@@ -671,7 +677,7 @@ test("narrow and short layouts keep all four games and the editor reachable", as
         expect(box.y + box.height).toBeLessThanOrEqual(height + 1)
         expect(errors).toEqual([])
       }
-}, 15000)
+  }, 15000)
 
 test("reduced motion stops decorative frames and supports explicit keyboard play", async () => {
   await page.emulateMedia({ reducedMotion: "reduce" })

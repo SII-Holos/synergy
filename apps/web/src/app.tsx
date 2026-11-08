@@ -49,6 +49,8 @@ import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Suspense } from "solid-js"
 import { DialogSelectServer } from "@/components/dialog"
 import { ServerConnectionErrorPage } from "@/pages/server-connection-error"
+import { SpaceProvider, useSpace } from "@/context/space"
+import { OrganizationSpace, SpaceAccess } from "@/organization/space-page"
 
 const APP_SURFACE_READY_EVENT = "synergy:app-surface-ready"
 
@@ -145,11 +147,40 @@ export function AppInterface() {
   return (
     <PluginUIRecoveryProvider>
       <ServerProvider defaultUrl={defaultAccess.attachUrl}>
-        <ServerView>
-          <ConnectedApp />
-        </ServerView>
+        <SpaceApp />
       </ServerProvider>
     </PluginUIRecoveryProvider>
+  )
+}
+
+function SpaceApp() {
+  const server = useServer()
+  return (
+    <SpaceProvider personalRuntimeID={server.runtimeID}>
+      <SpacePages />
+    </SpaceProvider>
+  )
+}
+
+function SpacePages() {
+  const space = useSpace()
+  return (
+    <Show
+      when={space.selected() === undefined}
+      fallback={
+        <Show when={JSON.stringify([space.selected(), space.current()?.generation])} keyed>
+          {(_view) => (
+            <DialogProvider>
+              <OrganizationSpace />
+            </DialogProvider>
+          )}
+        </Show>
+      }
+    >
+      <ServerView>
+        <ConnectedApp />
+      </ServerView>
+    </Show>
   )
 }
 
@@ -172,6 +203,7 @@ function RuntimePage(props: ParentProps<{ navigation: string }>) {
 function ConnectedApp() {
   const dialog = useDialog()
   const server = useServer()
+  const space = useSpace()
 
   const startupView = createMemo<"loading" | "connection-error" | "ready">(() => {
     const healthy = server.healthy()
@@ -198,6 +230,11 @@ function ConnectedApp() {
     <Switch>
       <Match when={startupView() === "loading"}>
         <Loading />
+        <Show when={space.available}>
+          <div class="organization-space-startup-access">
+            <SpaceAccess />
+          </div>
+        </Show>
       </Match>
       <Match when={startupView() === "connection-error"}>
         <ServerConnectionErrorPage
@@ -206,6 +243,11 @@ function ConnectedApp() {
           onRetry={retry}
           onChangeServer={changeServer}
         />
+        <Show when={space.available}>
+          <div class="organization-space-startup-access">
+            <SpaceAccess />
+          </div>
+        </Show>
       </Match>
       <Match when={startupView() === "ready"}>
         <GlobalSDKProvider>

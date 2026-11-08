@@ -6,7 +6,7 @@ import { OrganizationRecord as Record } from "../storage/records"
 import { fail, revision } from "../error"
 import { createPasswordHasher } from "./password"
 import { token, digest, fingerprint, matches } from "./secret"
-import { authenticate, account, type Credentials } from "./session"
+import { authenticate, account, revokeAccessLogin, type Credentials } from "./session"
 import { authorize, requireAdministrator } from "../authorization"
 export type { Credentials } from "./session"
 
@@ -153,6 +153,7 @@ export async function createAuthentication(
     },
     async logout(credentials: Credentials) {
       await Storage.transaction(async () => {
+        if (credentials.kind === "access") return revokeAccessLogin(credentials)
         const { login } = await authenticate(credentials)
         await Storage.write(Keys.login(login.tokenHash), { ...login, revokedAt: Date.now() })
       })

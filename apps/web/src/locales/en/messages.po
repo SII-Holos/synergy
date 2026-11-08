@@ -13449,6 +13449,134 @@ msgid "organization.auth.working"
 msgstr "Connecting…"
 
 #. js-lingui-explicit-id
+msgid "organization.space.address"
+msgstr "Organization address"
+
+#. js-lingui-explicit-id
+msgid "organization.space.archived"
+msgstr "Archived"
+
+#. js-lingui-explicit-id
+msgid "organization.space.back"
+msgstr "All projects"
+
+#. js-lingui-explicit-id
+msgid "organization.space.client"
+msgstr "Client ID"
+
+#. js-lingui-explicit-id
+msgid "organization.space.clientHint"
+msgstr "Use the client ID registered by your organization administrator."
+
+#. js-lingui-explicit-id
+msgid "organization.space.collaborator"
+msgstr "Collaborator"
+
+#. js-lingui-explicit-id
+msgid "organization.space.connect"
+msgstr "Connect organization"
+
+#. js-lingui-explicit-id
+msgid "organization.space.connecting"
+msgstr "Connecting…"
+
+#. js-lingui-explicit-id
+msgid "organization.space.disconnected"
+msgstr "Organization disconnected"
+
+#. js-lingui-explicit-id
+msgid "organization.space.empty"
+msgstr "No projects available"
+
+#. js-lingui-explicit-id
+msgid "organization.space.finishSignOut"
+msgstr "Finish signing out"
+
+#. js-lingui-explicit-id
+msgid "organization.space.identityChanged"
+msgstr "The organization or account has changed. Connect it as a new space."
+
+#. js-lingui-explicit-id
+msgid "organization.space.invalidRequest"
+msgstr "Enter an HTTPS organization address and the registered client ID."
+
+#. js-lingui-explicit-id
+msgid "organization.space.loading"
+msgstr "Loading projects…"
+
+#. js-lingui-explicit-id
+msgid "organization.space.maintainer"
+msgstr "Maintainer"
+
+#. js-lingui-explicit-id
+msgid "organization.space.manage"
+msgstr "Project administrator"
+
+#. js-lingui-explicit-id
+msgid "organization.space.missing"
+msgstr "Organization account not connected"
+
+#. js-lingui-explicit-id
+msgid "organization.space.more"
+msgstr "Load more projects"
+
+#. js-lingui-explicit-id
+msgid "organization.space.originNotAllowed"
+msgstr "Ask the Web app administrator to add this organization’s HTTPS address to server.webConnectOrigins, then reload."
+
+#. js-lingui-explicit-id
+msgid "organization.space.popup"
+msgstr "Allow the authorization window, then restore the organization connection."
+
+#. js-lingui-explicit-id
+msgid "organization.space.projectFailed"
+msgstr "Projects could not be loaded. Check your connection and project access, then retry."
+
+#. js-lingui-explicit-id
+msgid "organization.space.projects"
+msgstr "Projects"
+
+#. js-lingui-explicit-id
+msgid "organization.space.reader"
+msgstr "Read only"
+
+#. js-lingui-explicit-id
+msgid "organization.space.restore"
+msgstr "Restore organization connection"
+
+#. js-lingui-explicit-id
+msgid "organization.space.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "organization.space.secure"
+msgstr "Open this Web app over HTTPS to authorize an organization."
+
+#. js-lingui-explicit-id
+msgid "organization.space.signedOut"
+msgstr "Signed out"
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOut"
+msgstr "Sign out"
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOutDescription"
+msgstr "This removes this account’s cached content and unsent drafts from this browser. Running tasks continue. If the service is offline, finish signing out when it is available."
+
+#. js-lingui-explicit-id
+msgid "organization.space.signOutPending"
+msgstr "Sign-out pending"
+
+#. js-lingui-explicit-id
+msgid "organization.space.storage"
+msgstr "Connection settings could not be saved. Check browser storage and try again."
+
+#. js-lingui-explicit-id
+msgid "organization.space.unavailable"
+msgstr "Could not reach the organization. Check your connection and try again."
+
+#. js-lingui-explicit-id
 msgid "project.entry.addFolder"
 msgstr "Add folder"
 

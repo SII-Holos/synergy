@@ -449,6 +449,23 @@ export const Server = z
     hostname: z.string().optional().describe("Hostname to listen on"),
     mdns: z.boolean().optional().describe("Enable mDNS service discovery"),
     cors: z.array(z.string()).optional().describe("Additional origins allowed for CORS and Browser viewer WebSockets"),
+    webConnectOrigins: z
+      .array(
+        z
+          .string()
+          .max(2048)
+          .refine((value) => {
+            try {
+              const url = new URL(value)
+              return url.protocol === "https:" && url.origin === value && !url.hostname.includes("*")
+            } catch {
+              return false
+            }
+          }, "An exact HTTPS origin without wildcards is required"),
+      )
+      .max(32)
+      .optional()
+      .describe("Trusted HTTPS service origins allowed by the Web app connection policy; read only from global config"),
   })
   .strict()
   .meta({

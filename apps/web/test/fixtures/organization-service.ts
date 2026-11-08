@@ -51,6 +51,16 @@ try {
     },
     { throwOnError: true },
   )
+  const login = await client.orgAuth.login(
+    { orgLoginInput: { loginName: "owner", password: "organization browser fixture password" } },
+    { throwOnError: true },
+  )
+  const headers = {
+    cookie: login.response.headers.get("set-cookie")!.split(";")[0]!,
+    "x-csrf-token": login.data.csrfToken,
+  }
+  await client.orgProjects.create({ orgProjectCreate: { name: "Shared project" } }, { headers, throwOnError: true })
+  await client.orgAuth.logout({ orgEmptyInput: {} }, { headers, throwOnError: true })
   const deployment = await service.deployment()
   console.log(
     JSON.stringify({ issuer, orgID: deployment.orgID, deploymentIncarnation: deployment.deploymentIncarnation }),
