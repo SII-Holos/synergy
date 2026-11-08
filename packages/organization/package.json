@@ -20,13 +20,14 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "hono": "catalog:",
-    "hono-openapi": "catalog:"
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
-    "@ericsanchezok/synergy-util": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",

@@ -10,14 +10,24 @@ import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protoc
 import { registerOrganizationMigrations } from "./migration"
 import { OrganizationStoragePath } from "./storage/path"
 import { organizationApp } from "./http"
+import { createAuthentication, type AuthenticationSettings } from "./auth"
+import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
+import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 
 export interface OrganizationServiceOptions {
   home: string
   database?: Extract<StoreOptions, { backend: "postgres" }>
+  publicOrigin?: string
+  authentication?: AuthenticationSettings
 }
 
 export async function openOrganizationService(options: OrganizationServiceOptions) {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
+  if (options.publicOrigin) {
+    const url = new URL(options.publicOrigin)
+    if (url.origin !== options.publicOrigin || url.protocol !== "https:")
+      throw new Error("Organization public origin must be an HTTPS origin")
+  }
   const home = path.resolve(options.home)
   const root = path.join(home, ".synergy")
   const context = RuntimeContext.create(
@@ -47,9 +57,20 @@ export async function openOrganizationService(options: OrganizationServiceOption
     function close() {
       if (closing) return closing
       ready = false
-      closing = (async () => {
+      closing = context.run(async () => {
+        RuntimeContext.setReady(false)
         await Promise.allSettled([...active])
         const errors: unknown[] = []
+        try {
+          ObservabilityMetrics.stop()
+        } catch (error) {
+          errors.push(error)
+        }
+        try {
+          await ObservabilityStore.stop()
+        } catch (error) {
+          errors.push(error)
+        }
         try {
           await store?.close()
         } catch (error) {
@@ -62,7 +83,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
         }
         context.dispose()
         if (errors.length) throw new AggregateError(errors, "Organization service cleanup failed")
-      })()
+      })
       return closing
     }
     try {
@@ -81,11 +102,13 @@ export async function openOrganizationService(options: OrganizationServiceOption
       RuntimeContext.sealComposition()
       await ensureMigrations({ output: "silent" })
       OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
-      const app = organizationApp(() => ready)
+      const authentication = await createAuthentication(options.authentication)
+      const app = organizationApp(() => ready, authentication, options.publicOrigin)
       ready = true
       RuntimeContext.setReady(true)
       return {
         home,
+        bootstrapToken: () => run(() => authentication.bootstrapToken()),
         fetch: (request: Request) => run(() => app.fetch(request)),
         deployment: () =>
           run(async () =>

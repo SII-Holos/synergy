@@ -1,6 +1,12 @@
 import { Hono } from "hono"
 import { describeRoute, generateSpecs, resolver } from "hono-openapi"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
+import { bodyLimit } from "hono/body-limit"
+import { HTTPException } from "hono/http-exception"
+import { z } from "zod"
+import { type Authentication } from "./auth"
+import { identityRoutes } from "./routes/identity"
+import { OrganizationError, errorStatus, fail } from "./error"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -13,23 +19,70 @@ export function organizationOpenApi() {
   )
 }
 
-export function organizationApp(ready: () => boolean) {
-  return new Hono().get(
-    "/org/v1/health",
-    describeRoute({
-      operationId: "orgHealth.get",
-      summary: "Read organization service readiness",
-      responses: {
-        200: {
-          description: "Ready",
-          content: { "application/json": { schema: resolver(OrganizationProtocol.Health) } },
+export function organizationApp(ready: () => boolean, authentication?: Authentication, publicOrigin?: string) {
+  return new Hono<{ Variables: { requestID: string } }>()
+    .use("*", async (c, next) => {
+      const requestID = crypto.randomUUID()
+      c.set("requestID", requestID)
+      c.header("X-Request-ID", requestID)
+      c.header("Cache-Control", "no-store")
+      c.header("Referrer-Policy", "no-referrer")
+      c.header("X-Content-Type-Options", "nosniff")
+      await next()
+    })
+    .use("*", bodyLimit({ maxSize: 64 * 1024, onError: () => fail("INVALID_REQUEST", "Request body is too large") }))
+    .onError((error, c) => {
+      if (error instanceof OrganizationError)
+        return c.json(
+          { ...error.data, requestID: error.data.requestID ?? c.get("requestID") },
+          errorStatus(error.data.code),
+        )
+      if (error instanceof z.ZodError || (error instanceof HTTPException && error.status === 400)) {
+        return c.json(
+          {
+            code: "INVALID_REQUEST",
+            message: "Invalid request",
+            requestID: c.get("requestID"),
+            outcome: "not_dispatched",
+            retryable: false,
+          },
+          400,
+        )
+      }
+      return c.json(
+        {
+          code: "SERVICE_UNAVAILABLE",
+          message: "The organization service could not complete this request",
+          requestID: c.get("requestID"),
+          outcome: "unknown",
+          retryable: false,
         },
-        503: {
-          description: "Not ready",
-          content: { "application/json": { schema: resolver(OrganizationProtocol.Health) } },
+        503,
+      )
+    })
+    .route(
+      "/org/v1",
+      identityRoutes(() => {
+        if (!authentication) fail("SERVICE_UNAVAILABLE", "Authentication is unavailable")
+        return authentication
+      }, publicOrigin),
+    )
+    .get(
+      "/org/v1/health",
+      describeRoute({
+        operationId: "orgHealth.get",
+        summary: "Read organization service readiness",
+        responses: {
+          200: {
+            description: "Ready",
+            content: { "application/json": { schema: resolver(OrganizationProtocol.Health) } },
+          },
+          503: {
+            description: "Not ready",
+            content: { "application/json": { schema: resolver(OrganizationProtocol.Health) } },
+          },
         },
-      },
-    }),
-    (c) => c.json({ ready: ready(), protocolVersion: OrganizationProtocol.version }, ready() ? 200 : 503),
-  )
+      }),
+      (c) => c.json({ ready: ready(), protocolVersion: OrganizationProtocol.version }, ready() ? 200 : 503),
+    )
 }

@@ -1,4 +1,5 @@
 import { z } from "zod"
+export { OrganizationIdentity } from "./identity.js"
 
 export namespace OrganizationProtocol {
   export const version = 1
@@ -67,6 +68,9 @@ export namespace OrganizationProtocol {
     "PROTOCOL_MISMATCH",
     "SERVICE_UNAVAILABLE",
     "ALREADY_INITIALIZED",
+    "LAST_OWNER",
+    "TOKEN_CONSUMED",
+    "LOGIN_NAME_TAKEN",
   ])
   export const Error = z
     .strictObject({

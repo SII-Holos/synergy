@@ -2,6 +2,772 @@
   "openapi": "3.1.0",
   "info": { "title": "Synergy Organization API", "description": "Development documentation", "version": "1" },
   "paths": {
+    "/org/v1/setup/bootstrap": {
+      "post": {
+        "operationId": "orgSetup.bootstrap",
+        "summary": "Initialize the organization once",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgBootstrapInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgAccount" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/auth/login": {
+      "post": {
+        "operationId": "orgAuth.login",
+        "summary": "Sign in with a revocable browser session",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgLoginInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgLoginResult" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/auth/session": {
+      "get": {
+        "operationId": "orgAuth.session",
+        "summary": "Read the current login session",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCurrentSession" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/auth/logout": {
+      "post": {
+        "operationId": "orgAuth.logout",
+        "summary": "Revoke this login session",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgEmptyInput" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSuccess" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/auth/password": {
+      "post": {
+        "operationId": "orgAuth.password",
+        "summary": "Change password and revoke existing logins",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgPasswordChange" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSuccess" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/invites": {
+      "post": {
+        "operationId": "orgInvites.create",
+        "summary": "Create a one-time invitation",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgInviteCreate" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgTokenResult" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/invites/consume": {
+      "post": {
+        "operationId": "orgInvites.consume",
+        "summary": "Join using an invitation",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgInviteConsume" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgAccount" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/organization": {
+      "get": {
+        "operationId": "orgOrganization.get",
+        "summary": "Read organization identity",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgOrganization" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/organization/transfer-owner": {
+      "post": {
+        "operationId": "orgOrganization.transferOwner",
+        "summary": "Atomically transfer ownership",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgTransferOwner" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSuccess" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/accounts": {
+      "get": {
+        "operationId": "orgAccounts.list",
+        "summary": "List organization accounts",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgAccountPage" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          }
+        ]
+      }
+    },
+    "/org/v1/accounts/{accountID}": {
+      "patch": {
+        "operationId": "orgAccounts.update",
+        "summary": "Update a member without removing the last owner",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgAccountChange" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgAccount" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/accounts/{accountID}/reset": {
+      "post": {
+        "operationId": "orgAccounts.reset",
+        "summary": "Create a one-time password reset link",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResetCreate" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgTokenResult" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/auth/reset": {
+      "post": {
+        "operationId": "orgAuth.reset",
+        "summary": "Consume a password reset link",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgResetConsume" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSuccess" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/projects": {
+      "post": {
+        "operationId": "orgProjects.create",
+        "summary": "Create an organization project",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgProjectCreate" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgProjectView" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      },
+      "get": {
+        "operationId": "orgProjects.list",
+        "summary": "List projects visible to the current account",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgProjectPage" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          }
+        ]
+      }
+    },
+    "/org/v1/projects/{projectID}": {
+      "get": {
+        "operationId": "orgProjects.get",
+        "summary": "Read project access and lifecycle",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgProjectView" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "orgProjects.update",
+        "summary": "Update, archive or restore a project",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgProjectChange" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgProjectView" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/projects/{projectID}/members/{accountID}": {
+      "put": {
+        "operationId": "orgProjects.member",
+        "summary": "Set or remove a project role",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgProjectMemberChange" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSuccess" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
     "/org/v1/health": {
       "get": {
         "operationId": "orgHealth.get",
@@ -21,6 +787,275 @@
   },
   "components": {
     "schemas": {
+      "OrgAccount": {
+        "type": "object",
+        "properties": {
+          "accountID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "loginName": { "type": "string", "maxLength": 320 },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "role": { "type": "string", "enum": ["owner", "admin", "member"] },
+          "state": { "type": "string", "enum": ["active", "removed"] },
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "authRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "accountID",
+          "orgID",
+          "loginName",
+          "displayName",
+          "role",
+          "state",
+          "revision",
+          "authRevision",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_REQUEST",
+              "AUTHENTICATION_REQUIRED",
+              "PERMISSION_DENIED",
+              "NOT_FOUND",
+              "RUNTIME_OFFLINE",
+              "COMMAND_OUTCOME_UNKNOWN",
+              "REVISION_CONFLICT",
+              "STALE_BINDING",
+              "SHARE_REVOKED",
+              "HANDOFF_BLOCKED",
+              "RESOURCE_UNAVAILABLE",
+              "BLOB_INCOMPLETE",
+              "PROTOCOL_MISMATCH",
+              "SERVICE_UNAVAILABLE",
+              "ALREADY_INITIALIZED",
+              "LAST_OWNER",
+              "TOKEN_CONSUMED",
+              "LOGIN_NAME_TAKEN"
+            ]
+          },
+          "message": { "type": "string" },
+          "requestID": { "type": "string", "minLength": 1 },
+          "retryable": { "type": "boolean" },
+          "outcome": { "type": "string", "enum": ["not_dispatched", "rejected", "unknown"] },
+          "currentRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "missingRequirements": { "type": "array", "items": { "type": "string" } },
+          "retryAfter": { "type": "number", "minimum": 0 }
+        },
+        "required": ["code", "message", "retryable", "outcome"],
+        "additionalProperties": false
+      },
+      "OrgBootstrapInput": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "organizationName": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "loginName": { "type": "string", "maxLength": 320 },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "password": { "type": "string", "minLength": 12, "maxLength": 1024 }
+        },
+        "required": ["token", "requestID", "organizationName", "loginName", "displayName", "password"],
+        "additionalProperties": false
+      },
+      "OrgLoginResult": {
+        "type": "object",
+        "properties": {
+          "account": { "$ref": "#/components/schemas/OrgAccount" },
+          "csrfToken": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "expiresAt": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
+        },
+        "required": ["account", "csrfToken", "expiresAt"],
+        "additionalProperties": false
+      },
+      "OrgLoginInput": {
+        "type": "object",
+        "properties": {
+          "loginName": { "type": "string", "maxLength": 320 },
+          "password": { "type": "string", "maxLength": 1024 }
+        },
+        "required": ["loginName", "password"],
+        "additionalProperties": false
+      },
+      "OrgCurrentSession": {
+        "type": "object",
+        "properties": {
+          "account": { "$ref": "#/components/schemas/OrgAccount" },
+          "csrfToken": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "expiresAt": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
+        },
+        "required": ["account", "csrfToken", "expiresAt"],
+        "additionalProperties": false
+      },
+      "OrgSuccess": {
+        "type": "object",
+        "properties": { "ok": { "type": "boolean", "const": true } },
+        "required": ["ok"],
+        "additionalProperties": false
+      },
+      "OrgEmptyInput": { "type": "object", "properties": {}, "additionalProperties": false },
+      "OrgPasswordChange": {
+        "type": "object",
+        "properties": {
+          "currentPassword": { "type": "string", "maxLength": 1024 },
+          "password": { "type": "string", "minLength": 12, "maxLength": 1024 }
+        },
+        "required": ["currentPassword", "password"],
+        "additionalProperties": false
+      },
+      "OrgTokenResult": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "expiresAt": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
+        },
+        "required": ["token", "expiresAt"],
+        "additionalProperties": false
+      },
+      "OrgInviteCreate": {
+        "type": "object",
+        "properties": { "role": { "type": "string", "enum": ["admin", "member"] } },
+        "required": ["role"],
+        "additionalProperties": false
+      },
+      "OrgInviteConsume": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "loginName": { "type": "string", "maxLength": 320 },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "password": { "type": "string", "minLength": 12, "maxLength": 1024 }
+        },
+        "required": ["token", "requestID", "loginName", "displayName", "password"],
+        "additionalProperties": false
+      },
+      "OrgOrganization": {
+        "type": "object",
+        "properties": {
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["orgID", "name", "revision"],
+        "additionalProperties": false
+      },
+      "OrgTransferOwner": {
+        "type": "object",
+        "properties": {
+          "accountID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "targetRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["accountID", "expectedRevision", "targetRevision"],
+        "additionalProperties": false
+      },
+      "OrgAccountPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrgAccount" } },
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
+      "OrgAccountChange": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "role": { "type": "string", "enum": ["owner", "admin", "member"] },
+          "state": { "type": "string", "const": "removed" },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 200 }
+        },
+        "required": ["expectedRevision"],
+        "additionalProperties": false
+      },
+      "OrgResetCreate": {
+        "type": "object",
+        "properties": { "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } },
+        "required": ["expectedRevision"],
+        "additionalProperties": false
+      },
+      "OrgResetConsume": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "password": { "type": "string", "minLength": 12, "maxLength": 1024 }
+        },
+        "required": ["token", "requestID", "password"],
+        "additionalProperties": false
+      },
+      "OrgProjectView": {
+        "type": "object",
+        "properties": {
+          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "description": { "type": "string", "maxLength": 4000 },
+          "state": { "type": "string", "enum": ["active", "archived"] },
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "read": { "type": "boolean" },
+              "manage": { "type": "boolean" },
+              "execute": { "type": "boolean" }
+            },
+            "required": ["read", "manage", "execute"],
+            "additionalProperties": false
+          },
+          "role": { "type": "string", "enum": ["maintainer", "collaborator", "reader"] }
+        },
+        "required": ["projectID", "orgID", "name", "description", "state", "revision", "createdAt", "permissions"],
+        "additionalProperties": false
+      },
+      "OrgProjectCreate": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "description": { "default": "", "type": "string", "maxLength": 4000 }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
+      "OrgProjectPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrgProjectView" } },
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
+      "OrgProjectChange": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "description": { "type": "string", "maxLength": 4000 },
+          "state": { "type": "string", "enum": ["active", "archived"] }
+        },
+        "required": ["expectedRevision"],
+        "additionalProperties": false
+      },
+      "OrgProjectMemberChange": {
+        "type": "object",
+        "properties": {
+          "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "role": {
+            "anyOf": [{ "type": "string", "enum": ["maintainer", "collaborator", "reader"] }, { "type": "null" }]
+          }
+        },
+        "required": ["expectedRevision", "role"],
+        "additionalProperties": false
+      },
       "OrgHealth": {
         "type": "object",
         "properties": { "ready": { "type": "boolean" }, "protocolVersion": { "type": "number", "const": 1 } },

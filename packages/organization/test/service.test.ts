@@ -47,6 +47,15 @@ test("a second service cannot take a live service's Home", async () => {
   expect((await first.fetch(new Request("http://organization/org/v1/health"))).status).toBe(200)
 })
 
+test("shutdown drains storage telemetry before disposing the service context", async () => {
+  const service = await open()
+  await service.deployment()
+  await service.close()
+  await Bun.sleep(1200)
+  const restarted = await open(service.home)
+  expect((await restarted.fetch(new Request("http://organization/org/v1/health"))).status).toBe(200)
+})
+
 test("startup and restart perform no outbound model or network requests", async () => {
   const network = spyOn(globalThis, "fetch").mockImplementation(
     Object.assign(
@@ -76,6 +85,53 @@ test("the generated organization client reaches the mounted service over real HT
     expect((await client.orgHealth.get({ throwOnError: true })).data).toEqual({ ready: true, protocolVersion: 1 })
     const spec = await organizationOpenApi()
     expect(spec.paths?.["/org/v1/health"]?.get?.operationId).toBe("orgHealth.get")
+  } finally {
+    await server.stop(true)
+  }
+})
+
+test("the generated identity client preserves cookies, CSRF and required request bodies", async () => {
+  const home = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "organization-sdk-"))
+  homes.push(home)
+  const origin = "https://organization.example"
+  const service = await openOrganizationService({ home, publicOrigin: origin })
+  services.push(service)
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: service.fetch })
+  try {
+    const client = createOrganizationClient({ baseUrl: server.url.toString(), headers: { origin } })
+    const input = {
+      token: await service.bootstrapToken(),
+      requestID: crypto.randomUUID(),
+      organizationName: "SDK",
+      loginName: "owner",
+      displayName: "Owner",
+      password: "a long integration password",
+    }
+    expect((await client.orgSetup.bootstrap({ orgBootstrapInput: input }, { throwOnError: true })).data.role).toBe(
+      "owner",
+    )
+    const login = await client.orgAuth.login(
+      { orgLoginInput: { loginName: input.loginName, password: input.password } },
+      { throwOnError: true },
+    )
+    const headers = {
+      cookie: login.response.headers.get("set-cookie")!.split(";")[0],
+      "x-csrf-token": login.data.csrfToken,
+    }
+    const created = await client.orgProjects.create(
+      { orgProjectCreate: { name: "Through the SDK" } },
+      { headers, throwOnError: true },
+    )
+    expect(created.data.permissions.execute).toBe(true)
+    const rejected = await client.orgProjects.create(
+      { orgProjectCreate: { name: "Rejected" } },
+      { headers: { ...headers, "x-csrf-token": "invalid" } },
+    )
+    expect(rejected.response.status).toBe(403)
+    expect(rejected.error?.code).toBe("PERMISSION_DENIED")
+    const spec = await organizationOpenApi()
+    expect(spec.paths?.["/org/v1/auth/login"]?.post?.requestBody).toMatchObject({ required: true })
+    expect(spec.paths?.["/org/v1/projects/{projectID}"]?.patch?.operationId).toBe("orgProjects.update")
   } finally {
     await server.stop(true)
   }

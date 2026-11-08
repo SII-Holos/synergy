@@ -4,10 +4,1008 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
+export type OrgAccount = {
+  accountID: string
+  orgID: string
+  loginName: string
+  displayName: string
+  role: "owner" | "admin" | "member"
+  state: "active" | "removed"
+  revision: number
+  authRevision: number
+  createdAt: number
+}
+
+export type OrgError = {
+  code:
+    | "INVALID_REQUEST"
+    | "AUTHENTICATION_REQUIRED"
+    | "PERMISSION_DENIED"
+    | "NOT_FOUND"
+    | "RUNTIME_OFFLINE"
+    | "COMMAND_OUTCOME_UNKNOWN"
+    | "REVISION_CONFLICT"
+    | "STALE_BINDING"
+    | "SHARE_REVOKED"
+    | "HANDOFF_BLOCKED"
+    | "RESOURCE_UNAVAILABLE"
+    | "BLOB_INCOMPLETE"
+    | "PROTOCOL_MISMATCH"
+    | "SERVICE_UNAVAILABLE"
+    | "ALREADY_INITIALIZED"
+    | "LAST_OWNER"
+    | "TOKEN_CONSUMED"
+    | "LOGIN_NAME_TAKEN"
+  message: string
+  requestID?: string
+  retryable: boolean
+  outcome: "not_dispatched" | "rejected" | "unknown"
+  currentRevision?: number
+  missingRequirements?: Array<string>
+  retryAfter?: number
+}
+
+export type OrgBootstrapInput = {
+  token: string
+  requestID: string
+  organizationName: string
+  loginName: string
+  displayName: string
+  password: string
+}
+
+export type OrgLoginResult = {
+  account: OrgAccount
+  csrfToken: string
+  expiresAt: number
+}
+
+export type OrgLoginInput = {
+  loginName: string
+  password: string
+}
+
+export type OrgCurrentSession = {
+  account: OrgAccount
+  csrfToken: string
+  expiresAt: number
+}
+
+export type OrgSuccess = {
+  ok: true
+}
+
+export type OrgEmptyInput = {
+  [key: string]: never
+}
+
+export type OrgPasswordChange = {
+  currentPassword: string
+  password: string
+}
+
+export type OrgTokenResult = {
+  token: string
+  expiresAt: number
+}
+
+export type OrgInviteCreate = {
+  role: "admin" | "member"
+}
+
+export type OrgInviteConsume = {
+  token: string
+  requestID: string
+  loginName: string
+  displayName: string
+  password: string
+}
+
+export type OrgOrganization = {
+  orgID: string
+  name: string
+  revision: number
+}
+
+export type OrgTransferOwner = {
+  accountID: string
+  expectedRevision: number
+  targetRevision: number
+}
+
+export type OrgAccountPage = {
+  items: Array<OrgAccount>
+  cursor?: string
+}
+
+export type OrgAccountChange = {
+  expectedRevision: number
+  role?: "owner" | "admin" | "member"
+  state?: "removed"
+  displayName?: string
+}
+
+export type OrgResetCreate = {
+  expectedRevision: number
+}
+
+export type OrgResetConsume = {
+  token: string
+  requestID: string
+  password: string
+}
+
+export type OrgProjectView = {
+  projectID: string
+  orgID: string
+  name: string
+  description: string
+  state: "active" | "archived"
+  revision: number
+  createdAt: number
+  permissions: {
+    read: boolean
+    manage: boolean
+    execute: boolean
+  }
+  role?: "maintainer" | "collaborator" | "reader"
+}
+
+export type OrgProjectCreate = {
+  name: string
+  description?: string
+}
+
+export type OrgProjectPage = {
+  items: Array<OrgProjectView>
+  cursor?: string
+}
+
+export type OrgProjectChange = {
+  expectedRevision: number
+  name?: string
+  description?: string
+  state?: "active" | "archived"
+}
+
+export type OrgProjectMemberChange = {
+  expectedRevision: number
+  role: "maintainer" | "collaborator" | "reader" | null
+}
+
 export type OrgHealth = {
   ready: boolean
   protocolVersion: 1
 }
+
+export type OrgSetupBootstrapData = {
+  body: OrgBootstrapInput
+  path?: never
+  query?: never
+  url: "/org/v1/setup/bootstrap"
+}
+
+export type OrgSetupBootstrapErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSetupBootstrapError = OrgSetupBootstrapErrors[keyof OrgSetupBootstrapErrors]
+
+export type OrgSetupBootstrapResponses = {
+  /**
+   * Success
+   */
+  200: OrgAccount
+}
+
+export type OrgSetupBootstrapResponse = OrgSetupBootstrapResponses[keyof OrgSetupBootstrapResponses]
+
+export type OrgAuthLoginData = {
+  body: OrgLoginInput
+  path?: never
+  query?: never
+  url: "/org/v1/auth/login"
+}
+
+export type OrgAuthLoginErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthLoginError = OrgAuthLoginErrors[keyof OrgAuthLoginErrors]
+
+export type OrgAuthLoginResponses = {
+  /**
+   * Success
+   */
+  200: OrgLoginResult
+}
+
+export type OrgAuthLoginResponse = OrgAuthLoginResponses[keyof OrgAuthLoginResponses]
+
+export type OrgAuthSessionData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/org/v1/auth/session"
+}
+
+export type OrgAuthSessionErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthSessionError = OrgAuthSessionErrors[keyof OrgAuthSessionErrors]
+
+export type OrgAuthSessionResponses = {
+  /**
+   * Success
+   */
+  200: OrgCurrentSession
+}
+
+export type OrgAuthSessionResponse = OrgAuthSessionResponses[keyof OrgAuthSessionResponses]
+
+export type OrgAuthLogoutData = {
+  body: OrgEmptyInput
+  path?: never
+  query?: never
+  url: "/org/v1/auth/logout"
+}
+
+export type OrgAuthLogoutErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthLogoutError = OrgAuthLogoutErrors[keyof OrgAuthLogoutErrors]
+
+export type OrgAuthLogoutResponses = {
+  /**
+   * Success
+   */
+  200: OrgSuccess
+}
+
+export type OrgAuthLogoutResponse = OrgAuthLogoutResponses[keyof OrgAuthLogoutResponses]
+
+export type OrgAuthPasswordData = {
+  body: OrgPasswordChange
+  path?: never
+  query?: never
+  url: "/org/v1/auth/password"
+}
+
+export type OrgAuthPasswordErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthPasswordError = OrgAuthPasswordErrors[keyof OrgAuthPasswordErrors]
+
+export type OrgAuthPasswordResponses = {
+  /**
+   * Success
+   */
+  200: OrgSuccess
+}
+
+export type OrgAuthPasswordResponse = OrgAuthPasswordResponses[keyof OrgAuthPasswordResponses]
+
+export type OrgInvitesCreateData = {
+  body: OrgInviteCreate
+  path?: never
+  query?: never
+  url: "/org/v1/invites"
+}
+
+export type OrgInvitesCreateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgInvitesCreateError = OrgInvitesCreateErrors[keyof OrgInvitesCreateErrors]
+
+export type OrgInvitesCreateResponses = {
+  /**
+   * Success
+   */
+  200: OrgTokenResult
+}
+
+export type OrgInvitesCreateResponse = OrgInvitesCreateResponses[keyof OrgInvitesCreateResponses]
+
+export type OrgInvitesConsumeData = {
+  body: OrgInviteConsume
+  path?: never
+  query?: never
+  url: "/org/v1/invites/consume"
+}
+
+export type OrgInvitesConsumeErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgInvitesConsumeError = OrgInvitesConsumeErrors[keyof OrgInvitesConsumeErrors]
+
+export type OrgInvitesConsumeResponses = {
+  /**
+   * Success
+   */
+  200: OrgAccount
+}
+
+export type OrgInvitesConsumeResponse = OrgInvitesConsumeResponses[keyof OrgInvitesConsumeResponses]
+
+export type OrgOrganizationGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/org/v1/organization"
+}
+
+export type OrgOrganizationGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgOrganizationGetError = OrgOrganizationGetErrors[keyof OrgOrganizationGetErrors]
+
+export type OrgOrganizationGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgOrganization
+}
+
+export type OrgOrganizationGetResponse = OrgOrganizationGetResponses[keyof OrgOrganizationGetResponses]
+
+export type OrgOrganizationTransferOwnerData = {
+  body: OrgTransferOwner
+  path?: never
+  query?: never
+  url: "/org/v1/organization/transfer-owner"
+}
+
+export type OrgOrganizationTransferOwnerErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgOrganizationTransferOwnerError =
+  OrgOrganizationTransferOwnerErrors[keyof OrgOrganizationTransferOwnerErrors]
+
+export type OrgOrganizationTransferOwnerResponses = {
+  /**
+   * Success
+   */
+  200: OrgSuccess
+}
+
+export type OrgOrganizationTransferOwnerResponse =
+  OrgOrganizationTransferOwnerResponses[keyof OrgOrganizationTransferOwnerResponses]
+
+export type OrgAccountsListData = {
+  body?: never
+  path?: never
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/accounts"
+}
+
+export type OrgAccountsListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAccountsListError = OrgAccountsListErrors[keyof OrgAccountsListErrors]
+
+export type OrgAccountsListResponses = {
+  /**
+   * Success
+   */
+  200: OrgAccountPage
+}
+
+export type OrgAccountsListResponse = OrgAccountsListResponses[keyof OrgAccountsListResponses]
+
+export type OrgAccountsUpdateData = {
+  body: OrgAccountChange
+  path: {
+    accountID: string
+  }
+  query?: never
+  url: "/org/v1/accounts/{accountID}"
+}
+
+export type OrgAccountsUpdateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAccountsUpdateError = OrgAccountsUpdateErrors[keyof OrgAccountsUpdateErrors]
+
+export type OrgAccountsUpdateResponses = {
+  /**
+   * Success
+   */
+  200: OrgAccount
+}
+
+export type OrgAccountsUpdateResponse = OrgAccountsUpdateResponses[keyof OrgAccountsUpdateResponses]
+
+export type OrgAccountsResetData = {
+  body: OrgResetCreate
+  path: {
+    accountID: string
+  }
+  query?: never
+  url: "/org/v1/accounts/{accountID}/reset"
+}
+
+export type OrgAccountsResetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAccountsResetError = OrgAccountsResetErrors[keyof OrgAccountsResetErrors]
+
+export type OrgAccountsResetResponses = {
+  /**
+   * Success
+   */
+  200: OrgTokenResult
+}
+
+export type OrgAccountsResetResponse = OrgAccountsResetResponses[keyof OrgAccountsResetResponses]
+
+export type OrgAuthResetData = {
+  body: OrgResetConsume
+  path?: never
+  query?: never
+  url: "/org/v1/auth/reset"
+}
+
+export type OrgAuthResetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgAuthResetError = OrgAuthResetErrors[keyof OrgAuthResetErrors]
+
+export type OrgAuthResetResponses = {
+  /**
+   * Success
+   */
+  200: OrgSuccess
+}
+
+export type OrgAuthResetResponse = OrgAuthResetResponses[keyof OrgAuthResetResponses]
+
+export type OrgProjectsListData = {
+  body?: never
+  path?: never
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/projects"
+}
+
+export type OrgProjectsListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgProjectsListError = OrgProjectsListErrors[keyof OrgProjectsListErrors]
+
+export type OrgProjectsListResponses = {
+  /**
+   * Success
+   */
+  200: OrgProjectPage
+}
+
+export type OrgProjectsListResponse = OrgProjectsListResponses[keyof OrgProjectsListResponses]
+
+export type OrgProjectsCreateData = {
+  body: OrgProjectCreate
+  path?: never
+  query?: never
+  url: "/org/v1/projects"
+}
+
+export type OrgProjectsCreateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgProjectsCreateError = OrgProjectsCreateErrors[keyof OrgProjectsCreateErrors]
+
+export type OrgProjectsCreateResponses = {
+  /**
+   * Success
+   */
+  200: OrgProjectView
+}
+
+export type OrgProjectsCreateResponse = OrgProjectsCreateResponses[keyof OrgProjectsCreateResponses]
+
+export type OrgProjectsGetData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: never
+  url: "/org/v1/projects/{projectID}"
+}
+
+export type OrgProjectsGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgProjectsGetError = OrgProjectsGetErrors[keyof OrgProjectsGetErrors]
+
+export type OrgProjectsGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgProjectView
+}
+
+export type OrgProjectsGetResponse = OrgProjectsGetResponses[keyof OrgProjectsGetResponses]
+
+export type OrgProjectsUpdateData = {
+  body: OrgProjectChange
+  path: {
+    projectID: string
+  }
+  query?: never
+  url: "/org/v1/projects/{projectID}"
+}
+
+export type OrgProjectsUpdateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgProjectsUpdateError = OrgProjectsUpdateErrors[keyof OrgProjectsUpdateErrors]
+
+export type OrgProjectsUpdateResponses = {
+  /**
+   * Success
+   */
+  200: OrgProjectView
+}
+
+export type OrgProjectsUpdateResponse = OrgProjectsUpdateResponses[keyof OrgProjectsUpdateResponses]
+
+export type OrgProjectsMemberData = {
+  body: OrgProjectMemberChange
+  path: {
+    projectID: string
+    accountID: string
+  }
+  query?: never
+  url: "/org/v1/projects/{projectID}/members/{accountID}"
+}
+
+export type OrgProjectsMemberErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgProjectsMemberError = OrgProjectsMemberErrors[keyof OrgProjectsMemberErrors]
+
+export type OrgProjectsMemberResponses = {
+  /**
+   * Success
+   */
+  200: OrgSuccess
+}
+
+export type OrgProjectsMemberResponse = OrgProjectsMemberResponses[keyof OrgProjectsMemberResponses]
 
 export type OrgHealthGetData = {
   body?: never
