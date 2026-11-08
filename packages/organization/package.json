@@ -7,6 +7,7 @@
   "exports": {
     "./service": "./src/service.ts",
     "./component": "./src/component.ts",
+    "./config-schema": "./src/config-schema.ts",
     "./features": "./src/features.ts",
     "./http": "./src/http.ts"
   },
@@ -23,6 +24,7 @@
     "@ericsanchezok/synergy-util": "workspace:*",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
+    "jsonc-parser": "3.3.1",
     "zod": "catalog:"
   },
   "devDependencies": {

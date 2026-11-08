@@ -1,4 +1,4 @@
-import { z } from "zod"
+import { AuthenticationSettings } from "../config-schema"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationIdentity as Identity, OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationStoragePath as Keys } from "../storage/path"
@@ -9,31 +9,6 @@ import { token, digest, fingerprint, matches } from "./secret"
 import { authenticate, account, type Credentials } from "./session"
 import { authorize, requireAdministrator } from "../authorization"
 export type { Credentials } from "./session"
-
-export const AuthenticationSettings = z.strictObject({
-  bootstrapMs: z
-    .number()
-    .int()
-    .positive()
-    .default(30 * 60_000),
-  inviteMs: z
-    .number()
-    .int()
-    .positive()
-    .default(7 * 24 * 60 * 60_000),
-  resetMs: z
-    .number()
-    .int()
-    .positive()
-    .default(30 * 60_000),
-  loginMs: z
-    .number()
-    .int()
-    .positive()
-    .default(30 * 24 * 60 * 60_000),
-  hashConcurrency: z.number().int().min(1).max(16).default(2),
-})
-export type AuthenticationSettings = z.input<typeof AuthenticationSettings>
 
 async function info() {
   const value = await Record.read(Record.Info, Keys.info())

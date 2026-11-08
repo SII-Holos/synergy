@@ -1,5 +1,5 @@
+import { RuntimeConnectionSettings } from "./config-schema"
 import type { ServerWebSocket, WebSocketHandler } from "bun"
-import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationProtocol as Protocol,
@@ -10,16 +10,6 @@ import { OrganizationStoragePath as Keys } from "./storage/path"
 import { authorize } from "./authorization"
 import type { Credentials } from "./auth/session"
 import { fail, OrganizationError } from "./error"
-
-export const RuntimeConnectionSettings = z
-  .strictObject({
-    authenticateMs: z.number().int().positive().default(5_000),
-    heartbeatMs: z.number().int().positive().default(10_000),
-    offlineMs: z.number().int().positive().default(30_000),
-    proofAgeMs: z.number().int().positive().default(30_000),
-  })
-  .refine((value) => value.offlineMs > value.heartbeatMs, "The offline interval must exceed the heartbeat interval")
-export type RuntimeConnectionSettings = z.input<typeof RuntimeConnectionSettings>
 
 export interface RuntimeSocket {
   closed: boolean

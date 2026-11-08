@@ -4,7 +4,8 @@ import { OrganizationClientAuth as Protocol, OrganizationProtocol } from "@erics
 import { OrganizationRecord as Record } from "../storage/records"
 import { OrganizationStoragePath as Keys } from "../storage/path"
 import { fail } from "../error"
-import { ClientAuthenticationSettings, ClientPolicy } from "./client-policy"
+import { ClientPolicy } from "./client-policy"
+import { ClientAuthenticationSettings } from "../config-schema"
 import { authenticate, authenticateClientGrant, authenticateLogin, type Credentials } from "./session"
 import { digest, token } from "./secret"
 

@@ -6189,7 +6189,8 @@
                 "email",
                 "plugins",
                 "mcp",
-                "voice"
+                "voice",
+                "organization"
               ]
             },
             "required": true
@@ -6279,7 +6280,8 @@
                 "email",
                 "plugins",
                 "mcp",
-                "voice"
+                "voice",
+                "organization"
               ]
             },
             "required": true
@@ -6380,7 +6382,8 @@
                 "email",
                 "plugins",
                 "mcp",
-                "voice"
+                "voice",
+                "organization"
               ]
             },
             "required": true
@@ -6491,7 +6494,8 @@
                     "email",
                     "plugins",
                     "mcp",
-                    "voice"
+                    "voice",
+                    "organization"
                   ]
                 },
                 {
@@ -6519,7 +6523,8 @@
                       "email",
                       "plugins",
                       "mcp",
-                      "voice"
+                      "voice",
+                      "organization"
                     ]
                   }
                 }
@@ -57387,6 +57392,52 @@
         },
         "additionalProperties": false
       },
+      "OrgAuthClient": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "clientID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "kind": {
+                "type": "string",
+                "const": "web"
+              },
+              "redirectUri": {
+                "type": "string",
+                "maxLength": 2048
+              }
+            },
+            "required": ["clientID", "kind", "redirectUri"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "clientID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "kind": {
+                "type": "string",
+                "const": "desktop"
+              },
+              "redirectUri": {
+                "type": "string",
+                "const": "synergy://organization-auth/callback"
+              }
+            },
+            "required": ["clientID", "kind", "redirectUri"],
+            "additionalProperties": false
+          }
+        ]
+      },
       "KeybindsConfig": {
         "description": "Custom keybind configurations",
         "type": "object",
@@ -58841,6 +58892,122 @@
           "voice": {
             "$ref": "#/components/schemas/VoiceConfig"
           },
+          "organization": {
+            "description": "Dedicated organization service authentication, registered clients and machine connection settings; restart the service after changes.",
+            "type": "object",
+            "properties": {
+              "authentication": {
+                "type": "object",
+                "properties": {
+                  "bootstrapMs": {
+                    "default": 1800000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "inviteMs": {
+                    "default": 604800000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "resetMs": {
+                    "default": 1800000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "loginMs": {
+                    "default": 2592000000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2592000000
+                  },
+                  "hashConcurrency": {
+                    "default": 2,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16
+                  }
+                },
+                "additionalProperties": false
+              },
+              "clientAuthentication": {
+                "type": "object",
+                "properties": {
+                  "clients": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/OrgAuthClient"
+                    }
+                  },
+                  "codeMs": {
+                    "default": 60000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 60000
+                  },
+                  "accessMs": {
+                    "default": 900000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 900000
+                  },
+                  "refreshMs": {
+                    "default": 2592000000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2592000000
+                  }
+                },
+                "additionalProperties": false
+              },
+              "registration": {
+                "type": "object",
+                "properties": {
+                  "ticketMs": {
+                    "default": 600000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
+              "connections": {
+                "type": "object",
+                "properties": {
+                  "authenticateMs": {
+                    "default": 5000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "heartbeatMs": {
+                    "default": 10000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "offlineMs": {
+                    "default": 30000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "proofAgeMs": {
+                    "default": 30000,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
           "locale": {
             "description": "UI locale (system = follow OS, default: system)",
             "type": "string",
@@ -59573,7 +59740,8 @@
               "email",
               "plugins",
               "mcp",
-              "voice"
+              "voice",
+              "organization"
             ]
           },
           "filename": {
@@ -59724,7 +59892,8 @@
                 "email",
                 "plugins",
                 "mcp",
-                "voice"
+                "voice",
+                "organization"
               ]
             }
           },
@@ -59860,7 +60029,8 @@
               "email",
               "plugins",
               "mcp",
-              "voice"
+              "voice",
+              "organization"
             ]
           },
           "filename": {
@@ -59997,7 +60167,8 @@
                 "email",
                 "plugins",
                 "mcp",
-                "voice"
+                "voice",
+                "organization"
               ]
             }
           },
@@ -60221,7 +60392,8 @@
                     "email",
                     "plugins",
                     "mcp",
-                    "voice"
+                    "voice",
+                    "organization"
                   ]
                 }
               }
@@ -60284,7 +60456,8 @@
                 "email",
                 "plugins",
                 "mcp",
-                "voice"
+                "voice",
+                "organization"
               ]
             }
           },

@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { openOrganizationService } from "../service"
+import { readOrganizationConfiguration } from "../configuration"
 
 function explicitHome() {
   const home = process.env.SYNERGY_HOME
@@ -33,10 +34,12 @@ export const OrganizationInitCommand = cmd({
         return true
       }),
   async handler(args) {
+    const home = explicitHome()
+    const configuration = await readOrganizationConfiguration(home)
     const file = await fs.open(args.output, "wx", 0o600)
     let written = false
     try {
-      await using service = await openOrganizationService({ home: explicitHome() })
+      await using service = await openOrganizationService({ home, authentication: configuration.authentication })
       const deployment = await service.deployment()
       const token = await service.bootstrapToken()
       await file.writeFile(
@@ -88,7 +91,9 @@ export const OrganizationServeCommand = cmd({
     process.on("SIGINT", stop)
     process.on("SIGTERM", stop)
     try {
-      await using service = await openOrganizationService({ home: explicitHome(), publicOrigin: args.origin })
+      const home = explicitHome()
+      const configuration = await readOrganizationConfiguration(home)
+      await using service = await openOrganizationService({ ...configuration, home, publicOrigin: args.origin })
       const server = Bun.serve({
         hostname: args.hostname,
         port: args.port,

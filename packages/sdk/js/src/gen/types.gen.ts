@@ -6327,6 +6327,18 @@ export type VoiceConfig = {
   tts?: VoiceTtsConfig
 }
 
+export type OrgAuthClient =
+  | {
+      clientID: string
+      kind: "web"
+      redirectUri: string
+    }
+  | {
+      clientID: string
+      kind: "desktop"
+      redirectUri: "synergy://organization-auth/callback"
+    }
+
 /**
  * Custom keybind configurations
  */
@@ -7210,6 +7222,33 @@ export type Config = {
   mcpDefaults?: McpDefaultsConfig
   voice?: VoiceConfig
   /**
+   * Dedicated organization service authentication, registered clients and machine connection settings; restart the service after changes.
+   */
+  organization?: {
+    authentication?: {
+      bootstrapMs?: number
+      inviteMs?: number
+      resetMs?: number
+      loginMs?: number
+      hashConcurrency?: number
+    }
+    clientAuthentication?: {
+      clients?: Array<OrgAuthClient>
+      codeMs?: number
+      accessMs?: number
+      refreshMs?: number
+    }
+    registration?: {
+      ticketMs?: number
+    }
+    connections?: {
+      authenticateMs?: number
+      heartbeatMs?: number
+      offlineMs?: number
+      proofAgeMs?: number
+    }
+  }
+  /**
    * UI locale (system = follow OS, default: system)
    */
   locale?: "system" | "en" | "zh-CN"
@@ -7497,6 +7536,7 @@ export type ConfigDomainSummary = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   filename: string
   label: string
   path: string
@@ -7558,6 +7598,7 @@ export type ConfigExportResult = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   >
   warnings: Array<string>
   config: Config
@@ -7619,6 +7660,7 @@ export type ConfigDomainImportDomainPlan = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   filename: string
   path: string
   mode: "merge" | "replace-domain" | "append"
@@ -7677,6 +7719,7 @@ export type ConfigDomainImportPlanInput = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -7764,6 +7807,7 @@ export type ConfigImportRevisionConflictError = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
     >
   }
 }
@@ -7800,6 +7844,7 @@ export type ConfigDomainImportApplyInput = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -18471,6 +18516,7 @@ export type ConfigDomainGetData = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
   }
   query?: {
     directory?: string
@@ -18526,6 +18572,7 @@ export type ConfigDomainUpdateData = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
   }
   query?: {
     directory?: string
@@ -18581,6 +18628,7 @@ export type ConfigDomainOpenData = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
   }
   query?: {
     directory?: string
@@ -18644,6 +18692,7 @@ export type ConfigExportData = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
       | Array<
           | "features"
           | "general"
@@ -18666,6 +18715,7 @@ export type ConfigExportData = {
           | "plugins"
           | "mcp"
           | "voice"
+          | "organization"
         >
     includeSecrets?: string
   }

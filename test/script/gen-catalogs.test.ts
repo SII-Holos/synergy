@@ -145,12 +145,14 @@ describe("generated catalog completeness", () => {
       "email",
       "runtime",
       "skills",
+      "organization",
     ]) {
       expect(body).toContain(`| \`${domain}\` |`)
     }
     expect(body).toContain("| `00-general.jsonc` |")
     expect(body).toContain("| `55-skills.jsonc` |")
     expect(body).toContain("| `35-anima.jsonc` |")
+    expect(body).toContain("| `150-organization.jsonc` |")
     for (const key of ["embedding", "library", "channel", "plugin", "voice", "mcp", "theme", "skills", "boss"]) {
       expect(body).toContain(`| \`${key}\` |`)
       expect(body).not.toContain(`| \`${key}\` | - |`)

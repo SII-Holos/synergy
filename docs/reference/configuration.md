@@ -29,6 +29,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `storage` | `130-storage.jsonc` | replace-domain |
 | `resources` | `135-resources.jsonc` | replace-domain |
 | `features` | `140-features.jsonc` | replace-domain |
+| `organization` | `150-organization.jsonc` | replace-domain |
 
 ## General
 
@@ -257,3 +258,11 @@ File: `140-features.jsonc` · Merge: replace-domain
 | Key | Type | Description |
 | --- | --- | --- |
 | `features` | FeaturePreferences.optional (optional) |  |
+
+## Organization service
+
+File: `150-organization.jsonc` · Merge: replace-domain
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `organization` | OrganizationSettings.optional (optional) | Dedicated organization service authentication, registered clients and machine connection settings; restart the service after changes. |

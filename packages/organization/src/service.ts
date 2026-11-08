@@ -11,20 +11,22 @@ import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protoc
 import { registerOrganizationMigrations } from "./migration"
 import { OrganizationStoragePath } from "./storage/path"
 import { organizationApp } from "./http"
-import { createAuthentication, type AuthenticationSettings } from "./auth"
+import { createAuthentication } from "./auth"
 import { createClientAuthentication } from "./auth/client"
-import { ClientAuthenticationSettings } from "./auth/client-policy"
+import {
+  OrganizationSettings,
+  registerConfig,
+  type AuthenticationSettings,
+  type ClientAuthenticationSettings,
+  type RuntimeRegistrationSettings,
+  type RuntimeConnectionSettings,
+} from "./config-schema"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
-import { createRuntimeRegistrations, type RuntimeRegistrationSettings } from "./runtime-registration"
+import { createRuntimeRegistrations } from "./runtime-registration"
 import { digest } from "./auth/secret"
 import type { Server } from "bun"
-import {
-  createRuntimeConnections,
-  type RuntimeConnections,
-  type RuntimeConnectionSettings,
-  type RuntimeSocket,
-} from "./runtime-connection"
+import { createRuntimeConnections, type RuntimeConnections, type RuntimeSocket } from "./runtime-connection"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -38,8 +40,13 @@ export interface OrganizationServiceOptions {
 
 export async function openOrganizationService(options: OrganizationServiceOptions) {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
-  const clientSettings = ClientAuthenticationSettings.parse(options.clientAuthentication ?? {})
-  if (clientSettings.clients.length && !options.publicOrigin)
+  const settings = OrganizationSettings.parse({
+    authentication: options.authentication,
+    clientAuthentication: options.clientAuthentication,
+    registration: options.registration,
+    connections: options.connections,
+  })
+  if (settings.clientAuthentication?.clients.length && !options.publicOrigin)
     throw new Error("Client authentication requires an organization public origin")
   if (options.publicOrigin) {
     const url = new URL(options.publicOrigin)
@@ -107,6 +114,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       return closing
     }
     try {
+      registerConfig()
       HomeOwnership.select({ owner: "organization", identity: digest("synergy.organization.service.v1") })
       ownership = await ServerProcessLock.acquire()
       const owned = await HomeOwnership.assert()
@@ -132,10 +140,10 @@ export async function openOrganizationService(options: OrganizationServiceOption
       await ensureMigrations({ output: "silent" })
       await HomeOwnership.assert({ required: true })
       OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
-      connections = createRuntimeConnections({ run, settings: options.connections })
-      const authentication = await createAuthentication(options.authentication, connections.removeAccount)
-      const clientAuthentication = createClientAuthentication(clientSettings, options.publicOrigin)
-      const registrations = createRuntimeRegistrations(options.registration, connections.revoke)
+      connections = createRuntimeConnections({ run, settings: settings.connections })
+      const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
+      const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
+      const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)
       const app = organizationApp(
         () => ready,
         authentication,

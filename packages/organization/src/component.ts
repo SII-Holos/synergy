@@ -1,6 +1,7 @@
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { componentFeatures } from "./features"
+import { registerConfig } from "./config-schema"
 
 export function organization(): RuntimeComponent {
   return {
@@ -9,6 +10,8 @@ export function organization(): RuntimeComponent {
     apiVersion: 1,
     features: componentFeatures,
     adapters: { cli: new URL("./cli-adapter.js", import.meta.url) },
-    register() {},
+    register() {
+      registerConfig()
+    },
   }
 }

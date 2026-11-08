@@ -1,4 +1,4 @@
-import { z } from "zod"
+import { RuntimeRegistrationSettings } from "./config-schema"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationIdentity as Identity,
@@ -11,15 +11,6 @@ import { token, digest } from "./auth/secret"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail, revision } from "./error"
-
-export const RuntimeRegistrationSettings = z.strictObject({
-  ticketMs: z
-    .number()
-    .int()
-    .positive()
-    .default(10 * 60_000),
-})
-export type RuntimeRegistrationSettings = z.input<typeof RuntimeRegistrationSettings>
 
 export function createRuntimeRegistrations(
   options: RuntimeRegistrationSettings = {},

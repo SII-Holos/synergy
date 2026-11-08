@@ -1,32 +1,7 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { OrganizationClientAuth as Protocol } from "@ericsanchezok/synergy-organization-protocol"
-import { z } from "zod"
 import { digest } from "./secret"
 import { fail } from "../error"
-
-export const ClientAuthenticationSettings = z.strictObject({
-  clients: z
-    .array(Protocol.Client)
-    .default([])
-    .refine(
-      (clients) => new Set(clients.map((client) => client.clientID)).size === clients.length,
-      "Client IDs must be unique",
-    ),
-  codeMs: z.number().int().positive().max(60_000).default(60_000),
-  accessMs: z
-    .number()
-    .int()
-    .positive()
-    .max(15 * 60_000)
-    .default(15 * 60_000),
-  refreshMs: z
-    .number()
-    .int()
-    .positive()
-    .max(30 * 24 * 60 * 60_000)
-    .default(30 * 24 * 60 * 60_000),
-})
-export type ClientAuthenticationSettings = z.input<typeof ClientAuthenticationSettings>
 
 export namespace ClientPolicy {
   const state = RuntimeContext.state(() => ({

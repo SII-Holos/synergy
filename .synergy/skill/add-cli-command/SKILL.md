@@ -24,6 +24,8 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 
 For an independent service with its own storage lifecycle, declare `CommandEntry.initialization: "owner"`. Validate its explicit Home and transport options before opening storage; do not initialize the ambient Agent Home or mirror parser errors into its telemetry. Verify missing/relative Home rejection leaves the ambient Home empty, command registration does not install service migrations in an Agent Runtime, private token output cannot be overwritten, and real child-process shutdown releases only the service's lock. Keep credentials out of arguments and stdout.
 
+Use the service's owning configuration schema and canonical domain file when its policy is persisted. Read only that explicit Home's service domain before creating output or acquiring storage; do not invoke Agent configuration discovery to obtain service settings. Verify a real child sees the configured policy, malformed settings preserve the file and leave service data absent, and error output omits submitted content.
+
 ## Command Contract
 
 1. Separate the command kinds: discovery commands (list accounts, projects, or queues), resolve commands (name or URL to a stable ID), read commands (exact object fetch plus a bounded list/search with `--limit` or a cursor), and narrow write commands (one named action each; prefer `--dry-run` or draft mode when the service allows).

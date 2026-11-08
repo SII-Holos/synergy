@@ -8009,6 +8009,7 @@ export class Domain extends HeyApiClient {
         | "plugins"
         | "mcp"
         | "voice"
+        | "organization"
       directory?: string
       scopeID?: string
     },
@@ -8062,6 +8063,7 @@ export class Domain extends HeyApiClient {
         | "plugins"
         | "mcp"
         | "voice"
+        | "organization"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -8122,6 +8124,7 @@ export class Domain extends HeyApiClient {
         | "plugins"
         | "mcp"
         | "voice"
+        | "organization"
       directory?: string
       scopeID?: string
     },
@@ -8383,6 +8386,7 @@ export class Config extends HeyApiClient {
         | "plugins"
         | "mcp"
         | "voice"
+        | "organization"
         | Array<
             | "features"
             | "general"
@@ -8405,6 +8409,7 @@ export class Config extends HeyApiClient {
             | "plugins"
             | "mcp"
             | "voice"
+            | "organization"
           >
       includeSecrets?: string
     },

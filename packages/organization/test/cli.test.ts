@@ -123,9 +123,51 @@ test("init keeps its single-use secret in a private file and refuses to overwrit
   }
 })
 
-test("serve owns only its listener and Home, refuses competing owners, and releases both on SIGTERM", async () => {
+test("invalid organization domain configuration stops CLI startup without exposing input or creating service data", async () => {
   const isolated = await createIsolatedTestEnv()
   const env = { ...isolated.env, SYNERGY_HOME: isolated.env.SYNERGY_TEST_HOME }
+  const filename = path.join(env.SYNERGY_HOME!, ".synergy/config/synergy.d/150-organization.jsonc")
+  const output = path.join(isolated.env.SYNERGY_TEST_ROOT!, "uncreated-token.json")
+  try {
+    await fs.mkdir(path.dirname(filename), { recursive: true })
+    const secret = "synthetic-private-configuration"
+    const contents = JSON.stringify({ organization: { unsupported: secret } })
+    await Bun.write(filename, contents)
+    for (const args of [
+      ["init", "--output", output],
+      ["serve", "--origin", "https://organization.example", "--port", "0"],
+    ]) {
+      const result = await invoke(env, args)
+      expect(result.code).toBe(1)
+      expect(result.stdout + result.stderr).not.toContain(secret)
+    }
+    expect(await Bun.file(output).exists()).toBe(false)
+    await expect(fs.access(path.join(env.SYNERGY_HOME!, ".synergy/data"))).rejects.toThrow()
+    expect(await Bun.file(filename).text()).toBe(contents)
+  } finally {
+    await isolated.dispose()
+  }
+})
+
+test("serve owns only its listener and Home, refuses competing owners, and releases both on SIGTERM", async () => {
+  const isolated = await createIsolatedTestEnv()
+  const env = {
+    ...isolated.env,
+    SYNERGY_HOME: isolated.env.SYNERGY_TEST_HOME,
+    SYNERGY_CONFIG_CONTENT: "invalid ambient configuration",
+  }
+  const configuration = path.join(env.SYNERGY_HOME!, ".synergy/config/synergy.d/150-organization.jsonc")
+  await fs.mkdir(path.dirname(configuration), { recursive: true })
+  await Bun.write(
+    configuration,
+    JSON.stringify({
+      organization: {
+        clientAuthentication: {
+          clients: [{ clientID: "desktop", kind: "desktop", redirectUri: "synergy://organization-auth/callback" }],
+        },
+      },
+    }),
+  )
   const args = ["serve", "--origin", "https://organization.example", "--port", "0"]
   const child = spawn(env, args)
   const stderr = new Response(child.stderr).text()
@@ -142,6 +184,13 @@ test("serve owns only its listener and Home, refuses competing owners, and relea
     expect(ready).toMatchObject({ ready: true, executesAgents: false })
     expect(await (await fetch(`${ready.url}org/v1/health`)).json()).toEqual({ ready: true, protocolVersion: 1 })
     expect((await fetch(`${ready.url}session`)).status).toBe(404)
+    const discovery = await fetch(`${ready.url}org/v1/auth/discovery?clientID=desktop`)
+    expect(discovery.status).toBe(200)
+    expect(await discovery.json()).toMatchObject({
+      orgID: ready.orgID,
+      issuer: "https://organization.example",
+      client: { clientID: "desktop" },
+    })
     const competing = await invoke(env, args)
     expect(competing.code).toBe(1)
     expect(competing.stderr).toContain("already owns")
