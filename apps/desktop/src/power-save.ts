@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 
 export const DesktopPowerStateV1 = z
   .object({
@@ -128,7 +129,7 @@ export interface DesktopActivityWatcherOptions {
   releaseDebounceMs: number
   /** Current server origin, re-read every poll so a restarted server is picked up. */
   resolveBaseUrl: () => string | null
-  fetchActivity: (url: string, signal: AbortSignal) => Promise<unknown>
+  fetchActivity: (baseUrl: string, signal: AbortSignal) => Promise<unknown>
   onDesiredChange: (desired: boolean) => void
   onError: (error: unknown) => void
 }
@@ -137,6 +138,72 @@ export interface DesktopActivityWatcher {
   start(): void
   stop(): void
   recheck(): void
+}
+
+export interface DesktopActivityGroup extends DesktopActivityWatcher {
+  add(source: Pick<DesktopActivityWatcherOptions, "resolveBaseUrl" | "fetchActivity">): () => void
+}
+
+export function createDesktopActivityGroup(
+  options: Omit<DesktopActivityWatcherOptions, "resolveBaseUrl" | "fetchActivity">,
+): DesktopActivityGroup {
+  const sources = new Set<{ desired: boolean; watcher: DesktopActivityWatcher }>()
+  let running = false
+  let desired = false
+  function publish(force = false) {
+    const next = running && [...sources].some((source) => source.desired)
+    if (!force && next === desired) return
+    desired = next
+    options.onDesiredChange(next)
+  }
+  return {
+    add(input) {
+      const source = {
+        desired: false,
+        watcher: createDesktopActivityWatcher({
+          ...options,
+          ...input,
+          onDesiredChange(value) {
+            if (!sources.has(source)) return
+            source.desired = value
+            publish()
+          },
+        }),
+      }
+      sources.add(source)
+      if (running) source.watcher.start()
+      return () => {
+        if (!sources.delete(source)) return
+        source.watcher.stop()
+        publish()
+      }
+    },
+    start() {
+      if (running) return
+      running = true
+      for (const source of sources) source.watcher.start()
+    },
+    stop() {
+      running = false
+      for (const source of sources) source.watcher.stop()
+      publish()
+    },
+    recheck() {
+      if (!running) return
+      publish(true)
+      for (const source of sources) source.watcher.recheck()
+    },
+  }
+}
+
+export async function fetchDesktopActivity(
+  baseUrl: string,
+  signal: AbortSignal,
+  headers?: Readonly<Record<string, string>>,
+): Promise<unknown> {
+  const client = createSynergyClient({ baseUrl, headers, credentials: "omit", redirect: "error" })
+  const result = await client.global.activity({ signal, cache: "no-store", throwOnError: true })
+  return result.data
 }
 
 /**
@@ -229,7 +296,7 @@ export function createDesktopActivityWatcher(options: DesktopActivityWatcherOpti
       options.requestTimeoutMs ?? ACTIVITY_POLL_MS,
     )
     try {
-      const activity = parseDesktopActivity(await options.fetchActivity(`${baseUrl}/global/activity`, request.signal))
+      const activity = parseDesktopActivity(await options.fetchActivity(baseUrl, request.signal))
       if (!running || pollGeneration !== generation) return
       if (activity.active) applyActive()
       else applyInactive()

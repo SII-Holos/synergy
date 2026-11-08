@@ -16,7 +16,7 @@ Load `change-browser-runtime` for native Browser pages, profiles or popup work a
 - Member brokers use main-owned Runtime keys and independent data contexts; keep protocol identities canonical.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
 - Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
-- `src/power-save.ts` owns the only `powerSaveBlocker` assertion and activity watcher. Read activity from the server's `/global/activity`; renderer requests only re-checks. Release on every quit path and keep the setting opt-in.
+- `src/power-save.ts` aggregates personal/member activity into the only `powerSaveBlocker` assertion. Read each server's `/global/activity`; renderer requests only re-checks. Release on every quit path and keep the setting opt-in.
 
 ## Verify
 
@@ -32,7 +32,7 @@ Update the Browser architecture, Web product contract, or Desktop release runboo
 
 For native Computer changes, load `change-computer-runtime` and read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts`, `test:computer-native` and `test:computer-acceptance` in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.
 
-For keep-awake changes, run `bun test test/power-save.test.ts` and verify in an isolated Desktop that the assertion appears while a task runs, survives closing the window, and leaves nothing behind after quitting (macOS: `pmset -g assertions`).
+For keep-awake changes, run `bun test test/power-save.test.ts` and macOS `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/power-save-native.test.ts`. Also verify an isolated Desktop's assertion while a task runs, after window close and after quitting (`pmset -g assertions`).
 
 Packaging consumes the shared release `runtime-layout.cjs` contract and copies the sealed module seed as a unit. Preserve its complete inventory and reject unlisted payloads before copying.
 

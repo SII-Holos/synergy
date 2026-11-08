@@ -101,12 +101,13 @@ import {
   ACTIVITY_FAILURE_GRACE_MS,
   ACTIVITY_POLL_MS,
   RELEASE_DEBOUNCE_MS,
-  createDesktopActivityWatcher,
+  createDesktopActivityGroup,
   createDesktopPowerGuard,
+  fetchDesktopActivity,
   loadDesktopPower,
   parseDesktopPowerUpdate,
   saveDesktopPower,
-  type DesktopActivityWatcher,
+  type DesktopActivityGroup,
   type DesktopPowerGuard,
   type DesktopPowerSnapshot,
 } from "./power-save.js"
@@ -186,7 +187,7 @@ let currentDesktopZoomFactor = DEFAULT_DESKTOP_ZOOM_FACTOR
 let zoomWriteQueue: Promise<void> = Promise.resolve()
 let keepAwakeWhileRunning = false
 let desktopPowerGuard: DesktopPowerGuard | null = null
-let desktopActivityWatcher: DesktopActivityWatcher | null = null
+let desktopActivityWatcher: DesktopActivityGroup | null = null
 let desktopPowerWriteQueue: Promise<void> = Promise.resolve()
 
 const updateQuitApp = app as typeof app & {
@@ -497,21 +498,13 @@ function resolveDesktopPowerBaseUrl(): string | null {
   return status.state === "running" ? status.url : null
 }
 
-async function fetchDesktopActivity(url: string, signal: AbortSignal): Promise<unknown> {
-  const response = await fetch(url, { signal, cache: "no-store" })
-  if (!response.ok) throw new Error(`activity responded ${response.status}`)
-  return await response.json()
-}
-
 async function initializeDesktopPower(): Promise<void> {
   keepAwakeWhileRunning = (await loadDesktopPower(app.getPath("userData"))).keepAwakeWhileRunning
   desktopPowerGuard = createDesktopPowerGuard(powerSaveBlocker)
-  desktopActivityWatcher = createDesktopActivityWatcher({
+  desktopActivityWatcher = createDesktopActivityGroup({
     intervalMs: ACTIVITY_POLL_MS,
     failureGraceMs: ACTIVITY_FAILURE_GRACE_MS,
     releaseDebounceMs: RELEASE_DEBOUNCE_MS,
-    resolveBaseUrl: resolveDesktopPowerBaseUrl,
-    fetchActivity: fetchDesktopActivity,
     onDesiredChange: (desired) => setDesktopPowerActive(desired),
     onError: (error) => {
       runtimeLog("activityProbeFailed", {
@@ -519,6 +512,7 @@ async function initializeDesktopPower(): Promise<void> {
       })
     },
   })
+  desktopActivityWatcher.add({ resolveBaseUrl: resolveDesktopPowerBaseUrl, fetchActivity: fetchDesktopActivity })
   if (keepAwakeWhileRunning) desktopActivityWatcher.start()
   powerMonitor.on("resume", () => desktopActivityWatcher?.recheck())
 }
@@ -1363,9 +1357,24 @@ async function start() {
     root: path.join(app.getPath("userData"), "organization-runtimes"),
     accounts: organizationAccounts,
     server: { channel, resourcesPath: process.resourcesPath },
-    services: (member) => {
-      if (!memberBrowsers) throw new Error("Member Browser is unavailable.")
-      return memberBrowsers.start(member)
+    services: async (member) => {
+      if (!memberBrowsers || !desktopActivityWatcher) throw new Error("Member Desktop services are unavailable.")
+      const removeActivity = desktopActivityWatcher.add({
+        resolveBaseUrl: () => member.browser.url,
+        fetchActivity: (url, signal) => fetchDesktopActivity(url, signal, member.browser.headers),
+      })
+      try {
+        const browser = await memberBrowsers.start(member)
+        return {
+          close() {
+            removeActivity()
+            return browser.close()
+          },
+        }
+      } catch (error) {
+        removeActivity()
+        throw error
+      }
     },
   })
   organizationIPC = new DesktopOrganizationIPC({
