@@ -36,9 +36,10 @@ export namespace SessionResume {
   export type Admission = {
     actor?: ActorStamp.Info
     signal?: AbortSignal
-    // Both hooks join only a new native receipt's transaction, after execution has drained.
+    // Admission hooks join only a new native receipt's transaction, after execution has drained.
     validate?(): Promise<void>
     record?(receipt: ResumeInfo): Promise<void>
+    commitGuard?(): void
   }
 
   export const Result = z
@@ -172,6 +173,7 @@ export namespace SessionResume {
               commitGuard() {
                 try {
                   admission.signal?.throwIfAborted()
+                  admission.commitGuard?.()
                 } catch (cause) {
                   reject(cause)
                 }

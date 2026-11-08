@@ -8,6 +8,8 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
@@ -108,6 +110,26 @@ async function authority() {
       permit.payloadHash = await Command.digestCreate(Command.createRequest(permit, creation))
       return { authorization: { permit, signature: await Command.sign(permit, keys.privateKey) }, creation }
     },
+    async control(
+      sessionID: string,
+      control: Command.Control,
+      commandSeq: number,
+      options: Partial<Command.Permit> = {},
+    ): Promise<Command.ControlDelivery> {
+      const requestID = options.requestID ?? `control-${commandSeq}`
+      const permit = (
+        await this.input(sessionID, {
+          requestID,
+          attemptID: requestID,
+          admissionID: requestID,
+          commandSeq,
+          ...options,
+          operation: control.operation,
+        })
+      ).authorization.permit
+      permit.payloadHash = await Command.digestControl(Command.controlRequest(permit, control))
+      return { authorization: { permit, signature: await Command.sign(permit, keys.privateKey) }, control }
+    },
   }
 }
 
@@ -124,6 +146,348 @@ async function session() {
     fn: () => Session.create({ organization: binding, workspaceID: null }),
   })
 }
+
+test("pause retains active tools and repeated intent fences an older Continue without replacing the latch", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const id = (await session()).id
+    const receiver = service.receiver()
+    const input = await receiver.input(await service.input(id, {}, "Original task", "task"))
+    const lease = SessionManager.acquire(id)!
+    try {
+      const pause = await service.control(id, { operation: "pause" }, 2)
+      const first = await receiver.control(pause)
+      expect(first.accepted?.effect).toMatchObject({
+        kind: "control",
+        operation: "pause",
+        controlVersion: 1,
+        changed: true,
+      })
+      expect(first.accepted?.intakeSeq).toBe(2)
+      const pausedSince = (await Session.get(id)).paused!.since
+      expect(lease.signal.aborted).toBe(false)
+      expect(SessionManager.isRunning(id)).toBe(true)
+      expect(await receiver.control(pause)).toEqual(first)
+      const again = await receiver.control(await service.control(id, { operation: "pause" }, 3))
+      expect(again.accepted?.effect).toMatchObject({
+        operation: "pause",
+        controlVersion: 2,
+        pausedSince,
+        changed: false,
+      })
+      const old = await receiver.control(
+        await service.control(id, { operation: "continue", pausedSince, controlVersion: 1 }, 4),
+      )
+      expect(old.attempt).toMatchObject({ status: "rejected", reason: "CONTROL_CONFLICT" })
+      expect((await Session.get(id)).paused?.since).toBe(pausedSince)
+      await SessionManager.release(lease, { requestNextWork: false })
+      const continuation = await service.control(id, { operation: "continue", pausedSince, controlVersion: 2 }, 5)
+      const accepted = await receiver.control(continuation)
+      expect(accepted.accepted?.effect).toMatchObject({
+        operation: "continue",
+        controlVersion: 3,
+        pausedSince,
+        itemID: input.accepted!.effect.itemID,
+      })
+      expect(accepted.accepted?.intakeSeq).toBe(4)
+      const native = await Session.get(id)
+      expect(native.paused).toBeUndefined()
+      expect(native.resume?.actor).toEqual(continuation.authorization.permit.actor)
+      expect((await SessionInbox.list(id))[0]?.message?.actor).toEqual(input.accepted!.permit.actor)
+      expect(await receiver.control(continuation)).toEqual(accepted)
+      expect(wake.mock.calls.filter((call) => call[1] === "user-continue")).toHaveLength(1)
+    } finally {
+      await SessionManager.release(lease, { requestNextWork: false })
+    }
+  })
+})
+
+test("native control and command receipts roll back together and remain unique after restart", async () => {
+  await using home = await tmpdir()
+  const service = await authority()
+  let continuation: Command.ControlDelivery
+  let receipt: Command.ControlResult
+  let id = ""
+  {
+    await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+    await runtime.run(async () => {
+      using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+      id = (await session()).id
+      const receiver = service.receiver()
+      await receiver.input(await service.input(id, {}, "Saved task", "task"))
+      for (const operation of ["pause", "continue"] as const) {
+        const pausedSince = (await Session.get(id)).paused?.since
+        const delivery = await service.control(
+          id,
+          operation === "pause" ? { operation } : { operation, pausedSince: pausedSince!, controlVersion: 1 },
+          operation === "pause" ? 2 : 3,
+        )
+        const write = Storage.write
+        const failure = new Error("Control receipt failed after native mutation")
+        const observer = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+          await write(key, value)
+          if (
+            key.join("/") ===
+            Keys.request(binding.orgID, binding.creatorID, delivery.authorization.permit.requestID).join("/")
+          )
+            throw failure
+        })
+        try {
+          await expect(receiver.control(delivery)).rejects.toBe(failure)
+        } finally {
+          observer.mockRestore()
+        }
+        expect((await Session.get(id)).paused?.since).toBe(pausedSince)
+        expect((await Session.get(id)).resume).toBeUndefined()
+        expect((await receiver.query(delivery.authorization)).result).toBeUndefined()
+        expect(wake.mock.calls.filter((call) => call[1] === "user-continue")).toHaveLength(0)
+        const accepted = await receiver.control(delivery)
+        expect(accepted.accepted?.effect.controlVersion).toBe(operation === "pause" ? 1 : 2)
+        if (operation === "continue") {
+          continuation = delivery
+          receipt = accepted
+        }
+      }
+    })
+  }
+  await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const receiver = service.receiver(2)
+    expect(await receiver.control(continuation!)).toEqual(receipt!)
+    expect(await receiver.query(continuation!.authorization)).toEqual({
+      authorization: continuation!.authorization,
+      result: receipt!,
+    })
+    expect(wake).not.toHaveBeenCalled()
+    expect(await SessionInbox.list(id)).toHaveLength(1)
+  })
+})
+
+test("skip during Continue drain closes its slot before a new pause and prevents the late continuation", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const id = (await session()).id
+    const receiver = service.receiver()
+    await receiver.input(await service.input(id, {}, "Saved task", "task"))
+    await receiver.control(await service.control(id, { operation: "pause" }, 2))
+    const pausedSince = (await Session.get(id)).paused!.since
+    const continuation = await service.control(id, { operation: "continue", pausedSince, controlVersion: 1 }, 3)
+    const waiting = Promise.withResolvers<void>()
+    const waitForIdle = SessionManager.waitForIdle
+    using observer = spyOn(SessionManager, "waitForIdle").mockImplementation((...args) => {
+      waiting.resolve()
+      return waitForIdle(...args)
+    })
+    const lease = SessionManager.acquire(id)!
+    const pending = receiver.control(continuation)
+    try {
+      await waiting.promise
+      expect((await receiver.skip(await service.skip(continuation.authorization.permit))).attempt.status).toBe(
+        "skipped",
+      )
+      expect(
+        (await receiver.control(await service.control(id, { operation: "pause" }, 4))).accepted?.effect.controlVersion,
+      ).toBe(2)
+      expect(lease.signal.aborted).toBe(false)
+      await SessionManager.release(lease, { requestNextWork: false })
+      expect((await pending).attempt.status).toBe("skipped")
+      expect((await Session.get(id)).paused?.since).toBe(pausedSince)
+      expect((await Session.get(id)).resume).toBeUndefined()
+    } finally {
+      await SessionManager.release(lease, { requestNextWork: false })
+      await pending.catch(() => {})
+    }
+  })
+})
+
+test("connection cancellation ends Continue drain without cancelling work or publishing a receipt", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const id = (await session()).id
+    const cancelled = new AbortController()
+    const receiver = service.receiver(1, cancelled.signal)
+    await receiver.input(await service.input(id, {}, "Saved task", "task"))
+    await receiver.control(await service.control(id, { operation: "pause" }, 2))
+    const pausedSince = (await Session.get(id)).paused!.since
+    const continuation = await service.control(id, { operation: "continue", pausedSince, controlVersion: 1 }, 3)
+    const waiting = Promise.withResolvers<void>()
+    const waitForIdle = SessionManager.waitForIdle
+    using observer = spyOn(SessionManager, "waitForIdle").mockImplementation((...args) => {
+      waiting.resolve()
+      return waitForIdle(...args)
+    })
+    const lease = SessionManager.acquire(id)!
+    const pending = receiver.control(continuation)
+    const rejected = pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    try {
+      await waiting.promise
+      cancelled.abort()
+      expect(await rejected).toMatchObject({ data: { code: "STALE_CONNECTION" } })
+      expect(lease.signal.aborted).toBe(false)
+      expect(SessionManager.isRunning(id)).toBe(true)
+      expect((await service.receiver(2).query(continuation.authorization)).result).toBeUndefined()
+      expect((await Session.get(id)).paused?.since).toBe(pausedSince)
+    } finally {
+      await SessionManager.release(lease, { requestNextWork: false })
+    }
+  })
+})
+
+test("control commit rejects connection loss and expiry after receipt writes without retaining native effects", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    for (const operation of ["pause", "continue"] as const) {
+      for (const fault of ["disconnect", "deadline"] as const) {
+        const id = (await session()).id
+        const name = `${operation}-${fault}`
+        const controller = new AbortController()
+        const receiver = service.receiver(1, controller.signal)
+        await receiver.input(
+          await service.input(id, { requestID: `${name}-input`, attemptID: `${name}-input` }, "Saved task", "task"),
+        )
+        if (operation === "continue")
+          await receiver.control(await service.control(id, { operation: "pause" }, 2, { requestID: `${name}-pause` }))
+        const pausedSince = (await Session.get(id)).paused?.since
+        const delivery = await service.control(
+          id,
+          operation === "pause" ? { operation } : { operation, pausedSince: pausedSince!, controlVersion: 1 },
+          operation === "pause" ? 2 : 3,
+          { requestID: name },
+        )
+        const key = Keys.request(binding.orgID, binding.creatorID, name)
+        const write = Storage.write
+        let clock: ReturnType<typeof spyOn<typeof Date, "now">> | undefined
+        const observer = spyOn(Storage, "write").mockImplementation(async (path, value) => {
+          await write(path, value)
+          if (path.join("/") !== key.join("/")) return
+          if (fault === "disconnect") controller.abort()
+          else if (!clock) clock = spyOn(Date, "now").mockReturnValue(delivery.authorization.permit.deadline)
+        })
+        try {
+          if (fault === "disconnect")
+            await expect(receiver.control(delivery)).rejects.toMatchObject({ data: { code: "STALE_CONNECTION" } })
+          else
+            expect((await receiver.control(delivery)).attempt).toMatchObject({
+              status: "rejected",
+              reason: "EXPIRED_PERMIT",
+            })
+        } finally {
+          observer.mockRestore()
+          clock?.mockRestore()
+        }
+        expect((await Session.get(id)).paused?.since).toBe(pausedSince)
+        expect((await Session.get(id)).resume).toBeUndefined()
+        expect(await receiver.accepted({ subjectID: binding.creatorID, requestID: name })).toBeUndefined()
+        const control = await Storage.readMany<{ controlVersion: number }>([Keys.control(binding.orgID, id)])
+        expect(control[0]?.controlVersion ?? 0).toBe(operation === "pause" ? 0 : 1)
+        const retry =
+          fault === "disconnect"
+            ? delivery
+            : await service.control(id, delivery.control, delivery.authorization.permit.commandSeq + 1, {
+                requestID: name,
+                attemptID: `${name}-retry`,
+              })
+        expect((await service.receiver().control(retry)).accepted?.effect.controlVersion).toBe(
+          operation === "pause" ? 1 : 2,
+        )
+      }
+    }
+  })
+})
+
+test("Continue admission times out while native execution keeps its lease", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const id = (await session()).id
+    const receiver = service.receiver()
+    await receiver.input(await service.input(id, {}, "Saved task", "task"))
+    await receiver.control(await service.control(id, { operation: "pause" }, 2))
+    const pausedSince = (await Session.get(id)).paused!.since
+    const waiting = Promise.withResolvers<void>()
+    const waitForIdle = SessionManager.waitForIdle
+    using observer = spyOn(SessionManager, "waitForIdle").mockImplementation((...args) => {
+      waiting.resolve()
+      return waitForIdle(...args)
+    })
+    const lease = SessionManager.acquire(id)!
+    const delivery = await service.control(id, { operation: "continue", pausedSince, controlVersion: 1 }, 3, {
+      deadline: Date.now() + 250,
+    })
+    const pending = receiver.control(delivery)
+    const rescue = setTimeout(() => {
+      void SessionManager.release(lease, { requestNextWork: false })
+    }, 2000)
+    try {
+      await waiting.promise
+      expect((await pending).attempt).toMatchObject({ status: "rejected", reason: "EXPIRED_PERMIT" })
+      expect(lease.signal.aborted).toBe(false)
+      expect(SessionManager.isRunning(id)).toBe(true)
+      expect((await Session.get(id)).paused?.since).toBe(pausedSince)
+      expect((await Session.get(id)).resume).toBeUndefined()
+    } finally {
+      clearTimeout(rescue)
+      await SessionManager.release(lease, { requestNextWork: false })
+      await pending.catch(() => {})
+    }
+  })
+})
+
+test("a local newer pause during Continue drain stays paused even when its organization version is unchanged", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const created = await session()
+    const id = created.id
+    const receiver = service.receiver()
+    await receiver.input(await service.input(id, {}, "Saved task", "task"))
+    await receiver.control(await service.control(id, { operation: "pause" }, 2))
+    const pausedSince = (await Session.get(id)).paused!.since
+    const waiting = Promise.withResolvers<void>()
+    const waitForIdle = SessionManager.waitForIdle
+    using observer = spyOn(SessionManager, "waitForIdle").mockImplementation((...args) => {
+      waiting.resolve()
+      return waitForIdle(...args)
+    })
+    const lease = SessionManager.acquire(id)!
+    const delivery = await service.control(id, { operation: "continue", pausedSince, controlVersion: 1 }, 3)
+    const pending = receiver.control(delivery)
+    try {
+      await waiting.promise
+      await ScopeContext.provide({
+        scope: created.scope,
+        workspace: null,
+        fn: async () => {
+          await SessionLifecycle.clear(id)
+          await SessionLifecycle.pause({ sessionID: id, reason: "workflow" })
+        },
+      })
+      const newer = (await Session.get(id)).paused!
+      expect(newer.since).not.toBe(pausedSince)
+      await SessionManager.release(lease, { requestNextWork: false })
+      expect((await pending).attempt).toMatchObject({ status: "rejected", reason: "CONTROL_CONFLICT" })
+      expect((await Session.get(id)).paused).toEqual(newer)
+      expect((await Session.get(id)).resume).toBeUndefined()
+    } finally {
+      await SessionManager.release(lease, { requestNextWork: false })
+      await pending.catch(() => {})
+    }
+  })
+})
 
 test("creation rolls back the real Session and Scope with its receipt and never adopts an existing Session", async () => {
   await using home = await tmpdir()

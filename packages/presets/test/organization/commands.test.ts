@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationRuntimeProtocol as Runtime,
@@ -8,6 +8,7 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -23,6 +24,101 @@ const binding = {
   driverRuntimeID: "runtime-alice",
   bindingEpoch: 1,
 }
+
+test("HTTP control returns native facts, reconciles a lost ACK and refuses changed or stale Continue intent", async () => {
+  await using home = await tmpdir()
+  await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+  await using f = await commandFixture({ timeoutMs: 150 })
+  await nativeSession(runtime, f.sessionID)
+  using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+  const client = createOrganizationClient({ baseUrl: f.baseUrl, headers: f.apiHeaders() })
+  const { input: _input, ...offline } = f.request("offline-control")
+  const unavailable = await client.orgCommands.control({
+    sessionID: f.sessionID,
+    orgCommandControlRequest: { ...offline, control: { operation: "continue", pausedSince: 1, controlVersion: 0 } },
+  })
+  expect(unavailable.response.status).toBe(503)
+  expect(unavailable.error).toMatchObject({ requestID: "offline-control", outcome: "not_dispatched" })
+  await using receiver = await peer(f, runtime)
+  const input = f.request("saved-task")
+  input.input.mode = "task"
+  await client.orgCommands.input({ sessionID: f.sessionID, orgCommandInputRequest: input }, { throwOnError: true })
+  const { input: _, ...target } = f.request("pause")
+  const args = {
+    sessionID: f.sessionID,
+    orgCommandControlRequest: { ...target, control: { operation: "pause" as const } },
+  }
+  receiver.loseReply()
+  const lost = await client.orgCommands.control(args)
+  expect(lost.response.status).toBe(504)
+  expect(lost.error).toMatchObject({ requestID: "pause", outcome: "unknown" })
+  const observed = await client.orgCommands.get({ sessionID: f.sessionID, requestID: "pause" }, { throwOnError: true })
+  const receipt = Command.ControlAccepted.parse(observed.data.accepted)
+  expect(receipt.effect).toMatchObject({ operation: "pause", controlVersion: 1 })
+  expect((await client.orgCommands.control(args, { throwOnError: true })).data).toEqual(receipt)
+  receiver.loseReply(false)
+  const again = await client.orgCommands.control(
+    { ...args, orgCommandControlRequest: { ...args.orgCommandControlRequest, requestID: "new-pause" } },
+    { throwOnError: true },
+  )
+  expect(again.response.status).toBe(200)
+  expect(again.data.effect).toMatchObject({ operation: "pause", controlVersion: 2, changed: false })
+  const continuation = {
+    ...target,
+    requestID: "old-continue",
+    control: { operation: "continue" as const, pausedSince: receipt.effect.pausedSince, controlVersion: 1 },
+  }
+  expect(
+    (await client.orgCommands.control({ sessionID: f.sessionID, orgCommandControlRequest: continuation })).response
+      .status,
+  ).toBe(409)
+  expect(
+    (
+      await client.orgCommands.get(
+        { sessionID: f.sessionID, requestID: continuation.requestID },
+        { throwOnError: true },
+      )
+    ).data.result?.attempt,
+  ).toMatchObject({ status: "rejected", reason: "CONTROL_CONFLICT" })
+  const changed = { ...continuation, control: { ...continuation.control, controlVersion: 2 } }
+  expect(
+    (await client.orgCommands.control({ sessionID: f.sessionID, orgCommandControlRequest: changed })).response.status,
+  ).toBe(409)
+  const resumed = await client.orgCommands.control(
+    { sessionID: f.sessionID, orgCommandControlRequest: { ...changed, requestID: "new-continue" } },
+    { throwOnError: true },
+  )
+  expect(resumed.response.status).toBe(202)
+  expect(resumed.data.effect).toMatchObject({ operation: "continue", controlVersion: 3 })
+  await runtime.run(async () => {
+    expect((await Session.get(f.sessionID)).paused).toBeUndefined()
+    expect((await Session.get(f.sessionID)).resume?.actor).toEqual(resumed.data.permit.actor)
+  })
+  expect(receiver.controls).toHaveLength(4)
+  receiver.loseSkipReply()
+  const unclosed = await client.orgCommands.control({
+    sessionID: f.sessionID,
+    orgCommandControlRequest: { ...continuation, requestID: "lost-skip" },
+  })
+  expect(unclosed.response.status).toBe(504)
+  expect(unclosed.error).toMatchObject({ requestID: "lost-skip", outcome: "unknown" })
+  const closed = await client.orgCommands.get(
+    { sessionID: f.sessionID, requestID: "lost-skip" },
+    { throwOnError: true },
+  )
+  expect(closed.data.result?.attempt.status).toBe("rejected")
+  expect(closed.data.result?.skip).toBeDefined()
+  receiver.loseSkipReply(false)
+  const later = await client.orgCommands.control(
+    {
+      sessionID: f.sessionID,
+      orgCommandControlRequest: { ...target, requestID: "after-closure", control: { operation: "pause" } },
+    },
+    { throwOnError: true },
+  )
+  expect(later.data.effect.controlVersion).toBe(4)
+  expect(receiver.controls).toHaveLength(6)
+})
 
 test("online creation reserves metadata and commits one native Session without exposing its title", async () => {
   await using home = await tmpdir()
@@ -183,10 +279,12 @@ async function peer(
   })
   const inputs: Command.InputDelivery[] = []
   const creations: Command.CreateDelivery[] = []
+  const controls: Command.ControlDelivery[] = []
   const replies: Runtime.ClientFrame[] = []
   let pending = Promise.resolve()
   let dropInput = false
   let dropReply = false
+  let dropSkipReply = false
   socket.onclose = () => controller.abort()
   socket.onmessage = (event) => {
     const frame = Runtime.ServerFrame.parse(JSON.parse(String(event.data)))
@@ -201,14 +299,20 @@ async function peer(
         inputs.push(command.delivery)
         if (dropInput) return
       }
+      if (command.kind === "control") {
+        controls.push(command.delivery)
+        if (dropInput) return
+      }
       const reply = await runtime.run(async (): Promise<Command.Reply> =>
         command.kind === "create"
           ? { kind: "result", result: await intake.create(command.delivery) }
-          : command.kind === "input"
-            ? { kind: "result", result: await intake.input(command.delivery) }
-            : command.kind === "skip"
-              ? { kind: "result", result: await intake.skip(command.authorization) }
-              : { kind: "query", query: await intake.query(command.authorization) },
+          : command.kind === "control"
+            ? { kind: "result", result: await intake.control(command.delivery) }
+            : command.kind === "input"
+              ? { kind: "result", result: await intake.input(command.delivery) }
+              : command.kind === "skip"
+                ? { kind: "result", result: await intake.skip(command.authorization) }
+                : { kind: "query", query: await intake.query(command.authorization) },
       )
       const receipt: Runtime.ClientFrame = {
         type: "receipt",
@@ -217,12 +321,14 @@ async function peer(
         reply,
       }
       replies.push(receipt)
-      if (!(["input", "create"].includes(command.kind) && dropReply)) socket.send(JSON.stringify(receipt))
+      if (command.kind === "skip" && dropSkipReply) return
+      if (!(["input", "create", "control"].includes(command.kind) && dropReply)) socket.send(JSON.stringify(receipt))
     })
   }
   return {
     inputs,
     creations,
+    controls,
     replies,
     socket,
     intake,
@@ -231,6 +337,9 @@ async function peer(
     },
     loseReply(value = true) {
       dropReply = value
+    },
+    loseSkipReply(value = true) {
+      dropSkipReply = value
     },
     async [Symbol.asyncDispose]() {
       controller.abort()

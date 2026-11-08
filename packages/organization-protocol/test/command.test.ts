@@ -35,6 +35,41 @@ const permit: Command.Permit = {
   provisionalGrantID: "grant",
 }
 
+test("control digests bind the observed pause and version and reject forged or unsafe control fields", async () => {
+  const control: Command.Control = { operation: "continue", pausedSince: 100, controlVersion: 2 }
+  const request = Command.controlRequest({ ...permit, operation: "continue" }, control)
+  const hash = await Command.digestControl(request)
+  for (const changed of [
+    { ...request, control: { ...control, pausedSince: 101 } },
+    { ...request, control: { ...control, controlVersion: 3 } },
+    { ...request, sessionID: "another-session" },
+    { ...request, control: { operation: "pause" as const } },
+  ])
+    expect(await Command.digestControl(changed)).not.toBe(hash)
+  for (const changed of [
+    { ...control, actor: permit.actor },
+    { ...control, controlVersion: -1 },
+    { ...control, controlVersion: Number.MAX_SAFE_INTEGER + 1 },
+    { ...control, pausedSince: NaN },
+    { operation: "continue", pausedSince: 100 },
+    { operation: "pause", force: true },
+  ])
+    expect(Command.Control.safeParse(changed).success).toBe(false)
+  expect(Command.Control.safeParse({ ...control, controlVersion: 0 }).success).toBe(true)
+  expect(
+    Command.ControlDelivery.safeParse({ authorization: { permit, signature: "0".repeat(128) }, control }).success,
+  ).toBe(false)
+  const accepted: Command.ControlAccepted = {
+    schemaVersion: 1,
+    permit: { ...permit, operation: "pause" },
+    acceptedAt: 2,
+    intakeSeq: 1,
+    effect: { kind: "control", operation: "pause", controlVersion: 1, pausedSince: 100, changed: true },
+  }
+  expect(Command.Accepted.parse(accepted)).toEqual(accepted)
+  expect(Command.Accepted.safeParse({ ...accepted, permit: { ...permit, operation: "continue" } }).success).toBe(false)
+})
+
 test("creation binds the service-selected identity and private title without accepting caller ownership fields", async () => {
   const target = Command.createRequest(
     { ...permit, operation: "create" },

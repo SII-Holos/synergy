@@ -78,6 +78,9 @@ test("verified WSS supplies the command factory, orders exchanges and redacts un
         async create() {
           throw new Error("private creation storage details")
         },
+        async control() {
+          throw new Error("private control storage details")
+        },
         async input() {
           throw new Error("private intake storage details")
         },
@@ -167,6 +170,13 @@ test("verified WSS supplies the command factory, orders exchanges and redacts un
   )
   expect(failed).toMatchObject({ kind: "error", error: { code: "SERVICE_UNAVAILABLE", outcome: "unknown" } })
   expect(JSON.stringify(failed)).not.toContain("private")
+  const pause = authorization("pause")
+  pause.permit.operation = "pause"
+  const controlled = await within(
+    send("pause", { kind: "control", delivery: { authorization: pause, control: { operation: "pause" } } }),
+  )
+  expect(controlled).toMatchObject({ kind: "error", error: { code: "SERVICE_UNAVAILABLE", outcome: "unknown" } })
+  expect(JSON.stringify(controlled)).not.toContain("private")
   const command = authorization("skip").permit
   const skipped = await within(
     send("skip", {

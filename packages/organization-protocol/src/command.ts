@@ -148,6 +148,41 @@ export namespace OrganizationCommandProtocol {
     .refine((value) => value.authorization.permit.operation === "create", "Creation requires a create permit")
   export type CreateDelivery = z.infer<typeof CreateDelivery>
 
+  export const ControlVersion = z.number().int().nonnegative().safe()
+  const PausedSince = z.number().int().nonnegative().safe()
+  export const Control = z
+    .discriminatedUnion("operation", [
+      z.strictObject({ operation: z.literal("pause") }),
+      z.strictObject({ operation: z.literal("continue"), pausedSince: PausedSince, controlVersion: ControlVersion }),
+    ])
+    .meta({ ref: "OrgCommandControl" })
+  export type Control = z.infer<typeof Control>
+  export const ControlRequest = InputRequest.omit({ input: true })
+    .extend({ control: Control })
+    .meta({ ref: "OrgCommandControlRequest" })
+  export type ControlRequest = z.infer<typeof ControlRequest>
+  export function controlRequest(permit: Permit, control: Control): ControlRequest {
+    return ControlRequest.parse({
+      schemaVersion: 1,
+      orgID: permit.orgID,
+      requestID: permit.requestID,
+      sessionID: permit.sessionID,
+      projectID: permit.projectID,
+      runtimeID: permit.runtimeID,
+      control,
+    })
+  }
+  export function digestControl(request: ControlRequest) {
+    return digestProtocol(ControlRequest, "synergy.organization.command.control.v1\n", request)
+  }
+  export const ControlDelivery = z
+    .strictObject({ authorization: SignedPermit, control: Control })
+    .refine(
+      (value) => value.authorization.permit.operation === value.control.operation,
+      "Control requires a matching operation permit",
+    )
+  export type ControlDelivery = z.infer<typeof ControlDelivery>
+
   export const SkipPermit = z
     .strictObject({
       schemaVersion: z.literal(1),
@@ -178,6 +213,7 @@ export namespace OrganizationCommandProtocol {
     "SEQUENCE_CLOSED",
     "REQUEST_CONFLICT",
     "PAYLOAD_MISMATCH",
+    "CONTROL_CONFLICT",
   ])
   export type Rejection = z.infer<typeof Rejection>
   const acceptance = {
@@ -220,7 +256,35 @@ export namespace OrganizationCommandProtocol {
     )
     .meta({ ref: "OrgCommandCreatedAccepted" })
   export type CreatedAccepted = z.infer<typeof CreatedAccepted>
-  export const Accepted = z.union([InputAccepted, CreatedAccepted]).meta({ ref: "OrgCommandAccepted" })
+  const controlEffect = {
+    kind: z.literal("control"),
+    controlVersion: ControlVersion.positive(),
+    pausedSince: PausedSince,
+  }
+  export const ControlAccepted = z
+    .strictObject({
+      ...acceptance,
+      effect: z.discriminatedUnion("operation", [
+        z.strictObject({ ...controlEffect, operation: z.literal("pause"), changed: z.boolean() }),
+        z.strictObject({
+          ...controlEffect,
+          operation: z.literal("continue"),
+          itemID: Identity.ID,
+          messageID: Identity.ID,
+          rootID: Identity.ID.optional(),
+        }),
+      ]),
+    })
+    .refine(
+      (value) =>
+        value.permit.operation === value.effect.operation &&
+        value.acceptedAt >= value.permit.authorizedAt &&
+        value.acceptedAt < value.permit.deadline,
+      "Accepted control must match its operation and reception window",
+    )
+    .meta({ ref: "OrgCommandControlAccepted" })
+  export type ControlAccepted = z.infer<typeof ControlAccepted>
+  export const Accepted = z.union([InputAccepted, CreatedAccepted, ControlAccepted]).meta({ ref: "OrgCommandAccepted" })
   export type Accepted = z.infer<typeof Accepted>
   const attempt = {
     schemaVersion: z.literal(1),
@@ -248,6 +312,8 @@ export namespace OrganizationCommandProtocol {
   export type InputResult = z.infer<typeof InputResult>
   export const CreatedResult = Result.extend({ accepted: CreatedAccepted.optional() })
   export type CreatedResult = z.infer<typeof CreatedResult>
+  export const ControlResult = Result.extend({ accepted: ControlAccepted.optional() })
+  export type ControlResult = z.infer<typeof ControlResult>
   export const QueryResult = z
     .strictObject({ authorization: SignedPermit, result: Result.optional() })
     .refine((value) => {
@@ -265,6 +331,7 @@ export namespace OrganizationCommandProtocol {
   export const Delivery = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("input"), delivery: InputDelivery }),
     z.strictObject({ kind: z.literal("create"), delivery: CreateDelivery }),
+    z.strictObject({ kind: z.literal("control"), delivery: ControlDelivery }),
     z.strictObject({ kind: z.literal("query"), authorization: SignedPermit }),
     z.strictObject({ kind: z.literal("skip"), authorization: SignedSkip }),
   ])

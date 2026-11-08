@@ -106,7 +106,8 @@ export function sessionView(
   )
     fail("NOT_FOUND", "Session not found")
   const execute = project.permissions.execute && !session.handoffID
-  if (action !== "session.read" && (action !== "session.execute" || !execute))
+  const stop = (project.role === "maintainer" || project.role === "collaborator") && !session.handoffID
+  if (action !== "session.read" && !(action === "session.execute" && execute) && !(action === "session.stop" && stop))
     fail("PERMISSION_DENIED", "This action is not allowed")
   return Session.View.parse({
     sessionID: session.sessionID,
@@ -118,7 +119,7 @@ export function sessionView(
     shareState: session.shareState,
     resourceIDs: session.resourceIDs,
     executionGrantIDs: session.executionGrantIDs,
-    permissions: { read: true, execute },
+    permissions: { read: true, execute, stop },
   })
 }
 

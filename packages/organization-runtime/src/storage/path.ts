@@ -9,6 +9,7 @@ export namespace OrganizationIntakePath {
   export const intake = (orgID: string, runtimeID: string) => [...root(orgID), "runtimes", runtimeID, "intake"]
   const session = (orgID: string, sessionID: string) => [...root(orgID), "sessions", sessionID]
   export const state = (orgID: string, sessionID: string) => [...session(orgID, sessionID), "state"]
+  export const control = (orgID: string, sessionID: string) => [...session(orgID, sessionID), "control"]
   export const attempt = (orgID: string, sessionID: string, attemptID: string) => [
     ...session(orgID, sessionID),
     "attempts",

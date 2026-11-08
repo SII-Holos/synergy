@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { createHash } from "node:crypto"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationIdentity as Identity,
@@ -8,8 +9,11 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
+import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
 import { SessionTransfer } from "@ericsanchezok/synergy-harness/session/transfer"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { OrganizationRuntimeError } from "./error"
 import { OrganizationIntakePath as Keys } from "./storage/path"
 
@@ -42,6 +46,7 @@ const State = z.strictObject({
 const Slot = z.strictObject({ schemaVersion: z.literal(1), attemptID: Identity.ID })
 const Counter = z.strictObject({ schemaVersion: z.literal(1), intakeSeq: Identity.Revision })
 const Lookup = z.strictObject({ subjectID: Identity.ID, requestID: Identity.ID })
+const ControlState = z.strictObject({ schemaVersion: z.literal(1), controlVersion: Command.ControlVersion })
 
 function failure(code: OrganizationProtocol.Error["code"], message: string) {
   return new OrganizationRuntimeError({ code, message, outcome: "rejected", retryable: false })
@@ -73,6 +78,7 @@ function expired(window: { authorizedAt: number; deadline: number }) {
   return now < window.authorizedAt || now >= window.deadline
 }
 class PermitExpired extends Error {}
+class AdmissionChanged extends Error {}
 
 export function createCommandIntake(options: {
   identity: Command.SigningIdentity
@@ -212,84 +218,109 @@ export function createCommandIntake(options: {
     })
   }
 
-  async function receive(
-    authorization: Command.SignedPermit,
-    digest: () => Promise<string>,
-    effect: () => Promise<Command.Accepted["effect"]>,
-  ): Promise<Command.Result> {
+  async function verify(authorization: Command.SignedPermit, digest: () => Promise<string>) {
     assertStandalone()
     const { permit, signature } = authorization
     assertAuthority(permit)
     if (!(await Command.verify(permit, signature, authority.publicKey)))
       throw failure("PERMISSION_DENIED", "Command signature is invalid")
-    const payloadMatches = (await digest()) === permit.payloadHash
+    return (await digest()) === permit.payloadHash
+  }
+  async function controlVersion(permit: Command.Permit) {
+    return (await read(ControlState, Keys.control(permit.orgID, permit.sessionID)))?.controlVersion ?? 0
+  }
+  async function advanceControl(permit: Command.Permit) {
+    const next = Command.ControlVersion.parse((await controlVersion(permit)) + 1)
+    await Storage.write(Keys.control(permit.orgID, permit.sessionID), { schemaVersion: 1, controlVersion: next })
+    return next
+  }
+  async function inspect(permit: Command.Permit, payloadMatches: boolean, control?: Command.Control) {
+    assertActive()
+    const current = await records(permit)
+    if (current.attempt) {
+      if (!payloadMatches) throw failure("REVISION_CONFLICT", "Command payload does not match its retained attempt")
+      return { current }
+    }
+    const bindingReason = await binding(permit)
+    let reason: Command.Rejection | undefined
+    if (!current.matches) reason = "REQUEST_CONFLICT"
+    else if (permit.operation === "create" && permit.actor.subjectID !== accountID) reason = "REQUEST_CONFLICT"
+    else if (!payloadMatches) reason = "PAYLOAD_MISMATCH"
+    else if (permit.connectionEpoch !== connectionEpoch) reason = "STALE_CONNECTION"
+    else if (expired(permit)) reason = "EXPIRED_PERMIT"
+    else if (bindingReason) reason = bindingReason
+    else if (!stateMatches(permit, current.state)) reason = "STALE_BINDING"
+    if (!reason) {
+      if (permit.commandSeq <= current.state.commandSeq || current.slot) reason = "SEQUENCE_CLOSED"
+      else if (permit.commandSeq !== current.state.commandSeq + 1) reason = "SEQUENCE_GAP"
+      else if (await SessionTransfer.isFrozen(permit.sessionID)) reason = "TRANSFER_BLOCKED"
+      else if (permit.operation === "create") {
+        if ((await readSession(permit.sessionID)) && !current.request?.accepted) reason = "SESSION_UNAVAILABLE"
+      } else {
+        const session = await Session.get(permit.sessionID)
+        if (session.time.archived || (control && !SessionLifecycle.latchable(session))) reason = "SESSION_UNAVAILABLE"
+        else if (
+          control?.operation === "continue" &&
+          !current.request?.accepted &&
+          (session.paused?.since !== control.pausedSince || (await controlVersion(permit)) !== control.controlVersion)
+        )
+          reason = "CONTROL_CONFLICT"
+      }
+    }
+    return { current, reason, bindingReason }
+  }
+  type Inspection = Awaited<ReturnType<typeof inspect>>
+
+  async function settle(
+    permit: Command.Permit,
+    checked: Inspection,
+    effect?: Command.Accepted["effect"],
+  ): Promise<Command.Result> {
+    const { current, reason, bindingReason } = checked
+    if (current.attempt) return result(current, current.attempt)
+    if (reason) {
+      const attempt: Command.Attempt = { schemaVersion: 1, permit, receivedAt: Date.now(), status: "rejected", reason }
+      await persist(permit, current, attempt, undefined, !bindingReason)
+      return result(current, attempt)
+    }
+    let accepted = current.request?.accepted
+    if (!accepted) {
+      if (!effect) throw new Error("Command acceptance requires a native effect")
+      const counterKey = Keys.intake(permit.orgID, permit.runtimeID)
+      const counter = await read(Counter, counterKey)
+      const intakeSeq = OrganizationProtocol.Epoch.parse((counter?.intakeSeq ?? 0) + 1)
+      const acceptedAt = Date.now()
+      if (acceptedAt < permit.authorizedAt || acceptedAt >= permit.deadline) throw new PermitExpired()
+      accepted = Command.Accepted.parse({ schemaVersion: 1, permit, acceptedAt, intakeSeq, effect })
+      await Storage.write(counterKey, { schemaVersion: 1, intakeSeq })
+    }
+    const attempt: Command.Attempt = {
+      schemaVersion: 1,
+      permit,
+      receivedAt: Date.now(),
+      status: "accepted",
+      acceptedAttemptID: accepted.permit.attemptID,
+    }
+    await persist(permit, current, attempt, accepted)
+    return result(current, attempt, accepted)
+  }
+
+  async function receive(
+    authorization: Command.SignedPermit,
+    digest: () => Promise<string>,
+    effect: () => Promise<Command.Accepted["effect"]>,
+  ): Promise<Command.Result> {
+    const payloadMatches = await verify(authorization, digest)
+    const { permit } = authorization
     const commit = () => {
       let accepting = false
       return Storage.transaction(
         async () => {
-          assertActive()
-          const current = await records(permit)
-          if (current.attempt) {
-            if (!payloadMatches)
-              throw failure("REVISION_CONFLICT", "Command payload does not match its retained attempt")
-            return result(current, current.attempt)
-          }
-          const bindingReason = await binding(permit)
-          let reason: Command.Rejection | undefined
-          if (!current.matches) reason = "REQUEST_CONFLICT"
-          else if (permit.operation === "create" && permit.actor.subjectID !== accountID) reason = "REQUEST_CONFLICT"
-          else if (!payloadMatches) reason = "PAYLOAD_MISMATCH"
-          else if (permit.connectionEpoch !== connectionEpoch) reason = "STALE_CONNECTION"
-          else if (expired(permit)) reason = "EXPIRED_PERMIT"
-          else if (bindingReason) reason = bindingReason
-          else if (!stateMatches(permit, current.state)) reason = "STALE_BINDING"
-          if (!reason) {
-            if (permit.commandSeq <= current.state.commandSeq || current.slot) reason = "SEQUENCE_CLOSED"
-            else if (permit.commandSeq !== current.state.commandSeq + 1) reason = "SEQUENCE_GAP"
-            else if (await SessionTransfer.isFrozen(permit.sessionID)) reason = "TRANSFER_BLOCKED"
-            else if (permit.operation === "create") {
-              const existing = await readSession(permit.sessionID)
-              if (existing && !current.request?.accepted) reason = "SESSION_UNAVAILABLE"
-            } else if ((await Session.get(permit.sessionID)).time.archived) reason = "SESSION_UNAVAILABLE"
-          }
-          if (reason) {
-            const attempt: Command.Attempt = {
-              schemaVersion: 1,
-              permit,
-              receivedAt: Date.now(),
-              status: "rejected",
-              reason,
-            }
-            await persist(permit, current, attempt, undefined, !bindingReason)
-            return result(current, attempt)
-          }
-          let accepted = current.request?.accepted
-          if (!accepted) {
-            accepting = true
-            const counterKey = Keys.intake(permit.orgID, permit.runtimeID)
-            const counter = await read(Counter, counterKey)
-            const intakeSeq = OrganizationProtocol.Epoch.parse((counter?.intakeSeq ?? 0) + 1)
-            const applied = await effect()
-            const acceptedAt = Date.now()
-            if (acceptedAt < permit.authorizedAt || acceptedAt >= permit.deadline) throw new PermitExpired()
-            accepted = Command.Accepted.parse({
-              schemaVersion: 1,
-              permit,
-              acceptedAt,
-              intakeSeq,
-              effect: applied,
-            })
-            await Storage.write(counterKey, { schemaVersion: 1, intakeSeq })
-          }
-          const attempt: Command.Attempt = {
-            schemaVersion: 1,
-            permit,
-            receivedAt: Date.now(),
-            status: "accepted",
-            acceptedAttemptID: accepted.permit.attemptID,
-          }
-          await persist(permit, current, attempt, accepted)
-          return result(current, attempt, accepted)
+          const checked = await inspect(permit, payloadMatches)
+          if (checked.current.attempt || checked.reason || checked.current.request?.accepted)
+            return settle(permit, checked)
+          accepting = true
+          return settle(permit, checked, await effect())
         },
         {
           commitGuard() {
@@ -304,6 +335,111 @@ export function createCommandIntake(options: {
     } catch (error) {
       if (!(error instanceof PermitExpired)) throw error
       return commit()
+    }
+  }
+
+  async function control(value: Command.ControlDelivery): Promise<Command.ControlResult> {
+    const delivery = parse(Command.ControlDelivery, value)
+    const { permit } = delivery.authorization
+    const payloadMatches = await verify(delivery.authorization, () =>
+      Command.digestControl(Command.controlRequest(permit, delivery.control)),
+    )
+    const finish = (fallback?: Command.Rejection) =>
+      Storage.transaction(
+        async () => {
+          const checked = await inspect(permit, payloadMatches, delivery.control)
+          if (checked.current.attempt || checked.reason || checked.current.request?.accepted)
+            return settle(permit, checked)
+          if (fallback) return settle(permit, { ...checked, reason: fallback })
+        },
+        { commitGuard: assertActive },
+      )
+    const previous = await finish()
+    if (previous) return Command.ControlResult.parse(previous)
+    const session = await readSession(permit.sessionID)
+    if (!session) return Command.ControlResult.parse(await finish("SESSION_UNAVAILABLE"))
+    return ScopeContext.provide({ scope: session.scope, workspace: session.workspace, fn: apply })
+    async function apply(): Promise<Command.ControlResult> {
+      const timeout = new AbortController()
+      const timer = setTimeout(() => timeout.abort(new PermitExpired()), Math.max(0, permit.deadline - Date.now()))
+      const pending = AbortSignal.any([signal, timeout.signal])
+      try {
+        if (delivery.control.operation === "pause") {
+          using lock = await Lock.writeWithSignal(`session-control:${permit.sessionID}`, pending)
+          pending.throwIfAborted()
+          let accepting = false
+          return Command.ControlResult.parse(
+            await Storage.transaction(
+              async () => {
+                const checked = await inspect(permit, payloadMatches, delivery.control)
+                if (checked.current.attempt || checked.reason || checked.current.request?.accepted)
+                  return settle(permit, checked)
+                accepting = true
+                const changed = await SessionLifecycle.pause({ sessionID: permit.sessionID, reason: "aborted" })
+                const paused = (await Session.get(permit.sessionID)).paused
+                if (!paused) throw new AdmissionChanged()
+                return settle(permit, checked, {
+                  kind: "control",
+                  operation: "pause",
+                  changed,
+                  pausedSince: paused.since,
+                  controlVersion: await advanceControl(permit),
+                })
+              },
+              {
+                commitGuard() {
+                  assertActive()
+                  if (accepting && expired(permit)) throw new PermitExpired()
+                },
+              },
+            ),
+          )
+        }
+        let checked: Inspection | undefined
+        let accepted: Command.Result | undefined
+        const requestID =
+          "organization:" +
+          createHash("sha256")
+            .update(JSON.stringify([permit.orgID, permit.actor.subjectID, permit.requestID]))
+            .digest("hex")
+        await SessionResume.request(
+          { sessionID: permit.sessionID, requestID, pausedSince: delivery.control.pausedSince },
+          {
+            actor: permit.actor,
+            signal: pending,
+            async validate() {
+              checked = await inspect(permit, payloadMatches, delivery.control)
+              if (checked.current.attempt || checked.reason || checked.current.request?.accepted)
+                throw new AdmissionChanged()
+            },
+            commitGuard() {
+              assertActive()
+              if (expired(permit)) throw new PermitExpired()
+            },
+            async record(receipt) {
+              if (!checked || receipt.pausedSince === undefined)
+                throw new Error("Native continuation has no command admission")
+              accepted = await settle(permit, checked, {
+                kind: "control",
+                operation: "continue",
+                controlVersion: await advanceControl(permit),
+                pausedSince: receipt.pausedSince,
+                itemID: receipt.itemID,
+                messageID: receipt.messageID,
+                rootID: receipt.rootID,
+              })
+            },
+          },
+        )
+        return Command.ControlResult.parse(accepted ?? (await finish("CONTROL_CONFLICT")))
+      } catch (error) {
+        assertActive()
+        if (error instanceof PermitExpired) return Command.ControlResult.parse(await finish("EXPIRED_PERMIT"))
+        if (error instanceof AdmissionChanged) return Command.ControlResult.parse(await finish("CONTROL_CONFLICT"))
+        throw error
+      } finally {
+        clearTimeout(timer)
+      }
     }
   }
 
@@ -352,6 +488,7 @@ export function createCommandIntake(options: {
   }
 
   return {
+    control,
     async input(value: Command.InputDelivery): Promise<Command.InputResult> {
       const delivery = parse(Command.InputDelivery, value)
       const { permit } = delivery.authorization

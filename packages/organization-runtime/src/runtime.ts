@@ -78,6 +78,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
                   })
                   return {
                     create: context.bind(intake.create),
+                    control: context.bind(intake.control),
                     input: context.bind(intake.input),
                     query: context.bind(intake.query),
                     skip: context.bind(intake.skip),

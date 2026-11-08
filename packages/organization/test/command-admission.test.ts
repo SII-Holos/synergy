@@ -9,6 +9,45 @@ import { createCommandAdmissions } from "../src/command-admission"
 import { ClientPolicy } from "../src/auth/client-policy"
 import { digest } from "../src/auth/secret"
 
+test("pause remains authorized on archived projects while Continue, readers and management-only accounts are refused", async () => {
+  await using f = await fixture()
+  await f.connect()
+  await f.run(async () => {
+    const { input: _, ...target } = f.request()
+    const pause: Command.ControlRequest = { ...target, control: { operation: "pause" } }
+    await expect(f.commands.control(f.credentials.owner, pause)).rejects.toMatchObject({ data: { code: "NOT_FOUND" } })
+    const session = (await Record.read(Record.SessionDirectory, Paths.session(f.sessionID)))!
+    await Storage.write(Paths.session(f.sessionID), { ...session, shareState: "shared" })
+    const project = (await Record.read(Record.Project, Paths.project("project")))!
+    await Storage.write(Paths.project("project"), { ...project, state: "archived" })
+    for (const actor of ["owner", "admin", "reader"])
+      await expect(f.commands.control(f.credentials[actor], pause)).rejects.toMatchObject({
+        data: { code: "PERMISSION_DENIED" },
+      })
+    await expect(
+      f.commands.control(f.credentials.bob, {
+        ...pause,
+        control: { operation: "continue", pausedSince: 100, controlVersion: 1 },
+      }),
+    ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+    await Storage.write(Paths.session(f.sessionID), { ...session, shareState: "shared", handoffID: "handoff" })
+    await expect(f.commands.control(f.credentials.bob, pause)).rejects.toMatchObject({
+      data: { code: "PERMISSION_DENIED" },
+    })
+    await Storage.write(Paths.session(f.sessionID), { ...session, shareState: "shared" })
+    const admitted = await f.commands.control(f.credentials.bob, pause)
+    expect(admitted.kind).toBe("admitted")
+    if (admitted.kind !== "admitted") throw new Error("Expected pause admission")
+    const permit = admitted.delivery.authorization.permit
+    expect(permit.actor.subjectID).toBe("bob")
+    expect(permit.operation).toBe("pause")
+    expect(permit.payloadHash).toBe(await Command.digestControl(pause))
+    expect(await Command.verify(permit, admitted.delivery.authorization.signature, f.signing.identity.publicKey)).toBe(
+      true,
+    )
+  })
+})
+
 test("service admission requires a live capable Runtime and stores only authorization metadata", async () => {
   await using f = await fixture()
   await f.run(async () => {

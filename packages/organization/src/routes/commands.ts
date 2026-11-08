@@ -24,6 +24,19 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
   }
   return new Hono()
     .post(
+      "/sessions/:sessionID/control",
+      operation("orgCommands.control", "Pause or continue an online Session", Command.ControlAccepted, true, true),
+      validator("param", z.strictObject({ sessionID: Identity.ID }), validation),
+      validator("json", Command.ControlRequest, validation),
+      async (c) => {
+        const request = c.req.valid("json")
+        if (request.sessionID !== c.req.valid("param").sessionID)
+          fail("INVALID_REQUEST", "Command Session does not match its route")
+        const result = await owner().control(credentials(c), request, c.req.raw.signal)
+        return c.json(result.receipt, result.existing || result.receipt.effect.operation === "pause" ? 200 : 202)
+      },
+    )
+    .post(
       "/sessions",
       operation(
         "orgSessions.create",

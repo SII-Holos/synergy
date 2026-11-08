@@ -35,7 +35,7 @@ test("directory views contain bounded identities and explicit permissions withou
     resourceIDs: ["resource-a"],
     executionGrantIDs: ["grant-a"],
   }
-  const view = { ...metadata, permissions: { read: true as const, execute: false } }
+  const view = { ...metadata, permissions: { read: true as const, execute: false, stop: false } }
   expect(Protocol.View.parse(view)).toEqual(view)
   for (const extra of [
     { title: "Private title" },

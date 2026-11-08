@@ -206,6 +206,10 @@ test("command OpenAPI declares required input and separates B acceptance from un
   expect(spec.paths?.["/org/v1/sessions/{sessionID}/commands/{requestID}"]?.get?.operationId).toBe("orgCommands.get")
   expect(spec.paths?.["/org/v1/sessions"]?.post?.operationId).toBe("orgSessions.create")
   expect(spec.paths?.["/org/v1/commands/{requestID}"]?.get?.operationId).toBe("orgCommands.lookup")
+  const control = spec.paths?.["/org/v1/sessions/{sessionID}/control"]?.post
+  expect(control?.operationId).toBe("orgCommands.control")
+  expect(control?.requestBody).toMatchObject({ required: true })
+  expect(Object.keys(control?.responses ?? {})).toEqual(expect.arrayContaining(["200", "202", "409", "503", "504"]))
 })
 
 test("an unavailable receipt store retains the caller's request ID and internal failure cause", async () => {

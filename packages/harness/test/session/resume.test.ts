@@ -189,6 +189,37 @@ test("Continue drains without holding control and rechecks a pause that changed 
     }
   }))
 
+test("Continue preserves host commit refusal after native and external receipts have been written", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, pausedSince } = await failedSession()
+    const refusal = new Error("Host admission expired at commit")
+    let recorded = false
+    await expect(
+      resumeSession(
+        { sessionID: session.id, requestID: "host-commit-refusal", pausedSince },
+        {
+          async record(receipt) {
+            await Storage.write(["test-host-continue", session.id], receipt)
+            recorded = true
+          },
+          commitGuard() {
+            expect(recorded).toBe(true)
+            throw refusal
+          },
+        },
+      ),
+    ).rejects.toBe(refusal)
+    expect((await Session.get(session.id)).paused?.since).toBe(pausedSince)
+    expect((await Session.get(session.id)).resume).toBeUndefined()
+    expect(await Storage.readMany([["test-host-continue", session.id]])).toEqual([undefined])
+    expect(await SessionInbox.peekSteer(session.id)).toHaveLength(0)
+    expect(schedule).not.toHaveBeenCalled()
+    expect(
+      (await resumeSession({ sessionID: session.id, requestID: "host-commit-refusal", pausedSince })).outcome,
+    ).toBe("accepted")
+  }))
+
 test("cancelled Continue stops waiting without cancelling the active execution or admitting a late wake", () =>
   fixture(async () => {
     using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})

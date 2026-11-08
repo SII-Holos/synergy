@@ -1088,6 +1088,66 @@
         }
       }
     },
+    "/org/v1/sessions/{sessionID}/control": {
+      "post": {
+        "operationId": "orgCommands.control",
+        "summary": "Pause or continue an online Session",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCommandControlRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgCommandControlAccepted" } }
+            }
+          },
+          "202": {
+            "description": "Runtime durably received the command",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgCommandControlAccepted" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "504": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
     "/org/v1/sessions": {
       "post": {
         "operationId": "orgSessions.create",
@@ -1961,8 +2021,12 @@
           },
           "permissions": {
             "type": "object",
-            "properties": { "read": { "type": "boolean", "const": true }, "execute": { "type": "boolean" } },
-            "required": ["read", "execute"],
+            "properties": {
+              "read": { "type": "boolean", "const": true },
+              "execute": { "type": "boolean" },
+              "stop": { "type": "boolean" }
+            },
+            "required": ["read", "execute", "stop"],
             "additionalProperties": false
           }
         },
@@ -2068,6 +2132,81 @@
         ],
         "additionalProperties": false
       },
+      "OrgCommandControlAccepted": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": { "type": "number", "const": 1 },
+          "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+          "acceptedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "intakeSeq": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "effect": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "control" },
+                  "controlVersion": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                  "pausedSince": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "operation": { "type": "string", "const": "pause" },
+                  "changed": { "type": "boolean" }
+                },
+                "required": ["kind", "controlVersion", "pausedSince", "operation", "changed"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "control" },
+                  "controlVersion": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                  "pausedSince": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "operation": { "type": "string", "const": "continue" },
+                  "itemID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "messageID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "controlVersion", "pausedSince", "operation", "itemID", "messageID"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["schemaVersion", "permit", "acceptedAt", "intakeSeq", "effect"],
+        "additionalProperties": false
+      },
+      "OrgCommandControl": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": { "operation": { "type": "string", "const": "pause" } },
+            "required": ["operation"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": { "type": "string", "const": "continue" },
+              "pausedSince": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "controlVersion": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": ["operation", "pausedSince", "controlVersion"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgCommandControlRequest": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": { "type": "number", "const": 1 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "control": { "$ref": "#/components/schemas/OrgCommandControl" }
+        },
+        "required": ["schemaVersion", "orgID", "requestID", "sessionID", "projectID", "runtimeID", "control"],
+        "additionalProperties": false
+      },
       "OrgCommandCreatedAccepted": {
         "type": "object",
         "properties": {
@@ -2171,7 +2310,8 @@
       "OrgCommandAccepted": {
         "anyOf": [
           { "$ref": "#/components/schemas/OrgCommandInputAccepted" },
-          { "$ref": "#/components/schemas/OrgCommandCreatedAccepted" }
+          { "$ref": "#/components/schemas/OrgCommandCreatedAccepted" },
+          { "$ref": "#/components/schemas/OrgCommandControlAccepted" }
         ]
       },
       "OrgCommandView": {
@@ -2224,7 +2364,8 @@
                           "SEQUENCE_GAP",
                           "SEQUENCE_CLOSED",
                           "REQUEST_CONFLICT",
-                          "PAYLOAD_MISMATCH"
+                          "PAYLOAD_MISMATCH",
+                          "CONTROL_CONFLICT"
                         ]
                       }
                     },

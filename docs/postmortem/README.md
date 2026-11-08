@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0097](0097-rejected-command-blocked-new-control.md)
+
 - [0096](0096-continue-admission-outlived-observed-pause.md)
 
 - [0095](0095-member-runtime-implicit-source-discovery.md)

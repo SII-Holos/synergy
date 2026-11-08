@@ -225,6 +225,7 @@ export type OrgSessionDirectoryView = {
   permissions: {
     read: true
     execute: boolean
+    stop: boolean
   }
 }
 
@@ -269,6 +270,50 @@ export type OrgCommandPermit = {
   authorizedAt: number
   deadline: number
   provisionalGrantID?: string
+}
+
+export type OrgCommandControlAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect:
+    | {
+        kind: "control"
+        controlVersion: number
+        pausedSince: number
+        operation: "pause"
+        changed: boolean
+      }
+    | {
+        kind: "control"
+        controlVersion: number
+        pausedSince: number
+        operation: "continue"
+        itemID: string
+        messageID: string
+        rootID?: string
+      }
+}
+
+export type OrgCommandControl =
+  | {
+      operation: "pause"
+    }
+  | {
+      operation: "continue"
+      pausedSince: number
+      controlVersion: number
+    }
+
+export type OrgCommandControlRequest = {
+  schemaVersion: 1
+  orgID: string
+  requestID: string
+  sessionID: string
+  projectID: string
+  runtimeID: string
+  control: OrgCommandControl
 }
 
 export type OrgCommandCreatedAccepted = {
@@ -326,7 +371,7 @@ export type OrgCommandInputRequest = {
   input: OrgCommandInput
 }
 
-export type OrgCommandAccepted = OrgCommandInputAccepted | OrgCommandCreatedAccepted
+export type OrgCommandAccepted = OrgCommandInputAccepted | OrgCommandCreatedAccepted | OrgCommandControlAccepted
 
 export type OrgCommandView = {
   requestID: string
@@ -357,6 +402,7 @@ export type OrgCommandView = {
             | "SEQUENCE_CLOSED"
             | "REQUEST_CONFLICT"
             | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
         }
       | {
           schemaVersion: 1
@@ -1649,6 +1695,61 @@ export type OrgOrganizationSessionCapacityResponses = {
 
 export type OrgOrganizationSessionCapacityResponse =
   OrgOrganizationSessionCapacityResponses[keyof OrgOrganizationSessionCapacityResponses]
+
+export type OrgCommandsControlData = {
+  body: OrgCommandControlRequest
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/control"
+}
+
+export type OrgCommandsControlErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+  /**
+   * Organization error
+   */
+  504: OrgError
+}
+
+export type OrgCommandsControlError = OrgCommandsControlErrors[keyof OrgCommandsControlErrors]
+
+export type OrgCommandsControlResponses = {
+  /**
+   * Success
+   */
+  200: OrgCommandControlAccepted
+  /**
+   * Runtime durably received the command
+   */
+  202: OrgCommandControlAccepted
+}
+
+export type OrgCommandsControlResponse = OrgCommandsControlResponses[keyof OrgCommandsControlResponses]
 
 export type OrgSessionsCreateData = {
   body: OrgCommandCreateRequest

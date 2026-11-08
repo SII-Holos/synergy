@@ -20,7 +20,7 @@ export namespace OrganizationSessionProtocol {
   }).meta({ ref: "OrgSessionMetadata" })
   export type Metadata = z.infer<typeof Metadata>
   export const View = Metadata.extend({
-    permissions: z.strictObject({ read: z.literal(true), execute: z.boolean() }),
+    permissions: z.strictObject({ read: z.literal(true), execute: z.boolean(), stop: z.boolean() }),
   }).meta({ ref: "OrgSessionDirectoryView" })
   export type View = z.infer<typeof View>
   export const Page = z

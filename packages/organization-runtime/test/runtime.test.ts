@@ -191,6 +191,20 @@ test("the public service creates a bound Session through the resident Runtime an
   const inbox = await runtime.run(() => SessionInbox.list(sessionID))
   expect(inbox).toHaveLength(1)
   expect(inbox[0].message?.actor).toMatchObject({ subjectID: member.identity.accountID, requestID: "native-input" })
+  const { input: _, ...target } = input.orgCommandInputRequest
+  const control = {
+    sessionID,
+    orgCommandControlRequest: { ...target, requestID: "native-pause", control: { operation: "pause" as const } },
+  }
+  const paused = await observed(
+    service.client.orgCommands.control(control, { headers: service.headers, throwOnError: true }),
+  )
+  expect(paused.response.status).toBe(200)
+  expect(paused.data.effect).toMatchObject({ operation: "pause", controlVersion: 1, changed: true })
+  expect((await runtime.run(() => Session.get(sessionID))).paused?.since).toBe(paused.data.effect.pausedSince)
+  expect(
+    (await service.client.orgCommands.control(control, { headers: service.headers, throwOnError: true })).data,
+  ).toEqual(paused.data)
 })
 
 test("resident member startup reconnects its outbound bridge without blocking local readiness", async () => {

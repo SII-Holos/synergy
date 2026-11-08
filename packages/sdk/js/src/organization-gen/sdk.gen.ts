@@ -34,8 +34,11 @@ import type {
   OrgBootstrapInput,
   OrgClientRevocationInput,
   OrgCodeExchangeInput,
+  OrgCommandControlRequest,
   OrgCommandCreateRequest,
   OrgCommandInputRequest,
+  OrgCommandsControlErrors,
+  OrgCommandsControlResponses,
   OrgCommandsGetErrors,
   OrgCommandsGetResponses,
   OrgCommandsInputErrors,
@@ -926,6 +929,39 @@ export class OrgSessions extends HeyApiClient {
 }
 
 export class OrgCommands extends HeyApiClient {
+  /**
+   * Pause or continue an online Session
+   */
+  public control<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgCommandControlRequest: OrgCommandControlRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgCommandControlRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgCommandsControlResponses, OrgCommandsControlErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Submit an online Session input
    */

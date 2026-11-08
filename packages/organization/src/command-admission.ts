@@ -93,7 +93,9 @@ export function createCommandAdmissions(options: {
         const { account, session } = current
         const requestKey = Keys.commandRequest(account.accountID, request.requestID)
         if (previous?.accepted) return { kind: "accepted" as const, receipt: previous.accepted }
-        await authorize(credentials, "session.execute", { sessionID: request.sessionID })
+        await authorize(credentials, operation === "pause" ? "session.stop" : "session.execute", {
+          sessionID: request.sessionID,
+        })
         const stateKey = Keys.commandState(session.sessionID)
         const state = await Record.read(Record.CommandState, stateKey)
         if (state?.pendingAttemptID) {
@@ -368,6 +370,24 @@ export function createCommandAdmissions(options: {
   }
 
   return {
+    async control(credentials: Credentials, value: Command.ControlRequest) {
+      standalone()
+      credentials = { ...credentials }
+      const request = Command.ControlRequest.parse(value)
+      const payloadHash = await Command.digestControl(request)
+      const result = await admit(credentials, request.control.operation, async () => ({
+        request,
+        payloadHash,
+        ...(await lookupTarget(credentials, request, payloadHash, request.control.operation)),
+      }))
+      if (result.kind === "accepted")
+        return { kind: "accepted" as const, receipt: Command.ControlAccepted.parse(result.receipt) }
+      return {
+        kind: "admitted" as const,
+        delivery: { authorization: result.authorization, control: request.control },
+        connection: result.connection,
+      }
+    },
     async input(credentials: Credentials, value: Command.InputRequest) {
       standalone()
       credentials = { ...credentials }
@@ -418,6 +438,15 @@ export function createCommandAdmissions(options: {
     },
     observe,
     prepareSkip,
+    async inspectControl(credentials: Credentials, value: Command.ControlRequest) {
+      credentials = { ...credentials }
+      const request = Command.ControlRequest.parse(value)
+      const payloadHash = await Command.digestControl(request)
+      return Storage.snapshot(async () => {
+        const { previous } = await lookupTarget(credentials, request, payloadHash, request.control.operation)
+        return previous ? { attempt: await attempt(previous.lastAttemptID), accepted: previous.accepted } : undefined
+      })
+    },
     async inspectInput(credentials: Credentials, value: Command.InputRequest) {
       credentials = { ...credentials }
       const request = Command.InputRequest.parse(value)

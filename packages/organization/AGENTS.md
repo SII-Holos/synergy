@@ -4,7 +4,7 @@ Own organization identity, project authorization, resource grants, shared projec
 
 Use an explicit isolated Storage Handle, the central migration runner and owner-local storage keys. Authorization and durable admission share the organization transaction; Runtime receipt is a separate fact. Do not persist private member Session bodies in forwarding records. Keep all read paths and downloads behind current authorization.
 
-Route object actions through `authorization.ts` inside the caller's transaction or snapshot. Resolve stored ownership before applying roles and deny unknown actions. Credential authentication and one-time token consumption belong to `auth/`; do not duplicate the authorization matrix in routes or the Runtime adapter.
+Route object actions through `authorization.ts` inside the caller's transaction or snapshot. Resolve stored ownership before applying roles and deny unknown actions. Archived projects permit stopping, not new execution. Credential authentication and one-time token consumption belong to `auth/`; do not duplicate the authorization matrix in routes or the Runtime adapter.
 
 Session directory reads use current project access and canonical creator visibility. Page authorized creator/shared indexes before loading records; administrator capacity exposes counts only. Creation commits directory reservation with admission; metadata is never a Runtime receipt or execution grant. Verify rollback, revocation and mixed-owner pagination in `test/session-directory.test.ts`.
 

@@ -82,7 +82,7 @@ export function createCommandForwarder(options: {
     | { kind: "accepted"; receipt: Command.Accepted }
     | {
         kind: "admitted"
-        command: Extract<Command.Delivery, { kind: "input" | "create" }>
+        command: Extract<Command.Delivery, { kind: "input" | "create" | "control" }>
         connection: ReturnType<RuntimeConnections["capture"]>
       }
   async function submit(
@@ -140,6 +140,26 @@ export function createCommandForwarder(options: {
       }
       const observed = await admissions.get(credentials, query)
       if (observed.accepted) return { existing: false, receipt: observed.accepted }
+      if (observed.attempt.result?.attempt.status === "rejected" && !observed.attempt.result.skip) {
+        try {
+          if (work.signal.aborted) throw work.signal.reason
+          const authorization = await admissions.prepareSkip(attemptID, prepared.connection)
+          const closure = await prepared.connection.exchange({ kind: "skip", authorization }, work)
+          if (closure.kind !== "result" || !closure.result.skip) throw new Error("Command sequence closure is absent")
+        } catch (cause) {
+          throw new OrganizationError(
+            {
+              code: "COMMAND_OUTCOME_UNKNOWN",
+              requestID: request.requestID,
+              outcome: "unknown",
+              retryable: false,
+              message:
+                "Runtime rejected the command, but its sequence closure is unconfirmed; reconcile this request ID",
+            },
+            { cause },
+          )
+        }
+      }
       throw new OrganizationError({
         code: "REVISION_CONFLICT",
         requestID: request.requestID,
@@ -156,6 +176,28 @@ export function createCommandForwarder(options: {
     })
   }
   return {
+    async control(credentials: Credentials, value: Command.ControlRequest, signal?: AbortSignal) {
+      credentials = { ...credentials }
+      const request = Command.ControlRequest.parse(value)
+      const result = await submit(
+        credentials,
+        request,
+        request.sessionID,
+        signal,
+        () => admissions.inspectControl(credentials, request),
+        async () => {
+          const prepared = await admissions.control(credentials, request)
+          return prepared.kind === "accepted"
+            ? prepared
+            : {
+                kind: "admitted",
+                connection: prepared.connection,
+                command: { kind: "control", delivery: prepared.delivery },
+              }
+        },
+      )
+      return { ...result, receipt: Command.ControlAccepted.parse(result.receipt) }
+    },
     async input(credentials: Credentials, value: Command.InputRequest, signal?: AbortSignal) {
       credentials = { ...credentials }
       const request = Command.InputRequest.parse(value)

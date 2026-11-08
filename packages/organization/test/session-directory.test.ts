@@ -99,7 +99,11 @@ test("private Session access always checks the stored project, creator and curre
     await Storage.update<{ role: string }>(Keys.projectMember("project", "alice"), (draft) => {
       draft.role = "reader"
     })
-    expect((await Directory.get(f.credentials.alice, "session-a")).permissions).toEqual({ read: true, execute: false })
+    expect((await Directory.get(f.credentials.alice, "session-a")).permissions).toEqual({
+      read: true,
+      execute: false,
+      stop: false,
+    })
     await expect(authorize(f.credentials.alice, "session.execute", { sessionID: "session-a" })).rejects.toMatchObject({
       data: { code: "PERMISSION_DENIED" },
     })
@@ -247,7 +251,7 @@ test("generated directory clients preserve authorization and metadata over real 
   const owner = createOrganizationClient({ baseUrl: f.baseUrl, headers: f.headers("owner") })
   const item = (await alice.orgSessions.get({ sessionID: "session-a" }, { throwOnError: true })).data
   expect(item.creatorID).toBe("alice")
-  expect(item.permissions).toEqual({ read: true, execute: true })
+  expect(item.permissions).toEqual({ read: true, execute: true, stop: true })
   expect((await alice.orgSessions.list({ projectID: "project", limit: 1 }, { throwOnError: true })).data.items).toEqual(
     [item],
   )
