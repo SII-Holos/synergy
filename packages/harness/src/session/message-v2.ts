@@ -1,4 +1,5 @@
 import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { upgradeAccessRecord } from "../migration/import"
 import { prepareSessionMigrations } from "../migration"
 import {
@@ -525,6 +526,7 @@ export namespace MessageV2 {
 
   const Base = z.object({
     id: z.string(),
+    actor: ActorStamp.Info.optional(),
     sessionID: z.string(),
     visible: z.boolean().optional(),
     includeInContext: z.boolean().optional(),
@@ -622,6 +624,7 @@ export namespace MessageV2 {
   }
 
   export function canonicalMessage<T extends Info>(info: T): T {
+    if (info.actor !== undefined) info = { ...info, actor: ActorStamp.Info.parse(info.actor) }
     if (info.role !== "user" || !info.summary) return info
     const diffState = info.summary.diffState
     const expiredPending = diffState?.status === "pending" && diffState.deadlineAt <= Date.now()

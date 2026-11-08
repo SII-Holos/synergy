@@ -133,6 +133,8 @@ For snapshot lease changes, test metadata-gate contention separately from active
 
 ## Verify
 
+For recorded actor attribution, distinguish trusted host admission from public input schemas. Test duplicate delivery, an intervening author's supplement, actual Tool execution, caller mutation, rollback, restart and fork against real records. Preserve unknown historical actors and system trigger evidence; display names, roles and the current login cannot supply missing historical identity. Keep actor evidence separate from current authorization.
+
 For history read optimizations, select finite windows and referenced roots before body hydration. Compare raw, effective and compacted semantics, including legacy metadata. Assert artifact reads as well as returned values; a smaller response does not prove bounded work. Keep canonical records authoritative for mutations and recheck ownership after asynchronous preparation.
 
 For durable external delivery, test a failure after an accepted prefix and a changed queue revision before acknowledgment. Keep network delivery outside transactions, preserve unaccepted records and verify the entire acknowledgment rolls back on revision conflict. Measure real PostgreSQL delivery batches separately from model and Session work before changing behavioral test deadlines.

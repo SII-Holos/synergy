@@ -1,4 +1,5 @@
 export { ScopeContext } from "../scope/context"
+export { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 export { SessionContextContributions } from "../session/context-contributions"
 export { SessionExecutionContributions } from "../session/execution-contributions"
 export { reconcileContextUsage } from "../session/context-usage-attribution"

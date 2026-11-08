@@ -2,6 +2,7 @@ import { SessionExecutionOwners } from "./execution-owners"
 import { independentExecutionInfo } from "./types"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import z from "zod"
 import { ModelSelection } from "./model-selection-schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -93,6 +94,7 @@ export namespace SessionInbox {
       message: z
         .object({
           role: z.enum(["user", "assistant"]).default("user"),
+          actor: ActorStamp.Info.optional(),
           referenceContext: ResourceReference.Context.optional(),
           parts: z.array(PayloadPart),
           agent: z.string().optional(),
@@ -164,6 +166,7 @@ export namespace SessionInbox {
       message: z.object({
         parts: z.array(PayloadPart),
         role: z.enum(["user", "assistant"]).default("user"),
+        actor: ActorStamp.Info.optional(),
         agent: z.string().optional(),
         model: z
           .object({
@@ -600,6 +603,7 @@ export namespace SessionInbox {
     input: z.infer<typeof Deliver.Input>,
     ids: { itemID: string; messageID: string },
   ): Promise<StoredItem> {
+    const actor = ActorStamp.Info.optional().parse(input.message.actor)
     const summarized = summarizeParts(input.message.parts)
     const mode = input.mode
     const origin =
@@ -619,6 +623,7 @@ export namespace SessionInbox {
       mode,
       message: {
         referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
+        actor,
         parts: input.message.parts as any,
         role: input.message.role,
         agent: input.message.agent,
@@ -724,6 +729,7 @@ export namespace SessionInbox {
   export async function deliverUnique(
     input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
   ): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    input = { ...input, message: { ...input.message, actor: ActorStamp.Info.optional().parse(input.message.actor) } }
     return deliverUniqueWithPreparedMessage(
       {
         sessionID: input.sessionID,
@@ -746,8 +752,9 @@ export namespace SessionInbox {
 
   export async function enqueueUser(
     input: InvokeInput,
-    options?: { mode: "task" | "steer"; admission?: "idle_no_reply" },
+    options?: { mode?: "task" | "steer"; admission?: "idle_no_reply"; actor?: ActorStamp.Info },
   ): Promise<Item> {
+    const actor = ActorStamp.Info.optional().parse(options?.actor)
     if (input.agent !== undefined && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
     const messageID = input.messageID ?? Identifier.ascending("message")
     const itemID = stableDeliveryItemID(input.sessionID, `user:${messageID}`)
@@ -774,6 +781,7 @@ export namespace SessionInbox {
       mode,
       message: {
         role: "user",
+        actor,
         referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
         parts: input.parts as any,
         agent: input.agent,
@@ -1247,6 +1255,7 @@ export namespace SessionInbox {
         return createUserMessage(
           {
             ...item.input,
+            actor: payload.actor,
             referenceContext: item.message?.referenceContext ?? { state: "unresolved" },
             sessionID: item.sessionID,
             messageID,
@@ -1304,6 +1313,7 @@ export namespace SessionInbox {
       // no noReply/guided metadata flags are written.
       const info: MessageV2.User = {
         id: messageID,
+        actor: payload.actor,
         role: "user",
         referenceContext: payload.referenceContext ?? { state: "unresolved" },
         sessionID: item.sessionID,

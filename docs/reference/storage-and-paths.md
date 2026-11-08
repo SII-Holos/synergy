@@ -39,6 +39,8 @@ Native Workspace mount receipts live under `state/environments/<environment>/<al
 
 Removed user Inbox inputs and restoration receipts live at the logical keys `sessions/<scope>/<session>/inbox-removed/<item>`. They retain the complete domain input until Session deletion and never participate in ordinary queue discovery. See [Inbox removal and restoration](../architecture/session-and-messages.md#inbox-removal-and-restoration).
 
+Optional actor stamps live in the existing message header and Inbox message payload records. They require no new collection or historical backfill; their retention follows the owning input and Session. See [recorded actors](../architecture/session-and-messages.md#recorded-actors).
+
 The optional Session long-term summary lives in `sessions/<scope>/<session>/info` under `longTermMemory`. Its independent review cursor and versioned source digest live at `sessions/<scope>/<session>/long_term_memory`. These are Agent database records, not files, Library entries or cache data. [Session long-term summary](../architecture/session-and-messages.md#session-long-term-summary) defines revision, import, fork and deletion behavior.
 
 Rollout stores execution intervals at `<owner>/rollout/runs/<run>/intervals/<interval>` alongside its existing run and segment evidence. Interval writes append through the Rollout journal; [execution evidence](../architecture/session-and-messages.md) defines timing, recovery and migration semantics.

@@ -1225,6 +1225,7 @@ export namespace ToolResolver {
       const sessionAbort = options.abortSignal ?? neverAbort
       const ctx: Tool.Context = {
         sessionID: input.sessionID,
+        actor: input.processor.message.actor ? structuredClone(input.processor.message.actor) : undefined,
         environmentID: input.session?.environmentID ?? null,
         abort: sessionAbort,
         messageID: input.processor.message.id,

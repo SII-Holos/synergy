@@ -80,6 +80,12 @@ This state is session-global and durable across runtime restart, but it is not i
 
 Session metadata is not the message transcript. Each has its own storage and events.
 
+### Recorded actors
+
+Message headers and Inbox message payloads may carry an `ActorStamp`: the stable subject, submission-time display name, client kind and request identity. Account stamps require an organization identity; local stamps cannot carry one. System stamps may retain a bounded trigger chain. This portable schema is exposed through Harness `context`; it contains no role or permission decision.
+
+Trusted hosts supply an actor separately from ordinary `InvokeInput`, which does not accept one. Inbox admission snapshots that actor before asynchronous preparation and retains it through delivery receipts, materialization, removal, restoration and restart. Each user input retains its own actor. New assistant headers inherit the explicitly identified task root's actor, and Tool contexts receive an independent copy of that header's stamp. Later supplementary inputs do not change the task's initiating actor. Message updates preserve the first recorded actor, including an unknown historical actor; edits never backfill attribution from a current login. Forks retain historical attribution while remapping message identities. See the [actor attribution decision](../decisions/implemented/architecture/2026-11-09-preserve-task-actor-attribution.md).
+
 ### Global identity and endpoint lookup
 
 `sessionID` is stable within its owning Runtime storage. Independent Runtime instances may contain identical session IDs without sharing state. `Session.get(sessionID)` resolves the logical key `["session_index", sessionID]` to the owning Scope and then reads `["sessions", scopeID, sessionID, "info"]` through the storage Handle; callers do not form a composite `(scopeID, sessionID)` identity.

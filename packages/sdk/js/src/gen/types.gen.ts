@@ -10050,6 +10050,56 @@ export type SessionAbortResult = {
   paused: boolean
 }
 
+export type ActorStamp =
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "account"
+      orgID: string
+    }
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "local"
+    }
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "system"
+      orgID?: string
+      causedBy?: Array<
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "account"
+            orgID: string
+          }
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "local"
+          }
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "system"
+            orgID?: string
+          }
+      >
+    }
+
 export type OriginUser = {
   type: "user" | "cortex" | "agenda" | "blueprint" | "channel" | "compaction" | "agent" | "plugin" | "system"
   sessionID?: string
@@ -10074,6 +10124,7 @@ export type SessionInboxItem = {
   deliveryKey?: string
   message?: {
     role?: "user" | "assistant"
+    actor?: ActorStamp
     referenceContext?:
       | {
           state: "bound"
@@ -10441,6 +10492,7 @@ export type RootExecution = {
 
 export type UserMessage = {
   id: string
+  actor?: ActorStamp
   sessionID: string
   visible?: boolean
   includeInContext?: boolean
@@ -10615,6 +10667,7 @@ export type ProviderModelVariantUnavailableError = {
 
 export type AssistantMessage = {
   id: string
+  actor?: ActorStamp
   sessionID: string
   visible?: boolean
   includeInContext?: boolean

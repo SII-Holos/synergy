@@ -1814,10 +1814,18 @@ export namespace Session {
       const canonical = MessageV2.canonicalMessage(msg)
       const session = await SessionManager.requireSession(msg.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
-      if (!canonical.referenceContext) {
-        const [existing] = await Storage.readMany<MessageV2.Info>([
-          StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), Identifier.asMessageID(canonical.id)),
+      const [existing] = await Storage.readMany<MessageV2.Info>([
+        StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), Identifier.asMessageID(canonical.id)),
+      ])
+      if (existing) canonical.actor = existing.actor
+      else if (canonical.role === "assistant") {
+        const rootID = canonical.rootID ?? canonical.parentID
+        const [root] = await Storage.readMany<MessageV2.Info>([
+          StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), Identifier.asMessageID(rootID)),
         ])
+        canonical.actor = root?.role === "user" && root.isRoot === true ? root.actor : undefined
+      }
+      if (!canonical.referenceContext) {
         canonical.referenceContext = existing?.referenceContext ?? ResourceReference.capture(session.workspace)
       }
       // Invalidate the search index BEFORE the content write so a crash between

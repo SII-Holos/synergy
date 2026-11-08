@@ -1,6 +1,6 @@
 # Shared Utility Rules
 
-Shared primitives for runtime, SDK, plugins, UI and protocols.
+Portable schemas and utilities.
 
 - Do not import App, Desktop, or core-runtime implementation into this package. Keep unnamed utilities deterministic, portable and side-effect free.
 - Preserve public export paths and Bun/types/import resolution. Prefer small domain-neutral functions and schemas over moving product ownership into a generic helper.
@@ -33,4 +33,4 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 
 `render-artifact`/`render-ui` own [visual schemas](../../docs/architecture/visual-results.md); `json-value` validates JSON.
 
-`features` selects features; `feature-config` reads preferences; `worker-plan` validates worker selections.
+`features` selects features; `feature-config` reads preferences; `worker-plan` validates worker selections; `actor-stamp` validates attribution.
