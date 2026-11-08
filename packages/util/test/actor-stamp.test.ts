@@ -12,6 +12,8 @@ const principal = {
 
 test("actor stamps retain bounded historical identity without accepting authority or recursive causes", () => {
   expect(ActorStamp.Info.parse(principal)).toEqual(principal)
+  expect(ActorStamp.Account.parse(principal)).toEqual(principal)
+  expect(ActorStamp.Account.safeParse({ ...principal, kind: "system" }).success).toBe(false)
   const local = { ...principal, kind: "local" }
   expect(ActorStamp.Info.safeParse(local).success).toBe(false)
   const { orgID, ...withoutOrg } = principal

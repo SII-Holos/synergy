@@ -45,6 +45,8 @@ The organization Runtime's optional version 1 binding lives under `organization`
 
 The independent organization database stores version 1 directory records at `organization/sessions/<session>`. `organization/session-creators/<project>/<creator>/<session>` and `organization/session-visibility/<private-or-shared>/<project>/<session>` are transactional identity indexes for authorized pagination and anonymous counts. They contain no conversation data. See [Session directory](../architecture/organization.md#session-directory).
 
+`organization/signing-identity` in that database contains the service's versioned deployment identity and Ed25519 credentials, including private PKCS8 bytes. It is sensitive service authority, excluded from public projections and Runtime Session transfers. The startup migration `20261109-organization-signing-identity` creates it; a missing record after completed migration requires recovery. See [command signing identity](../architecture/organization.md#command-signing-identity).
+
 The optional Session long-term summary lives in `sessions/<scope>/<session>/info` under `longTermMemory`. Its independent review cursor and versioned source digest live at `sessions/<scope>/<session>/long_term_memory`. These are Agent database records, not files, Library entries or cache data. [Session long-term summary](../architecture/session-and-messages.md#session-long-term-summary) defines revision, import, fork and deletion behavior.
 
 Rollout stores execution intervals at `<owner>/rollout/runs/<run>/intervals/<interval>` alongside its existing run and segment evidence. Interval writes append through the Rollout journal; [execution evidence](../architecture/session-and-messages.md) defines timing, recovery and migration semantics.

@@ -6,6 +6,7 @@ import type { RuntimeSocket } from "../src/runtime-connection"
 import {
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationCommandProtocol as Command,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { fixture, password } from "./support/organization"
 import { keys, proof, consume, register, connection } from "./support/runtime"
@@ -107,6 +108,32 @@ test("real Runtime connections authenticate, fence replacements and revoke indep
   } finally {
     await server.stop(true)
   }
+})
+
+test("Runtime handshakes retain one deployment-bound service signing identity across restart", async () => {
+  await using f = await fixture()
+  const owner = await f.initialize()
+  const key = await keys()
+  const ticket = await register(owner, "signing-device", key.publicKey)
+  const runtime = Runtime.Registration.parse(await (await consume(f, await proof(ticket, key.privateKey))).json())
+  async function identity(epoch: number) {
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: f.service.fetch, websocket: f.service.websocket })
+    try {
+      using socket = await peer(server.url)
+      socket.send(await connection(runtime, key.privateKey, epoch))
+      const connected = (await socket.next()) as Record<string, unknown>
+      const identity = Command.SigningIdentity.parse(connected.signingIdentity)
+      expect(identity.orgID).toBe(runtime.orgID)
+      expect(identity.deploymentIncarnation).toBe(runtime.deploymentIncarnation)
+      expect(JSON.stringify(connected)).not.toContain("pkcs8")
+      return identity
+    } finally {
+      await server.stop(true)
+    }
+  }
+  const first = await identity(1)
+  await f.restart()
+  expect(await identity(2)).toEqual(first)
 })
 
 test("simultaneous handshakes have one winner and account removal closes that machine's current connection", async () => {

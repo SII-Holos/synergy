@@ -22,4 +22,6 @@ The outbound bridge declares only implemented capabilities. Persist a matching a
 
 Resident connections belong to component services. Keep local readiness independent of the remote service, stop reconnect on replacement or authorization/protocol failure, and drain connection work on Runtime close. One-shot discovery never starts a bridge.
 
+Validate the service's signing identity against the verified connection's organization and deployment before publishing its checkpoint. A matching key or valid signature does not bypass command, binding or transfer admission.
+
 Desktop Browser selection requires explicit private launch data and a managed Desktop listener. Preserve both local HTTP and Browser registration authentication, reject inherited native credentials, and keep page creation lazy. Verify real sockets and rejected non-Desktop selection in `test/desktop.test.ts`.

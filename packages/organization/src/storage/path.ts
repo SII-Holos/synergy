@@ -1,5 +1,6 @@
 export namespace OrganizationStoragePath {
   export const deployment = () => ["organization", "deployment"]
+  export const signingIdentity = () => ["organization", "signing-identity"]
   export const info = () => ["organization", "info"]
   export const bootstrap = () => ["organization", "bootstrap"]
   export const account = (id: string) => ["organization", "accounts", id]

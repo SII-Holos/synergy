@@ -1143,6 +1143,7 @@
       "name": "@ericsanchezok/synergy-organization-protocol",
       "version": "1.1.26",
       "dependencies": {
+        "@ericsanchezok/synergy-util": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {

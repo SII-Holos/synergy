@@ -1,13 +1,12 @@
 import { z } from "zod"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
+import { OrganizationCommandProtocol as Command } from "./command.js"
+import { SigningPublicKey, SigningSignature, signedProtocol } from "./signature.js"
 
 export namespace OrganizationRuntimeProtocol {
-  export const PublicKey = z
-    .string()
-    .regex(/^[a-f0-9]{64}$/)
-    .meta({ ref: "OrgRuntimePublicKey" })
-  export const Signature = z.string().regex(/^[a-f0-9]{128}$/)
+  export const PublicKey = SigningPublicKey.meta({ ref: "OrgRuntimePublicKey" })
+  export const Signature = SigningSignature
   export const MemberRegistration = z
     .strictObject({ deviceID: Identity.ID, publicKey: PublicKey })
     .meta({ ref: "OrgMemberRuntimeRegistration" })
@@ -80,6 +79,7 @@ export namespace OrganizationRuntimeProtocol {
     deploymentIncarnation: Identity.ID,
     runtimeID: Identity.ID,
     connectionEpoch: Protocol.Epoch,
+    signingIdentity: Command.SigningIdentity,
     heartbeatMs: z.number().int().positive(),
     offlineMs: z.number().int().positive(),
   })
@@ -98,46 +98,8 @@ export namespace OrganizationRuntimeProtocol {
     })
     .meta({ ref: "OrgRuntimeConnectionStatus" })
 
-  function canonical(value: unknown): unknown {
-    if (Array.isArray(value)) return value.map(canonical)
-    if (value && typeof value === "object")
-      return Object.fromEntries(
-        Object.entries(value)
-          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-          .map(([key, item]) => [key, canonical(item)]),
-      )
-    return value
-  }
-  function bytes(value: Proof) {
-    return new TextEncoder().encode(
-      "synergy.organization.runtime.proof.v1\n" + JSON.stringify(canonical(Proof.parse(value))),
-    )
-  }
-  function hex(value: ArrayBuffer) {
-    return Array.from(new Uint8Array(value), (byte) => byte.toString(16).padStart(2, "0")).join("")
-  }
-  function decode(value: string) {
-    return Uint8Array.from(value.match(/../g)!, (byte) => Number.parseInt(byte, 16))
-  }
-
-  // Provenance: https://www.rfc-editor.org/rfc/rfc8032 and https://nodejs.org/api/webcrypto.html
-  // Local adaptation: Web Crypto Ed25519 over a versioned purpose prefix and sorted, strictly validated protocol objects.
-  export async function publicKey(key: CryptoKey) {
-    return PublicKey.parse(hex(await crypto.subtle.exportKey("raw", key)))
-  }
-  export async function sign(value: Proof, key: CryptoKey) {
-    return Signature.parse(hex(await crypto.subtle.sign("Ed25519", key, bytes(value))))
-  }
-  export async function verify(value: unknown, signature: unknown, publicKey: unknown) {
-    const proof = Proof.safeParse(value)
-    const signed = Signature.safeParse(signature)
-    const raw = PublicKey.safeParse(publicKey)
-    if (!proof.success || !signed.success || !raw.success) return false
-    try {
-      const key = await crypto.subtle.importKey("raw", decode(raw.data), "Ed25519", false, ["verify"])
-      return await crypto.subtle.verify("Ed25519", key, decode(signed.data), bytes(proof.data))
-    } catch {
-      return false
-    }
-  }
+  const signatures = signedProtocol(Proof, "synergy.organization.runtime.proof.v1\n")
+  export const publicKey = signatures.publicKey
+  export const sign = signatures.sign
+  export const verify = signatures.verify
 }

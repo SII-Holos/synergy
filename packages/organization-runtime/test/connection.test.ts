@@ -191,6 +191,37 @@ test("the member bridge refuses a foreign handshake before publishing a connecti
   expect(valid.connected.connectionEpoch).toBe(1)
 })
 
+test("the member bridge rejects a signing identity from another deployment before saving its checkpoint", async () => {
+  await using f = await enrolled()
+  const first = await openMemberConnection(f.options)
+  const identity = first.connected.signingIdentity
+  await first.close()
+  const filename = path.join(f.member.root, "organization-connection.json")
+  const checkpoint = await Bun.file(filename).text()
+  f.interceptFrames((socket) => {
+    socket.send(
+      JSON.stringify({
+        type: "handshake",
+        protocolVersion: 1,
+        orgID: f.registration.orgID,
+        deploymentIncarnation: f.registration.deploymentIncarnation,
+        runtimeID: f.registration.runtimeID,
+        connectionEpoch: 2,
+        heartbeatMs: 25,
+        offlineMs: 300,
+        signingIdentity: { ...identity, deploymentIncarnation: "foreign-deployment" },
+      }),
+    )
+    return true
+  })
+  await expect(openMemberConnection(f.options)).rejects.toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+  expect(await Bun.file(filename).text()).toBe(checkpoint)
+  f.interceptFrames(undefined)
+  await using second = await openMemberConnection(f.options)
+  expect(second.connected.signingIdentity).toEqual(identity)
+  expect(second.connected.connectionEpoch).toBe(2)
+})
+
 test("heartbeat loss and caller cancellation settle the owned socket without claiming execution takeover", async () => {
   await using f = await enrolled()
   f.interceptFrames((_socket, raw) => Protocol.ClientFrame.parse(JSON.parse(String(raw))).type === "heartbeat")

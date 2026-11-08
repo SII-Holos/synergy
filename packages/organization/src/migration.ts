@@ -4,6 +4,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationStoragePath } from "./storage/path"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
+import { initializeSigningIdentity } from "./signing"
 
 const migrations: Migration[] = [
   {
@@ -42,6 +43,17 @@ const migrations: Migration[] = [
     dependsOn: ["20261108-organization-deployment"],
     async up(progress) {
       await HomeOwnership.persist()
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20261109-organization-signing-identity",
+    description: "Establish a deployment-bound organization command signing identity",
+    scope: "global",
+    execution: "startup",
+    dependsOn: ["20261108-organization-home-ownership"],
+    async up(progress) {
+      await initializeSigningIdentity()
       progress(1, 1)
     },
   },

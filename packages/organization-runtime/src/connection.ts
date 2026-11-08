@@ -171,6 +171,8 @@ async function attempt(input: {
         connected ||
         frame.orgID !== member.identity.orgID ||
         frame.deploymentIncarnation !== registration.deploymentIncarnation ||
+        frame.signingIdentity.orgID !== frame.orgID ||
+        frame.signingIdentity.deploymentIncarnation !== frame.deploymentIncarnation ||
         frame.runtimeID !== registration.runtimeID ||
         frame.connectionEpoch !== epoch ||
         frame.offlineMs <= frame.heartbeatMs ||

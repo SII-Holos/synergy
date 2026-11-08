@@ -28,6 +28,7 @@ import { digest } from "./auth/secret"
 import type { Server } from "bun"
 import { createRuntimeConnections, type RuntimeConnections, type RuntimeSocket } from "./runtime-connection"
 import { organizationWeb } from "./web"
+import { loadSigningAuthority } from "./signing"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -142,8 +143,9 @@ export async function openOrganizationService(options: OrganizationServiceOption
       RuntimeContext.sealComposition()
       await ensureMigrations({ output: "silent" })
       await HomeOwnership.assert({ required: true })
-      OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
-      connections = createRuntimeConnections({ run, settings: settings.connections })
+      const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
+      const signing = await loadSigningAuthority(deployment)
+      connections = createRuntimeConnections({ run, settings: settings.connections, signingIdentity: signing.identity })
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
       const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)

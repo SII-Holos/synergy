@@ -4,6 +4,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationProtocol as Protocol,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationCommandProtocol as Command,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
@@ -35,6 +36,7 @@ function stale(epoch: number): never {
 
 export function createRuntimeConnections(input: {
   run: <T>(body: () => T | Promise<T>) => Promise<T>
+  signingIdentity: Command.SigningIdentity
   settings?: RuntimeConnectionSettings
 }) {
   const settings = RuntimeConnectionSettings.parse(input.settings ?? {})
@@ -99,6 +101,11 @@ export function createRuntimeConnections(input: {
       async () => {
         live(socket)
         const deployment = Protocol.Deployment.parse(await Storage.read(Keys.deployment()))
+        if (
+          input.signingIdentity.orgID !== deployment.orgID ||
+          input.signingIdentity.deploymentIncarnation !== deployment.deploymentIncarnation
+        )
+          fail("SERVICE_UNAVAILABLE", "The organization signing authority changed")
         const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(handshake.runtimeID))
         if (
           !runtime ||
@@ -165,6 +172,7 @@ export function createRuntimeConnections(input: {
       deploymentIncarnation: handshake.deploymentIncarnation,
       runtimeID: handshake.runtimeID,
       connectionEpoch: handshake.connectionEpoch,
+      signingIdentity: input.signingIdentity,
       heartbeatMs: settings.heartbeatMs,
       offlineMs: settings.offlineMs,
     })

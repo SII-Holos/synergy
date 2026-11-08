@@ -8,13 +8,14 @@ export namespace ActorStamp {
     clientKind: z.enum(["web", "desktop", "cli", "api", "runtime", "system"]),
     requestID: ID,
   }
-  const account = z.strictObject({ ...fields, kind: z.literal("account"), orgID: ID })
+  export const Account = z.strictObject({ ...fields, kind: z.literal("account"), orgID: ID })
+  export type Account = z.infer<typeof Account>
   const local = z.strictObject({ ...fields, kind: z.literal("local") })
   const system = z.strictObject({ ...fields, kind: z.literal("system"), orgID: ID.optional() })
-  export const Principal = z.discriminatedUnion("kind", [account, local, system])
+  export const Principal = z.discriminatedUnion("kind", [Account, local, system])
   export const Info = z
     .discriminatedUnion("kind", [
-      account,
+      Account,
       local,
       system.extend({ causedBy: z.array(Principal).min(1).max(16).optional() }),
     ])

@@ -4,10 +4,14 @@ import {
   OrganizationRuntimeProtocol as Runtime,
   OrganizationClientAuth as ClientAuth,
   OrganizationSessionProtocol as Session,
+  OrganizationCommandProtocol as Command,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 export namespace OrganizationRecord {
+  export const SigningIdentity = Command.SigningIdentity.extend({
+    pkcs8: z.string().regex(/^(?:[a-f0-9]{2}){1,1024}$/),
+  })
   export const Info = Identity.Organization.extend({ schemaVersion: z.literal(1), owners: z.array(Identity.ID).min(1) })
   export const Account = Identity.Account.extend({ schemaVersion: z.literal(1), passwordHash: z.string().min(1) })
   export type Account = z.infer<typeof Account>

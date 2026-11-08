@@ -10,6 +10,11 @@
       "import": "./src/*.ts"
     },
     "./pty-keys": "./src/pty-keys.ts",
+    "./actor-stamp": {
+      "types": "./src/actor-stamp.ts",
+      "bun": "./src/actor-stamp.ts",
+      "import": "./dist/actor-stamp.js"
+    },
     "./terminal": {
       "types": "./src/terminal.ts",
       "bun": "./src/terminal.ts",

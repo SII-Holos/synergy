@@ -15,6 +15,7 @@
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
+    "@ericsanchezok/synergy-util": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {
