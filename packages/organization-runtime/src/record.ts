@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { createReadStream } from "node:fs"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 
 export class MemberHomeError extends Error {
@@ -9,14 +10,14 @@ export class MemberHomeError extends Error {
 }
 
 export async function readRecord<T>(filename: string, schema: z.ZodType<T>, label: string) {
-  const text = await Bun.file(filename)
-    .slice(0, 8193)
-    .text()
-    .catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return undefined
-      throw error
-    })
-  if (text === undefined) return
+  const chunks: Buffer[] = []
+  try {
+    for await (const chunk of createReadStream(filename, { end: 8192 })) chunks.push(chunk)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return
+    throw error
+  }
+  const text = Buffer.concat(chunks).toString("utf8")
   try {
     if (Buffer.byteLength(text) > 8192) throw new Error("Oversized record")
     return schema.parse(JSON.parse(text))

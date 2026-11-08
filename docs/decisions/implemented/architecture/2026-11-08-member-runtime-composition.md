@@ -8,7 +8,7 @@ An enrolled machine identity does not isolate model configuration, instruction d
 
 ## Decision
 
-`openMemberRuntime` validates the prepared Home and enrollment, then uses the shared Agent Runtime bootstrap with explicit features and a Local Runtime component without an execution Environment. It selects no HTTP listener, resident services, Memory, Library, plugins or Desktop capabilities. An exclusive execution source denies work until trusted organization command admission supplies authority.
+`openMemberRuntime` validates the prepared Home and enrollment, then uses the shared Agent Runtime bootstrap with explicit features and a Local Runtime component without an execution Environment. Its default one-shot mode selects no HTTP listener or resident services; the explicit resident option is defined by the [local service decision](2026-11-08-member-runtime-local-service.md). Memory, Library, plugins and Desktop capabilities remain unselected. An exclusive execution source denies work until trusted organization command admission supplies authority.
 
 The host selects an exclusive configuration source, empty provider catalogs, project-only instructions and no filesystem or bundled Skills. Its environment permits executable lookup and locale variables and binds user directories to the member Home. Agent and policy workers receive only public member identity metadata and repeat the source registrations; generic worker startup verifies the persisted Home owner before readiness. Source workers disable automatic dotenv and Bun configuration loading and use their owning Runtime directory.
 

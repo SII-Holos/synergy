@@ -28,6 +28,7 @@
     "packages/organization-protocol",
     "packages/harness",
     "packages/util",
+    "packages/server",
     "packages/sdk/js"
   ]
 }

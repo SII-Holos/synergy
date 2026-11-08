@@ -1159,6 +1159,7 @@
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-organization-protocol": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
+        "@ericsanchezok/synergy-server": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "zod": "catalog:",
       },

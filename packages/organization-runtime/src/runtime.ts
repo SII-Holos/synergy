@@ -1,4 +1,5 @@
 import path from "node:path"
+import { z } from "zod"
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
@@ -8,6 +9,11 @@ import { readMemberRegistration } from "./enrollment"
 import { MemberHomeError } from "./record"
 import { registerMemberSources } from "./sources"
 import { metadata } from "./worker"
+
+const MemberListener = z.strictObject({
+  port: z.number().int().min(1).max(65535),
+  token: z.string().regex(/^[a-f0-9]{64}$/),
+})
 
 function memberEnvironment(member: MemberHome, input: Readonly<Record<string, string | undefined>>) {
   const selected: Record<string, string> = {}
@@ -46,15 +52,20 @@ export async function openMemberRuntime(input: {
   home: string
   identity: MemberIdentity
   environment?: Readonly<Record<string, string | undefined>>
+  listen?: z.infer<typeof MemberListener>
   signal?: AbortSignal
 }) {
   input.signal?.throwIfAborted()
+  const listener = MemberListener.optional().safeParse(input.listen)
+  if (!listener.success)
+    throw new MemberHomeError("Member Runtime listener requires an explicit port and private credential")
   const member = await readMemberHome(input.home, input.identity)
   const registration = await readMemberRegistration(member.home, member.identity)
   if (!registration || registration.state !== "active")
     throw new MemberHomeError("Member Runtime must be enrolled before startup")
   const components = [
     localRuntime({ workers: false, environment: false }),
+    ...(listener.data ? [(await import("@ericsanchezok/synergy-server/component")).server()] : []),
     {
       ...metadata,
       features: { kind: "foundation" as const, definitions: [] },
@@ -68,12 +79,16 @@ export async function openMemberRuntime(input: {
     host: createLocalHost({
       home: member.home,
       root: member.root,
-      env: memberEnvironment(member, input.environment ?? process.env),
+      env: {
+        ...memberEnvironment(member, input.environment ?? process.env),
+        ...(listener.data ? { SYNERGY_SERVER_TOKEN: listener.data.token } : {}),
+      },
     }),
     components,
     features: FeatureSelection.resolve(components),
-    mode: "oneshot",
-    listen: false,
+    mode: listener.data ? "server" : "oneshot",
+    listen: !!listener.data,
+    network: listener.data ? { hostname: "127.0.0.1", port: listener.data.port } : undefined,
     signal: input.signal,
   })
 }

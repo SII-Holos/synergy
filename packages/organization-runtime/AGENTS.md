@@ -12,4 +12,6 @@ Read local project configuration only through Harness `ProjectConfig` with an ex
 
 Provision member Homes by organization, account and device before Agent Runtime startup. Preserve established keys on retry; missing or mismatched credentials require explicit recovery. Registration tickets stay in memory, while public enrollment snapshots never replace current service authorization. Verify real HTTPS registration and response-loss retries in `test/enrollment.test.ts`; never disable TLS validation for deployment convenience.
 
+Keep `./home` usable by Node provisioning hosts without opening Agent storage. Preserve bounded reads and the positive test-home guard. Member HTTP uses the existing Server component with an explicit loopback port and per-instance bearer; verify real Node provisioning, failed-open cleanup and isolated HTTP instances in the Home and Runtime suites.
+
 The outbound bridge declares only implemented capabilities. Persist a matching acknowledged epoch before returning a connected handle; never lower a checkpoint to satisfy a stale service snapshot. Preserve received protocol errors through socket close, propagate cancellation into checkpoint lock waits and drain pending writes before disposal. Verify real WSS fencing, reconnection, revocation and failure paths in `test/connection.test.ts`.

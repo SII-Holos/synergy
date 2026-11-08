@@ -1,6 +1,7 @@
 import { afterAll, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { memberIdentityDigest, prepareMemberHome, readMemberHome } from "../src/home"
 
 const roots: string[] = []
@@ -12,6 +13,57 @@ async function directory() {
 afterAll(async () => {
   await Promise.all(roots.map((root) => fs.rm(root, { recursive: true, force: true })))
 })
+
+test("the Desktop Node host provisions the same member identity before a Bun service starts", async () => {
+  const baseDirectory = await directory()
+  const identity = { orgID: "organization", accountID: "member", deviceID: "desktop" }
+  const origin = "https://organization.example"
+  const output = path.join(baseDirectory, "home.mjs")
+  const bundle = await Bun.build({
+    entrypoints: [fileURLToPath(new URL("../src/home.ts", import.meta.url))],
+    target: "node",
+  })
+  expect(bundle.success).toBe(true)
+  await fs.writeFile(output, await bundle.outputs[0]!.text())
+  const entry = path.join(baseDirectory, "provision.test.js")
+  await fs.writeFile(path.join(baseDirectory, "package.json"), JSON.stringify({ type: "module" }))
+  await fs.writeFile(
+    entry,
+    `
+        import { prepareMemberHome, readMemberHome } from ${JSON.stringify(pathToFileURL(output).href)};
+        import assert from "node:assert/strict";
+        const input = JSON.parse(process.argv[2]);
+        const [first, again] = await Promise.all([prepareMemberHome(input), prepareMemberHome(input)]);
+        if (first.publicKey !== again.publicKey) throw new Error("Concurrent provisioning replaced the key");
+        const restored = await readMemberHome(first.home, input.identity);
+        if (JSON.stringify(restored) !== JSON.stringify(first)) throw new Error("Node identity changed");
+        console.log(JSON.stringify(first));
+        delete process.env.SYNERGY_TEST_HOME;
+        await assert.rejects(readMemberHome(first.home, input.identity), {name: "TestHomeGuardError"});
+      `,
+  )
+  const child = Bun.spawn(
+    ["node", entry, JSON.stringify({ baseDirectory: path.join(baseDirectory, "members"), identity, origin })],
+    { stdout: "pipe", stderr: "pipe", timeout: 10_000 },
+  )
+  try {
+    const [exit, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(exit, stderr).toBe(0)
+    const member = await readMemberHome(path.join(baseDirectory, "members", memberIdentityDigest(identity)), identity)
+    expect(JSON.parse(stdout)).toEqual(member)
+    expect(stdout).not.toContain("pkcs8")
+    expect(await prepareMemberHome({ baseDirectory: path.join(baseDirectory, "members"), identity, origin })).toEqual(
+      member,
+    )
+  } finally {
+    if (child.exitCode === null) child.kill()
+    await child.exited
+  }
+}, 15_000)
 
 test("member Homes use organization, account and device identity, with stable private machine keys", async () => {
   const baseDirectory = await directory()
@@ -51,6 +103,8 @@ test("a member Home refuses another identity, a changed address and missing or m
   await expect(prepareMemberHome({ baseDirectory, identity, origin })).rejects.toThrow("credentials")
   expect(await Bun.file(credentials).exists()).toBe(false)
   await Bun.write(credentials, "invalid-private-key")
+  await expect(readMemberHome(member.home, identity)).rejects.toThrow("credentials")
+  await Bun.write(credentials, original + " ".repeat(8193))
   await expect(readMemberHome(member.home, identity)).rejects.toThrow("credentials")
   await Bun.write(credentials, original)
   expect(await readMemberHome(member.home, identity)).toEqual(member)

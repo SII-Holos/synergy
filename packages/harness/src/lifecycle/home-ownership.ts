@@ -1,4 +1,5 @@
 import path from "node:path"
+import { createReadStream } from "node:fs"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
@@ -30,14 +31,14 @@ export namespace HomeOwnership {
   }
 
   export async function read() {
-    const contents = await Bun.file(filename())
-      .slice(0, 4097)
-      .text()
-      .catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") return undefined
-        throw error
-      })
-    if (contents === undefined) return undefined
+    const chunks: Buffer[] = []
+    try {
+      for await (const chunk of createReadStream(filename(), { end: 4096 })) chunks.push(chunk)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+      throw error
+    }
+    const contents = Buffer.concat(chunks).toString("utf8")
     try {
       if (Buffer.byteLength(contents) > 4096) throw new Error("Home ownership record is too large")
       return Info.parse(JSON.parse(contents))

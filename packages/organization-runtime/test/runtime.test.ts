@@ -18,6 +18,7 @@ import { InstructionFiles } from "@ericsanchezok/synergy-harness/session/instruc
 import { spawnAgentWorkerProcess } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
 import { spawnPolicyWorkerProcess } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
@@ -37,6 +38,92 @@ async function enrolled(service: Awaited<ReturnType<typeof fixture>>) {
   })
   return member
 }
+
+async function availablePort() {
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
+  const port = server.port!
+  await server.stop(true)
+  return port
+}
+
+test("member HTTP services bind explicit loopback ports and keep credentials, identities and shutdown separate", async () => {
+  await using a = await fixture()
+  await using b = await fixture()
+  const [first, second] = await Promise.all([enrolled(a), enrolled(b)])
+  const tokenA = "a".repeat(64)
+  const tokenB = "b".repeat(64)
+  const portA = await availablePort()
+  await using one = await openMemberRuntime({
+    home: first.home,
+    identity: first.identity,
+    listen: { port: portA, token: tokenA },
+  })
+  const portB = await availablePort()
+  await using two = await openMemberRuntime({
+    home: second.home,
+    identity: second.identity,
+    listen: { port: portB, token: tokenB },
+  })
+  expect(one.server?.hostname).toBe("127.0.0.1")
+  expect(one.server?.port).toBe(portA)
+  expect(two.server?.port).toBe(portB)
+  const baseUrl = `http://127.0.0.1:${portA}`
+  const apiA = createSynergyClient({ baseUrl, headers: { authorization: `Bearer ${tokenA}` } })
+  const apiB = createSynergyClient({
+    baseUrl: `http://127.0.0.1:${portB}`,
+    headers: { authorization: `Bearer ${tokenB}` },
+  })
+  expect((await fetch(`${baseUrl}/global/health`)).status).toBe(401)
+  expect((await fetch(`${baseUrl}/global/health`, { headers: { authorization: `Bearer ${tokenB}` } })).status).toBe(401)
+  const identityA = (await apiA.global.capabilities({ throwOnError: true })).data.runtimeID
+  expect((await apiB.global.capabilities({ throwOnError: true })).data.runtimeID).not.toBe(identityA)
+  const draft = (await one.client({ scopeID: "home" }).session.create({ title: "member draft" })).data
+  expect((await apiA.session.list({ scopeID: "home" }, { throwOnError: true })).data.data.map((row) => row.id)).toEqual(
+    [draft.id],
+  )
+  expect((await apiB.session.list({ scopeID: "home" }, { throwOnError: true })).data.data).toEqual([])
+  await one.close()
+  await expect(apiA.global.capabilities({ throwOnError: true })).rejects.toThrow()
+  expect((await apiB.global.capabilities({ throwOnError: true })).data.runtimeID).toBeDefined()
+  await using restarted = await openMemberRuntime({
+    home: first.home,
+    identity: first.identity,
+    listen: { port: portA, token: "c".repeat(64) },
+  })
+  expect((await apiA.global.capabilities()).response.status).toBe(401)
+  const current = createSynergyClient({ baseUrl, headers: { authorization: `Bearer ${"c".repeat(64)}` } })
+  expect((await current.global.capabilities({ throwOnError: true })).data.runtimeID).toBe(identityA)
+}, 30_000)
+
+test("invalid listeners and occupied ports never retain a failed member Runtime's storage ownership", async () => {
+  await using service = await fixture()
+  const member = await enrolled(service)
+  for (const listen of [
+    { port: 0, token: "a".repeat(64) },
+    { port: 65536, token: "a".repeat(64) },
+    { port: 48000, token: "weak" },
+    { port: 48000, token: "a".repeat(64), hostname: "0.0.0.0" },
+  ])
+    await expect(
+      (async () => {
+        await using runtime = await openMemberRuntime({ home: member.home, identity: member.identity, listen })
+      })(),
+    ).rejects.toThrow("listener")
+  expect(await Bun.file(path.join(member.root, "authority.sqlite")).exists()).toBe(false)
+  const blocker = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
+  const listen = { port: blocker.port!, token: "a".repeat(64) }
+  try {
+    await expect(
+      (async () => {
+        await using runtime = await openMemberRuntime({ home: member.home, identity: member.identity, listen })
+      })(),
+    ).rejects.toThrow("Failed to start server")
+  } finally {
+    await blocker.stop(true)
+  }
+  await using reopened = await openMemberRuntime({ home: member.home, identity: member.identity, listen })
+  expect(reopened.server?.port).toBe(listen.port)
+}, 30_000)
 
 test("personal and two organization Runtimes keep configuration, instructions, Skills, credentials and storage separate", async () => {
   await using a = await fixture()
