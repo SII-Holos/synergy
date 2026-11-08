@@ -142,7 +142,57 @@ export namespace RolloutLifecycle {
     if (inherited) throw new RolloutAdmissionError({ message: "Delegated runs inherit their parent experiment" })
   }
 
-  export async function cancel(sessionID: string, runID: string) {
+  export type CancelAdmission = {
+    signal?: AbortSignal
+    validate?(): Promise<void>
+    record?(run: RolloutSchema.RunRecord): Promise<void>
+    commitGuard?(): void
+  }
+
+  export async function cancel(sessionID: string, runID: string, options?: CancelAdmission) {
+    if (Storage.inTransaction()) throw new Error("Task cancellation must own its commit boundary")
+    const admission = { ...options }
+    admission.signal?.throwIfAborted()
+    let refusal: InstanceType<typeof RolloutAdmissionError> | undefined
+    function reject(cause: unknown): never {
+      if (refusal && cause === refusal) throw cause
+      refusal = new RolloutAdmissionError({ message: "Task cancellation admission failed" }, { cause })
+      throw refusal
+    }
+    try {
+      return await cancelRun(sessionID, runID, async (run) => {
+        try {
+          await Storage.transaction(
+            async () => {
+              admission.signal?.throwIfAborted()
+              await admission.validate?.()
+              if (run.cancelRequestedAt)
+                for (const item of await SessionInbox.list(sessionID))
+                  if (item.messageID === runID) await SessionInbox.remove({ sessionID, itemID: item.id })
+              await admission.record?.(RolloutSchema.RunRecord.parse(run))
+            },
+            {
+              commitGuard() {
+                try {
+                  admission.signal?.throwIfAborted()
+                  admission.commitGuard?.()
+                } catch (cause) {
+                  reject(cause)
+                }
+              },
+            },
+          )
+        } catch (cause) {
+          reject(cause)
+        }
+      })
+    } catch (error) {
+      if (refusal && error === refusal) throw refusal.cause
+      throw error
+    }
+  }
+
+  async function cancelRun(sessionID: string, runID: string, publish: (run: RolloutSchema.RunRecord) => Promise<void>) {
     const stored = await Session.get(sessionID)
     const root = await MessageV2.readInfo({ scopeID: stored.scope.id, sessionID, messageID: runID }).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
@@ -150,27 +200,24 @@ export namespace RolloutLifecycle {
     })
     const session = SessionExecutionOwners.forRoot(stored, root)
     const identity = owner(session)
-    let run = await RolloutLedger.requestCancel(identity, runID).catch((error) => {
+    let run = await RolloutLedger.requestCancel(identity, runID, publish).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
     if (!run) {
       for (const item of [...(await SessionInbox.list(sessionID)), ...(await SessionInbox.listRemoved(sessionID))]) {
         if (item.messageID !== runID) continue
-        run = await RolloutLedger.cancelUnopenedRun(identity, runID, item.time.created)
-        await SessionInbox.remove({ sessionID, itemID: item.id })
+        run = await RolloutLedger.cancelUnopenedRun(identity, runID, item.time.created, publish)
         break
       }
       if (!run) {
         const message = (await SessionHistory.modelMessages({ sessionID })).find((message) => message.info.id === runID)
         if (message?.info.role === "user" && message.info.isRoot)
-          run = await RolloutLedger.cancelUnopenedRun(identity, runID, message.info.time.created)
+          run = await RolloutLedger.cancelUnopenedRun(identity, runID, message.info.time.created, publish)
       }
       if (!run) throw new Storage.NotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
     }
     if (run.status !== "running" && run.status !== "interrupted") return run
-    for (const item of await SessionInbox.list(sessionID))
-      if (item.messageID === runID) await SessionInbox.remove({ sessionID, itemID: item.id })
     // Signal the live owner before waiting on it: requestCancel only marks
     // the ledger, so without the root-scoped abort the wait below would
     // block until the model or tool call finishes naturally.

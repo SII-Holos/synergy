@@ -90,12 +90,21 @@ export namespace RolloutLedger {
     return RolloutSchema.RunRecord.parse(await Storage.read([...root(owner, runID), "info"]))
   }
 
-  export async function requestCancel(owner: Owner, runID: string) {
+  export async function requestCancel(
+    owner: Owner,
+    runID: string,
+    publish?: (run: RolloutSchema.RunRecord) => Promise<void>,
+  ) {
     using lock = await writeLock(owner, runID)
     const run = await getRun(owner, runID)
-    if ((run.status !== "running" && run.status !== "interrupted") || run.cancelRequestedAt) return run
+    if ((run.status !== "running" && run.status !== "interrupted") || run.cancelRequestedAt) {
+      if (publish) await Storage.transaction(() => publish(run))
+      return run
+    }
     const updated = { ...run, cancelRequestedAt: Date.now() }
-    await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], updated))
+    await record(() =>
+      RolloutJournal.write(owner, [...root(owner, runID), "info"], updated, publish && (() => publish(updated))),
+    )
     return updated
   }
 
@@ -192,16 +201,26 @@ export namespace RolloutLedger {
    *  materialization cannot accept it after the cancellation acknowledgement.
    *  A run that appeared meanwhile only gets its cancel request marked; the
    *  live owner settles it through the normal cancel path. */
-  export async function cancelUnopenedRun(owner: Owner, runID: string, started: number) {
+  export async function cancelUnopenedRun(
+    owner: Owner,
+    runID: string,
+    started: number,
+    publish?: (run: RolloutSchema.RunRecord) => Promise<void>,
+  ) {
     using lock = await writeLock(owner, runID)
     const existing = await getRun(owner, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
     if (existing) {
-      if (existing.status !== "running" || existing.cancelRequestedAt) return existing
+      if ((existing.status !== "running" && existing.status !== "interrupted") || existing.cancelRequestedAt) {
+        if (publish) await Storage.transaction(() => publish(existing))
+        return existing
+      }
       const updated = { ...existing, cancelRequestedAt: Date.now() }
-      await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], updated))
+      await record(() =>
+        RolloutJournal.write(owner, [...root(owner, runID), "info"], updated, publish && (() => publish(updated))),
+      )
       return updated
     }
     const cancelled = RolloutSchema.RunRecord.parse({
@@ -215,7 +234,9 @@ export namespace RolloutLedger {
       cancelRequestedAt: Date.now(),
       admissionOnly: true,
     })
-    await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], cancelled))
+    await record(() =>
+      RolloutJournal.write(owner, [...root(owner, runID), "info"], cancelled, publish && (() => publish(cancelled))),
+    )
     return cancelled
   }
 

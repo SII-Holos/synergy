@@ -32,4 +32,4 @@ Selective tool catalogs use `cortexTools()` and register `registerCortexToolInpu
 
 Harness owns manual paused Session migration through `session/transfer` and the explicit `session/transfer-workspace` Host contract. The protocol does not execute historical calls; see [Session transfer](../../docs/architecture/session-transfer.md).
 
-Trusted hosts compose continuation authorization and receipts through `SessionResume.request()` admission hooks, with a separate actor and cancellation signal. See [Session recovery](../../docs/architecture/session-and-messages.md#one-active-loop) for transaction ownership and retained identity.
+Trusted hosts compose continuation authorization and receipts through `SessionResume.request()` admission hooks, with a separate actor and cancellation signal. `RolloutLifecycle.cancel()` composes cancellation receipts before physical drainage. See [Session controls](../../docs/architecture/session-and-messages.md#one-active-loop) for transaction ownership, control serialization and retained identity.
