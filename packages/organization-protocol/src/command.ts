@@ -2,7 +2,7 @@ import { z } from "zod"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
-import { SigningPublicKey, SigningSignature, signedProtocol } from "./signature.js"
+import { SigningPublicKey, SigningSignature, digestProtocol, signedProtocol } from "./signature.js"
 
 export namespace OrganizationCommandProtocol {
   export const SigningIdentity = z
@@ -65,4 +65,124 @@ export namespace OrganizationCommandProtocol {
   const signatures = signedProtocol(Permit, "synergy.organization.command.permit.v1\n")
   export const sign = signatures.sign
   export const verify = signatures.verify
+
+  export const Input = z
+    .strictObject({
+      operation: z.literal("input"),
+      mode: z.enum(["task", "steer", "context"]),
+      parts: z
+        .array(z.strictObject({ type: z.literal("text"), text: z.string().min(1).max(32_768) }))
+        .min(1)
+        .max(32),
+    })
+    .refine(
+      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 32_768,
+      "Inline input is too large",
+    )
+    .meta({ ref: "OrgCommandInput" })
+  export type Input = z.infer<typeof Input>
+  export const InputRequest = z.strictObject({
+    schemaVersion: z.literal(1),
+    orgID: Identity.ID,
+    requestID: Identity.ID,
+    sessionID: Identity.ID,
+    projectID: Identity.ID,
+    runtimeID: Identity.ID,
+    input: Input,
+  })
+  export type InputRequest = z.infer<typeof InputRequest>
+  export function inputRequest(permit: Permit, input: Input): InputRequest {
+    return InputRequest.parse({
+      schemaVersion: 1,
+      orgID: permit.orgID,
+      requestID: permit.requestID,
+      sessionID: permit.sessionID,
+      projectID: permit.projectID,
+      runtimeID: permit.runtimeID,
+      input,
+    })
+  }
+  export function digestInput(request: InputRequest) {
+    return digestProtocol(InputRequest, "synergy.organization.command.input.v1\n", request)
+  }
+  export const InputDelivery = z
+    .strictObject({ authorization: SignedPermit, input: Input })
+    .refine((value) => value.authorization.permit.operation === "input", "Input requires an input permit")
+  export type InputDelivery = z.infer<typeof InputDelivery>
+
+  export const SkipPermit = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      purpose: z.literal("session-command-skip"),
+      command: Permit,
+      connectionEpoch: Protocol.Epoch,
+      authorizedAt: z.number().int().nonnegative(),
+      deadline: z.number().int().nonnegative(),
+    })
+    .refine(
+      (value) => value.deadline > value.authorizedAt && value.deadline - value.authorizedAt <= 60_000,
+      "Skip permit lifetime must be positive and at most one minute",
+    )
+  export type SkipPermit = z.infer<typeof SkipPermit>
+  export const SignedSkip = z.strictObject({ permit: SkipPermit, signature: SigningSignature })
+  export type SignedSkip = z.infer<typeof SignedSkip>
+  const skips = signedProtocol(SkipPermit, "synergy.organization.command.skip.v1\n")
+  export const signSkip = skips.sign
+  export const verifySkip = skips.verify
+
+  export const Rejection = z.enum([
+    "EXPIRED_PERMIT",
+    "STALE_CONNECTION",
+    "STALE_BINDING",
+    "SESSION_UNAVAILABLE",
+    "TRANSFER_BLOCKED",
+    "SEQUENCE_GAP",
+    "SEQUENCE_CLOSED",
+    "REQUEST_CONFLICT",
+    "PAYLOAD_MISMATCH",
+  ])
+  export type Rejection = z.infer<typeof Rejection>
+  export const Accepted = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      permit: Permit,
+      acceptedAt: z.number().int().nonnegative(),
+      intakeSeq: Protocol.Epoch,
+      effect: z.strictObject({
+        kind: z.literal("inbox"),
+        itemID: Identity.ID,
+        messageID: Identity.ID,
+        mode: Input.shape.mode,
+      }),
+    })
+    .refine(
+      (value) =>
+        value.permit.operation === "input" &&
+        value.acceptedAt >= value.permit.authorizedAt &&
+        value.acceptedAt < value.permit.deadline,
+      "Accepted input must identify an input permit and its valid reception window",
+    )
+  export type Accepted = z.infer<typeof Accepted>
+  const attempt = {
+    schemaVersion: z.literal(1),
+    permit: Permit,
+    receivedAt: z.number().int().nonnegative(),
+  }
+  export const Attempt = z.discriminatedUnion("status", [
+    z.strictObject({ ...attempt, status: z.literal("accepted"), acceptedAttemptID: Identity.ID }),
+    z.strictObject({ ...attempt, status: z.literal("rejected"), reason: Rejection }),
+    z.strictObject({ ...attempt, status: z.literal("skipped") }),
+  ])
+  export type Attempt = z.infer<typeof Attempt>
+  export const SkipReceipt = z.strictObject({
+    schemaVersion: z.literal(1),
+    permit: SkipPermit,
+    receivedAt: z.number().int().nonnegative(),
+  })
+  export const Result = z.strictObject({
+    attempt: Attempt,
+    accepted: Accepted.optional(),
+    skip: SkipReceipt.optional(),
+  })
+  export type Result = z.infer<typeof Result>
 }

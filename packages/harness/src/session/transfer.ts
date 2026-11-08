@@ -41,6 +41,7 @@ export namespace SessionTransfer {
   export const Activation = S.Activation
   export const State = S.State
   export const Host = S.Host
+  export const isFrozen = Gate.isFrozen
   const Source = S.State.extend({ version: z.literal(1), secret: S.Hash, cancellationSecret: S.Hash }).strict()
   const sourceKey = (sessionID: string) => ["session_transfer_out", sessionID]
   const snapshotOwner = (id: string) => `transfer_${S.ID.parse(id).replaceAll("-", "")}`

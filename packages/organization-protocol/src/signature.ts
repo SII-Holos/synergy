@@ -20,6 +20,11 @@ function decode(value: string) {
   return Uint8Array.from(value.match(/../g)!, (byte) => Number.parseInt(byte, 16))
 }
 
+export async function digestProtocol<T>(schema: z.ZodType<T>, domain: string, value: T) {
+  const bytes = new TextEncoder().encode(domain + JSON.stringify(canonical(schema.parse(value))))
+  return hex(await crypto.subtle.digest("SHA-256", bytes))
+}
+
 // Provenance: https://www.rfc-editor.org/rfc/rfc8032 and https://nodejs.org/api/webcrypto.html
 // Local adaptation: Ed25519 signs a fixed domain prefix and a strictly validated, recursively ordered protocol object.
 export function signedProtocol<T>(schema: z.ZodType<T>, domain: string) {

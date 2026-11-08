@@ -103,3 +103,57 @@ test("command permits reject ambiguous actors, unbounded lifetimes and unsafe co
   ])
     expect(Command.Permit.safeParse({ ...permit, ...change }).success).toBe(false)
 })
+
+test("input digests bind the logical request, full target and text without depending on object key order", async () => {
+  const input: Command.Input = { operation: "input", mode: "task", parts: [{ type: "text", text: "Exact input 你好" }] }
+  const request = Command.inputRequest(permit, input)
+  const digest = await Command.digestInput(request)
+  expect(digest).toMatch(/^[a-f0-9]{64}$/)
+  expect(
+    await Command.digestInput(Command.InputRequest.parse(Object.fromEntries(Object.entries(request).reverse()))),
+  ).toBe(digest)
+  for (const change of [
+    { orgID: "other" },
+    { requestID: "other" },
+    { sessionID: "other" },
+    { projectID: "other" },
+    { runtimeID: "other" },
+    { input: { ...input, mode: "context" as const } },
+    { input: { ...input, parts: [{ type: "text" as const, text: "Exact input 你好 " }] } },
+  ])
+    expect(await Command.digestInput({ ...request, ...change })).not.toBe(digest)
+  for (const value of [
+    { ...input, actor: permit.actor },
+    { ...input, parts: [{ type: "attachment", url: "file:///private/local-input" }] },
+    { ...input, parts: [{ type: "text", text: "你".repeat(12_000) }] },
+    { ...input, parts: [] },
+  ])
+    expect(Command.Input.safeParse(value).success).toBe(false)
+})
+
+test("skip authorization has a separate signature domain and binds the original command and current connection", async () => {
+  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
+  const publicKey = await Runtime.publicKey(keys.publicKey)
+  const proof: Command.SkipPermit = {
+    schemaVersion: 1,
+    purpose: "session-command-skip",
+    command: permit,
+    connectionEpoch: 4,
+    authorizedAt: 90_000,
+    deadline: 120_000,
+  }
+  const signature = await Command.signSkip(proof, keys.privateKey)
+  expect(await Command.verifySkip(proof, signature, publicKey)).toBe(true)
+  expect(await Command.verifySkip({ ...proof, connectionEpoch: 5 }, signature, publicKey)).toBe(false)
+  expect(await Command.verifySkip({ ...proof, command: { ...permit, commandSeq: 9 } }, signature, publicKey)).toBe(
+    false,
+  )
+  expect(await Command.verifySkip({ ...proof, deadline: 120_001 }, signature, publicKey)).toBe(false)
+  expect(await Command.verifySkip({ ...proof, deadline: 150_001 }, signature, publicKey)).toBe(false)
+  const confused = await signedProtocol(Command.SkipPermit, "synergy.organization.command.permit.v1\n").sign(
+    proof,
+    keys.privateKey,
+  )
+  expect(await Command.verifySkip(proof, confused, publicKey)).toBe(false)
+  expect(await Command.verify(permit, signature, publicKey)).toBe(false)
+})

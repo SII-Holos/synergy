@@ -24,4 +24,6 @@ Resident connections belong to component services. Keep local readiness independ
 
 Validate the service's signing identity against the verified connection's organization and deployment before publishing its checkpoint. A matching key or valid signature does not bypass command, binding or transfer admission.
 
+Keep logical accepted effects separate from attempt and skip receipts. Intake owns its outer SQL commit, rechecks Session fences and preserves native Inbox modes. Verify retries, gaps, restart, deadline crossing and connection loss with real storage in `test/command-intake.test.ts`; receipt primitives alone do not enable bridge execution.
+
 Desktop Browser selection requires explicit private launch data and a managed Desktop listener. Preserve both local HTTP and Browser registration authentication, reject inherited native credentials, and keep page creation lazy. Verify real sockets and rejected non-Desktop selection in `test/desktop.test.ts`.
