@@ -3650,6 +3650,15 @@ export type SessionSuperPlanInfo = {
   mergeID?: string
 }
 
+export type OrgSessionBinding = {
+  schemaVersion: 1
+  orgID: string
+  projectID: string
+  creatorID: string
+  driverRuntimeID: string
+  bindingEpoch: number
+}
+
 export type Session = {
   id: string
   scope: SessionScope
@@ -3771,6 +3780,7 @@ export type Session = {
     loopRole?: "execution" | "audit"
     phase?: "running" | "auditing"
   }
+  organization?: OrgSessionBinding
 }
 
 export type WorkflowInternalServerError = {

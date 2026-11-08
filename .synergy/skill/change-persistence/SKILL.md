@@ -88,6 +88,8 @@ Test a released completion ledger with the new migration absent, interrupted and
 
 Register optional session fields, creation/import hooks and indexes through the owning package’s `session-schema.ts` before runtime startup. Keep the persistence reader tolerant of unloaded fields while public schemas expose only installed owners. Workflow session migrations stay with Workflows and preserve their historical `session` tracking ledger; moving ownership must not replay or discard migration history.
 
+For immutable owner metadata, use Session schema mutation validation before publication, and declare parent inheritance only for the owner's own fields. Test rollback, changed or missing parents, conflicting child fields, unbound history, unloaded-owner edits and reinstall. Keep validation free of external effects because it runs in the retryable transaction; its detached input is evidence for a decision, not a mutation target. Imports and forks need their own authority checks rather than copying execution ownership automatically.
+
 1. Add a migration whenever an existing persisted shape can reach the new code.
 2. Make the migration deterministic and idempotent. Record dependencies and ordering explicitly.
    Identity renames must detect an occupied destination before discarding any source. Cover both key orders, permission maps and existing target files; publish renamed files without replacement, and preserve ambiguous definitions for explicit recovery.

@@ -5,8 +5,10 @@ import { InstructionSource } from "@ericsanchezok/synergy-harness/session/instru
 import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
 import { SkillSelection } from "@ericsanchezok/synergy-local-runtime/skill/selection"
 import { memberIdentityDigest, type MemberIdentity } from "./home"
+import { registerSessionSchema } from "./session-schema"
 
 export function registerMemberSources(identity: MemberIdentity) {
+  registerSessionSchema({ orgID: identity.orgID })
   HomeOwnership.select({ owner: "organization-runtime", identity: memberIdentityDigest(identity) })
   ConfigSource.register({
     resolve: async ({ scope }) =>

@@ -676,7 +676,7 @@ export namespace Session {
     })
 
     const result: Info = {
-      ...SessionSchemaRegistry.creationFields(input),
+      ...SessionSchemaRegistry.creationFields(input, parent),
       id: Identifier.descending("session", input?.id),
       tags: normalizeSessionTags(input?.tags),
       version: Installation.VERSION,
@@ -705,7 +705,8 @@ export namespace Session {
     log.info("created", result)
 
     await Storage.transaction(async () => {
-      if (result.parentID && !(await SessionManager.getSession(result.parentID)))
+      const currentParent = result.parentID ? await SessionManager.getSession(result.parentID) : undefined
+      if (result.parentID && !currentParent)
         throw new Storage.NotFoundError({ message: "Parent Session no longer exists" })
       if (result.workspaceID != null) await WorkspaceCatalog.assertActive(result.workspaceID, scope.id)
       const environment = await Environment.select({
@@ -721,6 +722,7 @@ export namespace Session {
               : undefined,
       })
       result.environmentID = environment?.id ?? null
+      await SessionSchemaRegistry.validateMutation({ next: result, parent: currentParent })
       await Storage.write(
         StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(result.id)),
         SessionRecords.serialize(result),
@@ -1460,6 +1462,7 @@ export namespace Session {
       const before = structuredClone(session)
       const result = structuredClone(session)
       editor(result)
+      await SessionSchemaRegistry.validateMutation({ previous: before, next: result })
       if (result.title !== before.title && result.forkedFrom) delete result.forkedFrom.generatedTitle
       if (!options?.environmentChange && result.environmentID !== before.environmentID)
         throw new Error("Environment bindings cannot be changed through Session.update")

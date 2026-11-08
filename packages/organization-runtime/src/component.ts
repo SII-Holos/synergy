@@ -1,6 +1,7 @@
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { componentFeatures } from "./features"
+import { registerSessionSchema } from "./session-schema"
 
 export function organizationRuntime(): RuntimeComponent {
   return {
@@ -10,6 +11,6 @@ export function organizationRuntime(): RuntimeComponent {
     features: componentFeatures,
     requires: { "local-runtime": version },
     adapters: { cli: new URL("./cli-adapter.ts", import.meta.url) },
-    register() {},
+    register: registerSessionSchema,
   }
 }

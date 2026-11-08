@@ -1,5 +1,5 @@
 import { RuntimeContext } from "../lifecycle/context"
-import z from "zod"
+import { z } from "zod"
 import { ConfigExtensions } from "../config/extensions"
 import type { SessionExtensionShape } from "./types"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
@@ -9,6 +9,12 @@ export namespace SessionSchemaRegistry {
     Omit<SessionExtensionShape, "workflow"> & { workflow: z.ZodOptional<z.ZodType<WorkflowKindRegistry.Workflow>> }
   export interface Contribution {
     shape: z.ZodRawShape
+    inherit?: readonly string[]
+    validateMutation?(input: {
+      previous?: Readonly<Record<string, unknown>>
+      next: Readonly<Record<string, unknown>>
+      parent?: Readonly<Record<string, unknown>>
+    }): void | Promise<void>
     project?(fields: Record<string, unknown>): void
     projectionKey?(): string
     isBackground?(input: Record<string, unknown>): boolean
@@ -31,6 +37,10 @@ export namespace SessionSchemaRegistry {
     if (existing === contribution) return
     if (existing) throw new Error(`Session domain ${id} is already registered`)
     ConfigExtensions.assertRegistrationOpen(id)
+    for (const key of contribution.inherit ?? []) {
+      if (!Object.hasOwn(contribution.shape, key))
+        throw new Error(`Session domain ${id} cannot inherit unowned field ${key}`)
+    }
     for (const [otherID, other] of state().owners) {
       if (otherID === id) continue
       for (const key of Object.keys(contribution.shape)) {
@@ -120,14 +130,23 @@ export namespace SessionSchemaRegistry {
     for (const owner of state().owners.values()) owner.normalizeImport?.(input as Record<string, unknown>, mode)
   }
 
-  export function creationFields(input: object | undefined): Record<string, unknown> {
-    if (!input) return {}
-    const raw = input as Record<string, unknown>
+  export async function validateMutation(input: { previous?: object; next: object; parent?: object }) {
+    for (const owner of state().owners.values()) {
+      if (owner.validateMutation)
+        await owner.validateMutation(
+          structuredClone(input) as Parameters<NonNullable<Contribution["validateMutation"]>>[0],
+        )
+    }
+  }
+
+  export function creationFields(input: object | undefined, parent?: object): Record<string, unknown> {
+    const raw = (input ?? {}) as Record<string, unknown>
+    const inherited = (parent ?? {}) as Record<string, unknown>
     return Object.fromEntries(
       [...state().owners.values()].flatMap((owner) =>
         Object.keys(owner.shape)
-          .filter((key) => key in raw)
-          .map((key) => [key, raw[key]]),
+          .filter((key) => key in raw || (owner.inherit?.includes(key) && key in inherited))
+          .map((key) => [key, structuredClone(key in raw ? raw[key] : inherited[key])]),
       ),
     )
   }

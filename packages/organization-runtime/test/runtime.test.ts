@@ -10,6 +10,7 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
@@ -40,6 +41,37 @@ async function enrolled(service: Awaited<ReturnType<typeof fixture>>) {
     ca: service.ca,
   })
   return member
+}
+
+async function memberDraft(
+  runtime: Awaited<ReturnType<typeof openMemberRuntime>>,
+  member: Awaited<ReturnType<typeof enrolled>>,
+) {
+  const registration = (await readMemberRegistration(member.home, member.identity))!
+  return runtime.run(async () => {
+    const scope = await Scope.registerProject({
+      type: "project",
+      id: "project-a",
+      local: null,
+      time: { created: 1, updated: 1 },
+    })
+    return ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: () =>
+        Session.create({
+          title: "member draft",
+          organization: {
+            schemaVersion: 1,
+            orgID: member.identity.orgID,
+            projectID: scope.id,
+            creatorID: member.identity.accountID,
+            driverRuntimeID: registration.runtimeID,
+            bindingEpoch: 1,
+          },
+        }),
+    })
+  })
 }
 
 async function availablePort() {
@@ -168,10 +200,11 @@ test("member HTTP services bind explicit loopback ports and keep credentials, id
   expect((await fetch(`${baseUrl}/global/health`, { headers: { authorization: `Bearer ${tokenB}` } })).status).toBe(401)
   const identityA = (await apiA.global.capabilities({ throwOnError: true })).data.runtimeID
   expect((await apiB.global.capabilities({ throwOnError: true })).data.runtimeID).not.toBe(identityA)
-  const draft = (await one.client({ scopeID: "home" }).session.create({ title: "member draft" })).data
-  expect((await apiA.session.list({ scopeID: "home" }, { throwOnError: true })).data.data.map((row) => row.id)).toEqual(
-    [draft.id],
-  )
+  expect((await apiA.session.create({ title: "unbound draft" })).response.ok).toBe(false)
+  const draft = await memberDraft(one, first)
+  expect(
+    (await apiA.session.list({ scopeID: "project-a" }, { throwOnError: true })).data.data.map((row) => row.id),
+  ).toEqual([draft.id])
   expect((await apiB.session.list({ scopeID: "home" }, { throwOnError: true })).data.data).toEqual([])
   await one.close()
   await expect(apiA.global.capabilities({ throwOnError: true })).rejects.toThrow()
@@ -185,6 +218,10 @@ test("member HTTP services bind explicit loopback ports and keep credentials, id
   expect((await apiA.global.capabilities()).response.status).toBe(401)
   const current = createSynergyClient({ baseUrl, headers: { authorization: `Bearer ${"c".repeat(64)}` } })
   expect((await current.global.capabilities({ throwOnError: true })).data.runtimeID).toBe(identityA)
+  expect(
+    (await current.session.get({ sessionID: draft.id, scopeID: "project-a" }, { throwOnError: true })).data
+      .organization,
+  ).toEqual(draft.organization)
 }, 30_000)
 
 test("invalid listeners and occupied ports never retain a failed member Runtime's storage ownership", async () => {
@@ -330,9 +367,12 @@ test("personal and two organization Runtimes keep configuration, instructions, S
   expect(
     (await personal.run(() => ScopeContext.provide({ scope: Scope.home(), fn: InstructionFiles.load }))).join("\n"),
   ).toContain("personal global instructions")
-  const firstClient = one.client({ scopeID: "home" })
+  await expect(one.client({ scopeID: "home" }).session.create({ title: "unbound draft" })).rejects.toThrow(
+    "trusted organization binding",
+  )
+  const created = await memberDraft(one, first)
+  const firstClient = one.client({ scopeID: "project-a" })
   const secondClient = two.client({ scopeID: "home" })
-  const created = (await firstClient.session.create({ title: "isolated draft" })).data
   expect((await firstClient.session.list()).data.data.map((session) => session.id)).toContain(created.id)
   expect((await secondClient.session.list()).data.data).toEqual([])
   await expect(openMemberRuntime({ home: first.home, identity: first.identity, environment })).rejects.toThrow()

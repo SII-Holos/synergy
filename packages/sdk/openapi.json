@@ -51490,6 +51490,46 @@
         },
         "required": ["runID", "role"]
       },
+      "OrgSessionBinding": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "const": 1
+          },
+          "orgID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "projectID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "creatorID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "driverRuntimeID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "bindingEpoch": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["schemaVersion", "orgID", "projectID", "creatorID", "driverRuntimeID", "bindingEpoch"],
+        "additionalProperties": false
+      },
       "Session": {
         "type": "object",
         "properties": {
@@ -51866,6 +51906,9 @@
                 "enum": ["running", "auditing"]
               }
             }
+          },
+          "organization": {
+            "$ref": "#/components/schemas/OrgSessionBinding"
           }
         },
         "required": ["id", "scope", "title", "version", "time", "workspace"]
