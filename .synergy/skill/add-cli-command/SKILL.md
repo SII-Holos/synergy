@@ -26,6 +26,10 @@ For an independent service with its own storage lifecycle, declare `CommandEntry
 
 Use the service's owning configuration schema and canonical domain file when its policy is persisted. Read only that explicit Home's service domain before creating output or acquiring storage; do not invoke Agent configuration discovery to obtain service settings. Verify a real child sees the configured policy, malformed settings preserve the file and leave service data absent, and error output omits submitted content.
 
+For a supervised service, validate a bounded, versioned private stdin or IPC request before opening storage. Keep transient credentials out of arguments, readiness and logs. Reuse the CLI server lifecycle through its runtime factory, including startup reporters and parent-death handling. Test absent/truncated input, identity mismatch, shutdown and restart, and preserve only the selected Home's verified installation metadata for workers.
+
+For core Agent and policy runners, register the pinned component composition before global path initialization. A dedicated Home's owner must be selected before its ownership guard runs; never bypass that guard for workers. Exercise a real marked Home and a mismatched identity through both CLI worker roles, then verify the packed launcher outside the checkout.
+
 ## Command Contract
 
 1. Separate the command kinds: discovery commands (list accounts, projects, or queues), resolve commands (name or URL to a stable ID), read commands (exact object fetch plus a bounded list/search with `--limit` or a cursor), and narrow write commands (one named action each; prefer `--dry-run` or draft mode when the service allows).

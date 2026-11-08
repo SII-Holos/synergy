@@ -28,6 +28,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `list` | list installed packages and legacy plugins |
 | `logs` | show synergy background service logs |
 | `mcp` | manage MCP (Model Context Protocol) servers |
+| `member-runtime` | serve a prepared member Runtime from a private supervisor request |
 | `migrate` | move synergy data to a new location (alias for 'data move') |
 | `migration` | manage schema and data migrations |
 | `models` | list all available models |
@@ -476,6 +477,11 @@ LSP debugging utilities
 ## mcp
 
 manage MCP (Model Context Protocol) servers
+
+
+## member-runtime
+
+serve a prepared member Runtime from a private supervisor request
 
 
 ## memory

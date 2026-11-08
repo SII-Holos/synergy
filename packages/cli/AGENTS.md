@@ -29,3 +29,5 @@ Use shared `synergy-util/terminal` and `cli-command` primitives; network and Sco
 Use the shared feature plan before registration. Managed readiness reports its candidate selection and active components separately. Offline maintenance accepts explicit dormant data contributions; it must not activate their services. Follow [feature lifecycle](../../docs/architecture/feature-lifecycle.md).
 
 The installed launcher must verify its selected generation before any Harness import. All installed subprocess roles return through that launcher with the same generation digest; keep source embedding independent from ambient installation discovery. Use metadata-owned special runners instead of importing optional product implementations into the CLI.
+
+Core Agent and policy workers register their pinned composition before initializing global paths so the owning component can validate its dedicated Home. Keep mismatched ownership closed; verify both worker roles through the CLI process entry.

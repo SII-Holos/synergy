@@ -14,4 +14,6 @@ Provision member Homes by organization, account and device before Agent Runtime 
 
 Keep `./home` usable by Node provisioning hosts without opening Agent storage. Preserve bounded reads and the positive test-home guard. Member HTTP uses the existing Server component with an explicit loopback port and per-instance bearer; verify real Node provisioning, failed-open cleanup and isolated HTTP instances in the Home and Runtime suites.
 
+The owner-initialized `member-runtime` command consumes bounded private stdin and reuses CLI server lifecycle. Its component contributes command discovery only; member source and worker selection belong to explicit Runtime opening. Hosts use `./environment` before spawning and disable implicit loader inputs. Preserve only the member Home's verified installation pin for workers; test source commands and installed launchers separately.
+
 The outbound bridge declares only implemented capabilities. Persist a matching acknowledged epoch before returning a connected handle; never lower a checkpoint to satisfy a stale service snapshot. Preserve received protocol errors through socket close, propagate cancellation into checkpoint lock waits and drain pending writes before disposal. Verify real WSS fencing, reconnection, revocation and failure paths in `test/connection.test.ts`.

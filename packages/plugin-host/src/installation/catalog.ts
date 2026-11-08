@@ -17,6 +17,7 @@ export const FULL_COMPONENTS = [
   "media",
   "note",
   "organization",
+  "organization-runtime",
   "plugin-kit",
   "presets",
   "server",

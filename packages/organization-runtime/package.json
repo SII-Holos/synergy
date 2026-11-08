@@ -9,7 +9,10 @@
     "./enrollment": "./src/enrollment.ts",
     "./connection": "./src/connection.ts",
     "./runtime": "./src/runtime.ts",
-    "./error": "./src/error.ts"
+    "./error": "./src/error.ts",
+    "./component": "./src/component.ts",
+    "./launch": "./src/launch.ts",
+    "./environment": "./src/environment.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -20,6 +23,7 @@
   },
   "dependencies": {
     "@ericsanchezok/synergy-agent-runtime": "workspace:*",
+    "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-organization-protocol": "workspace:*",
@@ -35,5 +39,24 @@
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "organization-runtime",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "organizationRuntime",
+    "requires": {
+      "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "foundation",
+      "definitions": []
+    }
   }
 }

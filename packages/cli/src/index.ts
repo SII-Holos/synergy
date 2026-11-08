@@ -53,6 +53,10 @@ export async function runCoreWorker(
       await using handle = await StorageMaintenance.open({ recover: true })
       return true
     }
+    if (worker === "__agent-turn-runner" || worker === "__policy-worker-runner") {
+      const { registerWorkerComponents } = await import("@ericsanchezok/synergy-agent-runtime/workers")
+      await registerWorkerComponents(worker === "__agent-turn-runner" ? "agent" : "policy")
+    }
     const { Global } = await import("@ericsanchezok/synergy-harness/global")
     await Global.initialize({ cache: false })
     if (worker === "__plugin-runtime-runner") {
@@ -64,14 +68,10 @@ export async function runCoreWorker(
     if (worker === "__observability-worker-runner")
       await import("@ericsanchezok/synergy-harness/observability/telemetry-worker")
     if (worker === "__agent-turn-runner") {
-      const { registerWorkerComponents } = await import("@ericsanchezok/synergy-agent-runtime/workers")
-      await registerWorkerComponents("agent")
       const { startAgentWorker } = await import("@ericsanchezok/synergy-harness/session/agent-turn/runner")
       startAgentWorker()
     }
     if (worker === "__policy-worker-runner") {
-      const { registerWorkerComponents } = await import("@ericsanchezok/synergy-agent-runtime/workers")
-      await registerWorkerComponents("policy")
       const { startPolicyWorker } = await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
       startPolicyWorker()
     }
