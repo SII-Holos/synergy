@@ -8,7 +8,13 @@ import { memberIdentityDigest, type MemberIdentity } from "./home"
 
 export function registerMemberSources(identity: MemberIdentity) {
   HomeOwnership.select({ owner: "organization-runtime", identity: memberIdentityDigest(identity) })
-  ConfigSource.register({ resolve: async () => ({}) })
+  ConfigSource.register({
+    resolve: async ({ scope }) =>
+      (await import("@ericsanchezok/synergy-harness/config/project-source")).ProjectConfig.fields(scope, [
+        "project_doc_max_bytes",
+        "project_doc_fallback_filenames",
+      ]),
+  })
   ProviderCatalogSource.register({ providers: async () => ({}) })
   InstructionSource.register({
     load: async () =>

@@ -160,6 +160,8 @@ Objects merge deeply. Later scalar values win. `plugin`, `instructions`, and `pr
 
 Remote well-known config is cached for ten minutes and acts only as a base: local config can override it. A failed remote fetch is skipped with a warning.
 
+An embedding host's `ConfigSource` replaces this discovery order with its validated snapshot. Hosts can explicitly read selected project fields through `ProjectConfig.fields(scope, keys)` from Harness `config/project-source`. It reads only the owning canonical domain files under the selected project's `.synergy/synergy.d`, without ancestor/global discovery, custom fragment scanning, legacy migration or file/environment reference expansion. Only registered project fields may be selected. Descriptor reads reject non-regular, changed, oversized or physically external files; malformed selected files fail without returning their contents in diagnostics. The host's configuration schema validates the resulting values.
+
 ## Interface language
 
 `locale` is a global General preference with three accepted values:

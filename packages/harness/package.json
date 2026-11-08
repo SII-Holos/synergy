@@ -15,6 +15,7 @@
     "./session/rollout/events": "./src/session/rollout/events.ts",
     "./tool/policy-source": "./src/tool/policy-source.ts",
     "./config/source": "./src/config/source.ts",
+    "./config/project-source": "./src/config/project-source.ts",
     "./workspace/archive": "./src/workspace/archive.ts",
     "./environment/control": "./src/environment/control.ts",
     "./environment/process": "./src/environment/process.ts",

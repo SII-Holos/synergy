@@ -49,6 +49,19 @@ test("personal and two organization Runtimes keep configuration, instructions, S
   await Bun.write(path.join(a.root, "AGENTS.md"), "ancestor private instructions")
   await Bun.write(path.join(project, "AGENTS.md"), "selected project instructions")
   await Bun.write(
+    path.join(project, ".synergy", "synergy.d", "60-agents.jsonc"),
+    JSON.stringify({
+      project_doc_max_bytes: 512,
+      project_doc_fallback_filenames: ["TEAM.md"],
+      default_agent: "private-agent",
+      instructions: [privateFile],
+    }),
+  )
+  await Bun.write(
+    path.join(project, ".synergy", "synergy.d", "20-providers.jsonc"),
+    "unselected invalid provider configuration",
+  )
+  await Bun.write(
     path.join(project, ".agents", "skills", "private", "SKILL.md"),
     "---\nname: private\ndescription: private project Skill\n---\nprivate skill body",
   )
@@ -109,6 +122,8 @@ test("personal and two organization Runtimes keep configuration, instructions, S
           expect(ScopeContext.current.scope.local?.directory).toBe(project)
           expect(ScopeContext.current.workspace?.path).toBe(await fs.realpath(project))
           const config = await Config.current()
+          expect(config.project_doc_max_bytes).toBe(512)
+          expect(config.project_doc_fallback_filenames).toEqual(["TEAM.md"])
           expect(config.instructions).toBeUndefined()
           expect(config.model).toBeUndefined()
           expect(config.default_agent).not.toBe("private-agent")

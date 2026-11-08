@@ -10,7 +10,7 @@ Own lifecycle, features, exports. `context` owns pure attribution; `agent/primar
 - `RuntimeHandle` owns Host, composition and storage; registration seals before startup. Use `run` for work and `bind` for native callbacks. Persisted Home ownership must match the selected identity. Test isolated instances and child entrypoints; keep migration listings detached.
 - Use unsealed fixtures for migration mechanism tests.
 
-- Hosts register SDKs/codecs through `ProviderSdkSource` and `AttachmentImageInput`, and exclusive instructions through `InstructionSource`. Test explicit absence and `test/attachment/model-input.test.ts`.
+- Hosts select `ProviderSdkSource`, `AttachmentImageInput`, `InstructionSource` and `ConfigSource`. `ProjectConfig` reads allowed project fields. Verify absence and `test/attachment/model-input.test.ts`.
 - Local Runtime owns native PTYs, watchers and OS sandboxes. `workspace/observation` qualifies invalidations; Session owns live comparisons. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
 
 - Expose public domain operations; `session/prompt-budgeter` measures native model messages. Host adapters may use declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports; production cannot import them. Use relative imports internally.
