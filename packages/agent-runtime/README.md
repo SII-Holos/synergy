@@ -10,6 +10,8 @@ An exclusive host catalog also avoids importing the product's bundled catalog ma
 
 Register `ConfigSource` from Harness `config/source` when configuration belongs to the embedding host. Its validated JSON snapshot replaces implicit file, remote and inline discovery, and Config mutation APIs reject writes. Long tool output uses Harness truncation's native artifact storage; see the [embedded extension decision](../../docs/decisions/implemented/architecture/2026-10-05-bound-embedded-host-extension-surface.md).
 
+Register `InstructionSource` from Harness `session/instruction-source` to select instructions independently of configuration. The source receives the current Scope and Workspace and replaces all implicit instruction sources. Hosts allowing only project rules can use `InstructionFiles.project()` from `session/instruction-files`; see [prompt assembly](../../docs/architecture/llm-loop.md#prompt-assembly). Register the same selection in any prompt-preparing worker.
+
 ```ts
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"

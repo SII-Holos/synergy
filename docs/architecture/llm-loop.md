@@ -146,7 +146,7 @@ Prompt assembly is ordered from stable to volatile to maximize provider cache re
 | Layer                       | Content                                                                          |
 | --------------------------- | -------------------------------------------------------------------------------- |
 | Agent base                  | Agent prompt or minimal fallback prompt, always first.                           |
-| Static project instructions | Discovered instruction files and explicit instruction additions.                 |
+| Static project instructions | Host-selected instructions, or discovered files and explicit additions.          |
 | Permission context          | Effective control profile, sandbox/workspace boundaries, and execution guidance. |
 | Cortex context              | Parent task and delegated execution context.                                     |
 | Workflow context            | Plan, Lattice, Light Loop, or BlueprintLoop execution/audit contract.            |
@@ -154,6 +154,8 @@ Prompt assembly is ordered from stable to volatile to maximize provider cache re
 | Session long-term summary   | Current Session-owned L, refreshed before each model request when selected.      |
 | Environment                 | Scope, workspace, platform, date, session, endpoint, and worktree facts.         |
 | Diagnostics and reminders   | Git health, coauthor reminder, Agenda wake-ups, Cortex status, and elapsed time. |
+
+`InstructionSource` selects one Runtime-scoped instruction loader before composition seals. Its result replaces automatic global/project discovery and explicit additions; an empty result stays empty and source failures propagate. Without a registration, personal instruction discovery is unchanged. `InstructionFiles.project()` is an optional loader confined to the active Scope/Workspace: it preserves project file priority, ordering, deduplication and byte limits while rejecting paths and symlinks outside that project. It reads verified regular-file descriptors rather than following a replacement final symlink. See [exclusive instruction sources](../decisions/implemented/architecture/2026-11-08-exclusive-instruction-sources.md).
 
 `SystemPrompt.fallback()` supplies the minimal Agent identity when the native request has no Agent prompt; it is not provider failure recovery. Shared task-progress guidance is selected by `withProgressUpdates()` in `agent/prompt/progress.ts` when the resolved model is available. Native request preparation and external-agent instructions use this same selector; primary builders contain no copy. The exclusion list contains the DeepSeek family, identified from model ID, API model ID or family rather than connection/provider name. Unlisted models receive the unchanged shared section unless the supplied prompt already contains a progress heading. Custom instructions are preserved, and final native budgeting measures the prepared system messages without reinjecting the section. See [model-selected progress guidance](../decisions/implemented/bug-fix/2026-10-26-select-progress-guidance-by-model.md).
 

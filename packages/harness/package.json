@@ -71,6 +71,8 @@
     "./session/input-status": "./src/session/input-status.ts",
     "./session/manager": "./src/session/manager.ts",
     "./session/execution-source": "./src/session/execution-source.ts",
+    "./session/instruction-source": "./src/session/instruction-source.ts",
+    "./session/instruction-files": "./src/session/instruction-files.ts",
     "./bus/bus-event": "./src/bus/bus-event.ts",
     "./provider/github": "./src/provider/github.ts",
     "./storage/blobs": "./src/storage/blobs.ts",

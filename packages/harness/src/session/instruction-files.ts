@@ -1,5 +1,6 @@
 import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
+import { constants } from "node:fs"
 import os from "os"
 import path from "path"
 import { Config } from "../config/config"
@@ -8,6 +9,7 @@ import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { Filesystem } from "../util/filesystem"
 import { isPathContained } from "../util/path-contain"
+import { InstructionSource } from "./instruction-source"
 
 export namespace InstructionFiles {
   export const DEFAULT_PROJECT_DOC_MAX_BYTES = 32 * 1024
@@ -128,10 +130,45 @@ export namespace InstructionFiles {
     return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`
   }
 
-  async function readInstructionFilePart(filepath: string, maxBytes?: number) {
+  async function readContainedInstructionFile(filepath: string, root: string, maxBytes: number) {
+    const file = await fs
+      .open(
+        filepath,
+        constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK),
+      )
+      .catch((error: NodeJS.ErrnoException) => {
+        if (["ENOENT", "ENOTDIR", "ELOOP"].includes(error.code ?? "")) return undefined
+        throw error
+      })
+    if (!file) return
+    try {
+      const [opened, current] = await Promise.all([file.stat(), fs.stat(filepath)])
+      if (
+        !opened.isFile() ||
+        opened.dev !== current.dev ||
+        opened.ino !== current.ino ||
+        !isPathContained(root, filepath)
+      )
+        return
+      const data = Buffer.alloc(Math.min(maxBytes, opened.size))
+      let offset = 0
+      while (offset < data.length) {
+        const { bytesRead } = await file.read(data, offset, data.length - offset, offset)
+        if (!bytesRead) break
+        offset += bytesRead
+      }
+      return data.subarray(0, offset)
+    } finally {
+      await file.close()
+    }
+  }
+
+  async function readInstructionFilePart(filepath: string, maxBytes?: number, root?: string) {
     if (maxBytes !== undefined && maxBytes <= 0) return undefined
 
-    const data = await fs.readFile(filepath).catch(() => undefined)
+    const data = root
+      ? await readContainedInstructionFile(filepath, root, maxBytes!)
+      : await fs.readFile(filepath).catch(() => undefined)
     if (!data) return undefined
 
     const limited = maxBytes !== undefined && data.byteLength > maxBytes ? data.subarray(0, maxBytes) : data
@@ -140,13 +177,13 @@ export namespace InstructionFiles {
     return `Instructions from: ${filepath}\n${text}`
   }
 
-  async function cachedInstructionFilePart(cache: CachedLoad, filepath: string, maxBytes?: number) {
+  async function cachedInstructionFilePart(cache: CachedLoad, filepath: string, maxBytes?: number, root?: string) {
     const instanceState = runtimeState()
 
     if (maxBytes !== undefined && maxBytes <= 0) return undefined
 
     const fingerprint = await fileFingerprint(filepath)
-    const key = `${maxBytes ?? "all"}\0${filepath}`
+    const key = `${root ?? ""}\0${maxBytes ?? "all"}\0${filepath}`
     const cached = fingerprint === undefined ? undefined : cache.files.get(key)
     if (cached && cached.fingerprint === fingerprint) {
       instanceState.fileReuses++
@@ -154,7 +191,7 @@ export namespace InstructionFiles {
     }
 
     instanceState.fileReads++
-    const part = await readInstructionFilePart(filepath, maxBytes)
+    const part = await readInstructionFilePart(filepath, maxBytes, root)
     if (fingerprint !== undefined) cache.files.set(key, { fingerprint, part })
     return part
   }
@@ -271,7 +308,34 @@ export namespace InstructionFiles {
     return result
   }
 
+  export async function project() {
+    const boundary = searchDirsWithinScope()[0]
+    if (!boundary) return []
+    const [revision, config] = await Promise.all([Config.state(), Config.current()])
+    const maxBytes = config.project_doc_max_bytes ?? DEFAULT_PROJECT_DOC_MAX_BYTES
+    if (maxBytes <= 0) return []
+    const root = await fs.realpath(boundary)
+    const cache = loadCache(revision)
+    const parts = await Promise.all(
+      (await discoverProjectPaths(config)).map(async (filepath) => {
+        if (!isPathContained(boundary, filepath)) return undefined
+        const resolved = await fs.realpath(filepath).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return undefined
+          throw error
+        })
+        if (!resolved || !isPathContained(root, resolved)) return undefined
+        return cachedInstructionFilePart(cache, resolved, maxBytes, root)
+      }),
+    )
+    return dedupeParts(parts.filter((part): part is string => part !== undefined))
+  }
+
   export async function load() {
+    const source = InstructionSource.get()
+    if (source)
+      return source.load(
+        Object.freeze({ scope: ScopeContext.current.scope, workspace: ScopeContext.current.workspace }),
+      )
     const [revision, config] = await Promise.all([Config.state(), Config.current()])
     const cache = loadCache(revision)
     const maxBytes = config.project_doc_max_bytes ?? DEFAULT_PROJECT_DOC_MAX_BYTES
