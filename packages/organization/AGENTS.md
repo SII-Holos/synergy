@@ -21,3 +21,5 @@ The machine bridge owns authenticated sockets and durable connection epochs. Use
 Create service signing identity through its central startup migration. Validate the deployment and key pair before readiness; completed migration with missing or damaged credentials requires recovery, never automatic replacement. Publish only the public identity in the authenticated bridge. Verify upgrade, restart and corruption in `test/signing.test.ts`.
 
 Command admission derives actors from validated credentials and checks current roles and live connection inside its writer. Keep authorization, dispatch and Runtime acceptance separate; a blocked new request is definitely unsent. Retain issued skip proofs across reconnect and verify reconciliation in `test/command-admission.test.ts`. Metadata records never authorize automatic replay.
+
+Forward only active requests through bounded, cancellable exchanges. Distinguish dropped frames from enqueued backpressure and unknown sends; never replay after reconnect. Verify late receipts, explicit skip recovery and generated HTTP calls in `test/command-forwarding.test.ts` and the Presets organization integration suite.

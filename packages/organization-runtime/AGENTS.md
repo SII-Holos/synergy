@@ -2,7 +2,7 @@
 
 Own the Runtime's organization binding, trusted bridge, command receiver, synchronization exporter and remote resource adapters. Identity and project authorization belong to the organization service; this package verifies service identity and execution epochs and preserves actor attribution without maintaining user role tables.
 
-Use Harness execution owners and Inbox; never create another scheduler. Personal configuration, credentials and global Skill sources cannot leak into organization compositions. Keep hosted execution free of native Desktop capabilities and Memory.
+Use Harness execution owners and Inbox; never create another scheduler. Personal configuration, credentials and global Skill sources cannot leak into organization compositions. Hosted execution excludes Desktop capabilities and Memory.
 
 Tests live under `test/`. Run `bun run typecheck` and focused tests with isolated Homes, then root dependency and package checks.
 
@@ -16,7 +16,7 @@ Provision member Homes by organization, account and device before Agent Runtime 
 
 Keep `./home` and `./registration` usable and typecheckable by Node provisioning hosts without importing the Agent lifecycle or Bun networking. Reuse Harness `HomeOwnershipFile`, bounded reads and the positive test-home guard before any provisioning write. Member HTTP uses the existing Server component with an explicit loopback port and per-instance bearer; verify real Node provisioning, failed-open cleanup and isolated HTTP instances in the Home and Runtime suites.
 
-The owner-initialized `member-runtime` command consumes bounded private stdin and reuses CLI server lifecycle. Its component contributes command discovery only; member source and worker selection belong to explicit Runtime opening. Hosts use `./environment` before spawning and disable implicit loader inputs. Preserve only the member Home's verified installation pin for workers; test source commands and installed launchers separately.
+`member-runtime` consumes bounded private stdin and reuses CLI lifecycle. Its component contributes command discovery only; member source and worker selection belong to explicit Runtime opening. Hosts use `./environment` before spawning and disable implicit loader inputs. Preserve only the member Home's verified installation pin for workers; test source commands and installed launchers separately.
 
 The outbound bridge declares only implemented capabilities. Persist a matching acknowledged epoch before returning a connected handle; never lower a checkpoint to satisfy a stale service snapshot. Preserve received protocol errors through socket close, propagate cancellation into checkpoint lock waits and drain pending writes before disposal. Verify real WSS fencing, reconnection, revocation and failure paths in `test/connection.test.ts`.
 
@@ -24,6 +24,6 @@ Resident connections belong to component services. Keep local readiness independ
 
 Validate the service's signing identity against the verified connection's organization and deployment before publishing its checkpoint. A matching key or valid signature does not bypass command, binding or transfer admission.
 
-Keep logical accepted effects separate from attempt and skip receipts. Intake owns its outer SQL commit, rechecks Session fences and preserves native Inbox modes. Verify retries, gaps, restart, deadline crossing and connection loss with real storage in `test/command-intake.test.ts`; receipt primitives alone do not enable bridge execution.
+Keep logical accepted effects separate from attempt and skip receipts. Intake owns its outer SQL commit, rechecks Session fences and preserves native Inbox modes. Verify retries, gaps, restart, deadline crossing and connection loss with real storage in `test/command-intake.test.ts`; bind resident bridge callbacks to their Runtime context without activating resource grants.
 
 Desktop Browser selection requires explicit private launch data and a managed Desktop listener. Preserve both local HTTP and Browser registration authentication, reject inherited native credentials, and keep page creation lazy. Verify real sockets and rejected non-Desktop selection in `test/desktop.test.ts`.

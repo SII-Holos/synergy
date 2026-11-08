@@ -11,6 +11,8 @@ import { OrganizationStoragePath as Keys } from "./storage/path"
 import { authorize } from "./authorization"
 import type { Credentials } from "./auth/session"
 import { fail, OrganizationError } from "./error"
+import { createCommandTransport, type RuntimeConnectionLease } from "./command-transport"
+export type { RuntimeConnectionLease } from "./command-transport"
 
 export interface RuntimeSocket {
   closed: boolean
@@ -38,16 +40,19 @@ export function createRuntimeConnections(input: {
   run: <T>(body: () => T | Promise<T>) => Promise<T>
   signingIdentity: Command.SigningIdentity
   settings?: RuntimeConnectionSettings
+  onResult?: (connection: RuntimeConnectionLease, result: Command.Result) => Promise<unknown>
 }) {
   const settings = RuntimeConnectionSettings.parse(input.settings ?? {})
   const sockets = new Set<Socket>()
   const active = new Map<string, Socket>()
+  const transports = new WeakMap<Socket, ReturnType<typeof createCommandTransport>>()
   let closed = false
 
   function remove(socket: Socket) {
     socket.data.closed = true
     clearTimeout(socket.data.timer)
     sockets.delete(socket)
+    transports.get(socket)?.close()
     const id = socket.data.handshake?.runtimeID
     if (id && active.get(id) === socket) active.delete(id)
   }
@@ -94,6 +99,31 @@ export function createRuntimeConnections(input: {
     if (!handshake || active.get(handshake.runtimeID) !== socket)
       fail("AUTHENTICATION_REQUIRED", "Authenticate the Runtime connection first")
     return handshake
+  }
+  function captureSocket(socket: Socket): RuntimeConnectionLease {
+    const handshake = structuredClone(current(socket))
+    if (!handshake.capabilities.includes("commands") || handshake.schemas.commands !== 1)
+      fail("PROTOCOL_MISMATCH", "Runtime does not support organization command intake")
+    Object.freeze(handshake.capabilities)
+    Object.freeze(handshake.schemas)
+    Object.freeze(handshake)
+    let transport = transports.get(socket)
+    if (!transport) {
+      transport = createCommandTransport({
+        current: () => current(socket),
+        buffered: () => socket.getBufferedAmount(),
+        send: (frame) => socket.send(JSON.stringify(frame)),
+      })
+      transports.set(socket, transport)
+    }
+    return Object.freeze({
+      handshake,
+      assertCurrent() {
+        const value = current(socket)
+        if (value.connectionEpoch !== handshake.connectionEpoch) stale(value.connectionEpoch)
+      },
+      exchange: transport.exchange,
+    })
   }
   async function authenticate(socket: Socket, frame: Runtime.Connect) {
     const handshake = frame.proof.handshake
@@ -191,6 +221,19 @@ export function createRuntimeConnections(input: {
       if (frame.data.type !== "handshake") fail("AUTHENTICATION_REQUIRED", "Authenticate the Runtime connection first")
       return authenticate(socket, frame.data)
     }
+    if (frame.data.type === "receipt") {
+      const connection = captureSocket(socket)
+      if (frame.data.connectionEpoch !== connection.handshake.connectionEpoch)
+        stale(connection.handshake.connectionEpoch)
+      const transport = transports.get(socket)!
+      transport.validate(frame.data.exchangeID, frame.data.reply)
+      const reply = frame.data.reply
+      const result = reply.kind === "result" ? reply.result : reply.kind === "query" ? reply.query.result : undefined
+      if (result) await input.onResult?.(connection, result)
+      connection.assertCurrent()
+      transport.resolve(frame.data.exchangeID, reply)
+      return
+    }
     if (frame.data.type !== "heartbeat") fail("INVALID_REQUEST", "Runtime connection is already authenticated")
     const heartbeat = frame.data
     const handshake = current(socket)
@@ -276,19 +319,7 @@ export function createRuntimeConnections(input: {
     capture(runtimeID: string) {
       const socket = active.get(runtimeID)
       if (!socket) fail("RUNTIME_OFFLINE", "Runtime is not connected")
-      const handshake = structuredClone(current(socket))
-      if (!handshake.capabilities.includes("commands") || handshake.schemas.commands !== 1)
-        fail("PROTOCOL_MISMATCH", "Runtime does not support organization command intake")
-      Object.freeze(handshake.capabilities)
-      Object.freeze(handshake.schemas)
-      Object.freeze(handshake)
-      return Object.freeze({
-        handshake,
-        assertCurrent() {
-          const value = current(socket)
-          if (value.connectionEpoch !== handshake.connectionEpoch) stale(value.connectionEpoch)
-        },
-      })
+      return captureSocket(socket)
     },
     socket(): RuntimeSocket {
       if (closed) fail("SERVICE_UNAVAILABLE", "Organization service is closed")
@@ -338,4 +369,3 @@ export function createRuntimeConnections(input: {
   }
 }
 export type RuntimeConnections = ReturnType<typeof createRuntimeConnections>
-export type RuntimeConnectionLease = ReturnType<RuntimeConnections["capture"]>

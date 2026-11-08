@@ -238,6 +238,124 @@ export type OrgSessionCapacity = {
   sharedSessions: number
 }
 
+export type OrgCommandPermit = {
+  schemaVersion: 1
+  purpose: "session-command"
+  orgID: string
+  deploymentIncarnation: string
+  keyID: string
+  requestID: string
+  payloadHash: string
+  sessionID: string
+  projectID: string
+  runtimeID: string
+  bindingEpoch: number
+  connectionEpoch: number
+  commandSeq: number
+  shareGeneration: number
+  controlRevision: number
+  authRevision: number
+  admissionID: string
+  attemptID: string
+  actor: {
+    subjectID: string
+    displayName: string
+    clientKind: "web" | "desktop" | "cli" | "api"
+    requestID: string
+    kind: "account"
+    orgID: string
+  }
+  operation: "create" | "input" | "pause" | "continue" | "cancel"
+  authorizedAt: number
+  deadline: number
+  provisionalGrantID?: string
+}
+
+export type OrgCommandAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect: {
+    kind: "inbox"
+    itemID: string
+    messageID: string
+    mode: "task" | "steer" | "context"
+  }
+}
+
+export type OrgCommandInput = {
+  operation: "input"
+  mode: "task" | "steer" | "context"
+  parts: Array<{
+    type: "text"
+    text: string
+  }>
+}
+
+export type OrgCommandInputRequest = {
+  schemaVersion: 1
+  orgID: string
+  requestID: string
+  sessionID: string
+  projectID: string
+  runtimeID: string
+  input: OrgCommandInput
+}
+
+export type OrgCommandView = {
+  requestID: string
+  attemptID: string
+  state: "admitted" | "dispatching" | "not_dispatched" | "unknown" | "accepted" | "rejected"
+  authorizedAt: number
+  result?: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  accepted?: OrgCommandAccepted
+}
+
 export type OrgAuthClient =
   | {
       clientID: string
@@ -1506,6 +1624,109 @@ export type OrgOrganizationSessionCapacityResponses = {
 
 export type OrgOrganizationSessionCapacityResponse =
   OrgOrganizationSessionCapacityResponses[keyof OrgOrganizationSessionCapacityResponses]
+
+export type OrgCommandsInputData = {
+  body: OrgCommandInputRequest
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/commands"
+}
+
+export type OrgCommandsInputErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+  /**
+   * Organization error
+   */
+  504: OrgError
+}
+
+export type OrgCommandsInputError = OrgCommandsInputErrors[keyof OrgCommandsInputErrors]
+
+export type OrgCommandsInputResponses = {
+  /**
+   * Success
+   */
+  200: OrgCommandAccepted
+  /**
+   * Runtime durably received the command
+   */
+  202: OrgCommandAccepted
+}
+
+export type OrgCommandsInputResponse = OrgCommandsInputResponses[keyof OrgCommandsInputResponses]
+
+export type OrgCommandsGetData = {
+  body?: never
+  path: {
+    sessionID: string
+    requestID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/commands/{requestID}"
+}
+
+export type OrgCommandsGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCommandsGetError = OrgCommandsGetErrors[keyof OrgCommandsGetErrors]
+
+export type OrgCommandsGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgCommandView
+}
+
+export type OrgCommandsGetResponse = OrgCommandsGetResponses[keyof OrgCommandsGetResponses]
 
 export type OrgAuthDiscoveryData = {
   body?: never

@@ -1,5 +1,5 @@
 import { z } from "zod"
-import type { RuntimeLaunch } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { RuntimeContext, type RuntimeLaunch } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { openAgentRuntime, type AgentRuntimeOptions } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
@@ -14,6 +14,7 @@ import { MemberDesktop, MemberDesktopEntry, MemberListener } from "./launch"
 import { organizationRuntime } from "./component"
 import { memberEnvironment } from "./environment"
 import { startMemberBridge } from "./bridge"
+import { createCommandIntake } from "./command-intake"
 
 export type MemberRuntimeOptions = Pick<
   AgentRuntimeOptions,
@@ -60,12 +61,26 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
         return {
           resident: {
             async start() {
+              const context = RuntimeContext.current()
               bridge = startMemberBridge({
                 home: member.home,
                 identity: member.identity,
                 buildVersion: version,
                 ca: input.ca,
                 signal: input.signal,
+                commands(connection, signal) {
+                  const intake = createCommandIntake({
+                    identity: connection.signingIdentity,
+                    runtimeID: connection.runtimeID,
+                    connectionEpoch: connection.connectionEpoch,
+                    signal,
+                  })
+                  return {
+                    input: context.bind(intake.input),
+                    query: context.bind(intake.query),
+                    skip: context.bind(intake.skip),
+                  }
+                },
               })
               void bridge.closed.then((result) => {
                 if (result.kind === "closed") return

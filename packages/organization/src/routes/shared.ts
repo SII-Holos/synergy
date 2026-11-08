@@ -12,7 +12,7 @@ export function validation(result: { success: boolean }) {
   if (!result.success) fail("INVALID_REQUEST", "Invalid request")
 }
 
-export function operation(id: string, summary: string, schema: z.ZodType, body = false) {
+export function operation(id: string, summary: string, schema: z.ZodType, body = false, accepted = false) {
   const error = {
     description: "Organization error",
     content: { "application/json": { schema: resolver(OrganizationProtocol.Error) } },
@@ -23,6 +23,15 @@ export function operation(id: string, summary: string, schema: z.ZodType, body =
     requestBody: body ? { required: true, content: { "application/json": {} } } : undefined,
     responses: {
       200: { description: "Success", content: { "application/json": { schema: resolver(schema) } } },
+      ...(accepted
+        ? {
+            202: {
+              description: "Runtime durably received the command",
+              content: { "application/json": { schema: resolver(schema) } },
+            },
+            504: error,
+          }
+        : {}),
       400: error,
       401: error,
       403: error,

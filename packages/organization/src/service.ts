@@ -29,6 +29,8 @@ import type { Server } from "bun"
 import { createRuntimeConnections, type RuntimeConnections, type RuntimeSocket } from "./runtime-connection"
 import { organizationWeb } from "./web"
 import { loadSigningAuthority } from "./signing"
+import { createCommandAdmissions } from "./command-admission"
+import { createCommandForwarder } from "./command-forwarding"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -145,7 +147,14 @@ export async function openOrganizationService(options: OrganizationServiceOption
       await HomeOwnership.assert({ required: true })
       const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
       const signing = await loadSigningAuthority(deployment)
-      connections = createRuntimeConnections({ run, settings: settings.connections, signingIdentity: signing.identity })
+      connections = createRuntimeConnections({
+        run,
+        settings: settings.connections,
+        signingIdentity: signing.identity,
+        onResult: (connection, result) => admissions.observe(connection, result),
+      })
+      const admissions = createCommandAdmissions({ connections, signing })
+      const commands = createCommandForwarder({ admissions, connections })
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
       const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)
@@ -156,6 +165,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
         registrations,
         connections,
         clientAuthentication,
+        commands,
       )
       if (web) app.route("/", web)
       ready = true

@@ -15,6 +15,8 @@ import { ClientPolicy } from "./auth/client-policy"
 import type { ClientAuthentication } from "./auth/client"
 import { clientAuthenticationRoutes } from "./routes/client-auth"
 import { sessionDirectoryRoutes } from "./routes/session-directory"
+import { commandRoutes } from "./routes/commands"
+import type { CommandForwarder } from "./command-forwarding"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -34,6 +36,7 @@ export function organizationApp(
   registrations?: RuntimeRegistrations,
   connections?: RuntimeConnections,
   clientAuthentication?: ClientAuthentication,
+  commands?: CommandForwarder,
 ) {
   function registry() {
     if (!registrations) fail("SERVICE_UNAVAILABLE", "Runtime registration is unavailable")
@@ -97,6 +100,13 @@ export function organizationApp(
     )
     .route("/org/v1", registrationRoutes(registry, publicOrigin))
     .route("/org/v1", sessionDirectoryRoutes(publicOrigin))
+    .route(
+      "/org/v1",
+      commandRoutes(() => {
+        if (!commands) fail("SERVICE_UNAVAILABLE", "Command forwarding is unavailable")
+        return commands
+      }, publicOrigin),
+    )
     .route(
       "/org/v1",
       clientAuthenticationRoutes(() => {

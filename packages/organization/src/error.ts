@@ -22,7 +22,10 @@ export function errorStatus(code: OrganizationProtocol.Error["code"]) {
     case "NOT_FOUND":
       return 404
     case "SERVICE_UNAVAILABLE":
+    case "RUNTIME_OFFLINE":
       return 503
+    case "COMMAND_OUTCOME_UNKNOWN":
+      return 504
     default:
       return 409
   }

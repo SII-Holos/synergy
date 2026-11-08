@@ -66,7 +66,7 @@ export async function directoryFixture() {
           Record.Login.parse({
             schemaVersion: 1,
             tokenHash: digest(credentials[id].token),
-            csrfHash: digest("fixture-csrf"),
+            csrfHash: digest("f".repeat(64)),
             accountID: id,
             authRevision: 1,
             expiresAt: Date.now() + 60_000,

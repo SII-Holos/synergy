@@ -43,6 +43,32 @@ export function createCommandAdmissions(options: {
     if (!current || current.authorization.permit.attemptID !== attemptID) fail("NOT_FOUND", "Command attempt not found")
     return current
   }
+  async function lookupInput(credentials: Credentials, request: Command.InputRequest, payloadHash: string) {
+    const current = await authorize(credentials, "session.read", { sessionID: request.sessionID })
+    const { account, session } = current
+    if (
+      request.orgID !== account.orgID ||
+      request.projectID !== session.projectID ||
+      request.runtimeID !== session.driverRuntimeID
+    )
+      fail("REVISION_CONFLICT", "Command target does not match the Session directory")
+    const previous = await Record.read(Record.CommandRequest, Keys.commandRequest(account.accountID, request.requestID))
+    if (previous) {
+      const original = previous.first
+      if (
+        original.orgID !== account.orgID ||
+        original.actor.subjectID !== account.accountID ||
+        original.requestID !== request.requestID ||
+        original.sessionID !== request.sessionID ||
+        original.projectID !== request.projectID ||
+        original.runtimeID !== request.runtimeID ||
+        original.operation !== request.input.operation ||
+        original.payloadHash !== payloadHash
+      )
+        fail("REVISION_CONFLICT", "Logical command identity cannot change its payload or target")
+    }
+    return { current, previous }
+  }
   async function input(credentials: Credentials, value: Command.InputRequest): Promise<Prepared | Accepted> {
     standalone()
     credentials = { ...credentials }
@@ -54,31 +80,10 @@ export function createCommandAdmissions(options: {
       async () => {
         connection = undefined
         deadline = undefined
-        const current = await authorize(credentials, "session.read", { sessionID: request.sessionID })
+        const { current, previous } = await lookupInput(credentials, request, payloadHash)
         const { account, session } = current
-        if (
-          request.orgID !== account.orgID ||
-          request.projectID !== session.projectID ||
-          request.runtimeID !== session.driverRuntimeID
-        )
-          fail("REVISION_CONFLICT", "Command target does not match the Session directory")
         const requestKey = Keys.commandRequest(account.accountID, request.requestID)
-        const previous = await Record.read(Record.CommandRequest, requestKey)
-        if (previous) {
-          const original = previous.first
-          if (
-            original.orgID !== account.orgID ||
-            original.actor.subjectID !== account.accountID ||
-            original.requestID !== request.requestID ||
-            original.sessionID !== request.sessionID ||
-            original.projectID !== request.projectID ||
-            original.runtimeID !== request.runtimeID ||
-            original.operation !== request.input.operation ||
-            original.payloadHash !== payloadHash
-          )
-            fail("REVISION_CONFLICT", "Logical command identity cannot change its payload or target")
-          if (previous.accepted) return { kind: "accepted" as const, receipt: previous.accepted }
-        }
+        if (previous?.accepted) return { kind: "accepted" as const, receipt: previous.accepted }
         await authorize(credentials, "session.execute", { sessionID: request.sessionID })
         const stateKey = Keys.commandState(session.sessionID)
         const state = await Record.read(Record.CommandState, stateKey)
@@ -242,8 +247,10 @@ export function createCommandAdmissions(options: {
           current.skip &&
           current.skip.permit.connectionEpoch === connection.handshake.connectionEpoch &&
           current.skip.permit.deadline > Date.now()
-        )
+        ) {
+          deadline = current.skip.permit.deadline
           return current.skip
+        }
         const authorizedAt = Date.now()
         const skip = await signing.signSkip({
           schemaVersion: 1,
@@ -355,6 +362,52 @@ export function createCommandAdmissions(options: {
     input,
     observe,
     prepareSkip,
+    async inspectInput(credentials: Credentials, value: Command.InputRequest) {
+      credentials = { ...credentials }
+      const request = Command.InputRequest.parse(value)
+      const payloadHash = await Command.digestInput(request)
+      return Storage.snapshot(async () => {
+        const { previous } = await lookupInput(credentials, request, payloadHash)
+        return previous ? { attempt: await attempt(previous.lastAttemptID), accepted: previous.accepted } : undefined
+      })
+    },
+    async absent(connection: RuntimeConnectionLease, value: Command.QueryResult) {
+      standalone()
+      const query = Command.QueryResult.parse(value)
+      if (query.result) fail("INVALID_REQUEST", "An existing receipt is not an absence proof")
+      const permit = query.authorization.permit
+      return Storage.transaction(
+        async () => {
+          connection.assertCurrent()
+          const current = await attempt(permit.attemptID)
+          if (
+            connection.handshake.orgID !== permit.orgID ||
+            connection.handshake.runtimeID !== permit.runtimeID ||
+            connection.handshake.deploymentIncarnation !== permit.deploymentIncarnation ||
+            connection.handshake.connectionEpoch < permit.connectionEpoch ||
+            !equal(current.authorization, query.authorization) ||
+            current.result
+          )
+            fail("PROTOCOL_MISMATCH", "Runtime absence does not match the retained attempt")
+          await Storage.write(Keys.commandAttempt(permit.attemptID), {
+            ...current,
+            state: "not_dispatched",
+            updatedAt: Date.now(),
+          })
+        },
+        { commitGuard: () => connection.assertCurrent() },
+      )
+    },
+    async dropped(attemptID: string) {
+      standalone()
+      return Storage.transaction(async () => {
+        const current = await attempt(attemptID)
+        if (!["admitted", "dispatching"].includes(current.state)) return current
+        const updated = { ...current, state: "not_dispatched" as const, updatedAt: Date.now() }
+        await Storage.write(Keys.commandAttempt(attemptID), updated)
+        return updated
+      })
+    },
     dispatch: (attemptID: string, connection: RuntimeConnectionLease) =>
       transition(attemptID, "dispatching", connection),
     notDispatched: (attemptID: string) => transition(attemptID, "not_dispatched"),
@@ -379,3 +432,4 @@ export function createCommandAdmissions(options: {
     },
   }
 }
+export type CommandAdmissions = ReturnType<typeof createCommandAdmissions>

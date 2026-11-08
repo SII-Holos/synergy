@@ -346,6 +346,30 @@ export function createCommandIntake(options: {
   return {
     input,
     skip,
+    async query(value: Command.SignedPermit): Promise<Command.QueryResult> {
+      assertStandalone()
+      const authorization = parse(Command.SignedPermit, value)
+      const { permit, signature } = authorization
+      assertAuthority(permit)
+      if (permit.connectionEpoch > connectionEpoch || !(await Command.verify(permit, signature, authority.publicKey)))
+        throw failure("PERMISSION_DENIED", "Command query authorization is invalid")
+      return Storage.snapshot(async () => {
+        assertActive()
+        const current = await records(permit)
+        if (!current.matches) throw failure("REVISION_CONFLICT", "Logical command payload changed")
+        const original = current.attempt
+          ? current
+          : current.request?.accepted
+            ? await records(current.request.accepted.permit)
+            : undefined
+        if (original && !original.attempt) throw failure("PROTOCOL_MISMATCH", "Accepted effect has no retained attempt")
+        assertActive()
+        return Command.QueryResult.parse({
+          authorization,
+          result: original ? result(original, original.attempt!) : undefined,
+        })
+      })
+    },
     async accepted(input: z.infer<typeof Lookup>) {
       const lookup = Lookup.parse(input)
       const current = await read(Request, Keys.request(authority.orgID, lookup.subjectID, lookup.requestID))

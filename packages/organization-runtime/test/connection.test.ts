@@ -1,13 +1,17 @@
 import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationRuntimeProtocol as Protocol,
+  OrganizationCommandProtocol as Command,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { fileLockPath, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberConnection } from "../src/connection"
 import { startMemberBridge } from "../src/bridge"
 import { fixture } from "./support/organization"
+import { OrganizationRuntimeError } from "../src/error"
 
 async function enrolled() {
   const f = await fixture()
@@ -44,6 +48,143 @@ async function within<T>(promise: Promise<T>) {
     clearTimeout(timer)
   }
 }
+
+test("verified WSS supplies the command factory, orders exchanges and redacts unknown intake failures", async () => {
+  await using f = await enrolled()
+  const remote = Promise.withResolvers<Parameters<NonNullable<Parameters<typeof f.interceptFrames>[0]>>[0]>()
+  const responses = new Map<string, ReturnType<typeof Promise.withResolvers<Command.Reply>>>()
+  let advertised = false
+  f.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "handshake")
+      advertised =
+        frame.proof.handshake.capabilities.includes("commands") && frame.proof.handshake.schemas.commands === 1
+    if (frame.type === "heartbeat") remote.resolve(socket)
+    if (frame.type !== "receipt") return false
+    responses.get(frame.exchangeID)?.resolve(frame.reply)
+    return true
+  })
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const queries: string[] = []
+  let signal: AbortSignal | undefined
+  let identity: Command.SigningIdentity | undefined
+  await using connection = await openMemberConnection({
+    ...f.options,
+    commands(connected, currentSignal) {
+      signal = currentSignal
+      identity = connected.signingIdentity
+      return {
+        async input() {
+          throw new Error("private intake storage details")
+        },
+        async skip() {
+          throw new OrganizationRuntimeError({
+            code: "STALE_BINDING",
+            message: "Binding changed",
+            outcome: "rejected",
+            retryable: false,
+          })
+        },
+        async query(authorization) {
+          queries.push(authorization.permit.requestID)
+          if (queries.length === 1) {
+            entered.resolve()
+            await release.promise
+          }
+          return { authorization }
+        },
+      }
+    },
+  })
+  using unblock = { [Symbol.dispose]: () => release.resolve() }
+  expect(advertised).toBe(true)
+  expect(identity).toEqual(connection.connected.signingIdentity)
+  const socket = await within(remote.promise)
+  function authorization(requestID: string): Command.SignedPermit {
+    return Command.SignedPermit.parse({
+      signature: "0".repeat(128),
+      permit: {
+        schemaVersion: 1,
+        purpose: "session-command",
+        orgID: f.identity.orgID,
+        deploymentIncarnation: connection.connected.deploymentIncarnation,
+        keyID: identity!.keyID,
+        requestID,
+        payloadHash: "0".repeat(64),
+        sessionID: "session",
+        projectID: "project",
+        runtimeID: connection.connected.runtimeID,
+        bindingEpoch: 1,
+        connectionEpoch: connection.connected.connectionEpoch,
+        commandSeq: 1,
+        shareGeneration: 0,
+        controlRevision: 0,
+        authRevision: 1,
+        admissionID: requestID,
+        attemptID: requestID,
+        operation: "input",
+        actor: {
+          kind: "account",
+          orgID: f.identity.orgID,
+          subjectID: f.identity.accountID,
+          displayName: "Member",
+          clientKind: "web",
+          requestID,
+        },
+        authorizedAt: Date.now(),
+        deadline: Date.now() + 30_000,
+      },
+    })
+  }
+  function send(exchangeID: string, command: Command.Delivery) {
+    const response = Promise.withResolvers<Command.Reply>()
+    responses.set(exchangeID, response)
+    socket.send(
+      JSON.stringify({ type: "command", connectionEpoch: connection.connected.connectionEpoch, exchangeID, command }),
+    )
+    return response.promise
+  }
+  const first = send("first", { kind: "query", authorization: authorization("first") })
+  const second = send("second", { kind: "query", authorization: authorization("second") })
+  await within(entered.promise)
+  expect(queries).toEqual(["first"])
+  release.resolve()
+  expect((await within(first)).kind).toBe("query")
+  expect((await within(second)).kind).toBe("query")
+  expect(queries).toEqual(["first", "second"])
+  const failed = await within(
+    send("input", {
+      kind: "input",
+      delivery: {
+        authorization: authorization("input"),
+        input: { operation: "input", mode: "context", parts: [{ type: "text", text: "private input" }] },
+      },
+    }),
+  )
+  expect(failed).toMatchObject({ kind: "error", error: { code: "SERVICE_UNAVAILABLE", outcome: "unknown" } })
+  expect(JSON.stringify(failed)).not.toContain("private")
+  const command = authorization("skip").permit
+  const skipped = await within(
+    send("skip", {
+      kind: "skip",
+      authorization: {
+        permit: {
+          schemaVersion: 1,
+          purpose: "session-command-skip",
+          command,
+          connectionEpoch: connection.connected.connectionEpoch,
+          authorizedAt: Date.now(),
+          deadline: Date.now() + 30_000,
+        },
+        signature: "0".repeat(128),
+      },
+    }),
+  )
+  expect(skipped).toMatchObject({ kind: "error", error: { code: "STALE_BINDING", outcome: "rejected" } })
+  await connection.close()
+  expect(signal?.aborted).toBe(true)
+})
 
 test("the resident bridge stops after replacement or revocation without competing for another connection", async () => {
   for (const action of ["replace", "revoke"] as const) {
@@ -128,7 +269,7 @@ test("the member bridge signs its own identity, heartbeats and durably advances 
   f.interceptFrames((_socket, raw) => {
     const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
     if (frame.type === "heartbeat") heartbeat.resolve()
-    else {
+    else if (frame.type === "handshake") {
       expect(frame.proof.handshake).toMatchObject({
         ...f.identity,
         runtimeID: f.registration.runtimeID,

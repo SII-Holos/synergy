@@ -32,7 +32,7 @@ export namespace OrganizationRecord {
     .strictObject({
       schemaVersion: z.literal(1),
       authorization: Command.SignedPermit,
-      state: z.enum(["admitted", "dispatching", "not_dispatched", "unknown", "accepted", "rejected"]),
+      state: Command.AttemptState,
       updatedAt: z.number().int().nonnegative(),
       result: Command.Result.optional(),
       skip: Command.SignedSkip.optional(),

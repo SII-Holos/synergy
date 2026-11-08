@@ -3,6 +3,7 @@ import { z } from "zod"
 import {
   OrganizationProtocol,
   OrganizationRuntimeProtocol as Protocol,
+  OrganizationCommandProtocol as Command,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { readMemberHome, type MemberHome, type MemberIdentity } from "./home"
 import { readMemberRegistration } from "./registration"
@@ -29,6 +30,14 @@ export interface MemberConnectionOptions {
   ca?: string | string[]
   signal?: AbortSignal
   connectTimeoutMs?: number
+  commands?: (
+    connection: Connected,
+    signal: AbortSignal,
+  ) => {
+    input(delivery: Command.InputDelivery): Promise<Command.Result>
+    query(authorization: Command.SignedPermit): Promise<Command.QueryResult>
+    skip(authorization: Command.SignedSkip): Promise<Command.Result>
+  }
 }
 const frameLimit = 64 * 1024
 const timerLimit = 2 ** 31 - 1
@@ -68,8 +77,8 @@ async function attempt(input: {
       deviceID: member.identity.deviceID,
       connectionEpoch: epoch,
       buildVersion: options.buildVersion,
-      capabilities: ["bridge"],
-      schemas: { bridge: 1 },
+      capabilities: options.commands ? ["bridge", "commands"] : ["bridge"],
+      schemas: options.commands ? { bridge: 1, commands: 1 } : { bridge: 1 },
     },
     nonce: randomBytes(32).toString("hex"),
     issuedAt: Date.now(),
@@ -91,6 +100,7 @@ async function attempt(input: {
   let transportClosed = false
   let transportEndKind: MemberConnectionClosed["kind"] = "offline"
   let connected: Connected | undefined
+  let commands: ReturnType<NonNullable<MemberConnectionOptions["commands"]>> | undefined
   let pending = Promise.resolve()
   let queuedFrames = 0
   let queuedBytes = 0
@@ -182,9 +192,40 @@ async function attempt(input: {
       await input.checkpoint.save(epoch, work.signal)
       if (stopped || transportClosed) return
       connected = frame
+      commands = options.commands?.(frame, work.signal)
       lease(frame.offlineMs)
       scheduleHeartbeat()
       ready.resolve(frame)
+      return
+    }
+    if (frame.type === "command") {
+      if (!connected || !commands || frame.connectionEpoch !== epoch)
+        throw failure("PROTOCOL_MISMATCH", "Command does not match an active intake connection")
+      let reply: Command.Reply
+      try {
+        const command = frame.command
+        reply =
+          command.kind === "input"
+            ? { kind: "result", result: await commands.input(command.delivery) }
+            : command.kind === "skip"
+              ? { kind: "result", result: await commands.skip(command.authorization) }
+              : { kind: "query", query: await commands.query(command.authorization) }
+        reply = Command.Reply.parse(reply)
+      } catch (error) {
+        reply = {
+          kind: "error",
+          error:
+            error instanceof OrganizationRuntimeError
+              ? error.data
+              : {
+                  code: "SERVICE_UNAVAILABLE",
+                  message: "Runtime command receipt is unavailable",
+                  outcome: "unknown",
+                  retryable: false,
+                },
+        }
+      }
+      if (!work.signal.aborted) send({ type: "receipt", connectionEpoch: epoch, exchangeID: frame.exchangeID, reply })
       return
     }
     if (!connected || frame.connectionEpoch !== epoch || frame.sequence !== expectedSequence)

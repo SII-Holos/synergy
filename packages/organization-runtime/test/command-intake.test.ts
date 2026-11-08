@@ -112,6 +112,52 @@ async function session() {
   })
 }
 
+test("signed receipt queries survive expiry and reconnect without accepting or skipping input", async () => {
+  await using home = await tmpdir()
+  const service = await authority()
+  await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const sessionID = (await session()).id
+    const delivery = await service.input(sessionID)
+    const receiver = service.receiver()
+    expect(await receiver.query(delivery.authorization)).toEqual({ authorization: delivery.authorization })
+    expect(await SessionInbox.list(sessionID)).toHaveLength(0)
+    const accepted = await receiver.input(delivery)
+    const next = service.receiver(2)
+    const observation = await service.input(sessionID, {
+      attemptID: "unreceived-retry",
+      commandSeq: 2,
+      connectionEpoch: 2,
+    })
+    expect(await next.query(observation.authorization)).toEqual({
+      authorization: observation.authorization,
+      result: accepted,
+    })
+    expect(await Storage.readMany([Keys.attempt(binding.orgID, sessionID, "unreceived-retry")])).toEqual([undefined])
+    const clock = spyOn(Date, "now").mockReturnValue(delivery.authorization.permit.deadline + 1)
+    try {
+      expect(await next.query(delivery.authorization)).toEqual({
+        authorization: delivery.authorization,
+        result: accepted,
+      })
+      await expect(next.query({ ...delivery.authorization, signature: "0".repeat(128) })).rejects.toMatchObject({
+        data: { code: "PERMISSION_DENIED" },
+      })
+    } finally {
+      clock.mockRestore()
+    }
+    expect(await SessionInbox.list(sessionID)).toHaveLength(1)
+    const absent = await service.input(sessionID, { requestID: "unseen", attemptID: "unseen", commandSeq: 2 })
+    const snapshot = await next.query(absent.authorization)
+    expect(snapshot.result).toBeUndefined()
+    const controller = new AbortController()
+    controller.abort()
+    await expect(service.receiver(2, controller.signal).query(absent.authorization)).rejects.toMatchObject({
+      data: { code: "STALE_CONNECTION" },
+    })
+  })
+})
+
 test("accepted input has one durable effect, fixed actor and intake order across retries and restart", async () => {
   await using home = await tmpdir()
   const service = await authority()

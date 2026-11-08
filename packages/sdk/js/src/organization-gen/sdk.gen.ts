@@ -34,6 +34,11 @@ import type {
   OrgBootstrapInput,
   OrgClientRevocationInput,
   OrgCodeExchangeInput,
+  OrgCommandInputRequest,
+  OrgCommandsGetErrors,
+  OrgCommandsGetResponses,
+  OrgCommandsInputErrors,
+  OrgCommandsInputResponses,
   OrgEmptyInput,
   OrgHealthGetErrors,
   OrgHealthGetResponses,
@@ -893,6 +898,69 @@ export class OrgSessions extends HeyApiClient {
   }
 }
 
+export class OrgCommands extends HeyApiClient {
+  /**
+   * Submit an online Session input
+   */
+  public input<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgCommandInputRequest: OrgCommandInputRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgCommandInputRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgCommandsInputResponses, OrgCommandsInputErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/commands",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Query the caller's existing command receipt
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      requestID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "requestID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgCommandsGetResponses, OrgCommandsGetErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/commands/{requestID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class OrgHealth extends HeyApiClient {
   /**
    * Read organization service readiness
@@ -928,6 +996,8 @@ export class OrganizationClient extends HeyApiClient {
   orgRuntime = new OrgRuntime({ client: this.client })
 
   orgSessions = new OrgSessions({ client: this.client })
+
+  orgCommands = new OrgCommands({ client: this.client })
 
   orgHealth = new OrgHealth({ client: this.client })
 }

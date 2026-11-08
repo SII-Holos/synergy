@@ -81,15 +81,17 @@ export namespace OrganizationCommandProtocol {
     )
     .meta({ ref: "OrgCommandInput" })
   export type Input = z.infer<typeof Input>
-  export const InputRequest = z.strictObject({
-    schemaVersion: z.literal(1),
-    orgID: Identity.ID,
-    requestID: Identity.ID,
-    sessionID: Identity.ID,
-    projectID: Identity.ID,
-    runtimeID: Identity.ID,
-    input: Input,
-  })
+  export const InputRequest = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      orgID: Identity.ID,
+      requestID: Identity.ID,
+      sessionID: Identity.ID,
+      projectID: Identity.ID,
+      runtimeID: Identity.ID,
+      input: Input,
+    })
+    .meta({ ref: "OrgCommandInputRequest" })
   export type InputRequest = z.infer<typeof InputRequest>
   export function inputRequest(permit: Permit, input: Input): InputRequest {
     return InputRequest.parse({
@@ -162,6 +164,7 @@ export namespace OrganizationCommandProtocol {
         value.acceptedAt < value.permit.deadline,
       "Accepted input must identify an input permit and its valid reception window",
     )
+    .meta({ ref: "OrgCommandAccepted" })
   export type Accepted = z.infer<typeof Accepted>
   const attempt = {
     schemaVersion: z.literal(1),
@@ -185,4 +188,41 @@ export namespace OrganizationCommandProtocol {
     skip: SkipReceipt.optional(),
   })
   export type Result = z.infer<typeof Result>
+  export const QueryResult = z
+    .strictObject({ authorization: SignedPermit, result: Result.optional() })
+    .refine((value) => {
+      if (!value.result) return true
+      const original = value.authorization.permit
+      const found = value.result.attempt.permit
+      return (
+        original.actor.subjectID === found.actor.subjectID &&
+        (["orgID", "requestID", "sessionID", "projectID", "runtimeID", "operation", "payloadHash"] as const).every(
+          (key) => original[key] === found[key],
+        )
+      )
+    }, "Receipt query must return the same logical command")
+  export type QueryResult = z.infer<typeof QueryResult>
+  export const Delivery = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("input"), delivery: InputDelivery }),
+    z.strictObject({ kind: z.literal("query"), authorization: SignedPermit }),
+    z.strictObject({ kind: z.literal("skip"), authorization: SignedSkip }),
+  ])
+  export type Delivery = z.infer<typeof Delivery>
+  export const Reply = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("result"), result: Result }),
+    z.strictObject({ kind: z.literal("query"), query: QueryResult }),
+    z.strictObject({ kind: z.literal("error"), error: Protocol.Error }),
+  ])
+  export type Reply = z.infer<typeof Reply>
+  export const AttemptState = z.enum(["admitted", "dispatching", "not_dispatched", "unknown", "accepted", "rejected"])
+  export const View = z
+    .strictObject({
+      requestID: Identity.ID,
+      attemptID: Identity.ID,
+      state: AttemptState,
+      authorizedAt: z.number().int().nonnegative(),
+      result: Result.optional(),
+      accepted: Accepted.optional(),
+    })
+    .meta({ ref: "OrgCommandView" })
 }

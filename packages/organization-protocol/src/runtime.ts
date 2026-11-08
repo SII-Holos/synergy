@@ -70,7 +70,17 @@ export namespace OrganizationRuntimeProtocol {
     connectionEpoch: Protocol.Epoch,
     sequence: Protocol.Revision,
   })
-  export const ClientFrame = z.discriminatedUnion("type", [Connect.extend({ type: z.literal("handshake") }), Heartbeat])
+  export const Receipt = z.strictObject({
+    type: z.literal("receipt"),
+    connectionEpoch: Protocol.Epoch,
+    exchangeID: Identity.ID,
+    reply: Command.Reply,
+  })
+  export const ClientFrame = z.discriminatedUnion("type", [
+    Connect.extend({ type: z.literal("handshake") }),
+    Heartbeat,
+    Receipt,
+  ])
   export type ClientFrame = z.infer<typeof ClientFrame>
   export const Connected = z.strictObject({
     type: z.literal("handshake"),
@@ -86,6 +96,12 @@ export namespace OrganizationRuntimeProtocol {
   export const ServerFrame = z.discriminatedUnion("type", [
     Connected,
     Heartbeat,
+    z.strictObject({
+      type: z.literal("command"),
+      connectionEpoch: Protocol.Epoch,
+      exchangeID: Identity.ID,
+      command: Command.Delivery,
+    }),
     z.strictObject({ type: z.literal("error"), error: Protocol.Error }),
   ])
   export type ServerFrame = z.infer<typeof ServerFrame>
