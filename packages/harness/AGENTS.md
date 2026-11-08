@@ -7,7 +7,7 @@ Own lifecycle, features, exports. `context` owns pure attribution; `agent/primar
 - Session L/progress: `session/long-term-memory`, never workflows/Library. [State](../../docs/architecture/session-and-messages.md#session-long-term-summary).
 - `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; domain packages own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
 - Use public package exports; preserve cancellation, permissions and persisted data.
-- `RuntimeHandle` takes Host, composition and owned/borrowed storage. Registration seals before storage startup; imports cannot register capabilities. Use `run` for owned work; `bind` native callbacks. Migration listings are detached snapshots. Test independent instances together and isolated child entrypoints.
+- `RuntimeHandle` owns Host, composition and storage; registration seals before startup. Use `run` for work and `bind` for native callbacks. Persisted Home ownership must match the selected identity. Test isolated instances and child entrypoints; keep migration listings detached.
 - Use unsealed fixtures for migration mechanism tests.
 
 - Hosts register model SDKs and native image codecs through `ProviderSdkSource` and `AttachmentImageInput`. Keep absence explicit; verify `test/attachment/model-input.test.ts`.

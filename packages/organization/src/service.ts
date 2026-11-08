@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { TransactionalStore, type StoreOptions } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
@@ -14,6 +15,7 @@ import { createAuthentication, type AuthenticationSettings } from "./auth"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { createRuntimeRegistrations, type RuntimeRegistrationSettings } from "./runtime-registration"
+import { digest } from "./auth/secret"
 import type { Server } from "bun"
 import {
   createRuntimeConnections,
@@ -99,7 +101,16 @@ export async function openOrganizationService(options: OrganizationServiceOption
       return closing
     }
     try {
+      HomeOwnership.select({ owner: "organization", identity: digest("synergy.organization.service.v1") })
       ownership = await ServerProcessLock.acquire()
+      const owned = await HomeOwnership.assert()
+      const data = path.join(root, "data")
+      const entries: string[] = await fs.readdir(data).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return []
+        throw error
+      })
+      if (!owned && entries.length && !entries.includes("organization.sqlite"))
+        throw new Error("Organization service requires a dedicated Home without personal Runtime data")
       await fs.mkdir(path.join(root, "data"), { recursive: true, mode: 0o700 })
       store = await TransactionalStore.open(
         options.database ?? {
@@ -113,6 +124,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       MigrationRegistry.lock()
       RuntimeContext.sealComposition()
       await ensureMigrations({ output: "silent" })
+      await HomeOwnership.assert({ required: true })
       OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
       connections = createRuntimeConnections({ run, settings: options.connections })
       const authentication = await createAuthentication(options.authentication, connections.removeAccount)

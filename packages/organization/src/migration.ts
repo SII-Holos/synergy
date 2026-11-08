@@ -3,6 +3,7 @@ import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationStoragePath } from "./storage/path"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 
 const migrations: Migration[] = [
   {
@@ -30,6 +31,17 @@ const migrations: Migration[] = [
         }
         await Storage.write(OrganizationStoragePath.deployment(), deployment)
       })
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20261108-organization-home-ownership",
+    description: "Retain independent organization Home ownership when execution components are absent",
+    scope: "global",
+    execution: "startup",
+    dependsOn: ["20261108-organization-deployment"],
+    async up(progress) {
+      await HomeOwnership.persist()
       progress(1, 1)
     },
   },

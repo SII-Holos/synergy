@@ -237,3 +237,41 @@ test("an unsupported persisted organization schema never becomes ready", async (
   }
   await expect(open(service.home)).rejects.toThrow()
 })
+
+test("Home ownership upgrades existing organization identity and refuses a personal data directory", async () => {
+  const legacy = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "organization-legacy-"))
+  homes.push(legacy)
+  const root = path.join(legacy, ".synergy")
+  await fs.mkdir(path.join(root, "data"), { recursive: true })
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    filename: path.join(root, "data", "organization.sqlite"),
+    namespace: "organization",
+  })
+  const deployment = {
+    schemaVersion: 1 as const,
+    orgID: "legacy-organization",
+    deploymentIncarnation: "legacy-deployment",
+    createdAt: 1,
+  }
+  await store.write(OrganizationStoragePath.deployment(), deployment)
+  await store.close()
+  const upgraded = await open(legacy)
+  expect(await upgraded.deployment()).toEqual(deployment)
+  const ownership = await Bun.file(path.join(root, "home-ownership.json")).text()
+  expect(JSON.parse(ownership)).toMatchObject({ schemaVersion: 1, owner: "organization" })
+  await upgraded.close()
+  const repeated = await open(legacy)
+  expect(await repeated.deployment()).toEqual(deployment)
+  expect(await Bun.file(path.join(root, "home-ownership.json")).text()).toBe(ownership)
+  await repeated.close()
+
+  const personal = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "organization-personal-"))
+  homes.push(personal)
+  const privateData = path.join(personal, ".synergy", "data", "storage", "manifest.json")
+  await Bun.write(privateData, "personal-data-must-not-change")
+  await expect(openOrganizationService({ home: personal })).rejects.toThrow("dedicated Home")
+  expect(await Bun.file(privateData).text()).toBe("personal-data-must-not-change")
+  expect(await Bun.file(path.join(personal, ".synergy", "data", "organization.sqlite")).exists()).toBe(false)
+  expect(await Bun.file(path.join(personal, ".synergy", "home-ownership.json")).exists()).toBe(false)
+})

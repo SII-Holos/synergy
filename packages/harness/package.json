@@ -385,6 +385,7 @@
     "./secrets/vault": "./src/secrets/vault.ts",
     "./secrets/encrypted-store": "./src/secrets/encrypted-store.ts",
     "./lifecycle/context": "./src/lifecycle/context.ts",
+    "./lifecycle/home-ownership": "./src/lifecycle/home-ownership.ts",
     "./test/migration/fixture": "./test/migration/fixture.ts",
     "./test/support/runtime": "./test/support/runtime.ts",
     "./test/support/polling-timers": "./test/support/polling-timers.ts",

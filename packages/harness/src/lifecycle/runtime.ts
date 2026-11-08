@@ -10,6 +10,7 @@ import { EnvironmentMaintenance } from "../environment/maintenance"
 import { ProviderCatalog } from "../provider/catalog"
 import { ProviderCatalogSource } from "../provider/catalog-source"
 import { RuntimeContext, type RuntimeHost } from "./context"
+import { HomeOwnership } from "./home-ownership"
 import { SessionStaging } from "../session/staging"
 import { ContextUsageEstimator } from "../session/context-usage-estimator"
 import { StorageRecovery } from "../storage/recovery"
@@ -341,6 +342,7 @@ export namespace RuntimeHandle {
         output: options.migrationOutput ?? "silent",
         reporter: options.reporter,
       })
+      await HomeOwnership.assert({ required: true })
       startupStage("storage-recovery")
       await SessionCompat.prepareRecovery(storageProgress("owners"))
       if (storage?.needsValidation) await StorageRecovery.validate(storageProgress("validate"))
