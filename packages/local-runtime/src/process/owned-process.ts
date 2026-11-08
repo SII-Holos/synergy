@@ -1,4 +1,5 @@
 import { installedWorkerCommand, installedWorkerEnvironment } from "@ericsanchezok/synergy-util/installed-launcher"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import fs from "node:fs/promises"
 import { existsSync } from "node:fs"
 import path from "node:path"
@@ -69,8 +70,46 @@ export namespace OwnedProcess {
     input.signal?.throwIfAborted()
     if (!["darwin", "win32", "linux"].includes(process.platform))
       throw new Error("Native process ownership is unavailable on this platform")
+    const host = RuntimeContext.tryCurrent()?.host
+    const selected = host?.env ?? process.env
+    const environment: Record<string, string> = {
+      ...Object.fromEntries(
+        [
+          "PATH",
+          "SystemRoot",
+          "WINDIR",
+          "ComSpec",
+          "PATHEXT",
+          "HOME",
+          "USERPROFILE",
+          "APPDATA",
+          "LOCALAPPDATA",
+          "XDG_CONFIG_HOME",
+          "XDG_DATA_HOME",
+          "XDG_CACHE_HOME",
+          "XDG_STATE_HOME",
+          "LANG",
+          "LC_ALL",
+          "LC_CTYPE",
+          "TZ",
+          "BUN_JSC_useJIT",
+          "SYNERGY_TEST_HOME",
+        ].flatMap((key) => {
+          const value =
+            process.platform === "win32"
+              ? Object.entries(selected).find(([name]) => name.toUpperCase() === key.toUpperCase())?.[1]
+              : selected[key]
+          return value === undefined ? [] : [[key, value]]
+        }),
+      ),
+      ...installedWorkerEnvironment(selected),
+      ...(host
+        ? { HOME: host.home, USERPROFILE: host.home, SYNERGY_HOME: host.root, SYNERGY_RUNTIME_ROOT: host.root }
+        : {}),
+    }
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "sy-p-"))
     await fs.chmod(directory, 0o700)
+    Object.assign(environment, { TMPDIR: directory, TMP: directory, TEMP: directory })
     const socketPath = path.join(directory, "io")
     const token = randomBytes(32).toString("hex")
     const child = new Child()
@@ -367,19 +406,26 @@ export namespace OwnedProcess {
       await fs.writeFile(filename, JSON.stringify(configuration), { mode: 0o600 })
       const source = fileURLToPath(new URL("./owned-worker.ts", import.meta.url))
       const command =
-        installedWorkerCommand(process.env, "__owned-process-runner", [filename]) ??
+        installedWorkerCommand(environment, "__owned-process-runner", [filename]) ??
         (existsSync(source)
-          ? [process.execPath, "run", source, filename]
+          ? [
+              process.execPath,
+              "run",
+              "--no-env-file",
+              `--config=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+              source,
+              filename,
+            ]
           : [process.execPath, "__owned-process-runner", filename])
       startupTimer = setTimeout(() => fail(new Error("Native process startup timed out")), 30000)
       input.signal?.addEventListener("abort", abort, { once: true })
       input.signal?.throwIfAborted()
       job =
         process.platform === "darwin"
-          ? await DarwinJob.start(command, directory, installedWorkerEnvironment(process.env))
+          ? await DarwinJob.start(command, directory, environment)
           : process.platform === "win32"
-            ? await WindowsJob.start(command, directory)
-            : await LinuxTree.start(command, directory)
+            ? await WindowsJob.start(command, directory, environment)
+            : await LinuxTree.start(command, directory, environment)
       const pid = await Promise.race([
         connected.promise,
         ...(job.exited

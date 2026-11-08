@@ -266,6 +266,8 @@ After the native worker acknowledges exit, a control-channel `ECONNRESET` or `EP
 
 The native worker runs under the Runtime executable's own macOS permission identity. It does not inherit another application's TCC grants or add a Seatbelt profile to `full_access`; commands can still install their own sandbox. OS access failures remain ordinary runtime failures. Native worker entrypoints execute before global storage initialization in both core and full artifacts.
 
+Native supervisors capture the selected Runtime's launcher and a restricted bootstrap environment before preparation. Their working and temporary directories are private to the process claim; source entrypoints disable automatic Bun configuration and dotenv loading. Every platform replaces inherited environment state, including launchd jobs and Windows Unicode environment blocks. The supervised command receives its separately declared environment unchanged.
+
 ## Session and Workflow Restrictions
 
 Authorization is also constrained by the current session role. Plan supplies Blueprint-oriented prompt guidance without restricting tools; the selected control profile remains the authorization boundary. Delegated subagents normally cannot re-delegate, operate the task graph, or ask permission questions. Internal reviewers can receive a deliberately configured delegation group without becoming user-selectable primary agents.

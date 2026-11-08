@@ -14,6 +14,8 @@ The host selects empty configuration and provider catalogs, project-only instruc
 
 SQLite drivers capture the owning host when they open and retain that environment for lazy maintenance readers and reader replacement. PostgreSQL connection variables resolve within the current host; only detached storage utilities use the process environment. SQLite and telemetry source workers also disable Bun's automatic loader inputs. Telemetry ignores callbacks from retired workers before reentering Runtime context, including callbacks delivered after shutdown has disposed that context.
 
+Native supervisors also capture their owning launcher and explicit bootstrap environment, keeping command credentials out of the supervisor. OS and locale variables, Runtime paths and installation pins are selected independently of the command's declared environment. Private working and temporary directories plus replacement environments prevent launchd or parent-process settings from supplying another source. Windows uses an explicit Unicode environment block; source Bun entrypoints disable implicit configuration loading. Detached host tools retain their own process as the selection source.
+
 Project instruction traversal resolves both the Scope root and Workspace path physically before comparing its stopping point. File aliases cannot make an otherwise bounded upward walk pass its root. The registration and bridge APIs retain independent lifecycles and confer no execution authority.
 
 ## Alternatives considered

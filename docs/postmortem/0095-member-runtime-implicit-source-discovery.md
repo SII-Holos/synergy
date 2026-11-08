@@ -21,6 +21,7 @@ The member key used a new private `auth` directory outside the existing `data/au
 5. Real SQLite queries reproduced the environment mismatch, including maintenance-reader creation and reader replacement from another Runtime context. Drivers were changed to retain their original host snapshot, and PostgreSQL variable resolution was limited to that host.
 6. Real telemetry startup reproduced preload execution. Loader controls and an identity check before callback context entry fixed startup and late shutdown callbacks.
 7. Machine-key read/write classification and an actual macOS read initially failed their protection tests. Adding the directory to the shared policies blocked the key read while preserving ordinary file access.
+8. Native supervisor tests found that the selected Runtime launcher was ignored and launchd started the worker at the filesystem root. Supervisor startup now captures the owning environment, replaces platform inheritance and selects private working and temporary directories, while preserving the actual command's explicit environment.
 
 ## Root cause
 
@@ -31,6 +32,8 @@ Isolation was checked at the parent data structure rather than through the child
 Harness `test/session/worker-environment.test.ts` starts actual child processes with conflicting loader files. `test/session/instruction-source.test.ts` verifies both personal and exclusive discovery through a directory alias. Agent Runtime `test/workers.test.ts` rejects absent Home owners; organization-runtime `test/runtime.test.ts` verifies matching workers, mismatched markers and separate personal/A/B sources. The [composition decision](../decisions/implemented/architecture/2026-11-08-member-runtime-composition.md) records the resulting startup choices.
 
 Harness `test/storage/runtime-environment.test.ts` exercises connection lookup, real SQLite workers, maintenance and reader replacement. `test/process/worker-loader.test.ts` executes storage and telemetry subprocesses with conflicting Bun configuration and disposes the owner immediately after shutdown; its process exit must remain successful.
+
+Local Runtime `test/process/supervisor-environment.test.ts` runs the actual platform supervisor, checks the selected launcher and command environment separately, and places conflicting Bun inputs in the supervisor directory. Native ownership, cancellation, output drainage and both JIT modes retain their existing behavioral coverage. Windows environment encoding has portable tests; platform execution still requires the corresponding OS.
 
 ## Lessons
 
