@@ -93,9 +93,13 @@ export function createCommandAdmissions(options: {
         const { account, session } = current
         const requestKey = Keys.commandRequest(account.accountID, request.requestID)
         if (previous?.accepted) return { kind: "accepted" as const, receipt: previous.accepted }
-        await authorize(credentials, operation === "pause" ? "session.stop" : "session.execute", {
-          sessionID: request.sessionID,
-        })
+        await authorize(
+          credentials,
+          operation === "pause" || operation === "cancel" ? "session.stop" : "session.execute",
+          {
+            sessionID: request.sessionID,
+          },
+        )
         const stateKey = Keys.commandState(session.sessionID)
         const state = await Record.read(Record.CommandState, stateKey)
         if (state?.pendingAttemptID) {

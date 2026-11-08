@@ -154,6 +154,7 @@ export namespace OrganizationCommandProtocol {
     .discriminatedUnion("operation", [
       z.strictObject({ operation: z.literal("pause") }),
       z.strictObject({ operation: z.literal("continue"), pausedSince: PausedSince, controlVersion: ControlVersion }),
+      z.strictObject({ operation: z.literal("cancel"), runID: Identity.ID, controlVersion: ControlVersion }),
     ])
     .meta({ ref: "OrgCommandControl" })
   export type Control = z.infer<typeof Control>
@@ -272,6 +273,14 @@ export namespace OrganizationCommandProtocol {
           itemID: Identity.ID,
           messageID: Identity.ID,
           rootID: Identity.ID.optional(),
+        }),
+        z.strictObject({
+          kind: z.literal("control"),
+          operation: z.literal("cancel"),
+          controlVersion: ControlVersion.positive(),
+          runID: Identity.ID,
+          runStatusAtReception: z.enum(["running", "completed", "failed", "cancelled", "interrupted"]),
+          cancelRequestedAt: z.number().int().nonnegative().optional(),
         }),
       ]),
     })

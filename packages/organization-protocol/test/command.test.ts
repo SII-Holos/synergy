@@ -35,6 +35,42 @@ const permit: Command.Permit = {
   provisionalGrantID: "grant",
 }
 
+test("cancel binds its explicit root and observed version and only records reception facts", async () => {
+  const control: Command.Control = { operation: "cancel", runID: "root", controlVersion: 0 }
+  const request = Command.controlRequest({ ...permit, operation: "cancel" }, control)
+  const hash = await Command.digestControl(request)
+  for (const changed of [
+    { ...request, control: { ...control, runID: "other-root" } },
+    { ...request, control: { ...control, controlVersion: 1 } },
+  ])
+    expect(await Command.digestControl(changed)).not.toBe(hash)
+  for (const changed of [
+    { operation: "cancel", runID: "root" },
+    { ...control, force: true },
+    { ...control, controlVersion: -1 },
+  ])
+    expect(Command.Control.safeParse(changed).success).toBeFalse()
+  const accepted: Command.ControlAccepted = {
+    schemaVersion: 1,
+    permit: { ...permit, operation: "cancel" },
+    acceptedAt: 2,
+    intakeSeq: 1,
+    effect: {
+      kind: "control",
+      operation: "cancel",
+      runID: "root",
+      controlVersion: 1,
+      runStatusAtReception: "running",
+      cancelRequestedAt: 2,
+    },
+  }
+  expect(Command.Accepted.parse(accepted)).toEqual(accepted)
+  expect(
+    Command.Accepted.safeParse({ ...accepted, effect: { ...accepted.effect, physicallyStopped: true } }).success,
+  ).toBeFalse()
+  expect(Command.Accepted.safeParse({ ...accepted, permit: { ...permit, operation: "pause" } }).success).toBeFalse()
+})
+
 test("control digests bind the observed pause and version and reject forged or unsafe control fields", async () => {
   const control: Command.Control = { operation: "continue", pausedSince: 100, controlVersion: 2 }
   const request = Command.controlRequest({ ...permit, operation: "continue" }, control)

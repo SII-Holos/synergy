@@ -1091,7 +1091,7 @@
     "/org/v1/sessions/{sessionID}/control": {
       "post": {
         "operationId": "orgCommands.control",
-        "summary": "Pause or continue an online Session",
+        "summary": "Pause, continue or cancel work in an online Session",
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCommandControlRequest" } } }
@@ -2166,6 +2166,22 @@
                 },
                 "required": ["kind", "controlVersion", "pausedSince", "operation", "itemID", "messageID"],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "control" },
+                  "operation": { "type": "string", "const": "cancel" },
+                  "controlVersion": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                  "runID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "runStatusAtReception": {
+                    "type": "string",
+                    "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+                  },
+                  "cancelRequestedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["kind", "operation", "controlVersion", "runID", "runStatusAtReception"],
+                "additionalProperties": false
               }
             ]
           }
@@ -2189,6 +2205,16 @@
               "controlVersion": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
             },
             "required": ["operation", "pausedSince", "controlVersion"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": { "type": "string", "const": "cancel" },
+              "runID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "controlVersion": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": ["operation", "runID", "controlVersion"],
             "additionalProperties": false
           }
         ]

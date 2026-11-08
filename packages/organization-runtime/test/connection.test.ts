@@ -219,6 +219,96 @@ test("verified WSS keeps heartbeats and receipt queries live while a control dra
   expect(signal?.aborted).toBe(true)
 })
 
+test("a committed control receipt returns before drainage while close retains the callback", async () => {
+  await using f = await enrolled()
+  const remote = Promise.withResolvers<Parameters<NonNullable<Parameters<typeof f.interceptFrames>[0]>>[0]>()
+  const received = Promise.withResolvers<Command.Reply>()
+  const replies: Command.Reply[] = []
+  const release = Promise.withResolvers<void>()
+  let drained = false
+  let signal: AbortSignal | undefined
+  f.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "heartbeat") remote.resolve(socket)
+    if (frame.type !== "receipt") return false
+    replies.push(frame.reply)
+    received.resolve(frame.reply)
+    return true
+  })
+  await using connection = await openMemberConnection({
+    ...f.options,
+    commands(_connected, currentSignal) {
+      signal = currentSignal
+      return {
+        async create() {
+          throw new Error("unavailable")
+        },
+        async input() {
+          throw new Error("unavailable")
+        },
+        async skip() {
+          throw new Error("unavailable")
+        },
+        async query(authorization) {
+          return { authorization }
+        },
+        async control(delivery, onReceipt) {
+          const permit = delivery.authorization.permit
+          const result = Command.ControlResult.parse({
+            attempt: {
+              schemaVersion: 1,
+              permit,
+              receivedAt: Date.now(),
+              status: "accepted",
+              acceptedAttemptID: permit.attemptID,
+            },
+            accepted: {
+              schemaVersion: 1,
+              permit,
+              acceptedAt: Date.now(),
+              intakeSeq: 1,
+              effect: { kind: "control", operation: "pause", controlVersion: 1, pausedSince: 1, changed: true },
+            },
+          })
+          onReceipt?.(result)
+          await release.promise
+          drained = true
+          throw new Error("private drainage failure after reception")
+        },
+      }
+    },
+  })
+  using unblock = { [Symbol.dispose]: () => release.resolve() }
+  const socket = await within(remote.promise)
+  const authorization = commandAuthorization(f, connection, "early-receipt")
+  authorization.permit.operation = "pause"
+  socket.send(
+    JSON.stringify({
+      type: "command",
+      connectionEpoch: connection.connected.connectionEpoch,
+      exchangeID: "early-receipt",
+      command: { kind: "control", delivery: { authorization, control: { operation: "pause" } } },
+    }),
+  )
+  expect(await within(received.promise)).toMatchObject({
+    kind: "result",
+    result: { accepted: { permit: { requestID: "early-receipt" } } },
+  })
+  expect(drained).toBeFalse()
+  expect(signal?.aborted).toBeFalse()
+  let closed = false
+  const closing = connection.close().then(() => {
+    closed = true
+  })
+  await Bun.sleep(0)
+  expect(signal?.aborted).toBeTrue()
+  expect(closed).toBeFalse()
+  release.resolve()
+  await within(closing)
+  expect(drained).toBeTrue()
+  expect(replies).toHaveLength(1)
+})
+
 for (const limit of ["count", "bytes"] as const)
   test(`command ${limit} saturation retains reconciliation capacity and drains accepted callbacks`, async () => {
     await using f = await enrolled()

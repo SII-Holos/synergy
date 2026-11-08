@@ -12,6 +12,7 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
 import { SessionTransfer } from "@ericsanchezok/synergy-harness/session/transfer"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { OrganizationRuntimeError } from "./error"
@@ -258,11 +259,21 @@ export function createCommandIntake(options: {
         if ((await readSession(permit.sessionID)) && !current.request?.accepted) reason = "SESSION_UNAVAILABLE"
       } else {
         const session = await Session.get(permit.sessionID)
-        if (session.time.archived || (control && !SessionLifecycle.latchable(session))) reason = "SESSION_UNAVAILABLE"
+        if (
+          session.time.archived ||
+          (control && control.operation !== "cancel" && !SessionLifecycle.latchable(session))
+        )
+          reason = "SESSION_UNAVAILABLE"
         else if (
           control?.operation === "continue" &&
           !current.request?.accepted &&
           (session.paused?.since !== control.pausedSince || (await controlVersion(permit)) !== control.controlVersion)
+        )
+          reason = "CONTROL_CONFLICT"
+        else if (
+          control?.operation === "cancel" &&
+          !current.request?.accepted &&
+          (await controlVersion(permit)) !== control.controlVersion
         )
           reason = "CONTROL_CONFLICT"
       }
@@ -338,7 +349,10 @@ export function createCommandIntake(options: {
     }
   }
 
-  async function control(value: Command.ControlDelivery): Promise<Command.ControlResult> {
+  async function control(
+    value: Command.ControlDelivery,
+    received?: (result: Command.ControlResult) => void,
+  ): Promise<Command.ControlResult> {
     const delivery = parse(Command.ControlDelivery, value)
     const { permit } = delivery.authorization
     const payloadMatches = await verify(delivery.authorization, () =>
@@ -397,6 +411,36 @@ export function createCommandIntake(options: {
         }
         let checked: Inspection | undefined
         let accepted: Command.Result | undefined
+        if (delivery.control.operation === "cancel") {
+          using lock = await Lock.writeWithSignal(`session-control:${permit.sessionID}`, pending)
+          pending.throwIfAborted()
+          await RolloutLifecycle.cancel(permit.sessionID, delivery.control.runID, {
+            signal: pending,
+            async validate() {
+              checked = await inspect(permit, payloadMatches, delivery.control)
+              if (checked.current.attempt || checked.reason || checked.current.request?.accepted)
+                throw new AdmissionChanged()
+            },
+            commitGuard() {
+              assertActive()
+              if (expired(permit)) throw new PermitExpired()
+            },
+            async record(run) {
+              if (!checked) throw new Error("Native cancellation has no command admission")
+              accepted = await settle(permit, checked, {
+                kind: "control",
+                operation: "cancel",
+                controlVersion: await advanceControl(permit),
+                runID: run.id,
+                runStatusAtReception: run.status,
+                cancelRequestedAt: run.cancelRequestedAt,
+              })
+              const receipt = Command.ControlResult.parse(accepted)
+              Storage.afterCommit(() => received?.(receipt))
+            },
+          })
+          return Command.ControlResult.parse(accepted)
+        }
         const requestID =
           "organization:" +
           createHash("sha256")
@@ -436,6 +480,8 @@ export function createCommandIntake(options: {
         assertActive()
         if (error instanceof PermitExpired) return Command.ControlResult.parse(await finish("EXPIRED_PERMIT"))
         if (error instanceof AdmissionChanged) return Command.ControlResult.parse(await finish("CONTROL_CONFLICT"))
+        if (error instanceof RolloutLifecycle.RunNotFoundError)
+          return Command.ControlResult.parse(await finish("CONTROL_CONFLICT"))
         throw error
       } finally {
         clearTimeout(timer)

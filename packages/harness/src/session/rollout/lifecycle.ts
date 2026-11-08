@@ -149,6 +149,8 @@ export namespace RolloutLifecycle {
     commitGuard?(): void
   }
 
+  export class RunNotFoundError extends Storage.NotFoundError {}
+
   export async function cancel(sessionID: string, runID: string, options?: CancelAdmission) {
     if (Storage.inTransaction()) throw new Error("Task cancellation must own its commit boundary")
     const admission = { ...options }
@@ -215,7 +217,7 @@ export namespace RolloutLifecycle {
         if (message?.info.role === "user" && message.info.isRoot)
           run = await RolloutLedger.cancelUnopenedRun(identity, runID, message.info.time.created, publish)
       }
-      if (!run) throw new Storage.NotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
+      if (!run) throw new RunNotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
     }
     if (run.status !== "running" && run.status !== "interrupted") return run
     // Signal the live owner before waiting on it: requestCancel only marks

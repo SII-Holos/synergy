@@ -25,7 +25,13 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
   return new Hono()
     .post(
       "/sessions/:sessionID/control",
-      operation("orgCommands.control", "Pause or continue an online Session", Command.ControlAccepted, true, true),
+      operation(
+        "orgCommands.control",
+        "Pause, continue or cancel work in an online Session",
+        Command.ControlAccepted,
+        true,
+        true,
+      ),
       validator("param", z.strictObject({ sessionID: Identity.ID }), validation),
       validator("json", Command.ControlRequest, validation),
       async (c) => {

@@ -930,7 +930,7 @@ export class OrgSessions extends HeyApiClient {
 
 export class OrgCommands extends HeyApiClient {
   /**
-   * Pause or continue an online Session
+   * Pause, continue or cancel work in an online Session
    */
   public control<ThrowOnError extends boolean = false>(
     parameters: {

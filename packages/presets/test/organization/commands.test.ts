@@ -55,6 +55,7 @@ test("HTTP control returns native facts, reconciles a lost ACK and refuses chang
   const observed = await client.orgCommands.get({ sessionID: f.sessionID, requestID: "pause" }, { throwOnError: true })
   const receipt = Command.ControlAccepted.parse(observed.data.accepted)
   expect(receipt.effect).toMatchObject({ operation: "pause", controlVersion: 1 })
+  if (receipt.effect.operation !== "pause") throw new Error("Expected pause receipt")
   expect((await client.orgCommands.control(args, { throwOnError: true })).data).toEqual(receipt)
   receiver.loseReply(false)
   const again = await client.orgCommands.control(

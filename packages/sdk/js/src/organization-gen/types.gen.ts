@@ -294,6 +294,14 @@ export type OrgCommandControlAccepted = {
         messageID: string
         rootID?: string
       }
+    | {
+        kind: "control"
+        operation: "cancel"
+        controlVersion: number
+        runID: string
+        runStatusAtReception: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+        cancelRequestedAt?: number
+      }
 }
 
 export type OrgCommandControl =
@@ -303,6 +311,11 @@ export type OrgCommandControl =
   | {
       operation: "continue"
       pausedSince: number
+      controlVersion: number
+    }
+  | {
+      operation: "cancel"
+      runID: string
       controlVersion: number
     }
 

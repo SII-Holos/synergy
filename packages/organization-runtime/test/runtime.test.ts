@@ -12,6 +12,9 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
@@ -82,7 +85,7 @@ async function availablePort() {
   return port
 }
 
-test("the public service creates a bound Session through the resident Runtime and reconciles an aborted input caller", async () => {
+test("the public service creates, reconciles and cancels native work through the resident Runtime", async () => {
   await using service = await fixture()
   const member = await enrolled(service)
   const registration = (await readMemberRegistration(member.home, member.identity))!
@@ -201,10 +204,65 @@ test("the public service creates a bound Session through the resident Runtime an
   )
   expect(paused.response.status).toBe(200)
   expect(paused.data.effect).toMatchObject({ operation: "pause", controlVersion: 1, changed: true })
+  if (paused.data.effect.operation !== "pause") throw new Error("Expected pause receipt")
   expect((await runtime.run(() => Session.get(sessionID))).paused?.since).toBe(paused.data.effect.pausedSince)
   expect(
     (await service.client.orgCommands.control(control, { headers: service.headers, throwOnError: true })).data,
   ).toEqual(paused.data)
+  const task = await service.client.orgCommands.input(
+    {
+      ...input,
+      orgCommandInputRequest: {
+        ...input.orgCommandInputRequest,
+        requestID: "native-task",
+        input: { ...input.orgCommandInputRequest.input, mode: "task" },
+      },
+    },
+    { headers: service.headers, throwOnError: true },
+  )
+  const runID = task.data.effect.messageID
+  const active = await runtime.run(async () => {
+    const owner = RolloutLifecycle.owner(await Session.get(sessionID))
+    await RolloutLedger.beginRun(owner, runID)
+    const lease = SessionManager.acquire(sessionID)!
+    SessionManager.bindRootTask(lease, runID)
+    SessionManager.activate(lease)
+    return { owner, lease }
+  })
+  try {
+    const cancel = {
+      sessionID,
+      orgCommandControlRequest: {
+        ...target,
+        requestID: "native-cancel",
+        control: { operation: "cancel" as const, runID, controlVersion: 1 },
+      },
+    }
+    const receipt = await observed(
+      service.client.orgCommands.control(cancel, { headers: service.headers, throwOnError: true }),
+    )
+    expect(receipt.response.status).toBe(202)
+    expect(receipt.data.effect).toMatchObject({
+      operation: "cancel",
+      runID,
+      controlVersion: 2,
+      runStatusAtReception: "running",
+    })
+    await runtime.run(async () => {
+      expect((await RolloutLedger.getRun(active.owner, runID)).status).toBe("running")
+      expect(SessionManager.isRunning(sessionID)).toBeTrue()
+    })
+    expect(
+      (await service.client.orgCommands.control(cancel, { headers: service.headers, throwOnError: true })).data,
+    ).toEqual(receipt.data)
+    const read = await service.client.orgCommands.get(
+      { sessionID, requestID: "native-cancel" },
+      { headers: service.headers, throwOnError: true },
+    )
+    expect(read.data.accepted).toEqual(receipt.data)
+  } finally {
+    await runtime.run(() => SessionManager.release(active.lease, { requestNextWork: false }))
+  }
 })
 
 test("resident member startup reconnects its outbound bridge without blocking local readiness", async () => {

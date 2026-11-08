@@ -10,6 +10,8 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
@@ -146,6 +148,189 @@ async function session() {
     fn: () => Session.create({ organization: binding, workspaceID: null }),
   })
 }
+
+test("cancel commits a native receipt before drainage and survives disconnection without repeating the effect", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const native = await session()
+    const controller = new AbortController()
+    const receiver = service.receiver(1, controller.signal)
+    const input = await receiver.input(await service.input(native.id, {}, "Running task", "task"))
+    const runID = input.accepted!.effect.messageID
+    const owner = RolloutLifecycle.owner(native)
+    await RolloutLedger.beginRun(owner, runID)
+    const lease = SessionManager.acquire(native.id)!
+    SessionManager.bindRootTask(lease, runID)
+    SessionManager.activate(lease)
+    const delivery = await service.control(native.id, { operation: "cancel", runID, controlVersion: 0 }, 2)
+    const received = Promise.withResolvers<Command.ControlResult>()
+    const timer = setTimeout(() => received.reject(new Error("Cancel receipt did not arrive")), 2_000)
+    let settled = false
+    const pending = receiver
+      .control(delivery, (result) => {
+        expect(Storage.inTransaction()).toBeFalse()
+        received.resolve(result)
+      })
+      .finally(() => {
+        settled = true
+      })
+    void pending.catch(received.reject)
+    try {
+      const receipt = await received.promise
+      expect(receipt.accepted?.effect).toMatchObject({
+        kind: "control",
+        operation: "cancel",
+        runID,
+        controlVersion: 1,
+        runStatusAtReception: "running",
+        cancelRequestedAt: expect.any(Number),
+      })
+      expect((await service.receiver().query(delivery.authorization)).result).toEqual(receipt)
+      expect(settled).toBeFalse()
+      expect((await SessionInbox.list(native.id)).some((item) => item.messageID === runID)).toBeFalse()
+      expect((await Session.get(native.id)).paused).toBeUndefined()
+      const pause = await service.control(native.id, { operation: "pause" }, 3, {
+        requestID: "during-cancel",
+        deadline: Date.now() + 50,
+      })
+      expect((await service.receiver().control(pause)).attempt).toMatchObject({
+        status: "rejected",
+        reason: "EXPIRED_PERMIT",
+      })
+      expect((await Session.get(native.id)).paused).toBeUndefined()
+      expect(settled).toBeFalse()
+      controller.abort(new Error("Connection ended after reception"))
+      await SessionManager.release(lease, { requestNextWork: false })
+      expect(await pending).toEqual(receipt)
+      expect((await RolloutLedger.getRun(owner, runID)).status).toBe("cancelled")
+      await RolloutLedger.resumeRun(owner, runID)
+      const later = SessionManager.acquire(native.id)!
+      SessionManager.bindRootTask(later, runID)
+      const rescue = setTimeout(() => void SessionManager.release(later, { requestNextWork: false }), 2_000)
+      try {
+        expect(await service.receiver().control(delivery)).toEqual(receipt)
+        expect(later.signal.aborted).toBeFalse()
+        expect((await RolloutLedger.getRun(owner, runID)).cancelRequestedAt).toBeUndefined()
+      } finally {
+        clearTimeout(rescue)
+        await SessionManager.release(later, { requestNextWork: false })
+      }
+    } finally {
+      clearTimeout(timer)
+      await SessionManager.release(lease, { requestNextWork: false })
+      await Promise.allSettled([pending])
+    }
+  })
+})
+
+test("cancel checks its observed control version and missing root without pausing the Session", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const native = await session()
+    const receiver = service.receiver()
+    const input = await receiver.input(await service.input(native.id, {}, "Queued task", "task"))
+    const runID = input.accepted!.effect.messageID
+    const owner = RolloutLifecycle.owner(native)
+    const stale = await service.control(native.id, { operation: "cancel", runID, controlVersion: 1 }, 2)
+    expect((await receiver.control(stale)).attempt).toMatchObject({ status: "rejected", reason: "CONTROL_CONFLICT" })
+    expect(await SessionInbox.list(native.id)).toHaveLength(1)
+    const missing = await service.control(
+      native.id,
+      { operation: "cancel", runID: "missing-run", controlVersion: 0 },
+      3,
+    )
+    expect((await receiver.control(missing)).attempt).toMatchObject({ status: "rejected", reason: "CONTROL_CONFLICT" })
+    const delivery = await service.control(native.id, { operation: "cancel", runID, controlVersion: 0 }, 4)
+    const receipt = await receiver.control(delivery)
+    expect(receipt.accepted?.effect).toMatchObject({
+      operation: "cancel",
+      runID,
+      controlVersion: 1,
+      runStatusAtReception: "cancelled",
+    })
+    expect(await SessionInbox.list(native.id)).toHaveLength(0)
+    expect((await RolloutLedger.getRun(owner, runID)).status).toBe("cancelled")
+    expect((await Session.get(native.id)).paused).toBeUndefined()
+    await RolloutLedger.beginRun(owner, "finished-task")
+    const completed = await RolloutLedger.finishRun(owner, "finished-task", "completed")
+    const terminal = await receiver.control(
+      await service.control(native.id, { operation: "cancel", runID: "finished-task", controlVersion: 1 }, 5),
+    )
+    expect(terminal.accepted?.effect).toMatchObject({
+      operation: "cancel",
+      runStatusAtReception: "completed",
+      controlVersion: 2,
+    })
+    expect(terminal.accepted?.effect).not.toHaveProperty("cancelRequestedAt", expect.any(Number))
+    expect(await RolloutLedger.getRun(owner, "finished-task")).toEqual(completed)
+  })
+})
+
+test("cancel admission rollback sends no signal or receipt and preserves queued work", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    for (const fault of ["storage", "disconnect", "deadline"] as const) {
+      const native = await session()
+      const controller = new AbortController()
+      const receiver = service.receiver(1, controller.signal)
+      const input = await receiver.input(
+        await service.input(
+          native.id,
+          { requestID: `${fault}-input`, attemptID: `${fault}-input` },
+          "Retain queued work",
+          "task",
+        ),
+      )
+      const runID = input.accepted!.effect.messageID
+      const owner = RolloutLifecycle.owner(native)
+      const original = await RolloutLedger.beginRun(owner, runID)
+      const lease = SessionManager.acquire(native.id)!
+      SessionManager.bindRootTask(lease, runID)
+      const delivery = await service.control(native.id, { operation: "cancel", runID, controlVersion: 0 }, 2, {
+        requestID: fault,
+      })
+      const key = Keys.request(binding.orgID, binding.creatorID, fault).join("/")
+      const write = Storage.write
+      const refusal = new Storage.NotFoundError({ message: "Host receipt publication refused" })
+      let clock: ReturnType<typeof spyOn<typeof Date, "now">> | undefined
+      const observer = spyOn(Storage, "write").mockImplementation(async (path, value) => {
+        await write(path, value)
+        if (path.join("/") !== key) return
+        if (fault === "storage") throw refusal
+        if (fault === "disconnect") controller.abort()
+        if (fault === "deadline" && !clock)
+          clock = spyOn(Date, "now").mockReturnValue(delivery.authorization.permit.deadline)
+      })
+      let notifications = 0
+      const rescue = setTimeout(() => void SessionManager.release(lease, { requestNextWork: false }), 2_000)
+      try {
+        const result = receiver.control(delivery, () => {
+          notifications++
+        })
+        if (fault === "storage") await expect(result).rejects.toBe(refusal)
+        else if (fault === "disconnect")
+          await expect(result).rejects.toMatchObject({ data: { code: "STALE_CONNECTION" } })
+        else expect((await result).attempt).toMatchObject({ status: "rejected", reason: "EXPIRED_PERMIT" })
+        expect(notifications).toBe(0)
+        expect(lease.signal.aborted).toBeFalse()
+        expect(await RolloutLedger.getRun(owner, runID)).toEqual(original)
+        expect(await SessionInbox.list(native.id)).toHaveLength(1)
+        expect(await receiver.accepted({ subjectID: binding.creatorID, requestID: fault })).toBeUndefined()
+      } finally {
+        observer.mockRestore()
+        clock?.mockRestore()
+        clearTimeout(rescue)
+        await SessionManager.release(lease, { requestNextWork: false })
+      }
+    }
+  })
+})
 
 test("pause retains active tools and repeated intent fences an older Continue without replacing the latch", async () => {
   const service = await authority()

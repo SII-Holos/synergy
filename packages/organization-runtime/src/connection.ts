@@ -35,7 +35,10 @@ export interface MemberConnectionOptions {
     signal: AbortSignal,
   ) => {
     create(delivery: Command.CreateDelivery): Promise<Command.CreatedResult>
-    control(delivery: Command.ControlDelivery): Promise<Command.ControlResult>
+    control(
+      delivery: Command.ControlDelivery,
+      received?: (result: Command.ControlResult) => void,
+    ): Promise<Command.ControlResult>
     input(delivery: Command.InputDelivery): Promise<Command.Result>
     query(authorization: Command.SignedPermit): Promise<Command.QueryResult>
     skip(authorization: Command.SignedSkip): Promise<Command.Result>
@@ -249,6 +252,13 @@ async function attempt(input: {
     frame: Extract<Protocol.ServerFrame, { type: "command" }>,
     receiver: NonNullable<typeof commands>,
   ) {
+    let replied = false
+    function respond(reply: Command.Reply) {
+      if (replied) return
+      reply = Command.Reply.parse(reply)
+      replied = true
+      if (!work.signal.aborted) send({ type: "receipt", connectionEpoch: epoch, exchangeID: frame.exchangeID, reply })
+    }
     let reply: Command.Reply
     try {
       const command = frame.command
@@ -256,7 +266,12 @@ async function attempt(input: {
         command.kind === "create"
           ? { kind: "result", result: await receiver.create(command.delivery) }
           : command.kind === "control"
-            ? { kind: "result", result: await receiver.control(command.delivery) }
+            ? {
+                kind: "result",
+                result: await receiver.control(command.delivery, (result) =>
+                  respond({ kind: "result", result: Command.ControlResult.parse(result) }),
+                ),
+              }
             : command.kind === "input"
               ? { kind: "result", result: await receiver.input(command.delivery) }
               : command.kind === "skip"
@@ -277,7 +292,7 @@ async function attempt(input: {
               },
       }
     }
-    if (!work.signal.aborted) send({ type: "receipt", connectionEpoch: epoch, exchangeID: frame.exchangeID, reply })
+    respond(reply)
   }
   async function drain() {
     await pending
