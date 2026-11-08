@@ -761,7 +761,7 @@ export namespace ProcessRegistry {
     })
   }
 
-  function isAlive(proc: Process): boolean | undefined {
+  export function isAlive(proc: Process): boolean | undefined {
     if (proc.exited || proc.exitObservedAt !== undefined) return false
     if (proc.child?.exitCode !== null && proc.child?.exitCode !== undefined) return false
     if (proc.child?.signalCode !== null && proc.child?.signalCode !== undefined) return false

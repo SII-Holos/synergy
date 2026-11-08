@@ -72,6 +72,7 @@ export interface RecordQuery {
 }
 export interface ChildKeyQuery {
   prefix: string[]
+  includeBranches?: boolean
   after?: string
   before?: string
   limit?: number
@@ -864,7 +865,9 @@ export class StoreTransaction {
       [...values, limit, this.namespace],
     )
     return {
-      keys: rows.flatMap((row) => (row.key_text === null ? [] : [JSON.parse(row.key_text) as string[]])),
+      keys: input.includeBranches
+        ? rows.map((row) => [...input.prefix, row.segment])
+        : rows.flatMap((row) => (row.key_text === null ? [] : [JSON.parse(row.key_text) as string[]])),
       after: rows.length === limit ? rows.at(-1)!.segment : undefined,
     }
   }

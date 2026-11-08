@@ -5,6 +5,7 @@ export const POSTGRES_TEST_FILES = [
   "test/session/rollout-maintenance.test.ts",
   "test/session/rollout-journal.test.ts",
   "test/session/rollout-events.test.ts",
+  "test/session/rollout-activity.test.ts",
   "test/tool/lazy-catalog.test.ts",
   "test/scope/migration-empty.test.ts",
   "test/migration/empty-input.test.ts",

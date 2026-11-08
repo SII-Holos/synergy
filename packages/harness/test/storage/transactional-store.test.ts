@@ -224,9 +224,24 @@ for (const backend of storageTestBackends()) {
       await store.write(["a", "b", "c"], { value: 2 })
       await store.write(["a", "other"], { value: 3 })
       expect(await store.scan(["a"])).toEqual(["b", "b/c", "other"])
+      await store.snapshot(async (tx) => {
+        expect((await tx.childKeys({ prefix: ["a"], includeBranches: true })).keys).toEqual([
+          ["a", "b"],
+          ["a", "b/c"],
+          ["a", "other"],
+        ])
+        expect((await tx.childKeys({ prefix: ["a"] })).keys).toEqual([
+          ["a", "b/c"],
+          ["a", "other"],
+        ])
+      })
       expect(await store.list(["a", "b"])).toEqual([["a", "b", "c"]])
       await store.removeTree(["a", "b"])
       expect(await store.scan(["a"])).toEqual(["b/c", "other"])
+      expect((await store.snapshot((tx) => tx.childKeys({ prefix: ["a"], includeBranches: true }))).keys).toEqual([
+        ["a", "b/c"],
+        ["a", "other"],
+      ])
       expect(await store.read<Record<string, unknown>>(["a", "b/c"])).toEqual({ value: 1 })
     })
 
