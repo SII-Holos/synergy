@@ -1,4 +1,7 @@
-import { OrganizationIdentity as Identity } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationIdentity as Identity,
+  OrganizationRuntimeProtocol as Runtime,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { authenticate, account as resolveAccount, type Credentials } from "./auth/session"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
@@ -19,13 +22,23 @@ export function authorize(
   target: { accountID: string },
 ): Promise<Authenticated & { target: Record.Account }>
 export function authorize(credentials: Credentials, action: string): Promise<Authenticated>
+export function authorize(
+  credentials: Credentials,
+  action: string,
+  target: { runtimeID: string },
+): Promise<Authenticated & { runtime: Record.RuntimeRegistration; view: Runtime.Registration }>
 export async function authorize(
   credentials: Credentials,
   action: string,
-  target?: { projectID: string } | { accountID: string },
+  target?: { projectID: string } | { accountID: string } | { runtimeID: string },
 ) {
   const current = await authenticate(credentials)
   const { account } = current
+  if (target && "runtimeID" in target) {
+    const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(target.runtimeID))
+    if (!runtime) fail("NOT_FOUND", "Runtime not found")
+    return { ...current, runtime, view: runtimeView(account, runtime, action) }
+  }
   if (target && "projectID" in target) {
     const project = await Record.read(Record.Project, Keys.project(target.projectID))
     if (!project || project.orgID !== account.orgID) fail("NOT_FOUND", "Project not found")
@@ -47,9 +60,23 @@ export async function authorize(
     return { ...current, target: subject }
   }
   if (["accounts.list", "invites.create"].includes(action)) requireAdministrator(account)
-  else if (!["organization.read", "project.create", "project.list"].includes(action))
+  else if (
+    !["organization.read", "project.create", "project.list", "runtimes.register", "runtimes.list"].includes(action)
+  )
     fail("PERMISSION_DENIED", "This action is not allowed")
   return current
+}
+
+export function runtimeView(account: Identity.Account, runtime: Record.RuntimeRegistration, action: string) {
+  if (
+    account.state !== "active" ||
+    runtime.orgID !== account.orgID ||
+    (runtime.accountID !== account.accountID && account.role === "member")
+  )
+    fail("NOT_FOUND", "Runtime not found")
+  if (!["runtime.read", "runtime.revoke"].includes(action)) fail("PERMISSION_DENIED", "This action is not allowed")
+  const { schemaVersion: _, ...result } = runtime
+  return Runtime.Registration.parse(result)
 }
 
 export function requireAdministrator(value: Identity.Account) {

@@ -31,6 +31,7 @@ import type {
   OrgInvitesCreateErrors,
   OrgInvitesCreateResponses,
   OrgLoginInput,
+  OrgMemberRuntimeRegistration,
   OrgOrganizationGetErrors,
   OrgOrganizationGetResponses,
   OrgOrganizationTransferOwnerErrors,
@@ -51,6 +52,20 @@ import type {
   OrgProjectsUpdateResponses,
   OrgResetConsume,
   OrgResetCreate,
+  OrgRuntimeConnectionErrors,
+  OrgRuntimeConnectionResponses,
+  OrgRuntimeConsumeTicket,
+  OrgRuntimeConsumeTicketErrors,
+  OrgRuntimeConsumeTicketResponses,
+  OrgRuntimeGetErrors,
+  OrgRuntimeGetResponses,
+  OrgRuntimeListErrors,
+  OrgRuntimeListResponses,
+  OrgRuntimeRegisterMemberErrors,
+  OrgRuntimeRegisterMemberResponses,
+  OrgRuntimeRevoke,
+  OrgRuntimeRevokeErrors,
+  OrgRuntimeRevokeResponses,
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
   OrgTransferOwner,
@@ -540,6 +555,159 @@ export class OrgProjects extends HeyApiClient {
   }
 }
 
+export class OrgRuntime extends HeyApiClient {
+  /**
+   * Issue a member Runtime registration ticket
+   */
+  public registerMember<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgMemberRuntimeRegistration: OrgMemberRuntimeRegistration
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgMemberRuntimeRegistration", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgRuntimeRegisterMemberResponses,
+      OrgRuntimeRegisterMemberErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/runtimes/member",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List authorized Runtime registrations
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgRuntimeListResponses, OrgRuntimeListErrors, ThrowOnError>({
+      url: "/org/v1/runtimes",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read an authorized Runtime registration
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      runtimeID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "runtimeID" }] }])
+    return (options?.client ?? this.client).get<OrgRuntimeGetResponses, OrgRuntimeGetErrors, ThrowOnError>({
+      url: "/org/v1/runtimes/{runtimeID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Revoke a Runtime registration
+   */
+  public revoke<ThrowOnError extends boolean = false>(
+    parameters: {
+      runtimeID: string
+      orgRuntimeRevoke: OrgRuntimeRevoke
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "runtimeID" },
+            { key: "orgRuntimeRevoke", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgRuntimeRevokeResponses, OrgRuntimeRevokeErrors, ThrowOnError>({
+      url: "/org/v1/runtimes/{runtimeID}/revoke",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Activate a Runtime with its one-use ticket and machine proof
+   */
+  public consumeTicket<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgRuntimeConsumeTicket: OrgRuntimeConsumeTicket
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgRuntimeConsumeTicket", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgRuntimeConsumeTicketResponses,
+      OrgRuntimeConsumeTicketErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/register",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read current Runtime connection availability
+   */
+  public connection<ThrowOnError extends boolean = false>(
+    parameters: {
+      runtimeID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "runtimeID" }] }])
+    return (options?.client ?? this.client).get<
+      OrgRuntimeConnectionResponses,
+      OrgRuntimeConnectionErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/runtimes/{runtimeID}/connection",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class OrgHealth extends HeyApiClient {
   /**
    * Read organization service readiness
@@ -571,6 +739,8 @@ export class OrganizationClient extends HeyApiClient {
   orgAccounts = new OrgAccounts({ client: this.client })
 
   orgProjects = new OrgProjects({ client: this.client })
+
+  orgRuntime = new OrgRuntime({ client: this.client })
 
   orgHealth = new OrgHealth({ client: this.client })
 }

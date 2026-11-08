@@ -768,6 +768,278 @@
         ]
       }
     },
+    "/org/v1/runtimes/member": {
+      "post": {
+        "operationId": "orgRuntime.registerMember",
+        "summary": "Issue a member Runtime registration ticket",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/OrgMemberRuntimeRegistration" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgRuntimeRegistrationTicket" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/runtimes": {
+      "get": {
+        "operationId": "orgRuntime.list",
+        "summary": "List authorized Runtime registrations",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgRuntimeRegistrationPage" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          }
+        ]
+      }
+    },
+    "/org/v1/runtimes/{runtimeID}": {
+      "get": {
+        "operationId": "orgRuntime.get",
+        "summary": "Read an authorized Runtime registration",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgRuntimeRegistration" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runtimeID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/runtimes/{runtimeID}/revoke": {
+      "post": {
+        "operationId": "orgRuntime.revoke",
+        "summary": "Revoke a Runtime registration",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgRuntimeRevoke" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgRuntimeRegistration" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runtimeID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/runtime/v1/register": {
+      "post": {
+        "operationId": "orgRuntime.consumeTicket",
+        "summary": "Activate a Runtime with its one-use ticket and machine proof",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgRuntimeConsumeTicket" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgRuntimeRegistration" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/runtimes/{runtimeID}/connection": {
+      "get": {
+        "operationId": "orgRuntime.connection",
+        "summary": "Read current Runtime connection availability",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgRuntimeConnectionStatus" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runtimeID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
     "/org/v1/health": {
       "get": {
         "operationId": "orgHealth.get",
@@ -827,6 +1099,7 @@
               "COMMAND_OUTCOME_UNKNOWN",
               "REVISION_CONFLICT",
               "STALE_BINDING",
+              "STALE_CONNECTION",
               "SHARE_REVOKED",
               "HANDOFF_BLOCKED",
               "RESOURCE_UNAVAILABLE",
@@ -844,6 +1117,7 @@
           "retryable": { "type": "boolean" },
           "outcome": { "type": "string", "enum": ["not_dispatched", "rejected", "unknown"] },
           "currentRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "currentConnectionEpoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
           "missingRequirements": { "type": "array", "items": { "type": "string" } },
           "retryAfter": { "type": "number", "minimum": 0 }
         },
@@ -1054,6 +1328,116 @@
           }
         },
         "required": ["expectedRevision", "role"],
+        "additionalProperties": false
+      },
+      "OrgRuntimePublicKey": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+      "OrgRuntimeRegistration": {
+        "type": "object",
+        "properties": {
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runtimeKind": { "type": "string", "const": "member" },
+          "accountID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deviceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "publicKey": { "$ref": "#/components/schemas/OrgRuntimePublicKey" },
+          "state": { "type": "string", "enum": ["pending", "active", "revoked"] },
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "connectionEpoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "lastSeen": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "runtimeID",
+          "orgID",
+          "deploymentIncarnation",
+          "runtimeKind",
+          "accountID",
+          "deviceID",
+          "publicKey",
+          "state",
+          "revision",
+          "connectionEpoch",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgRuntimeRegistrationTicket": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "expiresAt": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+          "runtime": { "$ref": "#/components/schemas/OrgRuntimeRegistration" }
+        },
+        "required": ["token", "expiresAt", "runtime"],
+        "additionalProperties": false
+      },
+      "OrgMemberRuntimeRegistration": {
+        "type": "object",
+        "properties": {
+          "deviceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "publicKey": { "$ref": "#/components/schemas/OrgRuntimePublicKey" }
+        },
+        "required": ["deviceID", "publicKey"],
+        "additionalProperties": false
+      },
+      "OrgRuntimeRegistrationPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrgRuntimeRegistration" } },
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
+      "OrgRuntimeRevoke": {
+        "type": "object",
+        "properties": { "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } },
+        "required": ["expectedRevision"],
+        "additionalProperties": false
+      },
+      "OrgRuntimeRegistrationProof": {
+        "type": "object",
+        "properties": {
+          "purpose": { "type": "string", "const": "runtime-register" },
+          "protocolVersion": { "type": "number", "const": 1 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "ticketHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "required": ["purpose", "protocolVersion", "orgID", "deploymentIncarnation", "runtimeID", "ticketHash"],
+        "additionalProperties": false
+      },
+      "OrgRuntimeConsumeTicket": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "proof": { "$ref": "#/components/schemas/OrgRuntimeRegistrationProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["token", "proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgRuntimeConnectionStatus": {
+        "type": "object",
+        "properties": {
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "state": { "type": "string", "enum": ["online", "offline"] },
+          "connectionEpoch": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "lastSeen": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["runtimeID", "state", "connectionEpoch"],
         "additionalProperties": false
       },
       "OrgHealth": {

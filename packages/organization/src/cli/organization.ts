@@ -89,7 +89,12 @@ export const OrganizationServeCommand = cmd({
     process.on("SIGTERM", stop)
     try {
       await using service = await openOrganizationService({ home: explicitHome(), publicOrigin: args.origin })
-      const server = Bun.serve({ hostname: args.hostname, port: args.port, fetch: service.fetch })
+      const server = Bun.serve({
+        hostname: args.hostname,
+        port: args.port,
+        fetch: service.fetch,
+        websocket: service.websocket,
+      })
       try {
         const deployment = await service.deployment()
         console.log(

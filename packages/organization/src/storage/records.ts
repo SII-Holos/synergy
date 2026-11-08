@@ -1,5 +1,8 @@
 import { z } from "zod"
-import { OrganizationIdentity as Identity } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationIdentity as Identity,
+  OrganizationRuntimeProtocol as Runtime,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 export namespace OrganizationRecord {
@@ -37,6 +40,22 @@ export namespace OrganizationRecord {
     revokedAt: z.number().int().optional(),
   })
   export const Project = Identity.Project.extend({ schemaVersion: z.literal(1) })
+  export const RuntimeRegistration = Runtime.Registration.extend({ schemaVersion: z.literal(1) })
+  export type RuntimeRegistration = z.infer<typeof RuntimeRegistration>
+  export const RuntimeConnection = z.strictObject({
+    schemaVersion: z.literal(1),
+    handshake: Runtime.ConnectionProof.shape.handshake,
+    connectedAt: z.number().int().nonnegative(),
+    lastSeen: z.number().int().nonnegative(),
+  })
+  export const RuntimeIndex = z.strictObject({ runtimeID: Identity.ID })
+  export const RuntimeTicket = tokenState.extend({
+    runtimeID: Identity.ID,
+    accountID: Identity.ID,
+    authRevision: Identity.Revision,
+    registrationRevision: Identity.Revision,
+    consumed: Runtime.Registration.optional(),
+  })
   export const ProjectMember = z.strictObject({
     schemaVersion: z.literal(1),
     projectID: Identity.ID,

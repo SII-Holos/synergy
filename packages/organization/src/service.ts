@@ -13,12 +13,22 @@ import { organizationApp } from "./http"
 import { createAuthentication, type AuthenticationSettings } from "./auth"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
+import { createRuntimeRegistrations, type RuntimeRegistrationSettings } from "./runtime-registration"
+import type { Server } from "bun"
+import {
+  createRuntimeConnections,
+  type RuntimeConnections,
+  type RuntimeConnectionSettings,
+  type RuntimeSocket,
+} from "./runtime-connection"
 
 export interface OrganizationServiceOptions {
   home: string
   database?: Extract<StoreOptions, { backend: "postgres" }>
   publicOrigin?: string
   authentication?: AuthenticationSettings
+  registration?: RuntimeRegistrationSettings
+  connections?: RuntimeConnectionSettings
 }
 
 export async function openOrganizationService(options: OrganizationServiceOptions) {
@@ -43,6 +53,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
     let store: TransactionalStore | undefined
     let ready = false
     let closing: Promise<void> | undefined
+    let connections: RuntimeConnections | undefined
     const active = new Set<Promise<unknown>>()
     async function run<T>(body: () => T | Promise<T>): Promise<T> {
       if (!ready) throw new Error("Organization service is closed")
@@ -59,6 +70,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       ready = false
       closing = context.run(async () => {
         RuntimeContext.setReady(false)
+        connections?.close()
         await Promise.allSettled([...active])
         const errors: unknown[] = []
         try {
@@ -102,14 +114,17 @@ export async function openOrganizationService(options: OrganizationServiceOption
       RuntimeContext.sealComposition()
       await ensureMigrations({ output: "silent" })
       OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
-      const authentication = await createAuthentication(options.authentication)
-      const app = organizationApp(() => ready, authentication, options.publicOrigin)
+      connections = createRuntimeConnections({ run, settings: options.connections })
+      const authentication = await createAuthentication(options.authentication, connections.removeAccount)
+      const registrations = createRuntimeRegistrations(options.registration, connections.revoke)
+      const app = organizationApp(() => ready, authentication, options.publicOrigin, registrations, connections)
       ready = true
       RuntimeContext.setReady(true)
       return {
         home,
         bootstrapToken: () => run(() => authentication.bootstrapToken()),
-        fetch: (request: Request) => run(() => app.fetch(request)),
+        fetch: (request: Request, server?: Server<RuntimeSocket>) => run(() => app.fetch(request, { server })),
+        websocket: connections.websocket,
         deployment: () =>
           run(async () =>
             OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment())),

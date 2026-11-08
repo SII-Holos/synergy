@@ -10,6 +10,8 @@ import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/trans
 import { OrganizationStoragePath } from "../src/storage/path"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
+import { digest } from "../src/auth/secret"
 
 const homes: string[] = []
 const services: Awaited<ReturnType<typeof openOrganizationService>>[] = []
@@ -131,9 +133,53 @@ test("the generated identity client preserves cookies, CSRF and required request
     )
     expect(rejected.response.status).toBe(403)
     expect(rejected.error?.code).toBe("PERMISSION_DENIED")
+    const key = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
+    const registered = await client.orgRuntime.registerMember(
+      { orgMemberRuntimeRegistration: { deviceID: "sdk-device", publicKey: await Runtime.publicKey(key.publicKey) } },
+      { headers, throwOnError: true },
+    )
+    const proof = Runtime.RegistrationProof.parse({
+      purpose: "runtime-register",
+      protocolVersion: 1,
+      orgID: registered.data.runtime.orgID,
+      deploymentIncarnation: registered.data.runtime.deploymentIncarnation,
+      runtimeID: registered.data.runtime.runtimeID,
+      ticketHash: digest(registered.data.token),
+    })
+    const activated = await client.orgRuntime.consumeTicket(
+      {
+        orgRuntimeConsumeTicket: {
+          token: registered.data.token,
+          proof,
+          signature: await Runtime.sign(proof, key.privateKey),
+        },
+      },
+      { throwOnError: true },
+    )
+    expect(activated.data.state).toBe("active")
+    expect(
+      (await client.orgRuntime.connection({ runtimeID: activated.data.runtimeID }, { headers, throwOnError: true }))
+        .data,
+    ).toMatchObject({ state: "offline", connectionEpoch: 0 })
+    expect((await client.orgRuntime.list(undefined, { headers, throwOnError: true })).data.items).toEqual([
+      activated.data,
+    ])
+    expect(
+      (await client.orgRuntime.get({ runtimeID: activated.data.runtimeID }, { headers, throwOnError: true })).data,
+    ).toEqual(activated.data)
+    expect(
+      (
+        await client.orgRuntime.revoke(
+          { runtimeID: activated.data.runtimeID, orgRuntimeRevoke: { expectedRevision: activated.data.revision } },
+          { headers, throwOnError: true },
+        )
+      ).data.state,
+    ).toBe("revoked")
     const spec = await organizationOpenApi()
     expect(spec.paths?.["/org/v1/auth/login"]?.post?.requestBody).toMatchObject({ required: true })
     expect(spec.paths?.["/org/v1/projects/{projectID}"]?.patch?.operationId).toBe("orgProjects.update")
+    expect(spec.paths?.["/runtime/v1/register"]?.post?.requestBody).toMatchObject({ required: true })
+    expect(spec.paths?.["/org/v1/runtimes/member"]?.post?.operationId).toBe("orgRuntime.registerMember")
   } finally {
     await server.stop(true)
   }

@@ -26,6 +26,7 @@ export type OrgError = {
     | "COMMAND_OUTCOME_UNKNOWN"
     | "REVISION_CONFLICT"
     | "STALE_BINDING"
+    | "STALE_CONNECTION"
     | "SHARE_REVOKED"
     | "HANDOFF_BLOCKED"
     | "RESOURCE_UNAVAILABLE"
@@ -41,6 +42,7 @@ export type OrgError = {
   retryable: boolean
   outcome: "not_dispatched" | "rejected" | "unknown"
   currentRevision?: number
+  currentConnectionEpoch?: number
   missingRequirements?: Array<string>
   retryAfter?: number
 }
@@ -171,6 +173,65 @@ export type OrgProjectChange = {
 export type OrgProjectMemberChange = {
   expectedRevision: number
   role: "maintainer" | "collaborator" | "reader" | null
+}
+
+export type OrgRuntimePublicKey = string
+
+export type OrgRuntimeRegistration = {
+  runtimeID: string
+  orgID: string
+  deploymentIncarnation: string
+  runtimeKind: "member"
+  accountID: string
+  deviceID: string
+  publicKey: OrgRuntimePublicKey
+  state: "pending" | "active" | "revoked"
+  revision: number
+  connectionEpoch: number
+  createdAt: number
+  lastSeen?: number
+}
+
+export type OrgRuntimeRegistrationTicket = {
+  token: string
+  expiresAt: number
+  runtime: OrgRuntimeRegistration
+}
+
+export type OrgMemberRuntimeRegistration = {
+  deviceID: string
+  publicKey: OrgRuntimePublicKey
+}
+
+export type OrgRuntimeRegistrationPage = {
+  items: Array<OrgRuntimeRegistration>
+  cursor?: string
+}
+
+export type OrgRuntimeRevoke = {
+  expectedRevision: number
+}
+
+export type OrgRuntimeRegistrationProof = {
+  purpose: "runtime-register"
+  protocolVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  ticketHash: string
+}
+
+export type OrgRuntimeConsumeTicket = {
+  token: string
+  proof: OrgRuntimeRegistrationProof
+  signature: string
+}
+
+export type OrgRuntimeConnectionStatus = {
+  runtimeID: string
+  state: "online" | "offline"
+  connectionEpoch: number
+  lastSeen?: number
 }
 
 export type OrgHealth = {
@@ -1006,6 +1067,286 @@ export type OrgProjectsMemberResponses = {
 }
 
 export type OrgProjectsMemberResponse = OrgProjectsMemberResponses[keyof OrgProjectsMemberResponses]
+
+export type OrgRuntimeRegisterMemberData = {
+  body: OrgMemberRuntimeRegistration
+  path?: never
+  query?: never
+  url: "/org/v1/runtimes/member"
+}
+
+export type OrgRuntimeRegisterMemberErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgRuntimeRegisterMemberError = OrgRuntimeRegisterMemberErrors[keyof OrgRuntimeRegisterMemberErrors]
+
+export type OrgRuntimeRegisterMemberResponses = {
+  /**
+   * Success
+   */
+  200: OrgRuntimeRegistrationTicket
+}
+
+export type OrgRuntimeRegisterMemberResponse =
+  OrgRuntimeRegisterMemberResponses[keyof OrgRuntimeRegisterMemberResponses]
+
+export type OrgRuntimeListData = {
+  body?: never
+  path?: never
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/runtimes"
+}
+
+export type OrgRuntimeListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgRuntimeListError = OrgRuntimeListErrors[keyof OrgRuntimeListErrors]
+
+export type OrgRuntimeListResponses = {
+  /**
+   * Success
+   */
+  200: OrgRuntimeRegistrationPage
+}
+
+export type OrgRuntimeListResponse = OrgRuntimeListResponses[keyof OrgRuntimeListResponses]
+
+export type OrgRuntimeGetData = {
+  body?: never
+  path: {
+    runtimeID: string
+  }
+  query?: never
+  url: "/org/v1/runtimes/{runtimeID}"
+}
+
+export type OrgRuntimeGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgRuntimeGetError = OrgRuntimeGetErrors[keyof OrgRuntimeGetErrors]
+
+export type OrgRuntimeGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgRuntimeRegistration
+}
+
+export type OrgRuntimeGetResponse = OrgRuntimeGetResponses[keyof OrgRuntimeGetResponses]
+
+export type OrgRuntimeRevokeData = {
+  body: OrgRuntimeRevoke
+  path: {
+    runtimeID: string
+  }
+  query?: never
+  url: "/org/v1/runtimes/{runtimeID}/revoke"
+}
+
+export type OrgRuntimeRevokeErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgRuntimeRevokeError = OrgRuntimeRevokeErrors[keyof OrgRuntimeRevokeErrors]
+
+export type OrgRuntimeRevokeResponses = {
+  /**
+   * Success
+   */
+  200: OrgRuntimeRegistration
+}
+
+export type OrgRuntimeRevokeResponse = OrgRuntimeRevokeResponses[keyof OrgRuntimeRevokeResponses]
+
+export type OrgRuntimeConsumeTicketData = {
+  body: OrgRuntimeConsumeTicket
+  path?: never
+  query?: never
+  url: "/runtime/v1/register"
+}
+
+export type OrgRuntimeConsumeTicketErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgRuntimeConsumeTicketError = OrgRuntimeConsumeTicketErrors[keyof OrgRuntimeConsumeTicketErrors]
+
+export type OrgRuntimeConsumeTicketResponses = {
+  /**
+   * Success
+   */
+  200: OrgRuntimeRegistration
+}
+
+export type OrgRuntimeConsumeTicketResponse = OrgRuntimeConsumeTicketResponses[keyof OrgRuntimeConsumeTicketResponses]
+
+export type OrgRuntimeConnectionData = {
+  body?: never
+  path: {
+    runtimeID: string
+  }
+  query?: never
+  url: "/org/v1/runtimes/{runtimeID}/connection"
+}
+
+export type OrgRuntimeConnectionErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgRuntimeConnectionError = OrgRuntimeConnectionErrors[keyof OrgRuntimeConnectionErrors]
+
+export type OrgRuntimeConnectionResponses = {
+  /**
+   * Success
+   */
+  200: OrgRuntimeConnectionStatus
+}
+
+export type OrgRuntimeConnectionResponse = OrgRuntimeConnectionResponses[keyof OrgRuntimeConnectionResponses]
 
 export type OrgHealthGetData = {
   body?: never

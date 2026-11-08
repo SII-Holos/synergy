@@ -54,7 +54,10 @@ function checkConsumption(
   if (value.expiresAt <= Date.now()) fail("AUTHENTICATION_REQUIRED", "This link has expired")
 }
 
-export async function createAuthentication(options: AuthenticationSettings = {}) {
+export async function createAuthentication(
+  options: AuthenticationSettings = {},
+  onAccountRemoved?: (accountID: string) => void,
+) {
   const settings = AuthenticationSettings.parse(options)
   const passwords = await createPasswordHasher(settings.hashConcurrency)
   async function createAccount(
@@ -276,6 +279,7 @@ export async function createAuthentication(options: AuthenticationSettings = {})
         if (changed.role === "owner" && changed.state === "active") owners.push(id)
         if (!owners.length) fail("LAST_OWNER", "The last owner cannot leave, be removed or lose ownership")
         await Storage.write(Keys.account(id), changed)
+        if (changed.state === "removed") Storage.afterCommit(() => onAccountRemoved?.(id))
         await Storage.write(Keys.info(), { ...organization, owners, revision: organization.revision + 1 })
         return Record.publicAccount(changed)
       })

@@ -7,6 +7,10 @@ import { z } from "zod"
 import { type Authentication } from "./auth"
 import { identityRoutes } from "./routes/identity"
 import { OrganizationError, errorStatus, fail } from "./error"
+import type { RuntimeRegistrations } from "./runtime-registration"
+import { registrationRoutes, machineRegistrationRoutes } from "./routes/runtime-registration"
+import type { RuntimeConnections } from "./runtime-connection"
+import { runtimeConnectionRoutes, type RuntimeBindings } from "./routes/runtime-connection"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -19,8 +23,18 @@ export function organizationOpenApi() {
   )
 }
 
-export function organizationApp(ready: () => boolean, authentication?: Authentication, publicOrigin?: string) {
-  return new Hono<{ Variables: { requestID: string } }>()
+export function organizationApp(
+  ready: () => boolean,
+  authentication?: Authentication,
+  publicOrigin?: string,
+  registrations?: RuntimeRegistrations,
+  connections?: RuntimeConnections,
+) {
+  function registry() {
+    if (!registrations) fail("SERVICE_UNAVAILABLE", "Runtime registration is unavailable")
+    return registrations
+  }
+  return new Hono<{ Variables: { requestID: string }; Bindings: RuntimeBindings }>()
     .use("*", async (c, next) => {
       const requestID = crypto.randomUUID()
       c.set("requestID", requestID)
@@ -65,6 +79,15 @@ export function organizationApp(ready: () => boolean, authentication?: Authentic
       identityRoutes(() => {
         if (!authentication) fail("SERVICE_UNAVAILABLE", "Authentication is unavailable")
         return authentication
+      }, publicOrigin),
+    )
+    .route("/org/v1", registrationRoutes(registry, publicOrigin))
+    .route("/runtime/v1", machineRegistrationRoutes(registry))
+    .route(
+      "/",
+      runtimeConnectionRoutes(() => {
+        if (!connections) fail("SERVICE_UNAVAILABLE", "Runtime connections are unavailable")
+        return connections
       }, publicOrigin),
     )
     .get(

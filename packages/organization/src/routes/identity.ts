@@ -1,59 +1,18 @@
-import { Hono, type Context } from "hono"
-import { getCookie, setCookie, deleteCookie } from "hono/cookie"
-import { describeRoute, resolver, validator } from "hono-openapi"
+import { Hono } from "hono"
+import { setCookie, deleteCookie } from "hono/cookie"
+import { validator } from "hono-openapi"
 import { z } from "zod"
-import { OrganizationIdentity as Identity, OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
-import type { Authentication, Credentials } from "../auth"
+import { OrganizationIdentity as Identity } from "@ericsanchezok/synergy-organization-protocol"
+import type { Authentication } from "../auth"
 import { OrganizationProjects as Projects } from "../projects"
-import { fail } from "../error"
+import { cookie, cookieOptions, operation, validation, browserCredentials } from "./shared"
 
-const cookie = "__Host-synergy_org_session"
 const accountParam = z.strictObject({ accountID: Identity.ID })
 const projectParam = z.strictObject({ projectID: Identity.ID })
 const memberParam = projectParam.extend({ accountID: Identity.ID })
-const cookieOptions = { secure: true, httpOnly: true, sameSite: "Lax" as const, path: "/" }
-function validation(result: { success: boolean }) {
-  if (!result.success) fail("INVALID_REQUEST", "Invalid request")
-}
-
-function operation(id: string, summary: string, schema: z.ZodType, body = false) {
-  const error = {
-    description: "Organization error",
-    content: { "application/json": { schema: resolver(OrganizationProtocol.Error) } },
-  }
-  return describeRoute({
-    operationId: id,
-    summary,
-    requestBody: body ? { required: true, content: { "application/json": {} } } : undefined,
-    responses: {
-      200: { description: "Success", content: { "application/json": { schema: resolver(schema) } } },
-      400: error,
-      401: error,
-      403: error,
-      404: error,
-      409: error,
-      503: error,
-    },
-  })
-}
 
 export function identityRoutes(authentication: () => Authentication, publicOrigin?: string) {
-  function checkOrigin(c: Context) {
-    if (!publicOrigin) fail("SERVICE_UNAVAILABLE", "The organization public origin is not configured")
-    if (c.req.header("origin") !== publicOrigin) fail("PERMISSION_DENIED", "The request origin is not allowed")
-  }
-  // Provenance: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
-  // Local adaptation: revocable opaque cookies plus an exact configured Origin and session-bound CSRF token.
-  function credentials(c: Context): Credentials {
-    const token = getCookie(c, cookie)
-    if (!token || !Identity.Token.safeParse(token).success)
-      fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")
-    if (["GET", "HEAD", "OPTIONS"].includes(c.req.method)) return { token }
-    checkOrigin(c)
-    const csrf = c.req.header("x-csrf-token")
-    if (!csrf || !Identity.Token.safeParse(csrf).success) fail("PERMISSION_DENIED", "Invalid request token")
-    return { token, csrf }
-  }
+  const { checkOrigin, credentials } = browserCredentials(publicOrigin)
   return new Hono()
     .post(
       "/setup/bootstrap",
