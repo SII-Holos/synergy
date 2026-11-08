@@ -49,6 +49,15 @@ import type {
   OrgExecutionBindErrors,
   OrgExecutionBindingRequest,
   OrgExecutionBindResponses,
+  OrgGatewayChatCompletionsErrors,
+  OrgGatewayChatCompletionsResponses,
+  OrgGatewayInspectErrors,
+  OrgGatewayInspectResponses,
+  OrgGatewayMessagesErrors,
+  OrgGatewayMessagesResponses,
+  OrgGatewayRequest,
+  OrgGatewayReserveErrors,
+  OrgGatewayReserveResponses,
   OrgHealthGetErrors,
   OrgHealthGetResponses,
   OrgInviteConsume,
@@ -1343,6 +1352,106 @@ export class OrgCommands extends HeyApiClient {
   }
 }
 
+export class OrgGateway extends HeyApiClient {
+  /**
+   * Reserve one finite root resource call
+   */
+  public reserve<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgGatewayRequest: OrgGatewayRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgGatewayRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgGatewayReserveResponses, OrgGatewayReserveErrors, ThrowOnError>({
+      url: "/runtime/v1/gateway/calls",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Inspect a resource call without dispatching it
+   */
+  public inspect<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgGatewayRequest: OrgGatewayRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgGatewayRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgGatewayInspectResponses, OrgGatewayInspectErrors, ThrowOnError>({
+      url: "/runtime/v1/gateway/calls/inspect",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Forward one admitted model request using server-owned credentials
+   */
+  public chatCompletions<ThrowOnError extends boolean = false>(
+    parameters: {
+      resourceID: string
+      body: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "resourceID" }, { in: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgGatewayChatCompletionsResponses,
+      OrgGatewayChatCompletionsErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/gateway/models/{resourceID}/chat/completions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Forward one admitted model request using server-owned credentials
+   */
+  public messages<ThrowOnError extends boolean = false>(
+    parameters: {
+      resourceID: string
+      body: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "resourceID" }, { in: "body" }] }])
+    return (options?.client ?? this.client).post<OrgGatewayMessagesResponses, OrgGatewayMessagesErrors, ThrowOnError>({
+      url: "/runtime/v1/gateway/models/{resourceID}/messages",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgExecution extends HeyApiClient {
   /**
    * Bind an admitted execution grant to a proven native root
@@ -1412,6 +1521,8 @@ export class OrganizationClient extends HeyApiClient {
   orgProjectResources = new OrgProjectResources({ client: this.client })
 
   orgCommands = new OrgCommands({ client: this.client })
+
+  orgGateway = new OrgGateway({ client: this.client })
 
   orgExecution = new OrgExecution({ client: this.client })
 

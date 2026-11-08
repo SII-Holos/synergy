@@ -5,6 +5,7 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationProtocol,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationGatewayProtocol as Gateway,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
@@ -65,6 +66,18 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
   const identity = Object.freeze(Command.SigningIdentity.parse(publicFields))
   return {
     identity,
+    async signGateway(value: Gateway.Permit): Promise<Gateway.SignedPermit> {
+      const permit = Gateway.Permit.parse(value)
+      if (
+        permit.orgID !== identity.orgID ||
+        permit.deploymentIncarnation !== identity.deploymentIncarnation ||
+        permit.keyID !== identity.keyID
+      )
+        fail("PERMISSION_DENIED", "Gateway permit belongs to another signing authority")
+      if (permit.issuedAt > Date.now() || permit.expiresAt <= Date.now())
+        fail("PERMISSION_DENIED", "Gateway permit is outside its signing window")
+      return { permit, signature: await Gateway.signPermit(permit, privateKey) }
+    },
     async sign(value: Command.Permit): Promise<Command.SignedPermit> {
       const permit = Command.Permit.parse(value)
       if (

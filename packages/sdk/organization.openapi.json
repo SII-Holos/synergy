@@ -2038,6 +2038,170 @@
         }
       }
     },
+    "/runtime/v1/gateway/calls": {
+      "post": {
+        "operationId": "orgGateway.reserve",
+        "summary": "Reserve one finite root resource call",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgGatewayRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgGatewaySignedPermit" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/runtime/v1/gateway/calls/inspect": {
+      "post": {
+        "operationId": "orgGateway.inspect",
+        "summary": "Inspect a resource call without dispatching it",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgGatewayRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgGatewayReceipt" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/runtime/v1/gateway/models/{resourceID}/chat/completions": {
+      "post": {
+        "operationId": "orgGateway.chatCompletions",
+        "summary": "Forward one admitted model request using server-owned credentials",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Model protocol response; streams preserve upstream bytes",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": {} }
+              },
+              "text/event-stream": { "schema": { "type": "string" } }
+            }
+          },
+          "400": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [{ "schema": { "type": "string" }, "in": "path", "name": "resourceID", "required": true }]
+      }
+    },
+    "/runtime/v1/gateway/models/{resourceID}/messages": {
+      "post": {
+        "operationId": "orgGateway.messages",
+        "summary": "Forward one admitted model request using server-owned credentials",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Model protocol response; streams preserve upstream bytes",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": {} }
+              },
+              "text/event-stream": { "schema": { "type": "string" } }
+            }
+          },
+          "400": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error before streaming",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [{ "schema": { "type": "string" }, "in": "path", "name": "resourceID", "required": true }]
+      }
+    },
     "/runtime/v1/execution/bind": {
       "post": {
         "operationId": "orgExecution.bind",
@@ -3896,6 +4060,163 @@
           "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
         },
         "required": ["token", "proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgGatewayPermit": {
+        "type": "object",
+        "properties": {
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "callID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "schemaVersion": { "type": "number", "const": 1 },
+          "purpose": { "type": "string", "const": "gateway-invocation" },
+          "keyID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "resourceRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "protocol": { "type": "string", "enum": ["openai-compatible", "anthropic-compatible"] },
+          "modelID": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
+          "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 },
+          "timeoutMs": { "type": "integer", "exclusiveMinimum": 0, "maximum": 900000 },
+          "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "orgID",
+          "deploymentIncarnation",
+          "runtimeID",
+          "connectionEpoch",
+          "grantID",
+          "sessionID",
+          "rootID",
+          "bindingEpoch",
+          "resourceID",
+          "callID",
+          "schemaVersion",
+          "purpose",
+          "keyID",
+          "resourceRevision",
+          "protocol",
+          "modelID",
+          "requestBytes",
+          "responseBytes",
+          "timeoutMs",
+          "issuedAt",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgGatewaySignedPermit": {
+        "type": "object",
+        "properties": {
+          "permit": { "$ref": "#/components/schemas/OrgGatewayPermit" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["permit", "signature"],
+        "additionalProperties": false
+      },
+      "OrgGatewayProof": {
+        "type": "object",
+        "properties": {
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "callID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "schemaVersion": { "type": "number", "const": 1 },
+          "purpose": { "type": "string", "const": "gateway-call" },
+          "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "orgID",
+          "deploymentIncarnation",
+          "runtimeID",
+          "connectionEpoch",
+          "grantID",
+          "sessionID",
+          "rootID",
+          "bindingEpoch",
+          "resourceID",
+          "callID",
+          "schemaVersion",
+          "purpose",
+          "issuedAt",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgGatewayRequest": {
+        "type": "object",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/OrgGatewayProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgGatewayReceipt": {
+        "type": "object",
+        "properties": {
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "callID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "state": { "type": "string", "enum": ["reserved", "started", "response_complete", "unknown"] },
+          "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "finishedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "requestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "requestBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "responseBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "httpStatus": { "type": "integer", "minimum": 100, "maximum": 599 }
+        },
+        "required": [
+          "orgID",
+          "deploymentIncarnation",
+          "runtimeID",
+          "connectionEpoch",
+          "grantID",
+          "sessionID",
+          "rootID",
+          "bindingEpoch",
+          "resourceID",
+          "callID",
+          "state",
+          "createdAt"
+        ],
         "additionalProperties": false
       },
       "OrgBoundExecutionGrant": {

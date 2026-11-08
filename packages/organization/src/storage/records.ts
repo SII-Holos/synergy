@@ -7,10 +7,26 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationResourceProtocol as ResourceProtocol,
   OrganizationExecutionProtocol as Execution,
+  OrganizationGatewayProtocol as Gateway,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 export namespace OrganizationRecord {
+  export const ExecutionUsage = z.strictObject({
+    schemaVersion: z.literal(1),
+    grantID: Identity.ID,
+    calls: z.number().int().nonnegative().max(4096),
+  })
+  export const GatewayCall = z
+    .strictObject({ schemaVersion: z.literal(1), authorization: Gateway.SignedPermit, receipt: Gateway.Receipt })
+    .refine(
+      (value) =>
+        Object.keys(Gateway.Target.shape).every(
+          (key) =>
+            value.authorization.permit[key as keyof Gateway.Target] === value.receipt[key as keyof Gateway.Target],
+        ),
+      "Gateway receipt must match its issued authority",
+    )
   export const SessionResources = Execution.Contract.extend({ schemaVersion: z.literal(1), orgID: Identity.ID }).refine(
     (value) => value.selection !== null && value.revision > 0,
     "Stored resource contracts require a selection",

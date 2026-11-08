@@ -845,6 +845,78 @@ export type OrgRuntimeConsumeTicket = {
   signature: string
 }
 
+export type OrgGatewayPermit = {
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  grantID: string
+  sessionID: string
+  rootID: string
+  bindingEpoch: number
+  resourceID: string
+  callID: string
+  schemaVersion: 1
+  purpose: "gateway-invocation"
+  keyID: string
+  resourceRevision: number
+  protocol: "openai-compatible" | "anthropic-compatible"
+  modelID: string
+  requestBytes: number
+  responseBytes: number
+  timeoutMs: number
+  issuedAt: number
+  expiresAt: number
+}
+
+export type OrgGatewaySignedPermit = {
+  permit: OrgGatewayPermit
+  signature: string
+}
+
+export type OrgGatewayProof = {
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  grantID: string
+  sessionID: string
+  rootID: string
+  bindingEpoch: number
+  resourceID: string
+  callID: string
+  schemaVersion: 1
+  purpose: "gateway-call"
+  issuedAt: number
+  expiresAt: number
+}
+
+export type OrgGatewayRequest = {
+  proof: OrgGatewayProof
+  signature: string
+}
+
+export type OrgGatewayReceipt = {
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  grantID: string
+  sessionID: string
+  rootID: string
+  bindingEpoch: number
+  resourceID: string
+  callID: string
+  state: "reserved" | "started" | "response_complete" | "unknown"
+  createdAt: number
+  startedAt?: number
+  finishedAt?: number
+  requestHash?: string
+  requestBytes?: number
+  responseBytes?: number
+  httpStatus?: number
+}
+
 export type OrgBoundExecutionGrant = {
   schemaVersion: 1
   grantID: string
@@ -3076,6 +3148,191 @@ export type OrgRuntimeConsumeTicketResponses = {
 }
 
 export type OrgRuntimeConsumeTicketResponse = OrgRuntimeConsumeTicketResponses[keyof OrgRuntimeConsumeTicketResponses]
+
+export type OrgGatewayReserveData = {
+  body: OrgGatewayRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/gateway/calls"
+}
+
+export type OrgGatewayReserveErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgGatewayReserveError = OrgGatewayReserveErrors[keyof OrgGatewayReserveErrors]
+
+export type OrgGatewayReserveResponses = {
+  /**
+   * Success
+   */
+  200: OrgGatewaySignedPermit
+}
+
+export type OrgGatewayReserveResponse = OrgGatewayReserveResponses[keyof OrgGatewayReserveResponses]
+
+export type OrgGatewayInspectData = {
+  body: OrgGatewayRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/gateway/calls/inspect"
+}
+
+export type OrgGatewayInspectErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgGatewayInspectError = OrgGatewayInspectErrors[keyof OrgGatewayInspectErrors]
+
+export type OrgGatewayInspectResponses = {
+  /**
+   * Success
+   */
+  200: OrgGatewayReceipt
+}
+
+export type OrgGatewayInspectResponse = OrgGatewayInspectResponses[keyof OrgGatewayInspectResponses]
+
+export type OrgGatewayChatCompletionsData = {
+  body: {
+    [key: string]: unknown
+  }
+  path: {
+    resourceID: string
+  }
+  query?: never
+  url: "/runtime/v1/gateway/models/{resourceID}/chat/completions"
+}
+
+export type OrgGatewayChatCompletionsErrors = {
+  /**
+   * Organization error before streaming
+   */
+  400: OrgError
+  /**
+   * Organization error before streaming
+   */
+  401: OrgError
+  /**
+   * Organization error before streaming
+   */
+  403: OrgError
+  /**
+   * Organization error before streaming
+   */
+  409: OrgError
+  /**
+   * Organization error before streaming
+   */
+  503: OrgError
+}
+
+export type OrgGatewayChatCompletionsError = OrgGatewayChatCompletionsErrors[keyof OrgGatewayChatCompletionsErrors]
+
+export type OrgGatewayChatCompletionsResponses = {
+  /**
+   * Model protocol response; streams preserve upstream bytes
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type OrgGatewayChatCompletionsResponse =
+  OrgGatewayChatCompletionsResponses[keyof OrgGatewayChatCompletionsResponses]
+
+export type OrgGatewayMessagesData = {
+  body: {
+    [key: string]: unknown
+  }
+  path: {
+    resourceID: string
+  }
+  query?: never
+  url: "/runtime/v1/gateway/models/{resourceID}/messages"
+}
+
+export type OrgGatewayMessagesErrors = {
+  /**
+   * Organization error before streaming
+   */
+  400: OrgError
+  /**
+   * Organization error before streaming
+   */
+  401: OrgError
+  /**
+   * Organization error before streaming
+   */
+  403: OrgError
+  /**
+   * Organization error before streaming
+   */
+  409: OrgError
+  /**
+   * Organization error before streaming
+   */
+  503: OrgError
+}
+
+export type OrgGatewayMessagesError = OrgGatewayMessagesErrors[keyof OrgGatewayMessagesErrors]
+
+export type OrgGatewayMessagesResponses = {
+  /**
+   * Model protocol response; streams preserve upstream bytes
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type OrgGatewayMessagesResponse = OrgGatewayMessagesResponses[keyof OrgGatewayMessagesResponses]
 
 export type OrgExecutionBindData = {
   body: OrgExecutionBindingRequest

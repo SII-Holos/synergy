@@ -1,6 +1,8 @@
 # Organization service
 
-`orgSessionResources.get/set` owns a revisioned selection of the Session's model and business connections. The actual selector needs current resource authorization; later shared tasks inherit the established contract. Task admission reserves a provisional grant, and `orgExecution.bind` verifies a signed machine proof of B and the materialized native root. Binding preserves current driver/resource checks and reconciles lost ACKs without replay. Release, gateway invocation and execution activation remain separate integrations. See [execution grants](../../docs/architecture/organization.md#session-resources-and-execution-grants).
+`orgSessionResources.get/set` owns a revisioned selection of the Session's model and business connections. The actual selector needs current resource authorization; later shared tasks inherit the established contract. Task admission reserves a provisional grant, and `orgExecution.bind` verifies a signed machine proof of B and the materialized native root. Binding preserves current driver/resource checks and reconciles lost ACKs without replay. See [execution grants](../../docs/architecture/organization.md#session-resources-and-execution-grants).
+
+`orgGateway.reserve/inspect` owns finite call capabilities, durable budget admission and metadata receipts. The model gateway forwards fixed OpenAI-compatible and Anthropic-compatible protocols with server-owned credentials and bounded streaming. It never retries a started call. Native release, member activation and business adapters remain separate integrations. See [model gateway](../../docs/architecture/organization.md#model-gateway); verify `test/gateway.test.ts` and the Presets organization gateway suite.
 
 The organization service owns a dedicated Home and SQL namespace. Its storage lifecycle uses Harness transactions and the central migration runner without starting Agent execution, model discovery or Session recovery.
 

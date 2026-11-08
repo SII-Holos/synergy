@@ -32,6 +32,8 @@ import { loadSigningAuthority } from "./signing"
 import { createCommandAdmissions } from "./command-admission"
 import { createCommandForwarder } from "./command-forwarding"
 import { createExecutionGrants } from "./execution-grants"
+import { createGatewayCalls } from "./gateway-calls"
+import { createModelGateway, type ModelGateway } from "./gateway"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -76,6 +78,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
     let ready = false
     let closing: Promise<void> | undefined
     let connections: RuntimeConnections | undefined
+    let modelGateway: ModelGateway | undefined
     const active = new Set<Promise<unknown>>()
     async function run<T>(body: () => T | Promise<T>): Promise<T> {
       if (!ready) throw new Error("Organization service is closed")
@@ -93,6 +96,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       closing = context.run(async () => {
         RuntimeContext.setReady(false)
         connections?.close()
+        await modelGateway?.close()
         await Promise.allSettled([...active])
         const errors: unknown[] = []
         try {
@@ -157,6 +161,8 @@ export async function openOrganizationService(options: OrganizationServiceOption
       const admissions = createCommandAdmissions({ connections, signing })
       const commands = createCommandForwarder({ admissions, connections })
       const execution = createExecutionGrants({ admissions, connections })
+      const gatewayCalls = createGatewayCalls({ connections, signing })
+      modelGateway = createModelGateway({ calls: gatewayCalls, run: async (body) => context.run(body) })
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
       const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)
@@ -169,6 +175,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
         clientAuthentication,
         commands,
         execution,
+        { calls: gatewayCalls, models: modelGateway },
       )
       if (web) app.route("/", web)
       ready = true

@@ -1,5 +1,7 @@
 # Organization protocol
 
+Gateway requests and invocation capabilities use separate signing domains. Each capability binds a single call, current execution identities, resource revision and bounded start/lifetime/byte limits. Metadata receipts distinguish reservation, started transmission, transport completion and unknown outcome without carrying content or upstream credentials.
+
 Strict schemas shared by the standalone organization service, Runtime bridge and clients. Protocol versions are independent of product release versions. Private local Session registration accepts only its specified metadata.
 
 Use the public package entry for schemas and inferred types. Storage and execution implementations belong to their respective owners.

@@ -20,6 +20,9 @@ import { resourceRoutes } from "./routes/resources"
 import { executionRoutes } from "./routes/execution"
 import type { ExecutionGrants } from "./execution-grants"
 import type { CommandForwarder } from "./command-forwarding"
+import { gatewayRoutes } from "./routes/gateway"
+import type { GatewayCalls } from "./gateway-calls"
+import type { ModelGateway } from "./gateway"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -41,6 +44,7 @@ export function organizationApp(
   clientAuthentication?: ClientAuthentication,
   commands?: CommandForwarder,
   execution?: ExecutionGrants,
+  gateway?: { calls: GatewayCalls; models: ModelGateway },
 ) {
   function registry() {
     if (!registrations) fail("SERVICE_UNAVAILABLE", "Runtime registration is unavailable")
@@ -65,7 +69,13 @@ export function organizationApp(
       }
       await next()
     })
-    .use("*", bodyLimit({ maxSize: 64 * 1024, onError: () => fail("INVALID_REQUEST", "Request body is too large") }))
+    .use("*", async (c, next) => {
+      if (/^\/runtime\/v1\/gateway\/models\/[^/]+\/(?:chat\/completions|messages)$/.test(c.req.path)) return next()
+      return bodyLimit({ maxSize: 64 * 1024, onError: () => fail("INVALID_REQUEST", "Request body is too large") })(
+        c,
+        next,
+      )
+    })
     .onError((error, c) => {
       if (error instanceof OrganizationError)
         return c.json(
@@ -120,6 +130,13 @@ export function organizationApp(
       }, publicOrigin),
     )
     .route("/runtime/v1", machineRegistrationRoutes(registry))
+    .route(
+      "/runtime/v1",
+      gatewayRoutes(() => {
+        if (!gateway) fail("SERVICE_UNAVAILABLE", "Resource gateway is unavailable")
+        return gateway
+      }),
+    )
     .route(
       "/runtime/v1",
       executionRoutes(() => {
