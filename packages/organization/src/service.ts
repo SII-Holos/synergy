@@ -27,6 +27,7 @@ import { createRuntimeRegistrations } from "./runtime-registration"
 import { digest } from "./auth/secret"
 import type { Server } from "bun"
 import { createRuntimeConnections, type RuntimeConnections, type RuntimeSocket } from "./runtime-connection"
+import { organizationWeb } from "./web"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -36,6 +37,7 @@ export interface OrganizationServiceOptions {
   clientAuthentication?: ClientAuthenticationSettings
   registration?: RuntimeRegistrationSettings
   connections?: RuntimeConnectionSettings
+  web?: { directory: string }
 }
 
 export async function openOrganizationService(options: OrganizationServiceOptions) {
@@ -53,6 +55,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
     if (url.origin !== options.publicOrigin || url.protocol !== "https:")
       throw new Error("Organization public origin must be an HTTPS origin")
   }
+  const web = options.web ? await organizationWeb(options.web.directory) : undefined
   const home = path.resolve(options.home)
   const root = path.join(home, ".synergy")
   const context = RuntimeContext.create(
@@ -152,6 +155,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
         connections,
         clientAuthentication,
       )
+      if (web) app.route("/", web)
       ready = true
       RuntimeContext.setReady(true)
       return {

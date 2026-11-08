@@ -76,6 +76,10 @@ export const OrganizationServeCommand = cmd({
         default: "127.0.0.1",
         describe: "HTTP listening address behind the TLS reverse proxy",
       })
+      .option("web", {
+        type: "string",
+        describe: "absolute directory containing the built organization authorization page",
+      })
       .check((args) => {
         explicitHome()
         const origin = new URL(args.origin)
@@ -83,6 +87,7 @@ export const OrganizationServeCommand = cmd({
           throw new Error("Public origin must be an exact HTTPS origin")
         if (!Number.isInteger(args.port) || args.port < 0 || args.port > 65535)
           throw new Error("Port must be an integer between 0 and 65535")
+        if (args.web && !path.isAbsolute(args.web)) throw new Error("Organization Web directory must be absolute")
         return true
       }),
   async handler(args) {
@@ -93,7 +98,12 @@ export const OrganizationServeCommand = cmd({
     try {
       const home = explicitHome()
       const configuration = await readOrganizationConfiguration(home)
-      await using service = await openOrganizationService({ ...configuration, home, publicOrigin: args.origin })
+      await using service = await openOrganizationService({
+        ...configuration,
+        home,
+        publicOrigin: args.origin,
+        web: args.web ? { directory: args.web } : undefined,
+      })
       const server = Bun.serve({
         hostname: args.hostname,
         port: args.port,

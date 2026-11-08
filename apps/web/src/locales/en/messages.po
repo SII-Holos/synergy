@@ -13377,6 +13377,78 @@ msgid "note.tag.remove"
 msgstr "Remove tag {tag}"
 
 #. js-lingui-explicit-id
+msgid "organization.auth.close"
+msgstr "Close window"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.continue"
+msgstr "Continue"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.desktop"
+msgstr "Synergy Desktop"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.destination"
+msgstr "Connect this account to {client}."
+
+#. js-lingui-explicit-id
+msgid "organization.auth.expired"
+msgstr "Your sign-in has expired. Sign in again to continue."
+
+#. js-lingui-explicit-id
+msgid "organization.auth.invalid"
+msgstr "This connection link is no longer valid. Return to Synergy and restore the organization connection."
+
+#. js-lingui-explicit-id
+msgid "organization.auth.loading"
+msgstr "Checking your organization connection…"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.loginName"
+msgstr "Account"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.missingWindow"
+msgstr "The original window is unavailable. Return to Synergy and restore the organization connection."
+
+#. js-lingui-explicit-id
+msgid "organization.auth.password"
+msgstr "Password"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.retry"
+msgstr "Try again"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.returning"
+msgstr "Returning to Synergy…"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signIn"
+msgstr "Sign in"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signInFailed"
+msgstr "Sign-in failed. Check your account and password, then try again."
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signOut"
+msgstr "Sign out"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.title"
+msgstr "Connect to your organization"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.unavailable"
+msgstr "Could not connect to the organization. Try again."
+
+#. js-lingui-explicit-id
+msgid "organization.auth.working"
+msgstr "Connecting…"
+
+#. js-lingui-explicit-id
 msgid "project.entry.addFolder"
 msgstr "Add folder"
 

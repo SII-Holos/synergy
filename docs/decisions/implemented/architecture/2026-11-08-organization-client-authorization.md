@@ -16,6 +16,8 @@ Web clients receive short-lived access tokens and no refresh token. Desktop rece
 
 Cross-origin API access allows only registered Web callback origins and the required request methods and headers. It does not grant cross-origin credentialed-cookie access. The service records only token digests and the PKCE challenge. The implementation cites the applicable PKCE and refresh-token guidance beside the exchange and rotation logic. Generated organization SDK methods expose discovery, authorization, exchange and refresh independently of the Runtime client.
 
+The Web authorization and callback entry is built separately from the personal application shell. This keeps login usable without a personal Runtime and limits the document to its own assets and API. Each popup transaction owns its nonce, verifier, window and cancellation signal; the callback uses an exact target origin and clears its fragment before rendering. A registered client and the issuer/org/incarnation tuple are checked at discovery, callback and token acceptance. Web access remains in memory, and recovery after reload reuses the first-party cookie through an explicit new authorization.
+
 ## Alternatives considered
 
 **Long-lived browser bearer tokens.** Persistent browser storage would expand credential exposure and complicate immediate logout. The first-party login remains the source for subsequent Web authorization.
@@ -26,6 +28,8 @@ Cross-origin API access allows only registered Web callback origins and the requ
 
 **Loading the full Runtime configuration for the service.** That would introduce unrelated owner discovery, reference expansion and migration writes into a process that does not execute Agents. A narrowly scoped reader uses the existing domain filename and owning schema without starting that lifecycle.
 
+**Using the personal application bootstrap for authorization.** Personal server health, plugins and service-worker lifecycle are unrelated to organization login. A separate built document reuses the existing locale, theme and control components without starting that application tree.
+
 ## Consequences
 
-Authentication adds a durable lookup to each API request. Refresh callers must serialize rotation, and a lost refresh response can require reauthorization. New code and token record collections use their own versioned schemas without changing existing login records. Real-service tests cover concurrency, account revocation, expiry, exact origins and callbacks, restart, client-policy changes, hashed persistence and the generated SDK over HTTP. This service change does not itself supply the Web authorization window, callback transaction state, Desktop credential storage or space selection.
+Authentication adds a durable lookup to each API request. Refresh callers must serialize rotation, and a lost refresh response can require reauthorization. New code and token record collections use their own versioned schemas without changing existing login records. Real-service tests cover concurrency, account revocation, expiry, exact origins and callbacks, restart, client-policy changes, hashed persistence and the generated SDK over HTTP. Real HTTPS browser tests cover the Web popup, first-party cookie recovery, exact callback, explicit logout, isolated opener, Chinese and both themes. Desktop credential storage and space selection remain separate client integration work.

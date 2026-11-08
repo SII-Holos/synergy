@@ -13377,6 +13377,78 @@ msgid "note.tag.remove"
 msgstr "移除标签 {tag}"
 
 #. js-lingui-explicit-id
+msgid "organization.auth.close"
+msgstr "关闭窗口"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.continue"
+msgstr "继续"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.desktop"
+msgstr "Synergy 桌面端"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.destination"
+msgstr "将此账号连接到 {client}。"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.expired"
+msgstr "登录已过期，请重新登录后继续。"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.invalid"
+msgstr "此连接链接已失效。请返回 Synergy 并恢复组织连接。"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.loading"
+msgstr "正在检查组织连接…"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.loginName"
+msgstr "账号"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.missingWindow"
+msgstr "原窗口已不可用。请返回 Synergy 并恢复组织连接。"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.password"
+msgstr "密码"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.returning"
+msgstr "正在返回 Synergy…"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signIn"
+msgstr "登录"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signInFailed"
+msgstr "登录失败，请检查账号和密码后重试。"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signOut"
+msgstr "退出登录"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.title"
+msgstr "连接到你的组织"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.unavailable"
+msgstr "无法连接到组织，请重试。"
+
+#. js-lingui-explicit-id
+msgid "organization.auth.working"
+msgstr "正在连接…"
+
+#. js-lingui-explicit-id
 msgid "project.entry.addFolder"
 msgstr "添加文件夹"
 

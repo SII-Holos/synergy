@@ -819,6 +819,7 @@ serve organization APIs without Agent execution; print JSON readiness
 | `--origin` (string) | exact public HTTPS origin served by the TLS reverse proxy |
 | `--port` (number) | explicit local HTTP port (0 selects an available port) |
 | `--hostname` (string) | HTTP listening address behind the TLS reverse proxy |
+| `--web` (string) | absolute directory containing the built organization authorization page |
 
 ## session
 

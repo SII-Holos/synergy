@@ -68,6 +68,8 @@ Read [the domain guidance](references/state-and-recovery.md#preserve-state-and-a
 3. Keep optional browser APIs out of module-scope startup paths. Gate Clipboard, Notifications, credentials, media, and other Secure Context capabilities at the owning action and provide a local unavailable or error state.
 4. Treat non-loopback private-network HTTP as a supported Web deployment. When capability or bootstrap code changes, verify an actual non-Secure Context rather than relying on localhost.
 
+Keep organization authorization and callback pages independent of personal Runtime readiness and subscriptions. Exercise the real organization service across separate HTTPS origins: first-party login, exact-window callback, cookie-based recovery after reload, explicit logout, isolated opener and late cancellation. Use strict randomness for state/verifier and clear callback fragments before rendering. Do not infer popup compatibility from CORS headers; test the served opener policy in Chromium. Authentication state machines remain directly measured while rendered pages use the owning browser fixture.
+
 ## Localize Product UI
 
 Read [the domain guidance](references/presentation.md#localize-product-ui) when this area is affected.

@@ -42,6 +42,7 @@ test("organization CLI help is available without a Home and writes require an ex
     for (const args of [
       ["serve", "--origin", "http://organization.example", "--port", "4080"],
       ["serve", "--origin", "https://organization.example", "--port", "65536"],
+      ["serve", "--origin", "https://organization.example", "--port", "0", "--web", "relative"],
       ["init", "--output", "relative.json"],
     ]) {
       expect((await invoke({ ...isolated.env, SYNERGY_HOME: isolated.env.SYNERGY_TEST_HOME }, args)).code).toBe(1)
@@ -168,7 +169,9 @@ test("serve owns only its listener and Home, refuses competing owners, and relea
       },
     }),
   )
-  const args = ["serve", "--origin", "https://organization.example", "--port", "0"]
+  const web = path.join(isolated.env.SYNERGY_TEST_ROOT!, "web")
+  await Bun.write(path.join(web, "organization.html"), "<h1>Organization authorization</h1>")
+  const args = ["serve", "--origin", "https://organization.example", "--port", "0", "--web", web]
   const child = spawn(env, args)
   const stderr = new Response(child.stderr).text()
   try {
@@ -184,6 +187,10 @@ test("serve owns only its listener and Home, refuses competing owners, and relea
     expect(ready).toMatchObject({ ready: true, executesAgents: false })
     expect(await (await fetch(`${ready.url}org/v1/health`)).json()).toEqual({ ready: true, protocolVersion: 1 })
     expect((await fetch(`${ready.url}session`)).status).toBe(404)
+    const authorization = await fetch(`${ready.url}organization.html`)
+    expect(authorization.status).toBe(200)
+    expect(await authorization.text()).toContain("Organization authorization")
+    expect(authorization.headers.get("content-security-policy")).toContain("script-src 'self'")
     const discovery = await fetch(`${ready.url}org/v1/auth/discovery?clientID=desktop`)
     expect(discovery.status).toBe(200)
     expect(await discovery.json()).toMatchObject({

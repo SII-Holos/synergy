@@ -13377,6 +13377,78 @@ msgid "note.tag.remove"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.auth.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.desktop"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.destination"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.expired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.invalid"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.loginName"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.missingWindow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.password"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.returning"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signIn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signInFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.signOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.auth.working"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "project.entry.addFolder"
 msgstr "⟦Add folder⟧"
 

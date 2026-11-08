@@ -24,6 +24,7 @@
   "devDependencies": {
     "@babel/core": "catalog:",
     "@babel/preset-typescript": "catalog:",
+    "@ericsanchezok/synergy-organization": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@happy-dom/global-registrator": "21.0.3",
     "@lingui/cli": "catalog:",
@@ -47,6 +48,7 @@
     "@aarkue/tiptap-math-extension": "1.4.0",
     "@babel/parser": "8.0.7",
     "@ericsanchezok/synergy-browser-core": "workspace:*",
+    "@ericsanchezok/synergy-organization-protocol": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-ui": "workspace:*",

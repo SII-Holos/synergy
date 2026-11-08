@@ -1533,6 +1533,18 @@
         {
           "glob": "src/components/sidebar/space-switcher.tsx",
           "reason": "Rendered in Chromium by test/components/sidebar/space-switcher.dom.test.tsx and test/components/app-shell/mobile-drawer-drag-region.test.tsx, including keyboard focus, localized labels and nested settings; browser-bundled execution does not contribute Bun coverage."
+        },
+        {
+          "glob": "src/organization/entry.tsx",
+          "reason": "The standalone authorization bootstrap is exercised against real HTTPS organization and client origins by test/organization/authorization.browser.test.ts. Chromium execution does not contribute Bun LCOV; authorization.ts and approval.ts remain directly measured."
+        },
+        {
+          "glob": "src/organization/messages.ts",
+          "reason": "Static organization authorization descriptors are checked by Lingui extraction and strict catalog compilation, with English and Chinese presentation exercised by test/organization/authorization.browser.test.ts. The module contains no authorization decisions."
+        },
+        {
+          "glob": "src/organization/page.tsx",
+          "reason": "Real login, consent, cookie recovery, logout, isolated callback, narrow layout, keyboard focus and light/dark Chinese rendering are exercised by test/organization/authorization.browser.test.ts in Chromium. The authorization and approval state machines retain direct behavioral coverage."
         }
       ]
     },

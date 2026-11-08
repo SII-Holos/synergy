@@ -415,6 +415,10 @@ test("the generated client performs discovery, authorization, exchange and refre
     ).data
     expect(project.permissions.execute).toBe(true)
     expect((await client.orgAuth.session({ headers, throwOnError: true })).data.expiresAt).toBe(next.expiresAt)
+    const logout = await client.orgAuth.logout({ orgEmptyInput: {} }, { headers })
+    expect(logout.response.status).toBe(200)
+    expect(logout.data).toEqual({ ok: true })
+    expect((await client.orgAuth.session({ headers })).response.status).toBe(401)
     const spec = await organizationOpenApi()
     expect(spec.paths?.["/org/v1/auth/discovery"]?.get?.operationId).toBe("orgAuth.discovery")
     for (const action of ["authorize", "exchange", "refresh"]) {
