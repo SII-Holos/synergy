@@ -14,6 +14,8 @@ Use opaque revocable browser sessions, an exact configured HTTPS Origin and a se
 
 ## Alternatives considered
 
+**Authorize each account and project handler independently.** This spreads owner protection and object resolution across endpoints. A single action-based authorization owner resolves the target from stored records, checks its actual organization and denies unknown actions. Authentication stays separate so credential exchange can validate the issuing account without creating a second role authority.
+
 - Stateless signed login tokens would retain revoked authority until expiry or require a separate revocation lookup, so opaque server-owned state is simpler here.
 - Checking permissions before entering the transaction would allow competing role changes to invalidate the decision before commit.
 - Re-reading an account for an idempotent invitation retry would return a different result after a rename or removal. Persisting the original public result preserves the accepted fact without reissuing credentials.

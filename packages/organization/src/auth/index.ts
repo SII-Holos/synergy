@@ -6,6 +6,9 @@ import { OrganizationRecord as Record } from "../storage/records"
 import { fail, revision } from "../error"
 import { createPasswordHasher } from "./password"
 import { token, digest, fingerprint, matches } from "./secret"
+import { authenticate, account, type Credentials } from "./session"
+import { authorize, requireAdministrator } from "../authorization"
+export type { Credentials } from "./session"
 
 export const AuthenticationSettings = z.strictObject({
   bootstrapMs: z
@@ -31,30 +34,6 @@ export const AuthenticationSettings = z.strictObject({
   hashConcurrency: z.number().int().min(1).max(16).default(2),
 })
 export type AuthenticationSettings = z.input<typeof AuthenticationSettings>
-export type Credentials = { token: string; csrf?: string }
-
-export async function authenticate(credentials: Credentials) {
-  const login = await Record.read(Record.Login, Keys.login(digest(credentials.token)))
-  if (!login || login.revokedAt || login.expiresAt <= Date.now())
-    fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")
-  const account = await Record.read(Record.Account, Keys.account(login.accountID))
-  if (!account || account.state !== "active" || account.authRevision !== login.authRevision)
-    fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")
-  if (credentials.csrf !== undefined && !matches(credentials.csrf, login.csrfHash))
-    fail("PERMISSION_DENIED", "Invalid request token")
-  return { account, login }
-}
-
-export async function account(id: string) {
-  const value = await Record.read(Record.Account, Keys.account(id))
-  if (!value) fail("NOT_FOUND", "Account not found")
-  return value
-}
-
-export function requireAdministrator(value: Identity.Account) {
-  if (value.state !== "active" || value.role === "member")
-    fail("PERMISSION_DENIED", "Organization administrator access is required")
-}
 
 async function info() {
   const value = await Record.read(Record.Info, Keys.info())
@@ -221,8 +200,7 @@ export async function createAuthentication(options: AuthenticationSettings = {})
     },
     async invite(credentials: Credentials, input: Identity.InviteCreate) {
       return Storage.transaction(async () => {
-        const { account } = await authenticate(credentials)
-        requireAdministrator(account)
+        const { account } = await authorize(credentials, "invites.create")
         const secret = token()
         const invite = Record.Invite.parse({
           schemaVersion: 1,
@@ -258,15 +236,14 @@ export async function createAuthentication(options: AuthenticationSettings = {})
     },
     async organization(credentials: Credentials) {
       return Storage.snapshot(async () => {
-        await authenticate(credentials)
+        await authorize(credentials, "organization.read")
         const value = await info()
         return { orgID: value.orgID, name: value.name, revision: value.revision }
       })
     },
     async accounts(credentials: Credentials, page: Identity.Page) {
       return Storage.snapshot(async () => {
-        const { account } = await authenticate(credentials)
-        requireAdministrator(account)
+        await authorize(credentials, "accounts.list")
         const entries = await Storage.query({
           prefix: Keys.accounts(),
           after: page.cursor ? Keys.account(page.cursor) : undefined,
@@ -280,12 +257,10 @@ export async function createAuthentication(options: AuthenticationSettings = {})
     },
     async updateAccount(credentials: Credentials, id: string, input: Identity.AccountChange) {
       return Storage.transaction(async () => {
-        const { account: actor } = await authenticate(credentials)
-        const target = await account(id)
         const managing = input.role !== undefined || input.state !== undefined
-        if (managing || actor.accountID !== target.accountID) requireAdministrator(actor)
-        if (managing && (target.role === "owner" || input.role === "owner") && actor.role !== "owner")
-          fail("PERMISSION_DENIED", "Only an owner can change ownership")
+        const action =
+          input.role === "owner" ? "account.promote-owner" : managing ? "account.manage" : "account.profile"
+        const { target } = await authorize(credentials, action, { accountID: id })
         revision(input.expectedRevision, target.revision)
         if (target.state !== "active") fail("REVISION_CONFLICT", "Removed accounts cannot be changed", target.revision)
         const changed = Record.Account.parse({
@@ -307,9 +282,9 @@ export async function createAuthentication(options: AuthenticationSettings = {})
     },
     async transferOwner(credentials: Credentials, input: Identity.TransferOwner) {
       return Storage.transaction(async () => {
-        const { account: actor } = await authenticate(credentials)
-        if (actor.role !== "owner") fail("PERMISSION_DENIED", "Only an owner can transfer ownership")
-        const target = await account(input.accountID)
+        const { account: actor, target } = await authorize(credentials, "account.transfer-owner", {
+          accountID: input.accountID,
+        })
         const organization = await info()
         revision(input.expectedRevision, organization.revision)
         revision(input.targetRevision, target.revision)
@@ -334,12 +309,8 @@ export async function createAuthentication(options: AuthenticationSettings = {})
     },
     async createReset(credentials: Credentials, id: string, expectedRevision: number) {
       return Storage.transaction(async () => {
-        const { account: actor } = await authenticate(credentials)
-        requireAdministrator(actor)
-        const target = await account(id)
+        const { account: actor, target } = await authorize(credentials, "account.reset", { accountID: id })
         if (target.state !== "active") fail("NOT_FOUND", "Active account not found")
-        if (target.role === "owner" && actor.role !== "owner")
-          fail("PERMISSION_DENIED", "Only an owner can reset an owner account")
         revision(expectedRevision, target.revision)
         const secret = token()
         const reset = Record.Reset.parse({

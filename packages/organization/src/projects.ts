@@ -1,6 +1,6 @@
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationIdentity as Identity } from "@ericsanchezok/synergy-organization-protocol"
-import { authenticate, account, type Credentials } from "./auth"
+import { account, type Credentials } from "./auth/session"
 import { authorize, projectView } from "./authorization"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
@@ -9,7 +9,7 @@ import { fail, revision } from "./error"
 export namespace OrganizationProjects {
   export async function create(credentials: Credentials, input: Identity.ProjectCreate) {
     return Storage.transaction(async () => {
-      const { account } = await authenticate(credentials)
+      const { account } = await authorize(credentials, "project.create")
       const project = Record.Project.parse({
         schemaVersion: 1,
         projectID: crypto.randomUUID(),
@@ -37,7 +37,7 @@ export namespace OrganizationProjects {
   }
   export async function list(credentials: Credentials, page: Identity.Page) {
     return Storage.snapshot(async () => {
-      const { account } = await authenticate(credentials)
+      const { account } = await authorize(credentials, "project.list")
       const prefix = account.role === "member" ? Keys.accessibleProjects(account.accountID) : Keys.projects()
       const rows = await Storage.query({
         prefix,
@@ -79,7 +79,7 @@ export namespace OrganizationProjects {
     return Storage.transaction(async () => {
       const { project } = await authorize(credentials, "project.manage", { projectID })
       revision(input.expectedRevision, project.revision)
-      const target = await account(accountID)
+      const target = await account(accountID, project.orgID)
       if (input.role !== null && target.state !== "active") fail("NOT_FOUND", "Active account not found")
       const next = project.revision + 1
       if (input.role === null) {
