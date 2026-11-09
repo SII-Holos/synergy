@@ -4,6 +4,7 @@ import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { ObservabilityStore } from "../../src/observability/store"
 import { testRuntime } from "../support/runtime"
 import { Storage } from "../../src/storage/storage"
+import { RuntimeContext } from "../../src/lifecycle/context"
 
 const runtime = await testRuntime()
 const row = { name: "llm.fetch.headers", value: 42, unit: "ms" as const, module: "llm" as const }
@@ -81,6 +82,13 @@ test("a forwarder cannot cross Runtime ownership or survive a closed owner", asy
     ),
   )
   expect(forwarded).toEqual([row, { ...row, value: 3 }])
+})
+
+test("a late aggregate flush after Runtime disposal is ignored", async () => {
+  await using isolated = await testRuntime()
+  await isolated.run(() => ObservabilityMetrics.record({ ...row, name: "storage.record.write", unit: "count" }))
+  await isolated.close()
+  expect(() => RuntimeContext.exit(() => ObservabilityMetrics.flushAggregates())).not.toThrow()
 })
 
 afterAll(() => runtime.close())

@@ -187,6 +187,7 @@ export namespace ObservabilityMetrics {
   }
 
   export function flushAggregates(force = false) {
+    if (!RuntimeContext.tryCurrent()) return
     const instanceState = runtimeState()
 
     if (instanceState.aggregateTimer) clearTimeout(instanceState.aggregateTimer)
