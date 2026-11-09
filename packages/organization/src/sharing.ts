@@ -30,6 +30,12 @@ function expectedSessionEvent(session: Record.SessionDirectory, shareGeneration:
   }
 }
 
+function eventSessionID(event: Sync.Event, rootSessionID: string) {
+  if (event.type === "session") return event.session.sessionID
+  if (event.type === "cortex" || event.type === "notification") return event.sessionID
+  return event.sessionID ?? rootSessionID
+}
+
 function equal(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b)
 }
@@ -168,6 +174,92 @@ async function runtimeSession(handshake: Protocol.Handshake, sessionID: string) 
   return session
 }
 
+async function validateProjectionEvents(session: Record.SessionDirectory, batch: Sync.Batch) {
+  const projections = new Map<string, Sync.SessionProjection>()
+  for (const event of batch.events)
+    if (event.type === "session") projections.set(event.session.sessionID, event.session)
+
+  const loaded = new Map<string, Sync.SessionProjection>()
+  async function readProjection(sessionID: string) {
+    const inBatch = projections.get(sessionID)
+    if (inBatch) return inBatch
+    const stored = await Record.read(
+      Record.SharedSession,
+      Keys.sharedSession(session.sessionID, session.shareGeneration, sessionID),
+    )
+    return stored?.projection
+  }
+
+  const root = await readProjection(session.sessionID)
+  if (!root) mismatch("Sync batch must establish the shared root projection before child events")
+  const expected = expectedSessionEvent(session, batch.shareGeneration)
+  if (!equal({ ...root, createdAt: expected.createdAt }, expected))
+    mismatch("Root Session projection metadata does not match the authoritative directory")
+  loaded.set(session.sessionID, root)
+
+  async function load(sessionID: string, visiting = new Set<string>()): Promise<Sync.SessionProjection | undefined> {
+    const cached = loaded.get(sessionID)
+    if (cached) return cached
+    if (visiting.has(sessionID)) mismatch("Shared Cortex Session projection contains a cycle")
+    visiting.add(sessionID)
+    const projection = await readProjection(sessionID)
+    if (!projection) return undefined
+    if (projection.sessionID !== sessionID) mismatch("Shared Session projection identity is inconsistent")
+    if (sessionID !== session.sessionID) {
+      if (
+        projection.rootSessionID !== session.sessionID ||
+        !projection.parentSessionID ||
+        !projection.cortex ||
+        projection.cortex.parentSessionID !== projection.parentSessionID
+      )
+        mismatch("Only Cortex descendants of the shared root may enter its projection")
+      const parent = await load(projection.parentSessionID, visiting)
+      if (!parent || parent.projectID !== session.projectID || parent.rootSessionID === sessionID)
+        mismatch("Shared Cortex child does not resolve to the current shared root")
+    }
+    if (
+      projection.projectID !== session.projectID ||
+      projection.creatorID !== session.creatorID ||
+      projection.driverRuntimeID !== session.driverRuntimeID ||
+      projection.bindingEpoch !== session.bindingEpoch ||
+      projection.shareGeneration !== batch.shareGeneration
+    )
+      mismatch("Shared Session projection binding is inconsistent")
+    loaded.set(sessionID, projection)
+    visiting.delete(sessionID)
+    return projection
+  }
+
+  for (const event of batch.events) {
+    const sourceSessionID = eventSessionID(event, session.sessionID)
+    const source = await load(sourceSessionID)
+    if (!source) mismatch("Sync event references an unshared or unknown Session")
+    if (event.type === "cortex") {
+      if (
+        sourceSessionID !== event.sessionID ||
+        !source.cortex ||
+        source.cortex.taskID !== event.taskID ||
+        source.cortex.parentSessionID !== event.parentSessionID ||
+        source.cortex.parentMessageID !== event.parentMessageID ||
+        source.cortex.status !== event.status
+      )
+        mismatch("Cortex event does not match its Session projection")
+    }
+    if (event.type === "notification") {
+      const child = await load(event.childSessionID)
+      if (
+        !child?.cortex ||
+        child.cortex.taskID !== event.taskID ||
+        child.cortex.parentSessionID !== event.sessionID ||
+        child.cortex.status !== event.status
+      )
+        mismatch("Cortex notification does not match its child projection")
+    }
+  }
+
+  return loaded
+}
+
 async function uploadBlobChunk(input: BlobUploadInput, loadSession: () => Promise<Record.SessionDirectory>) {
   const hash = Protocol.Digest.parse(input.hash)
   const shareGeneration = Identity.Revision.parse(input.shareGeneration)
@@ -239,12 +331,10 @@ async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) 
   if (batch.projectID !== session.projectID) mismatch("Sync batch project does not match the Session")
   if (batch.bindingEpoch !== session.bindingEpoch) fail("STALE_BINDING", "Sync batch binding is stale")
   if (payloadHash(batch) !== batch.payloadHash) mismatch("Sync batch payload hash is invalid")
+  const projections = await validateProjectionEvents(session, batch)
   const events = batch.events.map((event) => {
-    if (event.type !== "session") return event
-    const expected = expectedSessionEvent(session, batch.shareGeneration)
-    if (!equal({ ...event.session, createdAt: expected.createdAt }, expected))
-      mismatch("Session projection metadata does not match the authoritative directory")
-    return { ...event, session: expected }
+    if (event.type !== "session" || event.session.sessionID !== session.sessionID) return event
+    return { ...event, session: expectedSessionEvent(session, batch.shareGeneration) }
   })
   const state = await Record.read(Record.SharedState, Keys.sharedState(session.sessionID))
   if (
@@ -291,6 +381,11 @@ async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) 
     await Storage.write(
       Keys.sharedEvent(session.sessionID, session.shareGeneration, event.sequence),
       Record.SharedEvent.parse({ schemaVersion: 1, event }),
+    )
+  for (const projection of projections.values())
+    await Storage.write(
+      Keys.sharedSession(session.sessionID, session.shareGeneration, projection.sessionID),
+      Record.SharedSession.parse({ schemaVersion: 1, rootSessionID: session.sessionID, projection }),
     )
   await Storage.write(
     Keys.sharedBatch(session.sessionID, session.shareGeneration, batch.firstSeq),

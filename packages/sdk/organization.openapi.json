@@ -3388,7 +3388,48 @@
                   },
                   "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
                   "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                  "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "rootSessionID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "parentSessionID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "cortex": {
+                    "type": "object",
+                    "properties": {
+                      "taskID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "parentSessionID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "parentMessageID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
+                      },
+                      "description": { "type": "string", "maxLength": 512 },
+                      "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "completedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "notifyParentOnComplete": { "type": "boolean" },
+                      "visibility": { "type": "string", "enum": ["visible", "hidden"] }
+                    },
+                    "required": ["taskID", "parentSessionID", "parentMessageID", "status", "description", "startedAt"],
+                    "additionalProperties": false
+                  }
                 },
                 "required": [
                   "sessionID",
@@ -3410,6 +3451,7 @@
             "properties": {
               "type": { "type": "string", "const": "message" },
               "sequence": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "messageID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "role": { "type": "string", "enum": ["user", "assistant"] },
               "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
@@ -3424,6 +3466,7 @@
             "properties": {
               "type": { "type": "string", "const": "tool" },
               "sequence": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "callID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "name": { "type": "string", "minLength": 1, "maxLength": 256 },
               "state": { "type": "string", "enum": ["pending", "running", "completed", "error", "unknown"] },
@@ -3438,6 +3481,7 @@
             "properties": {
               "type": { "type": "string", "const": "attachment" },
               "sequence": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "attachmentID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "filename": { "type": "string", "minLength": 1, "maxLength": 512 },
               "mediaType": { "type": "string", "minLength": 1, "maxLength": 256 },
@@ -3446,6 +3490,91 @@
               "state": { "type": "string", "enum": ["pending", "uploading", "available", "missing", "failed"] }
             },
             "required": ["type", "sequence", "attachmentID", "filename", "mediaType", "bytes", "hash", "state"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "cortex" },
+              "sequence": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "taskID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "parentSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "parentMessageID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "status": {
+                "type": "string",
+                "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
+              },
+              "description": { "type": "string", "maxLength": 512 },
+              "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "completedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "notifyParentOnComplete": { "type": "boolean" },
+              "deliveryNotifiedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "summary": { "type": "string", "maxLength": 32768 },
+              "integrity": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            },
+            "required": [
+              "type",
+              "sequence",
+              "sessionID",
+              "taskID",
+              "parentSessionID",
+              "parentMessageID",
+              "status",
+              "description",
+              "startedAt",
+              "summary",
+              "integrity"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "notification" },
+              "sequence": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "notificationID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "kind": { "type": "string", "const": "cortex-completion" },
+              "taskID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "childSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "status": {
+                "type": "string",
+                "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
+              },
+              "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "summary": { "type": "string", "maxLength": 32768 },
+              "integrity": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            },
+            "required": [
+              "type",
+              "sequence",
+              "sessionID",
+              "notificationID",
+              "kind",
+              "taskID",
+              "childSessionID",
+              "status",
+              "createdAt",
+              "summary",
+              "integrity"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "blob" },
+              "sequence": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "blobID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "kind": { "type": "string", "enum": ["tool-input", "tool-output", "tool-observation", "cortex-output"] },
+              "mediaType": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "state": { "type": "string", "enum": ["uploading", "available", "missing", "failed"] }
+            },
+            "required": ["type", "sequence", "blobID", "kind", "mediaType", "bytes", "hash", "state"],
             "additionalProperties": false
           }
         ]

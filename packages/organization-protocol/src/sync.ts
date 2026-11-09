@@ -12,22 +12,44 @@ export namespace OrganizationSyncProtocol {
 
   export const SyncState = z.enum(["pending", "syncing", "synced", "blocked", "failed"])
 
+  export const CortexStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
+
+  export const CortexProjection = z.strictObject({
+    taskID: Identity.ID,
+    parentSessionID: Identity.ID,
+    parentMessageID: Identity.ID,
+    status: CortexStatus,
+    description: z.string().max(512),
+    startedAt: z.number().int().nonnegative(),
+    completedAt: z.number().int().nonnegative().optional(),
+    notifyParentOnComplete: z.boolean().optional(),
+    visibility: z.enum(["visible", "hidden"]).optional(),
+  })
+  export type CortexProjection = z.infer<typeof CortexProjection>
+
+  export const SessionProjection = z.strictObject({
+    sessionID: Identity.ID,
+    projectID: Identity.ID,
+    creatorID: Identity.ID,
+    driverRuntimeID: Identity.ID,
+    bindingEpoch: Protocol.Epoch,
+    createdAt: z.number().int().nonnegative(),
+    shareGeneration: Identity.Revision,
+    rootSessionID: Identity.ID.optional(),
+    parentSessionID: Identity.ID.optional(),
+    cortex: CortexProjection.optional(),
+  })
+  export type SessionProjection = z.infer<typeof SessionProjection>
+
   const SessionEvent = z.strictObject({
     type: z.literal("session"),
     sequence: Sequence,
-    session: z.strictObject({
-      sessionID: Identity.ID,
-      projectID: Identity.ID,
-      creatorID: Identity.ID,
-      driverRuntimeID: Identity.ID,
-      bindingEpoch: Protocol.Epoch,
-      createdAt: z.number().int().nonnegative(),
-      shareGeneration: Identity.Revision,
-    }),
+    session: SessionProjection,
   })
   const MessageEvent = z.strictObject({
     type: z.literal("message"),
     sequence: Sequence,
+    sessionID: Identity.ID.optional(),
     messageID: Identity.ID,
     role: z.enum(["user", "assistant"]),
     createdAt: z.number().int().nonnegative(),
@@ -37,6 +59,7 @@ export namespace OrganizationSyncProtocol {
   const ToolEvent = z.strictObject({
     type: z.literal("tool"),
     sequence: Sequence,
+    sessionID: Identity.ID.optional(),
     callID: Identity.ID,
     name: z.string().min(1).max(256),
     state: z.enum(["pending", "running", "completed", "error", "unknown"]),
@@ -46,6 +69,7 @@ export namespace OrganizationSyncProtocol {
   const AttachmentEvent = z.strictObject({
     type: z.literal("attachment"),
     sequence: Sequence,
+    sessionID: Identity.ID.optional(),
     attachmentID: Identity.ID,
     filename: z.string().min(1).max(512),
     mediaType: z.string().min(1).max(256),
@@ -53,8 +77,56 @@ export namespace OrganizationSyncProtocol {
     hash: Protocol.Digest,
     state: z.enum(["pending", "uploading", "available", "missing", "failed"]),
   })
+  const CortexEvent = z.strictObject({
+    type: z.literal("cortex"),
+    sequence: Sequence,
+    sessionID: Identity.ID,
+    taskID: Identity.ID,
+    parentSessionID: Identity.ID,
+    parentMessageID: Identity.ID,
+    status: CortexStatus,
+    description: z.string().max(512),
+    startedAt: z.number().int().nonnegative(),
+    completedAt: z.number().int().nonnegative().optional(),
+    notifyParentOnComplete: z.boolean().optional(),
+    deliveryNotifiedAt: z.number().int().nonnegative().optional(),
+    summary: z.string().max(32 * 1024),
+    integrity: Protocol.Digest,
+  })
+  const NotificationEvent = z.strictObject({
+    type: z.literal("notification"),
+    sequence: Sequence,
+    sessionID: Identity.ID,
+    notificationID: Identity.ID,
+    kind: z.literal("cortex-completion"),
+    taskID: Identity.ID,
+    childSessionID: Identity.ID,
+    status: CortexStatus,
+    createdAt: z.number().int().nonnegative(),
+    summary: z.string().max(32 * 1024),
+    integrity: Protocol.Digest,
+  })
+  const BlobEvent = z.strictObject({
+    type: z.literal("blob"),
+    sequence: Sequence,
+    sessionID: Identity.ID.optional(),
+    blobID: Identity.ID,
+    kind: z.enum(["tool-input", "tool-output", "tool-observation", "cortex-output"]),
+    mediaType: z.string().min(1).max(256),
+    bytes: z.number().int().nonnegative(),
+    hash: Protocol.Digest,
+    state: z.enum(["uploading", "available", "missing", "failed"]),
+  })
   export const Event = z
-    .discriminatedUnion("type", [SessionEvent, MessageEvent, ToolEvent, AttachmentEvent])
+    .discriminatedUnion("type", [
+      SessionEvent,
+      MessageEvent,
+      ToolEvent,
+      AttachmentEvent,
+      CortexEvent,
+      NotificationEvent,
+      BlobEvent,
+    ])
     .meta({ ref: "OrgSyncEvent" })
   export type Event = z.infer<typeof Event>
 

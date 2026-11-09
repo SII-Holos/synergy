@@ -218,6 +218,115 @@ test("sharing rejects forged payload hashes and non-session projection metadata"
   ).rejects.toMatchObject({ data: { code: "INVALID_REQUEST" } })
 })
 
+test("shared roots include only their Cortex descendants and completion notifications", async () => {
+  await using f = await directoryFixture()
+  await f.run(() =>
+    Directory.reservePrivate(f.credentials.alice, {
+      sessionID: "session-cortex",
+      projectID: "project",
+      runtimeID: "runtime-alice",
+    }),
+  )
+  await f.run(() => Sharing.share(f.credentials.alice, "session-cortex", { expectedShareGeneration: 0 }))
+  const view = await f.run(() => Directory.get(f.credentials.alice, "session-cortex"))
+  const root = Sync.Event.parse({
+    type: "session",
+    sequence: 1,
+    session: {
+      sessionID: "session-cortex",
+      projectID: "project",
+      creatorID: "alice",
+      driverRuntimeID: "runtime-alice",
+      bindingEpoch: 1,
+      createdAt: view.createdAt,
+      shareGeneration: 1,
+    },
+  })
+  const child = Sync.Event.parse({
+    type: "session",
+    sequence: 2,
+    session: {
+      sessionID: "child-cortex",
+      rootSessionID: "session-cortex",
+      parentSessionID: "session-cortex",
+      projectID: "project",
+      creatorID: "alice",
+      driverRuntimeID: "runtime-alice",
+      bindingEpoch: 1,
+      createdAt: view.createdAt + 1,
+      shareGeneration: 1,
+      cortex: {
+        taskID: "task-cortex",
+        parentSessionID: "session-cortex",
+        parentMessageID: "message-parent",
+        status: "completed",
+        description: "child task",
+        startedAt: view.createdAt + 1,
+      },
+    },
+  })
+  const cortex = Sync.Event.parse({
+    type: "cortex",
+    sequence: 3,
+    sessionID: "child-cortex",
+    taskID: "task-cortex",
+    parentSessionID: "session-cortex",
+    parentMessageID: "message-parent",
+    status: "completed",
+    description: "child task",
+    startedAt: view.createdAt + 1,
+    summary: "done",
+    integrity: digest("cortex"),
+  })
+  const notification = Sync.Event.parse({
+    type: "notification",
+    sequence: 4,
+    sessionID: "session-cortex",
+    notificationID: "inbox-notice",
+    kind: "cortex-completion",
+    taskID: "task-cortex",
+    childSessionID: "child-cortex",
+    status: "completed",
+    createdAt: view.createdAt + 2,
+    summary: "done",
+    integrity: digest("notification"),
+  })
+  await f.run(() =>
+    Sharing.applyBatch(
+      f.credentials.alice,
+      batch({
+        sessionID: "session-cortex",
+        projectID: "project",
+        bindingEpoch: 1,
+        shareGeneration: 1,
+        events: [root, child, cortex, notification],
+      }),
+    ),
+  )
+  const page = await f.run(() => Sharing.events(f.credentials.bob, "session-cortex", { limit: 10 }))
+  expect(page.items).toEqual([root, child, cortex, notification])
+
+  const independent = Sync.Event.parse({
+    ...child,
+    sequence: 5,
+    session: { ...sessionData(child), sessionID: "independent", rootSessionID: "another-root" },
+  })
+  await expect(
+    f.run(() =>
+      Sharing.applyBatch(
+        f.credentials.alice,
+        batch({
+          sessionID: "session-cortex",
+          projectID: "project",
+          bindingEpoch: 1,
+          shareGeneration: 1,
+          events: [independent],
+        }),
+      ),
+    ),
+  ).rejects.toMatchObject({ data: { code: "INVALID_REQUEST" } })
+})
+
 test("shared event pages validate cursors and bounded limits", async () => {
   await using f = await directoryFixture()
   await f.run(() =>

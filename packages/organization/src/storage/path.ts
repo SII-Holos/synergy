@@ -152,6 +152,16 @@ export namespace OrganizationStoragePath {
     sessionID,
     String(shareGeneration),
   ]
+  export const sharedSessions = (sessionID: string, shareGeneration: number) => [
+    "organization",
+    "shared-sessions",
+    sessionID,
+    String(shareGeneration),
+  ]
+  export const sharedSession = (sessionID: string, shareGeneration: number, childSessionID: string) => [
+    ...sharedSessions(sessionID, shareGeneration),
+    childSessionID,
+  ]
   export const sharedBlob = (sessionID: string, shareGeneration: number, hash: string) => [
     "organization",
     "shared-blobs",

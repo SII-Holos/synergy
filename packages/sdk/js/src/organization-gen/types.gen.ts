@@ -289,11 +289,25 @@ export type OrgSyncEvent =
         bindingEpoch: number
         createdAt: number
         shareGeneration: number
+        rootSessionID?: string
+        parentSessionID?: string
+        cortex?: {
+          taskID: string
+          parentSessionID: string
+          parentMessageID: string
+          status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+          description: string
+          startedAt: number
+          completedAt?: number
+          notifyParentOnComplete?: boolean
+          visibility?: "visible" | "hidden"
+        }
       }
     }
   | {
       type: "message"
       sequence: number
+      sessionID?: string
       messageID: string
       role: "user" | "assistant"
       createdAt: number
@@ -303,6 +317,7 @@ export type OrgSyncEvent =
   | {
       type: "tool"
       sequence: number
+      sessionID?: string
       callID: string
       name: string
       state: "pending" | "running" | "completed" | "error" | "unknown"
@@ -312,12 +327,53 @@ export type OrgSyncEvent =
   | {
       type: "attachment"
       sequence: number
+      sessionID?: string
       attachmentID: string
       filename: string
       mediaType: string
       bytes: number
       hash: string
       state: "pending" | "uploading" | "available" | "missing" | "failed"
+    }
+  | {
+      type: "cortex"
+      sequence: number
+      sessionID: string
+      taskID: string
+      parentSessionID: string
+      parentMessageID: string
+      status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+      description: string
+      startedAt: number
+      completedAt?: number
+      notifyParentOnComplete?: boolean
+      deliveryNotifiedAt?: number
+      summary: string
+      integrity: string
+    }
+  | {
+      type: "notification"
+      sequence: number
+      sessionID: string
+      notificationID: string
+      kind: "cortex-completion"
+      taskID: string
+      childSessionID: string
+      status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+      createdAt: number
+      summary: string
+      integrity: string
+    }
+  | {
+      type: "blob"
+      sequence: number
+      sessionID?: string
+      blobID: string
+      kind: "tool-input" | "tool-output" | "tool-observation" | "cortex-output"
+      mediaType: string
+      bytes: number
+      hash: string
+      state: "uploading" | "available" | "missing" | "failed"
     }
 
 export type OrgSyncBatch = {

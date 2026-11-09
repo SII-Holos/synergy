@@ -24,7 +24,10 @@ import { spawnAgentWorkerProcess } from "@ericsanchezok/synergy-harness/session/
 import { spawnPolicyWorkerProcess } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
-import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationRuntimeProtocol as Protocol,
+  OrganizationSyncProtocol as Sync,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { fileLockPath, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
@@ -303,6 +306,106 @@ test("the public service creates, reconciles and cancels native work through the
   )
   expect(offline.data.accepted?.effect).toMatchObject({ operation: "cancel", runID, runStatusAtReception: "running" })
   expect(offline.data.execution).toEqual({ state: "unavailable", runID, reason: "runtime_offline" })
+})
+
+test("resident exporter projects Cortex descendants and completion notifications under the shared root", async () => {
+  await using service = await fixture()
+  const member = await enrolled(service)
+  const registration = (await readMemberRegistration(member.home, member.identity))!
+  const project = (
+    await service.client.orgProjects.create(
+      { orgProjectCreate: { name: "Cortex projection", description: "" } },
+      { headers: service.headers, throwOnError: true },
+    )
+  ).data
+  const online = Promise.withResolvers<void>()
+  service.interceptFrames((_socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "heartbeat") online.resolve()
+    return false
+  })
+  await using runtime = await openMemberRuntime({
+    home: member.home,
+    identity: member.identity,
+    ca: service.ca,
+    listen: { port: await availablePort(), token: "d".repeat(64) },
+  })
+  await online.promise
+  const create = await service.client.orgSessions.create(
+    {
+      orgCommandCreateRequest: {
+        schemaVersion: 1,
+        orgID: member.identity.orgID,
+        projectID: project.projectID,
+        runtimeID: registration.runtimeID,
+        requestID: "cortex-root",
+        creation: { operation: "create", title: "Cortex root" },
+      },
+    },
+    { headers: service.headers, throwOnError: true },
+  )
+  const sessionID = create.data.effect.sessionID
+  await service.client.orgSessions.share(
+    { sessionID, orgShareChange: { expectedShareGeneration: 0 } },
+    { headers: service.headers, throwOnError: true },
+  )
+  const wait = async (predicate: (items: Sync.Event[]) => boolean) => {
+    const deadline = Date.now() + 5_000
+    for (;;) {
+      const page = await service.client.orgSessionSync.events(
+        { sessionID, limit: 128 },
+        { headers: service.headers, throwOnError: true },
+      )
+      if (predicate(page.data.items as Sync.Event[])) return page.data.items as Sync.Event[]
+      if (Date.now() >= deadline) throw new Error("Cortex projection did not reach the organization service")
+      await Bun.sleep(50)
+    }
+  }
+  await wait((items) => items.some((event) => event.type === "session" && event.session?.sessionID === sessionID))
+  const childID = await runtime.run(async () => {
+    const root = await Session.get(sessionID)
+    return ScopeContext.provide({
+      scope: root.scope,
+      workspace: root.workspace,
+      fn: async () =>
+        (
+          await Session.create({
+            parentID: sessionID,
+            cortex: {
+              taskID: "cortex-native-child",
+              parentSessionID: sessionID,
+              parentMessageID: "native-parent-message",
+              description: "native child projection",
+              agent: "reviewer",
+              startedAt: Date.now(),
+              status: "completed",
+              notifyParentOnComplete: true,
+            },
+          })
+        ).id,
+    })
+  })
+  await runtime.run(async () => {
+    const root = await Session.get(sessionID)
+    await ScopeContext.provide({
+      scope: root.scope,
+      workspace: root.workspace,
+      fn: () =>
+        SessionInbox.deliverUnique({
+          sessionID,
+          deliveryKey: "cortex:taskNotification:cortex-native-child",
+          mode: "steer",
+          message: { role: "user", parts: [{ type: "text", text: "Child completed" }] },
+        }),
+    })
+  })
+  const items = await wait(
+    (events) =>
+      events.some((event) => event.type === "session" && event.session?.sessionID === childID) &&
+      events.some((event) => event.type === "cortex" && event.taskID === "cortex-native-child") &&
+      events.some((event) => event.type === "notification" && event.taskID === "cortex-native-child"),
+  )
+  expect(items.some((event) => event.type === "session" && event.session?.parentSessionID === sessionID)).toBeTrue()
 })
 
 test("resident member startup reconnects its outbound bridge without blocking local readiness", async () => {

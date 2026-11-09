@@ -38,3 +38,42 @@ test("sync projections reject oversized summaries and unknown event fields", () 
   ).toBe(false)
   expect(Sync.Event.safeParse({ ...event, extra: "forged" }).success).toBe(false)
 })
+
+test("sync projections carry Cortex descendants and authenticated blob references", () => {
+  const child = Sync.Event.parse({
+    type: "session",
+    sequence: 2,
+    session: {
+      sessionID: "child-session",
+      rootSessionID: "root-session",
+      parentSessionID: "root-session",
+      projectID: "project-1",
+      creatorID: "account-1",
+      driverRuntimeID: "runtime-1",
+      bindingEpoch: 1,
+      createdAt: 2,
+      shareGeneration: 1,
+      cortex: {
+        taskID: "cortex-task",
+        parentSessionID: "root-session",
+        parentMessageID: "message-1",
+        status: "completed",
+        description: "bounded child",
+        startedAt: 2,
+      },
+    },
+  })
+  const blob = Sync.Event.parse({
+    type: "blob",
+    sequence: 3,
+    sessionID: "child-session",
+    blobID: "blob-1",
+    kind: "tool-observation",
+    mediaType: "text/plain",
+    bytes: 3,
+    hash: "c".repeat(64),
+    state: "available",
+  })
+  expect(child.type).toBe("session")
+  expect(blob.type).toBe("blob")
+})

@@ -216,6 +216,12 @@ export namespace OrganizationRecord {
     event: Sync.Event,
   })
   export type SharedEvent = z.infer<typeof SharedEvent>
+  export const SharedSession = z.strictObject({
+    schemaVersion: z.literal(1),
+    rootSessionID: Identity.ID,
+    projection: Sync.SessionProjection,
+  })
+  export type SharedSession = z.infer<typeof SharedSession>
   export const SharedBlob = z.strictObject({
     schemaVersion: z.literal(1),
     sessionID: Identity.ID,
