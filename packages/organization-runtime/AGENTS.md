@@ -8,7 +8,7 @@ Tests live under `test/`. Run `bun run typecheck` and focused tests with isolate
 
 Keep Session organization bindings in the registered domain schema. Validate immutable ownership and parent inheritance before transactional publication; ordinary import cannot grant organization ownership. Verify real storage, restart and unloaded-owner retention in `test/session-binding.test.ts`.
 
-Compose through Agent Runtime with explicit features and exclusive sources in both worker roles. Keep execution denied until accepted commands have grants and gateway access; enrollment and bridge availability do not authorize work. Verify personal/A/B isolation and actual workers in `test/runtime.test.ts`.
+Compose through Agent Runtime with explicit features, exclusive sources and fixed gateway SDKs in both worker roles. Keep execution denied until accepted commands have grants and gateway access; enrollment and bridge availability do not authorize work. Verify isolation and actual workers in `test/runtime.test.ts` and `test/model-provider.test.ts`.
 
 Read local project configuration only through Harness `ProjectConfig` with an explicit field selection. Keep the permitted fields in the organization architecture and test selected values alongside excluded private settings. Never invoke the personal config loader to fill an absent organization value.
 

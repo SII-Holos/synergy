@@ -6,6 +6,7 @@ import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/e
 import { SkillSelection } from "@ericsanchezok/synergy-local-runtime/skill/selection"
 import { memberIdentityDigest, type MemberIdentity } from "./home"
 import { registerSessionSchema } from "./session-schema"
+import { registerMemberProviderSdks } from "./model-provider"
 
 export function registerMemberSources(identity: MemberIdentity) {
   registerSessionSchema({ orgID: identity.orgID })
@@ -18,6 +19,7 @@ export function registerMemberSources(identity: MemberIdentity) {
       ]),
   })
   ProviderCatalogSource.register({ providers: async () => ({}) })
+  registerMemberProviderSdks(identity)
   InstructionSource.register({
     load: async () =>
       (await import("@ericsanchezok/synergy-harness/session/instruction-files")).InstructionFiles.project(),
