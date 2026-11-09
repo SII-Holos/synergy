@@ -10,6 +10,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
@@ -695,6 +696,8 @@ export function createCommandIntake(options: {
               mode: delivery.input.mode,
               message: { role: "user", actor: permit.actor, origin: { type: "user" }, parts: delivery.input.parts },
             })
+            if (delivery.input.mode !== "context")
+              Storage.afterCommit(() => SessionManager.scheduleWake(permit.sessionID, "organization-input"))
             return { kind: "inbox", itemID: effect.itemID, messageID: effect.messageID, mode: delivery.input.mode }
           },
         ),

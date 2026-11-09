@@ -18,9 +18,12 @@ import { enrollMemberRuntime } from "../../src/enrollment"
 import { openMemberConnection, type MemberConnection } from "../../src/connection"
 import { createCommandIntake } from "../../src/command-intake"
 import { registerSessionSchema } from "../../src/session-schema"
+import { attachMemberExecution, registerMemberExecution } from "../../src/execution-source"
 import { fixture } from "./organization"
 
-export async function executionFixture(input: { protocol?: Gateway.ModelProtocol; endpoint?: string } = {}) {
+export async function executionFixture(
+  input: { protocol?: Gateway.ModelProtocol; endpoint?: string; execution?: boolean } = {},
+) {
   const resources = testResources()
   try {
     const f = await fixture()
@@ -38,7 +41,10 @@ export async function executionFixture(input: { protocol?: Gateway.ModelProtocol
     })
     const runtime = await testRuntime({
       home: path.join(f.root, "agent"),
-      register: () => registerSessionSchema({ orgID: f.identity.orgID }),
+      register() {
+        registerSessionSchema({ orgID: f.identity.orgID })
+        if (input.execution) registerMemberExecution(member.identity)
+      },
     })
     resources.defer("native Runtime", () => runtime.close())
     const wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
@@ -62,6 +68,17 @@ export async function executionFixture(input: { protocol?: Gateway.ModelProtocol
             connectionEpoch: current.connectionEpoch,
             signal,
           })
+          if (input.execution)
+            context.bind(() =>
+              attachMemberExecution({
+                connection: current,
+                signal,
+                resources: client,
+                intake,
+                origin: f.origin,
+                ca: f.ca,
+              }),
+            )()
           return {
             create: context.bind(intake.create),
             input: context.bind(intake.input),

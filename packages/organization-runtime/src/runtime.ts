@@ -15,6 +15,7 @@ import { organizationRuntime } from "./component"
 import { memberEnvironment } from "./environment"
 import { startMemberBridge } from "./bridge"
 import { createCommandIntake } from "./command-intake"
+import { attachMemberExecution } from "./execution-source"
 
 export type MemberRuntimeOptions = Pick<
   AgentRuntimeOptions,
@@ -68,7 +69,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
                 buildVersion: version,
                 ca: input.ca,
                 signal: input.signal,
-                commands(connection, signal) {
+                commands: context.bind((connection, signal, resources) => {
                   const intake = createCommandIntake({
                     identity: connection.signingIdentity,
                     runtimeID: connection.runtimeID,
@@ -76,6 +77,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
                     connectionEpoch: connection.connectionEpoch,
                     signal,
                   })
+                  attachMemberExecution({ connection, signal, resources, intake, origin: member.origin, ca: input.ca })
                   return {
                     create: context.bind(intake.create),
                     control: context.bind(intake.control),
@@ -83,7 +85,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
                     query: context.bind(intake.query),
                     skip: context.bind(intake.skip),
                   }
-                },
+                }),
               })
               void bridge.closed.then((result) => {
                 if (result.kind === "closed") return

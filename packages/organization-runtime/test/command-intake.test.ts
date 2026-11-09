@@ -152,6 +152,27 @@ async function session() {
   })
 }
 
+test("new task and steer receipts wake native execution only after commit and never on replay", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const wakes: Array<{ sessionID: string; transaction: boolean }> = []
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation((sessionID) => {
+      wakes.push({ sessionID, transaction: Storage.inTransaction() })
+    })
+    const receiver = service.receiver()
+    for (const mode of ["task", "steer", "context"] as const) {
+      const native = await session()
+      const delivery = await service.input(native.id, { requestID: `wake-${mode}` }, mode, mode)
+      const accepted = await receiver.input(delivery)
+      expect(await receiver.input(delivery)).toEqual(accepted)
+      expect(wakes.filter((entry) => entry.sessionID === native.id)).toEqual(
+        mode === "context" ? [] : [{ sessionID: native.id, transaction: false }],
+      )
+    }
+  })
+})
+
 test("execution binding proves a materialized native task and never turns an Inbox receipt into an arbitrary root", async () => {
   const service = await authority()
   await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
@@ -1095,6 +1116,7 @@ test("failed commit, lost connection and deadline crossing leave no input, intak
   const service = await authority()
   await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
   await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
     const observed: string[] = []
     const unsubscribe = Bus.subscribeGlobal(SessionInbox.Event.Updated, (event) =>
       observed.push(event.properties.sessionID),
@@ -1106,7 +1128,12 @@ test("failed commit, lost connection and deadline crossing leave no input, intak
         const stopped = new AbortController()
         const receiver = service.receiver(1, stopped.signal)
         const requestID = `request-${failure}`
-        const delivery = await service.input(id, { requestID, attemptID: `attempt-${failure}` })
+        const delivery = await service.input(
+          id,
+          { requestID, attemptID: `attempt-${failure}` },
+          "Task rollback",
+          "task",
+        )
         const requestKey = Keys.request(binding.orgID, binding.creatorID, requestID)
         const original = Storage.write
         let clock: ReturnType<typeof spyOn<typeof Date, "now">> | undefined
@@ -1135,16 +1162,23 @@ test("failed commit, lost connection and deadline crossing leave no input, intak
         expect(observed).not.toContain(id)
         expect(await Storage.current().store.pendingEventCount()).toBe(0)
         expect(await receiver.accepted({ subjectID: binding.creatorID, requestID })).toBeUndefined()
+        expect(wake.mock.calls.filter(([sessionID]) => sessionID === id)).toHaveLength(0)
         const retry = failure.startsWith("deadline")
-          ? await service.input(id, {
-              requestID,
-              commandSeq: 2,
-              attemptID: "after-deadline",
-              admissionID: "after-deadline",
-            })
+          ? await service.input(
+              id,
+              {
+                requestID,
+                commandSeq: 2,
+                attemptID: "after-deadline",
+                admissionID: "after-deadline",
+              },
+              "Task rollback",
+              "task",
+            )
           : delivery
         expect((await service.receiver().input(retry)).accepted?.intakeSeq).toBe(failures.indexOf(failure) + 1)
         expect(observed.filter((entry) => entry === id)).toHaveLength(1)
+        expect(wake.mock.calls.filter(([sessionID]) => sessionID === id)).toHaveLength(1)
       }
     } finally {
       unsubscribe()
@@ -1200,6 +1234,7 @@ test("trusted intake captures input before awaits, uses native modes and never r
   const service = await authority()
   await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
   await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
     const id = (await session()).id
     const otherID = (await session()).id
     const receiver = service.receiver()

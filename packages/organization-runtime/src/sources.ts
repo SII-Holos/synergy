@@ -1,12 +1,11 @@
 import { ConfigSource } from "@ericsanchezok/synergy-harness/config/source"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
-import { ProviderCatalogSource } from "@ericsanchezok/synergy-harness/provider/catalog-source"
 import { InstructionSource } from "@ericsanchezok/synergy-harness/session/instruction-source"
-import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
 import { SkillSelection } from "@ericsanchezok/synergy-local-runtime/skill/selection"
 import { memberIdentityDigest, type MemberIdentity } from "./home"
 import { registerSessionSchema } from "./session-schema"
 import { registerMemberProviderSdks } from "./model-provider"
+import { registerMemberExecution } from "./execution-source"
 
 export function registerMemberSources(identity: MemberIdentity) {
   registerSessionSchema({ orgID: identity.orgID })
@@ -18,16 +17,11 @@ export function registerMemberSources(identity: MemberIdentity) {
         "project_doc_fallback_filenames",
       ]),
   })
-  ProviderCatalogSource.register({ providers: async () => ({}) })
+  registerMemberExecution(identity)
   registerMemberProviderSdks(identity)
   InstructionSource.register({
     load: async () =>
       (await import("@ericsanchezok/synergy-harness/session/instruction-files")).InstructionFiles.project(),
   })
   SkillSelection.select({ builtins: [], filesystem: false })
-  SessionExecutionSource.register({
-    authorize: async () => {
-      throw new Error("Organization command admission is unavailable")
-    },
-  })
 }
