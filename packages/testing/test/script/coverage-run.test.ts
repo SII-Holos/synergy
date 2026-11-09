@@ -21,6 +21,7 @@ describe("coverage batch splitting", () => {
       "packages/presets/test/server/nav-global-routes.test.ts",
       "test/b.test.ts",
       "packages/media/test/tools/openai-image-gen.test.ts",
+      "packages/organization-runtime/test/runtime.test.ts",
       "packages/channel-feishu/test/channel/svg-raster-standalone.test.ts",
     ]
     const { main, isolated } = splitBatchFiles(files)
@@ -88,6 +89,7 @@ describe("coverage batch splitting", () => {
       "packages/lsp/test/lsp/owner-runtime.test.ts",
       "packages/mcp/test/mcp/owner-lifecycle.test.ts",
       "packages/media/test/tools/openai-image-gen.test.ts",
+      "packages/organization-runtime/test/runtime.test.ts",
       "packages/plugin-host/test/plugin/tool-invocation.test.ts",
       "packages/presets/test/agent/agent.test.ts",
       "packages/presets/test/cli/daemon-entry.test.ts",

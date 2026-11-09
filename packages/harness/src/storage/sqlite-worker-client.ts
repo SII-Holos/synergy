@@ -1,4 +1,4 @@
-import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
+import { installedWorkerCommand, installedWorkerEnvironment } from "@ericsanchezok/synergy-util/installed-launcher"
 import { existsSync } from "node:fs"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash } from "node:crypto"
@@ -18,12 +18,39 @@ const log = Log.create({ service: "storage.worker" })
 
 export function captureSqliteWorkerHost() {
   const host = RuntimeContext.tryCurrent()?.host
+  const source = host?.env ?? process.env
+  const environment: Record<string, string> = {}
+  const essential = new Set([
+    "PATH",
+    "SystemRoot",
+    "WINDIR",
+    "ComSpec",
+    "PATHEXT",
+    "HOME",
+    "USERPROFILE",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TZ",
+  ])
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined) continue
+    if (essential.has(key) || (key.startsWith("SYNERGY_") && Buffer.byteLength(value) <= 8 * 1024))
+      environment[key] = value
+  }
+  Object.assign(environment, installedWorkerEnvironment(source))
+  if (host) {
+    environment.HOME = host.home
+    environment.USERPROFILE = host.home
+    environment.SYNERGY_HOME = host.home
+    environment.SYNERGY_RUNTIME_ROOT = host.root
+  }
   return Object.freeze({
     cwd: host?.root,
-    env: Object.freeze({
-      ...(host?.env ?? process.env),
-      ...(host ? { SYNERGY_HOME: host.home, SYNERGY_RUNTIME_ROOT: host.root } : {}),
-    }),
+    env: Object.freeze(environment),
   })
 }
 

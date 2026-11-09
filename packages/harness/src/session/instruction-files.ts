@@ -39,11 +39,22 @@ export namespace InstructionFiles {
 
   function searchDirsWithinScope() {
     if (!ScopeContext.current.workspace) return []
-    const cwd = realpathSync.native(path.resolve(ScopeContext.current.directory))
+    const realpath = (filepath: string) => {
+      try {
+        return realpathSync.native(filepath)
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code === "ENOENT" || code === "ENOTDIR") return undefined
+        throw error
+      }
+    }
+    const cwd = realpath(path.resolve(ScopeContext.current.directory))
+    if (!cwd) return []
     const scope = ScopeContext.current.scope
     if (scope.type !== "project") return [cwd]
 
-    const root = realpathSync.native(path.resolve(scope.local?.directory ?? cwd))
+    const root = realpath(path.resolve(scope.local?.directory ?? cwd))
+    if (!root) return []
     if (!isPathContained(root, cwd)) return [cwd]
 
     const dirs: string[] = []

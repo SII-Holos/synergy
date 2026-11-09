@@ -41,6 +41,7 @@ test("SQLite workers keep their creating Runtime's environment through maintenan
       SystemRoot: process.env.SystemRoot,
       SYNERGY_TEST_HOME: fixture.host.home,
       SYNERGY_FIXTURE_WORKER_OWNER: "a",
+      MODELS_DEV_API_JSON: "x".repeat(200_000),
     },
   })
   const b = RuntimeContext.create({
@@ -52,7 +53,7 @@ test("SQLite workers keep their creating Runtime's environment through maintenan
       SYNERGY_FIXTURE_WORKER_OWNER: "b",
     },
   })
-  const seen: Array<{ cwd?: string; owner?: string; noEnv: boolean; noConfig: boolean }> = []
+  const seen: Array<{ cwd?: string; owner?: string; noEnv: boolean; noConfig: boolean; envBytes: number }> = []
   const children: Bun.Subprocess[] = []
   const spawn = Bun.spawn
   using observer = spyOn(Bun, "spawn").mockImplementation(
@@ -66,6 +67,10 @@ test("SQLite workers keep their creating Runtime's environment through maintenan
             owner: input.env?.SYNERGY_FIXTURE_WORKER_OWNER,
             noEnv: input.cmd.includes("--no-env-file"),
             noConfig: input.cmd.some((part) => part.startsWith("--config=")),
+            envBytes: Object.entries(input.env ?? {}).reduce(
+              (total, [key, value]) => total + key.length + (value?.length ?? 0),
+              0,
+            ),
           })
           children.push(child)
         }
@@ -84,8 +89,10 @@ test("SQLite workers keep their creating Runtime's environment through maintenan
     await children[1]!.exited
     expect(await b.run(() => driver!.query("SELECT 3 AS value"))).toEqual([{ value: 3n }])
     expect(seen).toHaveLength(4)
-    for (const observed of seen)
-      expect(observed).toEqual({ cwd: fixture.host.root, owner: "a", noEnv: true, noConfig: true })
+    for (const observed of seen) {
+      expect(observed).toMatchObject({ cwd: fixture.host.root, owner: "a", noEnv: true, noConfig: true })
+      expect(observed.envBytes).toBeLessThan(64 * 1024)
+    }
   } finally {
     await driver?.close()
     a.dispose()

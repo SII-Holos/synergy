@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test"
+import { expect, spyOn, test as bunTest } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
@@ -80,6 +80,8 @@ async function memberDraft(
     })
   })
 }
+
+const test = bunTest.serial
 
 async function availablePort() {
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -350,7 +352,7 @@ test("resident exporter projects Cortex descendants and completion notifications
     { headers: service.headers, throwOnError: true },
   )
   const wait = async (predicate: (items: Sync.Event[]) => boolean) => {
-    const deadline = Date.now() + 15_000
+    const deadline = Date.now() + 25_000
     for (;;) {
       const page = await service.client.orgSessionSync.events(
         { sessionID, limit: 128 },
@@ -422,7 +424,7 @@ test("resident exporter projects Cortex descendants and completion notifications
       events.some((event) => event.type === "cortex" && event.taskID === "cortex-native-child"),
   )
   expect(baseline.some((event) => event.type === "notification" && event.taskID === "cortex-native-child")).toBeTrue()
-})
+}, 30_000)
 
 test("resident member startup reconnects its outbound bridge without blocking local readiness", async () => {
   await using service = await fixture()

@@ -450,36 +450,39 @@ export function startMemberSyncExporter(input: {
   }
 
   async function observeNotification(sessionID: string, items: SessionInbox.Item[]) {
-    const bound = await sessionBinding(sessionID)
-    if (!bound) return
-    for (const item of items) {
-      const taskID = item.deliveryKey?.startsWith("cortex:taskNotification:")
-        ? item.deliveryKey.slice("cortex:taskNotification:".length)
-        : undefined
-      if (!taskID) continue
-      const children = await Session.children(sessionID).catch(() => [])
-      const child = children.find((candidate) => candidate.cortex?.taskID === taskID)
-      if (!child?.cortex) continue
-      const summary = safeSummary(item.summary.preview ?? item.summary.title)
-      const safe = { notificationID: item.id, taskID, childSessionID: child.id, status: child.cortex.status, summary }
-      await putDraft(
-        bound.rootSessionID,
-        digest({ type: "notification", sessionID, notificationID: item.id }).slice(0, 32),
-        Sync.Event.parse({
-          type: "notification",
-          sequence: 1,
-          sessionID,
-          notificationID: item.id,
-          kind: "cortex-completion",
-          taskID,
-          childSessionID: child.id,
-          status: child.cortex.status,
-          createdAt: item.time.created,
-          summary,
-          integrity: digest(safe),
-        }),
-      )
-    }
+    queue(sessionID, async () => {
+      const bound = await sessionBinding(sessionID)
+      if (!bound) return
+      for (const item of items) {
+        const taskID = item.deliveryKey?.startsWith("cortex:taskNotification:")
+          ? item.deliveryKey.slice("cortex:taskNotification:".length)
+          : undefined
+        if (!taskID) continue
+        const children = await Session.children(sessionID).catch(() => [])
+        const child = children.find((candidate) => candidate.cortex?.taskID === taskID)
+        if (!child?.cortex) continue
+        await tails.get(child.id)
+        const summary = safeSummary(item.summary.preview ?? item.summary.title)
+        const safe = { notificationID: item.id, taskID, childSessionID: child.id, status: child.cortex.status, summary }
+        await putDraft(
+          bound.rootSessionID,
+          digest({ type: "notification", sessionID, notificationID: item.id }).slice(0, 32),
+          Sync.Event.parse({
+            type: "notification",
+            sequence: 1,
+            sessionID,
+            notificationID: item.id,
+            kind: "cortex-completion",
+            taskID,
+            childSessionID: child.id,
+            status: child.cortex.status,
+            createdAt: item.time.created,
+            summary,
+            integrity: digest(safe),
+          }),
+        )
+      }
+    })
   }
 
   async function uploadBatchBlobs(rootSessionID: string, share: Sync.Share, batch: Sync.Batch) {
