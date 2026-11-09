@@ -22,6 +22,7 @@ export async function fixture() {
     const requests: Array<{ url: string; cookie: string | null; authorization: string | null; body: string }> = []
     let lostResponse = false
     let intercept: ((socket: Socket, frame: string | Buffer) => boolean) | undefined
+    let http: ((request: Request) => Response | undefined | Promise<Response | undefined>) | undefined
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -34,6 +35,8 @@ export async function fixture() {
         },
       },
       async fetch(request, server) {
+        const intercepted = await http?.(request)
+        if (intercepted) return intercepted
         if (new URL(request.url).pathname === "/runtime/v1/register")
           requests.push({
             url: request.url,
@@ -98,6 +101,9 @@ export async function fixture() {
       ca: cert,
       interceptFrames(value: typeof intercept) {
         intercept = value
+      },
+      interceptHTTP(value: typeof http) {
+        http = value
       },
       identity: { orgID: account.orgID, accountID: account.accountID, deviceID: "fixture-device" },
       loseRegistrationResponse() {

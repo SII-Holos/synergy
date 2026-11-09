@@ -11,6 +11,7 @@ import { readCredentials } from "./credentials"
 import { MemberHomeError } from "./record"
 import { OrganizationRuntimeError } from "./error"
 import { connectionState } from "./connection-state"
+import { createMemberResourceClient, type MemberResourceClient } from "./resource-client"
 
 type Connected = z.infer<typeof Protocol.Connected>
 export interface MemberConnectionClosed {
@@ -19,6 +20,7 @@ export interface MemberConnectionClosed {
 }
 export interface MemberConnection {
   connected: Connected
+  resources: MemberResourceClient
   closed: Promise<MemberConnectionClosed>
   close(): Promise<void>
   [Symbol.asyncDispose](): Promise<void>
@@ -33,6 +35,7 @@ export interface MemberConnectionOptions {
   commands?: (
     connection: Connected,
     signal: AbortSignal,
+    resources: MemberResourceClient,
   ) => {
     create(delivery: Command.CreateDelivery): Promise<Command.CreatedResult>
     control(
@@ -106,6 +109,7 @@ async function attempt(input: {
   let transportEndKind: MemberConnectionClosed["kind"] = "offline"
   let connected: Connected | undefined
   let commands: ReturnType<NonNullable<MemberConnectionOptions["commands"]>> | undefined
+  let resources: ReturnType<typeof createMemberResourceClient> | undefined
   let pending = Promise.resolve()
   const executing = new Map<string, Promise<void>>()
   const windows = { command: { count: 0, bytes: 0 }, reconciliation: { count: 0, bytes: 0 } }
@@ -199,7 +203,14 @@ async function attempt(input: {
       await input.checkpoint.save(epoch, work.signal)
       if (stopped || transportClosed) return
       connected = frame
-      commands = options.commands?.(frame, work.signal)
+      resources = createMemberResourceClient({
+        origin: member.origin,
+        connection: frame,
+        key: input.key,
+        ca: options.ca,
+        signal: work.signal,
+      })
+      commands = options.commands?.(frame, work.signal, resources.resources)
       lease(frame.offlineMs)
       scheduleHeartbeat()
       ready.resolve(frame)
@@ -297,6 +308,7 @@ async function attempt(input: {
   async function drain() {
     await pending
     await Promise.all(executing.values())
+    await resources?.close()
   }
   function disconnected(kind: MemberConnectionClosed["kind"]) {
     transportClosed = true
@@ -340,6 +352,7 @@ async function attempt(input: {
     }
     return {
       connected: handshake,
+      resources: resources!.resources,
       closed: closed.promise.then(async (result) => {
         await drain()
         return result

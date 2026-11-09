@@ -20,7 +20,7 @@ Keep `./home` and `./registration` usable and typecheckable by Node provisioning
 
 The outbound bridge declares implemented capabilities. Persist a matching epoch before returning; never lower it for a stale service snapshot. Preserve received errors through socket close, cancel checkpoint waits and drain admitted callbacks before disposal. Bounded commands cannot block heartbeats or reconciliation; saturation retains the connection. Verify real WSS fencing, liveness, capacity and drainage in `test/connection.test.ts`.
 
-Resident connections belong to component services. Keep local readiness independent of the remote service, stop reconnect on replacement or authorization/protocol failure, and drain connection work on Runtime close. One-shot discovery never starts a bridge.
+Resident bridges own resource clients. Preserve local readiness, stop reconnect on identity/protocol failure and drain calls before storage closes. One-shot discovery never connects. Follow [resource client rules](../../docs/architecture/organization.md#session-resources-and-execution-grants).
 
 Validate the service's signing identity against the verified connection's organization and deployment before publishing its checkpoint. A matching key or valid signature does not bypass command, binding or transfer admission.
 
