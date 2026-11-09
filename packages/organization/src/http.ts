@@ -65,7 +65,7 @@ export function organizationApp(
         if (!ClientPolicy.allowsOrigin(origin)) fail("PERMISSION_DENIED", "The request origin is not allowed")
         c.header("Access-Control-Allow-Origin", origin)
         c.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
-        c.header("Access-Control-Allow-Headers", "Authorization,Content-Type")
+        c.header("Access-Control-Allow-Headers", "Authorization,Content-Type,X-CSRF-Token")
         if (c.req.method === "OPTIONS") return c.body(null, 204)
       }
       await next()
@@ -81,7 +81,9 @@ export function organizationApp(
         ? 16 * 1024 * 1024
         : /^\/org\/v1\/sessions\/[^/]+\/sync\/batches$/.test(c.req.path)
           ? 1024 * 1024
-          : 64 * 1024
+          : /^\/org\/v1\/sessions\/[^/]+\/blobs\/[^/]+$/.test(c.req.path) && c.req.method === "PUT"
+            ? 4 * 1024 * 1024
+            : 64 * 1024
       return bodyLimit({ maxSize, onError: () => fail("INVALID_REQUEST", "Request body is too large") })(c, next)
     })
     .onError((error, c) => {

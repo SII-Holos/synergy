@@ -1,0 +1,510 @@
+import { createHash } from "node:crypto"
+import { z } from "zod"
+import {
+  OrganizationIdentity as Identity,
+  OrganizationProtocol as Protocol,
+  OrganizationSyncProtocol as Sync,
+} from "@ericsanchezok/synergy-organization-protocol"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { RolloutEvents } from "@ericsanchezok/synergy-harness/session/rollout/events"
+import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import type { MemberIdentity } from "./home"
+import type { MemberConnection } from "./connection"
+import { OrganizationSyncPath as Keys } from "./storage/path"
+
+const State = z.strictObject({
+  schemaVersion: z.literal(1),
+  orgID: Identity.ID,
+  sessionID: Identity.ID,
+  nextDraft: Identity.Revision,
+  syncState: Sync.SyncState,
+  updatedAt: z.number().int().nonnegative(),
+})
+type State = z.infer<typeof State>
+
+const Draft = z.strictObject({
+  schemaVersion: z.literal(1),
+  draftID: Identity.ID,
+  sessionID: Identity.ID,
+  localSequence: Identity.Revision,
+  event: Sync.Event,
+  queuedAt: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(),
+})
+type Draft = z.infer<typeof Draft>
+
+const AttachmentRecord = z.strictObject({
+  schemaVersion: z.literal(1),
+  sessionID: Identity.ID,
+  attachmentID: Identity.ID,
+  scopeID: z.string().min(1),
+  artifact: RolloutArtifact.Ref,
+})
+type AttachmentRecord = z.infer<typeof AttachmentRecord>
+
+const Batch = z.strictObject({
+  schemaVersion: z.literal(1),
+  sessionID: Identity.ID,
+  bindingEpoch: Protocol.Epoch,
+  shareGeneration: Identity.Revision,
+  firstSeq: Sync.Sequence,
+  lastSeq: Sync.Sequence,
+  payloadHash: Protocol.Digest,
+  draftIDs: z.array(Identity.ID).min(1).max(256),
+  events: z.array(Sync.Event).min(1).max(256),
+})
+type Batch = z.infer<typeof Batch>
+
+const flushDelayMs = 40
+
+function digest(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex")
+}
+
+function safeSummary(value: string | undefined, limit = 32 * 1024) {
+  return value?.slice(0, limit) ?? ""
+}
+
+function read<T>(schema: z.ZodType<T>, key: string[]) {
+  return Storage.readMany<unknown>([key]).then(([value]) => (value === undefined ? undefined : schema.parse(value)))
+}
+
+function errorState(error: unknown) {
+  return error instanceof Error ? error.message.slice(0, 256) : "sync exporter failed"
+}
+
+export interface MemberSyncExporter {
+  flush(): Promise<void>
+  close(): void
+}
+
+export function startMemberSyncExporter(input: {
+  identity: MemberIdentity
+  connection: MemberConnection
+  signal: AbortSignal
+}): MemberSyncExporter {
+  const { identity, connection, signal } = input
+  const sessions = new Set<string>()
+  const tails = new Map<string, Promise<void>>()
+  const unsubs: Array<() => void> = []
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const retryTimer = setInterval(() => {
+    if (sessions.size) schedule()
+  }, 1_000)
+  retryTimer.unref()
+  let closed = false
+  let running: Promise<void> | undefined
+
+  function queue(sessionID: string, work: () => Promise<void>) {
+    const previous = tails.get(sessionID) ?? Promise.resolve()
+    const next = previous
+      .catch(() => {})
+      .then(async () => {
+        if (closed || signal.aborted) return
+        sessions.add(sessionID)
+        await work()
+      })
+      .catch(() => {})
+    tails.set(sessionID, next)
+    void next.finally(() => {
+      if (tails.get(sessionID) === next) tails.delete(sessionID)
+    })
+  }
+
+  function schedule() {
+    if (closed || signal.aborted || timer) return
+    timer = setTimeout(() => {
+      timer = undefined
+      void flush()
+    }, flushDelayMs)
+    timer.unref()
+  }
+
+  async function sessionBinding(sessionID: string) {
+    const session = await Session.get(sessionID).catch(() => undefined)
+    const binding = session?.organization
+    if (
+      !session ||
+      !binding ||
+      binding.orgID !== identity.orgID ||
+      binding.driverRuntimeID !== connection.connected.runtimeID ||
+      binding.projectID !== session.scope.id
+    )
+      return
+    return { session, binding }
+  }
+
+  async function putDraft(sessionID: string, draftID: string, event: Sync.Event) {
+    const bound = await sessionBinding(sessionID)
+    if (!bound) return
+    const draftKey = Keys.draft(identity.orgID, sessionID, draftID)
+    await Storage.transaction(async () => {
+      const current = await read(State, Keys.state(identity.orgID, sessionID))
+      const previous = await read(Draft, draftKey)
+      const bytes = Buffer.byteLength(JSON.stringify(event))
+      const localSequence = previous?.localSequence ?? current?.nextDraft ?? 1
+      await Storage.write(
+        draftKey,
+        Draft.parse({
+          schemaVersion: 1,
+          draftID,
+          sessionID,
+          localSequence,
+          event: Sync.Event.parse({ ...event, sequence: 1 }),
+          queuedAt: previous?.queuedAt ?? Date.now(),
+          bytes,
+        }),
+      )
+      await Storage.write(
+        Keys.state(identity.orgID, sessionID),
+        State.parse({
+          schemaVersion: 1,
+          orgID: identity.orgID,
+          sessionID,
+          nextDraft: previous ? (current?.nextDraft ?? localSequence) : localSequence + 1,
+          syncState: current?.syncState === "failed" ? "pending" : (current?.syncState ?? "pending"),
+          updatedAt: Date.now(),
+        }),
+      )
+    })
+    sessions.add(sessionID)
+    schedule()
+  }
+
+  async function ensureSession(sessionID: string) {
+    const bound = await sessionBinding(sessionID)
+    if (!bound) return
+    const { session, binding } = bound
+    const draftID = digest({ type: "session", sessionID }).slice(0, 32)
+    await putDraft(
+      sessionID,
+      draftID,
+      Sync.Event.parse({
+        type: "session",
+        sequence: 1,
+        session: {
+          sessionID,
+          projectID: binding.projectID,
+          creatorID: binding.creatorID,
+          driverRuntimeID: binding.driverRuntimeID,
+          bindingEpoch: binding.bindingEpoch,
+          createdAt: session.time.created,
+          shareGeneration: 0,
+        },
+      }),
+    )
+  }
+
+  async function rememberAttachment(sessionID: string, part: MessageV2.AttachmentPart) {
+    const artifact = part.artifact
+    if (!artifact) return
+    const bound = await sessionBinding(sessionID)
+    if (!bound) return
+    await Storage.write(
+      Keys.attachment(identity.orgID, sessionID, part.id),
+      AttachmentRecord.parse({
+        schemaVersion: 1,
+        sessionID,
+        attachmentID: part.id,
+        scopeID: bound.session.scope.id,
+        artifact,
+      }),
+    )
+  }
+
+  function observeSession(sessionID: string) {
+    queue(sessionID, () => ensureSession(sessionID))
+  }
+
+  function observeMessage(info: MessageV2.Info) {
+    queue(info.sessionID, async () => {
+      await ensureSession(info.sessionID)
+      const summary =
+        info.role === "user"
+          ? safeSummary(info.summary?.body ?? info.summary?.title)
+          : safeSummary(info.error?.name ?? info.finish)
+      const safe = { messageID: info.id, role: info.role, createdAt: info.time.created, summary }
+      await putDraft(
+        info.sessionID,
+        digest({ type: "message", sessionID: info.sessionID, messageID: info.id }).slice(0, 32),
+        Sync.Event.parse({
+          type: "message",
+          sequence: 1,
+          messageID: info.id,
+          role: info.role,
+          createdAt: info.time.created,
+          summary,
+          integrity: digest(safe),
+        }),
+      )
+    })
+  }
+
+  function observeTool(event: { sessionID: string; record: RolloutEvents.Record }) {
+    if (event.record.kind !== "tool" || event.record.value.owner.kind !== "session") return
+    const tool = event.record.value
+    const status =
+      tool.status === "completed"
+        ? "completed"
+        : tool.status === "failed"
+          ? "error"
+          : tool.status === "cancelled" || tool.status === "interrupted"
+            ? "unknown"
+            : "running"
+    queue(event.sessionID, async () => {
+      await ensureSession(event.sessionID)
+      const safe = { callID: tool.toolCallID, name: tool.tool, state: status }
+      await putDraft(
+        event.sessionID,
+        digest({ type: "tool", sessionID: event.sessionID, callID: tool.toolCallID }).slice(0, 32),
+        Sync.Event.parse({
+          type: "tool",
+          sequence: 1,
+          callID: tool.toolCallID,
+          name: tool.tool,
+          state: status,
+          summary: "",
+          integrity: digest(safe),
+        }),
+      )
+    })
+  }
+
+  function observeAttachment(part: MessageV2.AttachmentPart) {
+    const artifact = part.artifact
+    if (!artifact?.sha256 || !Protocol.Digest.safeParse(artifact.sha256).success) return
+    const filename = (part.filename ?? "attachment").split(/[\\/]/).at(-1) || "attachment"
+    const attachment = Sync.Event.parse({
+      type: "attachment",
+      sequence: 1,
+      attachmentID: part.id,
+      filename: filename.slice(0, 512),
+      mediaType: part.mime.slice(0, 256) || "application/octet-stream",
+      bytes: artifact.bytes,
+      hash: artifact.sha256,
+      state: artifact.status === "complete" ? "available" : "uploading",
+    })
+    queue(part.sessionID, async () => {
+      await ensureSession(part.sessionID)
+      await rememberAttachment(part.sessionID, part)
+      await putDraft(
+        part.sessionID,
+        digest({ type: "attachment", sessionID: part.sessionID, attachmentID: part.id }).slice(0, 32),
+        attachment,
+      )
+    })
+  }
+
+  async function uploadBatchBlobs(sessionID: string, share: Sync.Share, batch: Sync.Batch) {
+    const events = batch.events.filter(
+      (event): event is Extract<Sync.Event, { type: "attachment" }> =>
+        event.type === "attachment" && event.state === "available",
+    )
+    const uploaded = new Set<string>()
+    for (const event of events) {
+      if (uploaded.has(event.attachmentID)) continue
+      uploaded.add(event.attachmentID)
+      const record = await read(AttachmentRecord, Keys.attachment(identity.orgID, sessionID, event.attachmentID))
+      if (!record || record.artifact.status !== "complete" || !record.artifact.sha256) continue
+      const artifact = record.artifact
+      const hashValue = artifact.sha256
+      if (!hashValue || artifact.bytes !== event.bytes || hashValue !== event.hash)
+        throw new Error("Attachment metadata changed")
+      const hash = Protocol.Digest.parse(hashValue)
+      const owner = { kind: "session" as const, scopeID: record.scopeID, sessionID }
+      const parts: Uint8Array[] = []
+      let buffered = 0
+      let offset = 0
+      async function send() {
+        if (!buffered) return
+        const bytes = Buffer.concat(parts.map((part) => Buffer.from(part)))
+        await connection.uploadBlob(
+          {
+            sessionID,
+            shareGeneration: share.shareGeneration,
+            hash,
+            offset,
+            totalBytes: artifact.bytes,
+            bytes,
+          },
+          signal,
+        )
+        offset += bytes.byteLength
+        parts.length = 0
+        buffered = 0
+      }
+      for await (const part of RolloutArtifact.read(owner, artifact)) {
+        parts.push(part)
+        buffered += part.byteLength
+        if (buffered === 4 * 1024 * 1024) await send()
+      }
+      await send()
+    }
+  }
+
+  async function prepare(sessionID: string, share: Sync.Share) {
+    const batchKey = Keys.batch(identity.orgID, sessionID)
+    const stored = await read(Batch, batchKey)
+    if (stored && stored.shareGeneration === share.shareGeneration && stored.bindingEpoch === share.bindingEpoch) {
+      const bound = await sessionBinding(sessionID)
+      if (!bound) return
+      return Sync.Batch.parse({
+        schemaVersion: 1,
+        sessionID: stored.sessionID,
+        projectID: bound.binding.projectID,
+        bindingEpoch: stored.bindingEpoch,
+        shareGeneration: stored.shareGeneration,
+        firstSeq: stored.firstSeq,
+        lastSeq: stored.lastSeq,
+        payloadHash: stored.payloadHash,
+        events: stored.events,
+      })
+    }
+    if (stored) await Storage.remove(batchKey)
+    const rows = await Storage.query({ prefix: Keys.drafts(identity.orgID, sessionID), limit: 257 })
+    const drafts = rows
+      .map((row) => Draft.safeParse(row.value))
+      .filter((row): row is { success: true; data: Draft } => row.success)
+      .map((row) => row.data)
+      .sort((a, b) => a.localSequence - b.localSequence)
+      .slice(0, 256)
+    if (!drafts.length) return
+    const bound = await sessionBinding(sessionID)
+    if (!bound) return
+    const events = drafts.map((draft, index) => {
+      const event = { ...draft.event, sequence: share.nextSeq + index }
+      if (event.type === "session") event.session = { ...event.session, shareGeneration: share.shareGeneration }
+      return Sync.Event.parse(event)
+    })
+    const firstSeq = events[0]!.sequence
+    const lastSeq = events.at(-1)!.sequence
+    const hash = digest({ firstSeq, lastSeq, events })
+    const persisted = Batch.parse({
+      schemaVersion: 1,
+      sessionID,
+      bindingEpoch: share.bindingEpoch,
+      shareGeneration: share.shareGeneration,
+      firstSeq,
+      lastSeq,
+      payloadHash: hash,
+      draftIDs: drafts.map((draft) => draft.draftID),
+      events,
+    })
+    await Storage.write(batchKey, persisted)
+    return Sync.Batch.parse({
+      schemaVersion: 1,
+      sessionID,
+      projectID: bound.binding.projectID,
+      bindingEpoch: persisted.bindingEpoch,
+      shareGeneration: persisted.shareGeneration,
+      firstSeq,
+      lastSeq,
+      payloadHash: persisted.payloadHash,
+      events,
+    })
+  }
+
+  async function flushSession(sessionID: string) {
+    const share = await connection.syncState(sessionID, signal)
+    if (share.shareState !== "shared" || share.syncState === "blocked") return
+    const batch = await prepare(sessionID, share)
+    if (!batch) return
+    await uploadBatchBlobs(sessionID, share, batch)
+    const ack = await connection.sync(batch, signal)
+    if (
+      ack.sessionID !== batch.sessionID ||
+      ack.shareGeneration !== batch.shareGeneration ||
+      ack.bindingEpoch !== batch.bindingEpoch ||
+      ack.nextSeq < batch.lastSeq + 1
+    )
+      throw new Error("Runtime sync acknowledgement does not match the sent batch")
+    const stored = await read(Batch, Keys.batch(identity.orgID, sessionID))
+    if (!stored || stored.payloadHash !== batch.payloadHash) return
+    await Storage.transaction(async () => {
+      await Storage.remove(Keys.batch(identity.orgID, sessionID))
+      for (const draftID of stored.draftIDs) await Storage.remove(Keys.draft(identity.orgID, sessionID, draftID))
+      const current = await read(State, Keys.state(identity.orgID, sessionID))
+      await Storage.write(
+        Keys.state(identity.orgID, sessionID),
+        State.parse({
+          schemaVersion: 1,
+          orgID: identity.orgID,
+          sessionID,
+          nextDraft: current?.nextDraft ?? 1,
+          syncState: ack.syncState,
+          updatedAt: Date.now(),
+        }),
+      )
+    })
+  }
+
+  async function flush() {
+    if (running || closed || signal.aborted) return running
+    running = (async () => {
+      for (const sessionID of [...sessions]) {
+        if (closed || signal.aborted) return
+        try {
+          await flushSession(sessionID)
+        } catch {
+          const current = await read(State, Keys.state(identity.orgID, sessionID))
+          await Storage.write(
+            Keys.state(identity.orgID, sessionID),
+            State.parse({
+              schemaVersion: 1,
+              orgID: identity.orgID,
+              sessionID,
+              nextDraft: current?.nextDraft ?? 1,
+              syncState: "failed",
+              updatedAt: Date.now(),
+            }),
+          ).catch(() => {})
+        }
+      }
+    })().finally(() => {
+      running = undefined
+    })
+    return running
+  }
+
+  unsubs.push(Bus.subscribeGlobal(SessionEvent.Updated, (event) => observeSession(event.properties.info.id)))
+  unsubs.push(Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => observeMessage(event.properties.info)))
+  unsubs.push(
+    Bus.subscribeGlobal(MessageV2.Event.PartUpdated, (event) => {
+      const part = event.properties.part
+      if (part.type === "attachment") observeAttachment(part)
+      if (part.type === "tool" && part.state.status === "completed")
+        for (const attachment of part.state.attachments ?? []) observeAttachment(attachment)
+    }),
+  )
+  unsubs.push(
+    Bus.subscribeGlobal(RolloutEvents.Updated, (event) => {
+      if (event.properties.owner.kind !== "session") return
+      observeTool({ sessionID: event.properties.owner.sessionID, record: event.properties.record })
+    }),
+  )
+  signal.addEventListener("abort", close, { once: true })
+  void Storage.query({ prefix: Keys.sessions(identity.orgID), limit: 4096 })
+    .then((rows) => rows.forEach((row) => row.key[3] && sessions.add(row.key[3])))
+    .then(schedule)
+    .catch(() => {})
+
+  function close() {
+    if (closed) return
+    closed = true
+    clearTimeout(timer)
+    clearInterval(retryTimer)
+    for (const unsubscribe of unsubs) unsubscribe()
+    signal.removeEventListener("abort", close)
+  }
+
+  return {
+    flush: async () => {
+      await flush()
+    },
+    close,
+  }
+}

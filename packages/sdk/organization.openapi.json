@@ -1420,6 +1420,139 @@
         ]
       }
     },
+    "/org/v1/sessions/{sessionID}/blobs/{hash}": {
+      "get": {
+        "operationId": "orgSessionSync.blobStatus",
+        "summary": "Read a resumable shared Session blob checkpoint",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSyncBlobStatus" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "hash",
+            "schema": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "shareGeneration",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "required": true
+          }
+        ]
+      },
+      "put": {
+        "operationId": "orgSessionSync.uploadBlob",
+        "summary": "Upload one authenticated 4 MiB-or-smaller shared Session blob chunk",
+        "requestBody": {
+          "required": true,
+          "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Blob checkpoint",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSyncBlobStatus" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "hash",
+            "schema": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "shareGeneration",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": { "default": 0, "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          },
+          {
+            "in": "query",
+            "name": "totalBytes",
+            "schema": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/sessions/{sessionID}/blobs/{hash}/content": {
+      "get": {
+        "operationId": "orgSessionSync.downloadBlob",
+        "summary": "Read a shared Session blob after authorization and hash verification",
+        "responses": {
+          "200": {
+            "description": "Blob bytes",
+            "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "hash",
+            "schema": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "shareGeneration",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "required": true
+          }
+        ]
+      }
+    },
     "/org/v1/resources": {
       "get": {
         "operationId": "orgResources.list",
@@ -3358,6 +3491,21 @@
           "cursor": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
         },
         "required": ["sessionID", "shareGeneration", "nextSeq", "items"],
+        "additionalProperties": false
+      },
+      "OrgSyncBlobStatus": {
+        "type": "object",
+        "properties": {
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "chunkBytes": { "type": "number", "const": 4194304 },
+          "receivedBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "complete": { "type": "boolean" },
+          "nextOffset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["sessionID", "shareGeneration", "hash", "bytes", "chunkBytes", "receivedBytes", "complete"],
         "additionalProperties": false
       },
       "OrgResourceAdminView": {

@@ -340,6 +340,17 @@ export type OrgSyncEventPage = {
   cursor?: number
 }
 
+export type OrgSyncBlobStatus = {
+  sessionID: string
+  shareGeneration: number
+  hash: string
+  bytes: number
+  chunkBytes: 4194304
+  receivedBytes: number
+  complete: boolean
+  nextOffset?: number
+}
+
 export type OrgResourceAdminView = {
   resourceID: string
   orgID: string
@@ -2900,6 +2911,103 @@ export type OrgSessionSyncEventsResponses = {
 }
 
 export type OrgSessionSyncEventsResponse = OrgSessionSyncEventsResponses[keyof OrgSessionSyncEventsResponses]
+
+export type OrgSessionSyncBlobStatusData = {
+  body?: never
+  path: {
+    sessionID: string
+    hash: string
+  }
+  query: {
+    shareGeneration: number
+  }
+  url: "/org/v1/sessions/{sessionID}/blobs/{hash}"
+}
+
+export type OrgSessionSyncBlobStatusErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionSyncBlobStatusError = OrgSessionSyncBlobStatusErrors[keyof OrgSessionSyncBlobStatusErrors]
+
+export type OrgSessionSyncBlobStatusResponses = {
+  /**
+   * Success
+   */
+  200: OrgSyncBlobStatus
+}
+
+export type OrgSessionSyncBlobStatusResponse =
+  OrgSessionSyncBlobStatusResponses[keyof OrgSessionSyncBlobStatusResponses]
+
+export type OrgSessionSyncUploadBlobData = {
+  body: Blob | File
+  path: {
+    sessionID: string
+    hash: string
+  }
+  query: {
+    shareGeneration: number
+    offset?: number
+    totalBytes: number
+  }
+  url: "/org/v1/sessions/{sessionID}/blobs/{hash}"
+}
+
+export type OrgSessionSyncUploadBlobResponses = {
+  /**
+   * Blob checkpoint
+   */
+  200: OrgSyncBlobStatus
+}
+
+export type OrgSessionSyncUploadBlobResponse =
+  OrgSessionSyncUploadBlobResponses[keyof OrgSessionSyncUploadBlobResponses]
+
+export type OrgSessionSyncDownloadBlobData = {
+  body?: never
+  path: {
+    sessionID: string
+    hash: string
+  }
+  query: {
+    shareGeneration: number
+  }
+  url: "/org/v1/sessions/{sessionID}/blobs/{hash}/content"
+}
+
+export type OrgSessionSyncDownloadBlobResponses = {
+  /**
+   * Blob bytes
+   */
+  200: Blob | File
+}
+
+export type OrgSessionSyncDownloadBlobResponse =
+  OrgSessionSyncDownloadBlobResponses[keyof OrgSessionSyncDownloadBlobResponses]
 
 export type OrgResourcesListData = {
   body?: never

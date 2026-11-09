@@ -271,3 +271,90 @@ test("sharing routes preserve browser CSRF checks and generated projection respo
   expect(state.status).toBe(200)
   expect(Sync.Share.parse(await state.json()).shareState).toBe("shared")
 })
+
+test("shared blobs require the active generation and verify chunked bytes before reads", async () => {
+  await using f = await directoryFixture()
+  await f.run(() =>
+    Directory.reservePrivate(f.credentials.alice, {
+      sessionID: "session-blob",
+      projectID: "project",
+      runtimeID: "runtime-alice",
+    }),
+  )
+  await f.run(() => Sharing.share(f.credentials.alice, "session-blob", { expectedShareGeneration: 0 }))
+  const content = new Uint8Array(4 * 1024 * 1024 + 3)
+  content.fill(7)
+  content[content.length - 1] = 9
+  const hash = new Bun.CryptoHasher("sha256").update(content).digest("hex")
+  const first = await f.run(() =>
+    Sharing.uploadBlob(f.credentials.alice, "session-blob", {
+      shareGeneration: 1,
+      hash,
+      offset: 0,
+      totalBytes: content.byteLength,
+      bytes: content.subarray(0, 4 * 1024 * 1024),
+    }),
+  )
+  expect(first).toMatchObject({ complete: false, receivedBytes: 4 * 1024 * 1024, nextOffset: 4 * 1024 * 1024 })
+  const complete = await f.run(() =>
+    Sharing.uploadBlob(f.credentials.alice, "session-blob", {
+      shareGeneration: 1,
+      hash,
+      offset: 4 * 1024 * 1024,
+      totalBytes: content.byteLength,
+      bytes: content.subarray(4 * 1024 * 1024),
+    }),
+  )
+  expect(complete).toMatchObject({ complete: true, bytes: content.byteLength, receivedBytes: content.byteLength })
+  expect(
+    await f.run(() => Sharing.downloadBlob(f.credentials.bob, "session-blob", { shareGeneration: 1, hash })),
+  ).toEqual(Buffer.from(content))
+  await f.run(() => Sharing.unshare(f.credentials.alice, "session-blob", { expectedShareGeneration: 1 }))
+  await expect(
+    f.run(() => Sharing.getBlobStatus(f.credentials.bob, "session-blob", { shareGeneration: 1, hash })),
+  ).rejects.toMatchObject({ data: { code: "NOT_FOUND" } })
+})
+
+test("shared blob routes accept authenticated chunks and return bytes only after authorization", async () => {
+  await using f = await directoryFixture()
+  await f.run(() =>
+    Directory.reservePrivate(f.credentials.alice, {
+      sessionID: "session-blob-http",
+      projectID: "project",
+      runtimeID: "runtime-alice",
+    }),
+  )
+  await f.run(() => Sharing.share(f.credentials.alice, "session-blob-http", { expectedShareGeneration: 0 }))
+
+  const bytes = new TextEncoder().encode("blob")
+  const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+  const headers = {
+    ...f.headers("alice"),
+    origin: "https://organization.example",
+    "x-csrf-token": "f".repeat(64),
+    "content-type": "application/octet-stream",
+  }
+  const upload = await fetch(
+    new URL(
+      `/org/v1/sessions/session-blob-http/blobs/${hash}?shareGeneration=1&totalBytes=${bytes.byteLength}`,
+      f.baseUrl,
+    ),
+    { method: "PUT", headers, body: Buffer.from(bytes) },
+  )
+  expect(upload.status).toBe(200)
+  expect(Sync.BlobStatus.parse(await upload.json())).toMatchObject({ complete: true, bytes: bytes.byteLength })
+
+  const status = await fetch(new URL(`/org/v1/sessions/session-blob-http/blobs/${hash}?shareGeneration=1`, f.baseUrl), {
+    headers: f.headers("bob"),
+  })
+  expect(status.status).toBe(200)
+  expect(Sync.BlobStatus.parse(await status.json()).complete).toBe(true)
+
+  const content = await fetch(
+    new URL(`/org/v1/sessions/session-blob-http/blobs/${hash}/content?shareGeneration=1`, f.baseUrl),
+    { headers: f.headers("bob") },
+  )
+  expect(content.status).toBe(200)
+  expect(content.headers.get("content-type")).toContain("application/octet-stream")
+  expect(new Uint8Array(await content.arrayBuffer())).toEqual(bytes)
+})

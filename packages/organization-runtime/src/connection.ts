@@ -4,6 +4,7 @@ import {
   OrganizationProtocol,
   OrganizationRuntimeProtocol as Protocol,
   OrganizationCommandProtocol as Command,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { readMemberHome, type MemberHome, type MemberIdentity } from "./home"
 import { readMemberRegistration } from "./registration"
@@ -23,6 +24,19 @@ export interface MemberConnection {
   resources: MemberResourceClient
   closed: Promise<MemberConnectionClosed>
   close(): Promise<void>
+  syncState(sessionID: string, signal?: AbortSignal): Promise<Sync.Share>
+  sync(batch: Sync.Batch, signal?: AbortSignal): Promise<Sync.Ack>
+  uploadBlob(
+    input: {
+      sessionID: string
+      shareGeneration: number
+      hash: string
+      offset: number
+      totalBytes: number
+      bytes: Uint8Array
+    },
+    signal?: AbortSignal,
+  ): Promise<Sync.BlobStatus>
   [Symbol.asyncDispose](): Promise<void>
 }
 export interface MemberConnectionOptions {
@@ -46,8 +60,11 @@ export interface MemberConnectionOptions {
     query(authorization: Command.SignedPermit): Promise<Command.QueryResult>
     skip(authorization: Command.SignedSkip): Promise<Command.Result>
   }
+  sync?: boolean
+  onConnected?: (connection: MemberConnection, signal: AbortSignal) => void | Promise<void>
 }
 const frameLimit = 64 * 1024
+const syncFrameLimit = 1024 * 1024
 const timerLimit = 2 ** 31 - 1
 const NativeWebSocket = globalThis.WebSocket as unknown as new (
   url: URL,
@@ -85,8 +102,12 @@ async function attempt(input: {
       deviceID: member.identity.deviceID,
       connectionEpoch: epoch,
       buildVersion: options.buildVersion,
-      capabilities: options.commands ? ["bridge", "commands"] : ["bridge"],
-      schemas: options.commands ? { bridge: 1, commands: 1 } : { bridge: 1 },
+      capabilities: ["bridge", ...(options.commands ? ["commands"] : []), ...(options.sync ? ["sync"] : [])],
+      schemas: {
+        bridge: 1,
+        ...(options.commands ? { commands: 1 } : {}),
+        ...(options.sync ? { sync: 1 } : {}),
+      },
     },
     nonce: randomBytes(32).toString("hex"),
     issuedAt: Date.now(),
@@ -124,6 +145,27 @@ async function attempt(input: {
     { connectionEpoch: number; total: number; next: number; bytes: number; parts: Buffer[] }
   >()
   let chunkBytes = 0
+  const pendingSync = new Map<
+    string,
+    {
+      kind: "state" | "batch"
+      resolve(value: Sync.Share | Sync.Ack): void
+      reject(error: unknown): void
+      timer: ReturnType<typeof setTimeout>
+      signal?: AbortSignal
+      cancel?: () => void
+    }
+  >()
+  const pendingBlobs = new Map<
+    string,
+    {
+      resolve(value: Sync.BlobStatus): void
+      reject(error: unknown): void
+      timer: ReturnType<typeof setTimeout>
+      signal?: AbortSignal
+      cancel?: () => void
+    }
+  >()
 
   function stop(result: MemberConnectionClosed) {
     if (stopped) return
@@ -134,11 +176,22 @@ async function attempt(input: {
     clearTimeout(heartbeatTimer)
     clearTimeout(deadline)
     options.signal?.removeEventListener("abort", cancel)
-    ready.reject(
-      result.error
-        ? new OrganizationRuntimeError(result.error)
-        : failure("RUNTIME_OFFLINE", "Runtime connection closed"),
-    )
+    const error = result.error
+      ? new OrganizationRuntimeError(result.error)
+      : failure("RUNTIME_OFFLINE", "Runtime connection closed")
+    for (const [exchangeID, request] of pendingSync) {
+      pendingSync.delete(exchangeID)
+      clearTimeout(request.timer)
+      request.signal?.removeEventListener("abort", request.cancel!)
+      request.reject(error)
+    }
+    for (const [exchangeID, request] of pendingBlobs) {
+      pendingBlobs.delete(exchangeID)
+      clearTimeout(request.timer)
+      request.signal?.removeEventListener("abort", request.cancel!)
+      request.reject(error)
+    }
+    ready.reject(error)
     socket.terminate()
     closed.resolve(result)
   }
@@ -168,9 +221,11 @@ async function attempt(input: {
   function send(frame: Protocol.ClientFrame) {
     if (stopped) return
     try {
-      if (socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > frameLimit)
+      const encoded = JSON.stringify(frame)
+      const limit = frame.type === "sync-batch" || frame.type === "blob-chunk" ? syncFrameLimit : frameLimit
+      if (Buffer.byteLength(encoded) > limit || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > limit)
         throw failure("RUNTIME_OFFLINE", "Runtime connection is not receiving frames")
-      socket.send(JSON.stringify(frame))
+      socket.send(encoded)
     } catch (error) {
       reject(error)
     }
@@ -305,6 +360,31 @@ async function attempt(input: {
       )
       return
     }
+    if (frame.type === "sync-state" || frame.type === "sync-ack") {
+      if (!connected || frame.connectionEpoch !== epoch)
+        throw failure("PROTOCOL_MISMATCH", "Sync response does not match an active connection")
+      const request = pendingSync.get(frame.exchangeID)
+      if (!request || request.kind !== (frame.type === "sync-state" ? "state" : "batch"))
+        throw failure("PROTOCOL_MISMATCH", "Unknown Runtime sync exchange")
+      pendingSync.delete(frame.exchangeID)
+      clearTimeout(request.timer)
+      request.signal?.removeEventListener("abort", request.cancel!)
+      request.resolve(frame.type === "sync-state" ? Sync.Share.parse(frame.share) : Sync.Ack.parse(frame.ack))
+      lease(connected.offlineMs)
+      return
+    }
+    if (frame.type === "blob-ack") {
+      if (!connected || frame.connectionEpoch !== epoch)
+        throw failure("PROTOCOL_MISMATCH", "Blob response does not match an active connection")
+      const request = pendingBlobs.get(frame.exchangeID)
+      if (!request) throw failure("PROTOCOL_MISMATCH", "Unknown Runtime blob exchange")
+      pendingBlobs.delete(frame.exchangeID)
+      clearTimeout(request.timer)
+      request.signal?.removeEventListener("abort", request.cancel!)
+      request.resolve(Sync.BlobStatus.parse(frame.status))
+      lease(connected.offlineMs)
+      return
+    }
     if (!connected || frame.connectionEpoch !== epoch || frame.sequence !== expectedSequence)
       throw failure("PROTOCOL_MISMATCH", "Heartbeat does not match this connection")
     expectedSequence = undefined
@@ -362,6 +442,114 @@ async function attempt(input: {
     await Promise.all(executing.values())
     await resources?.close()
   }
+  function syncRequest<T extends "state" | "batch">(
+    kind: T,
+    frame: T extends "state" ? Protocol.SyncStateRequest : Protocol.SyncBatch,
+    signal?: AbortSignal,
+  ): Promise<T extends "state" ? Sync.Share : Sync.Ack> {
+    if (!connected || !options.sync)
+      return Promise.reject(failure("PROTOCOL_MISMATCH", "Shared Session sync is not enabled"))
+    if (signal?.aborted) return Promise.reject(failure("RUNTIME_OFFLINE", "Sync request was cancelled"))
+    const exchangeID = frame.exchangeID
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => {
+          const request = pendingSync.get(exchangeID)
+          if (!request) return
+          pendingSync.delete(exchangeID)
+          signal?.removeEventListener("abort", request.cancel!)
+          reject(failure("SERVICE_UNAVAILABLE", "Runtime sync response was not observed"))
+        },
+        Math.min(30_000, Math.max(5_000, connected!.offlineMs * 4)),
+      )
+      timer.unref()
+      const request = {
+        kind,
+        resolve: resolve as (value: Sync.Share | Sync.Ack) => void,
+        reject,
+        timer,
+        signal,
+        cancel: () => {
+          if (!pendingSync.delete(exchangeID)) return
+          clearTimeout(timer)
+          reject(failure("RUNTIME_OFFLINE", "Sync request was cancelled"))
+        },
+      }
+      pendingSync.set(exchangeID, request)
+      signal?.addEventListener("abort", request.cancel, { once: true })
+      send(frame)
+    }) as Promise<T extends "state" ? Sync.Share : Sync.Ack>
+  }
+  function uploadBlob(
+    input: {
+      sessionID: string
+      shareGeneration: number
+      hash: string
+      offset: number
+      totalBytes: number
+      bytes: Uint8Array
+    },
+    signal?: AbortSignal,
+  ): Promise<Sync.BlobStatus> {
+    if (!connected || !options.sync)
+      return Promise.reject(failure("PROTOCOL_MISMATCH", "Shared Session sync is not enabled"))
+    if (signal?.aborted) return Promise.reject(failure("RUNTIME_OFFLINE", "Blob upload was cancelled"))
+    const bytes = Buffer.from(input.bytes)
+    if (!bytes.byteLength || bytes.byteLength > 4 * 1024 * 1024)
+      return Promise.reject(failure("INVALID_REQUEST", "Blob upload must contain between one byte and 4 MiB"))
+    const fragmentBytes = 45_000
+    const total = Math.ceil(bytes.byteLength / fragmentBytes)
+    if (total > 128) return Promise.reject(failure("INVALID_REQUEST", "Blob upload has too many transport fragments"))
+    const exchangeID = crypto.randomUUID()
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => {
+          const request = pendingBlobs.get(exchangeID)
+          if (!request) return
+          pendingBlobs.delete(exchangeID)
+          signal?.removeEventListener("abort", request.cancel!)
+          reject(failure("SERVICE_UNAVAILABLE", "Blob upload acknowledgement was not observed"))
+        },
+        Math.min(30_000, Math.max(1, connected!.offlineMs)),
+      )
+      timer.unref()
+      const request = {
+        resolve,
+        reject,
+        timer,
+        signal,
+        cancel: () => {
+          if (!pendingBlobs.delete(exchangeID)) return
+          clearTimeout(timer)
+          reject(failure("RUNTIME_OFFLINE", "Blob upload was cancelled"))
+        },
+      }
+      pendingBlobs.set(exchangeID, request)
+      signal?.addEventListener("abort", request.cancel, { once: true })
+      void (async () => {
+        for (let index = 0; index < total; index++) {
+          while (!stopped && socket.bufferedAmount > syncFrameLimit) await Bun.sleep(1)
+          if (stopped) return
+          const part = bytes.subarray(index * fragmentBytes, Math.min(bytes.byteLength, (index + 1) * fragmentBytes))
+          send(
+            Protocol.BlobChunk.parse({
+              type: "blob-chunk",
+              connectionEpoch: epoch,
+              exchangeID,
+              sessionID: input.sessionID,
+              shareGeneration: input.shareGeneration,
+              hash: input.hash,
+              offset: input.offset,
+              totalBytes: input.totalBytes,
+              index,
+              total,
+              data: part.toString("base64url"),
+            }),
+          )
+        }
+      })()
+    })
+  }
   function disconnected(kind: MemberConnectionClosed["kind"]) {
     transportClosed = true
     transportEndKind = kind
@@ -378,12 +566,12 @@ async function attempt(input: {
   socket.addEventListener("message", (event) => {
     if (stopped) return
     const raw: unknown = event.data
-    if (typeof raw !== "string" || Buffer.byteLength(raw) > frameLimit)
+    if (typeof raw !== "string" || Buffer.byteLength(raw) > syncFrameLimit)
       return reject(failure("PROTOCOL_MISMATCH", "Unsupported Runtime bridge frame"))
     const size = Buffer.byteLength(raw)
     queuedFrames++
     queuedBytes += size
-    if (queuedFrames > 16 || queuedBytes > frameLimit * 4)
+    if (queuedFrames > 16 || queuedBytes > syncFrameLimit * 4)
       return reject(failure("PROTOCOL_MISMATCH", "Runtime bridge receive window exceeded"))
     pending = pending
       .then(() => receive(raw))
@@ -410,6 +598,31 @@ async function attempt(input: {
         return result
       }),
       close,
+      syncState(sessionID: string, signal?: AbortSignal) {
+        return syncRequest(
+          "state",
+          {
+            type: "sync-state",
+            connectionEpoch: epoch,
+            exchangeID: crypto.randomUUID(),
+            sessionID,
+          },
+          signal,
+        )
+      },
+      sync(batch: Sync.Batch, signal?: AbortSignal) {
+        return syncRequest(
+          "batch",
+          {
+            type: "sync-batch",
+            connectionEpoch: epoch,
+            exchangeID: crypto.randomUUID(),
+            batch: Sync.Batch.parse(batch),
+          },
+          signal,
+        )
+      },
+      uploadBlob,
       [Symbol.asyncDispose]: close,
     }
   } catch (error) {

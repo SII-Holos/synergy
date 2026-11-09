@@ -2,7 +2,7 @@
 
 Own organization identity, authorization, resources, projections, forwarding and handoff coordination. Never run Agent loops or import Runtime presets; execution records stay with their owner.
 
-Use an explicit isolated Storage Handle, the central migration runner and owner-local storage keys. Authorization and durable admission share the organization transaction; Runtime receipt is a separate fact. Do not persist private member Session bodies in forwarding records. Keep all read paths and downloads behind current authorization.
+Use an isolated Storage Handle, the central migration runner and owner-local storage keys. Authorization and admission share the organization transaction; Runtime receipt is a separate fact. Do not persist private member Session bodies in forwarding records. Keep read paths and downloads behind current authorization.
 
 Route object actions through `authorization.ts` inside the caller's transaction or snapshot. Resolve stored ownership before applying roles and deny unknown actions. Archived projects permit stopping, not new execution. Credential authentication and one-time token consumption belong to `auth/`; do not duplicate the authorization matrix in routes or the Runtime adapter.
 
@@ -10,15 +10,15 @@ Session directory reads use current project access and canonical creator visibil
 
 Client grants bind the first-party login, exact registered callback and deployment identity. Keep authorization-code consumption and token creation atomic. Refresh replay must commit grant revocation before returning its error. Expired proof may revoke its own login, never authorize business access. Cross-origin clients use access tokens, never ambient cookie credentials. Preserve the separate generated organization client and verify real HTTP exchange in `test/client-auth.test.ts`.
 
-The optional Web adapter serves the built authorization document and local assets only. Keep API failures out of HTML fallback, restrict its scripts and connections to the organization origin, and preserve popup opener communication. Verify `test/web.test.ts` and the Web authorization browser suite after changing these headers or paths.
+The optional Web adapter serves the built authorization document. Keep API failures out of HTML fallback, restrict scripts and connections to the organization origin, and preserve popup communication. Verify Web tests after changing these headers or paths.
 
-Tests in `test/` use isolated storage, Homes and ports. Run focused verification; preserve active Runtimes.
+Tests in `test/` use isolated storage, Homes and ports; preserve active Runtimes.
 
-The component contributes configuration schemas and lazy CLI commands. Register service migrations inside the independent service context, never in the surrounding Agent Runtime. Commands declare owner initialization and require an explicit absolute Home before writes. Read only the canonical organization domain using its owning schema; do not invoke Agent configuration resolution. Keep initialization secrets out of argv and stdout. Verify `test/configuration.test.ts`, `test/cli.test.ts` with real child processes and `test/service.test.ts` for migration and lifecycle isolation.
+The component contributes configuration schemas and lazy CLI commands. Register migrations inside the service context; commands require an absolute Home before writes. Read only the organization domain; keep initialization secrets out of argv and stdout. Verify configuration, CLI and service migration tests.
 
-The machine bridge owns authenticated sockets and durable connection epochs. Use the service context for every native WebSocket callback that accesses storage. Check current registration and account state, carry liveness guards through SQL commit, and fence superseded sockets before accepting further frames. Heartbeat expiry is availability only. Verify real sockets, concurrent authentication, revocation, restart and malformed frames in `test/runtime-connection.test.ts`.
+The machine bridge owns authenticated sockets and connection epochs. Use the service context for every native WebSocket callback that accesses storage. Check registration and account state, carry liveness guards through SQL commit, and fence superseded sockets before accepting frames. Heartbeat expiry is availability only. Verify sockets, concurrent authentication, revocation, restart and malformed frames in `test/runtime-connection.test.ts`.
 
-Create signing identity through the startup migration; validate deployment and keys before readiness. Missing or damaged completed credentials require recovery, never replacement. Publish public identity only. Verify upgrade, restart and corruption in `test/signing.test.ts`.
+Create signing identity through the startup migration; validate deployment and keys before readiness. Damaged completed credentials require recovery, never replacement. Publish public identity only. Verify `test/signing.test.ts`.
 
 Command admission derives actors from validated credentials and checks current roles and live connection inside its writer. Keep authorization, dispatch and Runtime acceptance separate; a blocked new request is definitely unsent. Retain issued skip proofs across reconnect and verify reconciliation in `test/command-admission.test.ts`. Metadata records never authorize automatic replay.
 

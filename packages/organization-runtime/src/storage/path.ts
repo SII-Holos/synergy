@@ -40,3 +40,17 @@ export namespace OrganizationIntakePath {
   ]
   export const releases = (orgID: string) => [...root(orgID), "releases"]
 }
+
+export namespace OrganizationSyncPath {
+  const root = (orgID: string, sessionID: string) => ["organization-sync", orgID, "sessions", sessionID]
+  export const state = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "state"]
+  export const drafts = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "drafts"]
+  export const draft = (orgID: string, sessionID: string, draftID: string) => [...drafts(orgID, sessionID), draftID]
+  export const attachments = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "attachments"]
+  export const attachment = (orgID: string, sessionID: string, attachmentID: string) => [
+    ...attachments(orgID, sessionID),
+    attachmentID,
+  ]
+  export const batch = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "batch"]
+  export const sessions = (orgID: string) => ["organization-sync", orgID, "sessions"]
+}

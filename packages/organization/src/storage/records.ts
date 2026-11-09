@@ -216,6 +216,22 @@ export namespace OrganizationRecord {
     event: Sync.Event,
   })
   export type SharedEvent = z.infer<typeof SharedEvent>
+  export const SharedBlob = z.strictObject({
+    schemaVersion: z.literal(1),
+    sessionID: Identity.ID,
+    shareGeneration: Identity.Revision,
+    hash: OrganizationProtocol.Digest,
+    bytes: z.number().int().nonnegative(),
+    chunkBytes: z.literal(4 * 1024 * 1024),
+    chunks: z
+      .array(z.strictObject({ offset: z.number().int().nonnegative(), bytes: z.number().int().positive() }))
+      .max(16_384),
+    receivedBytes: z.number().int().nonnegative(),
+    complete: z.boolean(),
+    createdAt: z.number().int().nonnegative(),
+    updatedAt: z.number().int().nonnegative(),
+  })
+  export type SharedBlob = z.infer<typeof SharedBlob>
 
   export async function read<T>(schema: z.ZodType<T>, key: string[]): Promise<T | undefined> {
     const [value] = await Storage.readMany<unknown>([key])

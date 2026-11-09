@@ -34,6 +34,7 @@ import { createCommandForwarder } from "./command-forwarding"
 import { createExecutionGrants } from "./execution-grants"
 import { createGatewayCalls } from "./gateway-calls"
 import { createConnectionGateway, createModelGateway, type ConnectionGateway, type ModelGateway } from "./gateway"
+import { OrganizationSharing } from "./sharing"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -159,6 +160,9 @@ export async function openOrganizationService(options: OrganizationServiceOption
         settings: settings.connections,
         signingIdentity: signing.identity,
         onResult: (connection, result) => admissions.observe(connection, result),
+        onSyncState: (connection, sessionID) => OrganizationSharing.getFromRuntime(connection.handshake, sessionID),
+        onSyncBatch: (connection, batch) => OrganizationSharing.applyBatchFromRuntime(connection.handshake, batch),
+        onBlobChunk: (connection, input) => OrganizationSharing.uploadBlobFromRuntime(connection.handshake, input),
       })
       const admissions = createCommandAdmissions({ connections, signing })
       const commands = createCommandForwarder({ admissions, connections })

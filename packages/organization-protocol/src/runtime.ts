@@ -2,6 +2,7 @@ import { z } from "zod"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
 import { OrganizationCommandProtocol as Command } from "./command.js"
+import { OrganizationSyncProtocol as Sync } from "./sync.js"
 import { SigningPublicKey, SigningSignature, signedProtocol } from "./signature.js"
 
 export namespace OrganizationRuntimeProtocol {
@@ -76,6 +77,37 @@ export namespace OrganizationRuntimeProtocol {
     exchangeID: Identity.ID,
     reply: Command.Reply,
   })
+  export const SyncStateRequest = z.strictObject({
+    type: z.literal("sync-state"),
+    connectionEpoch: Protocol.Epoch,
+    exchangeID: Identity.ID,
+    sessionID: Identity.ID,
+  })
+  export type SyncStateRequest = z.infer<typeof SyncStateRequest>
+  export const SyncBatch = z.strictObject({
+    type: z.literal("sync-batch"),
+    connectionEpoch: Protocol.Epoch,
+    exchangeID: Identity.ID,
+    batch: Sync.Batch,
+  })
+  export type SyncBatch = z.infer<typeof SyncBatch>
+  export const BlobChunk = z.strictObject({
+    type: z.literal("blob-chunk"),
+    connectionEpoch: Protocol.Epoch,
+    exchangeID: Identity.ID,
+    sessionID: Identity.ID,
+    shareGeneration: Identity.Revision,
+    hash: Protocol.Digest,
+    offset: z.number().int().nonnegative(),
+    totalBytes: z.number().int().positive().safe(),
+    index: z.number().int().nonnegative(),
+    total: z.number().int().positive().max(128),
+    data: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .max(60_000),
+  })
+  export type BlobChunk = z.infer<typeof BlobChunk>
   export const CommandChunk = z.strictObject({
     type: z.literal("command-chunk"),
     connectionEpoch: Protocol.Epoch,
@@ -92,6 +124,9 @@ export namespace OrganizationRuntimeProtocol {
     Connect.extend({ type: z.literal("handshake") }),
     Heartbeat,
     Receipt,
+    SyncStateRequest,
+    SyncBatch,
+    BlobChunk,
   ])
   export type ClientFrame = z.infer<typeof ClientFrame>
   export const Connected = z.strictObject({
@@ -115,6 +150,24 @@ export namespace OrganizationRuntimeProtocol {
       command: Command.Delivery,
     }),
     CommandChunk,
+    z.strictObject({
+      type: z.literal("sync-state"),
+      connectionEpoch: Protocol.Epoch,
+      exchangeID: Identity.ID,
+      share: Sync.Share,
+    }),
+    z.strictObject({
+      type: z.literal("sync-ack"),
+      connectionEpoch: Protocol.Epoch,
+      exchangeID: Identity.ID,
+      ack: Sync.Ack,
+    }),
+    z.strictObject({
+      type: z.literal("blob-ack"),
+      connectionEpoch: Protocol.Epoch,
+      exchangeID: Identity.ID,
+      status: Sync.BlobStatus,
+    }),
     z.strictObject({ type: z.literal("error"), error: Protocol.Error }),
   ])
   export type ServerFrame = z.infer<typeof ServerFrame>

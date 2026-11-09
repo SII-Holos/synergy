@@ -98,9 +98,17 @@ test("the public service creates, reconciles and cancels native work through the
   const online = Promise.withResolvers<void>()
   const accepted = Promise.withResolvers<void>()
   let loseReply = false
-  service.interceptFrames((_socket, raw) => {
+  let dropNextSync = true
+  let droppedSync = false
+  service.interceptFrames((socket, raw) => {
     const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
     if (frame.type === "heartbeat") online.resolve()
+    if (dropNextSync && frame.type === "sync-batch") {
+      dropNextSync = false
+      droppedSync = true
+      socket.close(1011, "test reconnect")
+      return true
+    }
     if (
       loseReply &&
       frame.type === "receipt" &&
@@ -153,6 +161,25 @@ test("the public service creates, reconciles and cancels native work through the
       bindingEpoch: 1,
     },
   })
+  await service.client.orgSessions.share(
+    { sessionID, orgShareChange: { expectedShareGeneration: 0 } },
+    { headers: service.headers, throwOnError: true },
+  )
+  const synced = await observed(
+    (async () => {
+      for (;;) {
+        const page = await service.client.orgSessionSync.events(
+          { sessionID, limit: 16 },
+          { headers: service.headers, throwOnError: true },
+        )
+        if (page.data.items.some((event) => event.type === "session" && event.session.sessionID === sessionID))
+          return page.data
+        await Bun.sleep(50)
+      }
+    })(),
+  )
+  expect(droppedSync).toBeTrue()
+  expect(synced.items.some((event) => event.type === "session")).toBeTrue()
   const controller = new AbortController()
   const input = {
     sessionID,

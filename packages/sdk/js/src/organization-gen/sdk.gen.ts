@@ -153,8 +153,12 @@ import type {
   OrgSessionsUnshareResponses,
   OrgSessionSyncApplyBatchErrors,
   OrgSessionSyncApplyBatchResponses,
+  OrgSessionSyncBlobStatusErrors,
+  OrgSessionSyncBlobStatusResponses,
+  OrgSessionSyncDownloadBlobResponses,
   OrgSessionSyncEventsErrors,
   OrgSessionSyncEventsResponses,
+  OrgSessionSyncUploadBlobResponses,
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
   OrgShareChange,
@@ -1203,6 +1207,112 @@ export class OrgSessionSync extends HeyApiClient {
       ThrowOnError
     >({
       url: "/org/v1/sessions/{sessionID}/sync/events",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a resumable shared Session blob checkpoint
+   */
+  public blobStatus<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      hash: string
+      shareGeneration: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "hash" },
+            { in: "query", key: "shareGeneration" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgSessionSyncBlobStatusResponses,
+      OrgSessionSyncBlobStatusErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/blobs/{hash}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Upload one authenticated 4 MiB-or-smaller shared Session blob chunk
+   */
+  public uploadBlob<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      hash: string
+      shareGeneration: number
+      offset?: number
+      totalBytes: number
+      body: Blob | File
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "hash" },
+            { in: "query", key: "shareGeneration" },
+            { in: "query", key: "offset" },
+            { in: "query", key: "totalBytes" },
+            { in: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<OrgSessionSyncUploadBlobResponses, unknown, ThrowOnError>({
+      bodySerializer: null,
+      url: "/org/v1/sessions/{sessionID}/blobs/{hash}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read a shared Session blob after authorization and hash verification
+   */
+  public downloadBlob<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      hash: string
+      shareGeneration: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "hash" },
+            { in: "query", key: "shareGeneration" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgSessionSyncDownloadBlobResponses, unknown, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/blobs/{hash}/content",
       ...options,
       ...params,
     })

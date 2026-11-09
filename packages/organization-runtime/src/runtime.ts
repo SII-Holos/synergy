@@ -17,6 +17,7 @@ import { startMemberBridge } from "./bridge"
 import { createCommandIntake } from "./command-intake"
 import { attachMemberExecution } from "./execution-source"
 import { startExecutionReleaseObserver } from "./release-observer"
+import { startMemberSyncExporter } from "./sync-exporter"
 
 export type MemberRuntimeOptions = Pick<
   AgentRuntimeOptions,
@@ -87,6 +88,11 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
                     query: context.bind(intake.query),
                     skip: context.bind(intake.skip),
                   }
+                }),
+                sync: true,
+                onConnected: context.bind((connection, signal) => {
+                  const exporter = startMemberSyncExporter({ identity: member.identity, connection, signal })
+                  void exporter.flush()
                 }),
               })
               void bridge.closed.then((result) => {

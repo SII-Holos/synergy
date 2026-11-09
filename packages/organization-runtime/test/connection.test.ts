@@ -4,6 +4,7 @@ import path from "node:path"
 import {
   OrganizationRuntimeProtocol as Protocol,
   OrganizationCommandProtocol as Command,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { fileLockPath, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { prepareMemberHome } from "../src/home"
@@ -873,4 +874,131 @@ test("the native machine bridge does not inherit a personal HTTP proxy", async (
     }
     await proxy.stop(true)
   }
+})
+
+test("the member bridge exports bounded shared sync requests and matches their acknowledgements", async () => {
+  await using f = await enrolled()
+  const share = Promise.withResolvers<Sync.Share>()
+  const ack = Promise.withResolvers<Sync.Ack>()
+  let advertised = false
+  f.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "handshake") {
+      advertised = frame.proof.handshake.capabilities.includes("sync") && frame.proof.handshake.schemas.sync === 1
+      return false
+    }
+    if (frame.type === "sync-state") {
+      socket.send(
+        JSON.stringify({
+          type: "sync-state",
+          connectionEpoch: frame.connectionEpoch,
+          exchangeID: frame.exchangeID,
+          share: {
+            sessionID: frame.sessionID,
+            shareState: "shared",
+            shareGeneration: 1,
+            bindingEpoch: 1,
+            nextSeq: 1,
+            syncState: "pending",
+            updatedAt: Date.now(),
+          },
+        }),
+      )
+      return true
+    }
+    if (frame.type === "sync-batch") {
+      socket.send(
+        JSON.stringify({
+          type: "sync-ack",
+          connectionEpoch: frame.connectionEpoch,
+          exchangeID: frame.exchangeID,
+          ack: {
+            sessionID: frame.batch.sessionID,
+            bindingEpoch: frame.batch.bindingEpoch,
+            shareGeneration: frame.batch.shareGeneration,
+            nextSeq: frame.batch.lastSeq + 1,
+            syncState: "synced",
+          },
+        }),
+      )
+      return true
+    }
+    return false
+  })
+  await using connection = await openMemberConnection({ ...f.options, sync: true })
+  expect(advertised).toBeTrue()
+  const state = await connection.syncState("session")
+  share.resolve(state)
+  expect(await share.promise).toMatchObject({ shareState: "shared", shareGeneration: 1 })
+  const event = Sync.Event.parse({
+    type: "message",
+    sequence: 1,
+    messageID: "message",
+    role: "user",
+    createdAt: 1,
+    summary: "bounded",
+    integrity: "a".repeat(64),
+  })
+  const events = [event]
+  const payloadHash = new Bun.CryptoHasher("sha256")
+    .update(JSON.stringify({ firstSeq: 1, lastSeq: 1, events }))
+    .digest("hex")
+  const result = await connection.sync(
+    Sync.Batch.parse({
+      schemaVersion: 1,
+      sessionID: "session",
+      projectID: "project",
+      bindingEpoch: 1,
+      shareGeneration: 1,
+      firstSeq: 1,
+      lastSeq: 1,
+      payloadHash,
+      events,
+    }),
+  )
+  ack.resolve(result)
+  expect(await ack.promise).toMatchObject({ nextSeq: 2, syncState: "synced" })
+})
+
+test("the member bridge fragments 4 MiB blob chunks and waits for one verified acknowledgement", async () => {
+  await using f = await enrolled()
+  const payload = Buffer.alloc(100_123, 11)
+  const hash = new Bun.CryptoHasher("sha256").update(payload).digest("hex")
+  const parts: Buffer[] = []
+  f.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type !== "blob-chunk") return false
+    parts.push(Buffer.from(frame.data, "base64url"))
+    if (frame.index === frame.total - 1) {
+      expect(Buffer.concat(parts)).toEqual(payload)
+      socket.send(
+        JSON.stringify({
+          type: "blob-ack",
+          connectionEpoch: frame.connectionEpoch,
+          exchangeID: frame.exchangeID,
+          status: {
+            sessionID: frame.sessionID,
+            shareGeneration: frame.shareGeneration,
+            hash: frame.hash,
+            bytes: frame.totalBytes,
+            chunkBytes: 4 * 1024 * 1024,
+            receivedBytes: frame.totalBytes,
+            complete: true,
+          },
+        }),
+      )
+    }
+    return true
+  })
+  await using connection = await openMemberConnection({ ...f.options, sync: true })
+  await expect(
+    connection.uploadBlob({
+      sessionID: "session",
+      shareGeneration: 1,
+      hash,
+      offset: 0,
+      totalBytes: payload.byteLength,
+      bytes: payload,
+    }),
+  ).resolves.toMatchObject({ complete: true, bytes: payload.byteLength, hash })
 })

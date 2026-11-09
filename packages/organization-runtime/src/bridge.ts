@@ -13,6 +13,7 @@ export function startMemberBridge(options: MemberConnectionOptions) {
       let result: MemberConnectionClosed
       try {
         await using connection = await openMemberConnection({ ...options, signal })
+        await options.onConnected?.(connection, signal)
         const opened = performance.now()
         result = await connection.closed
         if (performance.now() - opened >= connection.connected.offlineMs) failures = 0

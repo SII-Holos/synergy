@@ -120,4 +120,18 @@ export namespace OrganizationSyncProtocol {
     cursor: Identity.Revision.optional(),
   })
   export type EventPageQuery = z.infer<typeof EventPageQuery>
+
+  export const BlobStatus = z
+    .strictObject({
+      sessionID: Identity.ID,
+      shareGeneration: Identity.Revision,
+      hash: Protocol.Digest,
+      bytes: z.number().int().nonnegative(),
+      chunkBytes: z.literal(4 * 1024 * 1024),
+      receivedBytes: z.number().int().nonnegative(),
+      complete: z.boolean(),
+      nextOffset: z.number().int().nonnegative().optional(),
+    })
+    .meta({ ref: "OrgSyncBlobStatus" })
+  export type BlobStatus = z.infer<typeof BlobStatus>
 }
