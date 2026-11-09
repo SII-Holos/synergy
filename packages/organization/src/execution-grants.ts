@@ -25,11 +25,9 @@ export namespace OrganizationExecutionGrants {
       fail("PERMISSION_DENIED", "Execution admission does not match its Session")
     const contract = await Resources.read(session)
     if (!contract?.selection) return
-    if (session.executionGrantIDs.length >= 64)
-      fail("RESOURCE_UNAVAILABLE", "Session execution grant capacity is occupied")
     await Resources.enabled(session, contract.selection)
     const grant = Execution.Grant.parse({
-      schemaVersion: 1,
+      schemaVersion: 2,
       grantID: crypto.randomUUID(),
       orgID: session.orgID,
       deploymentIncarnation: permit.deploymentIncarnation,
@@ -39,7 +37,7 @@ export namespace OrganizationExecutionGrants {
       bindingEpoch: session.bindingEpoch,
       selectionRevision: contract.revision,
       selection: contract.selection,
-      limits: { calls: 1024, requestBytes: 8 * 1024 * 1024, responseBytes: 16 * 1024 * 1024 },
+      limits: { requestBytes: 8 * 1024 * 1024, responseBytes: 16 * 1024 * 1024 },
       actor: permit.actor,
       admissionID: permit.admissionID,
       attemptID: permit.attemptID,
@@ -51,7 +49,7 @@ export namespace OrganizationExecutionGrants {
       Keys.session(session.sessionID),
       Record.SessionDirectory.parse({
         ...session,
-        executionGrantIDs: [...session.executionGrantIDs, grant.grantID],
+        retainedExecutionGrants: session.retainedExecutionGrants + 1,
         rowRevision: session.rowRevision + 1,
       }),
     )
@@ -82,7 +80,7 @@ export namespace OrganizationExecutionGrants {
       Keys.session(session.sessionID),
       Record.SessionDirectory.parse({
         ...session,
-        executionGrantIDs: session.executionGrantIDs.filter((id) => id !== grant.grantID),
+        retainedExecutionGrants: session.retainedExecutionGrants - 1,
         rowRevision: session.rowRevision + 1,
       }),
     )
@@ -165,7 +163,7 @@ export function createExecutionGrants(options: { connections: RuntimeConnections
       grant.attemptID !== permit.attemptID ||
       grant.admissionID !== permit.admissionID ||
       JSON.stringify(grant.actor) !== JSON.stringify(permit.actor) ||
-      !session.executionGrantIDs.includes(grant.grantID)
+      session.retainedExecutionGrants === 0
     )
       fail("PERMISSION_DENIED", "Execution grant does not match the accepted admission")
     if (grant.state === "closed") fail("PERMISSION_DENIED", "Execution grant is closed")

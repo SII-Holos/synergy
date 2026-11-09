@@ -238,7 +238,6 @@ export type OrgSessionDirectoryView = {
   createdAt: number
   shareState: "private" | "shared"
   resourceIDs: Array<string>
-  executionGrantIDs: Array<string>
   permissions: {
     read: true
     execute: boolean
@@ -918,7 +917,7 @@ export type OrgGatewayReceipt = {
 }
 
 export type OrgBoundExecutionGrant = {
-  schemaVersion: 1
+  schemaVersion: 2
   grantID: string
   orgID: string
   deploymentIncarnation: string
@@ -932,7 +931,6 @@ export type OrgBoundExecutionGrant = {
     connectionResourceIDs: Array<string>
   }
   limits: {
-    calls: number
     requestBytes: number
     responseBytes: number
   }
@@ -955,7 +953,7 @@ export type OrgBoundExecutionGrant = {
 export type OrgExecutionDescription = {
   grant:
     | {
-        schemaVersion: 1
+        schemaVersion: 2
         grantID: string
         orgID: string
         deploymentIncarnation: string
@@ -969,7 +967,6 @@ export type OrgExecutionDescription = {
           connectionResourceIDs: Array<string>
         }
         limits: {
-          calls: number
           requestBytes: number
           responseBytes: number
         }
@@ -988,7 +985,7 @@ export type OrgExecutionDescription = {
       }
     | OrgBoundExecutionGrant
     | {
-        schemaVersion: 1
+        schemaVersion: 2
         grantID: string
         orgID: string
         deploymentIncarnation: string
@@ -1002,7 +999,6 @@ export type OrgExecutionDescription = {
           connectionResourceIDs: Array<string>
         }
         limits: {
-          calls: number
           requestBytes: number
           responseBytes: number
         }

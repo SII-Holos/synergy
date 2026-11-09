@@ -37,7 +37,6 @@ export namespace OrganizationProtocol {
       createdAt: z.number().int().nonnegative(),
       shareState: z.literal("private"),
       resourceIDs: z.array(OrganizationIdentity.ID),
-      executionGrantIDs: z.array(OrganizationIdentity.ID),
     })
     .meta({ ref: "OrgPrivateSessionRegistration" })
   export type PrivateSessionRegistration = z.infer<typeof PrivateSessionRegistration>

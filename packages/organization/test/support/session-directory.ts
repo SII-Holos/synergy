@@ -10,6 +10,7 @@ import { OrganizationStoragePath as Keys } from "../../src/storage/path"
 import { digest, token } from "../../src/auth/secret"
 import { organizationApp } from "../../src/http"
 import { cookie } from "../../src/routes/shared"
+import { registerOrganizationMigrations } from "../../src/migration"
 
 export async function directoryFixture() {
   const home = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "organization-directory-"))
@@ -27,6 +28,7 @@ export async function directoryFixture() {
       filename: path.join(home, "directory.sqlite"),
     })
     context.storage = { store, artifactDirectory: path.join(home, "artifacts") }
+    context.run(registerOrganizationMigrations)
     return { context, store }
   }
   let current = await open()

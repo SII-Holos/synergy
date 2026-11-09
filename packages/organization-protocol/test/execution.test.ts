@@ -105,7 +105,7 @@ test("execution binding signatures cover the complete native receipt, root and f
     expect(Execution.BindingProof.safeParse(changed).success).toBeFalse()
 })
 
-test("resource selections and budgets reject duplicate roles, caller endpoints and unbounded limits", () => {
+test("resource selections bound each call without imposing a lifetime task quota", () => {
   const selection = { modelResourceID: "model", connectionResourceIDs: ["business"] }
   expect(Execution.resourceIDs(Execution.Selection.parse(selection))).toEqual(["model", "business"])
   for (const changed of [
@@ -115,9 +115,10 @@ test("resource selections and budgets reject duplicate roles, caller endpoints a
     { ...selection, connectionResourceIDs: Array.from({ length: 33 }, (_, i) => `resource-${i}`) },
   ])
     expect(Execution.Selection.safeParse(changed).success).toBeFalse()
-  expect(Execution.Limits.safeParse({ calls: 4097, requestBytes: 1, responseBytes: 1 }).success).toBeFalse()
-  expect(Execution.Limits.safeParse({ calls: 1, requestBytes: 17 * 1024 * 1024, responseBytes: 1 }).success).toBeFalse()
-  expect(Execution.Limits.safeParse({ calls: 1, requestBytes: 1, responseBytes: 65 * 1024 * 1024 }).success).toBeFalse()
+  expect(Execution.Limits.parse({ requestBytes: 1, responseBytes: 1 })).toEqual({ requestBytes: 1, responseBytes: 1 })
+  expect(Execution.Limits.safeParse({ calls: 1, requestBytes: 1, responseBytes: 1 }).success).toBeFalse()
+  expect(Execution.Limits.safeParse({ requestBytes: 17 * 1024 * 1024, responseBytes: 1 }).success).toBeFalse()
+  expect(Execution.Limits.safeParse({ requestBytes: 1, responseBytes: 65 * 1024 * 1024 }).success).toBeFalse()
 })
 
 test("resource description proves accepted input without claiming a materialized root or invocation authority", async () => {

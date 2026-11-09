@@ -51,7 +51,7 @@ export namespace OrganizationSessionResources {
       const previous = await read(session)
       revision(input.expectedRevision, previous?.revision ?? 0)
       const command = await Record.read(Record.CommandState, Keys.commandState(sessionID))
-      if (session.executionGrantIDs.length || command?.pendingAttemptID)
+      if (session.retainedExecutionGrants || command?.pendingAttemptID)
         fail("REVISION_CONFLICT", "Session execution must release its resource contract before changing selection")
       const ids = Execution.resourceIDs(input.selection)
       await Promise.all(

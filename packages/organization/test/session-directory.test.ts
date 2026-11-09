@@ -44,7 +44,7 @@ test("private metadata reservation derives ownership and joins the surrounding a
       shareState: "private",
     })
     expect(row.resourceIDs).toEqual([])
-    expect(row.executionGrantIDs).toEqual([])
+    expect(row.retainedExecutionGrants).toBe(0)
     expect(Record.SessionDirectory.safeParse({ ...row, title: "Private title" }).success).toBe(false)
     expect(Record.SessionDirectory.safeParse({ ...row, nextBindingEpoch: 1 }).success).toBe(false)
     await expect(Directory.reservePrivate(f.credentials.alice, input)).rejects.toMatchObject({

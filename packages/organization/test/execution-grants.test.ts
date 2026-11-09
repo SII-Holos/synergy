@@ -183,12 +183,10 @@ test("task admission reserves a bounded provisional grant with the Session resou
       bindingEpoch: 1,
       actor: { subjectID: "alice" },
       selection: { modelResourceID: resource.resourceID },
-      limits: { calls: 1024 },
     })
     expect(grant).not.toHaveProperty("rootID")
-    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.executionGrantIDs).toEqual([
-      grant.grantID,
-    ])
+    expect(grant.limits).not.toHaveProperty("calls")
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(1)
     await expect(
       SessionResources.set(f.credentials.alice, f.sessionID, {
         expectedRevision: 1,
@@ -389,17 +387,17 @@ for (const change of ["expiry", "connection"] as const)
     })
   })
 
-test("retained grant capacity rejects a new admission before allocating another command or resource use", async () => {
+test("accepted tasks keep their resource contract without a retained-grant product quota", async () => {
   await using f = await commandFixture()
   await f.connect()
   const prepared = await task(f)
   await f.run(async () => {
     await f.commands.observe(prepared.connection, prepared.receipt)
-    for (let index = 1; index < 64; index++) {
+    for (let index = 1; index < 65; index++) {
       const request = f.request(`task-${index}`)
       request.input.mode = "task"
       const admission = await f.commands.input(f.credentials.alice, request)
-      if (admission.kind !== "admitted") throw new Error("Expected bounded admission")
+      if (admission.kind !== "admitted") throw new Error("Expected task admission")
       const permit = admission.delivery.authorization.permit
       const now = Date.now()
       await f.commands.observe(
@@ -422,14 +420,17 @@ test("retained grant capacity rejects a new admission before allocating another 
         }),
       )
     }
-    const overflow = f.request("over-capacity")
-    overflow.input.mode = "task"
-    await expect(f.commands.input(f.credentials.alice, overflow)).rejects.toMatchObject({
-      data: { code: "RESOURCE_UNAVAILABLE" },
-    })
-    expect(await Storage.count({ prefix: ["organization", "execution-grants"] })).toBe(64)
-    expect(await Storage.count({ prefix: ["organization", "command-attempts"] })).toBe(64)
-    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.executionGrantIDs).toHaveLength(64)
+    expect(await Storage.count({ prefix: ["organization", "execution-grants"] })).toBe(65)
+    expect(await Storage.count({ prefix: ["organization", "command-attempts"] })).toBe(65)
+    const directory = await Record.read(Record.SessionDirectory, Keys.session(f.sessionID))
+    expect(directory).toMatchObject({ retainedExecutionGrants: 65 })
+    expect(directory).not.toHaveProperty("executionGrantIDs")
+    await expect(
+      SessionResources.set(f.credentials.alice, f.sessionID, {
+        expectedRevision: 1,
+        selection: { modelResourceID: prepared.resource.resourceID, connectionResourceIDs: [] },
+      }),
+    ).rejects.toMatchObject({ data: { code: "REVISION_CONFLICT" } })
   })
 })
 
@@ -504,7 +505,7 @@ test("provisional admission, rejection and root indexes commit atomically withou
       failAdmission.mockRestore()
     }
     expect(await Storage.count({ prefix: ["organization", "execution-grants"] })).toBe(0)
-    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.executionGrantIDs).toEqual([])
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(0)
     const admitted = await f.commands.input(f.credentials.alice, request)
     if (admitted.kind !== "admitted") throw new Error("Expected admission")
     const permit = admitted.delivery.authorization.permit
@@ -515,7 +516,7 @@ test("provisional admission, rejection and root indexes commit atomically withou
     expect((await Record.read(Record.ExecutionGrant, Keys.executionGrant(permit.provisionalGrantID!)))?.state).toBe(
       "closed",
     )
-    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.executionGrantIDs).toEqual([])
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(0)
     await expect(OrganizationExecutionGrants.reject(permit)).rejects.toMatchObject({
       data: { code: "INVALID_REQUEST" },
     })
@@ -523,5 +524,24 @@ test("provisional admission, rejection and root indexes commit atomically withou
       (await f.commands.get(f.credentials.alice, { sessionID: f.sessionID, requestID: request.requestID })).attempt
         .state,
     ).toBe("rejected")
+    const skipped = await f.commands.prepareSkip(permit.attemptID, admitted.connection)
+    await f.commands.observe(admitted.connection, {
+      ...result,
+      skip: { schemaVersion: 1, permit: skipped.permit, receivedAt: Date.now() },
+    })
+    await SessionResources.set(f.credentials.alice, f.sessionID, {
+      expectedRevision: 1,
+      selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+    })
+    const next = f.request("another-task")
+    next.input.mode = "task"
+    const subsequent = await f.commands.input(f.credentials.alice, next)
+    if (subsequent.kind !== "admitted") throw new Error("Expected subsequent admission")
+    await f.commands.observe(admitted.connection, result)
+    await Storage.transaction(() => OrganizationExecutionGrants.reject(permit))
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(1)
+    expect((await Record.read(Record.CommandState, Keys.commandState(f.sessionID)))?.pendingAttemptID).toBe(
+      subsequent.delivery.authorization.permit.attemptID,
+    )
   })
 })

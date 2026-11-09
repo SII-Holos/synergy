@@ -10,12 +10,13 @@ import {
   OrganizationGatewayProtocol as Gateway,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/import"
 
 export namespace OrganizationRecord {
   export const ExecutionUsage = z.strictObject({
     schemaVersion: z.literal(1),
     grantID: Identity.ID,
-    calls: z.number().int().nonnegative().max(4096),
+    calls: z.number().int().nonnegative(),
   })
   export const GatewayCall = z
     .strictObject({ schemaVersion: z.literal(1), authorization: Gateway.SignedPermit, receipt: Gateway.Receipt })
@@ -169,20 +170,25 @@ export namespace OrganizationRecord {
     revision: Identity.Revision,
   })
   export const SessionDirectory = Session.Metadata.extend({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     orgID: Identity.ID,
     nextBindingEpoch: z.number().int().positive(),
     shareGeneration: Identity.Revision,
     controlRevision: Identity.Revision,
     handoffID: Identity.ID.optional(),
     rowRevision: Identity.Revision,
+    retainedExecutionGrants: z.number().int().nonnegative(),
   }).refine((value) => value.nextBindingEpoch > value.bindingEpoch, "Next binding epoch must advance")
   export type SessionDirectory = z.infer<typeof SessionDirectory>
   export const SessionIndex = z.strictObject({ sessionID: Identity.ID })
 
   export async function read<T>(schema: z.ZodType<T>, key: string[]): Promise<T | undefined> {
     const [value] = await Storage.readMany<unknown>([key])
-    return value === undefined ? undefined : schema.parse(value)
+    return value === undefined ? undefined : parse(schema, key, value)
+  }
+
+  export function parse<T>(schema: z.ZodType<T>, key: string[], value: unknown): T {
+    return schema.parse(upgradeAccessRecord(key, value))
   }
 
   export function publicAccount(account: Account): Identity.Account {

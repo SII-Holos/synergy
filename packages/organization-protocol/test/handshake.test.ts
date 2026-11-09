@@ -47,7 +47,6 @@ describe("organization bridge handshake", () => {
       createdAt: 1,
       shareState: "private",
       resourceIDs: ["model-one"],
-      executionGrantIDs: [],
     } satisfies OrganizationProtocol.PrivateSessionRegistration
     expect(OrganizationProtocol.PrivateSessionRegistration.parse(directory)).toEqual(directory)
     for (const extra of [{ title: "private" }, { messages: [] }, { localPath: "/private" }, { tools: [] }]) {

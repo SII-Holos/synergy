@@ -29,7 +29,7 @@ export namespace OrganizationSessionDirectory {
       if (await Record.read(Record.SessionDirectory, Keys.session(request.sessionID)))
         fail("REVISION_CONFLICT", "Session identity is already reserved")
       const directory = Record.SessionDirectory.parse({
-        schemaVersion: 1,
+        schemaVersion: 2,
         orgID: account.orgID,
         sessionID: request.sessionID,
         projectID: request.projectID,
@@ -43,7 +43,7 @@ export namespace OrganizationSessionDirectory {
         controlRevision: 0,
         rowRevision: 0,
         resourceIDs: [],
-        executionGrantIDs: [],
+        retainedExecutionGrants: 0,
       })
       const index = Record.SessionIndex.parse({ sessionID: directory.sessionID })
       await Storage.write(Keys.session(directory.sessionID), directory)
@@ -85,7 +85,7 @@ export namespace OrganizationSessionDirectory {
       const selected = ids.slice(0, page.limit)
       const rows = await Storage.readMany(selected.map(Keys.session))
       const items = rows.map((raw, index) => {
-        const row = Record.SessionDirectory.parse(raw)
+        const row = Record.parse(Record.SessionDirectory, Keys.session(selected[index]!), raw)
         if (row.sessionID !== selected[index] || row.projectID !== projectID)
           fail("SERVICE_UNAVAILABLE", "Session directory index is inconsistent")
         return sessionView(account, row, project, "session.read")

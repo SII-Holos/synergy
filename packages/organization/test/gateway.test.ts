@@ -139,10 +139,10 @@ test("concurrent use of one capability commits only one transmission", async () 
   }
 })
 
-test("call budget and identity survive storage restart, and reservation rollback never consumes another call", async () => {
+test("call identity and usage survive restart without adding a lifetime task quota", async () => {
   await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
   await f.run(() =>
-    Storage.write(Keys.executionGrant(f.grant.grantID), { ...f.grant, limits: { ...f.grant.limits, calls: 2 } }),
+    Storage.write(Keys.executionUsage(f.grant.grantID), { schemaVersion: 1, grantID: f.grant.grantID, calls: 4096 }),
   )
   const first = await reserve(f, "first")
   const write = Storage.write
@@ -162,8 +162,9 @@ test("call budget and identity survive storage restart, and reservation rollback
     data: { code: "PERMISSION_DENIED" },
   })
   await reserve(f, "second")
-  await expect(reserve(f, "third")).rejects.toMatchObject({ data: { code: "RESOURCE_UNAVAILABLE" } })
-  expect(await f.run(() => Storage.read(Keys.executionUsage(f.grant.grantID)))).toMatchObject({ calls: 2 })
+  await reserve(f, "third")
+  expect(await f.run(() => Storage.read(Keys.executionUsage(f.grant.grantID)))).toMatchObject({ calls: 4099 })
+  expect(f.grant.limits).not.toHaveProperty("calls")
   expect(
     await f.run(() => Record.read(Record.GatewayCall, Keys.gatewayCall(f.grant.grantID, "rollback"))),
   ).toBeUndefined()
@@ -319,7 +320,7 @@ test("request and response byte limits stop forwarding and preserve only metadat
     await f.run(() =>
       Storage.write(Keys.executionGrant(f.grant.grantID), {
         ...f.grant,
-        limits: { calls: 5, requestBytes: 200, responseBytes: 100 },
+        limits: { requestBytes: 200, responseBytes: 100 },
       }),
     )
     const large = await reserve(f, "large")

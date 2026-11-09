@@ -37,7 +37,6 @@ export namespace OrganizationExecutionProtocol {
     .meta({ ref: "OrgSessionResourceChange" })
   export type Change = z.infer<typeof Change>
   export const Limits = z.strictObject({
-    calls: z.number().int().positive().max(4096),
     requestBytes: z
       .number()
       .int()
@@ -50,7 +49,7 @@ export namespace OrganizationExecutionProtocol {
       .max(64 * 1024 * 1024),
   })
   const GrantFields = z.strictObject({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     grantID: Identity.ID,
     orgID: Identity.ID,
     deploymentIncarnation: Identity.ID,

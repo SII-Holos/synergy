@@ -2758,10 +2758,6 @@
             "type": "array",
             "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
           },
-          "executionGrantIDs": {
-            "type": "array",
-            "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-          },
           "permissions": {
             "type": "object",
             "properties": {
@@ -2782,7 +2778,6 @@
           "createdAt",
           "shareState",
           "resourceIDs",
-          "executionGrantIDs",
           "permissions"
         ],
         "additionalProperties": false
@@ -4264,7 +4259,7 @@
       "OrgBoundExecutionGrant": {
         "type": "object",
         "properties": {
-          "schemaVersion": { "type": "number", "const": 1 },
+          "schemaVersion": { "type": "number", "const": 2 },
           "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "deploymentIncarnation": {
@@ -4294,11 +4289,10 @@
           "limits": {
             "type": "object",
             "properties": {
-              "calls": { "type": "integer", "exclusiveMinimum": 0, "maximum": 4096 },
               "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
               "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
             },
-            "required": ["calls", "requestBytes", "responseBytes"],
+            "required": ["requestBytes", "responseBytes"],
             "additionalProperties": false
           },
           "actor": {
@@ -4351,7 +4345,7 @@
               {
                 "type": "object",
                 "properties": {
-                  "schemaVersion": { "type": "number", "const": 1 },
+                  "schemaVersion": { "type": "number", "const": 2 },
                   "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
                   "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
                   "deploymentIncarnation": {
@@ -4386,11 +4380,10 @@
                   "limits": {
                     "type": "object",
                     "properties": {
-                      "calls": { "type": "integer", "exclusiveMinimum": 0, "maximum": 4096 },
                       "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
                       "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
                     },
-                    "required": ["calls", "requestBytes", "responseBytes"],
+                    "required": ["requestBytes", "responseBytes"],
                     "additionalProperties": false
                   },
                   "actor": {
@@ -4445,7 +4438,7 @@
               {
                 "type": "object",
                 "properties": {
-                  "schemaVersion": { "type": "number", "const": 1 },
+                  "schemaVersion": { "type": "number", "const": 2 },
                   "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
                   "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
                   "deploymentIncarnation": {
@@ -4480,11 +4473,10 @@
                   "limits": {
                     "type": "object",
                     "properties": {
-                      "calls": { "type": "integer", "exclusiveMinimum": 0, "maximum": 4096 },
                       "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
                       "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
                     },
-                    "required": ["calls", "requestBytes", "responseBytes"],
+                    "required": ["requestBytes", "responseBytes"],
                     "additionalProperties": false
                   },
                   "actor": {

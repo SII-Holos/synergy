@@ -5,8 +5,10 @@ import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protoc
 import { OrganizationStoragePath } from "./storage/path"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { initializeSigningIdentity } from "./signing"
+import { executionMigration } from "./execution-migration"
 
 const migrations: Migration[] = [
+  executionMigration,
   {
     id: "20261108-organization-deployment",
     description: "Establish independent organization deployment identity",

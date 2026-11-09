@@ -87,7 +87,7 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
       session.projectID !== grant.projectID ||
       session.driverRuntimeID !== runtime.runtimeID ||
       session.bindingEpoch !== grant.bindingEpoch ||
-      !session.executionGrantIDs.includes(grant.grantID)
+      session.retainedExecutionGrants === 0
     )
       fail("STALE_BINDING", "Gateway Session ownership changed")
     if (invoke && session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks new resource calls")
@@ -159,8 +159,6 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
           const usage = await Record.read(Record.ExecutionUsage, Keys.executionUsage(grant.grantID))
           if (usage && usage.grantID !== grant.grantID)
             fail("PROTOCOL_MISMATCH", "Execution usage identity is inconsistent")
-          if ((usage?.calls ?? 0) >= grant.limits.calls)
-            fail("RESOURCE_UNAVAILABLE", "Root resource call budget is exhausted")
           const authorization = await options.signing.signGateway({
             ...Gateway.Target.strip().parse(proof),
             schemaVersion: 1,

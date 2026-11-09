@@ -12,6 +12,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
 import { digest } from "../src/auth/secret"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 const homes: string[] = []
 const services: Awaited<ReturnType<typeof openOrganizationService>>[] = []
@@ -49,6 +50,53 @@ test("a second service cannot take a live service's Home", async () => {
   const first = await open()
   await expect(openOrganizationService({ home: first.home })).rejects.toThrow("already owns")
   expect((await first.fetch(new Request("http://organization/org/v1/health"))).status).toBe(200)
+})
+
+test("execution metadata upgrades do not read historical Session directories at startup", async () => {
+  const service = await open()
+  await service.close()
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace: "organization",
+    filename: path.join(service.home, ".synergy", "data", "organization.sqlite"),
+  })
+  try {
+    await store.transaction((tx) =>
+      tx.writeMany(
+        Array.from({ length: 257 }, (_, index) => ({
+          key: OrganizationStoragePath.session(`cold-${index}`),
+          value: { schemaVersion: 1, executionGrantIDs: "corrupt cold record" },
+        })),
+      ),
+    )
+  } finally {
+    await store.close()
+  }
+  const readMany = Storage.readMany
+  const query = Storage.query
+  const scan = Storage.scan
+  const historical: string[][] = []
+  const reads = spyOn(Storage, "readMany").mockImplementation(async (keys) => {
+    historical.push(...keys.filter((key) => key[0] === "organization" && key[1] === "sessions"))
+    return readMany(keys)
+  })
+  const queries = spyOn(Storage, "query").mockImplementation(async (input) => {
+    if (input.prefix?.[0] === "organization" && input.prefix[1] === "sessions") historical.push(input.prefix)
+    return query(input)
+  })
+  const scans = spyOn(Storage, "scan").mockImplementation(async (prefix) => {
+    if (prefix[0] === "organization" && prefix[1] === "sessions") historical.push(prefix)
+    return scan(prefix)
+  })
+  try {
+    const reopened = await open(service.home)
+    expect((await reopened.fetch(new Request("http://organization/org/v1/health"))).status).toBe(200)
+    expect(historical).toEqual([])
+  } finally {
+    reads.mockRestore()
+    queries.mockRestore()
+    scans.mockRestore()
+  }
 })
 
 test("shutdown drains storage telemetry before disposing the service context", async () => {

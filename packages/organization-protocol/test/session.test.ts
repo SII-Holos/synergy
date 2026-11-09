@@ -33,7 +33,6 @@ test("directory views contain bounded identities and explicit permissions withou
     createdAt: 1,
     shareState: "private",
     resourceIDs: ["resource-a"],
-    executionGrantIDs: ["grant-a"],
   }
   const view = { ...metadata, permissions: { read: true as const, execute: false, stop: false } }
   expect(Protocol.View.parse(view)).toEqual(view)
@@ -44,6 +43,8 @@ test("directory views contain bounded identities and explicit permissions withou
     { localPath: "/private" },
     { artifacts: [] },
     { nextBindingEpoch: 2 },
+    { executionGrantIDs: ["grant-a"] },
+    { retainedExecutionGrants: 1 },
     { resourceIDs: ["../resource"] },
     { permissions: { read: true, execute: true, role: "owner" } },
   ])

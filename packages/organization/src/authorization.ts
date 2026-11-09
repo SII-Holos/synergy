@@ -155,7 +155,6 @@ export function sessionView(
     createdAt: session.createdAt,
     shareState: session.shareState,
     resourceIDs: session.resourceIDs,
-    executionGrantIDs: session.executionGrantIDs,
     permissions: { read: true, execute, stop },
   })
 }
