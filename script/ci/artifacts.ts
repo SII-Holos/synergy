@@ -105,7 +105,17 @@ export function buildCommands(root = ROOT) {
 
 type Bundle = "build" | "intermediate"
 
-const BUILD_SOURCE_IGNORED = ["dist", "node_modules", ".turbo", "coverage", "test", "messages.mjs"]
+const BUILD_SOURCE_IGNORED = [
+  "dist",
+  "node_modules",
+  ".turbo",
+  "coverage",
+  "test",
+  "target",
+  ".artifacts",
+  "sandbox-assets",
+  "messages.mjs",
+]
 
 function includesWeb(bundle: Bundle) {
   return bundle === "build" && process.env.SYNERGY_CI_WEB_BUILD === "true"
