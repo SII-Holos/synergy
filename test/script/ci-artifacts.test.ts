@@ -114,6 +114,21 @@ test("build identity follows newly added transitive workspace inputs", async () 
   }
 })
 
+test("build identity ignores package-manager group and other write-bit changes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-mode-"))
+  try {
+    await inputs(root)
+    const executable = path.join(root, "packages/plugin/bin/synergy")
+    await Bun.write(executable, "fixture executable")
+    await chmod(executable, 0o755)
+    const before = await buildIdentity(root)
+    await chmod(executable, 0o777)
+    expect(await buildIdentity(root)).toBe(before)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("shared preparation compiles the committed SDK without regenerating its inputs", () => {
   const recipes = buildCommands()
   expect(recipes.find((command) => command.cwd.endsWith("packages/sdk/js"))!.args).toContain("--compile-only")

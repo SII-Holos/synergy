@@ -121,6 +121,10 @@ function includesWeb(bundle: Bundle) {
   return bundle === "build" && process.env.SYNERGY_CI_WEB_BUILD === "true"
 }
 
+function sourceMode(mode: number) {
+  return mode & ~0o022
+}
+
 function buildPaths(root: string, web: boolean) {
   return [
     "packages/local-runtime/.artifacts/watcher",
@@ -159,7 +163,7 @@ export async function buildIdentity(root = ROOT, web = includesWeb("build")): Pr
     hash
       .update(file)
       .update((await lstat(source)).isSymbolicLink() ? await readlink(source) : "")
-      .update(String((await stat(source)).mode & 0o777))
+      .update(String(sourceMode((await stat(source)).mode & 0o777)))
       .update(await readFile(source))
   }
   return hash.digest("hex")
