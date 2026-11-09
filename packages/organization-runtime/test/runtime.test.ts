@@ -406,6 +406,22 @@ test("resident exporter projects Cortex descendants and completion notifications
       events.some((event) => event.type === "notification" && event.taskID === "cortex-native-child"),
   )
   expect(items.some((event) => event.type === "session" && event.session?.parentSessionID === sessionID)).toBeTrue()
+  await service.client.orgSessions.unshare(
+    { sessionID, orgShareChange: { expectedShareGeneration: 1 } },
+    { headers: service.headers, throwOnError: true },
+  )
+  const reshared = await service.client.orgSessions.share(
+    { sessionID, orgShareChange: { expectedShareGeneration: 2 } },
+    { headers: service.headers, throwOnError: true },
+  )
+  expect(reshared.data.shareGeneration).toBe(3)
+  const baseline = await wait(
+    (events) =>
+      events.some((event) => event.type === "session" && event.session?.sessionID === sessionID) &&
+      events.some((event) => event.type === "session" && event.session?.sessionID === childID) &&
+      events.some((event) => event.type === "cortex" && event.taskID === "cortex-native-child"),
+  )
+  expect(baseline.some((event) => event.type === "notification" && event.taskID === "cortex-native-child")).toBeTrue()
 })
 
 test("resident member startup reconnects its outbound bridge without blocking local readiness", async () => {

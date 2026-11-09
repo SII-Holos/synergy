@@ -61,6 +61,17 @@ export function sharingRoutes(publicOrigin?: string) {
       async (c) => c.json(await Sharing.events(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"))),
     )
     .get(
+      "/sessions/:sessionID/sync/search",
+      operation(
+        "orgSessionSync.search",
+        "Search safe summaries in the current shared Session generation",
+        Sync.SearchPage,
+      ),
+      validator("param", target, validation),
+      validator("query", Sync.SearchQuery, validation),
+      async (c) => c.json(await Sharing.search(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"))),
+    )
+    .get(
       "/sessions/:sessionID/blobs/:hash",
       operation("orgSessionSync.blobStatus", "Read a resumable shared Session blob checkpoint", Sync.BlobStatus),
       validator("param", blobTarget, validation),

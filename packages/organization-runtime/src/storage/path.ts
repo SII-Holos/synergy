@@ -46,6 +46,11 @@ export namespace OrganizationSyncPath {
   export const state = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "state"]
   export const drafts = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "drafts"]
   export const draft = (orgID: string, sessionID: string, draftID: string) => [...drafts(orgID, sessionID), draftID]
+  export const projections = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "projections"]
+  export const projection = (orgID: string, sessionID: string, draftID: string) => [
+    ...projections(orgID, sessionID),
+    draftID,
+  ]
   export const attachments = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "attachments"]
   export const attachment = (orgID: string, sessionID: string, attachmentID: string) => [
     ...attachments(orgID, sessionID),

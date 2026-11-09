@@ -77,3 +77,25 @@ test("sync projections carry Cortex descendants and authenticated blob reference
   expect(child.type).toBe("session")
   expect(blob.type).toBe("blob")
 })
+
+test("sync search pages stay bounded and cursor-addressable", () => {
+  const page = Sync.SearchPage.parse({
+    sessionID: "session-1",
+    shareGeneration: 2,
+    nextSeq: 9,
+    items: [
+      {
+        sequence: 4,
+        sessionID: "session-1",
+        kind: "tool",
+        id: "call-1",
+        snippet: "safe result",
+        integrity: "d".repeat(64),
+      },
+    ],
+    cursor: 4,
+  })
+  expect(page.items[0]?.kind).toBe("tool")
+  expect(() => Sync.SearchQuery.parse({ q: "" })).toThrow()
+  expect(() => Sync.SearchHit.parse({ ...page.items[0], snippet: "x".repeat(513) })).toThrow()
+})

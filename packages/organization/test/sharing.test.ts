@@ -348,6 +348,65 @@ test("shared event pages validate cursors and bounded limits", async () => {
   })
 })
 
+test("shared search only returns current-generation safe summaries", async () => {
+  await using f = await directoryFixture()
+  await f.run(() =>
+    Directory.reservePrivate(f.credentials.alice, {
+      sessionID: "session-search",
+      projectID: "project",
+      runtimeID: "runtime-alice",
+    }),
+  )
+  await f.run(() => Sharing.share(f.credentials.alice, "session-search", { expectedShareGeneration: 0 }))
+  const view = await f.run(() => Directory.get(f.credentials.alice, "session-search"))
+  const root = Sync.Event.parse({
+    type: "session",
+    sequence: 1,
+    session: {
+      sessionID: "session-search",
+      projectID: "project",
+      creatorID: "alice",
+      driverRuntimeID: "runtime-alice",
+      bindingEpoch: 1,
+      createdAt: view.createdAt,
+      shareGeneration: 1,
+    },
+  })
+  const message = Sync.Event.parse({
+    type: "message",
+    sequence: 2,
+    sessionID: "session-search",
+    messageID: "message-search",
+    role: "assistant",
+    createdAt: view.createdAt,
+    summary: "safe searchable result",
+    integrity: digest("message-search"),
+  })
+  await f.run(() =>
+    Sharing.applyBatch(
+      f.credentials.alice,
+      batch({
+        sessionID: "session-search",
+        projectID: "project",
+        bindingEpoch: 1,
+        shareGeneration: 1,
+        events: [root, message],
+      }),
+    ),
+  )
+  const page = await f.run(() => Sharing.search(f.credentials.bob, "session-search", { q: "searchable", limit: 1 }))
+  expect(page.items).toHaveLength(1)
+  expect(page.items[0]).toMatchObject({ sequence: 2, kind: "message", id: "message-search" })
+  expect(page.items[0]?.snippet).toContain("searchable")
+  expect(
+    await f.run(() => Sharing.search(f.credentials.bob, "session-search", { q: "searchable", limit: 32, cursor: 2 })),
+  ).toMatchObject({ items: [] })
+  await f.run(() => Sharing.unshare(f.credentials.alice, "session-search", { expectedShareGeneration: 1 }))
+  await expect(
+    f.run(() => Sharing.search(f.credentials.bob, "session-search", { q: "searchable", limit: 32 })),
+  ).rejects.toMatchObject({ data: { code: "NOT_FOUND" } })
+})
+
 test("sharing routes preserve browser CSRF checks and generated projection responses", async () => {
   await using f = await directoryFixture()
   await f.run(() =>

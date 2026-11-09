@@ -193,6 +193,34 @@ export namespace OrganizationSyncProtocol {
   })
   export type EventPageQuery = z.infer<typeof EventPageQuery>
 
+  export const SearchQuery = z.strictObject({
+    q: z.string().trim().min(1).max(256),
+    limit: z.coerce.number().int().min(1).max(64).default(32),
+    cursor: Identity.Revision.optional(),
+  })
+  export type SearchQuery = z.infer<typeof SearchQuery>
+
+  export const SearchHit = z.strictObject({
+    sequence: Sequence,
+    sessionID: Identity.ID,
+    kind: z.enum(["session", "message", "tool", "attachment", "cortex", "notification", "blob"]),
+    id: Identity.ID,
+    snippet: z.string().max(512),
+    integrity: Protocol.Digest,
+  })
+  export type SearchHit = z.infer<typeof SearchHit>
+
+  export const SearchPage = z
+    .strictObject({
+      sessionID: Identity.ID,
+      shareGeneration: Identity.Revision,
+      nextSeq: Identity.Revision,
+      items: z.array(SearchHit).max(64),
+      cursor: Identity.Revision.optional(),
+    })
+    .meta({ ref: "OrgSyncSearchPage" })
+  export type SearchPage = z.infer<typeof SearchPage>
+
   export const BlobStatus = z
     .strictObject({
       sessionID: Identity.ID,

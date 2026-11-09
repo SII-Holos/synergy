@@ -22,6 +22,7 @@ const State = z.strictObject({
   orgID: Identity.ID,
   sessionID: Identity.ID,
   nextDraft: Identity.Revision,
+  shareGeneration: Identity.Revision.optional(),
   syncState: Sync.SyncState,
   updatedAt: z.number().int().nonnegative(),
 })
@@ -37,6 +38,14 @@ const Draft = z.strictObject({
   bytes: z.number().int().nonnegative(),
 })
 type Draft = z.infer<typeof Draft>
+
+const ProjectionRecord = z.strictObject({
+  schemaVersion: z.literal(1),
+  draftID: Identity.ID,
+  localSequence: Identity.Revision,
+  event: Sync.Event,
+})
+type ProjectionRecord = z.infer<typeof ProjectionRecord>
 
 const AttachmentRecord = z.strictObject({
   schemaVersion: z.literal(1),
@@ -114,7 +123,6 @@ export function startMemberSyncExporter(input: {
       .catch(() => {})
       .then(async () => {
         if (closed || signal.aborted) return
-        sessions.add(sessionID)
         await work()
       })
       .catch(() => {})
@@ -182,8 +190,11 @@ export function startMemberSyncExporter(input: {
     await Storage.transaction(async () => {
       const current = await read(State, Keys.state(identity.orgID, rootSessionID))
       const previous = await read(Draft, draftKey)
+      const retained =
+        previous ?? (await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, draftID)))
       const bytes = Buffer.byteLength(JSON.stringify(event))
-      const localSequence = previous?.localSequence ?? current?.nextDraft ?? 1
+      const localSequence = retained?.localSequence ?? current?.nextDraft ?? 1
+      const nextDraft = retained ? (current?.nextDraft ?? localSequence) : localSequence + 1
       await Storage.write(
         draftKey,
         Draft.parse({
@@ -197,12 +208,22 @@ export function startMemberSyncExporter(input: {
         }),
       )
       await Storage.write(
+        Keys.projection(identity.orgID, rootSessionID, draftID),
+        ProjectionRecord.parse({
+          schemaVersion: 1,
+          draftID,
+          localSequence,
+          event: Sync.Event.parse({ ...event, sequence: 1 }),
+        }),
+      )
+      await Storage.write(
         Keys.state(identity.orgID, rootSessionID),
         State.parse({
           schemaVersion: 1,
           orgID: identity.orgID,
           sessionID: rootSessionID,
-          nextDraft: previous ? (current?.nextDraft ?? localSequence) : localSequence + 1,
+          nextDraft,
+          shareGeneration: current?.shareGeneration,
           syncState: current?.syncState === "failed" ? "pending" : (current?.syncState ?? "pending"),
           updatedAt: Date.now(),
         }),
@@ -516,6 +537,60 @@ export function startMemberSyncExporter(input: {
     }
   }
 
+  async function prepareGeneration(rootSessionID: string, share: Sync.Share) {
+    const current = await read(State, Keys.state(identity.orgID, rootSessionID))
+    if (current?.shareGeneration === share.shareGeneration) return
+    const bound = await sessionBinding(rootSessionID)
+    if (!bound) return
+    const retained: ProjectionRecord[] = []
+    for await (const row of Storage.records<unknown>({
+      prefix: Keys.projections(identity.orgID, rootSessionID),
+      limit: 256,
+    })) {
+      const projection = ProjectionRecord.safeParse(row.value)
+      if (projection.success) retained.push(projection.data)
+    }
+    retained.sort((a, b) => a.localSequence - b.localSequence)
+    await Storage.transaction(async () => {
+      const latest = await read(State, Keys.state(identity.orgID, rootSessionID))
+      if (latest?.shareGeneration === share.shareGeneration) return
+      let nextDraft = latest?.nextDraft ?? 1
+      for (const projection of retained) {
+        const draftKey = Keys.draft(identity.orgID, rootSessionID, projection.draftID)
+        const previous = await read(Draft, draftKey)
+        const localSequence = previous?.localSequence ?? projection.localSequence
+        nextDraft = Math.max(nextDraft, localSequence + 1)
+        const event = Sync.Event.parse({ ...projection.event, sequence: 1 })
+        await Storage.write(
+          draftKey,
+          Draft.parse({
+            schemaVersion: 1,
+            draftID: projection.draftID,
+            sessionID: rootSessionID,
+            localSequence,
+            event,
+            queuedAt: previous?.queuedAt ?? Date.now(),
+            bytes: Buffer.byteLength(JSON.stringify(event)),
+          }),
+        )
+      }
+      await Storage.write(
+        Keys.state(identity.orgID, rootSessionID),
+        State.parse({
+          schemaVersion: 1,
+          orgID: identity.orgID,
+          sessionID: rootSessionID,
+          nextDraft,
+          shareGeneration: share.shareGeneration,
+          syncState: "pending",
+          updatedAt: Date.now(),
+        }),
+      )
+    })
+    sessions.add(rootSessionID)
+    schedule()
+  }
+
   async function prepare(sessionID: string, share: Sync.Share) {
     const batchKey = Keys.batch(identity.orgID, sessionID)
     const stored = await read(Batch, batchKey)
@@ -581,6 +656,7 @@ export function startMemberSyncExporter(input: {
   async function flushSession(sessionID: string) {
     const share = await connection.syncState(sessionID, signal)
     if (share.shareState !== "shared" || share.syncState === "blocked") return
+    await prepareGeneration(sessionID, share)
     const batch = await prepare(sessionID, share)
     if (!batch) return
     await uploadBatchBlobs(sessionID, share, batch)
@@ -605,6 +681,7 @@ export function startMemberSyncExporter(input: {
           orgID: identity.orgID,
           sessionID,
           nextDraft: current?.nextDraft ?? 1,
+          shareGeneration: current?.shareGeneration,
           syncState: ack.syncState,
           updatedAt: Date.now(),
         }),
@@ -628,6 +705,7 @@ export function startMemberSyncExporter(input: {
               orgID: identity.orgID,
               sessionID,
               nextDraft: current?.nextDraft ?? 1,
+              shareGeneration: current?.shareGeneration,
               syncState: "failed",
               updatedAt: Date.now(),
             }),

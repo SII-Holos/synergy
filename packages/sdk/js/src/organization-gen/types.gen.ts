@@ -396,6 +396,21 @@ export type OrgSyncEventPage = {
   cursor?: number
 }
 
+export type OrgSyncSearchPage = {
+  sessionID: string
+  shareGeneration: number
+  nextSeq: number
+  items: Array<{
+    sequence: number
+    sessionID: string
+    kind: "session" | "message" | "tool" | "attachment" | "cortex" | "notification" | "blob"
+    id: string
+    snippet: string
+    integrity: string
+  }>
+  cursor?: number
+}
+
 export type OrgSyncBlobStatus = {
   sessionID: string
   shareGeneration: number
@@ -2967,6 +2982,57 @@ export type OrgSessionSyncEventsResponses = {
 }
 
 export type OrgSessionSyncEventsResponse = OrgSessionSyncEventsResponses[keyof OrgSessionSyncEventsResponses]
+
+export type OrgSessionSyncSearchData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    q: string
+    limit?: number
+    cursor?: number
+  }
+  url: "/org/v1/sessions/{sessionID}/sync/search"
+}
+
+export type OrgSessionSyncSearchErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionSyncSearchError = OrgSessionSyncSearchErrors[keyof OrgSessionSyncSearchErrors]
+
+export type OrgSessionSyncSearchResponses = {
+  /**
+   * Success
+   */
+  200: OrgSyncSearchPage
+}
+
+export type OrgSessionSyncSearchResponse = OrgSessionSyncSearchResponses[keyof OrgSessionSyncSearchResponses]
 
 export type OrgSessionSyncBlobStatusData = {
   body?: never

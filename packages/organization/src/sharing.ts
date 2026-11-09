@@ -44,6 +44,49 @@ function mismatch(message: string): never {
   fail("INVALID_REQUEST", message)
 }
 
+function searchFields(event: Sync.Event) {
+  switch (event.type) {
+    case "session":
+      return { sessionID: event.session.sessionID, id: event.session.sessionID, text: JSON.stringify(event.session) }
+    case "message":
+      return { sessionID: event.sessionID, id: event.messageID, text: `${event.messageID} ${event.summary}` }
+    case "tool":
+      return { sessionID: event.sessionID, id: event.callID, text: `${event.callID} ${event.name} ${event.summary}` }
+    case "attachment":
+      return {
+        sessionID: event.sessionID,
+        id: event.attachmentID,
+        text: `${event.attachmentID} ${event.filename} ${event.mediaType} ${event.hash}`,
+      }
+    case "cortex":
+      return {
+        sessionID: event.sessionID,
+        id: event.taskID,
+        text: `${event.taskID} ${event.description} ${event.summary}`,
+      }
+    case "notification":
+      return {
+        sessionID: event.sessionID,
+        id: event.notificationID,
+        text: `${event.notificationID} ${event.taskID} ${event.summary}`,
+      }
+    case "blob":
+      return {
+        sessionID: event.sessionID,
+        id: event.blobID,
+        text: `${event.blobID} ${event.kind} ${event.mediaType} ${event.hash}`,
+      }
+  }
+}
+
+function searchSnippet(text: string, query: string) {
+  const lower = text.toLocaleLowerCase()
+  const index = lower.indexOf(query.toLocaleLowerCase())
+  if (index < 0) return text.slice(0, 512)
+  const start = Math.max(0, index - 128)
+  return text.slice(start, Math.min(text.length, start + 512))
+}
+
 const blobChunkBytes = 4 * 1024 * 1024
 type BlobUploadInput = {
   sessionID: string
@@ -570,6 +613,56 @@ export namespace OrganizationSharing {
         nextSeq: state.nextSeq,
         items,
         cursor: rows.length > page.limit ? items.at(-1)?.sequence : undefined,
+      })
+    })
+  }
+
+  export async function search(credentials: Credentials, sessionID: string, input: Sync.SearchQuery) {
+    const query = Sync.SearchQuery.parse(input)
+    return Storage.snapshot(async () => {
+      const { session } = await authorize(credentials, "session.read", { sessionID })
+      if (session.shareState !== "shared") fail("SHARE_REVOKED", "The Session is private")
+      const state = await currentState(session)
+      if (query.cursor !== undefined && query.cursor >= state.nextSeq)
+        fail("REVISION_CONFLICT", "Sync search cursor is ahead of the committed checkpoint", state.nextSeq)
+      const prefix = Keys.sharedEvents(session.sessionID, session.shareGeneration)
+      let after = query.cursor === undefined ? undefined : [...prefix, String(query.cursor).padStart(16, "0")]
+      const items: Sync.SearchHit[] = []
+      let cursor: number | undefined
+      for (;;) {
+        const rows = await Storage.query({ prefix, after, limit: 256 })
+        if (!rows.length) break
+        for (const row of rows) {
+          const sequence = Number(row.key.at(-1))
+          if (!Number.isSafeInteger(sequence)) fail("SERVICE_UNAVAILABLE", "Shared event index is inconsistent")
+          const stored = Record.parse(Record.SharedEvent, row.key, row.value)
+          if (stored.event.sequence !== sequence) fail("SERVICE_UNAVAILABLE", "Shared event index is inconsistent")
+          const fields = searchFields(stored.event)
+          if (!fields.text.toLocaleLowerCase().includes(query.q.toLocaleLowerCase())) continue
+          items.push(
+            Sync.SearchHit.parse({
+              sequence,
+              sessionID: fields.sessionID ?? session.sessionID,
+              kind: stored.event.type,
+              id: fields.id,
+              snippet: searchSnippet(fields.text, query.q),
+              integrity: digest(JSON.stringify(stored.event)),
+            }),
+          )
+          if (items.length === query.limit) {
+            cursor = sequence
+            break
+          }
+        }
+        if (cursor !== undefined || rows.length < 256) break
+        after = rows.at(-1)!.key
+      }
+      return Sync.SearchPage.parse({
+        sessionID: session.sessionID,
+        shareGeneration: session.shareGeneration,
+        nextSeq: state.nextSeq,
+        items,
+        cursor,
       })
     })
   }

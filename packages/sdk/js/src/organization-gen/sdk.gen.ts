@@ -158,6 +158,8 @@ import type {
   OrgSessionSyncDownloadBlobResponses,
   OrgSessionSyncEventsErrors,
   OrgSessionSyncEventsResponses,
+  OrgSessionSyncSearchErrors,
+  OrgSessionSyncSearchResponses,
   OrgSessionSyncUploadBlobResponses,
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
@@ -1207,6 +1209,42 @@ export class OrgSessionSync extends HeyApiClient {
       ThrowOnError
     >({
       url: "/org/v1/sessions/{sessionID}/sync/events",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Search safe summaries in the current shared Session generation
+   */
+  public search<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      q: string
+      limit?: number
+      cursor?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "q" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgSessionSyncSearchResponses,
+      OrgSessionSyncSearchErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/sync/search",
       ...options,
       ...params,
     })
