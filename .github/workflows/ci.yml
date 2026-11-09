@@ -762,6 +762,12 @@ jobs:
           desktop: ${{ matrix.desktop }}
           sandbox: ${{ matrix.sandbox }}
           policy: ${{ matrix.policy }}
+      - name: Build desktop workspace dependencies
+        if: matrix.id == 'windows-desktop'
+        shell: bash
+        run: |
+          bun run --cwd packages/util build
+          bun run --cwd packages/sdk/js build --compile-only
       - name: Execute planned tasks
         env:
           GH_TOKEN: ${{ github.token }}
