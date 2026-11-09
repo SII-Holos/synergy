@@ -142,6 +142,9 @@ test("the shared Web build is restored once and rejects changed source or output
     await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
     process.env.SYNERGY_CI_WEB_BUILD = "true"
     await publishBuild(root)
+    const beforeGeneratedLocale = await buildIdentity(root)
+    await Bun.write(path.join(root, "apps/web/src/locales/en/messages.mjs"), "generated locale")
+    expect(await buildIdentity(root)).toBe(beforeGeneratedLocale)
     await Bun.write(path.join(root, "apps/web/dist/index.html"), "damaged Web")
     await restoreBuild(root)
     expect(await Bun.file(path.join(root, "apps/web/dist/index.html")).text()).toBe("verified Web")
