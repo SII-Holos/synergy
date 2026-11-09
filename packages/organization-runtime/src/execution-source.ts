@@ -1,5 +1,6 @@
 import {
   OrganizationCommandProtocol as Command,
+  OrganizationExecutionProtocol as Execution,
   OrganizationGatewayProtocol as Gateway,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -35,10 +36,20 @@ interface ExecutionLineage {
   actor: { subjectID: string; requestID: string }
 }
 
+export interface MemberExecutionResolution {
+  source: Connection
+  session: Awaited<ReturnType<typeof Session.get>>
+  lineage?: ExecutionLineage
+  descriptionProof: Execution.DescriptionProof
+  proof: Execution.BindingProof
+  description: Execution.Description
+  accepted: ExecutionLineage
+}
+
 const state = RuntimeContext.state(() => ({ connection: undefined as Connection | undefined }))
 const models = ScopedState.create(() => new Map<string, Provider.Info>())
 
-function denied(message: string) {
+export function denied(message: string) {
   return new OrganizationRuntimeError({
     code: "PERMISSION_DENIED",
     message,
@@ -66,6 +77,42 @@ function current() {
   if (!value) throw denied("Organization command admission is unavailable")
   value.signal.throwIfAborted()
   return value
+}
+
+export async function withMemberExecution<T>(
+  identity: MemberIdentity,
+  input: {
+    sessionID: string
+    scopeID?: string
+    parentSessionID?: string
+    signal?: AbortSignal
+  },
+  fn: (resolution: MemberExecutionResolution, signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const source = current()
+  const signal = input.signal ? AbortSignal.any([source.signal, input.signal]) : source.signal
+  using held = await Lock.writeWithSignal(`organization-execution:${input.sessionID}`, signal)
+  signal.throwIfAborted()
+  const session = await sessionFor(input.sessionID, identity, source)
+  if (
+    (input.scopeID !== undefined && input.scopeID !== session.scope.id) ||
+    (input.parentSessionID !== undefined && input.parentSessionID !== session.parentID)
+  )
+    throw denied("Member execution target does not match its canonical Session")
+  const queued = await SessionInbox.peekTask(session.id)
+  const root = queued ? undefined : await SessionExecutionOwners.latestRoot(session.id)
+  const lineage = await executionLineage(session, identity, source)
+  const lookup = lineage?.actor ?? actor(queued?.message?.actor ?? root?.actor, identity)
+  const descriptionProof = await source.intake.descriptionProof(lookup)
+  const accepted = descriptionProof.receipt.accepted!
+  const acceptedSessionID = lineage?.sessionID ?? session.id
+  const acceptedRootID = lineage?.rootID ?? queued?.messageID ?? root?.id
+  if (accepted.permit.sessionID !== acceptedSessionID || accepted.effect.messageID !== acceptedRootID)
+    throw denied("Member execution requires the receipt for its selected native task")
+  const description = await source.resources.describe(descriptionProof, signal)
+  const proof = await source.intake.bindingProof(lookup, acceptedRootID)
+  const lineageAccepted = lineage ?? { sessionID: session.id, rootID: acceptedRootID, actor: lookup }
+  return fn({ source, session, lineage, descriptionProof, proof, description, accepted: lineageAccepted }, signal)
 }
 
 function assertBinding(session: Awaited<ReturnType<typeof Session.get>>, identity: MemberIdentity, source: Connection) {
@@ -162,8 +209,6 @@ export function registerMemberExecution(identity: MemberIdentity) {
       if (accepted.permit.sessionID !== acceptedSessionID || accepted.effect.messageID !== acceptedRootID)
         throw denied("Member execution requires the receipt for its selected native task")
       const description = await source.resources.describe(proof, signal)
-      if (description.grant.selection.connectionResourceIDs.length)
-        throw denied("Selected organization connections are not available in this Runtime")
       const resource = description.resources.find(
         (resource) => resource.resourceID === description.grant.selection.modelResourceID,
       )!

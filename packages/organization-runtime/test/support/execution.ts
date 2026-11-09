@@ -19,6 +19,8 @@ import { openMemberConnection, type MemberConnection } from "../../src/connectio
 import { createCommandIntake } from "../../src/command-intake"
 import { registerSessionSchema } from "../../src/session-schema"
 import { attachMemberExecution, registerMemberExecution } from "../../src/execution-source"
+import { createMemberConnectionTool } from "../../src/connection-tool"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { fixture } from "./organization"
 
 export async function executionFixture(
@@ -43,7 +45,10 @@ export async function executionFixture(
       home: path.join(f.root, "agent"),
       register() {
         registerSessionSchema({ orgID: f.identity.orgID })
-        if (input.execution) registerMemberExecution(member.identity)
+        if (input.execution) {
+          registerMemberExecution(member.identity)
+          ToolRegistry.registerToolProvider("organization-runtime", () => [createMemberConnectionTool(member.identity)])
+        }
       },
     })
     resources.defer("native Runtime", () => runtime.close())
