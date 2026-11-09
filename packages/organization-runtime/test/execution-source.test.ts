@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { OrganizationGatewayProtocol as Gateway } from "@ericsanchezok/synergy-organization-protocol"
+import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { ProviderRequestSource } from "@ericsanchezok/synergy-harness/provider/request-source"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -8,6 +9,8 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { executionFixture } from "./support/execution"
 
 const plan: Provider.WorkerPlan = {
@@ -99,6 +102,27 @@ test("member sources reject receipt substitution, foreign targets, detached mode
     await expect(
       SessionExecutionSource.authorize({ sessionID: child.id, scopeID: child.scope.id, parentSessionID: f.sessionID }),
     ).rejects.toBeInstanceOf(SessionExecutionSource.DeniedError)
+    const task = await ScopeContext.provide({
+      scope: input.session.scope,
+      workspace: null,
+      fn: () =>
+        Cortex.prepare({
+          description: "Admitted child",
+          prompt: "Use the accepted organization task",
+          agent: input.user.agent,
+          parentSessionID: f.sessionID,
+          parentMessageID: input.user.id,
+        }),
+    })
+    const admitted = await Session.get(task.sessionID)
+    await expect(
+      SessionExecutionSource.authorize({
+        sessionID: admitted.id,
+        scopeID: admitted.scope.id,
+        parentSessionID: admitted.parentID,
+      }),
+    ).resolves.toBeUndefined()
+    await ScopeContext.provide({ scope: input.session.scope, workspace: null, fn: () => Cortex.cancel(task.id) })
     await SessionInbox.deliver({
       sessionID: f.sessionID,
       mode: "task",
@@ -114,6 +138,64 @@ test("member sources reject receipt substitution, foreign targets, detached mode
     ).rejects.toBeInstanceOf(SessionExecutionSource.DeniedError)
     expect(reservations).toBe(0)
   })
+})
+
+test("Cortex child model calls retain the accepted ancestor root capability", async () => {
+  await using f = await executionFixture({ execution: true })
+  const input = await materialize(f)
+  const task = await f.runtime.run(() =>
+    ScopeContext.provide({
+      scope: input.session.scope,
+      workspace: null,
+      fn: () =>
+        Cortex.prepare({
+          description: "Child model call",
+          prompt: "Use the accepted organization task",
+          agent: input.user.agent,
+          parentSessionID: f.sessionID,
+          parentMessageID: input.user.id,
+        }),
+    }),
+  )
+  const prepared = await f.runtime.run(async () => {
+    const child = await Session.get(task.sessionID)
+    await SessionExecutionSource.authorize({
+      sessionID: child.id,
+      scopeID: child.scope.id,
+      parentSessionID: child.parentID,
+    })
+    return ScopeContext.provide({
+      scope: child.scope,
+      workspace: null,
+      fn: async () => {
+        await SessionInbox.deliver({
+          sessionID: child.id,
+          mode: "task",
+          message: {
+            role: "user",
+            agent: input.user.agent,
+            model: { providerID: input.model.providerID, modelID: input.model.id },
+            origin: { type: "system" },
+            parts: [{ type: "text", text: "Child call" }],
+          },
+        })
+        const item = (await SessionInbox.list(child.id))[0]!
+        expect((await SessionInbox.materializeNextTask(child.id)).status).toBe("materialized")
+        await RolloutLedger.beginRun(RolloutLifecycle.owner(child), item.messageID)
+        const user = MessageV2.User.parse(
+          await MessageV2.readInfo({ scopeID: child.scope.id, sessionID: child.id, messageID: item.messageID }),
+        )
+        const model = await Provider.getModel(input.model.providerID, input.model.id)
+        return ProviderRequestSource.prepare({ ...input, sessionID: child.id, user, model }, plan)
+      },
+    })
+  })
+  const capability = Gateway.decode(prepared.key!)
+  expect(capability.permit.sessionID).toBe(f.sessionID)
+  expect(capability.permit.rootID).toBe(input.user.id)
+  await f.runtime.run(() =>
+    ScopeContext.provide({ scope: input.session.scope, workspace: null, fn: () => Cortex.cancel(task.id) }),
+  )
 })
 
 test("accepted roots retain selection grants while resource disablement and disconnect deny fresh preparation", async () => {

@@ -29,6 +29,12 @@ interface Connection {
   signal: AbortSignal
 }
 
+interface ExecutionLineage {
+  sessionID: string
+  rootID: string
+  actor: { subjectID: string; requestID: string }
+}
+
 const state = RuntimeContext.state(() => ({ connection: undefined as Connection | undefined }))
 const models = ScopedState.create(() => new Map<string, Provider.Info>())
 
@@ -62,11 +68,9 @@ function current() {
   return value
 }
 
-async function sessionFor(sessionID: string, identity: MemberIdentity, source: Connection) {
-  const session = await Session.get(sessionID)
+function assertBinding(session: Awaited<ReturnType<typeof Session.get>>, identity: MemberIdentity, source: Connection) {
   if (
     !session.organization ||
-    session.parentID ||
     session.time.archived ||
     session.organization.orgID !== identity.orgID ||
     session.organization.orgID !== source.connection.orgID ||
@@ -74,7 +78,59 @@ async function sessionFor(sessionID: string, identity: MemberIdentity, source: C
     session.organization.driverRuntimeID !== source.connection.runtimeID
   )
     throw denied("Member execution requires its current organization Session binding")
+}
+
+async function sessionFor(sessionID: string, identity: MemberIdentity, source: Connection) {
+  const session = await Session.get(sessionID)
+  assertBinding(session, identity, source)
   return session
+}
+
+async function executionLineage(
+  session: Awaited<ReturnType<typeof Session.get>>,
+  identity: MemberIdentity,
+  source: Connection,
+): Promise<ExecutionLineage | undefined> {
+  const visited = new Set<string>()
+  let current = session
+  while (current.parentID) {
+    if (!visited.add(current.id)) throw denied("Member execution requires an acyclic Cortex lineage")
+    const cortex = current.cortex
+    if (
+      !cortex ||
+      cortex.parentSessionID !== current.parentID ||
+      !cortex.taskID ||
+      !cortex.parentMessageID ||
+      !["queued", "running", "interrupted"].includes(cortex.status)
+    )
+      throw denied("Member execution requires an admitted Cortex child Session")
+    const parent = await Session.get(current.parentID).catch(() => undefined)
+    if (!parent) throw denied("Member execution requires its Cortex parent Session")
+    assertBinding(parent, identity, source)
+    const parentMessage = await MessageV2.readInfo({
+      scopeID: parent.scope.id,
+      sessionID: parent.id,
+      messageID: cortex.parentMessageID,
+    }).catch(() => undefined)
+    if (!parentMessage || parentMessage.sessionID !== parent.id)
+      throw denied("Member execution requires the recorded Cortex parent message")
+    const rootID = parentMessage.rootID ?? parentMessage.id
+    const root = await MessageV2.readInfo({ scopeID: parent.scope.id, sessionID: parent.id, messageID: rootID }).catch(
+      () => undefined,
+    )
+    if (!root || root.role !== "user" || !root.isRoot || root.rootID !== root.id)
+      throw denied("Member execution requires the Cortex parent root")
+    const rootActor = Command.Actor.safeParse(root.actor)
+    if (rootActor.success && rootActor.data.orgID === identity.orgID)
+      return {
+        sessionID: parent.id,
+        rootID: root.id,
+        actor: { subjectID: rootActor.data.subjectID, requestID: rootActor.data.requestID },
+      }
+    if (rootActor.success) throw denied("Member execution requires an organization Cortex root actor")
+    current = parent
+  }
+  return undefined
 }
 
 function actor(value: unknown, identity: MemberIdentity) {
@@ -97,10 +153,13 @@ export function registerMemberExecution(identity: MemberIdentity) {
         throw denied("Member execution target does not match its canonical Session")
       const queued = await SessionInbox.peekTask(session.id)
       const root = queued ? undefined : await SessionExecutionOwners.latestRoot(session.id)
-      const lookup = actor(queued?.message?.actor ?? root?.actor, identity)
+      const lineage = await executionLineage(session, identity, source)
+      const lookup = lineage?.actor ?? actor(queued?.message?.actor ?? root?.actor, identity)
       const proof = await source.intake.descriptionProof(lookup)
       const accepted = proof.receipt.accepted!
-      if (accepted.permit.sessionID !== session.id || accepted.effect.messageID !== (queued?.messageID ?? root?.id))
+      const acceptedSessionID = lineage?.sessionID ?? session.id
+      const acceptedRootID = lineage?.rootID ?? queued?.messageID ?? root?.id
+      if (accepted.permit.sessionID !== acceptedSessionID || accepted.effect.messageID !== acceptedRootID)
         throw denied("Member execution requires the receipt for its selected native task")
       const description = await source.resources.describe(proof, signal)
       if (description.grant.selection.connectionResourceIDs.length)
@@ -138,6 +197,7 @@ export function registerMemberExecution(identity: MemberIdentity) {
       using held = await Lock.writeWithSignal(`organization-execution:${input.sessionID}`, signal)
       signal.throwIfAborted()
       const session = await sessionFor(input.sessionID, identity, source)
+      const lineage = await executionLineage(session, identity, source)
       const rootID = input.user.rootID ?? (input.user.isRoot ? input.user.id : undefined)
       if (!rootID || input.user.sessionID !== session.id)
         throw denied("Organization model call requires its native root")
@@ -146,7 +206,8 @@ export function registerMemberExecution(identity: MemberIdentity) {
         throw denied("Organization model call requires its canonical native root")
       if (input.model.providerID !== root.model.providerID || input.model.id !== root.model.modelID)
         throw denied("Organization model call differs from its canonical native root")
-      const proof = await source.intake.bindingProof(actor(root.actor, identity), root.id)
+      const accepted = lineage ?? { sessionID: session.id, rootID: root.id, actor: actor(root.actor, identity) }
+      const proof = await source.intake.bindingProof(accepted.actor, accepted.rootID)
       const grant = await source.resources.bind(proof, signal)
       if (input.model.providerID !== `organization-${grant.selection.modelResourceID}`)
         throw denied("Organization model call differs from its accepted resource selection")
@@ -160,8 +221,8 @@ export function registerMemberExecution(identity: MemberIdentity) {
           runtimeID: grant.runtimeID,
           connectionEpoch: source.connection.connectionEpoch,
           grantID: grant.grantID,
-          sessionID: session.id,
-          rootID: root.id,
+          sessionID: grant.sessionID,
+          rootID: grant.rootID,
           bindingEpoch: grant.bindingEpoch,
           resourceID: grant.selection.modelResourceID,
           callID: crypto.randomUUID(),
