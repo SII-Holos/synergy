@@ -20,11 +20,18 @@ import { createCommandIntake } from "../../src/command-intake"
 import { registerSessionSchema } from "../../src/session-schema"
 import { attachMemberExecution, registerMemberExecution } from "../../src/execution-source"
 import { createMemberConnectionTool } from "../../src/connection-tool"
+import { createMemberMcpTool } from "../../src/mcp-tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { fixture } from "./organization"
 
 export async function executionFixture(
-  input: { protocol?: Gateway.ModelProtocol; endpoint?: string; connectionEndpoint?: string; execution?: boolean } = {},
+  input: {
+    protocol?: Gateway.ModelProtocol
+    endpoint?: string
+    connectionEndpoint?: string
+    connectionProtocol?: "fixed-http" | "mcp-http" | "mcp-sse"
+    execution?: boolean
+  } = {},
 ) {
   const resources = testResources()
   try {
@@ -47,7 +54,10 @@ export async function executionFixture(
         registerSessionSchema({ orgID: f.identity.orgID })
         if (input.execution) {
           registerMemberExecution(member.identity)
-          ToolRegistry.registerToolProvider("organization-runtime", () => [createMemberConnectionTool(member.identity)])
+          ToolRegistry.registerToolProvider("organization-runtime", () => [
+            createMemberConnectionTool(member.identity),
+            createMemberMcpTool(member.identity),
+          ])
         }
       },
     })
@@ -139,7 +149,10 @@ export async function executionFixture(
               orgResourceCreate: {
                 name: "Selected business connection",
                 scope: { kind: "organization" },
-                configuration: { protocol: "fixed-http", method: "POST", endpoint: input.connectionEndpoint },
+                configuration:
+                  input.connectionProtocol === "mcp-http" || input.connectionProtocol === "mcp-sse"
+                    ? { protocol: input.connectionProtocol, endpoint: input.connectionEndpoint }
+                    : { protocol: "fixed-http", method: "POST", endpoint: input.connectionEndpoint },
                 credential: { kind: "bearer", value: "private-connection-key" },
               },
             },

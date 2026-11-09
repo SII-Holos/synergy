@@ -62,6 +62,43 @@ export function gatewayRoutes(
     }),
     async (c) => gateway().connections.invoke(c.req.raw, c.req.param("resourceID")),
   )
+  app.post(
+    "/gateway/connections/:resourceID/mcp",
+    describeRoute({
+      operationId: "orgGateway.mcp",
+      summary: "Invoke one admitted remote MCP operation using server-owned credentials",
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+      },
+      responses: {
+        200: {
+          description: "Validated MCP list or tool result",
+          content: { "application/json": { schema: resolver(Gateway.McpResult) } },
+        },
+        ...Object.fromEntries(
+          [400, 401, 403, 409, 503].map((status) => [
+            status,
+            {
+              description: "Organization error before or during MCP forwarding",
+              content: { "application/json": { schema: resolver(OrganizationProtocol.Error) } },
+            },
+          ]),
+        ),
+      },
+    }),
+    validator("json", Gateway.McpRequest, validation),
+    async (c) =>
+      gateway().connections.invokeMcp(
+        new Request(c.req.raw.url, {
+          method: c.req.raw.method,
+          headers: c.req.raw.headers,
+          body: JSON.stringify(c.req.valid("json")),
+          signal: c.req.raw.signal,
+        }),
+        c.req.param("resourceID"),
+      ),
+  )
   for (const [path, protocol, id] of [
     ["chat/completions", "openai-compatible", "orgGateway.chatCompletions"],
     ["messages", "anthropic-compatible", "orgGateway.messages"],

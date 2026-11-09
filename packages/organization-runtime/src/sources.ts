@@ -7,6 +7,7 @@ import { registerSessionSchema } from "./session-schema"
 import { registerMemberProviderSdks } from "./model-provider"
 import { registerMemberExecution } from "./execution-source"
 import { createMemberConnectionTool } from "./connection-tool"
+import { createMemberMcpTool } from "./mcp-tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 
 export function registerMemberSources(identity: MemberIdentity) {
@@ -21,7 +22,10 @@ export function registerMemberSources(identity: MemberIdentity) {
   })
   registerMemberExecution(identity)
   registerMemberProviderSdks(identity)
-  ToolRegistry.registerToolProvider("organization-runtime", () => [createMemberConnectionTool(identity)])
+  ToolRegistry.registerToolProvider("organization-runtime", () => [
+    createMemberConnectionTool(identity),
+    createMemberMcpTool(identity),
+  ])
   InstructionSource.register({
     load: async () =>
       (await import("@ericsanchezok/synergy-harness/session/instruction-files")).InstructionFiles.project(),

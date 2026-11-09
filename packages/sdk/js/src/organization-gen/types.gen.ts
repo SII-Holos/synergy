@@ -939,6 +939,22 @@ export type OrgGatewayReceipt = {
   httpStatus?: number
 }
 
+export type OrgGatewayMcpResult = {
+  [key: string]: unknown
+}
+
+export type OrgGatewayMcpRequest =
+  | {
+      operation: "list-tools"
+    }
+  | {
+      operation: "call-tool"
+      name: string
+      arguments?: {
+        [key: string]: unknown
+      }
+    }
+
 export type OrgBoundExecutionGrant = {
   schemaVersion: 3
   grantID: string
@@ -3564,6 +3580,49 @@ export type OrgGatewayConnectionResponses = {
 }
 
 export type OrgGatewayConnectionResponse = OrgGatewayConnectionResponses[keyof OrgGatewayConnectionResponses]
+
+export type OrgGatewayMcpData = {
+  body: OrgGatewayMcpRequest
+  path: {
+    resourceID: string
+  }
+  query?: never
+  url: "/runtime/v1/gateway/connections/{resourceID}/mcp"
+}
+
+export type OrgGatewayMcpErrors = {
+  /**
+   * Organization error before or during MCP forwarding
+   */
+  400: OrgError
+  /**
+   * Organization error before or during MCP forwarding
+   */
+  401: OrgError
+  /**
+   * Organization error before or during MCP forwarding
+   */
+  403: OrgError
+  /**
+   * Organization error before or during MCP forwarding
+   */
+  409: OrgError
+  /**
+   * Organization error before or during MCP forwarding
+   */
+  503: OrgError
+}
+
+export type OrgGatewayMcpError = OrgGatewayMcpErrors[keyof OrgGatewayMcpErrors]
+
+export type OrgGatewayMcpResponses = {
+  /**
+   * Validated MCP list or tool result
+   */
+  200: OrgGatewayMcpResult
+}
+
+export type OrgGatewayMcpResponse = OrgGatewayMcpResponses[keyof OrgGatewayMcpResponses]
 
 export type OrgGatewayChatCompletionsData = {
   body: {

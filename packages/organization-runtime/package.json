@@ -38,6 +38,7 @@
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-organization": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",

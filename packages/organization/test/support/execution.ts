@@ -12,6 +12,7 @@ export async function executionFixture(input: {
   endpoint: string
   protocol?: "openai-compatible" | "anthropic-compatible"
   connectionEndpoint?: string
+  connectionProtocol?: "fixed-http" | "mcp-http" | "mcp-sse"
 }) {
   const f = await commandFixture()
   try {
@@ -45,7 +46,10 @@ export async function executionFixture(input: {
             Resource.Create.parse({
               name: "Business connection",
               scope: { kind: "organization" },
-              configuration: { protocol: "fixed-http", method: "POST", endpoint: input.connectionEndpoint },
+              configuration:
+                input.connectionProtocol === "mcp-http" || input.connectionProtocol === "mcp-sse"
+                  ? { protocol: input.connectionProtocol, endpoint: input.connectionEndpoint }
+                  : { protocol: "fixed-http", method: "POST", endpoint: input.connectionEndpoint },
               credential: { kind: "bearer", value: "private-connection-key" },
             }),
           )

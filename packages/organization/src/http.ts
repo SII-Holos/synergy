@@ -76,10 +76,10 @@ export function organizationApp(
         )
       )
         return next()
-      return bodyLimit({ maxSize: 64 * 1024, onError: () => fail("INVALID_REQUEST", "Request body is too large") })(
-        c,
-        next,
-      )
+      const maxSize = /^\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(c.req.path)
+        ? 16 * 1024 * 1024
+        : 64 * 1024
+      return bodyLimit({ maxSize, onError: () => fail("INVALID_REQUEST", "Request body is too large") })(c, next)
     })
     .onError((error, c) => {
       if (error instanceof OrganizationError)

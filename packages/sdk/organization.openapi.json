@@ -2161,6 +2161,43 @@
         "parameters": [{ "schema": { "type": "string" }, "in": "path", "name": "resourceID", "required": true }]
       }
     },
+    "/runtime/v1/gateway/connections/{resourceID}/mcp": {
+      "post": {
+        "operationId": "orgGateway.mcp",
+        "summary": "Invoke one admitted remote MCP operation using server-owned credentials",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgGatewayMcpRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated MCP list or tool result",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgGatewayMcpResult" } } }
+          },
+          "400": {
+            "description": "Organization error before or during MCP forwarding",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error before or during MCP forwarding",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error before or during MCP forwarding",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error before or during MCP forwarding",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error before or during MCP forwarding",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [{ "schema": { "type": "string" }, "in": "path", "name": "resourceID", "required": true }]
+      }
+    },
     "/runtime/v1/gateway/models/{resourceID}/chat/completions": {
       "post": {
         "operationId": "orgGateway.chatCompletions",
@@ -4439,6 +4476,32 @@
           "createdAt"
         ],
         "additionalProperties": false
+      },
+      "OrgGatewayMcpResult": { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": {} },
+      "OrgGatewayMcpRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": { "operation": { "type": "string", "const": "list-tools" } },
+            "required": ["operation"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": { "type": "string", "const": "call-tool" },
+              "name": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
+              "arguments": {
+                "default": {},
+                "type": "object",
+                "propertyNames": { "type": "string" },
+                "additionalProperties": {}
+              }
+            },
+            "required": ["operation", "name"],
+            "additionalProperties": false
+          }
+        ]
       },
       "OrgBoundExecutionGrant": {
         "type": "object",

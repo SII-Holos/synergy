@@ -1,5 +1,10 @@
 import { z } from "zod"
 import { OrganizationGatewayProtocol as Gateway } from "@ericsanchezok/synergy-organization-protocol"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
+import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { fail, OrganizationError } from "./error"
 import type { GatewayCalls } from "./gateway-calls"
 
@@ -443,6 +448,162 @@ export function createConnectionGateway(options: {
         throw new OrganizationError({
           code: "SERVICE_UNAVAILABLE",
           message: "The organization business request could not complete",
+          outcome: started ? "unknown" : "not_dispatched",
+          retryable: false,
+        })
+      }
+    },
+    async invokeMcp(request: Request, resourceID: string): Promise<Response> {
+      if (closed) fail("SERVICE_UNAVAILABLE", "Business gateway is closed")
+      if (request.headers.has("origin") || request.headers.has("cookie"))
+        fail("PERMISSION_DENIED", "Gateway capabilities cannot be used by browser sessions")
+      if (new URL(request.url).search || request.headers.has("content-encoding"))
+        fail("INVALID_REQUEST", "Business requests cannot change transport routing")
+      if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") ?? ""))
+        fail("INVALID_REQUEST", "Business requests require JSON")
+      const bearer = request.headers.get("authorization")
+      const key = request.headers.get("x-api-key")
+      if (bearer && key) fail("PERMISSION_DENIED", "Use one gateway capability")
+      const token = bearer?.match(/^Bearer ([A-Za-z0-9_-]+)$/)?.[1] ?? key
+      let parsed: Gateway.SignedPermit
+      try {
+        parsed = Gateway.decode(token ?? "")
+      } catch {
+        fail("PERMISSION_DENIED", "Invalid gateway capability")
+      }
+      if (
+        parsed.permit.resourceID !== resourceID ||
+        (parsed.permit.protocol !== "mcp-http" && parsed.permit.protocol !== "mcp-sse")
+      )
+        fail("PERMISSION_DENIED", "Gateway capability does not match this route")
+      const authorization = await options.calls.authorize(parsed)
+      const { permit } = authorization
+      if (permit.protocol !== "mcp-http" && permit.protocol !== "mcp-sse")
+        fail("PERMISSION_DENIED", "Gateway capability is not an MCP connection")
+      if (closed) fail("SERVICE_UNAVAILABLE", "Business gateway is closed")
+      if (active.size >= 32 || reservedBytes + permit.requestBytes > 64 * 1024 * 1024)
+        fail("RESOURCE_UNAVAILABLE", "Business gateway capacity is occupied")
+      const controller = new AbortController()
+      const completion = Promise.withResolvers<void>()
+      const entry = { grantID: permit.grantID, controller, done: completion.promise }
+      active.add(entry)
+      reservedBytes += permit.requestBytes
+      const signal = AbortSignal.any([request.signal, controller.signal])
+      let timer = setTimeout(() => controller.abort(), Math.min(30_000, Math.max(1, permit.expiresAt - Date.now())))
+      let started = false
+      let responseBytes = 0
+      let httpStatus: number | undefined
+      let finishing: Promise<void> | undefined
+      function finish(state: "response_complete" | "unknown") {
+        if (finishing) return finishing
+        finishing = (async () => {
+          clearTimeout(timer)
+          try {
+            if (state === "unknown") controller.abort()
+            if (started)
+              await options.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus }))
+          } finally {
+            active.delete(entry)
+            reservedBytes -= permit.requestBytes
+            completion.resolve()
+          }
+        })()
+        return finishing
+      }
+      try {
+        const body = await readBody(request, permit.requestBytes, signal)
+        let operation: Gateway.McpRequest
+        try {
+          operation = Gateway.McpRequest.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body)))
+        } catch {
+          fail("INVALID_REQUEST", "Invalid MCP business request")
+        }
+        const digest = Buffer.from(await crypto.subtle.digest("SHA-256", body)).toString("hex")
+        const admitted = await options.calls.start(authorization, { hash: digest, bytes: body.byteLength, signal })
+        started = true
+        clearTimeout(timer)
+        timer = setTimeout(() => controller.abort(), permit.timeoutMs)
+        signal.throwIfAborted()
+        if (admitted.configuration.protocol !== permit.protocol)
+          fail("REVISION_CONFLICT", "Business resource configuration changed")
+        if (admitted.configuration.protocol !== "mcp-http" && admitted.configuration.protocol !== "mcp-sse")
+          fail("PROTOCOL_MISMATCH", "This business adapter does not support the configured protocol")
+        const endpoint = new URL(admitted.configuration.endpoint)
+        const fetcher = async (input: string | URL, init: RequestInit = {}) => {
+          const target = new URL(input.toString(), endpoint)
+          if (target.origin !== endpoint.origin)
+            throw new OrganizationError({
+              code: "PROTOCOL_MISMATCH",
+              message: "The MCP endpoint changed transport origin",
+              outcome: "unknown",
+              retryable: false,
+            })
+          const headers = new Headers(init.headers)
+          for (const name of [
+            "authorization",
+            "x-api-key",
+            "cookie",
+            "origin",
+            "proxy-authorization",
+            "host",
+            "content-length",
+            "transfer-encoding",
+          ])
+            headers.delete(name)
+          if (admitted.credential.kind === "bearer") headers.set("authorization", `Bearer ${admitted.credential.value}`)
+          if (admitted.credential.kind === "header") headers.set(admitted.credential.name, admitted.credential.value)
+          return transport.fetch(target, {
+            ...init,
+            headers,
+            signal: AbortSignal.any([signal, ...(init.signal ? [init.signal] : [])]),
+            credentials: "omit",
+            redirect: "manual",
+          })
+        }
+        const client = new Client({ name: "synergy-organization", version: Installation.VERSION })
+        const mcpTransport =
+          permit.protocol === "mcp-http"
+            ? new StreamableHTTPClientTransport(endpoint, { fetch: fetcher, redirectPolicy: "same-origin" })
+            : new SSEClientTransport(endpoint, {
+                eventSourceInit: { fetch: fetcher },
+                fetch: fetcher,
+                redirectPolicy: "same-origin",
+              })
+        let result: Gateway.McpResult
+        try {
+          await client.connect(mcpTransport, { signal, timeout: permit.timeoutMs })
+          result = Gateway.McpResult.parse(
+            operation.operation === "list-tools"
+              ? await client.listTools(undefined, { signal, timeout: permit.timeoutMs })
+              : await client.callTool({ name: operation.name, arguments: operation.arguments }, CallToolResultSchema, {
+                  signal,
+                  timeout: permit.timeoutMs,
+                  resetTimeoutOnProgress: true,
+                }),
+          )
+        } finally {
+          await client.close().catch(() => {})
+        }
+        const output = new TextEncoder().encode(JSON.stringify(result))
+        if (output.byteLength > permit.responseBytes)
+          fail("RESOURCE_UNAVAILABLE", "MCP response exceeds its byte allowance")
+        responseBytes = output.byteLength
+        httpStatus = 200
+        await finish("response_complete")
+        return new Response(output, {
+          status: 200,
+          headers: {
+            "cache-control": "no-store",
+            "content-type": "application/json",
+            "x-content-type-options": "nosniff",
+          },
+        })
+      } catch (error) {
+        await finish("unknown")
+        if (error instanceof OrganizationError) throw error
+        throw new OrganizationError({
+          code: "SERVICE_UNAVAILABLE",
+          message: "The organization MCP request could not complete",
           outcome: started ? "unknown" : "not_dispatched",
           retryable: false,
         })

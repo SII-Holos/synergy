@@ -19,6 +19,7 @@ export interface MemberResourceClient {
     permit: Gateway.SignedPermit,
     input?: { body?: string | Uint8Array | ArrayBuffer; signal?: AbortSignal },
   ): Promise<Response>
+  invokeMcp(permit: Gateway.SignedPermit, input: Gateway.McpRequest, signal?: AbortSignal): Promise<Gateway.McpResult>
 }
 
 type Proof = Execution.DescriptionProof | Execution.BindingProof | Execution.ReleaseProof | Gateway.Proof
@@ -71,11 +72,15 @@ export function createMemberResourceClient(options: {
         const chunks: Uint8Array[] = []
         let bytes = 0
         try {
+          const pathname = new URL(input instanceof Request ? input.url : String(input), options.origin).pathname
+          const maximum = /\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(pathname)
+            ? 16 * 1024 * 1024
+            : 256 * 1024
           while (true) {
             const next = await reader.read()
             if (next.done) break
             bytes += next.value.byteLength
-            if (bytes > 256 * 1024)
+            if (bytes > maximum)
               throw failure("PROTOCOL_MISMATCH", "Organization resource control response exceeded its format limit")
             chunks.push(next.value)
           }
@@ -207,6 +212,34 @@ export function createMemberResourceClient(options: {
     )
       throw failure("PROTOCOL_MISMATCH", "Organization resource call does not match its requested target")
   }
+  async function connectionPermit(value: Gateway.SignedPermit) {
+    const signed = Gateway.SignedPermit.parse(value)
+    const parsed = Gateway.ConnectionPermit.safeParse(signed.permit)
+    if (!parsed.success)
+      throw failure(
+        "PROTOCOL_MISMATCH",
+        "Organization connection capability is not a business resource",
+        "not_dispatched",
+      )
+    const permit = { permit: parsed.data, signature: signed.signature }
+    lifetime.throwIfAborted()
+    if (
+      permit.permit.orgID !== connection.orgID ||
+      permit.permit.deploymentIncarnation !== connection.deploymentIncarnation ||
+      permit.permit.runtimeID !== connection.runtimeID ||
+      permit.permit.connectionEpoch !== connection.connectionEpoch ||
+      permit.permit.keyID !== connection.signingIdentity.keyID ||
+      !(await Gateway.verifyPermit(permit.permit, permit.signature, connection.signingIdentity.publicKey))
+    )
+      throw failure(
+        "STALE_CONNECTION",
+        "Organization connection capability does not match this member connection",
+        "not_dispatched",
+      )
+    if (permit.permit.issuedAt > Date.now() || permit.permit.expiresAt <= Date.now())
+      throw failure("PERMISSION_DENIED", "Organization connection capability has expired", "not_dispatched")
+    return permit
+  }
   const resources: MemberResourceClient = {
     async retention(value, signal) {
       const proof = Execution.DescriptionProof.parse(value)
@@ -326,30 +359,7 @@ export function createMemberResourceClient(options: {
       )
     },
     async invoke(value, input = {}) {
-      const signed = Gateway.SignedPermit.parse(value)
-      const parsed = Gateway.ConnectionPermit.safeParse(signed.permit)
-      if (!parsed.success)
-        throw failure(
-          "PROTOCOL_MISMATCH",
-          "Organization connection capability is not a business resource",
-          "not_dispatched",
-        )
-      const permit = { permit: parsed.data, signature: signed.signature }
-      if (
-        permit.permit.orgID !== connection.orgID ||
-        permit.permit.deploymentIncarnation !== connection.deploymentIncarnation ||
-        permit.permit.runtimeID !== connection.runtimeID ||
-        permit.permit.connectionEpoch !== connection.connectionEpoch ||
-        permit.permit.keyID !== connection.signingIdentity.keyID ||
-        !(await Gateway.verifyPermit(permit.permit, permit.signature, connection.signingIdentity.publicKey))
-      )
-        throw failure(
-          "STALE_CONNECTION",
-          "Organization connection capability does not match this member connection",
-          "not_dispatched",
-        )
-      if (permit.permit.issuedAt > Date.now() || permit.permit.expiresAt <= Date.now())
-        throw failure("PERMISSION_DENIED", "Organization connection capability has expired", "not_dispatched")
+      const permit = await connectionPermit(value)
       const cancellation = AbortSignal.any([
         lifetime,
         ...(input.signal ? [input.signal] : []),
@@ -452,6 +462,64 @@ export function createMemberResourceClient(options: {
           cancellation.throwIfAborted()
           if (error instanceof OrganizationRuntimeError) throw error
           throw failure("SERVICE_UNAVAILABLE", "Organization business connection is unavailable")
+        }
+      })()
+      active.add(pending)
+      void pending.then(
+        () => active.delete(pending),
+        () => active.delete(pending),
+      )
+      return pending
+    },
+    async invokeMcp(value, input, signal) {
+      const permit = await connectionPermit(value)
+      if (permit.permit.protocol !== "mcp-http" && permit.permit.protocol !== "mcp-sse")
+        throw failure(
+          "PROTOCOL_MISMATCH",
+          "Organization connection capability is not an MCP resource",
+          "not_dispatched",
+        )
+      const cancellation = AbortSignal.any([
+        lifetime,
+        ...(signal ? [signal] : []),
+        AbortSignal.timeout(Math.max(0, Math.min(15_000, permit.permit.expiresAt - Date.now()))),
+      ])
+      const pending = (async () => {
+        await acquire(cancellation)
+        try {
+          cancellation.throwIfAborted()
+          const operation = Gateway.McpRequest.parse(input)
+          const requestBytes = new TextEncoder().encode(JSON.stringify(operation)).byteLength
+          if (requestBytes > permit.permit.requestBytes)
+            throw failure(
+              "RESOURCE_UNAVAILABLE",
+              "Organization MCP request exceeds its byte allowance",
+              "not_dispatched",
+            )
+          const response = await client.orgGateway.mcp(
+            {
+              resourceID: permit.permit.resourceID,
+              orgGatewayMcpRequest: operation,
+            },
+            {
+              signal: cancellation,
+              headers: { authorization: `Bearer ${Gateway.encode(permit)}` },
+            },
+          )
+          if (!response.data) {
+            const error = OrganizationProtocol.Error.safeParse(response.error)
+            if (error.success) throw new OrganizationRuntimeError(error.data)
+            throw failure("SERVICE_UNAVAILABLE", "Organization MCP response is unavailable")
+          }
+          return Gateway.McpResult.parse(response.data)
+        } catch (error) {
+          cancellation.throwIfAborted()
+          if (error instanceof OrganizationRuntimeError) throw error
+          if (error instanceof SyntaxError || error instanceof z.ZodError)
+            throw failure("PROTOCOL_MISMATCH", "Organization MCP response has an invalid format")
+          throw error
+        } finally {
+          release()
         }
       })()
       active.add(pending)

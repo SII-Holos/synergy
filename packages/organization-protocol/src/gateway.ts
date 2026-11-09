@@ -34,6 +34,23 @@ export namespace OrganizationGatewayProtocol {
   export type ModelProtocol = z.infer<typeof ModelProtocol>
   export const ConnectionProtocol = z.enum(["fixed-http", "mcp-http", "mcp-sse"])
   export type ConnectionProtocol = z.infer<typeof ConnectionProtocol>
+  export const McpRequest = z
+    .discriminatedUnion("operation", [
+      z.strictObject({ operation: z.literal("list-tools") }),
+      z.strictObject({
+        operation: z.literal("call-tool"),
+        name: z
+          .string()
+          .min(1)
+          .max(256)
+          .regex(/^[^\u0000-\u001f\u007f]+$/),
+        arguments: z.record(z.string(), z.unknown()).default({}),
+      }),
+    ])
+    .meta({ ref: "OrgGatewayMcpRequest" })
+  export type McpRequest = z.infer<typeof McpRequest>
+  export const McpResult = z.record(z.string(), z.unknown()).meta({ ref: "OrgGatewayMcpResult" })
+  export type McpResult = z.infer<typeof McpResult>
   const PermitFields = {
     schemaVersion: z.literal(1),
     purpose: z.literal("gateway-invocation"),

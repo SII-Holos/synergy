@@ -63,6 +63,9 @@ import type {
   OrgGatewayConnectionResponses,
   OrgGatewayInspectErrors,
   OrgGatewayInspectResponses,
+  OrgGatewayMcpErrors,
+  OrgGatewayMcpRequest,
+  OrgGatewayMcpResponses,
   OrgGatewayMessagesErrors,
   OrgGatewayMessagesResponses,
   OrgGatewayRequest,
@@ -1426,6 +1429,39 @@ export class OrgGateway extends HeyApiClient {
       ThrowOnError
     >({
       url: "/runtime/v1/gateway/connections/{resourceID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Invoke one admitted remote MCP operation using server-owned credentials
+   */
+  public mcp<ThrowOnError extends boolean = false>(
+    parameters: {
+      resourceID: string
+      orgGatewayMcpRequest: OrgGatewayMcpRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "resourceID" },
+            { key: "orgGatewayMcpRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgGatewayMcpResponses, OrgGatewayMcpErrors, ThrowOnError>({
+      url: "/runtime/v1/gateway/connections/{resourceID}/mcp",
       ...options,
       ...params,
       headers: {

@@ -22,6 +22,7 @@
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-organization-protocol": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "jsonc-parser": "3.3.1",

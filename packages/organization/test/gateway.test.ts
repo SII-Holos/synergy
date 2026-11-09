@@ -6,6 +6,11 @@ import { OrganizationRecord as Record } from "../src/storage/records"
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
 import { OrganizationResources as Resources } from "../src/resources"
 import { executionFixture } from "./support/execution"
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js"
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
+import { createServer } from "node:http"
+import type { AddressInfo } from "node:net"
 
 type Fixture = Awaited<ReturnType<typeof executionFixture>>
 async function reserve(f: Fixture, callID: string = crypto.randomUUID()) {
@@ -169,6 +174,149 @@ test("a fixed HTTP connection uses its configured method and service credential 
     })
   } finally {
     await upstream.stop(true)
+  }
+})
+
+test("MCP HTTP connections use the protocol adapter, server credentials and one-call receipts", async () => {
+  const received: Array<{ authorization: string | null; caller: string | null }> = []
+  const servers = new Set<McpServer>()
+  const upstream = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      received.push({
+        authorization: request.headers.get("authorization"),
+        caller: request.headers.get("x-private-caller"),
+      })
+      const mcp = new McpServer({ name: "remote-fixture", version: "1.0.0" })
+      mcp.registerTool("remote_ping", { description: "Remote fixture ping" }, async () => ({
+        content: [{ type: "text", text: "pong" }],
+      }))
+      servers.add(mcp)
+      const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true })
+      await mcp.connect(transport)
+      return transport.handleRequest(request)
+    },
+  })
+  try {
+    await using f = await executionFixture({
+      endpoint: "https://provider.example/v1",
+      connectionEndpoint: new URL("/mcp", upstream.url).href,
+      connectionProtocol: "mcp-http",
+    })
+    const resourceID = f.connection!.resourceID
+    const listProof = await f.proof("mcp-list", { resourceID })
+    const listAuthorization = await f.run(() => f.gateway.calls.reserve(listProof))
+    const listResponse = await fetch(new URL(`/runtime/v1/gateway/connections/${resourceID}/mcp`, f.baseUrl), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${Gateway.encode(listAuthorization)}`,
+        "content-type": "application/json",
+        "x-private-caller": "never-forward",
+      },
+      body: JSON.stringify({ operation: "list-tools" }),
+    })
+    expect(listResponse.status).toBe(200)
+    expect(await listResponse.json()).toMatchObject({ tools: [{ name: "remote_ping" }] })
+    const callProof = await f.proof("mcp-call", { resourceID })
+    const callAuthorization = await f.run(() => f.gateway.calls.reserve(callProof))
+    const callResponse = await fetch(new URL(`/runtime/v1/gateway/connections/${resourceID}/mcp`, f.baseUrl), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${Gateway.encode(callAuthorization)}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ operation: "call-tool", name: "remote_ping" }),
+    })
+    expect(callResponse.status).toBe(200)
+    expect(await callResponse.json()).toMatchObject({ content: [{ type: "text", text: "pong" }] })
+    expect(received.length).toBeGreaterThan(0)
+    expect(received.every((entry) => entry.authorization === "Bearer private-connection-key")).toBeTrue()
+    expect(received.every((entry) => entry.caller === null)).toBeTrue()
+    expect(await f.run(() => f.gateway.calls.inspect(listProof))).toMatchObject({
+      state: "response_complete",
+      httpStatus: 200,
+    })
+    expect(await f.run(() => f.gateway.calls.inspect(callProof))).toMatchObject({
+      state: "response_complete",
+      httpStatus: 200,
+    })
+  } finally {
+    await Promise.all([...servers].map((server) => server.close().catch(() => undefined)))
+    servers.clear()
+    await upstream.stop(true)
+  }
+})
+
+test("MCP SSE connections use the legacy SSE transport without exposing the endpoint credential", async () => {
+  const received: string[] = []
+  const transports = new Map<string, SSEServerTransport>()
+  const servers = new Map<string, McpServer>()
+  const upstream = createServer((request, response) => {
+    void (async () => {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1")
+      if (request.method === "GET" && url.pathname === "/sse") {
+        received.push(request.headers.authorization ?? "")
+        const transport = new SSEServerTransport("/messages", response)
+        const mcp = new McpServer({ name: "remote-sse-fixture", version: "1.0.0" })
+        mcp.registerTool("remote_ping", { description: "Remote SSE fixture ping" }, async () => ({
+          content: [{ type: "text", text: "sse-pong" }],
+        }))
+        transports.set(transport.sessionId, transport)
+        servers.set(transport.sessionId, mcp)
+        await mcp.connect(transport)
+        return
+      }
+      if (request.method === "POST" && url.pathname === "/messages") {
+        const sessionID = url.searchParams.get("sessionId")
+        const transport = sessionID ? transports.get(sessionID) : undefined
+        if (!transport) {
+          response.writeHead(404).end()
+          return
+        }
+        received.push(request.headers.authorization ?? "")
+        await transport.handlePostMessage(request, response)
+        return
+      }
+      response.writeHead(404).end()
+    })().catch(() => response.destroy())
+  })
+  await new Promise<void>((resolve, reject) => {
+    upstream.once("error", reject)
+    upstream.listen(0, "127.0.0.1", () => resolve())
+  })
+  try {
+    const address = upstream.address()
+    if (!address || typeof address === "string") throw new Error("Failed to allocate SSE fixture port")
+    await using f = await executionFixture({
+      endpoint: "https://provider.example/v1",
+      connectionEndpoint: `http://127.0.0.1:${(address as AddressInfo).port}/sse`,
+      connectionProtocol: "mcp-sse",
+    })
+    const resourceID = f.connection!.resourceID
+    const proof = await f.proof("mcp-sse-call", { resourceID })
+    const authorization = await f.run(() => f.gateway.calls.reserve(proof))
+    const response = await fetch(new URL(`/runtime/v1/gateway/connections/${resourceID}/mcp`, f.baseUrl), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${Gateway.encode(authorization)}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ operation: "call-tool", name: "remote_ping" }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ content: [{ type: "text", text: "sse-pong" }] })
+    expect(received.length).toBeGreaterThan(0)
+    expect(received.every((value) => value === "Bearer private-connection-key")).toBeTrue()
+    expect(await f.run(() => f.gateway.calls.inspect(proof))).toMatchObject({
+      state: "response_complete",
+      httpStatus: 200,
+    })
+  } finally {
+    await Promise.all([...servers.values()].map((server) => server.close().catch(() => undefined)))
+    transports.clear()
+    servers.clear()
+    await new Promise<void>((resolve) => upstream.close(() => resolve()))
   }
 })
 
