@@ -568,8 +568,57 @@ export function createCommandIntake(options: {
     )
   }
 
+  async function taskReceipt(lookup: z.infer<typeof Lookup>) {
+    assertActive()
+    const request = await read(Request, Keys.request(authority.orgID, lookup.subjectID, lookup.requestID))
+    const accepted = request?.accepted
+    if (
+      !accepted ||
+      accepted.permit.actor.subjectID !== lookup.subjectID ||
+      accepted.permit.requestID !== lookup.requestID
+    )
+      throw failure("NOT_FOUND", "Accepted task receipt not found")
+    const permit = accepted.permit
+    assertAuthority(permit)
+    if (
+      permit.connectionEpoch > connectionEpoch ||
+      !permit.provisionalGrantID ||
+      accepted.effect.kind !== "inbox" ||
+      accepted.effect.mode !== "task"
+    )
+      throw failure("PERMISSION_DENIED", "Execution binding requires the accepted task root")
+    if (await binding(permit)) throw failure("STALE_BINDING", "Execution binding Session changed")
+    if (await SessionTransfer.isFrozen(permit.sessionID))
+      throw failure("HANDOFF_BLOCKED", "Session transfer blocks root binding")
+    const session = await Session.get(permit.sessionID)
+    if (session.time.archived) throw failure("PERMISSION_DENIED", "Archived Session cannot bind execution")
+    const current = await records(permit)
+    if (!current.matches || current.attempt?.status !== "accepted")
+      throw failure("PROTOCOL_MISMATCH", "Accepted task has no matching native attempt")
+    assertActive()
+    return { current, attempt: current.attempt, permit, session, messageID: accepted.effect.messageID }
+  }
   return {
     control,
+    async descriptionProof(value: z.infer<typeof Lookup>): Promise<Execution.DescriptionProof> {
+      assertStandalone()
+      const lookup = Lookup.parse(value)
+      return Storage.snapshot(async () => {
+        const { current, attempt } = await taskReceipt(lookup)
+        const issuedAt = Date.now()
+        return Execution.DescriptionProof.parse({
+          schemaVersion: 1,
+          purpose: "execution-resource-description",
+          orgID: authority.orgID,
+          deploymentIncarnation: authority.deploymentIncarnation,
+          runtimeID,
+          connectionEpoch,
+          receipt: result(current, attempt),
+          issuedAt,
+          expiresAt: issuedAt + 30_000,
+        })
+      })
+    },
     async bindingProof(value: z.infer<typeof Lookup>, root: string): Promise<Execution.BindingProof> {
       assertStandalone()
       const lookup = Lookup.parse(value)
@@ -581,29 +630,9 @@ export function createCommandIntake(options: {
       await prepareSessionMigrations({ scopeID: initial.scope.id, sessionID: initial.id })
       return Storage.snapshot(async () => {
         assertActive()
-        const request = await read(Request, Keys.request(authority.orgID, lookup.subjectID, lookup.requestID))
-        const accepted = request?.accepted
-        if (
-          !accepted ||
-          accepted.permit.actor.subjectID !== lookup.subjectID ||
-          accepted.permit.requestID !== lookup.requestID
-        )
-          throw failure("NOT_FOUND", "Accepted task receipt not found")
-        const permit = accepted.permit
-        assertAuthority(permit)
-        if (
-          permit.connectionEpoch > connectionEpoch ||
-          !permit.provisionalGrantID ||
-          accepted.effect.kind !== "inbox" ||
-          accepted.effect.mode !== "task" ||
-          accepted.effect.messageID !== rootID
-        )
+        const { current, attempt, permit, session, messageID } = await taskReceipt(lookup)
+        if (messageID !== rootID)
           throw failure("PERMISSION_DENIED", "Execution binding requires the accepted task root")
-        if (await binding(permit)) throw failure("STALE_BINDING", "Execution binding Session changed")
-        if (await SessionTransfer.isFrozen(permit.sessionID))
-          throw failure("HANDOFF_BLOCKED", "Session transfer blocks root binding")
-        const session = await Session.get(permit.sessionID)
-        if (session.time.archived) throw failure("PERMISSION_DENIED", "Archived Session cannot bind execution")
         const [message, run] = await Promise.all([
           MessageV2.readInfo({ scopeID: session.scope.id, sessionID: session.id, messageID: rootID }).catch((error) => {
             if (error instanceof Storage.NotFoundError) return
@@ -635,9 +664,6 @@ export function createCommandIntake(options: {
           run.recording === "failed"
         )
           throw failure("RESOURCE_UNAVAILABLE", "Accepted task has no available materialized root")
-        const current = await records(permit)
-        if (!current.matches || current.attempt?.status !== "accepted")
-          throw failure("PROTOCOL_MISMATCH", "Accepted root has no matching native attempt")
         assertActive()
         const issuedAt = Date.now()
         return Execution.BindingProof.parse({
@@ -648,7 +674,7 @@ export function createCommandIntake(options: {
           runtimeID,
           connectionEpoch,
           rootID,
-          receipt: result(current, current.attempt),
+          receipt: result(current, attempt),
           issuedAt,
           expiresAt: issuedAt + 30_000,
         })

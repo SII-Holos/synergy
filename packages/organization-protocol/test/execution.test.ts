@@ -119,3 +119,21 @@ test("resource selections and budgets reject duplicate roles, caller endpoints a
   expect(Execution.Limits.safeParse({ calls: 1, requestBytes: 17 * 1024 * 1024, responseBytes: 1 }).success).toBeFalse()
   expect(Execution.Limits.safeParse({ calls: 1, requestBytes: 1, responseBytes: 65 * 1024 * 1024 }).success).toBeFalse()
 })
+
+test("resource description proves accepted input without claiming a materialized root or invocation authority", async () => {
+  const { purpose: _, rootID: __, ...received } = proof()
+  const description = Execution.DescriptionProof.parse({ ...received, purpose: "execution-resource-description" })
+  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
+  const publicKey = await Runtime.publicKey(keys.publicKey)
+  const signature = await Execution.signDescription(description, keys.privateKey)
+  expect(await Execution.verifyDescription(description, signature, publicKey)).toBeTrue()
+  expect(await Execution.verifyBinding(proof(), signature, publicKey)).toBeFalse()
+  expect(Execution.DescriptionProof.safeParse({ ...description, rootID: "unproven-root" }).success).toBeFalse()
+  expect(
+    Execution.DescriptionProof.safeParse({ ...description, receipt: { ...description.receipt, accepted: undefined } })
+      .success,
+  ).toBeFalse()
+  expect(
+    Execution.DescriptionProof.safeParse({ ...description, expiresAt: description.issuedAt + 60_001 }).success,
+  ).toBeFalse()
+})

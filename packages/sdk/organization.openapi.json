@@ -2202,6 +2202,48 @@
         "parameters": [{ "schema": { "type": "string" }, "in": "path", "name": "resourceID", "required": true }]
       }
     },
+    "/runtime/v1/execution/resources": {
+      "post": {
+        "operationId": "orgExecution.resources",
+        "summary": "Describe the resources of accepted work without activating its grant",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/OrgExecutionDescriptionRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgExecutionDescription" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/runtime/v1/execution/bind": {
       "post": {
         "operationId": "orgExecution.bind",
@@ -4301,11 +4343,309 @@
         ],
         "additionalProperties": false
       },
-      "OrgExecutionBindingProof": {
+      "OrgExecutionDescription": {
+        "type": "object",
+        "properties": {
+          "grant": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "schemaVersion": { "type": "number", "const": 1 },
+                  "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "deploymentIncarnation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                  "selectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "selection": {
+                    "type": "object",
+                    "properties": {
+                      "modelResourceID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "connectionResourceIDs": {
+                        "maxItems": 32,
+                        "type": "array",
+                        "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                      }
+                    },
+                    "required": ["modelResourceID", "connectionResourceIDs"],
+                    "additionalProperties": false
+                  },
+                  "limits": {
+                    "type": "object",
+                    "properties": {
+                      "calls": { "type": "integer", "exclusiveMinimum": 0, "maximum": 4096 },
+                      "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
+                      "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
+                    },
+                    "required": ["calls", "requestBytes", "responseBytes"],
+                    "additionalProperties": false
+                  },
+                  "actor": {
+                    "type": "object",
+                    "properties": {
+                      "subjectID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                      "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
+                      "requestID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "kind": { "type": "string", "const": "account" },
+                      "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                    },
+                    "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
+                    "additionalProperties": false
+                  },
+                  "admissionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "attemptID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "state": { "type": "string", "const": "provisional" }
+                },
+                "required": [
+                  "schemaVersion",
+                  "grantID",
+                  "orgID",
+                  "deploymentIncarnation",
+                  "sessionID",
+                  "projectID",
+                  "runtimeID",
+                  "bindingEpoch",
+                  "selectionRevision",
+                  "selection",
+                  "limits",
+                  "actor",
+                  "admissionID",
+                  "attemptID",
+                  "createdAt",
+                  "state"
+                ],
+                "additionalProperties": false
+              },
+              { "$ref": "#/components/schemas/OrgBoundExecutionGrant" },
+              {
+                "type": "object",
+                "properties": {
+                  "schemaVersion": { "type": "number", "const": 1 },
+                  "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "deploymentIncarnation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                  "selectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "selection": {
+                    "type": "object",
+                    "properties": {
+                      "modelResourceID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "connectionResourceIDs": {
+                        "maxItems": 32,
+                        "type": "array",
+                        "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                      }
+                    },
+                    "required": ["modelResourceID", "connectionResourceIDs"],
+                    "additionalProperties": false
+                  },
+                  "limits": {
+                    "type": "object",
+                    "properties": {
+                      "calls": { "type": "integer", "exclusiveMinimum": 0, "maximum": 4096 },
+                      "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
+                      "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
+                    },
+                    "required": ["calls", "requestBytes", "responseBytes"],
+                    "additionalProperties": false
+                  },
+                  "actor": {
+                    "type": "object",
+                    "properties": {
+                      "subjectID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                      "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
+                      "requestID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "kind": { "type": "string", "const": "account" },
+                      "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                    },
+                    "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
+                    "additionalProperties": false
+                  },
+                  "admissionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "attemptID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "state": { "type": "string", "const": "closed" },
+                  "closedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": [
+                  "schemaVersion",
+                  "grantID",
+                  "orgID",
+                  "deploymentIncarnation",
+                  "sessionID",
+                  "projectID",
+                  "runtimeID",
+                  "bindingEpoch",
+                  "selectionRevision",
+                  "selection",
+                  "limits",
+                  "actor",
+                  "admissionID",
+                  "attemptID",
+                  "createdAt",
+                  "state",
+                  "closedAt"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "resources": {
+            "minItems": 1,
+            "maxItems": 33,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "definition": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "protocol": { "type": "string", "enum": ["openai-compatible", "anthropic-compatible"] },
+                        "model": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 256,
+                              "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+                            },
+                            "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                            "limit": {
+                              "type": "object",
+                              "properties": {
+                                "context": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                                "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                                "output": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                              },
+                              "required": ["context", "output"],
+                              "additionalProperties": false
+                            },
+                            "capabilities": {
+                              "default": {},
+                              "type": "object",
+                              "properties": {
+                                "temperature": { "default": true, "type": "boolean" },
+                                "reasoning": { "default": false, "type": "boolean" },
+                                "tools": { "default": true, "type": "boolean" },
+                                "input": {
+                                  "default": ["text"],
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                                },
+                                "output": {
+                                  "default": ["text"],
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                                },
+                                "interleaved": {
+                                  "default": false,
+                                  "anyOf": [
+                                    { "type": "boolean", "const": false },
+                                    { "type": "string", "enum": ["reasoning_content", "reasoning_details"] }
+                                  ]
+                                },
+                                "reasoningEfforts": {
+                                  "type": "array",
+                                  "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": ["id", "name", "limit"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["protocol", "model"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": { "protocol": { "type": "string", "enum": ["mcp-http", "mcp-sse"] } },
+                      "required": ["protocol"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "protocol": { "type": "string", "const": "fixed-http" },
+                        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }
+                      },
+                      "required": ["protocol", "method"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": ["resourceID", "revision", "name", "definition"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["grant", "resources"],
+        "additionalProperties": false
+      },
+      "OrgExecutionDescriptionProof": {
         "type": "object",
         "properties": {
           "schemaVersion": { "type": "number", "const": 1 },
-          "purpose": { "type": "string", "const": "execution-root-binding" },
           "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "deploymentIncarnation": {
             "type": "string",
@@ -4315,7 +4655,6 @@
           },
           "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "receipt": {
             "type": "object",
             "properties": {
@@ -4405,19 +4744,148 @@
             "additionalProperties": false
           },
           "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "purpose": { "type": "string", "const": "execution-resource-description" }
         },
         "required": [
           "schemaVersion",
-          "purpose",
           "orgID",
           "deploymentIncarnation",
           "runtimeID",
           "connectionEpoch",
-          "rootID",
           "receipt",
           "issuedAt",
-          "expiresAt"
+          "expiresAt",
+          "purpose"
+        ],
+        "additionalProperties": false
+      },
+      "OrgExecutionDescriptionRequest": {
+        "type": "object",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/OrgExecutionDescriptionProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgExecutionBindingProof": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": { "type": "number", "const": 1 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "receipt": {
+            "type": "object",
+            "properties": {
+              "attempt": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": { "type": "string", "const": "accepted" },
+                      "acceptedAttemptID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["schemaVersion", "permit", "receivedAt", "status", "acceptedAttemptID"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": { "type": "string", "const": "rejected" },
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "EXPIRED_PERMIT",
+                          "STALE_CONNECTION",
+                          "STALE_BINDING",
+                          "SESSION_UNAVAILABLE",
+                          "TRANSFER_BLOCKED",
+                          "SEQUENCE_GAP",
+                          "SEQUENCE_CLOSED",
+                          "REQUEST_CONFLICT",
+                          "PAYLOAD_MISMATCH",
+                          "CONTROL_CONFLICT"
+                        ]
+                      }
+                    },
+                    "required": ["schemaVersion", "permit", "receivedAt", "status", "reason"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": { "type": "string", "const": "skipped" }
+                    },
+                    "required": ["schemaVersion", "permit", "receivedAt", "status"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "accepted": { "$ref": "#/components/schemas/OrgCommandInputAccepted" },
+              "skip": {
+                "type": "object",
+                "properties": {
+                  "schemaVersion": { "type": "number", "const": 1 },
+                  "permit": {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "purpose": { "type": "string", "const": "session-command-skip" },
+                      "command": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                      "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                      "authorizedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "deadline": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                    },
+                    "required": ["schemaVersion", "purpose", "command", "connectionEpoch", "authorizedAt", "deadline"],
+                    "additionalProperties": false
+                  },
+                  "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["schemaVersion", "permit", "receivedAt"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["attempt"],
+            "additionalProperties": false
+          },
+          "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "purpose": { "type": "string", "const": "execution-root-binding" },
+          "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": [
+          "schemaVersion",
+          "orgID",
+          "deploymentIncarnation",
+          "runtimeID",
+          "connectionEpoch",
+          "receipt",
+          "issuedAt",
+          "expiresAt",
+          "purpose",
+          "rootID"
         ],
         "additionalProperties": false
       },

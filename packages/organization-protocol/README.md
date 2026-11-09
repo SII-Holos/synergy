@@ -2,6 +2,8 @@
 
 Gateway requests and invocation capabilities use separate signing domains. Each capability binds a single call, current execution identities, resource revision and bounded start/lifetime/byte limits. Metadata receipts distinguish reservation, started transmission, transport completion and unknown outcome without carrying content or upstream credentials.
 
+Resource-description proofs carry accepted input evidence without a root claim. Ordered descriptors must exactly match the active grant's model and connection selection; their strict schema excludes endpoints and credentials. Description and root-binding signatures are not interchangeable.
+
 Strict schemas shared by the standalone organization service, Runtime bridge and clients. Protocol versions are independent of product release versions. Private local Session registration accepts only its specified metadata.
 
 Use the public package entry for schemas and inferred types. Storage and execution implementations belong to their respective owners.

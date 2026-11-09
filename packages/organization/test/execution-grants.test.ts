@@ -198,6 +198,101 @@ test("task admission reserves a bounded provisional grant with the Session resou
   })
 })
 
+test("accepted task resources can be described before materialization without binding or spending its grant", async () => {
+  await using f = await commandFixture()
+  await f.connect()
+  const admitted = await task(f)
+  const { purpose: _, rootID: __, ...received } = (await proof(f, admitted.receipt)).proof
+  const description = Execution.DescriptionProof.parse({ ...received, purpose: "execution-resource-description" })
+  const request = {
+    proof: description,
+    signature: await Execution.signDescription(description, f.machineKeys.privateKey),
+  }
+  const read = Storage.read
+  using secrets = spyOn(Storage, "read").mockImplementation(async (key) => {
+    if (key[1] === "resource-secrets") throw new Error("Descriptor read accessed an upstream secret")
+    return read(key)
+  })
+  const response = await fetch(new URL("/runtime/v1/execution/resources", f.baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  })
+  expect(response.status).toBe(200)
+  const result = Execution.Description.parse(await response.json())
+  expect(result.grant).toMatchObject({ grantID: admitted.permit.provisionalGrantID, state: "provisional" })
+  expect(result.resources).toMatchObject([
+    {
+      resourceID: admitted.resource.resourceID,
+      definition: { protocol: "openai-compatible", model: { id: "fixture-model" } },
+    },
+  ])
+  expect(JSON.stringify(result)).not.toContain("provider.example")
+  expect(JSON.stringify(result)).not.toContain("private-upstream-key")
+  expect(JSON.stringify(result)).not.toContain("secretID")
+  await f.run(async () => {
+    expect(await Record.read(Record.RootGrant, Keys.rootGrant(f.sessionID, 1, "msg_resource"))).toBeUndefined()
+    expect(await Record.read(Record.ExecutionUsage, Keys.executionUsage(result.grant.grantID))).toBeUndefined()
+    expect(await Record.read(Record.ExecutionGrant, Keys.executionGrant(result.grant.grantID))).toMatchObject({
+      state: "provisional",
+    })
+  })
+  const browser = await fetch(new URL("/runtime/v1/execution/resources", f.baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "https://organization.example" },
+    body: JSON.stringify(request),
+  })
+  expect(browser.status).toBe(403)
+})
+
+test("resource description preserves B across availability failure and rechecks current ownership after reconnect", async () => {
+  await using f = await commandFixture()
+  await f.connect()
+  const admitted = await task(f)
+  async function request(connectionEpoch = 1) {
+    const { purpose: _, rootID: __, ...received } = (await proof(f, admitted.receipt, { connectionEpoch })).proof
+    const description = Execution.DescriptionProof.parse({ ...received, purpose: "execution-resource-description" })
+    return { proof: description, signature: await Execution.signDescription(description, f.machineKeys.privateKey) }
+  }
+  const signed = await request()
+  await expect(f.run(() => f.execution.describe({ ...signed, signature: "0".repeat(128) }))).rejects.toMatchObject({
+    data: { code: "PERMISSION_DENIED" },
+  })
+  await f.run(() =>
+    Resources.update(f.credentials.admin, admitted.resource.resourceID, { expectedRevision: 1, state: "disabled" }),
+  )
+  await expect(f.run(() => f.execution.describe(signed))).rejects.toMatchObject({
+    data: { code: "RESOURCE_UNAVAILABLE" },
+  })
+  await f.run(async () => {
+    const retained = await Record.read(
+      Record.CommandRequest,
+      Keys.commandRequest(admitted.permit.actor.subjectID, admitted.permit.requestID),
+    )
+    expect(retained?.accepted).toEqual(admitted.receipt.accepted)
+    expect(await Record.read(Record.RootGrant, Keys.rootGrant(f.sessionID, 1, "msg_resource"))).toBeUndefined()
+    await Resources.update(f.credentials.admin, admitted.resource.resourceID, { expectedRevision: 2, state: "enabled" })
+    await Resources.grant(
+      f.credentials.admin,
+      admitted.resource.resourceID,
+      { kind: "account", id: "alice" },
+      { expectedRevision: 1, enabled: false },
+    )
+  })
+  await f.restart()
+  await f.connect(2)
+  const reconnected = await request(2)
+  expect((await f.run(() => f.execution.describe(reconnected))).resources[0].revision).toBe(3)
+  await expect(f.run(() => f.execution.describe(signed))).rejects.toThrow()
+  await f.run(async () => {
+    const member = await Record.read(Record.ProjectMember, Keys.projectMember("project", "alice"))
+    await Storage.write(Keys.projectMember("project", "alice"), { ...member, role: "reader" })
+  })
+  await expect(f.run(() => f.execution.describe(reconnected))).rejects.toMatchObject({
+    data: { code: "PERMISSION_DENIED" },
+  })
+})
+
 test("a signed root proof reconciles a lost B receipt and binds once across connection and service restarts", async () => {
   await using f = await commandFixture()
   await f.connect()

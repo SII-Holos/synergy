@@ -952,14 +952,116 @@ export type OrgBoundExecutionGrant = {
   boundAt: number
 }
 
-export type OrgExecutionBindingProof = {
+export type OrgExecutionDescription = {
+  grant:
+    | {
+        schemaVersion: 1
+        grantID: string
+        orgID: string
+        deploymentIncarnation: string
+        sessionID: string
+        projectID: string
+        runtimeID: string
+        bindingEpoch: number
+        selectionRevision: number
+        selection: {
+          modelResourceID: string
+          connectionResourceIDs: Array<string>
+        }
+        limits: {
+          calls: number
+          requestBytes: number
+          responseBytes: number
+        }
+        actor: {
+          subjectID: string
+          displayName: string
+          clientKind: "web" | "desktop" | "cli" | "api"
+          requestID: string
+          kind: "account"
+          orgID: string
+        }
+        admissionID: string
+        attemptID: string
+        createdAt: number
+        state: "provisional"
+      }
+    | OrgBoundExecutionGrant
+    | {
+        schemaVersion: 1
+        grantID: string
+        orgID: string
+        deploymentIncarnation: string
+        sessionID: string
+        projectID: string
+        runtimeID: string
+        bindingEpoch: number
+        selectionRevision: number
+        selection: {
+          modelResourceID: string
+          connectionResourceIDs: Array<string>
+        }
+        limits: {
+          calls: number
+          requestBytes: number
+          responseBytes: number
+        }
+        actor: {
+          subjectID: string
+          displayName: string
+          clientKind: "web" | "desktop" | "cli" | "api"
+          requestID: string
+          kind: "account"
+          orgID: string
+        }
+        admissionID: string
+        attemptID: string
+        createdAt: number
+        state: "closed"
+        closedAt: number
+      }
+  resources: Array<{
+    resourceID: string
+    revision: number
+    name: string
+    definition:
+      | {
+          protocol: "openai-compatible" | "anthropic-compatible"
+          model: {
+            id: string
+            name: string
+            limit: {
+              context: number
+              input?: number
+              output: number
+            }
+            capabilities?: {
+              temperature?: boolean
+              reasoning?: boolean
+              tools?: boolean
+              input?: Array<"text" | "image" | "audio" | "video" | "pdf">
+              output?: Array<"text" | "image" | "audio" | "video" | "pdf">
+              interleaved?: false | "reasoning_content" | "reasoning_details"
+              reasoningEfforts?: Array<string>
+            }
+          }
+        }
+      | {
+          protocol: "mcp-http" | "mcp-sse"
+        }
+      | {
+          protocol: "fixed-http"
+          method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+        }
+  }>
+}
+
+export type OrgExecutionDescriptionProof = {
   schemaVersion: 1
-  purpose: "execution-root-binding"
   orgID: string
   deploymentIncarnation: string
   runtimeID: string
   connectionEpoch: number
-  rootID: string
   receipt: {
     attempt:
       | {
@@ -1008,6 +1110,70 @@ export type OrgExecutionBindingProof = {
   }
   issuedAt: number
   expiresAt: number
+  purpose: "execution-resource-description"
+}
+
+export type OrgExecutionDescriptionRequest = {
+  proof: OrgExecutionDescriptionProof
+  signature: string
+}
+
+export type OrgExecutionBindingProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+  purpose: "execution-root-binding"
+  rootID: string
 }
 
 export type OrgExecutionBindingRequest = {
@@ -3333,6 +3499,51 @@ export type OrgGatewayMessagesResponses = {
 }
 
 export type OrgGatewayMessagesResponse = OrgGatewayMessagesResponses[keyof OrgGatewayMessagesResponses]
+
+export type OrgExecutionResourcesData = {
+  body: OrgExecutionDescriptionRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/execution/resources"
+}
+
+export type OrgExecutionResourcesErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgExecutionResourcesError = OrgExecutionResourcesErrors[keyof OrgExecutionResourcesErrors]
+
+export type OrgExecutionResourcesResponses = {
+  /**
+   * Success
+   */
+  200: OrgExecutionDescription
+}
+
+export type OrgExecutionResourcesResponse = OrgExecutionResourcesResponses[keyof OrgExecutionResourcesResponses]
 
 export type OrgExecutionBindData = {
   body: OrgExecutionBindingRequest

@@ -89,12 +89,14 @@ export namespace OrganizationExecutionGrants {
   }
 }
 
+type ReceiptProof = Execution.BindingProof | Execution.DescriptionProof
+
 export function createExecutionGrants(options: { connections: RuntimeConnections; admissions: CommandAdmissions }) {
-  function window(proof: Execution.BindingProof) {
+  function window(proof: ReceiptProof) {
     if (proof.issuedAt > Date.now() || proof.expiresAt <= Date.now())
       fail("PERMISSION_DENIED", "Execution binding proof is outside its validity window")
   }
-  async function machine(proof: Execution.BindingProof) {
+  async function machine(proof: ReceiptProof) {
     const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(proof.runtimeID))
     if (
       !runtime ||
@@ -115,7 +117,91 @@ export function createExecutionGrants(options: { connections: RuntimeConnections
       fail("PERMISSION_DENIED", "Execution binding Runtime account is not active")
     return { runtime, account }
   }
+  function capture(proof: ReceiptProof, accountID: string) {
+    const connection = options.connections.capture(proof.runtimeID)
+    if (
+      connection.handshake.orgID !== proof.orgID ||
+      connection.handshake.deploymentIncarnation !== proof.deploymentIncarnation ||
+      connection.handshake.connectionEpoch !== proof.connectionEpoch ||
+      connection.handshake.runtimeKind !== "member" ||
+      connection.handshake.accountID !== accountID
+    )
+      fail("STALE_CONNECTION", "Execution binding connection changed")
+    return connection
+  }
+  async function resolve(proof: ReceiptProof, publicKey: string) {
+    const { runtime, account } = await machine(proof)
+    if (runtime.publicKey !== publicKey) fail("PERMISSION_DENIED", "Execution binding identity changed")
+    const accepted = proof.receipt.accepted!
+    const permit = accepted.permit
+    const session = await Record.read(Record.SessionDirectory, Keys.session(permit.sessionID))
+    if (
+      !session ||
+      session.sessionID !== permit.sessionID ||
+      session.orgID !== proof.orgID ||
+      session.projectID !== permit.projectID ||
+      session.driverRuntimeID !== runtime.runtimeID ||
+      session.bindingEpoch !== permit.bindingEpoch
+    )
+      fail("STALE_BINDING", "Execution grant Session binding changed")
+    if (session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks execution binding")
+    const [project, membership] = await Promise.all([
+      Record.read(Record.Project, Keys.project(session.projectID)),
+      Record.read(Record.ProjectMember, Keys.projectMember(session.projectID, account.accountID)),
+    ])
+    if (!project) fail("NOT_FOUND", "Project not found")
+    const view = projectView(account, project, membership, "project.read")
+    if (!projectExecutionRole(view.role)) fail("PERMISSION_DENIED", "Runtime account cannot execute project work")
+    const grant = await Record.read(Record.ExecutionGrant, Keys.executionGrant(permit.provisionalGrantID!))
+    if (
+      !grant ||
+      grant.grantID !== permit.provisionalGrantID ||
+      grant.orgID !== permit.orgID ||
+      grant.deploymentIncarnation !== permit.deploymentIncarnation ||
+      grant.sessionID !== permit.sessionID ||
+      grant.projectID !== permit.projectID ||
+      grant.runtimeID !== permit.runtimeID ||
+      grant.bindingEpoch !== permit.bindingEpoch ||
+      grant.attemptID !== permit.attemptID ||
+      grant.admissionID !== permit.admissionID ||
+      JSON.stringify(grant.actor) !== JSON.stringify(permit.actor) ||
+      !session.executionGrantIDs.includes(grant.grantID)
+    )
+      fail("PERMISSION_DENIED", "Execution grant does not match the accepted admission")
+    if (grant.state === "closed") fail("PERMISSION_DENIED", "Execution grant is closed")
+    const contract = await Resources.read(session)
+    if (
+      !contract ||
+      contract.revision !== grant.selectionRevision ||
+      JSON.stringify(contract.selection) !== JSON.stringify(grant.selection)
+    )
+      fail("REVISION_CONFLICT", "Session resource selection changed")
+    const resources = await Resources.enabled(session, grant.selection)
+    return { session, grant, resources }
+  }
   return {
+    async describe(value: Execution.DescriptionRequest): Promise<Execution.Description> {
+      if (Storage.inTransaction()) fail("INVALID_REQUEST", "Resource description must own its reconciliation boundary")
+      const { proof, signature } = Execution.DescriptionRequest.parse(value)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      if (!(await Execution.verifyDescription(proof, signature, registered.runtime.publicKey)))
+        fail("PERMISSION_DENIED", "Execution resource proof signature is invalid")
+      const connection = capture(proof, registered.account.accountID)
+      await options.admissions.observe(connection, proof.receipt)
+      return Storage.snapshot(async () => {
+        const { grant, resources } = await resolve(proof, registered.runtime.publicKey)
+        window(proof)
+        connection.assertCurrent()
+        return Execution.Description.parse({
+          grant,
+          resources: resources.map((resource) => {
+            const { endpoint: _, ...definition } = resource.configuration
+            return { resourceID: resource.resourceID, revision: resource.revision, name: resource.name, definition }
+          }),
+        })
+      })
+    },
     async bind(value: Execution.BindingRequest): Promise<Execution.BoundGrant> {
       if (Storage.inTransaction()) fail("INVALID_REQUEST", "Execution binding must own its commit boundary")
       const { proof, signature } = Execution.BindingRequest.parse(value)
@@ -123,68 +209,13 @@ export function createExecutionGrants(options: { connections: RuntimeConnections
       const registered = await Storage.snapshot(() => machine(proof))
       if (!(await Execution.verifyBinding(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution binding signature is invalid")
-      const connection = options.connections.capture(proof.runtimeID)
-      if (
-        connection.handshake.orgID !== proof.orgID ||
-        connection.handshake.deploymentIncarnation !== proof.deploymentIncarnation ||
-        connection.handshake.connectionEpoch !== proof.connectionEpoch ||
-        connection.handshake.runtimeKind !== "member" ||
-        connection.handshake.accountID !== registered.account.accountID
-      )
-        fail("STALE_CONNECTION", "Execution binding connection changed")
+      const connection = capture(proof, registered.account.accountID)
       await options.admissions.observe(connection, proof.receipt)
       return Storage.transaction(
         async () => {
           window(proof)
           connection.assertCurrent()
-          const { runtime, account } = await machine(proof)
-          if (runtime.publicKey !== registered.runtime.publicKey)
-            fail("PERMISSION_DENIED", "Execution binding identity changed")
-          const accepted = proof.receipt.accepted!
-          const permit = accepted.permit
-          const session = await Record.read(Record.SessionDirectory, Keys.session(permit.sessionID))
-          if (
-            !session ||
-            session.sessionID !== permit.sessionID ||
-            session.orgID !== proof.orgID ||
-            session.projectID !== permit.projectID ||
-            session.driverRuntimeID !== runtime.runtimeID ||
-            session.bindingEpoch !== permit.bindingEpoch
-          )
-            fail("STALE_BINDING", "Execution grant Session binding changed")
-          if (session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks execution binding")
-          const [project, membership] = await Promise.all([
-            Record.read(Record.Project, Keys.project(session.projectID)),
-            Record.read(Record.ProjectMember, Keys.projectMember(session.projectID, account.accountID)),
-          ])
-          if (!project) fail("NOT_FOUND", "Project not found")
-          const view = projectView(account, project, membership, "project.read")
-          if (!projectExecutionRole(view.role)) fail("PERMISSION_DENIED", "Runtime account cannot execute project work")
-          const grant = await Record.read(Record.ExecutionGrant, Keys.executionGrant(permit.provisionalGrantID!))
-          if (
-            !grant ||
-            grant.grantID !== permit.provisionalGrantID ||
-            grant.orgID !== permit.orgID ||
-            grant.deploymentIncarnation !== permit.deploymentIncarnation ||
-            grant.sessionID !== permit.sessionID ||
-            grant.projectID !== permit.projectID ||
-            grant.runtimeID !== permit.runtimeID ||
-            grant.bindingEpoch !== permit.bindingEpoch ||
-            grant.attemptID !== permit.attemptID ||
-            grant.admissionID !== permit.admissionID ||
-            JSON.stringify(grant.actor) !== JSON.stringify(permit.actor) ||
-            !session.executionGrantIDs.includes(grant.grantID)
-          )
-            fail("PERMISSION_DENIED", "Execution grant does not match the accepted admission")
-          if (grant.state === "closed") fail("PERMISSION_DENIED", "Execution grant is closed")
-          const contract = await Resources.read(session)
-          if (
-            !contract ||
-            contract.revision !== grant.selectionRevision ||
-            JSON.stringify(contract.selection) !== JSON.stringify(grant.selection)
-          )
-            fail("REVISION_CONFLICT", "Session resource selection changed")
-          await Resources.enabled(session, grant.selection)
+          const { session, grant } = await resolve(proof, registered.runtime.publicKey)
           const key = Keys.rootGrant(session.sessionID, session.bindingEpoch, proof.rootID)
           const previous = await Record.read(Record.RootGrant, key)
           if (previous && previous.grantID !== grant.grantID)

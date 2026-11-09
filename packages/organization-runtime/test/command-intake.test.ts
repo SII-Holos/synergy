@@ -163,6 +163,12 @@ test("execution binding proves a materialized native task and never turns an Inb
     const delivery = await service.input(native.id, { provisionalGrantID: "grant-intake" }, "Grant task", "task")
     const receipt = await receiver.input(delivery)
     const rootID = receipt.accepted!.effect.messageID
+    const resources = await receiver.descriptionProof(lookup)
+    expect(Execution.DescriptionProof.parse(resources)).toMatchObject({
+      purpose: "execution-resource-description",
+      receipt: { accepted: receipt.accepted },
+    })
+    expect("rootID" in resources).toBeFalse()
     await expect(receiver.bindingProof(lookup, rootID)).rejects.toMatchObject({
       data: { code: "RESOURCE_UNAVAILABLE" },
     })
@@ -208,6 +214,7 @@ test("execution binding proves a materialized native task and never turns an Inb
       phase: "preparing",
     })
     await expect(receiver.bindingProof(lookup, rootID)).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    await expect(receiver.descriptionProof(lookup)).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
     await Storage.remove(["session_transfer_gate", native.id])
     await RolloutLedger.finishRun(RolloutLifecycle.owner(native), rootID, "cancelled")
     await expect(receiver.bindingProof(lookup, rootID)).rejects.toMatchObject({

@@ -1,5 +1,7 @@
 # Organization Runtime adapter
 
+Native `descriptionProof` verifies accepted task intake and current binding before root materialization. Its machine proof requests portable resource metadata only; `bindingProof` still requires the canonical root message and Run before any gateway call. Both retain the original reception receipt across reconnect.
+
 The command receiver's `bindingProof` verifies a retained accepted task, exact canonical root message and Rollout record before producing finite machine-signable evidence. It reads metadata only, preserves the original actor, and rejects transfer, binding and cancellation conflicts. This proof lets the organization service reconcile a lost receipt and bind its provisional grant without input replay. It does not open the member execution source or dispatch a model. See [execution grants](../../docs/architecture/organization.md#session-resources-and-execution-grants).
 
 The member adapter provisions a stable, dedicated Home for an organization, account and device, enrolls its machine identity, and opens an explicitly selected Agent Runtime. Enrollment and startup do not grant Session execution authority.

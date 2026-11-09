@@ -31,7 +31,7 @@ const binding = {
   bindingEpoch: 1,
 }
 
-test("a lost command ACK binds the actual materialized native root through machine HTTP without replaying input", async () => {
+test("a lost command ACK prepares resources then binds the native root through machine HTTP without replaying input", async () => {
   await using home = await tmpdir()
   await using runtime = await testRuntime({ home: home.path, register: () => registerSessionSchema(binding) })
   await using f = await commandFixture({ timeoutMs: 150 })
@@ -70,6 +70,27 @@ test("a lost command ACK binds the actual materialized native root through machi
   expect(
     (await client.orgCommands.input({ sessionID: f.sessionID, orgCommandInputRequest: request })).response.status,
   ).toBe(504)
+  const machine = createOrganizationClient({ baseUrl: f.baseUrl })
+  const description = await runtime.run(() =>
+    receiver.intake.descriptionProof({ subjectID: "alice", requestID: request.requestID }),
+  )
+  const resources = Execution.Description.parse(
+    (
+      await machine.orgExecution.resources(
+        {
+          orgExecutionDescriptionRequest: {
+            proof: description,
+            signature: await Execution.signDescription(description, f.machineKeys.privateKey),
+          },
+        },
+        { throwOnError: true },
+      )
+    ).data,
+  )
+  expect(resources.grant.state).toBe("provisional")
+  expect(resources.resources[0].definition).toMatchObject({ protocol: "openai-compatible", model: { id: "test" } })
+  expect(JSON.stringify(resources)).not.toContain("provider.example")
+  expect(JSON.stringify(resources)).not.toContain("upstream-fixture-key")
   const signed = await runtime.run(() =>
     ScopeContext.provide({
       scope: native.scope,
@@ -90,7 +111,6 @@ test("a lost command ACK binds the actual materialized native root through machi
       },
     }),
   )
-  const machine = createOrganizationClient({ baseUrl: f.baseUrl })
   const response = await machine.orgExecution.bind({ orgExecutionBindingRequest: signed }, { throwOnError: true })
   expect(response.response.status).toBe(200)
   const bound = Execution.BoundGrant.parse(response.data)

@@ -4,6 +4,8 @@
 
 `orgGateway.reserve/inspect` owns finite call capabilities, durable budget admission and metadata receipts. The model gateway forwards fixed OpenAI-compatible and Anthropic-compatible protocols with server-owned credentials and bounded streaming. It never retries a started call. Native release, member activation and business adapters remain separate integrations. See [model gateway](../../docs/architecture/organization.md#model-gateway); verify `test/gateway.test.ts` and the Presets organization gateway suite.
 
+`orgExecution.resources` describes accepted work before its native root is materialized. It rechecks current authority and reconciles the receipt, without activating the grant or returning upstream configuration. The same execution owner supplies descriptors and binding authorization.
+
 The organization service owns a dedicated Home and SQL namespace. Its storage lifecycle uses Harness transactions and the central migration runner without starting Agent execution, model discovery or Session recovery.
 
 ```ts

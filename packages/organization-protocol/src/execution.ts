@@ -2,6 +2,7 @@ import { z } from "zod"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
 import { OrganizationCommandProtocol as Command } from "./command.js"
+import { OrganizationResourceProtocol as Resource } from "./resource.js"
 import { SigningSignature, signedProtocol } from "./signature.js"
 
 export namespace OrganizationExecutionProtocol {
@@ -79,15 +80,13 @@ export namespace OrganizationExecutionProtocol {
     ])
     .refine((value) => value.actor.orgID === value.orgID, "Grant actor belongs to another organization")
   export type Grant = z.infer<typeof Grant>
-  export const BindingProof = z
+  const ReceivedProof = z
     .strictObject({
       schemaVersion: z.literal(1),
-      purpose: z.literal("execution-root-binding"),
       orgID: Identity.ID,
       deploymentIncarnation: Identity.ID,
       runtimeID: Identity.ID,
       connectionEpoch: Protocol.Epoch,
-      rootID: Identity.ID,
       receipt: Command.InputResult,
       issuedAt: z.number().int().nonnegative(),
       expiresAt: z.number().int().nonnegative(),
@@ -105,10 +104,57 @@ export namespace OrganizationExecutionProtocol {
         permit.deploymentIncarnation === value.deploymentIncarnation &&
         permit.runtimeID === value.runtimeID &&
         permit.connectionEpoch <= value.connectionEpoch &&
-        !!permit.provisionalGrantID &&
-        accepted.effect.messageID === value.rootID
+        !!permit.provisionalGrantID
       )
-    }, "Binding requires an accepted task and its exact root identity")
+    }, "Execution preparation requires an accepted task receipt")
+  export const DescriptionProof = ReceivedProof.safeExtend({
+    purpose: z.literal("execution-resource-description"),
+  }).meta({ ref: "OrgExecutionDescriptionProof" })
+  export type DescriptionProof = z.infer<typeof DescriptionProof>
+  export const DescriptionRequest = z
+    .strictObject({ proof: DescriptionProof, signature: SigningSignature })
+    .meta({ ref: "OrgExecutionDescriptionRequest" })
+  export type DescriptionRequest = z.infer<typeof DescriptionRequest>
+  export const Description = z
+    .strictObject({
+      grant: Grant,
+      resources: z
+        .array(
+          z.strictObject({
+            resourceID: Identity.ID,
+            revision: Identity.Revision,
+            name: Identity.Name,
+            definition: Resource.Definition,
+          }),
+        )
+        .min(1)
+        .max(33),
+    })
+    .refine((value) => {
+      const ids = resourceIDs(value.grant.selection)
+      return (
+        value.grant.state !== "closed" &&
+        value.resources.length === ids.length &&
+        value.resources.every(
+          (resource, index) =>
+            resource.resourceID === ids[index] &&
+            Resource.kind(resource.definition) === (index === 0 ? "model" : "connection"),
+        )
+      )
+    }, "Execution descriptors must match the exact active grant selection")
+    .meta({ ref: "OrgExecutionDescription" })
+  export type Description = z.infer<typeof Description>
+  const descriptionSignatures = signedProtocol(DescriptionProof, "synergy.organization.execution.resources.v1\n")
+  export const signDescription = descriptionSignatures.sign
+  export const verifyDescription = descriptionSignatures.verify
+  export const BindingProof = ReceivedProof.safeExtend({
+    purpose: z.literal("execution-root-binding"),
+    rootID: Identity.ID,
+  })
+    .refine(
+      (value) => value.receipt.accepted?.effect.messageID === value.rootID,
+      "Binding requires the exact accepted task root",
+    )
     .meta({ ref: "OrgExecutionBindingProof" })
   export type BindingProof = z.infer<typeof BindingProof>
   export const BindingRequest = z
