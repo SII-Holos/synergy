@@ -755,7 +755,7 @@ jobs:
       - uses: ./.github/actions/ci-setup
         with:
           native: ${{ matrix.id == 'windows-native' }}
-          workspaces: ${{ matrix.id == 'windows-desktop' && '@ericsanchezok/synergy-desktop' || '' }}
+          workspaces: ${{ matrix.id == 'windows-desktop' && '@ericsanchezok/synergy-desktop @ericsanchezok/synergy-sdk @ericsanchezok/synergy-util' || '' }}
           build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
           dependencies: "true"
           browser: ${{ matrix.browser }}
