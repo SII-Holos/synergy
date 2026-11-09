@@ -55,6 +55,23 @@ test("gateway proofs bind one finite call and separate Runtime request authority
   expect(Gateway.decode(token)).toEqual(authorization)
   expect(await Gateway.verifyPermit(permit, signature, publicKey)).toBeFalse()
   expect(await Gateway.verifyPermit(permit, authorization.signature, publicKey)).toBeTrue()
+  const connectionPermit = Gateway.Permit.parse({
+    ...target,
+    resourceID: "connection",
+    schemaVersion: 1,
+    purpose: "gateway-invocation",
+    keyID: "service-key",
+    resourceRevision: 1,
+    protocol: "fixed-http",
+    requestBytes: 1024,
+    responseBytes: 2048,
+    timeoutMs: 60_000,
+    issuedAt: 1,
+    expiresAt: 60_001,
+  })
+  expect(connectionPermit).not.toHaveProperty("modelID")
+  expect(Gateway.Permit.safeParse({ ...connectionPermit, modelID: "caller-selected" }).success).toBeFalse()
+  expect(Gateway.Permit.parse(connectionPermit)).toEqual(connectionPermit)
   expect(() => Gateway.decode(token + "!")).toThrow()
   expect(() => Gateway.decode("a".repeat(32_769))).toThrow()
   const reserved = { ...target, state: "reserved", createdAt: 1 }

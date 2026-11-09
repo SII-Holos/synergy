@@ -59,6 +59,8 @@ import type {
   OrgExecutionRetentionResponses,
   OrgGatewayChatCompletionsErrors,
   OrgGatewayChatCompletionsResponses,
+  OrgGatewayConnectionErrors,
+  OrgGatewayConnectionResponses,
   OrgGatewayInspectErrors,
   OrgGatewayInspectResponses,
   OrgGatewayMessagesErrors,
@@ -1395,6 +1397,35 @@ export class OrgGateway extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ key: "orgGatewayRequest", map: "body" }] }])
     return (options?.client ?? this.client).post<OrgGatewayInspectResponses, OrgGatewayInspectErrors, ThrowOnError>({
       url: "/runtime/v1/gateway/calls/inspect",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Forward one fixed business connection request using server-owned credentials
+   */
+  public connection<ThrowOnError extends boolean = false>(
+    parameters: {
+      resourceID: string
+      body?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "resourceID" }, { in: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgGatewayConnectionResponses,
+      OrgGatewayConnectionErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/gateway/connections/{resourceID}",
       ...options,
       ...params,
       headers: {

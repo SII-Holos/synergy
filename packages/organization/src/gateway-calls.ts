@@ -152,8 +152,6 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
             fail("PERMISSION_DENIED", "Runtime identity changed")
           const { grant, resource } = await access(proof, true)
           const configuration = resource.configuration
-          if (configuration.protocol !== "openai-compatible" && configuration.protocol !== "anthropic-compatible")
-            fail("PROTOCOL_MISMATCH", "This gateway only admits model calls")
           const previous = await Record.read(Record.GatewayCall, Keys.gatewayCall(grant.grantID, proof.callID))
           if (previous) {
             if (!sameCall(previous.authorization.permit, proof))
@@ -163,20 +161,27 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
           const usage = await Record.read(Record.ExecutionUsage, Keys.executionUsage(grant.grantID))
           if (usage && usage.grantID !== grant.grantID)
             fail("PROTOCOL_MISMATCH", "Execution usage identity is inconsistent")
-          const authorization = await options.signing.signGateway({
+          const common = {
             ...Gateway.Target.strip().parse(proof),
             schemaVersion: 1,
             purpose: "gateway-invocation",
             keyID: options.signing.identity.keyID,
-            resourceRevision: resource.revision,
-            protocol: configuration.protocol,
-            modelID: configuration.model.id,
             requestBytes: grant.limits.requestBytes,
             responseBytes: grant.limits.responseBytes,
             timeoutMs: 15 * 60_000,
             issuedAt: Date.now(),
             expiresAt: Date.now() + 60_000,
-          })
+          } as const
+          const authorization = await options.signing.signGateway(
+            configuration.protocol === "openai-compatible" || configuration.protocol === "anthropic-compatible"
+              ? {
+                  ...common,
+                  resourceRevision: resource.revision,
+                  protocol: configuration.protocol,
+                  modelID: configuration.model.id,
+                }
+              : { ...common, resourceRevision: resource.revision, protocol: configuration.protocol },
+          )
           await Storage.write(
             Keys.executionUsage(grant.grantID),
             Record.ExecutionUsage.parse({ schemaVersion: 1, grantID: grant.grantID, calls: (usage?.calls ?? 0) + 1 }),

@@ -5,7 +5,7 @@ import type { GatewayCalls } from "./gateway-calls"
 
 async function readBody(request: Request, maximum: number, signal: AbortSignal) {
   const reader = request.body?.getReader()
-  if (!reader) fail("INVALID_REQUEST", "Model request body is required")
+  if (!reader) return new Uint8Array()
   const chunks: Uint8Array[] = []
   let bytes = 0
   const abort = () => {
@@ -77,6 +77,8 @@ export function createModelGateway(options: { calls: GatewayCalls; run<T>(body: 
         fail("PERMISSION_DENIED", "Gateway capability does not match this route")
       const authorization = await options.calls.authorize(parsed)
       const { permit } = authorization
+      if (permit.protocol !== "openai-compatible" && permit.protocol !== "anthropic-compatible")
+        fail("PERMISSION_DENIED", "Gateway capability is not a model")
       if (closed) fail("SERVICE_UNAVAILABLE", "Model gateway is closed")
       if (active.size >= 32 || reservedBytes + permit.requestBytes > 64 * 1024 * 1024)
         fail("RESOURCE_UNAVAILABLE", "Model gateway capacity is occupied")
@@ -250,3 +252,208 @@ export function createModelGateway(options: { calls: GatewayCalls; run<T>(body: 
   }
 }
 export type ModelGateway = ReturnType<typeof createModelGateway>
+
+export function createConnectionGateway(options: {
+  calls: GatewayCalls
+  run<T>(body: () => T | Promise<T>): Promise<T>
+}) {
+  const transport = new Bun.FetchSession({ proxy: false, tls: { rejectUnauthorized: true } })
+  const active = new Set<{ grantID: string; controller: AbortController; done: Promise<void> }>()
+  let reservedBytes = 0
+  let closed = false
+  return {
+    assertDrained(grantID: string) {
+      if ([...active].some((entry) => entry.grantID === grantID))
+        fail("RESOURCE_UNAVAILABLE", "Root business requests have not drained")
+    },
+    async invoke(request: Request, resourceID: string): Promise<Response> {
+      if (closed) fail("SERVICE_UNAVAILABLE", "Business gateway is closed")
+      if (request.headers.has("origin") || request.headers.has("cookie"))
+        fail("PERMISSION_DENIED", "Gateway capabilities cannot be used by browser sessions")
+      if (new URL(request.url).search || request.headers.has("content-encoding"))
+        fail("INVALID_REQUEST", "Business requests cannot change transport routing")
+      if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") ?? ""))
+        fail("INVALID_REQUEST", "Business requests require JSON")
+      const bearer = request.headers.get("authorization")
+      const key = request.headers.get("x-api-key")
+      if (bearer && key) fail("PERMISSION_DENIED", "Use one gateway capability")
+      const token = bearer?.match(/^Bearer ([A-Za-z0-9_-]+)$/)?.[1] ?? key
+      let parsed: Gateway.SignedPermit
+      try {
+        parsed = Gateway.decode(token ?? "")
+      } catch {
+        fail("PERMISSION_DENIED", "Invalid gateway capability")
+      }
+      if (
+        parsed.permit.resourceID !== resourceID ||
+        !Gateway.ConnectionProtocol.safeParse(parsed.permit.protocol).success
+      )
+        fail("PERMISSION_DENIED", "Gateway capability does not match this route")
+      const authorization = await options.calls.authorize(parsed)
+      const { permit } = authorization
+      if (!Gateway.ConnectionProtocol.safeParse(permit.protocol).success)
+        fail("PERMISSION_DENIED", "Gateway capability is not a business connection")
+      if (closed) fail("SERVICE_UNAVAILABLE", "Business gateway is closed")
+      if (active.size >= 32 || reservedBytes + permit.requestBytes > 64 * 1024 * 1024)
+        fail("RESOURCE_UNAVAILABLE", "Business gateway capacity is occupied")
+      const controller = new AbortController()
+      const completion = Promise.withResolvers<void>()
+      const entry = { grantID: permit.grantID, controller, done: completion.promise }
+      active.add(entry)
+      reservedBytes += permit.requestBytes
+      const signal = AbortSignal.any([request.signal, controller.signal])
+      let timer = setTimeout(() => controller.abort(), Math.min(30_000, Math.max(1, permit.expiresAt - Date.now())))
+      let started = false
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+      let responseBytes = 0
+      let httpStatus: number | undefined
+      let finishing: Promise<void> | undefined
+      let abort: (() => void) | undefined
+      function finish(state: "response_complete" | "unknown") {
+        if (finishing) return finishing
+        finishing = (async () => {
+          clearTimeout(timer)
+          if (abort) signal.removeEventListener("abort", abort)
+          try {
+            if (state === "unknown") controller.abort()
+            if (reader) {
+              if (state === "unknown") await reader.cancel().catch(() => {})
+              reader.releaseLock()
+            }
+            if (started)
+              await options.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus }))
+          } finally {
+            active.delete(entry)
+            reservedBytes -= permit.requestBytes
+            completion.resolve()
+          }
+        })()
+        return finishing
+      }
+      try {
+        const body = await readBody(request, permit.requestBytes, signal)
+        if (body.byteLength) {
+          try {
+            JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body))
+          } catch {
+            fail("INVALID_REQUEST", "Invalid business request JSON")
+          }
+        }
+        const digest = Buffer.from(await crypto.subtle.digest("SHA-256", body)).toString("hex")
+        if (permit.protocol !== "fixed-http")
+          fail("PROTOCOL_MISMATCH", "This business adapter does not support the configured protocol")
+        const admitted = await options.calls.start(authorization, { hash: digest, bytes: body.byteLength, signal })
+        started = true
+        clearTimeout(timer)
+        timer = setTimeout(() => controller.abort(), permit.timeoutMs)
+        signal.throwIfAborted()
+        if (admitted.configuration.protocol !== permit.protocol)
+          fail("REVISION_CONFLICT", "Business resource configuration changed")
+        if (admitted.configuration.protocol !== "fixed-http")
+          fail("PROTOCOL_MISMATCH", "This business adapter does not support the configured protocol")
+        if (["GET", "DELETE"].includes(admitted.configuration.method) && body.byteLength)
+          fail("INVALID_REQUEST", "This business method does not accept a request body")
+        const headers = new Headers({
+          accept: "application/json, text/event-stream, application/octet-stream",
+        })
+        if (body.byteLength) headers.set("content-type", "application/json")
+        if (admitted.credential.kind === "bearer") headers.set("authorization", `Bearer ${admitted.credential.value}`)
+        if (admitted.credential.kind === "header") headers.set(admitted.credential.name, admitted.credential.value)
+        const response = await transport.fetch(admitted.configuration.endpoint, {
+          method: admitted.configuration.method,
+          headers,
+          body: body.byteLength ? body : undefined,
+          signal,
+          redirect: "manual",
+          credentials: "omit",
+        })
+        httpStatus = response.status
+        reader = response.body?.getReader()
+        if (response.status >= 300 && response.status < 400) {
+          await finish("unknown")
+          throw new OrganizationError({
+            code: "RESOURCE_UNAVAILABLE",
+            message: "The configured business endpoint redirected the request",
+            outcome: "unknown",
+            retryable: false,
+          })
+        }
+        if (!response.ok) {
+          const outgoing = new Headers({ "cache-control": "no-store", "x-content-type-options": "nosniff" })
+          const retryAfter = response.headers.get("retry-after")
+          if (retryAfter && /^\d{1,6}$/.test(retryAfter)) outgoing.set("retry-after", retryAfter)
+          await finish("unknown")
+          return Response.json(
+            { error: { type: "upstream_error", message: "The configured business endpoint rejected the request" } },
+            { status: response.status, headers: outgoing },
+          )
+        }
+        if (!reader) {
+          await finish("response_complete")
+          return new Response(null, { status: response.status, headers: { "cache-control": "no-store" } })
+        }
+        const type = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase()
+        if (type !== "application/json" && type !== "text/event-stream" && type !== "application/octet-stream") {
+          await finish("unknown")
+          throw new OrganizationError({
+            code: "PROTOCOL_MISMATCH",
+            message: "Business endpoint returned an unsupported response type",
+            outcome: "unknown",
+            retryable: false,
+          })
+        }
+        const outgoing = new Headers({ "cache-control": "no-store", "x-content-type-options": "nosniff" })
+        outgoing.set("content-type", type)
+        const stream = new ReadableStream<Uint8Array>({
+          start(stream) {
+            abort = () => {
+              if (finishing) return
+              stream.error(new Error("Organization business stream was interrupted"))
+              void finish("unknown").catch(() => {})
+            }
+            signal.addEventListener("abort", abort, { once: true })
+            if (signal.aborted) abort()
+          },
+          async pull(stream) {
+            try {
+              signal.throwIfAborted()
+              const item = await reader!.read()
+              signal.throwIfAborted()
+              if (item.done) {
+                await finish("response_complete")
+                stream.close()
+                return
+              }
+              responseBytes += item.value.byteLength
+              if (responseBytes > permit.responseBytes) throw new Error("Business response exceeds its byte allowance")
+              stream.enqueue(item.value)
+            } catch {
+              await finish("unknown")
+              stream.error(new Error("Organization business stream was interrupted"))
+            }
+          },
+          async cancel() {
+            await finish("unknown")
+          },
+        })
+        return new Response(stream, { status: response.status, headers: outgoing })
+      } catch (error) {
+        await finish("unknown")
+        if (error instanceof OrganizationError) throw error
+        throw new OrganizationError({
+          code: "SERVICE_UNAVAILABLE",
+          message: "The organization business request could not complete",
+          outcome: started ? "unknown" : "not_dispatched",
+          retryable: false,
+        })
+      }
+    },
+    async close() {
+      closed = true
+      for (const entry of active) entry.controller.abort()
+      await Promise.allSettled([...active].map((entry) => entry.done))
+      transport.close()
+    },
+  }
+}
+export type ConnectionGateway = ReturnType<typeof createConnectionGateway>

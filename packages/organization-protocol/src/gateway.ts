@@ -32,13 +32,13 @@ export namespace OrganizationGatewayProtocol {
   export type Request = z.infer<typeof Request>
   export const ModelProtocol = z.enum(["openai-compatible", "anthropic-compatible"])
   export type ModelProtocol = z.infer<typeof ModelProtocol>
-  export const Permit = Target.extend({
+  export const ConnectionProtocol = z.enum(["fixed-http", "mcp-http", "mcp-sse"])
+  export type ConnectionProtocol = z.infer<typeof ConnectionProtocol>
+  const PermitFields = {
     schemaVersion: z.literal(1),
     purpose: z.literal("gateway-invocation"),
     keyID: Identity.ID,
     resourceRevision: Identity.Revision,
-    protocol: ModelProtocol,
-    modelID: z.string().min(1).max(256),
     requestBytes: Execution.Limits.shape.requestBytes,
     responseBytes: Execution.Limits.shape.responseBytes,
     timeoutMs: z
@@ -47,8 +47,18 @@ export namespace OrganizationGatewayProtocol {
       .positive()
       .max(15 * 60_000),
     ...Window,
-  })
-    .refine(finite, "Gateway capabilities require a window of at most one minute")
+  }
+  export const ModelPermit = Target.extend({
+    ...PermitFields,
+    protocol: ModelProtocol,
+    modelID: z.string().min(1).max(256),
+  }).refine(finite, "Gateway capabilities require a window of at most one minute")
+  export const ConnectionPermit = Target.extend({ ...PermitFields, protocol: ConnectionProtocol }).refine(
+    finite,
+    "Gateway capabilities require a window of at most one minute",
+  )
+  export const Permit = z
+    .discriminatedUnion("protocol", [ModelPermit, ConnectionPermit])
     .meta({ ref: "OrgGatewayPermit" })
   export type Permit = z.infer<typeof Permit>
   export const SignedPermit = z

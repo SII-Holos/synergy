@@ -17,6 +17,8 @@ function request(
   authorization: Gateway.SignedPermit,
   input: { body?: string; headers?: Record<string, string> } = {},
 ) {
+  if (authorization.permit.protocol !== "openai-compatible" && authorization.permit.protocol !== "anthropic-compatible")
+    throw new Error("Expected a model gateway capability")
   const suffix = authorization.permit.protocol === "openai-compatible" ? "chat/completions" : "messages"
   return new Request(new URL(`/runtime/v1/gateway/models/${authorization.permit.resourceID}/${suffix}`, f.baseUrl), {
     method: "POST",
@@ -32,12 +34,11 @@ function request(
   })
 }
 function invoke(f: Fixture, authorization: Gateway.SignedPermit, input?: Parameters<typeof request>[2]) {
+  const protocol = authorization.permit.protocol
+  if (protocol !== "openai-compatible" && protocol !== "anthropic-compatible")
+    throw new Error("Expected a model gateway capability")
   return f.run(() =>
-    f.gateway.models.invoke(
-      request(f, authorization, input),
-      authorization.permit.resourceID,
-      authorization.permit.protocol,
-    ),
+    f.gateway.models.invoke(request(f, authorization, input), authorization.permit.resourceID, protocol),
   )
 }
 async function receipt(f: Fixture, callID: string) {
@@ -100,6 +101,72 @@ test("a finite call reaches only its selected model with service credentials and
         body: { model: "fixture-model", messages: [{ role: "user", content: "Private prompt" }] },
       },
     ])
+  } finally {
+    await upstream.stop(true)
+  }
+})
+
+test("a fixed HTTP connection uses its configured method and service credential without forwarding caller headers", async () => {
+  const received: {
+    method: string
+    url: string
+    authorization: string | null
+    callerHeader: string | null
+    body: unknown
+  }[] = []
+  const upstream = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      received.push({
+        method: request.method,
+        url: request.url,
+        authorization: request.headers.get("authorization"),
+        callerHeader: request.headers.get("x-private-caller"),
+        body: await request.json(),
+      })
+      return Response.json(
+        { ok: true, accepted: true },
+        { headers: { "set-cookie": "upstream-secret=private", "x-private-upstream": "private" } },
+      )
+    },
+  })
+  try {
+    await using f = await executionFixture({
+      endpoint: "https://provider.example/v1",
+      connectionEndpoint: new URL("/business", upstream.url).href,
+    })
+    const resourceID = f.connection!.resourceID
+    const proof = await f.proof("business-call", { resourceID })
+    const authorization = await f.run(() => f.gateway.calls.reserve(proof))
+    expect(authorization.permit.protocol).toBe("fixed-http")
+    const request = new Request(new URL(`/runtime/v1/gateway/connections/${resourceID}`, f.baseUrl), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${Gateway.encode(authorization)}`,
+        "content-type": "application/json",
+        "x-private-caller": "never-forward",
+      },
+      body: JSON.stringify({ operationID: "op-1", input: { value: "private payload" } }),
+    })
+    const response = await fetch(request)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, accepted: true })
+    expect(response.headers.get("set-cookie")).toBeNull()
+    expect(response.headers.get("x-private-upstream")).toBeNull()
+    expect(received).toEqual([
+      {
+        method: "POST",
+        url: new URL("/business", upstream.url).href,
+        authorization: "Bearer private-connection-key",
+        callerHeader: null,
+        body: { operationID: "op-1", input: { value: "private payload" } },
+      },
+    ])
+    expect(await f.run(() => f.gateway.calls.inspect(proof))).toMatchObject({
+      state: "response_complete",
+      httpStatus: 200,
+    })
   } finally {
     await upstream.stop(true)
   }
@@ -212,6 +279,8 @@ test("current driver, root, resource revision and role gate each new dispatch ev
       data: { code: "PERMISSION_DENIED" },
     })
     const altered = structuredClone(authorization)
+    if (altered.permit.protocol !== "openai-compatible" && altered.permit.protocol !== "anthropic-compatible")
+      throw new Error("Expected a model gateway capability")
     altered.permit.modelID = "other-model"
     await expect(invoke(f, altered)).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
     const blocked: NonNullable<Parameters<typeof request>[2]>[] = [

@@ -16,7 +16,7 @@ import { createCommandForwarder } from "../../src/command-forwarding"
 import { createExecutionGrants } from "../../src/execution-grants"
 import { organizationApp } from "../../src/http"
 import { createGatewayCalls } from "../../src/gateway-calls"
-import { createModelGateway } from "../../src/gateway"
+import { createConnectionGateway, createModelGateway } from "../../src/gateway"
 
 export async function commandFixture(options: { timeoutMs?: number } = {}) {
   const f = await directoryFixture()
@@ -40,11 +40,15 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
   const gateway = {
     calls: gatewayCalls,
     models: createModelGateway({ calls: gatewayCalls, run: async (body) => f.run(body) }),
+    connections: createConnectionGateway({ calls: gatewayCalls, run: async (body) => f.run(body) }),
   }
   const execution = createExecutionGrants({
     admissions: commands,
     connections,
-    assertResourcesDrained: gateway.models.assertDrained,
+    assertResourcesDrained(grantID: string) {
+      gateway.models.assertDrained(grantID)
+      gateway.connections.assertDrained(grantID)
+    },
   })
   const app = organizationApp(
     () => true,
@@ -144,6 +148,7 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
     async [Symbol.asyncDispose]() {
       connections.close()
       await gateway.models.close()
+      await gateway.connections.close()
       for (const socket of sockets) socket.close()
       await server.stop(true)
       await f[Symbol.asyncDispose]()

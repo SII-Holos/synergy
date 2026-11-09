@@ -844,29 +844,52 @@ export type OrgRuntimeConsumeTicket = {
   signature: string
 }
 
-export type OrgGatewayPermit = {
-  orgID: string
-  deploymentIncarnation: string
-  runtimeID: string
-  connectionEpoch: number
-  grantID: string
-  sessionID: string
-  rootID: string
-  bindingEpoch: number
-  resourceID: string
-  callID: string
-  schemaVersion: 1
-  purpose: "gateway-invocation"
-  keyID: string
-  resourceRevision: number
-  protocol: "openai-compatible" | "anthropic-compatible"
-  modelID: string
-  requestBytes: number
-  responseBytes: number
-  timeoutMs: number
-  issuedAt: number
-  expiresAt: number
-}
+export type OrgGatewayPermit =
+  | {
+      orgID: string
+      deploymentIncarnation: string
+      runtimeID: string
+      connectionEpoch: number
+      grantID: string
+      sessionID: string
+      rootID: string
+      bindingEpoch: number
+      resourceID: string
+      callID: string
+      schemaVersion: 1
+      purpose: "gateway-invocation"
+      keyID: string
+      resourceRevision: number
+      requestBytes: number
+      responseBytes: number
+      timeoutMs: number
+      issuedAt: number
+      expiresAt: number
+      protocol: "openai-compatible" | "anthropic-compatible"
+      modelID: string
+    }
+  | {
+      orgID: string
+      deploymentIncarnation: string
+      runtimeID: string
+      connectionEpoch: number
+      grantID: string
+      sessionID: string
+      rootID: string
+      bindingEpoch: number
+      resourceID: string
+      callID: string
+      schemaVersion: 1
+      purpose: "gateway-invocation"
+      keyID: string
+      resourceRevision: number
+      requestBytes: number
+      responseBytes: number
+      timeoutMs: number
+      issuedAt: number
+      expiresAt: number
+      protocol: "fixed-http" | "mcp-http" | "mcp-sse"
+    }
 
 export type OrgGatewaySignedPermit = {
   permit: OrgGatewayPermit
@@ -3494,6 +3517,53 @@ export type OrgGatewayInspectResponses = {
 }
 
 export type OrgGatewayInspectResponse = OrgGatewayInspectResponses[keyof OrgGatewayInspectResponses]
+
+export type OrgGatewayConnectionData = {
+  body?: {
+    [key: string]: unknown
+  }
+  path: {
+    resourceID: string
+  }
+  query?: never
+  url: "/runtime/v1/gateway/connections/{resourceID}"
+}
+
+export type OrgGatewayConnectionErrors = {
+  /**
+   * Organization error before or during business forwarding
+   */
+  400: OrgError
+  /**
+   * Organization error before or during business forwarding
+   */
+  401: OrgError
+  /**
+   * Organization error before or during business forwarding
+   */
+  403: OrgError
+  /**
+   * Organization error before or during business forwarding
+   */
+  409: OrgError
+  /**
+   * Organization error before or during business forwarding
+   */
+  503: OrgError
+}
+
+export type OrgGatewayConnectionError = OrgGatewayConnectionErrors[keyof OrgGatewayConnectionErrors]
+
+export type OrgGatewayConnectionResponses = {
+  /**
+   * Business connection response; supported streams preserve upstream bytes
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type OrgGatewayConnectionResponse = OrgGatewayConnectionResponses[keyof OrgGatewayConnectionResponses]
 
 export type OrgGatewayChatCompletionsData = {
   body: {

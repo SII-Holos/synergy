@@ -11,11 +11,12 @@ import { commandFixture } from "./commands"
 export async function executionFixture(input: {
   endpoint: string
   protocol?: "openai-compatible" | "anthropic-compatible"
+  connectionEndpoint?: string
 }) {
   const f = await commandFixture()
   try {
     await f.connect()
-    const { grant, binding } = await f.run(async () => {
+    const { grant, binding, connection } = await f.run(async () => {
       const resource = await Resources.create(
         f.credentials.admin,
         Resource.Create.parse({
@@ -38,9 +39,30 @@ export async function executionFixture(input: {
         { kind: "account", id: "alice" },
         { expectedRevision: 0, enabled: true },
       )
+      const connection = input.connectionEndpoint
+        ? await Resources.create(
+            f.credentials.admin,
+            Resource.Create.parse({
+              name: "Business connection",
+              scope: { kind: "organization" },
+              configuration: { protocol: "fixed-http", method: "POST", endpoint: input.connectionEndpoint },
+              credential: { kind: "bearer", value: "private-connection-key" },
+            }),
+          )
+        : undefined
+      if (connection)
+        await Resources.grant(
+          f.credentials.admin,
+          connection.resourceID,
+          { kind: "account", id: "alice" },
+          { expectedRevision: 0, enabled: true },
+        )
       await SessionResources.set(f.credentials.alice, f.sessionID, {
         expectedRevision: 0,
-        selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+        selection: {
+          modelResourceID: resource.resourceID,
+          connectionResourceIDs: connection ? [connection.resourceID] : [],
+        },
       })
       const request = f.request()
       request.input.mode = "task"
@@ -76,12 +98,13 @@ export async function executionFixture(input: {
         expiresAt: Date.now() + 30_000,
       })
       const binding = { proof, signature: await Execution.signBinding(proof, f.machineKeys.privateKey) }
-      return { grant: await f.execution.bind(binding), binding }
+      return { grant: await f.execution.bind(binding), binding, connection }
     })
     return {
       ...f,
       grant,
       binding,
+      connection,
       async proof(callID: string = crypto.randomUUID(), changes: Partial<Gateway.Proof> = {}) {
         const proof = Gateway.Proof.parse({
           schemaVersion: 1,

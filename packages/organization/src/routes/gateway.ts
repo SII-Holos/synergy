@@ -8,9 +8,11 @@ import {
 import { operation, validation } from "./shared"
 import { fail } from "../error"
 import type { GatewayCalls } from "../gateway-calls"
-import type { ModelGateway } from "../gateway"
+import type { ConnectionGateway, ModelGateway } from "../gateway"
 
-export function gatewayRoutes(gateway: () => { calls: GatewayCalls; models: ModelGateway }) {
+export function gatewayRoutes(
+  gateway: () => { calls: GatewayCalls; models: ModelGateway; connections: ConnectionGateway },
+) {
   const app = new Hono()
   app.use("/gateway/*", async (c, next) => {
     if (c.req.header("origin") || c.req.header("cookie"))
@@ -28,6 +30,37 @@ export function gatewayRoutes(gateway: () => { calls: GatewayCalls; models: Mode
     operation("orgGateway.inspect", "Inspect a resource call without dispatching it", Gateway.Receipt, true),
     validator("json", Gateway.Request, validation),
     async (c) => c.json(await gateway().calls.inspect(c.req.valid("json"))),
+  )
+  app.post(
+    "/gateway/connections/:resourceID",
+    describeRoute({
+      operationId: "orgGateway.connection",
+      summary: "Forward one fixed business connection request using server-owned credentials",
+      requestBody: {
+        required: false,
+        content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+      },
+      responses: {
+        200: {
+          description: "Business connection response; supported streams preserve upstream bytes",
+          content: {
+            "application/json": { schema: resolver(z.record(z.string(), z.unknown())) },
+            "text/event-stream": { schema: { type: "string" } },
+            "application/octet-stream": { schema: { type: "string", format: "binary" } },
+          },
+        },
+        ...Object.fromEntries(
+          [400, 401, 403, 409, 503].map((status) => [
+            status,
+            {
+              description: "Organization error before or during business forwarding",
+              content: { "application/json": { schema: resolver(OrganizationProtocol.Error) } },
+            },
+          ]),
+        ),
+      },
+    }),
+    async (c) => gateway().connections.invoke(c.req.raw, c.req.param("resourceID")),
   )
   for (const [path, protocol, id] of [
     ["chat/completions", "openai-compatible", "orgGateway.chatCompletions"],
