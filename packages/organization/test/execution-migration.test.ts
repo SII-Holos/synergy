@@ -6,6 +6,61 @@ import { OrganizationSessionDirectory as Directory } from "../src/session-direct
 import { OrganizationSessionResources as Resources } from "../src/session-resources"
 import { executionFixture } from "./support/execution"
 import { commandFixture } from "./support/commands"
+import { OrganizationExecutionProtocol as Execution } from "@ericsanchezok/synergy-organization-protocol"
+
+test("historical gateway calls acquire a retention generation without rewriting their signed capabilities", async () => {
+  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  const proof = await f.proof("before-retention-migration")
+  const capability = await f.run(() => f.gateway.calls.reserve(proof))
+  const key = Keys.gatewayCall(f.grant.grantID, proof.proof.callID)
+  const legacy = await f.run(async () => {
+    const { retentionGeneration: _, ...call } = (await Record.read(Record.GatewayCall, key))!
+    const legacy = { ...call, schemaVersion: 1 }
+    await Storage.write(key, legacy)
+    return legacy
+  })
+  await f.restart()
+  await f.run(async () => {
+    expect(await Record.read(Record.GatewayCall, key)).toMatchObject({
+      schemaVersion: 2,
+      retentionGeneration: 1,
+      authorization: capability,
+    })
+    expect(await Storage.read(key)).toEqual(legacy)
+    expect(await f.gateway.calls.authorize(capability)).toEqual(capability)
+    const release = Execution.ReleaseProof.parse({
+      ...f.binding.proof,
+      purpose: "execution-resources-release",
+      generation: 1,
+      outcome: "completed",
+    })
+    await f.execution.release({
+      proof: release,
+      signature: await Execution.signRelease(release, f.machineKeys.privateKey),
+    })
+    expect((await f.execution.bind(f.binding)).retention.generation).toBe(2)
+    await expect(f.gateway.calls.authorize(capability)).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+    expect(await f.gateway.calls.inspect(proof)).toMatchObject({ state: "reserved" })
+  })
+})
+
+test("bound grant retention upgrades from version two without rewriting stored evidence", async () => {
+  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  const legacy = await f.run(async () => {
+    const { retention: _, ...bound } = f.grant
+    const value = { ...bound, schemaVersion: 2 }
+    await Storage.write(Keys.executionGrant(bound.grantID), value)
+    return value
+  })
+  await f.restart()
+  await f.run(async () => {
+    const current = await Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))
+    expect(current).toEqual(f.grant)
+    expect(current).toMatchObject({ schemaVersion: 3, retention: { state: "held", generation: 1 } })
+    expect(await Storage.read(Keys.executionGrant(f.grant.grantID))).toEqual(legacy)
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
+  })
+})
 
 test("legacy execution metadata upgrades on access without changing acceptance, usage or resource ownership", async () => {
   await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
@@ -15,7 +70,8 @@ test("legacy execution metadata upgrades on access without changing acceptance, 
       Keys.session(f.sessionID),
     ))!
     const session = { ...directory, schemaVersion: 1, executionGrantIDs: [f.grant.grantID] }
-    const grant = { ...f.grant, schemaVersion: 1, limits: { ...f.grant.limits, calls: 1024 } }
+    const { retention: __, ...bound } = f.grant
+    const grant = { ...bound, schemaVersion: 1, limits: { ...f.grant.limits, calls: 1024 } }
     await Storage.transaction(async () => {
       await Storage.write(Keys.session(f.sessionID), session)
       await Storage.write(Keys.executionGrant(f.grant.grantID), grant)

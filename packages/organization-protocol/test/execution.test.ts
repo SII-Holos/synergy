@@ -138,3 +138,35 @@ test("resource description proves accepted input without claiming a materialized
     Execution.DescriptionProof.safeParse({ ...description, expiresAt: description.issuedAt + 60_001 }).success,
   ).toBeFalse()
 })
+
+test("resource release proofs bind the accepted root and retention generation in a distinct signing domain", async () => {
+  const original = Execution.ReleaseProof.parse({
+    ...proof(),
+    purpose: "execution-resources-release",
+    generation: 1,
+    outcome: "completed",
+  })
+  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
+  const publicKey = await Runtime.publicKey(keys.publicKey)
+  const signature = await Execution.signRelease(original, keys.privateKey)
+  expect(await Execution.verifyRelease(original, signature, publicKey)).toBeTrue()
+  expect(await Execution.verifyBinding(proof(), signature, publicKey)).toBeFalse()
+  for (const change of [
+    { generation: 2 },
+    { outcome: "cancelled" as const },
+    { connectionEpoch: 2 },
+    { expiresAt: original.expiresAt + 1 },
+  ])
+    expect(await Execution.verifyRelease({ ...original, ...change }, signature, publicKey)).toBeFalse()
+  for (const change of [
+    { generation: -1 },
+    { generation: 0.5 },
+    { generation: 0 },
+    { outcome: "running" },
+    { rootID: "other-root" },
+    { expiresAt: original.issuedAt + 60_001 },
+    { arbitrary: true },
+  ])
+    expect(Execution.ReleaseProof.safeParse({ ...original, ...change }).success).toBeFalse()
+  expect(Execution.ReleaseProof.safeParse({ ...original, generation: 0, outcome: "cancelled" }).success).toBeTrue()
+})

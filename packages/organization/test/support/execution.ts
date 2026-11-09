@@ -15,7 +15,7 @@ export async function executionFixture(input: {
   const f = await commandFixture()
   try {
     await f.connect()
-    const grant = await f.run(async () => {
+    const { grant, binding } = await f.run(async () => {
       const resource = await Resources.create(
         f.credentials.admin,
         Resource.Create.parse({
@@ -75,11 +75,13 @@ export async function executionFixture(input: {
         issuedAt: Date.now(),
         expiresAt: Date.now() + 30_000,
       })
-      return f.execution.bind({ proof, signature: await Execution.signBinding(proof, f.machineKeys.privateKey) })
+      const binding = { proof, signature: await Execution.signBinding(proof, f.machineKeys.privateKey) }
+      return { grant: await f.execution.bind(binding), binding }
     })
     return {
       ...f,
       grant,
+      binding,
       async proof(callID: string = crypto.randomUUID(), changes: Partial<Gateway.Proof> = {}) {
         const proof = Gateway.Proof.parse({
           schemaVersion: 1,

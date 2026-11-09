@@ -38,10 +38,14 @@ async function readBody(request: Request, maximum: number, signal: AbortSignal) 
 
 export function createModelGateway(options: { calls: GatewayCalls; run<T>(body: () => T | Promise<T>): Promise<T> }) {
   const transport = new Bun.FetchSession({ proxy: false, tls: { rejectUnauthorized: true } })
-  const active = new Set<{ controller: AbortController; done: Promise<void> }>()
+  const active = new Set<{ grantID: string; controller: AbortController; done: Promise<void> }>()
   let reservedBytes = 0
   let closed = false
   return {
+    assertDrained(grantID: string) {
+      if ([...active].some((entry) => entry.grantID === grantID))
+        fail("RESOURCE_UNAVAILABLE", "Root model requests have not drained")
+    },
     async invoke(request: Request, resourceID: string, protocol: Gateway.ModelProtocol): Promise<Response> {
       if (closed) fail("SERVICE_UNAVAILABLE", "Model gateway is closed")
       if (request.headers.has("origin") || request.headers.has("cookie"))
@@ -78,7 +82,7 @@ export function createModelGateway(options: { calls: GatewayCalls; run<T>(body: 
         fail("RESOURCE_UNAVAILABLE", "Model gateway capacity is occupied")
       const controller = new AbortController()
       const completion = Promise.withResolvers<void>()
-      const entry = { controller, done: completion.promise }
+      const entry = { grantID: permit.grantID, controller, done: completion.promise }
       active.add(entry)
       reservedBytes += permit.requestBytes
       const signal = AbortSignal.any([request.signal, controller.signal])

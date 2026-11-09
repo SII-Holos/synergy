@@ -6,6 +6,46 @@ import {
 import { createMemberResourceClient } from "../src/resource-client"
 import { executionFixture as execution } from "./support/execution"
 
+test("member release verifies its receipt and preserves root identity across response loss and renewed retention", async () => {
+  await using f = await execution()
+  const binding = await f.binding()
+  const grant = await f.connection.resources.bind(binding)
+  const proof = Execution.ReleaseProof.parse({
+    ...binding,
+    purpose: "execution-resources-release",
+    generation: grant.retention.generation,
+    outcome: "completed",
+  })
+  let original: Execution.ReleaseReceipt | undefined
+  let calls = 0
+  f.interceptHTTP(async (request) => {
+    if (!request.url.endsWith("/execution/release")) return
+    calls++
+    const response = await f.service.fetch(request)
+    original = Execution.ReleaseReceipt.parse(await response.json())
+    return new Response("Response lost after release", { status: 502 })
+  })
+  await expect(f.connection.resources.release(proof)).rejects.toMatchObject({
+    data: { code: "PROTOCOL_MISMATCH", outcome: "unknown" },
+  })
+  expect(calls).toBe(1)
+  f.interceptHTTP(undefined)
+  expect(await f.connection.resources.release(proof)).toEqual(original!)
+  await f.reconnect()
+  const renewed = Execution.ReleaseProof.parse({ ...proof, connectionEpoch: f.connection.connected.connectionEpoch })
+  expect(await f.connection.resources.release(renewed)).toEqual(original!)
+  const retained = await f.connection.resources.bind({ ...binding, connectionEpoch: renewed.connectionEpoch })
+  expect(retained).toMatchObject({
+    grantID: grant.grantID,
+    rootID: grant.rootID,
+    retention: { state: "held", generation: 2 },
+  })
+  for (const changed of [{ generation: 2 }, { rootID: "different-root" }, { outcome: "failed" }]) {
+    f.interceptHTTP(() => Response.json({ ...original!, ...changed }))
+    await expect(f.connection.resources.release(renewed)).rejects.toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+  }
+})
+
 test("the verified member connection prepares native resources and obtains only one-call authority over HTTPS", async () => {
   await using f = await execution()
   const requests: Array<{ path: string; cookie: string | null; origin: string | null; body: string }> = []

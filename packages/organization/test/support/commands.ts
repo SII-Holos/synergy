@@ -36,12 +36,16 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
   })
   const commands = createCommandAdmissions({ connections, signing })
   const forwarder = createCommandForwarder({ admissions: commands, connections, timeoutMs: options.timeoutMs })
-  const execution = createExecutionGrants({ admissions: commands, connections })
   const gatewayCalls = createGatewayCalls({ connections, signing })
   const gateway = {
     calls: gatewayCalls,
     models: createModelGateway({ calls: gatewayCalls, run: async (body) => f.run(body) }),
   }
+  const execution = createExecutionGrants({
+    admissions: commands,
+    connections,
+    assertResourcesDrained: gateway.models.assertDrained,
+  })
   const app = organizationApp(
     () => true,
     undefined,

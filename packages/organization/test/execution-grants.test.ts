@@ -3,6 +3,7 @@ import {
   OrganizationResourceProtocol as Resource,
   OrganizationExecutionProtocol as Execution,
   OrganizationCommandProtocol as Command,
+  OrganizationGatewayProtocol as Gateway,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
@@ -98,6 +99,102 @@ async function proof(
   })
   return { proof, signature: await Execution.signBinding(proof, f.machineKeys.privateKey) }
 }
+
+test("releasing and reacquiring a root preserves its evidence while fencing capabilities from its previous use", async () => {
+  await using f = await commandFixture()
+  await f.connect()
+  const admitted = await task(f)
+  const binding = await proof(f, admitted.receipt)
+  const grant = await f.run(() => f.execution.bind(binding))
+  expect(grant.retention).toEqual({ state: "held", generation: 1 })
+  async function reserve(callID: string) {
+    const value = Gateway.Proof.parse({
+      schemaVersion: 1,
+      purpose: "gateway-call",
+      orgID: grant.orgID,
+      deploymentIncarnation: grant.deploymentIncarnation,
+      runtimeID: grant.runtimeID,
+      connectionEpoch: 1,
+      grantID: grant.grantID,
+      sessionID: grant.sessionID,
+      rootID: grant.rootID,
+      bindingEpoch: grant.bindingEpoch,
+      resourceID: grant.selection.modelResourceID,
+      callID,
+      issuedAt: Date.now(),
+      expiresAt: Date.now() + 30_000,
+    })
+    const request = { proof: value, signature: await Gateway.signRequest(value, f.machineKeys.privateKey) }
+    return { request, capability: await f.run(() => f.gateway.calls.reserve(request)) }
+  }
+  const old = await reserve("before-release")
+  expect(await f.run(() => f.gateway.calls.authorize(old.capability))).toEqual(old.capability)
+  const value = Execution.ReleaseProof.parse({
+    ...binding.proof,
+    purpose: "execution-resources-release",
+    generation: 1,
+    outcome: "completed",
+  })
+  const release = { proof: value, signature: await Execution.signRelease(value, f.machineKeys.privateKey) }
+  const receipt = await f.run(() => f.execution.release(release))
+  expect(receipt).toMatchObject({ grantID: grant.grantID, rootID: grant.rootID, generation: 1, outcome: "completed" })
+  await f.run(async () => {
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(0)
+    expect(await f.execution.release(release)).toEqual(receipt)
+    expect(await f.gateway.calls.inspect(old.request)).toMatchObject({ state: "reserved" })
+    await expect(f.gateway.calls.authorize(old.capability)).rejects.toMatchObject({
+      data: { code: "PERMISSION_DENIED" },
+    })
+    await expect(f.gateway.calls.reserve(old.request)).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+    const reacquired = await f.execution.bind(binding)
+    expect(reacquired).toMatchObject({
+      grantID: grant.grantID,
+      rootID: grant.rootID,
+      boundAt: grant.boundAt,
+      retention: { state: "held", generation: 2 },
+    })
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
+    expect(await f.execution.release(release)).toEqual(receipt)
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
+    await expect(f.gateway.calls.authorize(old.capability)).rejects.toMatchObject({
+      data: { code: "PERMISSION_DENIED" },
+    })
+    await expect(
+      f.gateway.calls.start(old.capability, { hash: "1".repeat(64), bytes: 2, signal: new AbortController().signal }),
+    ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+  })
+  const next = await reserve("after-release")
+  await f.run(async () => {
+    expect(await f.gateway.calls.authorize(next.capability)).toEqual(next.capability)
+    expect(await Record.read(Record.ExecutionUsage, Keys.executionUsage(grant.grantID))).toMatchObject({ calls: 2 })
+  })
+})
+
+test("cancelled accepted intake releases its provisional grant without inventing a native root", async () => {
+  await using f = await commandFixture()
+  await f.connect()
+  const admitted = await task(f)
+  const value = Execution.ReleaseProof.parse({
+    ...(await proof(f, admitted.receipt)).proof,
+    purpose: "execution-resources-release",
+    generation: 0,
+    outcome: "cancelled",
+  })
+  const input = { proof: value, signature: await Execution.signRelease(value, f.machineKeys.privateKey) }
+  await f.run(async () => {
+    const receipt = await f.execution.release(input)
+    expect(receipt).toMatchObject({ grantID: admitted.permit.provisionalGrantID, generation: 0, outcome: "cancelled" })
+    expect(await f.execution.release(input)).toEqual(receipt)
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(0)
+    expect(await Record.read(Record.RootGrant, Keys.rootGrant(f.sessionID, 1, value.rootID))).toBeUndefined()
+    await expect(f.execution.bind(await proof(f, admitted.receipt))).rejects.toMatchObject({
+      data: { code: "PERMISSION_DENIED" },
+    })
+    expect(
+      (await f.commands.get(f.credentials.alice, { sessionID: f.sessionID, requestID: "request" })).accepted,
+    ).toEqual(admitted.receipt.accepted)
+  })
+})
 
 test("Session resource selection uses current selection grants and an independent revision", async () => {
   await using f = await commandFixture()

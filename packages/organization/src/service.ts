@@ -160,9 +160,13 @@ export async function openOrganizationService(options: OrganizationServiceOption
       })
       const admissions = createCommandAdmissions({ connections, signing })
       const commands = createCommandForwarder({ admissions, connections })
-      const execution = createExecutionGrants({ admissions, connections })
       const gatewayCalls = createGatewayCalls({ connections, signing })
       modelGateway = createModelGateway({ calls: gatewayCalls, run: async (body) => context.run(body) })
+      const execution = createExecutionGrants({
+        admissions,
+        connections,
+        assertResourcesDrained: modelGateway.assertDrained,
+      })
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
       const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)

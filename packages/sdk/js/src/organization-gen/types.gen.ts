@@ -917,7 +917,7 @@ export type OrgGatewayReceipt = {
 }
 
 export type OrgBoundExecutionGrant = {
-  schemaVersion: 2
+  schemaVersion: 3
   grantID: string
   orgID: string
   deploymentIncarnation: string
@@ -948,12 +948,23 @@ export type OrgBoundExecutionGrant = {
   state: "bound"
   rootID: string
   boundAt: number
+  retention:
+    | {
+        state: "held"
+        generation: number
+      }
+    | {
+        state: "released"
+        generation: number
+        releasedAt: number
+        outcome: "completed" | "failed" | "cancelled"
+      }
 }
 
 export type OrgExecutionDescription = {
   grant:
     | {
-        schemaVersion: 2
+        schemaVersion: 3
         grantID: string
         orgID: string
         deploymentIncarnation: string
@@ -985,7 +996,7 @@ export type OrgExecutionDescription = {
       }
     | OrgBoundExecutionGrant
     | {
-        schemaVersion: 2
+        schemaVersion: 3
         grantID: string
         orgID: string
         deploymentIncarnation: string
@@ -1174,6 +1185,85 @@ export type OrgExecutionBindingProof = {
 
 export type OrgExecutionBindingRequest = {
   proof: OrgExecutionBindingProof
+  signature: string
+}
+
+export type OrgExecutionReleaseReceipt = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  sessionID: string
+  bindingEpoch: number
+  grantID: string
+  rootID: string
+  generation: number
+  outcome: "completed" | "failed" | "cancelled"
+  releasedAt: number
+}
+
+export type OrgExecutionReleaseProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+  purpose: "execution-resources-release"
+  rootID: string
+  generation: number
+  outcome: "completed" | "failed" | "cancelled"
+}
+
+export type OrgExecutionReleaseRequest = {
+  proof: OrgExecutionReleaseProof
   signature: string
 }
 
@@ -3585,6 +3675,51 @@ export type OrgExecutionBindResponses = {
 }
 
 export type OrgExecutionBindResponse = OrgExecutionBindResponses[keyof OrgExecutionBindResponses]
+
+export type OrgExecutionReleaseData = {
+  body: OrgExecutionReleaseRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/execution/release"
+}
+
+export type OrgExecutionReleaseErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgExecutionReleaseError = OrgExecutionReleaseErrors[keyof OrgExecutionReleaseErrors]
+
+export type OrgExecutionReleaseResponses = {
+  /**
+   * Success
+   */
+  200: OrgExecutionReleaseReceipt
+}
+
+export type OrgExecutionReleaseResponse = OrgExecutionReleaseResponses[keyof OrgExecutionReleaseResponses]
 
 export type OrgRuntimeConnectionData = {
   body?: never

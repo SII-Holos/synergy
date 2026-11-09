@@ -48,8 +48,18 @@ export namespace OrganizationExecutionProtocol {
       .positive()
       .max(64 * 1024 * 1024),
   })
+  export const ReleaseOutcome = z.enum(["completed", "failed", "cancelled"])
+  export const Retention = z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("held"), generation: z.number().int().positive().safe() }),
+    z.strictObject({
+      state: z.literal("released"),
+      generation: z.number().int().positive().safe(),
+      releasedAt: z.number().int().nonnegative(),
+      outcome: ReleaseOutcome,
+    }),
+  ])
   const GrantFields = z.strictObject({
-    schemaVersion: z.literal(2),
+    schemaVersion: z.literal(3),
     grantID: Identity.ID,
     orgID: Identity.ID,
     deploymentIncarnation: Identity.ID,
@@ -69,6 +79,7 @@ export namespace OrganizationExecutionProtocol {
     state: z.literal("bound"),
     rootID: Identity.ID,
     boundAt: z.number().int().nonnegative(),
+    retention: Retention,
   }).meta({ ref: "OrgBoundExecutionGrant" })
   export type BoundGrant = z.infer<typeof BoundGrant>
   export const Grant = z
@@ -163,4 +174,44 @@ export namespace OrganizationExecutionProtocol {
   const bindingSignatures = signedProtocol(BindingProof, "synergy.organization.execution.root-binding.v1\n")
   export const signBinding = bindingSignatures.sign
   export const verifyBinding = bindingSignatures.verify
+  export const ReleaseProof = ReceivedProof.safeExtend({
+    purpose: z.literal("execution-resources-release"),
+    rootID: Identity.ID,
+    generation: z.number().int().nonnegative().safe(),
+    outcome: ReleaseOutcome,
+  })
+    .refine(
+      (value) => value.receipt.accepted?.effect.messageID === value.rootID,
+      "Release requires the exact accepted task root",
+    )
+    .refine(
+      (value) => value.generation !== 0 || value.outcome === "cancelled",
+      "Unmaterialized task resources can only be released after cancellation",
+    )
+    .meta({ ref: "OrgExecutionReleaseProof" })
+  export type ReleaseProof = z.infer<typeof ReleaseProof>
+  export const ReleaseRequest = z
+    .strictObject({ proof: ReleaseProof, signature: SigningSignature })
+    .meta({ ref: "OrgExecutionReleaseRequest" })
+  export type ReleaseRequest = z.infer<typeof ReleaseRequest>
+  export const ReleaseReceipt = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      orgID: Identity.ID,
+      deploymentIncarnation: Identity.ID,
+      runtimeID: Identity.ID,
+      sessionID: Identity.ID,
+      bindingEpoch: Protocol.Epoch,
+      grantID: Identity.ID,
+      rootID: Identity.ID,
+      generation: z.number().int().nonnegative().safe(),
+      outcome: ReleaseOutcome,
+      releasedAt: z.number().int().nonnegative(),
+    })
+    .refine((value) => value.generation !== 0 || value.outcome === "cancelled")
+    .meta({ ref: "OrgExecutionReleaseReceipt" })
+  export type ReleaseReceipt = z.infer<typeof ReleaseReceipt>
+  const releaseSignatures = signedProtocol(ReleaseProof, "synergy.organization.execution.release.v1\n")
+  export const signRelease = releaseSignatures.sign
+  export const verifyRelease = releaseSignatures.verify
 }

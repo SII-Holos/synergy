@@ -50,6 +50,9 @@ import type {
   OrgExecutionBindingRequest,
   OrgExecutionBindResponses,
   OrgExecutionDescriptionRequest,
+  OrgExecutionReleaseErrors,
+  OrgExecutionReleaseRequest,
+  OrgExecutionReleaseResponses,
   OrgExecutionResourcesErrors,
   OrgExecutionResourcesResponses,
   OrgGatewayChatCompletionsErrors,
@@ -1502,6 +1505,30 @@ export class OrgExecution extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+
+  /**
+   * Release drained resources while retaining native root execution evidence
+   */
+  public release<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgExecutionReleaseRequest: OrgExecutionReleaseRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgExecutionReleaseRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgExecutionReleaseResponses, OrgExecutionReleaseErrors, ThrowOnError>(
+      {
+        url: "/runtime/v1/execution/release",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
   }
 }
 

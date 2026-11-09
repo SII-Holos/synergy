@@ -3,6 +3,12 @@ export namespace OrganizationStoragePath {
   export const executionUsage = (grantID: string) => ["organization", "execution-usage", grantID]
   export const sessionResources = (sessionID: string) => ["organization", "session-resources", sessionID]
   export const executionGrant = (grantID: string) => ["organization", "execution-grants", grantID]
+  export const executionRelease = (grantID: string, generation: number) => [
+    "organization",
+    "execution-releases",
+    grantID,
+    String(generation),
+  ]
   export const rootGrant = (sessionID: string, bindingEpoch: number, rootID: string) => [
     "organization",
     "root-grants",

@@ -6,9 +6,11 @@ import { OrganizationStoragePath } from "./storage/path"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { initializeSigningIdentity } from "./signing"
 import { executionMigration } from "./execution-migration"
+import { executionRetentionMigration } from "./execution-retention-migration"
 
 const migrations: Migration[] = [
   executionMigration,
+  executionRetentionMigration,
   {
     id: "20261108-organization-deployment",
     description: "Establish independent organization deployment identity",

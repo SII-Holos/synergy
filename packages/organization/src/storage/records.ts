@@ -19,7 +19,12 @@ export namespace OrganizationRecord {
     calls: z.number().int().nonnegative(),
   })
   export const GatewayCall = z
-    .strictObject({ schemaVersion: z.literal(1), authorization: Gateway.SignedPermit, receipt: Gateway.Receipt })
+    .strictObject({
+      schemaVersion: z.literal(2),
+      retentionGeneration: z.number().int().positive().safe(),
+      authorization: Gateway.SignedPermit,
+      receipt: Gateway.Receipt,
+    })
     .refine(
       (value) =>
         Object.keys(Gateway.Target.shape).every(
@@ -34,6 +39,7 @@ export namespace OrganizationRecord {
   )
   export type SessionResources = z.infer<typeof SessionResources>
   export const ExecutionGrant = Execution.Grant
+  export const ExecutionRelease = Execution.ReleaseReceipt
   export const RootGrant = z.strictObject({ grantID: Identity.ID })
   export const Resource = ResourceProtocol.AdminView.safeExtend({
     schemaVersion: z.literal(1),

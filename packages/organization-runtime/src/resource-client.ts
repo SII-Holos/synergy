@@ -11,11 +11,12 @@ import { OrganizationRuntimeError } from "./error"
 export interface MemberResourceClient {
   describe(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Description>
   bind(proof: Execution.BindingProof, signal?: AbortSignal): Promise<Execution.BoundGrant>
+  release(proof: Execution.ReleaseProof, signal?: AbortSignal): Promise<Execution.ReleaseReceipt>
   reserve(proof: Gateway.Proof, signal?: AbortSignal): Promise<Gateway.SignedPermit>
   inspect(proof: Gateway.Proof, signal?: AbortSignal): Promise<Gateway.Receipt>
 }
 
-type Proof = Execution.DescriptionProof | Execution.BindingProof | Gateway.Proof
+type Proof = Execution.DescriptionProof | Execution.BindingProof | Execution.ReleaseProof | Gateway.Proof
 
 function failure(
   code: OrganizationProtocol.Error["code"],
@@ -224,7 +225,42 @@ export function createMemberResourceClient(options: {
             { orgExecutionBindingRequest: { proof, signature: await Execution.signBinding(proof, options.key) } },
             { signal },
           ),
-        (result) => grant(proof, result),
+        (result) => {
+          grant(proof, result)
+          if (result.retention.state !== "held")
+            throw failure("PROTOCOL_MISMATCH", "Execution binding did not retain its resources")
+        },
+        signal,
+      )
+    },
+    async release(value, signal) {
+      const proof = Execution.ReleaseProof.parse(value)
+      return invoke(
+        proof,
+        Execution.ReleaseReceipt,
+        async (signal) =>
+          client.orgExecution.release(
+            { orgExecutionReleaseRequest: { proof, signature: await Execution.signRelease(proof, options.key) } },
+            { signal },
+          ),
+        (result) => {
+          const permit = proof.receipt.accepted!.permit
+          if (
+            result.grantID !== permit.provisionalGrantID ||
+            result.orgID !== permit.orgID ||
+            result.deploymentIncarnation !== permit.deploymentIncarnation ||
+            result.runtimeID !== permit.runtimeID ||
+            result.sessionID !== permit.sessionID ||
+            result.bindingEpoch !== permit.bindingEpoch ||
+            result.rootID !== proof.rootID ||
+            result.generation !== proof.generation ||
+            result.outcome !== proof.outcome
+          )
+            throw failure(
+              "PROTOCOL_MISMATCH",
+              "Execution release receipt does not match its proven resource generation",
+            )
+        },
         signal,
       )
     },

@@ -37,4 +37,19 @@ export function executionRoutes(grants: () => ExecutionGrants) {
         return c.json(await grants().bind(c.req.valid("json")))
       },
     )
+    .post(
+      "/execution/release",
+      operation(
+        "orgExecution.release",
+        "Release drained resources while retaining native root execution evidence",
+        Execution.ReleaseReceipt,
+        true,
+      ),
+      validator("json", Execution.ReleaseRequest, validation),
+      async (c) => {
+        if (c.req.header("origin") || c.req.header("cookie"))
+          fail("PERMISSION_DENIED", "Execution release requires a machine request")
+        return c.json(await grants().release(c.req.valid("json")))
+      },
+    )
 }

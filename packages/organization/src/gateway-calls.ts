@@ -86,10 +86,11 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
       session.orgID !== grant.orgID ||
       session.projectID !== grant.projectID ||
       session.driverRuntimeID !== runtime.runtimeID ||
-      session.bindingEpoch !== grant.bindingEpoch ||
-      session.retainedExecutionGrants === 0
+      session.bindingEpoch !== grant.bindingEpoch
     )
       fail("STALE_BINDING", "Gateway Session ownership changed")
+    if (invoke && (grant.retention.state !== "held" || session.retainedExecutionGrants === 0))
+      fail("PERMISSION_DENIED", "Root resources have been released")
     if (invoke && session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks new resource calls")
     const [project, membership, contract] = await Promise.all([
       Record.read(Record.Project, Keys.project(grant.projectID)),
@@ -100,9 +101,10 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
     if (!projectExecutionRole(projectView(account, project, membership, "project.read").role))
       fail("PERMISSION_DENIED", "Runtime account cannot execute project work")
     if (
-      !contract ||
-      contract.revision !== grant.selectionRevision ||
-      JSON.stringify(contract.selection) !== JSON.stringify(grant.selection)
+      invoke &&
+      (!contract ||
+        contract.revision !== grant.selectionRevision ||
+        JSON.stringify(contract.selection) !== JSON.stringify(grant.selection))
     )
       fail("REVISION_CONFLICT", "Gateway resource contract changed")
     if (!Execution.resourceIDs(grant.selection).includes(target.resourceID))
@@ -127,13 +129,15 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
     const lease = connection(request.proof)
     return { ...request, lease, publicKey: registered.runtime.publicKey }
   }
-  async function call(authorization: Gateway.SignedPermit) {
+  async function call(authorization: Gateway.SignedPermit, generation?: number) {
     const stored = await Record.read(
       Record.GatewayCall,
       Keys.gatewayCall(authorization.permit.grantID, authorization.permit.callID),
     )
     if (!stored || JSON.stringify(stored.authorization) !== JSON.stringify(authorization))
       fail("PERMISSION_DENIED", "Gateway capability was not issued for this call")
+    if (generation !== undefined && stored.retentionGeneration !== generation)
+      fail("PERMISSION_DENIED", "Gateway capability belongs to a released resource generation")
     return stored
   }
   return {
@@ -180,7 +184,8 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
           await Storage.write(
             Keys.gatewayCall(grant.grantID, proof.callID),
             Record.GatewayCall.parse({
-              schemaVersion: 1,
+              schemaVersion: 2,
+              retentionGeneration: grant.retention.generation,
               authorization,
               receipt: {
                 ...Gateway.Target.strip().parse(proof),
@@ -225,8 +230,8 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
         fail("PERMISSION_DENIED", "Gateway capability signature is invalid")
       connection(permit).assertCurrent()
       await Storage.snapshot(async () => {
-        await access(permit, true)
-        await call(authorization)
+        const { grant } = await access(permit, true)
+        await call(authorization, grant.retention.generation)
       })
       return authorization
     },
@@ -239,10 +244,10 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
           window(permit)
           lease.assertCurrent()
           input.signal.throwIfAborted()
-          const { resource } = await access(permit, true)
+          const { resource, grant } = await access(permit, true)
           if (resource.revision !== permit.resourceRevision || resource.configuration.protocol !== permit.protocol)
             fail("REVISION_CONFLICT", "Resource configuration changed before dispatch")
-          const stored = await call(authorization)
+          const stored = await call(authorization, grant.retention.generation)
           if (stored.receipt.state !== "reserved")
             throw new OrganizationError({
               code: "REVISION_CONFLICT",
