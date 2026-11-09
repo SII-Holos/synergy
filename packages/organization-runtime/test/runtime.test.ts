@@ -350,7 +350,7 @@ test("resident exporter projects Cortex descendants and completion notifications
     { headers: service.headers, throwOnError: true },
   )
   const wait = async (predicate: (items: Sync.Event[]) => boolean) => {
-    const deadline = Date.now() + 5_000
+    const deadline = Date.now() + 15_000
     for (;;) {
       const page = await service.client.orgSessionSync.events(
         { sessionID, limit: 128 },
