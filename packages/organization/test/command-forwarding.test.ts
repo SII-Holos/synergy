@@ -42,9 +42,22 @@ test("receipt queries retain transport capacity behind a full command window", a
   await using f = await commandFixture()
   const socket = await f.connect()
   let respond = true
+  let inputFrames = 0
+  let queryFrames = 0
+  const allInputs = Promise.withResolvers<void>()
+  const allQueries = Promise.withResolvers<void>()
   socket.onmessage = (event) => {
     const frame = Runtime.ServerFrame.parse(JSON.parse(String(event.data)))
-    if (frame.type !== "command" || frame.command.kind !== "query" || !respond) return
+    if (frame.type !== "command") return
+    if (frame.command.kind === "input") {
+      inputFrames++
+      if (inputFrames === 16) allInputs.resolve()
+      return
+    }
+    if (frame.command.kind !== "query") return
+    queryFrames++
+    if (queryFrames === 16) allQueries.resolve()
+    if (!respond) return
     socket.send(
       JSON.stringify({
         type: "receipt",
@@ -60,25 +73,90 @@ test("receipt queries retain transport capacity behind a full command window", a
     const controller = new AbortController()
     const work = { signal: controller.signal, deadline: Date.now() + 3_000 }
     const pending: Promise<Command.Reply>[] = []
-    const send = (command: Command.Delivery) => prepared.connection.exchange(command, work)
+    const send = (command: Command.Delivery, options = work) => prepared.connection.exchange(command, options)
     try {
       for (let index = 0; index < 16; index++) {
         const request = send({ kind: "input", delivery: prepared.delivery })
         void request.catch(() => {})
         pending.push(request)
       }
-      expect(() => send({ kind: "input", delivery: prepared.delivery })).toThrow("busy")
+      await allInputs.promise
+      const blockedCommandController = new AbortController()
+      const blockedCommand = send(
+        { kind: "input", delivery: prepared.delivery },
+        { signal: blockedCommandController.signal, deadline: Date.now() + 1_000 },
+      )
       const query: Command.Delivery = { kind: "query", authorization: prepared.delivery.authorization }
       expect(await send(query)).toMatchObject({ kind: "query" })
+      queryFrames = 0
       respond = false
       for (let index = 0; index < 16; index++) {
         const request = send(query)
         void request.catch(() => {})
         pending.push(request)
       }
-      expect(() => send(query)).toThrow("busy")
+      await allQueries.promise
+      const blockedQueryController = new AbortController()
+      const blockedQuery = send(query, {
+        signal: blockedQueryController.signal,
+        deadline: Date.now() + 1_000,
+      })
+      void blockedQuery.catch(() => {})
+      blockedQueryController.abort()
+      blockedCommandController.abort()
+      await expect(blockedCommand).rejects.toMatchObject({ data: { outcome: "not_dispatched" } })
+      await expect(blockedQuery).rejects.toMatchObject({ data: { outcome: "not_dispatched" } })
     } finally {
       controller.abort()
+      await Promise.allSettled(pending)
+    }
+  })
+})
+
+test("transport wakes one waiter for each freed exchange slot", async () => {
+  await using f = await commandFixture()
+  const socket = await f.connect()
+  const frames: Extract<Runtime.ServerFrame, { type: "command" }>[] = []
+  const full = Promise.withResolvers<void>()
+  const next = Promise.withResolvers<void>()
+  socket.onmessage = (event) => {
+    const frame = Runtime.ServerFrame.parse(JSON.parse(String(event.data)))
+    if (frame.type !== "command" || frame.command.kind !== "input") return
+    frames.push(frame)
+    if (frames.length === 16) full.resolve()
+    if (frames.length === 17) next.resolve()
+  }
+  await f.run(async () => {
+    const prepared = await f.commands.input(f.credentials.alice, f.request())
+    if (prepared.kind !== "admitted") throw new Error("Expected a new admission")
+    const owner = new AbortController()
+    const work = { signal: owner.signal, deadline: Date.now() + 3_000 }
+    const pending: Promise<Command.Reply>[] = []
+    const send = (options = work) =>
+      prepared.connection.exchange({ kind: "input", delivery: prepared.delivery }, options)
+    try {
+      for (let index = 0; index < 16; index++) pending.push(send())
+      await full.promise
+      const queued = Array.from({ length: 3 }, () => new AbortController())
+      const waiting = queued.map((controller) => send({ signal: controller.signal, deadline: Date.now() + 1_000 }))
+      for (const request of waiting) void request.catch(() => {})
+      const frame = frames[0]!
+      if (frame.command.kind !== "input") throw new Error("Expected an input frame")
+      socket.send(
+        JSON.stringify({
+          type: "receipt",
+          connectionEpoch: frame.connectionEpoch,
+          exchangeID: frame.exchangeID,
+          reply: { kind: "result", result: accepted(frame.command.delivery.authorization.permit) },
+        }),
+      )
+      await next.promise
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(frames).toHaveLength(17)
+      for (const controller of queued) controller.abort()
+      pending.push(...waiting)
+    } finally {
+      owner.abort()
       await Promise.allSettled(pending)
     }
   })
@@ -471,6 +549,55 @@ test("an enqueued backpressured frame is sent once and late accepted receipts su
       existing: true,
       receipt: result.accepted,
     })
+  })
+})
+
+test("large input crosses the bridge as ordered chunks without truncation", async () => {
+  await using f = await commandFixture({ timeoutMs: 2_000 })
+  const socket = await f.connect()
+  const chunks = new Map<string, { epoch: number; total: number; next: number; bytes: Buffer[] }>()
+  const received = Promise.withResolvers<Command.InputDelivery>()
+  socket.onmessage = (event) => {
+    const frame = Runtime.ServerFrame.parse(JSON.parse(String(event.data)))
+    if (frame.type === "command") {
+      if (frame.command.kind === "input") {
+        received.resolve(frame.command.delivery)
+        answer(socket, frame, accepted(frame.command.delivery.authorization.permit))
+      }
+      return
+    }
+    if (frame.type !== "command-chunk") return
+    let transfer = chunks.get(frame.exchangeID)
+    if (!transfer) {
+      transfer = { epoch: frame.connectionEpoch, total: frame.total, next: 0, bytes: [] }
+      chunks.set(frame.exchangeID, transfer)
+    }
+    expect(frame.connectionEpoch).toBe(transfer.epoch)
+    expect(frame.total).toBe(transfer.total)
+    expect(frame.index).toBe(transfer.next)
+    transfer.bytes.push(Buffer.from(frame.data, "base64url"))
+    transfer.next++
+    if (transfer.next !== transfer.total) return
+    const command = Command.Delivery.parse(JSON.parse(Buffer.concat(transfer.bytes).toString("utf8")))
+    chunks.delete(frame.exchangeID)
+    if (command.kind !== "input") throw new Error("Expected a chunked input")
+    received.resolve(command.delivery)
+    socket.send(
+      JSON.stringify({
+        type: "receipt",
+        connectionEpoch: frame.connectionEpoch,
+        exchangeID: frame.exchangeID,
+        reply: { kind: "result", result: accepted(command.delivery.authorization.permit) },
+      }),
+    )
+  }
+  await f.run(async () => {
+    const text = "超大输入" + "x".repeat(220_000)
+    const result = await f.forwarder.input(f.credentials.alice, f.request("large", text))
+    expect(result.existing).toBe(false)
+    const delivery = await received.promise
+    expect(delivery.input.parts).toEqual([{ type: "text", text }])
+    expect(chunks.size).toBe(0)
   })
 })
 

@@ -225,7 +225,7 @@ test("input digests bind the logical request, full target and text without depen
   for (const value of [
     { ...input, actor: permit.actor },
     { ...input, parts: [{ type: "attachment", url: "file:///private/local-input" }] },
-    { ...input, parts: [{ type: "text", text: "你".repeat(12_000) }] },
+    { ...input, parts: [{ type: "text", text: "你".repeat(2_000_000) }] },
     { ...input, parts: [] },
   ])
     expect(Command.Input.safeParse(value).success).toBe(false)

@@ -76,6 +76,18 @@ export namespace OrganizationRuntimeProtocol {
     exchangeID: Identity.ID,
     reply: Command.Reply,
   })
+  export const CommandChunk = z.strictObject({
+    type: z.literal("command-chunk"),
+    connectionEpoch: Protocol.Epoch,
+    exchangeID: Identity.ID,
+    index: z.number().int().nonnegative(),
+    total: z.number().int().positive(),
+    data: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .max(60_000),
+  })
+  export type CommandChunk = z.infer<typeof CommandChunk>
   export const ClientFrame = z.discriminatedUnion("type", [
     Connect.extend({ type: z.literal("handshake") }),
     Heartbeat,
@@ -102,6 +114,7 @@ export namespace OrganizationRuntimeProtocol {
       exchangeID: Identity.ID,
       command: Command.Delivery,
     }),
+    CommandChunk,
     z.strictObject({ type: z.literal("error"), error: Protocol.Error }),
   ])
   export type ServerFrame = z.infer<typeof ServerFrame>

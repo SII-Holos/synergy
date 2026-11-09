@@ -119,11 +119,18 @@ async function attempt(input: {
   let expectedSequence: number | undefined
   let heartbeatTimer: ReturnType<typeof setTimeout> | undefined
   let deadline: ReturnType<typeof setTimeout> | undefined
+  const chunks = new Map<
+    string,
+    { connectionEpoch: number; total: number; next: number; bytes: number; parts: Buffer[] }
+  >()
+  let chunkBytes = 0
 
   function stop(result: MemberConnectionClosed) {
     if (stopped) return
     stopped = true
     work.abort()
+    chunks.clear()
+    chunkBytes = 0
     clearTimeout(heartbeatTimer)
     clearTimeout(deadline)
     options.signal?.removeEventListener("abort", cancel)
@@ -178,6 +185,42 @@ async function attempt(input: {
     }, connected.heartbeatMs)
     heartbeatTimer.unref()
   }
+  function dispatchCommand(frame: Extract<Protocol.ServerFrame, { type: "command" }>, bytes: number) {
+    if (!connected || !commands || frame.connectionEpoch !== epoch)
+      throw failure("PROTOCOL_MISMATCH", "Command does not match an active intake connection")
+    if (work.signal.aborted) return
+    if (executing.has(frame.exchangeID)) throw failure("PROTOCOL_MISMATCH", "Duplicate active command exchange")
+    const window =
+      frame.command.kind === "query" || frame.command.kind === "skip" ? windows.reconciliation : windows.command
+    if (window.count >= 16 || window.bytes + bytes > frameLimit * 4) {
+      send({
+        type: "receipt",
+        connectionEpoch: epoch,
+        exchangeID: frame.exchangeID,
+        reply: {
+          kind: "error",
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Runtime command window is busy",
+            outcome: "not_dispatched",
+            retryable: true,
+          },
+        },
+      })
+      return
+    }
+    window.count++
+    window.bytes += bytes
+    const task = execute(frame, commands)
+      .catch(reject)
+      .finally(() => {
+        executing.delete(frame.exchangeID)
+        window.count--
+        window.bytes -= bytes
+      })
+    executing.set(frame.exchangeID, task)
+  }
+
   async function receive(raw: string) {
     if (stopped) return
     let frame: Protocol.ServerFrame
@@ -217,40 +260,49 @@ async function attempt(input: {
       return
     }
     if (frame.type === "command") {
+      dispatchCommand(frame, Buffer.byteLength(raw))
+      return
+    }
+    if (frame.type === "command-chunk") {
       if (!connected || !commands || frame.connectionEpoch !== epoch)
-        throw failure("PROTOCOL_MISMATCH", "Command does not match an active intake connection")
-      if (work.signal.aborted) return
-      const bytes = Buffer.byteLength(raw)
-      if (executing.has(frame.exchangeID)) throw failure("PROTOCOL_MISMATCH", "Duplicate active command exchange")
-      const window =
-        frame.command.kind === "query" || frame.command.kind === "skip" ? windows.reconciliation : windows.command
-      if (window.count >= 16 || window.bytes + bytes > frameLimit * 4) {
-        send({
-          type: "receipt",
-          connectionEpoch: epoch,
-          exchangeID: frame.exchangeID,
-          reply: {
-            kind: "error",
-            error: {
-              code: "SERVICE_UNAVAILABLE",
-              message: "Runtime command window is busy",
-              outcome: "not_dispatched",
-              retryable: true,
-            },
-          },
-        })
-        return
+        throw failure("PROTOCOL_MISMATCH", "Command chunk does not match an active intake connection")
+      if (frame.index >= frame.total) throw failure("PROTOCOL_MISMATCH", "Command chunk index is out of range")
+      let transfer = chunks.get(frame.exchangeID)
+      if (!transfer) {
+        if (frame.index !== 0) throw failure("PROTOCOL_MISMATCH", "Command chunks must start at index zero")
+        transfer = { connectionEpoch: frame.connectionEpoch, total: frame.total, next: 0, bytes: 0, parts: [] }
+        chunks.set(frame.exchangeID, transfer)
       }
-      window.count++
-      window.bytes += bytes
-      const task = execute(frame, commands)
-        .catch(reject)
-        .finally(() => {
-          executing.delete(frame.exchangeID)
-          window.count--
-          window.bytes -= bytes
-        })
-      executing.set(frame.exchangeID, task)
+      if (
+        transfer.connectionEpoch !== frame.connectionEpoch ||
+        transfer.total !== frame.total ||
+        transfer.next !== frame.index
+      )
+        throw failure("PROTOCOL_MISMATCH", "Command chunks are not contiguous")
+      const bytes = Buffer.from(frame.data, "base64url")
+      if (bytes.length === 0 || bytes.toString("base64url") !== frame.data)
+        throw failure("PROTOCOL_MISMATCH", "Command chunk encoding is invalid")
+      if (chunkBytes + bytes.byteLength > 64 * 1024 * 1024)
+        throw failure("SERVICE_UNAVAILABLE", "Runtime command chunk buffer is full")
+      transfer.parts.push(bytes)
+      transfer.bytes += bytes.byteLength
+      transfer.next++
+      chunkBytes += bytes.byteLength
+      if (transfer.next !== transfer.total) return
+      chunks.delete(frame.exchangeID)
+      chunkBytes -= transfer.bytes
+      let command: Command.Delivery
+      try {
+        command = Command.Delivery.parse(
+          JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(transfer.parts))),
+        )
+      } catch {
+        throw failure("PROTOCOL_MISMATCH", "Chunked command payload is invalid")
+      }
+      dispatchCommand(
+        { type: "command", connectionEpoch: frame.connectionEpoch, exchangeID: frame.exchangeID, command },
+        frameLimit,
+      )
       return
     }
     if (!connected || frame.connectionEpoch !== epoch || frame.sequence !== expectedSequence)

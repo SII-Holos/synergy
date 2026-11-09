@@ -5,6 +5,8 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationError, fail } from "./error"
 
+const commandChunkBytes = 43 * 1024
+
 export interface RuntimeConnectionLease {
   readonly handshake: Protocol.Handshake
   assertCurrent(): void
@@ -24,6 +26,17 @@ export function createCommandTransport(input: {
       reject(error: InstanceType<typeof OrganizationError>): void
     }
   >()
+  const reserved = { command: 0, reconciliation: 0 }
+  let closed = false
+  const waiters = new Set<{
+    command: Command.Delivery
+    signal: AbortSignal
+    deadline: number
+    resolve(release: () => void): void
+    reject(error: InstanceType<typeof OrganizationError>): void
+    timer?: ReturnType<typeof setTimeout>
+    cancel(): void
+  }>()
 
   function failure(outcome: "not_dispatched" | "unknown", message: string) {
     return new OrganizationError({
@@ -35,6 +48,72 @@ export function createCommandTransport(input: {
   }
   function window(command: Command.Delivery) {
     return command.kind === "query" || command.kind === "skip" ? "reconciliation" : "command"
+  }
+  function available(command: Command.Delivery) {
+    const kind = window(command)
+    const occupied = [...pending.values()].filter((request) => window(request.command) === kind).length
+    return occupied + reserved[kind] < 16 && input.buffered() <= 64 * 1024
+  }
+  function reserve(command: Command.Delivery) {
+    const kind = window(command)
+    reserved[kind]++
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      reserved[kind]--
+    }
+  }
+  function wake() {
+    if (closed) return
+    for (const waiter of waiters) {
+      if (waiter.signal.aborted || waiter.deadline <= Date.now()) continue
+      if (!available(waiter.command)) continue
+      waiters.delete(waiter)
+      clearTimeout(waiter.timer)
+      waiter.signal.removeEventListener("abort", waiter.cancel)
+      waiter.resolve(reserve(waiter.command))
+    }
+  }
+  async function waitForCapacity(
+    command: Command.Delivery,
+    options: { signal: AbortSignal; deadline: number },
+  ): Promise<() => void> {
+    if (closed) throw failure("not_dispatched", "Runtime connection closed before command transmission")
+    if (options.signal.aborted || options.deadline <= Date.now())
+      throw failure("not_dispatched", "Command request ended before transmission")
+    if (available(command)) return reserve(command)
+    return await new Promise<() => void>((resolve, reject) => {
+      const waiter = {
+        command,
+        signal: options.signal,
+        deadline: options.deadline,
+        resolve,
+        reject,
+        timer: undefined as ReturnType<typeof setTimeout> | undefined,
+        cancel: () => {
+          waiters.delete(waiter)
+          clearTimeout(waiter.timer)
+          options.signal.removeEventListener("abort", waiter.cancel)
+          reject(failure("not_dispatched", "Command request ended while waiting for transport capacity"))
+        },
+      }
+      const check = () => {
+        if (!waiters.has(waiter)) return
+        if (options.signal.aborted || options.deadline <= Date.now()) return waiter.cancel()
+        if (available(command)) {
+          waiters.delete(waiter)
+          options.signal.removeEventListener("abort", waiter.cancel)
+          waiter.resolve(reserve(command))
+          return
+        }
+        waiter.timer = setTimeout(check, Math.min(25, Math.max(1, options.deadline - Date.now())))
+        waiter.timer.unref()
+      }
+      waiters.add(waiter)
+      options.signal.addEventListener("abort", waiter.cancel, { once: true })
+      check()
+    })
   }
   function validate(command: Command.Delivery, reply: Command.Reply) {
     if (reply.kind === "error") return
@@ -51,20 +130,29 @@ export function createCommandTransport(input: {
       fail("PROTOCOL_MISMATCH", "Runtime receipt does not match the dispatched attempt")
   }
   return {
-    exchange(value: Command.Delivery, options: { signal: AbortSignal; deadline: number }): Promise<Command.Reply> {
+    async exchange(
+      value: Command.Delivery,
+      options: { signal: AbortSignal; deadline: number },
+    ): Promise<Command.Reply> {
       const command = Command.Delivery.parse(value)
-      const handshake = input.current()
-      if (options.signal.aborted || options.deadline <= Date.now())
-        throw failure("not_dispatched", "Command request ended before transmission")
-      const occupied = [...pending.values()].filter((request) => window(request.command) === window(command)).length
-      if (occupied >= 16 || input.buffered() > 64 * 1024)
-        throw failure("not_dispatched", "Runtime command transport is busy; retry the active request")
-      const exchangeID = crypto.randomUUID()
+      const release = await waitForCapacity(command, options)
+      let handshake: Protocol.Handshake
+      let exchangeID: string
+      try {
+        if (closed || options.signal.aborted)
+          throw failure("not_dispatched", "Command request ended before transmission")
+        handshake = input.current()
+        exchangeID = crypto.randomUUID()
+      } catch (error) {
+        release()
+        throw error
+      }
       return new Promise((resolve, reject) => {
         function clear() {
           pending.delete(exchangeID)
           clearTimeout(timer)
           options.signal.removeEventListener("abort", cancel)
+          wake()
         }
         function cancel() {
           clear()
@@ -84,13 +172,43 @@ export function createCommandTransport(input: {
             reject(error)
           },
         })
+        release()
         try {
-          // Provenance: https://bun.sh/docs/runtime/http/websockets#backpressure
-          // Bun's -1 is enqueued; only 0 proves a nonempty frame was dropped. Never resend an enqueued frame.
-          const sent = input.send({ type: "command", connectionEpoch: handshake.connectionEpoch, exchangeID, command })
-          if (sent === 0) {
-            clear()
-            reject(failure("not_dispatched", "Runtime did not receive the command frame"))
+          const payload = new TextEncoder().encode(JSON.stringify(command))
+          const send = (frame: Runtime.ServerFrame) => {
+            // Provenance: https://bun.sh/docs/runtime/http/websockets#backpressure
+            // Bun's -1 is enqueued; only 0 proves a nonempty frame was dropped. Never resend an enqueued frame.
+            return input.send(frame)
+          }
+          if (payload.byteLength <= commandChunkBytes) {
+            const sent = send({ type: "command", connectionEpoch: handshake.connectionEpoch, exchangeID, command })
+            if (sent === 0) {
+              clear()
+              reject(failure("not_dispatched", "Runtime did not receive the command frame"))
+            }
+          } else {
+            const total = Math.ceil(payload.byteLength / commandChunkBytes)
+            let enqueued = false
+            for (let index = 0; index < total; index++) {
+              const start = index * commandChunkBytes
+              const data = Buffer.from(
+                payload.subarray(start, Math.min(payload.byteLength, start + commandChunkBytes)),
+              ).toString("base64url")
+              const sent = send({
+                type: "command-chunk",
+                connectionEpoch: handshake.connectionEpoch,
+                exchangeID,
+                index,
+                total,
+                data,
+              })
+              if (sent === 0) {
+                clear()
+                reject(failure(enqueued ? "unknown" : "not_dispatched", "Runtime did not receive the command frame"))
+                return
+              }
+              enqueued = true
+            }
           }
         } catch {
           clear()
@@ -106,8 +224,16 @@ export function createCommandTransport(input: {
       pending.get(exchangeID)?.resolve(reply)
     },
     close() {
+      if (closed) return
+      closed = true
       for (const request of pending.values())
         request.reject(failure("unknown", "Runtime connection closed before its receipt arrived"))
+      for (const waiter of waiters) {
+        waiters.delete(waiter)
+        clearTimeout(waiter.timer)
+        waiter.signal.removeEventListener("abort", waiter.cancel)
+        waiter.reject(failure("not_dispatched", "Runtime connection closed before command transmission"))
+      }
     },
   }
 }

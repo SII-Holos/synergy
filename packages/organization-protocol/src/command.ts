@@ -71,13 +71,13 @@ export namespace OrganizationCommandProtocol {
       operation: z.literal("input"),
       mode: z.enum(["task", "steer", "context"]),
       parts: z
-        .array(z.strictObject({ type: z.literal("text"), text: z.string().min(1).max(32_768) }))
+        .array(z.strictObject({ type: z.literal("text"), text: z.string().min(1).max(1_048_576) }))
         .min(1)
-        .max(32),
+        .max(128),
     })
     .refine(
-      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 32_768,
-      "Inline input is too large",
+      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 4 * 1024 * 1024,
+      "Input payload is too large",
     )
     .meta({ ref: "OrgCommandInput" })
   export type Input = z.infer<typeof Input>

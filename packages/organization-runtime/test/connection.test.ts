@@ -219,6 +219,84 @@ test("verified WSS keeps heartbeats and receipt queries live while a control dra
   expect(signal?.aborted).toBe(true)
 })
 
+test("the resident bridge reassembles ordered command chunks before delivery", async () => {
+  await using f = await enrolled()
+  const remote = Promise.withResolvers<Parameters<NonNullable<Parameters<typeof f.interceptFrames>[0]>>[0]>()
+  const received = Promise.withResolvers<Command.InputDelivery>()
+  f.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "heartbeat") remote.resolve(socket)
+    return false
+  })
+  await using connection = await openMemberConnection({
+    ...f.options,
+    commands() {
+      return {
+        async create() {
+          throw new Error("unavailable")
+        },
+        async control() {
+          throw new Error("unavailable")
+        },
+        async skip() {
+          throw new Error("unavailable")
+        },
+        async query(authorization) {
+          return { authorization }
+        },
+        async input(delivery) {
+          received.resolve(delivery)
+          const permit = delivery.authorization.permit
+          return {
+            attempt: {
+              schemaVersion: 1,
+              permit,
+              receivedAt: Date.now(),
+              status: "accepted",
+              acceptedAttemptID: permit.attemptID,
+            },
+            accepted: {
+              schemaVersion: 1,
+              permit,
+              acceptedAt: Date.now(),
+              intakeSeq: 1,
+              effect: { kind: "inbox", itemID: "item", messageID: "message", mode: delivery.input.mode },
+            },
+          }
+        },
+      }
+    },
+  })
+  const socket = await within(remote.promise)
+  const text = "chunked runtime input " + "x".repeat(220_000)
+  const command: Command.Delivery = {
+    kind: "input",
+    delivery: {
+      authorization: commandAuthorization(f, connection, "chunked"),
+      input: { operation: "input", mode: "task", parts: [{ type: "text", text }] },
+    },
+  }
+  const payload = new TextEncoder().encode(JSON.stringify(command))
+  const chunkSize = 43 * 1024
+  const total = Math.ceil(payload.byteLength / chunkSize)
+  for (let index = 0; index < total; index++) {
+    socket.send(
+      JSON.stringify({
+        type: "command-chunk",
+        connectionEpoch: connection.connected.connectionEpoch,
+        exchangeID: "chunked-exchange",
+        index,
+        total,
+        data: Buffer.from(
+          payload.subarray(index * chunkSize, Math.min(payload.byteLength, (index + 1) * chunkSize)),
+        ).toString("base64url"),
+      }),
+    )
+  }
+  const delivery = await within(received.promise)
+  expect(delivery.input.parts).toEqual([{ type: "text", text }])
+})
+
 test("a committed control receipt returns before drainage while close retains the callback", async () => {
   await using f = await enrolled()
   const remote = Promise.withResolvers<Parameters<NonNullable<Parameters<typeof f.interceptFrames>[0]>>[0]>()

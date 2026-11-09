@@ -19,6 +19,8 @@ export function createCommandForwarder(options: {
     .max(30_000)
     .parse(options.timeoutMs ?? 10_000)
   const active = { commands: 0, queries: 0 }
+  const reserved = { commands: 0, queries: 0 }
+  const limits = { commands: 64, queries: 16 }
   function unknown(requestID: string, cause?: unknown): never {
     throw new OrganizationError(
       {
@@ -36,9 +38,6 @@ export function createCommandForwarder(options: {
     caller: AbortSignal | undefined,
     body: (work: { signal: AbortSignal; deadline: number }) => Promise<T>,
   ) {
-    if (active[kind] >= (kind === "commands" ? 64 : 16))
-      fail("SERVICE_UNAVAILABLE", "Command transport is busy; retry the active request")
-    active[kind]++
     const controller = new AbortController()
     const deadline = Date.now() + timeoutMs
     const cancel = () => controller.abort()
@@ -46,11 +45,29 @@ export function createCommandForwarder(options: {
     if (caller?.aborted) cancel()
     const timer = setTimeout(cancel, timeoutMs)
     timer.unref()
+    let admitted = false
+    let slotReserved = false
     try {
       if (controller.signal.aborted) fail("RUNTIME_OFFLINE", "Command request ended before transmission")
+      while (active[kind] + reserved[kind] >= limits[kind]) {
+        if (controller.signal.aborted)
+          fail("RUNTIME_OFFLINE", "Command request ended while waiting for transport capacity")
+        await new Promise<void>((resolve) => {
+          const wake = setTimeout(resolve, Math.min(25, Math.max(1, deadline - Date.now())))
+          wake.unref()
+        })
+      }
+      reserved[kind]++
+      slotReserved = true
+      if (controller.signal.aborted) fail("RUNTIME_OFFLINE", "Command request ended before transmission")
+      active[kind]++
+      reserved[kind]--
+      slotReserved = false
+      admitted = true
       return await body({ signal: controller.signal, deadline })
     } finally {
-      active[kind]--
+      if (admitted) active[kind]--
+      if (slotReserved) reserved[kind]--
       clearTimeout(timer)
       caller?.removeEventListener("abort", cancel)
     }
