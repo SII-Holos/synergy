@@ -8,7 +8,7 @@ The Windows desktop CI unit installs only the desktop workspace and does not res
 
 ## Decision
 
-The Windows desktop CI unit selects the desktop, SDK, and util workspaces during dependency installation, then builds `packages/util` and `packages/sdk/js` immediately before running its planned tests. These are the workspace outputs and build-time tools required by the desktop bundle's node-targeted imports; release and shared-build paths continue to own their existing broader build preparation.
+The Windows desktop CI unit selects the desktop, SDK, and util workspaces during dependency installation, then builds `packages/util` and `packages/sdk/js` immediately before running its planned tests. The SDK build invokes its local TypeScript binary directly so the nested compiler lookup is portable across CI shells. These are the workspace outputs and build-time tools required by the desktop bundle's node-targeted imports; release and shared-build paths continue to own their existing broader build preparation.
 
 ## Alternatives considered
 

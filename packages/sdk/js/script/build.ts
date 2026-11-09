@@ -176,4 +176,4 @@ if (!process.argv.includes("--compile-only")) {
 }
 
 await $`rm -rf dist`
-await $`bun tsc`
+await $`tsc`
