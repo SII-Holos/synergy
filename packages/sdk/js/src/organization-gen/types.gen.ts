@@ -1201,6 +1201,7 @@ export type OrgExecutionReleaseReceipt = {
   rootID: string
   generation: number
   outcome: "completed" | "failed" | "cancelled"
+  materialized?: boolean
   releasedAt: number
 }
 
@@ -1262,6 +1263,7 @@ export type OrgExecutionReleaseProof = {
   rootID: string
   generation: number
   outcome: "completed" | "failed" | "cancelled"
+  materialized?: boolean
 }
 
 export type OrgExecutionReleaseRequest = {

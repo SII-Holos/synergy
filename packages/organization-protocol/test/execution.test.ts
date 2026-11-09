@@ -145,6 +145,7 @@ test("resource release proofs bind the accepted root and retention generation in
     purpose: "execution-resources-release",
     generation: 1,
     outcome: "completed",
+    materialized: true,
   })
   const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
   const publicKey = await Runtime.publicKey(keys.publicKey)
@@ -161,7 +162,7 @@ test("resource release proofs bind the accepted root and retention generation in
   for (const change of [
     { generation: -1 },
     { generation: 0.5 },
-    { generation: 0 },
+    { generation: 0, materialized: false },
     { outcome: "running" },
     { rootID: "other-root" },
     { expiresAt: original.issuedAt + 60_001 },
@@ -169,4 +170,7 @@ test("resource release proofs bind the accepted root and retention generation in
   ])
     expect(Execution.ReleaseProof.safeParse({ ...original, ...change }).success).toBeFalse()
   expect(Execution.ReleaseProof.safeParse({ ...original, generation: 0, outcome: "cancelled" }).success).toBeTrue()
+  expect(
+    Execution.ReleaseProof.safeParse({ ...original, generation: 0, outcome: "completed", materialized: true }).success,
+  ).toBeTrue()
 })

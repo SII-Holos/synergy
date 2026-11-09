@@ -16,8 +16,10 @@ import { RolloutProcess } from "./process"
 import { ProcessRegistry } from "../../process/registry"
 import { SessionManager } from "../manager"
 import { isDeepStrictEqual } from "node:util"
+import { readReleaseEvidence } from "./drainage"
 
 export namespace RolloutQuery {
+  export const releaseEvidence = readReleaseEvidence
   export const Activity = z.strictObject({
     observedAt: z.number().int().nonnegative(),
     run: RolloutSchema.RunRecord.pick({ id: true, status: true, recording: true, cancelRequestedAt: true }).extend({

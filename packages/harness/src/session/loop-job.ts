@@ -282,14 +282,16 @@ export namespace LoopJob {
    * global activity probe: session status alone cannot see detached work, so a
    * machine running only background jobs would otherwise look idle.
    */
-  export function activeBackgroundCount(sessionID?: string): number {
+  export function activeBackgroundCount(sessionID?: string, rootID?: string): number {
     const instanceState = runtimeState()
 
-    return sessionID
-      ? [...instanceState.background.values()].filter(
-          (state) => state.current.sessionID === sessionID || state.pending?.sessionID === sessionID,
-        ).length
-      : instanceState.background.size
+    if (sessionID === undefined && rootID === undefined) return instanceState.background.size
+    const matches = (run: BackgroundRun | undefined) =>
+      run !== undefined &&
+      (sessionID === undefined || run.sessionID === sessionID) &&
+      (rootID === undefined || run.rootID === rootID)
+    return [...instanceState.background.values()].filter((state) => matches(state.current) || matches(state.pending))
+      .length
   }
 
   export interface ScheduleDetachedInput {

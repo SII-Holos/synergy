@@ -271,7 +271,8 @@ export function createMemberResourceClient(options: {
             result.bindingEpoch !== permit.bindingEpoch ||
             result.rootID !== proof.rootID ||
             result.generation !== proof.generation ||
-            result.outcome !== proof.outcome
+            result.outcome !== proof.outcome ||
+            result.materialized !== proof.materialized
           )
             throw failure(
               "PROTOCOL_MISMATCH",

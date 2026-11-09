@@ -54,6 +54,26 @@ const Slot = z.strictObject({ schemaVersion: z.literal(1), attemptID: Identity.I
 const Counter = z.strictObject({ schemaVersion: z.literal(1), intakeSeq: Identity.Revision })
 const Lookup = z.strictObject({ subjectID: Identity.ID, requestID: Identity.ID })
 const ControlState = z.strictObject({ schemaVersion: z.literal(1), controlVersion: Command.ControlVersion })
+const Release = z.strictObject({
+  schemaVersion: z.literal(1),
+  orgID: Identity.ID,
+  subjectID: Identity.ID,
+  requestID: Identity.ID,
+  sessionID: Identity.ID,
+  projectID: Identity.ID,
+  runtimeID: Identity.ID,
+  bindingEpoch: OrganizationProtocol.Epoch,
+  rootID: Identity.ID,
+  grantID: Identity.ID,
+  actor: Command.Actor,
+  admissionID: Identity.ID,
+  attemptID: Identity.ID,
+  acceptedAt: z.number().int().nonnegative(),
+  state: z.enum(["pending", "released"]),
+  receipt: Execution.ReleaseReceipt.optional(),
+  reconciledAt: z.number().int().nonnegative().optional(),
+})
+type Release = z.infer<typeof Release>
 
 function failure(code: OrganizationProtocol.Error["code"], message: string) {
   return new OrganizationRuntimeError({ code, message, outcome: "rejected", retryable: false })
@@ -207,6 +227,28 @@ export function createCommandIntake(options: {
       )
     }
     await Storage.write(current.attemptKey, attempt)
+    if (accepted?.effect.kind === "inbox" && accepted.effect.mode === "task" && permit.provisionalGrantID) {
+      await Storage.write(
+        Keys.release(permit.orgID, permit.actor.subjectID, permit.requestID),
+        Release.parse({
+          schemaVersion: 1,
+          orgID: permit.orgID,
+          subjectID: permit.actor.subjectID,
+          requestID: permit.requestID,
+          sessionID: permit.sessionID,
+          projectID: permit.projectID,
+          runtimeID: permit.runtimeID,
+          bindingEpoch: permit.bindingEpoch,
+          rootID: accepted.effect.messageID,
+          grantID: permit.provisionalGrantID,
+          actor: permit.actor,
+          admissionID: permit.admissionID,
+          attemptID: permit.attemptID,
+          acceptedAt: accepted.acceptedAt,
+          state: "pending",
+        }),
+      )
+    }
     if (
       advance &&
       stateMatches(permit, current.state) &&
@@ -216,6 +258,43 @@ export function createCommandIntake(options: {
       await Storage.write(current.slotKey, { schemaVersion: 1, attemptID: permit.attemptID })
       await Storage.write(current.stateKey, { ...current.state, commandSeq: permit.commandSeq })
     }
+  }
+  async function releaseEntries() {
+    assertStandalone()
+    return Storage.snapshot(async () => {
+      const result: Release[] = []
+      let after: string | undefined
+      do {
+        const page = await Storage.childKeys({ prefix: Keys.releases(authority.orgID), after, limit: 128 })
+        const values = await Storage.readMany<unknown>(page.keys)
+        for (const [index, value] of values.entries()) {
+          if (value === undefined) continue
+          const release = parse(Release, value)
+          if (
+            release.orgID !== authority.orgID ||
+            JSON.stringify(Keys.release(authority.orgID, release.subjectID, release.requestID)) !==
+              JSON.stringify(page.keys[index])
+          )
+            throw failure("PROTOCOL_MISMATCH", "Execution release index identity is invalid")
+          if (release.state === "pending") result.push(release)
+        }
+        after = page.after
+      } while (after)
+      return result
+    })
+  }
+  async function markRelease(entry: Release, receipt?: Execution.ReleaseReceipt) {
+    assertStandalone()
+    return Storage.transaction(async () => {
+      const current = await read(Release, Keys.release(authority.orgID, entry.subjectID, entry.requestID))
+      if (!current || JSON.stringify(current) !== JSON.stringify(entry))
+        throw failure("REVISION_CONFLICT", "Execution release index changed before settlement")
+      if (current.state === "released") return current
+      return Storage.write(
+        Keys.release(authority.orgID, entry.subjectID, entry.requestID),
+        Release.parse({ ...current, state: "released", receipt, reconciledAt: Date.now() }),
+      )
+    })
   }
   function result(current: Records, attempt: Command.Attempt, accepted?: Command.Accepted): Command.Result {
     return Command.Result.parse({
@@ -791,5 +870,7 @@ export function createCommandIntake(options: {
         throw failure("PROTOCOL_MISMATCH", "Command receipt identity does not match its key")
       return current?.accepted
     },
+    releaseEntries,
+    markRelease,
   }
 }

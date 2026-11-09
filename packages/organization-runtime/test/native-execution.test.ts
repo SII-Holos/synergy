@@ -3,6 +3,7 @@ import path from "node:path"
 import {
   OrganizationRuntimeProtocol as Protocol,
   OrganizationGatewayProtocol as Gateway,
+  OrganizationExecutionProtocol as Execution,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -27,7 +28,7 @@ async function observed<T>(promise: Promise<T>) {
   }
 }
 
-test("accepted organization tasks prepare and execute their selected model through the native loop", async () => {
+test("accepted organization tasks execute through the native loop and release resources after derived calls drain", async () => {
   const requests: Array<{ authorization: string | null; body: unknown }> = []
   const upstream = Bun.serve({
     hostname: "127.0.0.1",
@@ -69,10 +70,25 @@ test("accepted organization tasks prepare and execute their selected model throu
     })
     const registration = (await readMemberRegistration(member.home, member.identity))!
     const online = Promise.withResolvers<void>()
+    const released = Promise.withResolvers<Execution.ReleaseReceipt>()
+    let releaseAttempts = 0
     const permits: Gateway.Permit[] = []
-    f.interceptHTTP((request) => {
+    f.interceptHTTP(async (request) => {
       if (new URL(request.url).pathname.endsWith("/chat/completions"))
         permits.push(Gateway.decode(request.headers.get("authorization")!.slice("Bearer ".length)).permit)
+      if (new URL(request.url).pathname.endsWith("/execution/release")) {
+        const response = await f.service.fetch(request)
+        releaseAttempts++
+        if (response.ok) {
+          const receipt = Execution.ReleaseReceipt.parse(await response.clone().json())
+          if (releaseAttempts === 1) {
+            released.resolve(receipt)
+            return new Response("lost release reply", { status: 502 })
+          }
+          released.resolve(receipt)
+        }
+        return response
+      }
     })
     f.interceptFrames((_socket, raw) => {
       if (Protocol.ClientFrame.parse(JSON.parse(String(raw))).type === "heartbeat") online.resolve()
@@ -209,10 +225,28 @@ test("accepted organization tasks prepare and execute their selected model throu
           authorization: "Bearer native-upstream-secret",
           body: { model: "native-model", stream: true },
         })
+      expect(await observed(released.promise)).toMatchObject({
+        sessionID,
+        rootID: completed.rootID,
+        generation: 1,
+        outcome: "completed",
+      })
+      expect(releaseAttempts).toBe(1)
+      const selection = await f.client.orgSessionResources.set(
+        {
+          sessionID,
+          orgSessionResourceChange: {
+            expectedRevision: 1,
+            selection: { modelResourceID: model.resourceID, connectionResourceIDs: [] },
+          },
+        },
+        options,
+      )
+      expect(selection.data.revision).toBe(2)
     } finally {
       unsubscribe()
     }
   } finally {
     await upstream.stop(true)
   }
-})
+}, 10_000)

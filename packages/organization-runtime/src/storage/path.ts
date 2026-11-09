@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 export namespace OrganizationIntakePath {
   const root = (orgID: string) => ["organization-command", orgID]
   export const request = (orgID: string, subjectID: string, requestID: string) => [
@@ -31,4 +33,10 @@ export namespace OrganizationIntakePath {
     subjectID,
     requestID,
   ]
+  export const release = (orgID: string, subjectID: string, requestID: string) => [
+    ...root(orgID),
+    "releases",
+    createHash("sha256").update(`${subjectID}\0${requestID}`).digest("hex"),
+  ]
+  export const releases = (orgID: string) => [...root(orgID), "releases"]
 }

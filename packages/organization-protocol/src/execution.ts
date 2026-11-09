@@ -180,14 +180,15 @@ export namespace OrganizationExecutionProtocol {
     rootID: Identity.ID,
     generation: z.number().int().nonnegative().safe(),
     outcome: ReleaseOutcome,
+    materialized: z.boolean().default(false),
   })
     .refine(
       (value) => value.receipt.accepted?.effect.messageID === value.rootID,
       "Release requires the exact accepted task root",
     )
     .refine(
-      (value) => value.generation !== 0 || value.outcome === "cancelled",
-      "Unmaterialized task resources can only be released after cancellation",
+      (value) => value.generation !== 0 || value.outcome === "cancelled" || value.materialized,
+      "Unbound task resources require materialized root evidence unless cancelled",
     )
     .meta({ ref: "OrgExecutionReleaseProof" })
   export type ReleaseProof = z.infer<typeof ReleaseProof>
@@ -207,9 +208,10 @@ export namespace OrganizationExecutionProtocol {
       rootID: Identity.ID,
       generation: z.number().int().nonnegative().safe(),
       outcome: ReleaseOutcome,
+      materialized: z.boolean().default(false),
       releasedAt: z.number().int().nonnegative(),
     })
-    .refine((value) => value.generation !== 0 || value.outcome === "cancelled")
+    .refine((value) => value.generation !== 0 || value.outcome === "cancelled" || value.materialized)
     .meta({ ref: "OrgExecutionReleaseReceipt" })
   export type ReleaseReceipt = z.infer<typeof ReleaseReceipt>
   const releaseSignatures = signedProtocol(ReleaseProof, "synergy.organization.execution.release.v1\n")

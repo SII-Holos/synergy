@@ -135,6 +135,8 @@ export function registerMemberExecution(identity: MemberIdentity) {
       const source = current()
       const signal = AbortSignal.any([source.signal, input.abort])
       signal.throwIfAborted()
+      using held = await Lock.writeWithSignal(`organization-execution:${input.sessionID}`, signal)
+      signal.throwIfAborted()
       const session = await sessionFor(input.sessionID, identity, source)
       const rootID = input.user.rootID ?? (input.user.isRoot ? input.user.id : undefined)
       if (!rootID || input.user.sessionID !== session.id)

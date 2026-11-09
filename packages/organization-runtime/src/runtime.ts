@@ -16,6 +16,7 @@ import { memberEnvironment } from "./environment"
 import { startMemberBridge } from "./bridge"
 import { createCommandIntake } from "./command-intake"
 import { attachMemberExecution } from "./execution-source"
+import { startExecutionReleaseObserver } from "./release-observer"
 
 export type MemberRuntimeOptions = Pick<
   AgentRuntimeOptions,
@@ -78,6 +79,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
                     signal,
                   })
                   attachMemberExecution({ connection, signal, resources, intake, origin: member.origin, ca: input.ca })
+                  startExecutionReleaseObserver({ connection, intake, resources, signal })
                   return {
                     create: context.bind(intake.create),
                     control: context.bind(intake.control),

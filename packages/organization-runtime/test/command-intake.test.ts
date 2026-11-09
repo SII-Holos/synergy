@@ -183,6 +183,9 @@ test("retention metadata proof remains available through archive and transfer wi
     const lookup = { subjectID: binding.creatorID, requestID: "request-intake" }
     const delivery = await service.input(native.id, { provisionalGrantID: "grant-intake" }, "Retained task", "task")
     const accepted = await receiver.input(delivery)
+    const releases = await receiver.releaseEntries()
+    expect(releases).toHaveLength(1)
+    expect(releases[0]).toMatchObject({ sessionID: native.id, grantID: "grant-intake", state: "pending" })
     await Storage.write(["session_transfer_gate", native.id], {
       version: 1,
       migrationID: "transfer-retained",
@@ -210,6 +213,8 @@ test("retention metadata proof remains available through archive and transfer wi
       data: { code: "NOT_FOUND" },
     })
     expect(await SessionInbox.list(native.id)).toHaveLength(1)
+    await receiver.markRelease(releases[0])
+    expect(await receiver.releaseEntries()).toEqual([])
   })
 })
 

@@ -16,6 +16,7 @@ async function release(f: Fixture, changes: Partial<Execution.ReleaseProof> = {}
     purpose: "execution-resources-release",
     generation: 1,
     outcome: "completed",
+    materialized: true,
     issuedAt: Date.now(),
     expiresAt: Date.now() + 30_000,
     ...changes,

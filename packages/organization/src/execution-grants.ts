@@ -310,6 +310,7 @@ export function createExecutionGrants(options: {
             rootID: proof.rootID,
             generation: proof.generation,
             outcome: proof.outcome,
+            materialized: proof.materialized,
             releasedAt: previous?.releasedAt ?? Date.now(),
           })
           if (previous) {
@@ -328,6 +329,8 @@ export function createExecutionGrants(options: {
             if (grant.retention.state !== "held" || grant.retention.generation !== proof.generation)
               fail("REVISION_CONFLICT", "Execution retention generation changed")
           } else if (proof.generation !== 0) fail("REVISION_CONFLICT", "Execution grant has not been bound")
+          else if (proof.outcome !== "cancelled" && !proof.materialized)
+            fail("RESOURCE_UNAVAILABLE", "Unbound execution release lacks materialized root evidence")
           if (session.retainedExecutionGrants === 0)
             fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
           options.assertResourcesDrained(grant.grantID)

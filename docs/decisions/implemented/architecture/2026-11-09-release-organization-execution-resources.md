@@ -26,7 +26,7 @@ Retention inspection is separate from executable resource description. A bind ca
 
 ## Consequences
 
-The generated API and verified member client expose release with response identity, outcome and generation checks. They do not automatically infer native completion or replay missing work. Native release production, child execution and business-resource drainage remain separate integrations.
+The generated API and verified member client expose release with response identity, outcome and generation checks. Member task admission writes a durable pending-release entry keyed by the logical command request. A resident observer consumes terminal rollout events, waits outside the preparation fence for idle and complete native evidence, then acquires the per-Session organization execution fence and rechecks the evidence before calling `orgExecution.release`. It retries pending entries after connection loss and treats a released or closed retention inspection as idempotent settlement. Release proofs distinguish a materialized generation-zero root from an unmaterialized cancellation. Native child execution and business-resource drainage remain separate integrations.
 
 Tests cover real upstream streams, a gateway request admitted during release publication, expiry/disconnect and write rollback, stale capabilities after reacquisition, provisional cancellation, changed selection, disabled resources, handoff, revoked project access, storage restart, renewed connection proofs and lost HTTPS replies. Legacy records retain signed authority and raw stored evidence through upgrade.
 

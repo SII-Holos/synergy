@@ -186,7 +186,7 @@ test("cancelled accepted intake releases its provisional grant without inventing
     expect(receipt).toMatchObject({ grantID: admitted.permit.provisionalGrantID, generation: 0, outcome: "cancelled" })
     expect(await f.execution.release(input)).toEqual(receipt)
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(0)
-    const { rootID: _, generation: __, outcome: ___, ...received } = value
+    const { rootID: _, generation: __, outcome: ___, materialized: ____, ...received } = value
     const description = Execution.DescriptionProof.parse({ ...received, purpose: "execution-resource-description" })
     expect(
       await f.execution.retention({
@@ -201,6 +201,28 @@ test("cancelled accepted intake releases its provisional grant without inventing
     expect(
       (await f.commands.get(f.credentials.alice, { sessionID: f.sessionID, requestID: "request" })).accepted,
     ).toEqual(admitted.receipt.accepted)
+  })
+})
+
+test("materialized roots can release an unbound provisional grant only with explicit terminal evidence", async () => {
+  await using f = await commandFixture()
+  await f.connect()
+  const admitted = await task(f)
+  const base = (await proof(f, admitted.receipt)).proof
+  const value = Execution.ReleaseProof.parse({
+    ...base,
+    purpose: "execution-resources-release",
+    generation: 0,
+    outcome: "failed",
+    materialized: true,
+  })
+  const input = { proof: value, signature: await Execution.signRelease(value, f.machineKeys.privateKey) }
+  await f.run(async () => {
+    const receipt = await f.execution.release(input)
+    expect(receipt).toMatchObject({ generation: 0, outcome: "failed", materialized: true })
+    expect(
+      Execution.ReleaseProof.safeParse({ ...value, materialized: false, outcome: "completed" }).success,
+    ).toBeFalse()
   })
 })
 
