@@ -65,7 +65,23 @@ export function organizationApp(
         if (!ClientPolicy.allowsOrigin(origin)) fail("PERMISSION_DENIED", "The request origin is not allowed")
         c.header("Access-Control-Allow-Origin", origin)
         c.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
-        c.header("Access-Control-Allow-Headers", "Authorization,Content-Type,X-CSRF-Token")
+        const requestedHeaders = new Set(
+          (c.req.header("access-control-request-headers") ?? "")
+            .split(",")
+            .map((header) => header.trim().toLowerCase())
+            .filter(Boolean),
+        )
+        c.header(
+          "Access-Control-Allow-Headers",
+          ["authorization", "content-type", ...(requestedHeaders.has("x-csrf-token") ? ["x-csrf-token"] : [])]
+            .map((header) =>
+              header.replace(
+                /(^|-)([a-z])/g,
+                (_, separator: string, character: string) => `${separator}${character.toUpperCase()}`,
+              ),
+            )
+            .join(","),
+        )
         if (c.req.method === "OPTIONS") return c.body(null, 204)
       }
       await next()
