@@ -19,3 +19,5 @@ Execution proofs bind the full accepted task receipt, exact native root and fini
 Resource-description proofs establish accepted intake before materialization. Keep them separate from root authority and validate descriptor order, kinds and secret exclusion.
 
 Gateway capabilities bind one call and finite resource limits. Keep machine request and worker invocation signatures separate. Verify token bounds, altered targets and signature separation in `test/gateway.test.ts`.
+
+Shared synchronization DTOs are strict and generation-bound. Keep event projections metadata-only, batches contiguous and payload-hashed, and make cursor/checkpoint semantics explicit. Any API-visible sync schema change requires the mounted OpenAPI document and generated organization SDK to be regenerated.

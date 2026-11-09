@@ -255,6 +255,91 @@ export type OrgSessionCapacity = {
   sharedSessions: number
 }
 
+export type OrgShareView = {
+  sessionID: string
+  shareState: "private" | "shared"
+  shareGeneration: number
+  bindingEpoch: number
+  nextSeq: number
+  syncState: "pending" | "syncing" | "synced" | "blocked" | "failed"
+  updatedAt: number
+}
+
+export type OrgShareChange = {
+  expectedShareGeneration: number
+}
+
+export type OrgSyncAck = {
+  sessionID: string
+  bindingEpoch: number
+  shareGeneration: number
+  nextSeq: number
+  syncState: "pending" | "syncing" | "synced" | "blocked" | "failed"
+}
+
+export type OrgSyncEvent =
+  | {
+      type: "session"
+      sequence: number
+      session: {
+        sessionID: string
+        projectID: string
+        creatorID: string
+        driverRuntimeID: string
+        bindingEpoch: number
+        createdAt: number
+        shareGeneration: number
+      }
+    }
+  | {
+      type: "message"
+      sequence: number
+      messageID: string
+      role: "user" | "assistant"
+      createdAt: number
+      summary: string
+      integrity: string
+    }
+  | {
+      type: "tool"
+      sequence: number
+      callID: string
+      name: string
+      state: "pending" | "running" | "completed" | "error" | "unknown"
+      summary: string
+      integrity: string
+    }
+  | {
+      type: "attachment"
+      sequence: number
+      attachmentID: string
+      filename: string
+      mediaType: string
+      bytes: number
+      hash: string
+      state: "pending" | "uploading" | "available" | "missing" | "failed"
+    }
+
+export type OrgSyncBatch = {
+  schemaVersion: 1
+  sessionID: string
+  projectID: string
+  bindingEpoch: number
+  shareGeneration: number
+  firstSeq: number
+  lastSeq: number
+  payloadHash: string
+  events: Array<OrgSyncEvent>
+}
+
+export type OrgSyncEventPage = {
+  sessionID: string
+  shareGeneration: number
+  nextSeq: number
+  items: Array<OrgSyncEvent>
+  cursor?: number
+}
+
 export type OrgResourceAdminView = {
   resourceID: string
   orgID: string
@@ -2576,6 +2661,245 @@ export type OrgOrganizationSessionCapacityResponses = {
 
 export type OrgOrganizationSessionCapacityResponse =
   OrgOrganizationSessionCapacityResponses[keyof OrgOrganizationSessionCapacityResponses]
+
+export type OrgSessionsUnshareData = {
+  body: OrgShareChange
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/share"
+}
+
+export type OrgSessionsUnshareErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionsUnshareError = OrgSessionsUnshareErrors[keyof OrgSessionsUnshareErrors]
+
+export type OrgSessionsUnshareResponses = {
+  /**
+   * Success
+   */
+  200: OrgShareView
+}
+
+export type OrgSessionsUnshareResponse = OrgSessionsUnshareResponses[keyof OrgSessionsUnshareResponses]
+
+export type OrgSessionsShareStateData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/share"
+}
+
+export type OrgSessionsShareStateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionsShareStateError = OrgSessionsShareStateErrors[keyof OrgSessionsShareStateErrors]
+
+export type OrgSessionsShareStateResponses = {
+  /**
+   * Success
+   */
+  200: OrgShareView
+}
+
+export type OrgSessionsShareStateResponse = OrgSessionsShareStateResponses[keyof OrgSessionsShareStateResponses]
+
+export type OrgSessionsShareData = {
+  body: OrgShareChange
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/share"
+}
+
+export type OrgSessionsShareErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionsShareError = OrgSessionsShareErrors[keyof OrgSessionsShareErrors]
+
+export type OrgSessionsShareResponses = {
+  /**
+   * Success
+   */
+  200: OrgShareView
+}
+
+export type OrgSessionsShareResponse = OrgSessionsShareResponses[keyof OrgSessionsShareResponses]
+
+export type OrgSessionSyncApplyBatchData = {
+  body: OrgSyncBatch
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/sync/batches"
+}
+
+export type OrgSessionSyncApplyBatchErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionSyncApplyBatchError = OrgSessionSyncApplyBatchErrors[keyof OrgSessionSyncApplyBatchErrors]
+
+export type OrgSessionSyncApplyBatchResponses = {
+  /**
+   * Success
+   */
+  200: OrgSyncAck
+}
+
+export type OrgSessionSyncApplyBatchResponse =
+  OrgSessionSyncApplyBatchResponses[keyof OrgSessionSyncApplyBatchResponses]
+
+export type OrgSessionSyncEventsData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: number
+  }
+  url: "/org/v1/sessions/{sessionID}/sync/events"
+}
+
+export type OrgSessionSyncEventsErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionSyncEventsError = OrgSessionSyncEventsErrors[keyof OrgSessionSyncEventsErrors]
+
+export type OrgSessionSyncEventsResponses = {
+  /**
+   * Success
+   */
+  200: OrgSyncEventPage
+}
+
+export type OrgSessionSyncEventsResponse = OrgSessionSyncEventsResponses[keyof OrgSessionSyncEventsResponses]
 
 export type OrgResourcesListData = {
   body?: never

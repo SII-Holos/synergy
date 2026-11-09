@@ -1,5 +1,6 @@
 import { z } from "zod"
 import {
+  OrganizationProtocol,
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationClientAuth as ClientAuth,
@@ -8,6 +9,7 @@ import {
   OrganizationResourceProtocol as ResourceProtocol,
   OrganizationExecutionProtocol as Execution,
   OrganizationGatewayProtocol as Gateway,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/import"
@@ -187,6 +189,33 @@ export namespace OrganizationRecord {
   }).refine((value) => value.nextBindingEpoch > value.bindingEpoch, "Next binding epoch must advance")
   export type SessionDirectory = z.infer<typeof SessionDirectory>
   export const SessionIndex = z.strictObject({ sessionID: Identity.ID })
+  export const SharedState = z.strictObject({
+    schemaVersion: z.literal(1),
+    sessionID: Identity.ID,
+    shareGeneration: Identity.Revision,
+    bindingEpoch: OrganizationProtocol.Epoch,
+    nextSeq: Identity.Revision,
+    syncState: Sync.SyncState,
+    updatedAt: z.number().int().nonnegative(),
+  })
+  export type SharedState = z.infer<typeof SharedState>
+  export const SharedBatch = z.strictObject({
+    schemaVersion: z.literal(1),
+    sessionID: Identity.ID,
+    projectID: Identity.ID,
+    bindingEpoch: OrganizationProtocol.Epoch,
+    shareGeneration: Identity.Revision,
+    firstSeq: Identity.Revision,
+    lastSeq: Identity.Revision,
+    payloadHash: OrganizationProtocol.Digest,
+    committedAt: z.number().int().nonnegative(),
+  })
+  export type SharedBatch = z.infer<typeof SharedBatch>
+  export const SharedEvent = z.strictObject({
+    schemaVersion: z.literal(1),
+    event: Sync.Event,
+  })
+  export type SharedEvent = z.infer<typeof SharedEvent>
 
   export async function read<T>(schema: z.ZodType<T>, key: string[]): Promise<T | undefined> {
     const [value] = await Storage.readMany<unknown>([key])

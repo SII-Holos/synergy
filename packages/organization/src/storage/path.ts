@@ -131,4 +131,25 @@ export namespace OrganizationStoragePath {
     ...sessionVisibility(state, projectID),
     sessionID,
   ]
+  export const sharedState = (sessionID: string) => ["organization", "shared-state", sessionID]
+  export const sharedBatch = (sessionID: string, shareGeneration: number, firstSeq: number) => [
+    "organization",
+    "shared-batches",
+    sessionID,
+    String(shareGeneration),
+    String(firstSeq).padStart(16, "0"),
+  ]
+  export const sharedEvent = (sessionID: string, shareGeneration: number, sequence: number) => [
+    "organization",
+    "shared-events",
+    sessionID,
+    String(shareGeneration),
+    String(sequence).padStart(16, "0"),
+  ]
+  export const sharedEvents = (sessionID: string, shareGeneration: number) => [
+    "organization",
+    "shared-events",
+    sessionID,
+    String(shareGeneration),
+  ]
 }

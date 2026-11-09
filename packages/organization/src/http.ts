@@ -15,6 +15,7 @@ import { ClientPolicy } from "./auth/client-policy"
 import type { ClientAuthentication } from "./auth/client"
 import { clientAuthenticationRoutes } from "./routes/client-auth"
 import { sessionDirectoryRoutes } from "./routes/session-directory"
+import { sharingRoutes } from "./routes/sharing"
 import { commandRoutes } from "./routes/commands"
 import { resourceRoutes } from "./routes/resources"
 import { executionRoutes } from "./routes/execution"
@@ -78,7 +79,9 @@ export function organizationApp(
         return next()
       const maxSize = /^\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(c.req.path)
         ? 16 * 1024 * 1024
-        : 64 * 1024
+        : /^\/org\/v1\/sessions\/[^/]+\/sync\/batches$/.test(c.req.path)
+          ? 1024 * 1024
+          : 64 * 1024
       return bodyLimit({ maxSize, onError: () => fail("INVALID_REQUEST", "Request body is too large") })(c, next)
     })
     .onError((error, c) => {
@@ -119,6 +122,7 @@ export function organizationApp(
     )
     .route("/org/v1", registrationRoutes(registry, publicOrigin))
     .route("/org/v1", sessionDirectoryRoutes(publicOrigin))
+    .route("/org/v1", sharingRoutes(publicOrigin))
     .route("/org/v1", resourceRoutes(publicOrigin))
     .route(
       "/org/v1",

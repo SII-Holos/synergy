@@ -145,8 +145,20 @@ import type {
   OrgSessionsGetResponses,
   OrgSessionsListErrors,
   OrgSessionsListResponses,
+  OrgSessionsShareErrors,
+  OrgSessionsShareResponses,
+  OrgSessionsShareStateErrors,
+  OrgSessionsShareStateResponses,
+  OrgSessionsUnshareErrors,
+  OrgSessionsUnshareResponses,
+  OrgSessionSyncApplyBatchErrors,
+  OrgSessionSyncApplyBatchResponses,
+  OrgSessionSyncEventsErrors,
+  OrgSessionSyncEventsResponses,
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
+  OrgShareChange,
+  OrgSyncBatch,
   OrgTokenRefreshInput,
   OrgTransferOwner,
 } from "./types.gen.js"
@@ -1013,6 +1025,95 @@ export class OrgSessions extends HeyApiClient {
   }
 
   /**
+   * Revoke a Session share and advance its generation
+   */
+  public unshare<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgShareChange: OrgShareChange
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgShareChange", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<OrgSessionsUnshareResponses, OrgSessionsUnshareErrors, ThrowOnError>(
+      {
+        url: "/org/v1/sessions/{sessionID}/share",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Read the current Session sharing generation and checkpoint
+   */
+  public shareState<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      OrgSessionsShareStateResponses,
+      OrgSessionsShareStateErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/share",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Share a Session with its authorized project
+   */
+  public share<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgShareChange: OrgShareChange
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgShareChange", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<OrgSessionsShareResponses, OrgSessionsShareErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/share",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Create a private Session on an online member Runtime
    */
   public create<ThrowOnError extends boolean = false>(
@@ -1031,6 +1132,79 @@ export class OrgSessions extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+}
+
+export class OrgSessionSync extends HeyApiClient {
+  /**
+   * Commit a contiguous safe Session projection batch
+   */
+  public applyBatch<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgSyncBatch: OrgSyncBatch
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgSyncBatch", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgSessionSyncApplyBatchResponses,
+      OrgSessionSyncApplyBatchErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/sync/batches",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read committed safe Session projection events
+   */
+  public events<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      limit?: number
+      cursor?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgSessionSyncEventsResponses,
+      OrgSessionSyncEventsErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/sync/events",
+      ...options,
+      ...params,
     })
   }
 }
@@ -1664,6 +1838,8 @@ export class OrganizationClient extends HeyApiClient {
   orgSessionResources = new OrgSessionResources({ client: this.client })
 
   orgSessions = new OrgSessions({ client: this.client })
+
+  orgSessionSync = new OrgSessionSync({ client: this.client })
 
   orgResources = new OrgResources({ client: this.client })
 
