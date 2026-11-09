@@ -291,6 +291,51 @@ test("resource calls apply cancellable backpressure and connection closure drain
   await expect(f.connection.resources.describe(proof)).rejects.toThrow()
 })
 
+test("member resource client invokes a selected fixed HTTP connection with one signed capability", async () => {
+  const received: { url: string; authorization: string | null; callerHeader: string | null; body: unknown }[] = []
+  const upstream = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      received.push({
+        url: request.url,
+        authorization: request.headers.get("authorization"),
+        callerHeader: request.headers.get("x-private-caller"),
+        body: await request.json(),
+      })
+      return Response.json({ ok: true, operationID: "op-1" })
+    },
+  })
+  try {
+    await using f = await execution({ connectionEndpoint: new URL("/business", upstream.url).href })
+    const connectionID = f.connectionResource!.resourceID
+    const description = await f.connection.resources.describe(await f.description())
+    expect(description.grant.selection.connectionResourceIDs).toEqual([connectionID])
+    const grant = await f.connection.resources.bind(await f.binding())
+    const capability = await f.connection.resources.reserve(f.proof(grant, "business-call", connectionID))
+    expect(capability.permit.protocol).toBe("fixed-http")
+    const response = await f.connection.resources.invoke(capability, {
+      body: JSON.stringify({ operationID: "op-1", input: { value: "payload" } }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, operationID: "op-1" })
+    expect(received).toEqual([
+      {
+        url: new URL("/business", upstream.url).href,
+        authorization: "Bearer private-connection-key",
+        callerHeader: null,
+        body: { operationID: "op-1", input: { value: "payload" } },
+      },
+    ])
+    const repeated = await f.connection.resources.invoke(capability, { body: JSON.stringify({ retry: true }) })
+    expect(repeated.status).toBe(409)
+    expect(received).toHaveLength(1)
+    expect(JSON.stringify({ description, grant, capability })).not.toContain("private-connection-key")
+  } finally {
+    await upstream.stop(true)
+  }
+})
+
 test("oversized control responses cancel their stream without retaining or echoing the payload", async () => {
   await using f = await execution()
   const cancelled = Promise.withResolvers<void>()

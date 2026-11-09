@@ -231,9 +231,19 @@ export function registerMemberExecution(identity: MemberIdentity) {
         },
         signal,
       )
+      const modelPermit = Gateway.ModelPermit.safeParse(capability.permit)
       const packageName =
-        capability.permit.protocol === "openai-compatible" ? "@ai-sdk/openai-compatible" : "@ai-sdk/anthropic"
-      if (input.model.api.id !== capability.permit.modelID || input.model.api.npm !== packageName)
+        modelPermit.success && modelPermit.data.protocol === "openai-compatible"
+          ? "@ai-sdk/openai-compatible"
+          : modelPermit.success && modelPermit.data.protocol === "anthropic-compatible"
+            ? "@ai-sdk/anthropic"
+            : undefined
+      if (
+        !modelPermit.success ||
+        !packageName ||
+        input.model.api.id !== modelPermit.data.modelID ||
+        input.model.api.npm !== packageName
+      )
         throw denied("Organization model changed after native request preparation")
       signal.throwIfAborted()
       return {

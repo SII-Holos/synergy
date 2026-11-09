@@ -15,6 +15,10 @@ export interface MemberResourceClient {
   release(proof: Execution.ReleaseProof, signal?: AbortSignal): Promise<Execution.ReleaseReceipt>
   reserve(proof: Gateway.Proof, signal?: AbortSignal): Promise<Gateway.SignedPermit>
   inspect(proof: Gateway.Proof, signal?: AbortSignal): Promise<Gateway.Receipt>
+  invoke(
+    permit: Gateway.SignedPermit,
+    input?: { body?: string | Uint8Array | ArrayBuffer; signal?: AbortSignal },
+  ): Promise<Response>
 }
 
 type Proof = Execution.DescriptionProof | Execution.BindingProof | Execution.ReleaseProof | Gateway.Proof
@@ -41,6 +45,7 @@ export function createMemberResourceClient(options: {
   const stop = new AbortController()
   const lifetime = AbortSignal.any([stop.signal, options.signal])
   const active = new Set<Promise<unknown>>()
+  const bodies = new Set<{ reader: ReadableStreamDefaultReader<Uint8Array>; done: Promise<void> }>()
   const waiters = new Set<() => void>()
   let occupied = 0
   let closing: Promise<void> | undefined
@@ -125,6 +130,10 @@ export function createMemberResourceClient(options: {
     signal.throwIfAborted()
     occupied++
   }
+  function release() {
+    occupied--
+    for (const wake of [...waiters]) wake()
+  }
   function invoke<T>(
     proof: Proof,
     schema: z.ZodType<T>,
@@ -162,8 +171,7 @@ export function createMemberResourceClient(options: {
         if (error instanceof OrganizationRuntimeError) throw error
         throw failure("SERVICE_UNAVAILABLE", "Organization resource control response is unavailable")
       } finally {
-        occupied--
-        for (const wake of [...waiters]) wake()
+        release()
       }
     })()
     active.add(pending)
@@ -317,12 +325,151 @@ export function createMemberResourceClient(options: {
         signal,
       )
     },
+    async invoke(value, input = {}) {
+      const signed = Gateway.SignedPermit.parse(value)
+      const parsed = Gateway.ConnectionPermit.safeParse(signed.permit)
+      if (!parsed.success)
+        throw failure(
+          "PROTOCOL_MISMATCH",
+          "Organization connection capability is not a business resource",
+          "not_dispatched",
+        )
+      const permit = { permit: parsed.data, signature: signed.signature }
+      if (
+        permit.permit.orgID !== connection.orgID ||
+        permit.permit.deploymentIncarnation !== connection.deploymentIncarnation ||
+        permit.permit.runtimeID !== connection.runtimeID ||
+        permit.permit.connectionEpoch !== connection.connectionEpoch ||
+        permit.permit.keyID !== connection.signingIdentity.keyID ||
+        !(await Gateway.verifyPermit(permit.permit, permit.signature, connection.signingIdentity.publicKey))
+      )
+        throw failure(
+          "STALE_CONNECTION",
+          "Organization connection capability does not match this member connection",
+          "not_dispatched",
+        )
+      if (permit.permit.issuedAt > Date.now() || permit.permit.expiresAt <= Date.now())
+        throw failure("PERMISSION_DENIED", "Organization connection capability has expired", "not_dispatched")
+      const cancellation = AbortSignal.any([
+        lifetime,
+        ...(input.signal ? [input.signal] : []),
+        AbortSignal.timeout(Math.max(0, Math.min(15_000, permit.permit.expiresAt - Date.now()))),
+      ])
+      const pending = (async () => {
+        await acquire(cancellation)
+        let retained = false
+        try {
+          cancellation.throwIfAborted()
+          const bytes =
+            input.body === undefined
+              ? undefined
+              : typeof input.body === "string"
+                ? new TextEncoder().encode(input.body)
+                : input.body instanceof Uint8Array
+                  ? input.body
+                  : new Uint8Array(input.body)
+          if (bytes && bytes.byteLength > permit.permit.requestBytes)
+            throw failure(
+              "RESOURCE_UNAVAILABLE",
+              "Organization connection request exceeds its byte allowance",
+              "not_dispatched",
+            )
+          const response = await transport.fetch(
+            new URL(`/runtime/v1/gateway/connections/${encodeURIComponent(permit.permit.resourceID)}`, options.origin),
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${Gateway.encode(permit)}`,
+                "content-type": "application/json",
+              },
+              body: bytes ? Buffer.from(bytes) : undefined,
+              signal: cancellation,
+              credentials: "omit",
+              redirect: "error",
+            },
+          )
+          cancellation.throwIfAborted()
+          const reader = response.body?.getReader()
+          if (!reader) {
+            release()
+            return response
+          }
+          retained = true
+          const done = Promise.withResolvers<void>()
+          const body = { reader, done: done.promise }
+          bodies.add(body)
+          let settled = false
+          const finish = async () => {
+            if (settled) return
+            settled = true
+            bodies.delete(body)
+            reader.releaseLock()
+            release()
+            done.resolve()
+          }
+          const abort = () => {
+            void reader
+              .cancel()
+              .catch(() => {})
+              .then(async () => {
+                await finish()
+              })
+          }
+          cancellation.addEventListener("abort", abort, { once: true })
+          const stream = new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              try {
+                cancellation.throwIfAborted()
+                const item = await reader.read()
+                cancellation.throwIfAborted()
+                if (item.done) {
+                  cancellation.removeEventListener("abort", abort)
+                  await finish()
+                  controller.close()
+                  return
+                }
+                controller.enqueue(item.value)
+              } catch (error) {
+                cancellation.removeEventListener("abort", abort)
+                await reader.cancel().catch(() => {})
+                await finish()
+                controller.error(error)
+              }
+            },
+            async cancel() {
+              cancellation.removeEventListener("abort", abort)
+              await reader.cancel().catch(() => {})
+              await finish()
+            },
+          })
+          return new Response(stream, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          })
+        } catch (error) {
+          if (!retained) release()
+          cancellation.throwIfAborted()
+          if (error instanceof OrganizationRuntimeError) throw error
+          throw failure("SERVICE_UNAVAILABLE", "Organization business connection is unavailable")
+        }
+      })()
+      active.add(pending)
+      void pending.then(
+        () => active.delete(pending),
+        () => active.delete(pending),
+      )
+      return pending
+    },
   }
   return {
     resources,
     close() {
       stop.abort()
-      return (closing ??= Promise.allSettled([...active]).then(() => transport.close()))
+      for (const body of bodies) void body.reader.cancel().catch(() => {})
+      return (closing ??= Promise.allSettled([...active, ...[...bodies].map((body) => body.done)]).then(() =>
+        transport.close(),
+      ))
     },
   }
 }

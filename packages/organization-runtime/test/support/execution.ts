@@ -22,7 +22,7 @@ import { attachMemberExecution, registerMemberExecution } from "../../src/execut
 import { fixture } from "./organization"
 
 export async function executionFixture(
-  input: { protocol?: Gateway.ModelProtocol; endpoint?: string; execution?: boolean } = {},
+  input: { protocol?: Gateway.ModelProtocol; endpoint?: string; connectionEndpoint?: string; execution?: boolean } = {},
 ) {
   const resources = testResources()
   try {
@@ -127,6 +127,31 @@ export async function executionFixture(
       },
       options,
     )
+    const connectionResource = input.connectionEndpoint
+      ? (
+          await f.client.orgResources.create(
+            {
+              orgResourceCreate: {
+                name: "Selected business connection",
+                scope: { kind: "organization" },
+                configuration: { protocol: "fixed-http", method: "POST", endpoint: input.connectionEndpoint },
+                credential: { kind: "bearer", value: "private-connection-key" },
+              },
+            },
+            options,
+          )
+        ).data
+      : undefined
+    if (connectionResource)
+      await f.client.orgResourceGrants.set(
+        {
+          resourceID: connectionResource.resourceID,
+          kind: "account",
+          subjectID: f.identity.accountID,
+          orgResourceGrantChange: { expectedRevision: 0, enabled: true },
+        },
+        options,
+      )
     const created = (
       await f.client.orgSessions.create(
         {
@@ -148,7 +173,10 @@ export async function executionFixture(
         sessionID,
         orgSessionResourceChange: {
           expectedRevision: 0,
-          selection: { modelResourceID: model.resourceID, connectionResourceIDs: [] },
+          selection: {
+            modelResourceID: model.resourceID,
+            connectionResourceIDs: connectionResource ? [connectionResource.resourceID] : [],
+          },
         },
       },
       options,
@@ -177,6 +205,7 @@ export async function executionFixture(
       runtime,
       sessionID,
       model,
+      connectionResource,
       get connection() {
         return connection!
       },
@@ -203,7 +232,7 @@ export async function executionFixture(
           })
         })
       },
-      proof(grant: Execution.BoundGrant, callID: string): Gateway.Proof {
+      proof(grant: Execution.BoundGrant, callID: string, resourceID = model.resourceID): Gateway.Proof {
         return Gateway.Proof.parse({
           schemaVersion: 1,
           purpose: "gateway-call",
@@ -215,7 +244,7 @@ export async function executionFixture(
           sessionID,
           rootID: grant.rootID,
           bindingEpoch: grant.bindingEpoch,
-          resourceID: model.resourceID,
+          resourceID,
           callID,
           issuedAt: Date.now(),
           expiresAt: Date.now() + 30_000,
