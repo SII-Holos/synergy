@@ -2202,6 +2202,48 @@
         "parameters": [{ "schema": { "type": "string" }, "in": "path", "name": "resourceID", "required": true }]
       }
     },
+    "/runtime/v1/execution/retention": {
+      "post": {
+        "operationId": "orgExecution.retention",
+        "summary": "Inspect accepted resource retention without acquiring execution authority",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/OrgExecutionDescriptionRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgExecutionGrant" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/runtime/v1/execution/resources": {
       "post": {
         "operationId": "orgExecution.resources",
@@ -4404,302 +4446,176 @@
         ],
         "additionalProperties": false
       },
-      "OrgExecutionDescription": {
-        "type": "object",
-        "properties": {
-          "grant": {
-            "oneOf": [
-              {
+      "OrgExecutionGrant": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "schemaVersion": { "type": "number", "const": 3 },
+              "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "deploymentIncarnation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "selectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "selection": {
                 "type": "object",
                 "properties": {
-                  "schemaVersion": { "type": "number", "const": 3 },
-                  "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "deploymentIncarnation": {
+                  "modelResourceID": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 128,
                     "pattern": "^[a-zA-Z0-9_-]+$"
                   },
-                  "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                  "selectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "selection": {
-                    "type": "object",
-                    "properties": {
-                      "modelResourceID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-zA-Z0-9_-]+$"
-                      },
-                      "connectionResourceIDs": {
-                        "maxItems": 32,
-                        "type": "array",
-                        "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                      }
-                    },
-                    "required": ["modelResourceID", "connectionResourceIDs"],
-                    "additionalProperties": false
-                  },
-                  "limits": {
-                    "type": "object",
-                    "properties": {
-                      "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
-                      "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
-                    },
-                    "required": ["requestBytes", "responseBytes"],
-                    "additionalProperties": false
-                  },
-                  "actor": {
-                    "type": "object",
-                    "properties": {
-                      "subjectID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-zA-Z0-9_-]+$"
-                      },
-                      "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
-                      "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
-                      "requestID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-zA-Z0-9_-]+$"
-                      },
-                      "kind": { "type": "string", "const": "account" },
-                      "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                    },
-                    "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
-                    "additionalProperties": false
-                  },
-                  "admissionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "attemptID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "state": { "type": "string", "const": "provisional" }
+                  "connectionResourceIDs": {
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                  }
                 },
-                "required": [
-                  "schemaVersion",
-                  "grantID",
-                  "orgID",
-                  "deploymentIncarnation",
-                  "sessionID",
-                  "projectID",
-                  "runtimeID",
-                  "bindingEpoch",
-                  "selectionRevision",
-                  "selection",
-                  "limits",
-                  "actor",
-                  "admissionID",
-                  "attemptID",
-                  "createdAt",
-                  "state"
-                ],
+                "required": ["modelResourceID", "connectionResourceIDs"],
                 "additionalProperties": false
               },
-              { "$ref": "#/components/schemas/OrgBoundExecutionGrant" },
-              {
+              "limits": {
                 "type": "object",
                 "properties": {
-                  "schemaVersion": { "type": "number", "const": 3 },
-                  "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "deploymentIncarnation": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 128,
-                    "pattern": "^[a-zA-Z0-9_-]+$"
-                  },
-                  "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                  "selectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "selection": {
-                    "type": "object",
-                    "properties": {
-                      "modelResourceID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-zA-Z0-9_-]+$"
-                      },
-                      "connectionResourceIDs": {
-                        "maxItems": 32,
-                        "type": "array",
-                        "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                      }
-                    },
-                    "required": ["modelResourceID", "connectionResourceIDs"],
-                    "additionalProperties": false
-                  },
-                  "limits": {
-                    "type": "object",
-                    "properties": {
-                      "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
-                      "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
-                    },
-                    "required": ["requestBytes", "responseBytes"],
-                    "additionalProperties": false
-                  },
-                  "actor": {
-                    "type": "object",
-                    "properties": {
-                      "subjectID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-zA-Z0-9_-]+$"
-                      },
-                      "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
-                      "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
-                      "requestID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-zA-Z0-9_-]+$"
-                      },
-                      "kind": { "type": "string", "const": "account" },
-                      "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                    },
-                    "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
-                    "additionalProperties": false
-                  },
-                  "admissionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "attemptID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                  "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "state": { "type": "string", "const": "closed" },
-                  "closedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                  "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
+                  "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
                 },
-                "required": [
-                  "schemaVersion",
-                  "grantID",
-                  "orgID",
-                  "deploymentIncarnation",
-                  "sessionID",
-                  "projectID",
-                  "runtimeID",
-                  "bindingEpoch",
-                  "selectionRevision",
-                  "selection",
-                  "limits",
-                  "actor",
-                  "admissionID",
-                  "attemptID",
-                  "createdAt",
-                  "state",
-                  "closedAt"
-                ],
+                "required": ["requestBytes", "responseBytes"],
                 "additionalProperties": false
-              }
-            ]
+              },
+              "actor": {
+                "type": "object",
+                "properties": {
+                  "subjectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
+                  "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "kind": { "type": "string", "const": "account" },
+                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
+                "additionalProperties": false
+              },
+              "admissionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "attemptID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "state": { "type": "string", "const": "provisional" }
+            },
+            "required": [
+              "schemaVersion",
+              "grantID",
+              "orgID",
+              "deploymentIncarnation",
+              "sessionID",
+              "projectID",
+              "runtimeID",
+              "bindingEpoch",
+              "selectionRevision",
+              "selection",
+              "limits",
+              "actor",
+              "admissionID",
+              "attemptID",
+              "createdAt",
+              "state"
+            ],
+            "additionalProperties": false
           },
-          "resources": {
-            "minItems": 1,
-            "maxItems": 33,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                "name": { "type": "string", "minLength": 1, "maxLength": 200 },
-                "definition": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "protocol": { "type": "string", "enum": ["openai-compatible", "anthropic-compatible"] },
-                        "model": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "minLength": 1,
-                              "maxLength": 256,
-                              "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
-                            },
-                            "name": { "type": "string", "minLength": 1, "maxLength": 200 },
-                            "limit": {
-                              "type": "object",
-                              "properties": {
-                                "context": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                                "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                                "output": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-                              },
-                              "required": ["context", "output"],
-                              "additionalProperties": false
-                            },
-                            "capabilities": {
-                              "default": {},
-                              "type": "object",
-                              "properties": {
-                                "temperature": { "default": true, "type": "boolean" },
-                                "reasoning": { "default": false, "type": "boolean" },
-                                "tools": { "default": true, "type": "boolean" },
-                                "input": {
-                                  "default": ["text"],
-                                  "minItems": 1,
-                                  "type": "array",
-                                  "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
-                                },
-                                "output": {
-                                  "default": ["text"],
-                                  "minItems": 1,
-                                  "type": "array",
-                                  "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
-                                },
-                                "interleaved": {
-                                  "default": false,
-                                  "anyOf": [
-                                    { "type": "boolean", "const": false },
-                                    { "type": "string", "enum": ["reasoning_content", "reasoning_details"] }
-                                  ]
-                                },
-                                "reasoningEfforts": {
-                                  "type": "array",
-                                  "items": { "type": "string", "minLength": 1, "maxLength": 64 }
-                                }
-                              },
-                              "additionalProperties": false
-                            }
-                          },
-                          "required": ["id", "name", "limit"],
-                          "additionalProperties": false
-                        }
-                      },
-                      "required": ["protocol", "model"],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": { "protocol": { "type": "string", "enum": ["mcp-http", "mcp-sse"] } },
-                      "required": ["protocol"],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "protocol": { "type": "string", "const": "fixed-http" },
-                        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }
-                      },
-                      "required": ["protocol", "method"],
-                      "additionalProperties": false
-                    }
-                  ]
-                }
+          { "$ref": "#/components/schemas/OrgBoundExecutionGrant" },
+          {
+            "type": "object",
+            "properties": {
+              "schemaVersion": { "type": "number", "const": 3 },
+              "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "deploymentIncarnation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
               },
-              "required": ["resourceID", "revision", "name", "definition"],
-              "additionalProperties": false
-            }
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "selectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "selection": {
+                "type": "object",
+                "properties": {
+                  "modelResourceID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "connectionResourceIDs": {
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                  }
+                },
+                "required": ["modelResourceID", "connectionResourceIDs"],
+                "additionalProperties": false
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "requestBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 16777216 },
+                  "responseBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 67108864 }
+                },
+                "required": ["requestBytes", "responseBytes"],
+                "additionalProperties": false
+              },
+              "actor": {
+                "type": "object",
+                "properties": {
+                  "subjectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
+                  "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "kind": { "type": "string", "const": "account" },
+                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
+                "additionalProperties": false
+              },
+              "admissionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "attemptID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "state": { "type": "string", "const": "closed" },
+              "closedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": [
+              "schemaVersion",
+              "grantID",
+              "orgID",
+              "deploymentIncarnation",
+              "sessionID",
+              "projectID",
+              "runtimeID",
+              "bindingEpoch",
+              "selectionRevision",
+              "selection",
+              "limits",
+              "actor",
+              "admissionID",
+              "attemptID",
+              "createdAt",
+              "state",
+              "closedAt"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": ["grant", "resources"],
-        "additionalProperties": false
+        ]
       },
       "OrgExecutionDescriptionProof": {
         "type": "object",
@@ -4826,6 +4742,113 @@
           "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
         },
         "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgExecutionDescription": {
+        "type": "object",
+        "properties": {
+          "grant": { "$ref": "#/components/schemas/OrgExecutionGrant" },
+          "resources": {
+            "minItems": 1,
+            "maxItems": 33,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "definition": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "protocol": { "type": "string", "enum": ["openai-compatible", "anthropic-compatible"] },
+                        "model": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 256,
+                              "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+                            },
+                            "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+                            "limit": {
+                              "type": "object",
+                              "properties": {
+                                "context": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                                "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                                "output": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                              },
+                              "required": ["context", "output"],
+                              "additionalProperties": false
+                            },
+                            "capabilities": {
+                              "default": {},
+                              "type": "object",
+                              "properties": {
+                                "temperature": { "default": true, "type": "boolean" },
+                                "reasoning": { "default": false, "type": "boolean" },
+                                "tools": { "default": true, "type": "boolean" },
+                                "input": {
+                                  "default": ["text"],
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                                },
+                                "output": {
+                                  "default": ["text"],
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "items": { "type": "string", "enum": ["text", "image", "audio", "video", "pdf"] }
+                                },
+                                "interleaved": {
+                                  "default": false,
+                                  "anyOf": [
+                                    { "type": "boolean", "const": false },
+                                    { "type": "string", "enum": ["reasoning_content", "reasoning_details"] }
+                                  ]
+                                },
+                                "reasoningEfforts": {
+                                  "type": "array",
+                                  "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": ["id", "name", "limit"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["protocol", "model"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": { "protocol": { "type": "string", "enum": ["mcp-http", "mcp-sse"] } },
+                      "required": ["protocol"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "protocol": { "type": "string", "const": "fixed-http" },
+                        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }
+                      },
+                      "required": ["protocol", "method"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": ["resourceID", "revision", "name", "definition"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["grant", "resources"],
         "additionalProperties": false
       },
       "OrgExecutionBindingProof": {

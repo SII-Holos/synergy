@@ -146,8 +146,6 @@ export function createExecutionGrants(options: {
       session.bindingEpoch !== permit.bindingEpoch
     )
       fail("STALE_BINDING", "Execution grant Session binding changed")
-    if (session.handoffID && proof.purpose !== "execution-resources-release")
-      fail("HANDOFF_BLOCKED", "Session handoff blocks execution binding")
     const grant = await Record.read(Record.ExecutionGrant, Keys.executionGrant(permit.provisionalGrantID!))
     if (
       !grant ||
@@ -160,12 +158,14 @@ export function createExecutionGrants(options: {
       grant.bindingEpoch !== permit.bindingEpoch ||
       grant.attemptID !== permit.attemptID ||
       grant.admissionID !== permit.admissionID ||
+      (grant.state === "bound" && grant.rootID !== accepted.effect.messageID) ||
       JSON.stringify(grant.actor) !== JSON.stringify(permit.actor)
     )
       fail("PERMISSION_DENIED", "Execution grant does not match the accepted admission")
     return { session, grant, account }
   }
   async function enabled(session: Record.SessionDirectory, grant: Execution.Grant, account: Record.Account) {
+    if (session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks execution binding")
     if (grant.state === "closed") fail("PERMISSION_DENIED", "Execution grant is closed")
     if ((grant.state === "provisional" || grant.retention.state === "held") && session.retainedExecutionGrants === 0)
       fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
@@ -186,6 +186,22 @@ export function createExecutionGrants(options: {
     return Resources.enabled(session, grant.selection)
   }
   return {
+    async retention(value: Execution.DescriptionRequest): Promise<Execution.Grant> {
+      if (Storage.inTransaction()) fail("INVALID_REQUEST", "Retention inspection must own its reconciliation boundary")
+      const { proof, signature } = Execution.DescriptionRequest.parse(value)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      if (!(await Execution.verifyDescription(proof, signature, registered.runtime.publicKey)))
+        fail("PERMISSION_DENIED", "Execution retention proof signature is invalid")
+      const connection = capture(proof, registered.account.accountID)
+      await options.admissions.observe(connection, proof.receipt)
+      return Storage.snapshot(async () => {
+        const { grant } = await resolve(proof, registered.runtime.publicKey)
+        window(proof)
+        connection.assertCurrent()
+        return grant
+      })
+    },
     async describe(value: Execution.DescriptionRequest): Promise<Execution.Description> {
       if (Storage.inTransaction()) fail("INVALID_REQUEST", "Resource description must own its reconciliation boundary")
       const { proof, signature } = Execution.DescriptionRequest.parse(value)

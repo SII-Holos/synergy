@@ -14,6 +14,8 @@ Release uses a finite, domain-separated machine proof containing accepted intake
 
 Gateway call records capture the retention generation at reservation. Invocation and the pre-transmission transaction compare it with current retained authority. Old capabilities remain unusable after reacquisition; their historical receipts remain readable. Central record-access migrations assign existing grants and calls generation one without rewriting signed capabilities or scanning historical Sessions at startup.
 
+Retention inspection is separate from executable resource description. A bind can commit while its reply is lost; subsequent resource disablement or project revocation must not prevent the current driver from learning which generation needs cleanup. The accepted-task metadata proof authorizes this read without granting new use. Local archive and transfer fences preserve this proof, while the service still checks the machine, connection and canonical Session binding. Inspection neither reacquires resources nor changes their generation.
+
 ## Alternatives considered
 
 **Close or replace the root grant on completion.** This disconnects continuation from its accepted intake and existing evidence, and risks resetting execution budgets. Occupancy is independent of root identity.
@@ -27,3 +29,5 @@ Gateway call records capture the retention generation at reservation. Invocation
 The generated API and verified member client expose release with response identity, outcome and generation checks. They do not automatically infer native completion or replay missing work. Native release production, child execution and business-resource drainage remain separate integrations.
 
 Tests cover real upstream streams, a gateway request admitted during release publication, expiry/disconnect and write rollback, stale capabilities after reacquisition, provisional cancellation, changed selection, disabled resources, handoff, revoked project access, storage restart, renewed connection proofs and lost HTTPS replies. Legacy records retain signed authority and raw stored evidence through upgrade.
+
+Additional HTTP and native-intake tests cover lost bind replies followed by resource disablement, inspection of released authority through handoff and role revocation, stale bindings, altered responses, local archive/transfer and connection cancellation. These reads do not establish physical drainage or produce a release proof.

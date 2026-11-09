@@ -961,107 +961,71 @@ export type OrgBoundExecutionGrant = {
       }
 }
 
-export type OrgExecutionDescription = {
-  grant:
-    | {
-        schemaVersion: 3
-        grantID: string
-        orgID: string
-        deploymentIncarnation: string
-        sessionID: string
-        projectID: string
-        runtimeID: string
-        bindingEpoch: number
-        selectionRevision: number
-        selection: {
-          modelResourceID: string
-          connectionResourceIDs: Array<string>
-        }
-        limits: {
-          requestBytes: number
-          responseBytes: number
-        }
-        actor: {
-          subjectID: string
-          displayName: string
-          clientKind: "web" | "desktop" | "cli" | "api"
-          requestID: string
-          kind: "account"
-          orgID: string
-        }
-        admissionID: string
-        attemptID: string
-        createdAt: number
-        state: "provisional"
+export type OrgExecutionGrant =
+  | {
+      schemaVersion: 3
+      grantID: string
+      orgID: string
+      deploymentIncarnation: string
+      sessionID: string
+      projectID: string
+      runtimeID: string
+      bindingEpoch: number
+      selectionRevision: number
+      selection: {
+        modelResourceID: string
+        connectionResourceIDs: Array<string>
       }
-    | OrgBoundExecutionGrant
-    | {
-        schemaVersion: 3
-        grantID: string
-        orgID: string
-        deploymentIncarnation: string
-        sessionID: string
-        projectID: string
-        runtimeID: string
-        bindingEpoch: number
-        selectionRevision: number
-        selection: {
-          modelResourceID: string
-          connectionResourceIDs: Array<string>
-        }
-        limits: {
-          requestBytes: number
-          responseBytes: number
-        }
-        actor: {
-          subjectID: string
-          displayName: string
-          clientKind: "web" | "desktop" | "cli" | "api"
-          requestID: string
-          kind: "account"
-          orgID: string
-        }
-        admissionID: string
-        attemptID: string
-        createdAt: number
-        state: "closed"
-        closedAt: number
+      limits: {
+        requestBytes: number
+        responseBytes: number
       }
-  resources: Array<{
-    resourceID: string
-    revision: number
-    name: string
-    definition:
-      | {
-          protocol: "openai-compatible" | "anthropic-compatible"
-          model: {
-            id: string
-            name: string
-            limit: {
-              context: number
-              input?: number
-              output: number
-            }
-            capabilities?: {
-              temperature?: boolean
-              reasoning?: boolean
-              tools?: boolean
-              input?: Array<"text" | "image" | "audio" | "video" | "pdf">
-              output?: Array<"text" | "image" | "audio" | "video" | "pdf">
-              interleaved?: false | "reasoning_content" | "reasoning_details"
-              reasoningEfforts?: Array<string>
-            }
-          }
-        }
-      | {
-          protocol: "mcp-http" | "mcp-sse"
-        }
-      | {
-          protocol: "fixed-http"
-          method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-        }
-  }>
-}
+      actor: {
+        subjectID: string
+        displayName: string
+        clientKind: "web" | "desktop" | "cli" | "api"
+        requestID: string
+        kind: "account"
+        orgID: string
+      }
+      admissionID: string
+      attemptID: string
+      createdAt: number
+      state: "provisional"
+    }
+  | OrgBoundExecutionGrant
+  | {
+      schemaVersion: 3
+      grantID: string
+      orgID: string
+      deploymentIncarnation: string
+      sessionID: string
+      projectID: string
+      runtimeID: string
+      bindingEpoch: number
+      selectionRevision: number
+      selection: {
+        modelResourceID: string
+        connectionResourceIDs: Array<string>
+      }
+      limits: {
+        requestBytes: number
+        responseBytes: number
+      }
+      actor: {
+        subjectID: string
+        displayName: string
+        clientKind: "web" | "desktop" | "cli" | "api"
+        requestID: string
+        kind: "account"
+        orgID: string
+      }
+      admissionID: string
+      attemptID: string
+      createdAt: number
+      state: "closed"
+      closedAt: number
+    }
 
 export type OrgExecutionDescriptionProof = {
   schemaVersion: 1
@@ -1123,6 +1087,44 @@ export type OrgExecutionDescriptionProof = {
 export type OrgExecutionDescriptionRequest = {
   proof: OrgExecutionDescriptionProof
   signature: string
+}
+
+export type OrgExecutionDescription = {
+  grant: OrgExecutionGrant
+  resources: Array<{
+    resourceID: string
+    revision: number
+    name: string
+    definition:
+      | {
+          protocol: "openai-compatible" | "anthropic-compatible"
+          model: {
+            id: string
+            name: string
+            limit: {
+              context: number
+              input?: number
+              output: number
+            }
+            capabilities?: {
+              temperature?: boolean
+              reasoning?: boolean
+              tools?: boolean
+              input?: Array<"text" | "image" | "audio" | "video" | "pdf">
+              output?: Array<"text" | "image" | "audio" | "video" | "pdf">
+              interleaved?: false | "reasoning_content" | "reasoning_details"
+              reasoningEfforts?: Array<string>
+            }
+          }
+        }
+      | {
+          protocol: "mcp-http" | "mcp-sse"
+        }
+      | {
+          protocol: "fixed-http"
+          method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+        }
+  }>
 }
 
 export type OrgExecutionBindingProof = {
@@ -3585,6 +3587,51 @@ export type OrgGatewayMessagesResponses = {
 }
 
 export type OrgGatewayMessagesResponse = OrgGatewayMessagesResponses[keyof OrgGatewayMessagesResponses]
+
+export type OrgExecutionRetentionData = {
+  body: OrgExecutionDescriptionRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/execution/retention"
+}
+
+export type OrgExecutionRetentionErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgExecutionRetentionError = OrgExecutionRetentionErrors[keyof OrgExecutionRetentionErrors]
+
+export type OrgExecutionRetentionResponses = {
+  /**
+   * Success
+   */
+  200: OrgExecutionGrant
+}
+
+export type OrgExecutionRetentionResponse = OrgExecutionRetentionResponses[keyof OrgExecutionRetentionResponses]
 
 export type OrgExecutionResourcesData = {
   body: OrgExecutionDescriptionRequest

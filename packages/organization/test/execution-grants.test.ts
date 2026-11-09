@@ -186,6 +186,14 @@ test("cancelled accepted intake releases its provisional grant without inventing
     expect(receipt).toMatchObject({ grantID: admitted.permit.provisionalGrantID, generation: 0, outcome: "cancelled" })
     expect(await f.execution.release(input)).toEqual(receipt)
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(0)
+    const { rootID: _, generation: __, outcome: ___, ...received } = value
+    const description = Execution.DescriptionProof.parse({ ...received, purpose: "execution-resource-description" })
+    expect(
+      await f.execution.retention({
+        proof: description,
+        signature: await Execution.signDescription(description, f.machineKeys.privateKey),
+      }),
+    ).toMatchObject({ state: "closed", grantID: admitted.permit.provisionalGrantID })
     expect(await Record.read(Record.RootGrant, Keys.rootGrant(f.sessionID, 1, value.rootID))).toBeUndefined()
     await expect(f.execution.bind(await proof(f, admitted.receipt))).rejects.toMatchObject({
       data: { code: "PERMISSION_DENIED" },

@@ -173,6 +173,46 @@ test("new task and steer receipts wake native execution only after commit and ne
   })
 })
 
+test("retention metadata proof remains available through archive and transfer without reopening execution", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const native = await session()
+    const receiver = service.receiver()
+    const lookup = { subjectID: binding.creatorID, requestID: "request-intake" }
+    const delivery = await service.input(native.id, { provisionalGrantID: "grant-intake" }, "Retained task", "task")
+    const accepted = await receiver.input(delivery)
+    await Storage.write(["session_transfer_gate", native.id], {
+      version: 1,
+      migrationID: "transfer-retained",
+      scopeID: binding.projectID,
+      targetID: "target",
+      phase: "preparing",
+    })
+    expect((await receiver.retentionProof(lookup)).receipt).toEqual(accepted)
+    await expect(receiver.descriptionProof(lookup)).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    await Storage.remove(["session_transfer_gate", native.id])
+    await ScopeContext.provide({
+      scope: native.scope,
+      workspace: null,
+      fn: () =>
+        Session.update(native.id, (draft) => {
+          draft.time.archived = Date.now()
+        }),
+    })
+    expect((await service.receiver(2).retentionProof(lookup)).receipt).toEqual(accepted)
+    await expect(receiver.descriptionProof(lookup)).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+    await expect(service.receiver(2, AbortSignal.abort()).retentionProof(lookup)).rejects.toMatchObject({
+      data: { code: "STALE_CONNECTION" },
+    })
+    await expect(receiver.retentionProof({ ...lookup, subjectID: "another-account" })).rejects.toMatchObject({
+      data: { code: "NOT_FOUND" },
+    })
+    expect(await SessionInbox.list(native.id)).toHaveLength(1)
+  })
+})
+
 test("execution binding proves a materialized native task and never turns an Inbox receipt into an arbitrary root", async () => {
   const service = await authority()
   await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })

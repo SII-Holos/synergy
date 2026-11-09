@@ -8,6 +8,21 @@ import { operation, validation } from "./shared"
 export function executionRoutes(grants: () => ExecutionGrants) {
   return new Hono()
     .post(
+      "/execution/retention",
+      operation(
+        "orgExecution.retention",
+        "Inspect accepted resource retention without acquiring execution authority",
+        Execution.Grant,
+        true,
+      ),
+      validator("json", Execution.DescriptionRequest, validation),
+      async (c) => {
+        if (c.req.header("origin") || c.req.header("cookie"))
+          fail("PERMISSION_DENIED", "Retention inspection requires a machine request")
+        return c.json(await grants().retention(c.req.valid("json")))
+      },
+    )
+    .post(
       "/execution/resources",
       operation(
         "orgExecution.resources",

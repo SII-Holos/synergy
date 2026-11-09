@@ -9,6 +9,7 @@ import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organizatio
 import { OrganizationRuntimeError } from "./error"
 
 export interface MemberResourceClient {
+  retention(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Grant>
   describe(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Description>
   bind(proof: Execution.BindingProof, signal?: AbortSignal): Promise<Execution.BoundGrant>
   release(proof: Execution.ReleaseProof, signal?: AbortSignal): Promise<Execution.ReleaseReceipt>
@@ -199,6 +200,22 @@ export function createMemberResourceClient(options: {
       throw failure("PROTOCOL_MISMATCH", "Organization resource call does not match its requested target")
   }
   const resources: MemberResourceClient = {
+    async retention(value, signal) {
+      const proof = Execution.DescriptionProof.parse(value)
+      return invoke(
+        proof,
+        Execution.Grant,
+        async (signal) =>
+          client.orgExecution.retention(
+            {
+              orgExecutionDescriptionRequest: { proof, signature: await Execution.signDescription(proof, options.key) },
+            },
+            { signal },
+          ),
+        (result) => grant(proof, result),
+        signal,
+      )
+    },
     async describe(value, signal) {
       const proof = Execution.DescriptionProof.parse(value)
       return invoke(

@@ -55,6 +55,8 @@ import type {
   OrgExecutionReleaseResponses,
   OrgExecutionResourcesErrors,
   OrgExecutionResourcesResponses,
+  OrgExecutionRetentionErrors,
+  OrgExecutionRetentionResponses,
   OrgGatewayChatCompletionsErrors,
   OrgGatewayChatCompletionsResponses,
   OrgGatewayInspectErrors,
@@ -1459,6 +1461,32 @@ export class OrgGateway extends HeyApiClient {
 }
 
 export class OrgExecution extends HeyApiClient {
+  /**
+   * Inspect accepted resource retention without acquiring execution authority
+   */
+  public retention<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgExecutionDescriptionRequest: OrgExecutionDescriptionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgExecutionDescriptionRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgExecutionRetentionResponses,
+      OrgExecutionRetentionErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/execution/retention",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Describe the resources of accepted work without activating its grant
    */

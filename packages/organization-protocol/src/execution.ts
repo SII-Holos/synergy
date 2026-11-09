@@ -89,6 +89,7 @@ export namespace OrganizationExecutionProtocol {
       GrantFields.extend({ state: z.literal("closed"), closedAt: z.number().int().nonnegative() }),
     ])
     .refine((value) => value.actor.orgID === value.orgID, "Grant actor belongs to another organization")
+    .meta({ ref: "OrgExecutionGrant" })
   export type Grant = z.infer<typeof Grant>
   const ReceivedProof = z
     .strictObject({

@@ -6,6 +6,49 @@ import {
 import { createMemberResourceClient } from "../src/resource-client"
 import { executionFixture as execution } from "./support/execution"
 
+test("retention inspection recovers a lost bind reply after resource disablement without starting another use", async () => {
+  await using f = await execution()
+  const description = await f.description()
+  expect((await f.connection.resources.retention(description)).state).toBe("provisional")
+  const binding = await f.binding()
+  let original: Execution.BoundGrant | undefined
+  let binds = 0
+  f.interceptHTTP(async (request) => {
+    if (!request.url.endsWith("/execution/bind")) return
+    binds++
+    original = Execution.BoundGrant.parse(await (await f.service.fetch(request)).json())
+    return new Response("Bind response lost", { status: 502 })
+  })
+  await expect(f.connection.resources.bind(binding)).rejects.toMatchObject({
+    data: { code: "PROTOCOL_MISMATCH", outcome: "unknown" },
+  })
+  expect(binds).toBe(1)
+  f.interceptHTTP(undefined)
+  await f.client.orgResources.update(
+    { resourceID: f.model.resourceID, orgResourceChange: { expectedRevision: 1, state: "disabled" } },
+    { headers: f.headers, throwOnError: true },
+  )
+  await expect(f.connection.resources.describe(description)).rejects.toMatchObject({
+    data: { code: "RESOURCE_UNAVAILABLE" },
+  })
+  expect(await f.connection.resources.retention(description)).toEqual(original!)
+  const proof = Execution.ReleaseProof.parse({
+    ...binding,
+    purpose: "execution-resources-release",
+    generation: original!.retention.generation,
+    outcome: "completed",
+  })
+  await f.connection.resources.release(proof)
+  const released = await f.connection.resources.retention(description)
+  expect(released).toMatchObject({ grantID: original!.grantID, retention: { state: "released", generation: 1 } })
+  await f.reconnect()
+  expect(await f.connection.resources.retention(await f.description())).toEqual(released)
+  f.interceptHTTP(() => Response.json({ ...released, grantID: "different-grant" }))
+  await expect(f.connection.resources.retention(await f.description())).rejects.toMatchObject({
+    data: { code: "PROTOCOL_MISMATCH" },
+  })
+})
+
 test("member release verifies its receipt and preserves root identity across response loss and renewed retention", async () => {
   await using f = await execution()
   const binding = await f.binding()

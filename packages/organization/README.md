@@ -8,6 +8,8 @@
 
 `orgExecution.resources` describes accepted work before its native root is materialized. It rechecks current authority and reconciles the receipt, without activating the grant or returning upstream configuration. The same execution owner supplies descriptors and binding authorization.
 
+`orgExecution.retention` reconciles the current driver's accepted grant after an uncertain response. Cleanup metadata remains readable when execution is disabled; the machine and Session binding must still match. It does not acquire resources. Verify `test/execution-retention.test.ts` and the member resource client suite.
+
 The organization service owns a dedicated Home and SQL namespace. Its storage lifecycle uses Harness transactions and the central migration runner without starting Agent execution, model discovery or Session recovery.
 
 ```ts
