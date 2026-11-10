@@ -8,7 +8,11 @@ const ShellPreferences = z.object({
   servers: z.record(z.string(), z.string().min(1)),
 })
 
-export function createShellPreference(server: Accessor<string>, kind: "shell" | "skin" = "shell") {
+export function createShellPreference(
+  server: Accessor<string>,
+  kind: "shell" | "skin" = "shell",
+  legacyServer?: Accessor<string>,
+) {
   const initial: z.infer<typeof ShellPreferences> = { version: 1, servers: {} }
   const [state, setState] = persisted(
     {
@@ -18,7 +22,7 @@ export function createShellPreference(server: Accessor<string>, kind: "shell" | 
     createStore(initial),
   )
   return {
-    selected: () => state.servers[server()] ?? "synergy",
+    selected: () => state.servers[server()] ?? (legacyServer ? state.servers[legacyServer()] : undefined) ?? "synergy",
     select: (id: string) => setState("servers", server(), id),
   }
 }
