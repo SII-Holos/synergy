@@ -16,6 +16,7 @@ import { WindowsJob } from "./windows-job"
 import { LinuxTree } from "./linux-tree"
 import { OwnedTree } from "./owned-tree"
 import { OwnedProtocol } from "./owned-protocol"
+import { NativeProcessMaintenance } from "./maintenance"
 
 export namespace OwnedProcess {
   export const Reference = OwnedTree.Reference
@@ -66,7 +67,10 @@ export namespace OwnedProcess {
     void promise.catch(() => {})
     return { promise, resolve, reject }
   }
-  export async function prepare(input: Input) {
+  export function prepare(input: Input) {
+    return NativeProcessMaintenance.prepare((evidence) => prepareNative(input, evidence))
+  }
+  async function prepareNative(input: Input, evidence: NativeProcessMaintenance.Evidence) {
     input.signal?.throwIfAborted()
     if (!["darwin", "win32", "linux"].includes(process.platform))
       throw new Error("Native process ownership is unavailable on this platform")
@@ -264,6 +268,7 @@ export namespace OwnedProcess {
       await job?.remove()
       await input.ownership.release()
       await fs.rm(directory, { recursive: true, force: true })
+      evidence.settled = !evidence.started || job !== undefined
     }
     function abandon() {
       return (abandoned ??= (async () => {
@@ -420,6 +425,7 @@ export namespace OwnedProcess {
       startupTimer = setTimeout(() => fail(new Error("Native process startup timed out")), 30000)
       input.signal?.addEventListener("abort", abort, { once: true })
       input.signal?.throwIfAborted()
+      evidence.started = true
       job =
         process.platform === "darwin"
           ? await DarwinJob.start(command, directory, environment)

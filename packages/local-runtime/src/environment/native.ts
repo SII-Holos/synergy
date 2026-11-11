@@ -18,6 +18,7 @@ import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { ProcessEnvironment } from "../process/environment"
 import { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 import { RuntimeResources } from "@ericsanchezok/synergy-harness/resources/runtime"
+import { NativeProcessMaintenance } from "../process/maintenance"
 
 const Allocation = z.object({ id: z.string(), capabilities: z.array(z.string()), target: Environment.Target })
 
@@ -25,6 +26,7 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
   const root = path.join(RuntimeContext.current().host.root, "state", "environments")
   const executors = new Map<string, Promise<NativeExecutor>>()
   const coordinator = options.coordinator ?? new WorkspaceCoordinator()
+  NativeProcessMaintenance.register(coordinator)
   const filename = (request: EnvironmentRequest) =>
     path.join(root, createHash("sha256").update(request.environmentID).digest("hex"), "allocation.json")
   const provider: EnvironmentProvider = {
