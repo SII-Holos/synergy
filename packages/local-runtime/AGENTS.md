@@ -41,4 +41,4 @@ Trusted transfers use `workspace-file/service`: imports accept stable operation 
 
 Explicit `environment: "native"` composition selects the native provider/default without installing personal profile resolution. Hosted compositions supply their own providers.
 
-Session transfers use `session/transfer-workspace`; paged files/Git use `workspace/portable-tree` and `workspace/portable-git`. Claims: `session-transfer-physical`. Verify portable-tree/Git and `test/workspace/session-physical-transfer.test.ts`.
+Transfers: `session/transfer-workspace`; paged files/Git: `workspace/{portable-tree,portable-git}`; private targets: `workspace/portable-target`. Claims: `session-transfer-physical`. Verify portable tree/Git/target and physical-transfer suites.

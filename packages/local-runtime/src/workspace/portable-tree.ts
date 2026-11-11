@@ -78,7 +78,29 @@ export namespace NativeWorkspacePortableTree {
       await handle.close()
     }
   }
-  export async function capture(options: Options): Promise<Portable.Root> {
+  export function capture(options: Options): Promise<Portable.Root> {
+    return inventory(options, "capture")
+  }
+  export async function verify(options: Omit<Options, "store"> & { captured: Portable.Root }): Promise<void> {
+    const captured = Portable.Root.parse(options.captured)
+    const current = await inventory(
+      {
+        root: options.root,
+        directory: options.directory,
+        signal: options.signal,
+        store: {
+          async put() {},
+          async get() {
+            throw new Error("Workspace verification never reads portable objects")
+          },
+        },
+      },
+      "verify",
+    )
+    if (current.mode !== captured.mode || Stream.digest(current.tree) !== Stream.digest(captured.tree))
+      throw new Error("Portable Workspace changed after materialization")
+  }
+  async function inventory(options: Options, policy: "capture" | "verify"): Promise<Portable.Root> {
     const { directory, store, signal } = options
     const root = path.resolve(options.root)
     signal?.throwIfAborted()
@@ -95,7 +117,8 @@ export namespace NativeWorkspacePortableTree {
     }
     let database: Database | undefined
     try {
-      const repository = await NativePortableGit.discover({ directory: root, signal })
+      const repository =
+        policy === "capture" ? await NativePortableGit.discover({ directory: root, signal }) : undefined
       await using git = repository
         ? await NativePortableGit.prepare({ source: repository, directory: cache, signal })
         : undefined
@@ -122,7 +145,7 @@ export namespace NativeWorkspacePortableTree {
           Portable.path(relative, value)
           const sensitive = SensitivePathPolicy.classifyRelative(relative)
           const nativeGit = git && (relative === ".git" || relative.startsWith(".git/"))
-          if (!nativeGit && sensitive.matched && !sensitive.smartAllowEligible)
+          if (policy === "capture" && !nativeGit && sensitive.matched && !sensitive.smartAllowEligible)
             throw new Error(
               sensitive.kind === "vcs"
                 ? "Portable Workspace requires its Git adapter"

@@ -14,6 +14,7 @@ async function git(directory: string, args: string[], input?: string) {
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_CONFIG_GLOBAL: "/dev/null",
       GIT_TERMINAL_PROMPT: "0",
+      GIT_OPTIONAL_LOCKS: "0",
     },
     stdin: input === undefined ? "ignore" : new Blob([input]),
     stdout: "pipe",
@@ -73,6 +74,7 @@ test("paged Workspace capture substitutes independent Git metadata and restores 
     await fs.rm(main, { recursive: true })
     const target = path.join(temporary.path, "target")
     await Portable.materialize({ root: target, directory: path.join(temporary.path, "read"), captured, store })
+    await Portable.verify({ root: target, directory: path.join(temporary.path, "verify"), captured })
     expect((await fs.lstat(path.join(target, ".git"))).isDirectory()).toBe(true)
     expect(await git(target, ["rev-parse", "HEAD"])).toBe(expected.head)
     expect(await git(target, ["for-each-ref", "--format=%(refname) %(objectname)"])).toBe(expected.refs)
@@ -82,6 +84,12 @@ test("paged Workspace capture substitutes independent Git metadata and restores 
     expect(await Bun.file(path.join(target, ".ignored")).text()).toBe("ignored bytes")
     expect(await Bun.file(path.join(target, "untracked")).text()).toBe("untracked bytes")
     expect(await Bun.file(path.join(target, ".git", "config")).text()).not.toContain("private-token")
+    const configuration = await Bun.file(path.join(target, ".git", "config")).text()
+    await fs.appendFile(path.join(target, ".git", "config"), '\n[remote "late"]\nurl = https://changed.invalid\n')
+    await expect(
+      Portable.verify({ root: target, directory: path.join(temporary.path, "verify-changed"), captured }),
+    ).rejects.toThrow("changed")
+    await fs.writeFile(path.join(target, ".git", "config"), configuration)
     await git(target, [
       "-c",
       "user.name=Target fixture",

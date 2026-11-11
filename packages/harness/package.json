@@ -81,6 +81,7 @@
     "./storage/object-artifacts": "./src/storage/object-artifacts.ts",
     "./storage/upgrade-work": "./src/storage/upgrade-work.ts",
     "./storage/storage": "./src/storage/storage.ts",
+    "./storage/queue": "./src/storage/queue.ts",
     "./storage/checkpoint": "./src/storage/checkpoint.ts",
     "./storage/runtime-maintenance": "./src/storage/runtime-maintenance.ts",
     "./storage/authority-journal": "./src/storage/authority-journal.ts",

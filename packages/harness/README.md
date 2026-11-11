@@ -2,6 +2,8 @@
 
 This package owns Synergy's generic execution runtime. Application hosts use the [public entry points](../../docs/architecture/README.md#harness-public-entry-points); individual host contracts are declared explicitly in `package.json`. Test-only exports are excluded from published packages.
 
+The public `storage/queue` scope propagates an operation's original cancellation and admission options into existing Storage waits. It uses the canonical queue and does not authorize access to a Store or artifact backend.
+
 Run `bun run typecheck`, `bun run test`, and `bun run build` from this package.
 
 Model SDK implementations belong to `local-runtime`. Research hosts register `ProviderSdkSource` with synchronous and asynchronous factory loaders; SDK access before registration fails explicitly. The `ai` engine remains a harness dependency and itself includes the Gateway adapter transitively.
