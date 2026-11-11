@@ -109,8 +109,8 @@ export const readNativeContent: NativeContentReader = async (query, source, sign
           ...(descriptor.fields.some((value) => value.field === "output") ? { output: content("output") } : {}),
           ...(descriptor.fields.some((value) => value.field === "error") ? { error: content("error") } : {}),
           ...("title" in state && state.title ? { title: (await SecretMask.apply(state.title)).slice(0, 1024) } : {}),
-          ...("time" in state ? { startedAt: state.time.start } : {}),
-          ...("time" in state && "end" in state.time ? { completedAt: state.time.end } : {}),
+          ...(state.time ? { startedAt: state.time.start } : {}),
+          ...(state.time?.end !== undefined ? { completedAt: state.time.end } : {}),
           metadata: await projectToolMetadata(header.tool, "metadata" in state ? state.metadata : undefined),
         }
         break

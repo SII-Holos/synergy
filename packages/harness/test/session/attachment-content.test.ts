@@ -111,7 +111,7 @@ test(
       await expect(
         SessionHistory.attachmentContent({ ...first.target, sessionID: foreign.session.id, version: first.version }),
       ).rejects.toThrow()
-      await Storage.write(
+      await PartContent.replace(
         StoragePath.messagePart(
           Identifier.asScopeID(first.session.scope.id),
           Identifier.asSessionID(first.session.id),

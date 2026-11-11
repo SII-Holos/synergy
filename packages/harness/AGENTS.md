@@ -36,6 +36,6 @@ Cortex holds preserve task/root/input/budget/deadline/notification identity; nev
 
 Aggregate portability: drained source cohorts, epochs/streams, private Snapshot staging, declared dependencies, permanent surrender/retirement, prepared tokens/pack pins. Verify `test/session/transfer-*.test.ts`; `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
 
-`SessionHistory`: bodyless headers/versioned attachments; page children/Cortex (`test/session/{attachment-content,attachment-index,cortex-index}.test.ts`).
+`SessionHistory`: indexed headers/fields/attachments; page children/Cortex (`test/session/{part-field-header,attachment-content,attachment-index,cortex-index}.test.ts`).
 
 Install Assets before activation; test `test/asset/portable.test.ts`. Use decision receipts and Scope-qualified pending windows; verify permission suites.

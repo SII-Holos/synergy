@@ -15,17 +15,31 @@ export namespace RolloutToolPartIndex {
     tool: true,
   }).strip()
   export type Query = z.infer<typeof Query>
+  export const Input = z.strictObject({
+    reference: RolloutArtifact.Ref.omit({ mediaType: true }).extend({ mediaTypeHash: z.string().length(64) }),
+    mediaType: z.string().max(256),
+  })
+  export type Input = z.infer<typeof Input>
+  export const Locator = z.strictObject({
+    runID: z.string().min(1).max(256),
+    digest: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  export type Locator = z.infer<typeof Locator>
   const Entry = z.strictObject({
-    version: z.literal(1),
+    version: z.literal(2),
     toolID: z.uuid(),
     started: z.number(),
     inputHash: z.string().length(64).nullable(),
     ambiguous: z.boolean(),
+    input: Input,
   })
   const digest = (query: Query) =>
     createHash("sha256")
       .update(JSON.stringify([query.messageID, query.toolCallID, query.tool]))
       .digest("hex")
+  export function locator(query: Query): Locator {
+    return Locator.parse({ runID: query.runID, digest: digest(query) })
+  }
   const key = (owner: RolloutSchema.Owner, query: Query) => [
     ...RolloutArtifact.root(owner),
     "tool_parts",
@@ -74,11 +88,21 @@ export namespace RolloutToolPartIndex {
     await Storage.write(
       destination,
       Entry.parse({
-        version: 1,
+        version: 2,
         toolID: selected,
         started: value.started,
         inputHash: selected === value.id ? value.input.sha256 : current!.inputHash,
         ambiguous,
+        input:
+          selected === value.id
+            ? (() => {
+                const { mediaType, ...reference } = value.input
+                return {
+                  reference: { ...reference, mediaTypeHash: createHash("sha256").update(mediaType).digest("hex") },
+                  mediaType: mediaType.length <= 256 ? mediaType : "application/octet-stream",
+                }
+              })()
+            : current!.input,
       }),
     )
   }
@@ -103,6 +127,22 @@ export namespace RolloutToolPartIndex {
     return value
   }
 
+  export async function input(owner: RolloutSchema.Owner, value: Locator): Promise<Input | undefined> {
+    const query = Locator.parse(value)
+    const raw = await Storage.read([...RolloutArtifact.root(owner), "tool_parts", query.runID, query.digest], {
+      silentNotFound: true,
+    }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return
+      throw error
+    })
+    if (raw === undefined) return
+    const entry = Entry.parse(raw)
+    if (entry.ambiguous) throw new StorageIntegrityError("Tool Part input has ambiguous native evidence")
+    if (entry.input.reference.sha256 !== entry.inputHash)
+      throw new StorageIntegrityError("Tool Part locator disagrees with its native input")
+    return entry.input
+  }
+
   async function* children(prefix: string[]) {
     let after: string | undefined
     for (;;) {
@@ -113,19 +153,38 @@ export namespace RolloutToolPartIndex {
     }
   }
 
-  async function rebuild(owner: RolloutSchema.Owner) {
+  const schemaKey = (owner: RolloutSchema.Owner) => [...RolloutArtifact.root(owner), "tool_part_schema"]
+  export async function rebuild(owner: RolloutSchema.Owner) {
+    await Storage.remove(schemaKey(owner))
+    await Storage.removeTree([...RolloutArtifact.root(owner), "tool_parts"])
     let count = 0
     for await (const runID of children([...RolloutArtifact.root(owner), "runs"])) {
-      for await (const row of Storage.records({
-        prefix: [...RolloutArtifact.root(owner), "runs", runID, "tools"],
-        limit: 128,
-      })) {
-        UpgradeWork.signal()?.throwIfAborted()
-        await Storage.transaction(async () => capture(owner, row.key, await Storage.read(row.key)))
-        count++
+      let after: string[] | undefined
+      for (;;) {
+        const keys = await Storage.queryKeys({
+          prefix: [...RolloutArtifact.root(owner), "runs", runID, "tools"],
+          after,
+          limit: 128,
+        })
+        for (const key of keys) {
+          UpgradeWork.signal()?.throwIfAborted()
+          await Storage.transaction(async () => capture(owner, key, await Storage.read(key)))
+          count++
+        }
+        if (keys.length < 128) break
+        after = keys.at(-1)
       }
     }
+    await Storage.write(schemaKey(owner), { version: 2 })
     return count
+  }
+  async function upgrade(owner: RolloutSchema.Owner) {
+    const [schema] = await Storage.readMany([schemaKey(owner)])
+    if (schema !== undefined) {
+      z.strictObject({ version: z.literal(2) }).parse(schema)
+      return 0
+    }
+    return rebuild(owner)
   }
 
   async function all(kind: "session" | "operation", progress: (current: number, total: number) => void) {
@@ -164,5 +223,25 @@ export namespace RolloutToolPartIndex {
       progress(count, count)
     },
     up: (progress) => all("operation", progress),
+  }
+  export const sessionInputMigration: Migration = {
+    ...sessionMigration,
+    id: "20261112-rollout-session-input-locators",
+    dependsOn: [sessionMigration.id],
+    description: "Project bounded original-input locators without opening full tool execution records",
+    async upSession(owner, progress) {
+      const count = await upgrade({ kind: "session", ...owner })
+      progress(count, count)
+    },
+  }
+  export const operationInputMigration: Migration = {
+    ...operationMigration,
+    id: "20261112-rollout-operation-input-locators",
+    dependsOn: [operationMigration.id],
+    description: "Project bounded original-input locators for operation tool execution",
+    async upOwner(owner, progress) {
+      const count = owner.kind === "operation" ? await upgrade(owner) : 0
+      progress(count, count)
+    },
   }
 }

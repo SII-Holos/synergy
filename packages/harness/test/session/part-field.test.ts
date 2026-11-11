@@ -340,7 +340,7 @@ test("field preparation outlives a cancelled RPC waiter and reports real progres
           text: "reasoning🌏".repeat(100000),
           time: { start: 3, end: 4 },
         }
-        await Session.updatePart(part)
+        await Session.updatePartDelta(part, part.text)
         await Session.flushPartWrites(identity.sessionID)
         let release!: () => void
         const gate = new Promise<void>((resolve) => {
@@ -462,7 +462,13 @@ test("Runtime close cancels and drains preparation before Storage closes without
         fn: async () => {
           identity = await message()
           id = Identifier.ascending("part")
-          await Session.updatePart({ ...identity, id, type: "text", text: "stop with the Runtime".repeat(10000) })
+          const part: MessageV2.TextPart = {
+            ...identity,
+            id,
+            type: "text",
+            text: "stop with the Runtime".repeat(10000),
+          }
+          await Session.updatePartDelta(part, part.text)
           await Session.flushPartWrites(identity.sessionID)
           const preparation = await SessionHistory.preparePartFields({ ...identity, partID: id })
           version = preparation.version
@@ -498,7 +504,7 @@ test("a failed native preparation preserves its error and a later request can re
         const identity = await message()
         const id = Identifier.ascending("part")
         const body = "retry the same native field🌏".repeat(10000)
-        await Session.updatePart({ ...identity, id, type: "text", text: body })
+        await Session.updatePartDelta({ ...identity, id, type: "text", text: body }, body)
         await Session.flushPartWrites(identity.sessionID)
         const original = PartContent.textBlocks
         let attempts = 0

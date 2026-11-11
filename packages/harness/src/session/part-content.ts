@@ -7,6 +7,7 @@ import { StorageCommitUnknownError, StorageConflictError, StorageIntegrityError 
 import type { StoreTransaction } from "../storage/transactional-store"
 import { MessageV2 } from "./message-v2"
 import { SessionAttachmentIndex } from "./attachment-index"
+import { SessionPartFieldSource } from "./part-field-source"
 
 export namespace PartContent {
   export type Streaming = MessageV2.TextPart | MessageV2.ReasoningPart
@@ -20,7 +21,7 @@ export namespace PartContent {
     jsonBytes: z.number().int().nonnegative(),
     references: z.string().max(256).array().max(32),
   })
-  const Checkpoint = Facts.extend({
+  export const Checkpoint = Facts.extend({
     version: z.literal(1),
     generation: z.string().uuid(),
     chunks: z.number().int().nonnegative(),
@@ -325,6 +326,7 @@ export namespace PartContent {
             await tx.removeTree(StoragePath.partContent(key))
           for (const token of prepared) await Storage.publishPreparedBinary(token)
           await tx.write(key, value)
+          await SessionPartFieldSource.capture(tx, key, value)
           await written(value)
         },
         { commitGuard },
@@ -347,12 +349,14 @@ export namespace PartContent {
       if (previous && checkpoint(previous)) await tx.removeTree(StoragePath.partContent(key))
       await tx.write(key, value)
       await SessionAttachmentIndex.capture(tx, key, value)
+      await SessionPartFieldSource.capture(tx, key, value)
     })
   }
 
   export function remove(key: string[]) {
     return Storage.transaction(async (tx) => {
       await SessionAttachmentIndex.remove(tx, key)
+      await SessionPartFieldSource.remove(tx, key)
       await tx.removeTree(key)
     })
   }

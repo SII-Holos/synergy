@@ -26,6 +26,8 @@ import { RolloutEvidence } from "./rollout/evidence"
 import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionTransferAggregate as Aggregate } from "./transfer-aggregate"
 import { SessionAttachmentIndex } from "./attachment-index"
+import { SessionPartFieldSource } from "./part-field-source"
+import { RolloutToolPartIndex } from "./rollout/tool-part-index"
 
 export namespace SessionTransferCore {
   const Mapping = z.object({
@@ -38,6 +40,8 @@ export namespace SessionTransferCore {
       key[1] === session.scope.id &&
       key[2] === session.id &&
       key[3] !== "attachment_index" &&
+      key[3] !== "part_field_sources" &&
+      !(key[3] === "rollout" && (key[4] === "tool_parts" || key[4] === "tool_part_schema")) &&
       key[3] !== "lightloop_terminal") ||
     (key.length >= 3 && key[0] === "usage" && key[1] === session.scope.id && key[2] === `session_${session.id}`) ||
     Aggregate.owns(session, key)
@@ -371,6 +375,15 @@ export namespace SessionTransferCore {
     }
     await Storage.write(infoKey(context.session), persisted)
     await Storage.removeTree(["sessions", next.scope.id, next.id, "attachment_index"])
+    await Storage.removeTree(["sessions", next.scope.id, next.id, "part_field_sources"])
+    await Storage.removeTree([
+      ...RolloutArtifact.root({ kind: "session", scopeID: next.scope.id, sessionID: next.id }),
+      "tool_parts",
+    ])
+    await Storage.removeTree([
+      ...RolloutArtifact.root({ kind: "session", scopeID: next.scope.id, sessionID: next.id }),
+      "tool_part_schema",
+    ])
     for await (const record of context.staged.records())
       if (!isInfo(context.session, record.key) && !Aggregate.owns(context.session, record.key)) {
         const mapped = map(context, record.key, record.value)
@@ -379,6 +392,12 @@ export namespace SessionTransferCore {
           await Storage.transaction((tx) => SessionAttachmentIndex.captureRecord(tx, record.key, mapped))
       }
     for await (const artifact of context.staged.artifacts()) await artifact.publish(artifact.key, { replace: true })
+    await RolloutToolPartIndex.rebuild({ kind: "session", scopeID: next.scope.id, sessionID: next.id })
+    for await (const record of context.staged.records())
+      if (record.key.length === 7 && record.key[3] === "messages" && record.key[5] === "parts")
+        await Storage.transaction((tx) =>
+          SessionPartFieldSource.captureRecord(tx, record.key, map(context, record.key, record.value)),
+        )
     await SessionCompat.writeSessionIndexes({ scopeID: next.scope.id, sessionID: next.id })
     Storage.afterCommit(() => {
       SessionManager.registerRuntime(next.id)

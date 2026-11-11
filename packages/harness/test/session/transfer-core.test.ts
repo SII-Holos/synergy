@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
@@ -16,6 +16,8 @@ import { SessionTransferStream as Stream } from "../../src/session/transfer-stre
 import { SessionTransferStaging as Staging } from "../../src/session/transfer-staging"
 import { SessionHistory } from "../../src/session/history"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
+import { StoreTransaction } from "../../src/storage/transactional-store"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
 
 test("the native core owner preserves message, Inbox, binary and unknown retained fields without replay", async () => {
   await using directory = await tmpdir()
@@ -116,6 +118,53 @@ test("the native core owner preserves message, Inbox, binary and unknown retaine
           toolPartID,
         ])
         await SessionHistory.attachmentPage({ sessionID: session.id, messageID, partID: toolPartID })
+        const fieldMessageID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: fieldMessageID,
+          sessionID: session.id,
+          role: "assistant",
+          rootID: messageID,
+          parentID: messageID,
+          agent: "general",
+          mode: "general",
+          providerID: "fixture",
+          modelID: "fixture",
+          path: { cwd: null, root: null },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 2, completed: 3 },
+        })
+        const fieldOwner = { kind: "session" as const, scopeID: "home", sessionID: session.id }
+        const fieldInput = { original: "Exact original input 你好" }
+        const fieldOutput = "Exact original output 你好"
+        await RolloutLedger.beginRun(fieldOwner, messageID)
+        const tool = await RolloutLedger.beginTool({
+          owner: fieldOwner,
+          runID: messageID,
+          messageID: fieldMessageID,
+          toolCallID: "portable-fields",
+          tool: "fixture",
+          args: fieldInput,
+        })
+        await RolloutLedger.writeTool({ ...tool, status: "completed", ended: Date.now() })
+        await RolloutLedger.finishRun(fieldOwner, messageID, "completed")
+        const fieldPartID = Identifier.ascending("part")
+        await Session.updatePart({
+          id: fieldPartID,
+          sessionID: session.id,
+          messageID: fieldMessageID,
+          type: "tool",
+          callID: "portable-fields",
+          tool: "fixture",
+          state: {
+            status: "completed",
+            input: { normalized: "This is a display value, not the original args" },
+            output: fieldOutput,
+            title: "Original fields",
+            metadata: {},
+            time: { start: 2, end: 3 },
+          },
+        })
         const delivery = await SessionInbox.deliverUnique({
           sessionID: session.id,
           deliveryKey: "portable-context",
@@ -166,6 +215,10 @@ test("the native core owner preserves message, Inbox, binary and unknown retaine
           toolPartID,
           toolPart,
           attachmentBytes,
+          fieldMessageID,
+          fieldPartID,
+          fieldInput,
+          fieldOutput,
         }
       },
     }),
@@ -194,30 +247,33 @@ test("the native core owner preserves message, Inbox, binary and unknown retaine
           mapping: {},
           signal: new AbortController().signal,
         })
-        for await (const record of context.staged.records()) expect(record.key[3]).not.toBe("attachment_index")
-        await expect(
-          Owners.validate("session-core", {
-            ...context,
-            staged: {
-              ...context.staged,
-              records: async function* () {
-                yield* context.staged.records()
-                yield {
-                  key: [
-                    "sessions",
-                    "home",
-                    evidence.session.id,
-                    "attachment_index",
-                    evidence.messageID,
-                    evidence.toolPartID,
-                    "header",
-                  ],
-                  value: { version: 1, revision: "1", kind: "tool", count: 1 },
-                }
+        for await (const record of context.staged.records()) {
+          expect(record.key[3]).not.toBe("attachment_index")
+          expect(record.key[3]).not.toBe("part_field_sources")
+          expect(record.key[3] === "rollout" && ["tool_parts", "tool_part_schema"].includes(record.key[4]!)).toBe(false)
+        }
+        for (const branch of [
+          ["attachment_index", evidence.messageID, evidence.toolPartID, "header"],
+          ["part_field_sources", evidence.messageID, evidence.toolPartID, "header"],
+          ["rollout", "tool_parts", "untrusted-run", "untrusted-digest"],
+          ["rollout", "tool_part_schema"],
+        ]) {
+          await expect(
+            Owners.validate("session-core", {
+              ...context,
+              staged: {
+                ...context.staged,
+                records: async function* () {
+                  yield* context.staged.records()
+                  yield {
+                    key: ["sessions", "home", evidence.session.id, ...branch],
+                    value: { version: 1, revision: "1", kind: "tool", count: 1 },
+                  }
+                },
               },
-            },
-          }),
-        ).rejects.toThrow("another owner's records")
+            }),
+          ).rejects.toThrow("another owner's records")
+        }
         await Owners.validate("session-core", context)
         await Epochs.reserve(evidence.binding, staged.rootHash)
         await Epochs.activate(evidence.binding, staged.rootHash, async () => {
@@ -227,6 +283,54 @@ test("the native core owner preserves message, Inbox, binary and unknown retaine
             contexts: [{ ownerID: "session-core", context }],
           })
         })
+        await (async () => {
+          const versioned = StoreTransaction.prototype.versioned
+          using noPartBody = spyOn(StoreTransaction.prototype, "versioned").mockImplementation(async function <T>(
+            this: StoreTransaction,
+            key: string[],
+          ) {
+            if (
+              JSON.stringify(key) === JSON.stringify(partKey) ||
+              (key[4] === evidence.fieldMessageID && key[6] === evidence.fieldPartID)
+            )
+              throw new Error("Activated native fields must use their rebuilt target projection")
+            return (versioned<T>).call(this, key)
+          })
+          const fields = await SessionHistory.partFieldDescriptor({
+            sessionID: evidence.session.id,
+            messageID: evidence.messageID,
+            partID: evidence.toolPartID,
+          })
+          const input = await SessionHistory.partField({
+            sessionID: evidence.session.id,
+            messageID: evidence.messageID,
+            partID: evidence.toolPartID,
+            field: "input",
+            version: fields.version,
+            offset: 0,
+            length: 128,
+          })
+          expect(new TextDecoder().decode(input.data)).toBe("{}")
+          const original = {
+            sessionID: evidence.session.id,
+            messageID: evidence.fieldMessageID,
+            partID: evidence.fieldPartID,
+          }
+          const references = await SessionHistory.partFieldDescriptor(original)
+          for (const [field, expected] of [
+            ["input", JSON.stringify(evidence.fieldInput)],
+            ["output", evidence.fieldOutput],
+          ] as const) {
+            const range = await SessionHistory.partField({
+              ...original,
+              field,
+              version: references.version,
+              offset: 0,
+              length: 128,
+            })
+            expect(new TextDecoder().decode(range.data)).toBe(expected)
+          }
+        })()
         expect((await Session.get(evidence.session.id)).paused).toEqual(evidence.session.paused)
         expect(await Storage.read(["sessions", "home", evidence.session.id, "info"])).toMatchObject({
           retainedFutureField: { exact: [1, "unchanged"] },

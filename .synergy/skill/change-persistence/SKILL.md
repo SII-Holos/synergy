@@ -106,6 +106,8 @@ For Home formats read before SQL startup, version the strict reader fence before
 
 For embedded producer collections, build paged metadata beside the canonical write and bind it to that record's revision. Upgrade historical producers through the owning central migration; forbid complete body reads in steady metadata and byte windows. Export canonical evidence rather than local SQL revision indexes, rebuild target metadata during authorized activation, and test a different target revision plus injected derived rows.
 
+For bodyless field reads, guard the canonical Part and complete execution record independently; a small response does not prove small intermediate residency. Preserve complete canonical metadata and unknown fields while limiting only header presentation. Exercise a running Part whose original Rollout input arrives later without a Part write: resolve the existing native input locator, version the actual source selection and recheck it after a held range. Target rebuilding must follow canonical execution records and artifacts, not copied derived indexes.
+
 Recovery authority-change evidence must join the real policy writer's native transaction. Select domain-owned redacted projections before composition seals, initialize their baseline through a central owning migration, and test rollback, missing coverage, unhooked mutations and retained credentials across upgrade. Current authorization remains canonical; hashes or history entries cannot grant access. A restored journal cannot certify its missing later interval or another writer cohort. Missing history requires current authorization re-establishment, not a replacement baseline that claims continuity.
 
 ## Migrate Existing Data
