@@ -131,6 +131,7 @@ test("aggregate deduplication retains each source authority and rechecks revocat
         const child = await Session.create({ workspace: null, environmentID: null, parentID: root.id })
         reference = `asset://${await Asset.write(Buffer.from("same object, separate source authority"), "text/plain")}`
         const contexts: Owners.SourceContext[] = []
+        const bindings: Epochs.Binding[] = []
         for (const session of [root, child]) {
           const messageID = Identifier.ascending("message")
           await Session.updateMessage({
@@ -177,9 +178,10 @@ test("aggregate deduplication retains each source authority and rechecks revocat
             signal: new AbortController().signal,
           }
           await Owners.freeze(context, await Owners.selected(context))
-          await Epochs.freeze(binding)
+          bindings.push(binding)
           contexts.push(context)
         }
+        for (const binding of bindings.toReversed()) await Epochs.freeze(binding)
         const seal = () =>
           Evidence.seal({
             root: contexts[0],

@@ -24,6 +24,7 @@ import { SnapshotRecords } from "./snapshot-records"
 import { RolloutSchema } from "./rollout/schema"
 import { RolloutEvidence } from "./rollout/evidence"
 import { SnapshotEvidence } from "./snapshot-evidence"
+import { SessionTransferAggregate as Aggregate } from "./transfer-aggregate"
 
 export namespace SessionTransferCore {
   const Mapping = z.object({
@@ -36,7 +37,8 @@ export namespace SessionTransferCore {
       key[1] === session.scope.id &&
       key[2] === session.id &&
       key[3] !== "lightloop_terminal") ||
-    (key.length >= 3 && key[0] === "usage" && key[1] === session.scope.id && key[2] === `session_${session.id}`)
+    (key.length >= 3 && key[0] === "usage" && key[1] === session.scope.id && key[2] === `session_${session.id}`) ||
+    Aggregate.owns(session, key)
   const infoKey = (session: Readonly<Session.Info>) => ["sessions", session.scope.id, session.id, "info"]
   const isInfo = (session: Readonly<Session.Info>, key: string[]) =>
     JSON.stringify(key) === JSON.stringify(infoKey(session))
@@ -49,17 +51,7 @@ export namespace SessionTransferCore {
   }
 
   async function* children(session: Readonly<Session.Info>) {
-    let cursor: Parameters<typeof Session.childPage>[0]["cursor"]
-    for (;;) {
-      const page = await ScopeContext.provide({
-        scope: session.scope,
-        workspace: null,
-        fn: () => Session.childPage({ parentID: session.id, cursor, limit: 50, includeArchived: true }),
-      })
-      for (const child of page.items) yield child.id
-      if (!page.nextCursor) return
-      cursor = page.nextCursor
-    }
+    for await (const child of Session.childIndexEntries(session.scope.id, session.id)) yield child.id
   }
 
   async function* records(session: Readonly<Session.Info>) {
@@ -101,6 +93,33 @@ export namespace SessionTransferCore {
     const header = await context.staged.relatedRecord?.("session-core", infoKey(context.session))
     if (!records || !header) fail("Snapshot preparation requires its canonical core read dependency")
     yield* snapshotRoots(context.session, records, header)
+  }
+
+  export async function aggregateMember(input: {
+    sessionID: string
+    owners: Readonly<Record<string, number>>
+    records: Pick<Owners.TargetContext["staged"], "record" | "records">
+    signal: AbortSignal
+  }): Promise<Aggregate.Member> {
+    let session: z.infer<typeof Session.PersistedInfo> | undefined
+    for await (const record of input.records.records()) {
+      input.signal.throwIfAborted()
+      if (record.key.length !== 4 || record.key[0] !== "sessions" || record.key[3] !== "info") continue
+      const value = Session.PersistedInfo.parse({
+        ...z.record(z.string(), z.unknown()).parse(record.value),
+        workspace: null,
+      })
+      if (session || value.id !== input.sessionID || !isInfo(value, record.key))
+        fail("Aggregate Core metadata has another canonical member")
+      session = value
+    }
+    if (!session) fail("Aggregate Core member has no canonical Session metadata")
+    const membership = await Aggregate.stagedRecords(session, input.records, input.signal)
+    return {
+      identity: { sessionID: session.id, scopeID: session.scope.id, parentID: session.parentID },
+      owners: input.owners,
+      ...membership,
+    }
   }
 
   async function inspect(context: Owners.SourceContext): Promise<Owners.Inspection> {
@@ -326,7 +345,8 @@ export namespace SessionTransferCore {
     await Storage.removeTree(["usage", next.scope.id, `session_${next.id}`])
     await Storage.write(infoKey(context.session), persisted)
     for await (const record of context.staged.records())
-      if (!isInfo(context.session, record.key)) await Storage.write(record.key, map(context, record.key, record.value))
+      if (!isInfo(context.session, record.key) && !Aggregate.owns(context.session, record.key))
+        await Storage.write(record.key, map(context, record.key, record.value))
     for await (const artifact of context.staged.artifacts()) await artifact.publish(artifact.key, { replace: true })
     await SessionCompat.writeSessionIndexes({ scopeID: next.scope.id, sessionID: next.id })
     Storage.afterCommit(() => {
@@ -343,8 +363,8 @@ export namespace SessionTransferCore {
 
   export function register() {
     Owners.register("session-core", {
-      version: 1,
-      reads: [1],
+      version: 2,
+      reads: [1, 2],
       applies: () => true,
       inspect,
       async freeze(context) {
@@ -365,6 +385,7 @@ export namespace SessionTransferCore {
             metadata: { key: row.key },
             content: json(row.value),
           }
+        yield* Aggregate.entries({ ...context, session })
         let after: string[] | undefined
         for (;;) {
           const page = await Storage.artifactReferences({

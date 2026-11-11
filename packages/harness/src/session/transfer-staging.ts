@@ -11,6 +11,8 @@ import { JsonValue } from "../util/json-value"
 import { SessionTransferStream as Stream } from "./transfer-stream"
 import { SessionTransferOwners as Owners } from "./transfer-owners"
 import { SessionTransferEpochs } from "./transfer-epochs"
+import { SessionTransferAggregate as Aggregate } from "./transfer-aggregate"
+import { SessionTransferCore as Core } from "./transfer-core"
 
 export namespace SessionTransferStaging {
   export const Rejected = NamedError.create("SessionTransferStagingRejected", z.object({ message: z.string() }))
@@ -41,6 +43,10 @@ export namespace SessionTransferStaging {
   const contexts = new WeakMap<
     Owners.TargetContext,
     { runtime: RuntimeContext.Instance; handoffID: string; rootHash: string; ownerID: string }
+  >()
+  const aggregates = new WeakMap<
+    Owners.TargetContext,
+    { runtime: RuntimeContext.Instance; rootHash: string; rootSessionID: string; scopeID: string; digest: string }
   >()
   const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
   const stateKey = (handoffID: string) => ["session_transfer_staging", ID.parse(handoffID), "state"]
@@ -176,6 +182,87 @@ export namespace SessionTransferStaging {
     }
   }
 
+  async function boundRecord(handoffID: string, ownerID: string, sessionID: string, key: string[]) {
+    const [reference] = await Storage.readMany([destinationKey(handoffID, { kind: "record", key: Key.parse(key) })])
+    if (reference === undefined) return
+    const destination = Destination.parse(reference)
+    if (destination.ownerID !== ownerID || destination.sessionID !== sessionID) return
+    const entry = Entry.parse(await Storage.read(entryKey(handoffID, destination)))
+    if (
+      entry.ownerID !== ownerID ||
+      entry.sessionID !== sessionID ||
+      entry.kind !== "record" ||
+      JSON.stringify(entry.key) !== JSON.stringify(key) ||
+      entry.id !== destination.id
+    )
+      fail("Staged portable destination index changed")
+    return readRecord(handoffID, entry)
+  }
+
+  async function* boundRecords(handoffID: string, ownerID: string, sessionID: string, signal: AbortSignal) {
+    for await (const entry of entries(handoffID, ownerID, sessionID)) {
+      signal.throwIfAborted()
+      if (entry.ownerID !== ownerID || entry.sessionID !== sessionID)
+        fail("Staged partition belongs to another owner or Session")
+      if (entry.kind === "record") yield await readRecord(handoffID, entry)
+    }
+  }
+
+  export async function prepareAggregate(input: {
+    handoffID: string
+    rootSessionID: string
+    scopeID: string
+    signal: AbortSignal
+  }) {
+    if (Storage.inTransaction()) fail("Aggregate preparation must precede the activation transaction")
+    const current = await state(input.handoffID)
+    if (current.phase !== "verified") fail("Portable aggregate staging is not verified")
+    if ((current.root.owners["session-core"] ?? 0) < 2) fail("Aggregate preparation requires sealed Core membership")
+    compatible(current.root.owners)
+    const runtime = RuntimeContext.current()
+    for await (const row of Storage.records({ prefix: ownersKey(input.handoffID), limit: 128 })) {
+      input.signal.throwIfAborted()
+      const sessionID = row.key.at(-1)!
+      const [core] = await Storage.readMany([[...ownersKey(input.handoffID), "session-core", sessionID]])
+      if (core === undefined) fail("Portable aggregate native owner has no canonical Core member")
+    }
+    const result = await Aggregate.validate({
+      ...input,
+      members: (async function* () {
+        for await (const row of Storage.records({
+          prefix: [...ownersKey(input.handoffID), "session-core"],
+          limit: 128,
+        })) {
+          input.signal.throwIfAborted()
+          const sessionID = row.key.at(-1)!
+          const owners: Record<string, number> = {}
+          for (const [ownerID, version] of Object.entries(current.root.owners)) {
+            const [member] = await Storage.readMany([[...ownersKey(input.handoffID), ownerID, sessionID]])
+            if (member !== undefined) owners[ownerID] = version
+          }
+          yield await Core.aggregateMember({
+            sessionID,
+            owners,
+            signal: input.signal,
+            records: {
+              record: (key) => boundRecord(input.handoffID, "session-core", sessionID, key),
+              records: () => boundRecords(input.handoffID, "session-core", sessionID, input.signal),
+            },
+          })
+        }
+      })(),
+    })
+    input.signal.throwIfAborted()
+    if (RuntimeContext.current() !== runtime || (await state(input.handoffID)).rootHash !== current.rootHash)
+      fail("Portable aggregate preparation identity changed")
+    return {
+      ...result,
+      rootHash: current.rootHash,
+      rootSessionID: input.rootSessionID,
+      scopeID: input.scopeID,
+    }
+  }
+
   export async function verify(handoffID: string, signal?: AbortSignal) {
     const current = await state(handoffID)
     if (current.phase === "receiving") fail("Portable staging is incomplete")
@@ -218,16 +305,7 @@ export namespace SessionTransferStaging {
     }
     async function readBoundRecord(boundOwner: string, key: string[]) {
       assertOwner()
-      const [reference] = await Storage.readMany([
-        destinationKey(input.handoffID, { kind: "record", key: Key.parse(key) }),
-      ])
-      if (reference === undefined) return
-      const destination = Destination.parse(reference)
-      if (destination.ownerID !== boundOwner || destination.sessionID !== input.session.id) return
-      const entry = Entry.parse(await Storage.read(entryKey(input.handoffID, destination)))
-      if (entry.kind !== "record" || JSON.stringify(entry.key) !== JSON.stringify(key) || entry.id !== destination.id)
-        fail("Staged portable destination index changed")
-      const record = await readRecord(input.handoffID, entry)
+      const record = await boundRecord(input.handoffID, boundOwner, input.session.id, key)
       assertOwner()
       return record
     }
@@ -297,6 +375,16 @@ export namespace SessionTransferStaging {
       rootHash: current.rootHash,
       ownerID,
     })
+    if (ownerID === "session-core" && sourceVersion >= 2 && input.session.id === input.rootSessionID)
+      aggregates.set(context, {
+        runtime,
+        ...(await prepareAggregate({
+          handoffID: input.handoffID,
+          rootSessionID: input.rootSessionID,
+          scopeID: input.session.scope.id,
+          signal: input.signal,
+        })),
+      })
     return context
   }
 
@@ -327,6 +415,21 @@ export namespace SessionTransferStaging {
     }
     if (Object.keys(current.root.owners).some((id) => !selected.has(id)))
       fail("Portable publication omitted a required owner")
+    if ((current.root.owners["session-core"] ?? 0) >= 2) {
+      const root = input.contexts.find(
+        ({ ownerID, context }) => ownerID === "session-core" && context.session.id === context.rootSessionID,
+      )
+      const aggregate = root && aggregates.get(root.context)
+      if (!aggregate || aggregate.runtime !== RuntimeContext.current() || aggregate.rootHash !== current.rootHash)
+        fail("Portable publication requires an exact prepared aggregate membership proof")
+      if (
+        input.contexts.some(
+          ({ context }) =>
+            context.rootSessionID !== aggregate.rootSessionID || context.session.scope.id !== aggregate.scopeID,
+        )
+      )
+        fail("Portable publication contains another aggregate or Scope")
+    }
     for await (const row of Storage.records({ prefix: ownersKey(input.handoffID), limit: 128 })) {
       if (!pairs.has(JSON.stringify(row.key.slice(-2)))) fail("Portable publication omitted a required Session owner")
     }

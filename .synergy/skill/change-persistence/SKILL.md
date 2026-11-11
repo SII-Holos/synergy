@@ -179,6 +179,8 @@ For snapshot capacity work, measure filesystem allocation separately from logica
 
 For epoch-owned Snapshot preparation, index packs in an independent repository and compare every Core-owned root before granting a prepared proof. Serialize preparation with permanent retirement and recheck its reservation when sealing metadata. Hold the native indexer at a barrier, retire concurrently, then verify late preparation cannot restore ownership. Reopen the Runtime to prove persistent preparation metadata cannot replace a fresh native validation proof; test SQL publication rollback separately from immutable object installation.
 
+For aggregate Session transfer, seal native child edges separately from owner-declared Session references and compare them with actual verified member partitions. Test dropping a whole child and its partition from an otherwise checksummed transport, foreign Scope/parent data, disconnected cycles and successful native child navigation after paused activation. Drain every owner and native tail write before child-to-root final freezing; a frozen parent must reject new child membership in the owning index transaction. Preserve prior-version readers without treating their missing membership evidence as a complete aggregate proof.
+
 Test:
 
 - fresh state

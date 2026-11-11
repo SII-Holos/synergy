@@ -47,7 +47,7 @@ test("a cold Runtime cannot reuse or interpret verified staging through an incom
   const source = await testRuntime({
     home: home.path,
     register() {
-      Owners.register("session-core", { ...owner, version: 2, reads: [2] })
+      Owners.register("session-core", { ...owner, version: 3, reads: [3] })
       Owners.register("snapshot-reader", { ...owner, stagedDependencies: ["session-core"] })
     },
   })
@@ -59,7 +59,7 @@ test("a cold Runtime cannot reuse or interpret verified staging through an incom
         const session = await Session.create({ workspace: null, environmentID: null })
         const root = await Stream.write({
           store,
-          owners: { "session-core": 2, "snapshot-reader": 1 },
+          owners: { "session-core": 3, "snapshot-reader": 1 },
           entries: (async function* () {
             yield {
               id: "future-core",

@@ -182,8 +182,9 @@ test("a running Cortex handoff resumes its recorded native root without resendin
           fromEpoch: 1,
           toEpoch: 2,
         }
-        await Epochs.freeze(binding)
         const childBinding = { ...binding, sessionID: task.sessionID, rootSessionID: parent.id }
+        await Epochs.beginSource(binding)
+        await Epochs.beginSource(childBinding)
         const receipt = await Owners.freeze(
           {
             session: await Session.get(task.sessionID),
@@ -194,6 +195,7 @@ test("a running Cortex handoff resumes its recorded native root without resendin
           ["cortex"],
         )
         await Epochs.freeze(childBinding, { owner: receipt })
+        await Epochs.freeze(binding)
         const held = await Session.get(task.sessionID)
         expect(held.cortex?.status).toBe("running")
         expect(held.cortex?.transfer).toMatchObject({
@@ -438,8 +440,8 @@ test("a suspended structured repair admits its saved repair input without repeat
           },
           ["cortex"],
         )
-        await Epochs.freeze(binding)
         await Epochs.freeze(childBinding, { owner: receipt })
+        await Epochs.freeze(binding)
         expect((await Session.get(task.sessionID)).cortex?.transfer?.admitted).toBe(false)
         Cortex.reset()
         await Epochs.cancel(binding)
@@ -526,8 +528,8 @@ test("Cortex private staging binds canonical data independently of serialized ob
           signal: new AbortController().signal,
         }
         const receipt = await Owners.freeze(context, ["cortex"])
-        await Epochs.freeze(binding)
         await Epochs.freeze(child, { owner: receipt })
+        await Epochs.freeze(binding)
         const session = await Session.get(task.sessionID)
         const stream = await Stream.write({
           store,

@@ -34,7 +34,7 @@ Session summaries compare checkpoints across Workspace writers. Keep tool eviden
 
 Cortex holds retain native task/root/input/budget/deadline/notification identity; never cancel/recreate work. Personal transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
 
-Portability: epochs, bounded streams, private Snapshot staging, declared dependencies, permanent surrender/retirement, prepared tokens/pack pins. Verify `test/session/transfer-*.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
+Aggregate portability: epochs, bounded streams, private Snapshot staging, declared dependencies, permanent surrender/retirement, prepared tokens/pack pins. Verify `test/session/transfer-*.test.ts`; `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
 
 `SessionHistory` fields remain bodyless; iterate child metadata.
 
