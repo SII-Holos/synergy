@@ -14,6 +14,7 @@ import { SessionMigrationTarget } from "../migration/session-target"
 import type { Session } from "."
 import { RolloutMigration } from "./rollout/migration"
 import { RolloutToolPartIndex } from "./rollout/tool-part-index"
+import { SessionAttachmentIndex } from "./attachment-index"
 import { RolloutJournalMaintenance } from "./rollout/journal-maintenance"
 import { $ } from "bun"
 import path from "path"
@@ -2519,6 +2520,7 @@ export const migrations: Migration[] = [
   RolloutMigration.pricingMigration,
   RolloutToolPartIndex.sessionMigration,
   RolloutToolPartIndex.operationMigration,
+  SessionAttachmentIndex.migration,
   RolloutJournalMaintenance.migration,
   RolloutExecutionMigration.migration,
 

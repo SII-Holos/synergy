@@ -6,6 +6,7 @@ import { StoragePath } from "../storage/path"
 import { StorageCommitUnknownError, StorageConflictError, StorageIntegrityError } from "../storage/errors"
 import type { StoreTransaction } from "../storage/transactional-store"
 import { MessageV2 } from "./message-v2"
+import { SessionAttachmentIndex } from "./attachment-index"
 
 export namespace PartContent {
   export type Streaming = MessageV2.TextPart | MessageV2.ReasoningPart
@@ -345,11 +346,15 @@ export namespace PartContent {
       const [previous] = await tx.readMany<Stored>([key])
       if (previous && checkpoint(previous)) await tx.removeTree(StoragePath.partContent(key))
       await tx.write(key, value)
+      await SessionAttachmentIndex.capture(tx, key, value)
     })
   }
 
   export function remove(key: string[]) {
-    return Storage.removeTree(key)
+    return Storage.transaction(async (tx) => {
+      await SessionAttachmentIndex.remove(tx, key)
+      await tx.removeTree(key)
+    })
   }
 
   export class Stream {

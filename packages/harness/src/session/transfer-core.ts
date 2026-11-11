@@ -25,6 +25,7 @@ import { RolloutSchema } from "./rollout/schema"
 import { RolloutEvidence } from "./rollout/evidence"
 import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionTransferAggregate as Aggregate } from "./transfer-aggregate"
+import { SessionAttachmentIndex } from "./attachment-index"
 
 export namespace SessionTransferCore {
   const Mapping = z.object({
@@ -36,6 +37,7 @@ export namespace SessionTransferCore {
       key[0] === "sessions" &&
       key[1] === session.scope.id &&
       key[2] === session.id &&
+      key[3] !== "attachment_index" &&
       key[3] !== "lightloop_terminal") ||
     (key.length >= 3 && key[0] === "usage" && key[1] === session.scope.id && key[2] === `session_${session.id}`) ||
     Aggregate.owns(session, key)
@@ -368,9 +370,14 @@ export namespace SessionTransferCore {
       }
     }
     await Storage.write(infoKey(context.session), persisted)
+    await Storage.removeTree(["sessions", next.scope.id, next.id, "attachment_index"])
     for await (const record of context.staged.records())
-      if (!isInfo(context.session, record.key) && !Aggregate.owns(context.session, record.key))
-        await Storage.write(record.key, map(context, record.key, record.value))
+      if (!isInfo(context.session, record.key) && !Aggregate.owns(context.session, record.key)) {
+        const mapped = map(context, record.key, record.value)
+        await Storage.write(record.key, mapped)
+        if (record.key.length === 7 && record.key[3] === "messages" && record.key[5] === "parts")
+          await Storage.transaction((tx) => SessionAttachmentIndex.captureRecord(tx, record.key, mapped))
+      }
     for await (const artifact of context.staged.artifacts()) await artifact.publish(artifact.key, { replace: true })
     await SessionCompat.writeSessionIndexes({ scopeID: next.scope.id, sessionID: next.id })
     Storage.afterCommit(() => {

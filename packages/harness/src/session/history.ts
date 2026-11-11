@@ -13,6 +13,7 @@ import { MessageV2 } from "./message-v2"
 import { PartContent as SessionPartContent } from "./part-content"
 import { SessionPartField } from "./part-field"
 import { SessionAttachmentContent } from "./attachment-content"
+import { SessionAttachmentIndex } from "./attachment-index"
 import { SessionProgress } from "./progress"
 import { SessionMessageCache } from "./message-cache"
 import { selectModelWorkingSet, modelWorkingSetProjection } from "./model-working-set"
@@ -41,6 +42,7 @@ export namespace SessionHistory {
   export const PartContent = SessionHistoryDisplay.PartContent
   export const DisplayConflict = SessionHistoryDisplay.Conflict
   export const PartFieldConflict = SessionPartField.Conflict
+  export const AttachmentConflict = SessionAttachmentIndex.Conflict
   export const summarizePart = SessionHistoryDisplay.summarizePart
   export const summarizeMessage = SessionHistoryDisplay.summarizeMessage
   export const MessageDetails = SessionHistoryDisplay.MessageDetails
@@ -304,7 +306,29 @@ export namespace SessionHistory {
         Identifier.asMessageID(input.messageID),
         Identifier.asPartID(input.partID),
       ),
-      { version: input.version, offset: input.offset, length: input.length },
+      { version: input.version, ordinal: input.ordinal, offset: input.offset, length: input.length },
+      input.signal,
+    )
+  }
+  export async function attachmentPage(
+    input: {
+      sessionID: string
+      messageID: string
+      partID: string
+      signal?: AbortSignal
+    } & SessionAttachmentIndex.Query,
+  ) {
+    input.signal?.throwIfAborted()
+    const session = await SessionManager.requireSession(input.sessionID)
+    await requireDisplayMessage(session, input.messageID)
+    return SessionAttachmentIndex.page(
+      StoragePath.messagePart(
+        Identifier.asScopeID(session.scope.id),
+        Identifier.asSessionID(input.sessionID),
+        Identifier.asMessageID(input.messageID),
+        Identifier.asPartID(input.partID),
+      ),
+      { cursor: input.cursor, limit: input.limit },
       input.signal,
     )
   }
