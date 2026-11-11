@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0108](0108-staged-context-read-foreign-storage.md)
+
 - [0107](0107-native-activation-outlived-cancellation.md)
 
 - [0106](0106-stream-producer-reentered-destination-artifact-gate.md)

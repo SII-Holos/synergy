@@ -46,7 +46,7 @@ export namespace SessionTransferStaging {
   const Destination = Entry.pick({ version: true, id: true, ownerID: true, sessionID: true, ordinal: true })
   const contexts = new WeakMap<
     Owners.TargetContext,
-    { runtime: RuntimeContext.Instance; handoffID: string; rootHash: string; ownerID: string }
+    { runtime: RuntimeContext.Instance; handoffID: string; rootHash: string; ownerID: string; assertOwner(): void }
   >()
   const aggregates = new WeakMap<
     Owners.TargetContext,
@@ -80,6 +80,20 @@ export namespace SessionTransferStaging {
   ]
   function fail(message: string): never {
     throw new Rejected({ message })
+  }
+
+  function immutable<T>(value: T): T {
+    const result = structuredClone(value)
+    const pending: unknown[] = [result]
+    const visited = new WeakSet<object>()
+    while (pending.length) {
+      const current = pending.pop()
+      if (!current || typeof current !== "object" || visited.has(current)) continue
+      visited.add(current)
+      for (const nested of Object.values(current)) pending.push(nested)
+      Object.freeze(current)
+    }
+    return result
   }
 
   function compatible(owners: Readonly<Record<string, number>>) {
@@ -424,18 +438,48 @@ export namespace SessionTransferStaging {
   }
 
   export async function context(input: Omit<Owners.TargetContext, "sourceVersion" | "staged"> & { ownerID: string }) {
-    const current = await state(input.handoffID)
+    const signal = input.signal
+    signal.throwIfAborted()
+    const ownerID = ID.parse(input.ownerID)
+    const handoffID = ID.parse(input.handoffID)
+    const rootSessionID = ID.parse(input.rootSessionID)
+    const session = immutable(input.session)
+    const sessionID = ID.parse(session.id)
+    const scopeID = ID.parse(session.scope.id)
+    const mapping = immutable(z.record(z.string(), JsonValue).parse(input.mapping))
+    const runtime = RuntimeContext.current()
+    const handle = Storage.current()
+    const objects = handle.artifactObjects
+    const storage = {
+      store: handle.store,
+      artifactDirectory: handle.artifactDirectory,
+      artifactObjects: objects,
+      blobs: objects?.blobs,
+      writerID: objects?.writerID,
+      now: objects?.now,
+    }
+    function assertOwner() {
+      signal.throwIfAborted()
+      if (RuntimeContext.current() !== runtime) fail("Staged context belongs to another storage owner")
+      const current = Storage.current()
+      if (
+        current.store !== storage.store ||
+        current.artifactDirectory !== storage.artifactDirectory ||
+        current.artifactObjects !== storage.artifactObjects ||
+        objects?.blobs !== storage.blobs ||
+        objects?.writerID !== storage.writerID ||
+        objects?.now !== storage.now
+      )
+        fail("Staged context belongs to another storage owner")
+    }
+    assertOwner()
+    const current = await state(handoffID)
+    assertOwner()
     Owners.publicationOrder(Object.keys(current.root.owners))
     if (current.phase !== "verified") fail("Portable staging is not prepared for owner validation")
-    if (!Object.hasOwn(current.root.owners, input.ownerID)) fail("Portable owner is absent from the manifest")
-    const sourceVersion = current.root.owners[input.ownerID]
-    compatible({ [input.ownerID]: sourceVersion })
-    const { ownerID, ...base } = input
-    const runtime = RuntimeContext.current()
-    function assertOwner() {
-      if (RuntimeContext.current() !== runtime) fail("Staged owner context belongs to another Runtime")
-      input.signal.throwIfAborted()
-    }
+    if (!Object.hasOwn(current.root.owners, ownerID)) fail("Portable owner is absent from the manifest")
+    const sourceVersion = current.root.owners[ownerID]
+    compatible({ [ownerID]: sourceVersion })
     function assertDependency(dependency: string) {
       assertOwner()
       if (!Owners.stagedDependencies(ownerID).includes(dependency))
@@ -451,90 +495,144 @@ export namespace SessionTransferStaging {
         sha256: entry.sha256,
         read() {
           assertOwner()
-          return Storage.readBinaryStream(bytesKey(input.handoffID, entry), { signal: input.signal })
+          const reader = Storage.readBinaryStream(bytesKey(handoffID, entry), { signal })
+          return (async function* () {
+            try {
+              assertOwner()
+              for (;;) {
+                assertOwner()
+                const next = await reader.next()
+                assertOwner()
+                if (next.done) break
+                yield next.value
+              }
+              assertOwner()
+            } finally {
+              await reader.return(undefined)
+            }
+          })()
         },
         async publish(target, options) {
           assertOwner()
-          await Storage.publishBinaryReference(bytesKey(input.handoffID, entry), Key.parse(target), options)
+          const destination = Key.parse(target)
+          const replace = options?.replace
+          if (!Storage.inWriteTransaction()) fail("Portable artifact publication requires the activation transaction")
+          await Storage.transaction(
+            () => Storage.publishBinaryReference(bytesKey(handoffID, entry), destination, { replace }),
+            { commitGuard: assertOwner },
+          )
+          assertOwner()
         },
       }
     }
     async function readBoundRecord(boundOwner: string, key: string[]) {
       assertOwner()
-      const record = await boundRecord(input.handoffID, boundOwner, input.session.id, key)
+      const selected = Key.parse(key)
+      const record = await boundRecord(handoffID, boundOwner, sessionID, selected)
       assertOwner()
       return record
     }
-    const context: Owners.TargetContext = {
-      ...base,
-      sourceVersion,
-      staged: {
-        async ownerVersion(dependency) {
-          assertOwner()
-          if (!Object.hasOwn(current.root.owners, dependency)) return
-          const [member] = await Storage.readMany([[...ownersKey(input.handoffID), dependency, input.session.id]])
-          assertOwner()
-          return member === undefined ? undefined : current.root.owners[dependency]
-        },
-        async record(key) {
-          return readBoundRecord(ownerID, key)
-        },
-        async artifact(key) {
-          assertOwner()
-          const entry = await boundArtifact(input.handoffID, ownerID, input.session.id, key)
-          assertOwner()
-          return entry && artifact(entry)
-        },
-        async relatedRecord(dependency, key) {
-          assertDependency(dependency)
-          return readBoundRecord(dependency, key)
-        },
-        async *records() {
-          assertOwner()
-          for await (const entry of entries(input.handoffID, ownerID, input.session.id)) {
+    function ownedEntries(boundOwner: string) {
+      return (async function* () {
+        const reader = entries(handoffID, boundOwner, sessionID)
+        try {
+          for (;;) {
             assertOwner()
-            if (entry.kind !== "record") continue
-            yield await readRecord(input.handoffID, entry)
+            const next = await reader.next()
+            assertOwner()
+            if (next.done) break
+            const entry = next.value
+            if (entry.ownerID !== boundOwner || entry.sessionID !== sessionID)
+              fail("Staged partition belongs to another owner or Session")
+            yield entry
           }
-        },
-        async *relatedRecords(dependency) {
-          assertDependency(dependency)
-          for await (const entry of entries(input.handoffID, dependency, input.session.id)) {
-            assertOwner()
-            if (entry.ownerID !== dependency || entry.sessionID !== input.session.id)
-              fail("Staged dependency partition belongs to another owner or Session")
-            if (entry.kind !== "record") continue
-            const record = await readRecord(input.handoffID, entry)
-            assertOwner()
-            yield record
-          }
-        },
-        async *artifacts() {
+        } finally {
+          await reader.return(undefined)
+        }
+      })()
+    }
+    function records(boundOwner: string) {
+      return (async function* () {
+        for await (const entry of ownedEntries(boundOwner)) {
+          if (entry.kind !== "record") continue
           assertOwner()
-          for await (const entry of entries(input.handoffID, ownerID, input.session.id)) {
-            assertOwner()
+          const record = await readRecord(handoffID, entry)
+          assertOwner()
+          yield record
+        }
+        assertOwner()
+      })()
+    }
+    const staged: Owners.TargetContext["staged"] = {
+      async ownerVersion(dependency) {
+        assertOwner()
+        dependency = ID.parse(dependency)
+        if (!Object.hasOwn(current.root.owners, dependency)) return
+        const [member] = await Storage.readMany([[...ownersKey(handoffID), dependency, sessionID]])
+        assertOwner()
+        return member === undefined ? undefined : current.root.owners[dependency]
+      },
+      async record(key) {
+        return readBoundRecord(ownerID, key)
+      },
+      async artifact(key) {
+        assertOwner()
+        const selected = Key.parse(key)
+        const entry = await boundArtifact(handoffID, ownerID, sessionID, selected)
+        assertOwner()
+        return entry && artifact(entry)
+      },
+      async relatedRecord(dependency, key) {
+        assertDependency(dependency)
+        return readBoundRecord(dependency, key)
+      },
+      records() {
+        return records(ownerID)
+      },
+      relatedRecords(dependency) {
+        return (async function* () {
+          assertDependency(dependency)
+          yield* records(dependency)
+        })()
+      },
+      artifacts() {
+        assertOwner()
+        return (async function* () {
+          assertOwner()
+          for await (const entry of ownedEntries(ownerID)) {
             if (entry.kind === "record") continue
             yield artifact(entry)
           }
-        },
+          assertOwner()
+        })()
       },
     }
+    const context: Owners.TargetContext = Object.freeze({
+      session,
+      rootSessionID,
+      handoffID,
+      mapping,
+      signal,
+      sourceVersion,
+      staged: Object.freeze(staged),
+    })
     contexts.set(context, {
       runtime: RuntimeContext.current(),
-      handoffID: input.handoffID,
+      handoffID,
       rootHash: current.rootHash,
       ownerID,
+      assertOwner,
     })
-    if (ownerID === "session-core" && sourceVersion >= 2 && input.session.id === input.rootSessionID)
+    if (ownerID === "session-core" && sourceVersion >= 2 && sessionID === rootSessionID) {
+      assertOwner()
+      const prepared = await prepareAggregate({ handoffID, rootSessionID, scopeID, signal })
+      assertOwner()
       aggregates.set(context, {
         runtime,
-        ...(await prepareAggregate({
-          handoffID: input.handoffID,
-          rootSessionID: input.rootSessionID,
-          scopeID: input.session.scope.id,
-          signal: input.signal,
-        })),
+        ...prepared,
       })
+    }
+    assertOwner()
     return context
   }
 
@@ -545,6 +643,11 @@ export namespace SessionTransferStaging {
     const handoffID = ID.parse(input.handoffID)
     const publications = input.contexts.map(({ ownerID, context }) => ({ ownerID: ID.parse(ownerID), context }))
     if (!Storage.inWriteTransaction()) fail("Portable publication requires the activation transaction")
+    for (const { context } of publications) {
+      const evidence = contexts.get(context)
+      if (!evidence) fail("Portable publication requires exact prepared owner contexts")
+      await Storage.transaction(async () => evidence.assertOwner(), { commitGuard: evidence.assertOwner })
+    }
     const current = await state(handoffID)
     if (current.phase !== "verified") fail("Portable staging cannot be published in this phase")
     const publicationOrder = Owners.publicationOrder(Object.keys(current.root.owners))
