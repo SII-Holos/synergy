@@ -20,6 +20,7 @@ import path from "node:path"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { NativeProcessMaintenance } from "./process/maintenance"
+import { NativeSessionTransferPhysical } from "./session-transfer-physical"
 
 const log = Log.create({ service: "runtime.workspace" })
 
@@ -46,6 +47,7 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
 }
 
 export function registerWorkspace(coordinator = new WorkspaceCoordinator()) {
+  NativeSessionTransferPhysical.register(coordinator)
   NativeProcessMaintenance.register(coordinator)
   registerWorkspaceIdentityMigrations()
   registerSessionTransferWorkspace()

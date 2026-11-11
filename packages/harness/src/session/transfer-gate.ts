@@ -5,6 +5,7 @@ import { Storage } from "../storage/storage"
 import { StorageMutationGuard } from "../storage/mutation-guard"
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { SessionTransferEpochs } from "./transfer-epochs"
+import { WorkspaceAccess } from "../workspace/access"
 
 export namespace SessionTransferGate {
   export const Blocked = NamedError.create(
@@ -72,6 +73,10 @@ export namespace SessionTransferGate {
 
   export function register() {
     SessionTransferEpochs.register()
+    WorkspaceAccess.registerSessionAuthority({
+      admission: assert,
+      mutation: (sessionID) => Storage.transaction(() => assertOwnerMutation(sessionID)),
+    })
     StorageMutationGuard.register("session-transfer", async (tx, keys, tree) => {
       const owners = [
         ...new Set(

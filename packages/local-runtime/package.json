@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./session-transfer-physical": "./src/session-transfer-physical.ts",
     "./tool-input-history": "./src/tool-input-history.ts",
     "./environment/profiles": "./src/environment/profiles.ts",
     "./workspace/blob-store": "./src/workspace/blob-store.ts",

@@ -1,5 +1,6 @@
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
+import fs from "node:fs/promises"
 import { text } from "node:stream/consumers"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -105,7 +106,7 @@ nativeTest("a supervisor start with an unconfirmed native acknowledgement cannot
   })
 }, 20_000)
 
-nativeTest("an empty current process registry cannot certify a previous native writer retained by the physical coordinator", async () => {
+nativeTest.each(["canonical", "alias"] as const)("an empty registry cannot certify a previous %s Home writer retained by the native coordinator", async (location) => {
   await using directory = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(directory.path, "claims") })
   await using runtime = await testRuntime({ register() {
@@ -113,7 +114,9 @@ nativeTest("an empty current process registry cannot certify a previous native w
     registerWorkspace(coordinator)
   } })
   await runtime.run(async () => {
-    await using prior = await RuntimeContext.exit(() => processFixture(coordinator, directory.path, JSON.stringify([runtime.host.root, "prior-native-session"])))
+    const ownerHome = location === "alias" ? path.join(directory.path, "home-alias") : runtime.host.root
+    if (location === "alias") await fs.symlink(runtime.host.root, ownerHome, process.platform === "win32" ? "junction" : "dir")
+    await using prior = await RuntimeContext.exit(() => processFixture(coordinator, directory.path, JSON.stringify([ownerHome, "prior-native-session"])))
     const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
     try {
       await expect(RuntimeMaintenance.drain(lease)).rejects.toThrow("native")

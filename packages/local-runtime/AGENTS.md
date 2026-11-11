@@ -41,4 +41,4 @@ Trusted transfers use `workspace-file/service`: imports accept stable operation 
 
 Explicit `environment: "native"` composition selects the native provider/default without installing personal profile resolution. Hosted compositions supply their own providers.
 
-Session transfer directories use `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
+Session transfer directories use `session/transfer-workspace`. Physical claims use `session-transfer-physical`; verify `test/workspace/session-physical-transfer.test.ts`.
