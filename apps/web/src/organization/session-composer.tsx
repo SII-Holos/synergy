@@ -26,6 +26,7 @@ export function OrganizationSessionComposer(props: {
   session: OrgSessionDirectoryView
   online: boolean
   modelReady: boolean
+  messageLabel?: string
   control?: { controlVersion: number; pausedSince?: number; runID?: string }
   accepted: () => void
 }) {
@@ -180,7 +181,7 @@ export function OrganizationSessionComposer(props: {
       </Show>
       <Show when={props.session.permissions.execute}>
         <TextField
-          label={_(messages.message)}
+          label={props.messageLabel ?? _(messages.message)}
           placeholder={_({ id: "organization.session.messagePlaceholder", message: "Write a message…" })}
           multiline
           value={draft.text}

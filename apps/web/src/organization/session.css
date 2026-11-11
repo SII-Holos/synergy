@@ -80,7 +80,8 @@
 .organization-session-view--detail > .organization-page-heading > button {
   flex-shrink: 0;
 }
-.organization-session-title > button {
+.organization-session-title > button,
+.organization-session-source > button {
   justify-self: start;
   max-width: 100%;
   white-space: normal;
@@ -127,6 +128,27 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+.organization-session-view--detail > .organization-task-directory {
+  flex: 1;
+}
+.organization-session-source {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.organization-session-source > button {
+  flex-shrink: 0;
+}
+.organization-session-source > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-weak);
 }
 .organization-native-field {
   display: flex;
@@ -206,5 +228,10 @@
   }
   .organization-transcript-message > button {
     min-height: 44px;
+  }
+}
+@media (max-width: 600px) and (max-height: 740px) {
+  .organization-session-chat > .organization-session-composer {
+    padding-block: 8px;
   }
 }

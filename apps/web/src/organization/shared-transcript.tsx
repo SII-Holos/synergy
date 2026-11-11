@@ -551,6 +551,7 @@ export function SharedOrganizationTranscript(props: {
                     hasPrevious={!!state.pageStarts[id] || !!state.trimmed[id]}
                     release={() => release(id)}
                     body={(value, signal) => body(id, value, signal)}
+                    fail={fail}
                     sessionID={props.sessionID}
                     shareGeneration={props.shareGeneration}
                     signal={signal}
@@ -578,6 +579,7 @@ function SharedMessageRow(props: {
   first: (signal: AbortSignal) => Promise<void>
   release: () => void
   body: (value: Extract<Sync.Content, { kind: "blob" }>, signal: AbortSignal) => Promise<void>
+  fail: (error: unknown) => void
   sessionID: string
   shareGeneration: number
   signal: AbortSignal
@@ -635,7 +637,10 @@ function SharedMessageRow(props: {
     try {
       await props.body(value, signal)
     } catch (error) {
-      if (!signal.aborted && version === reading) setError(error)
+      if (!signal.aborted && version === reading) {
+        props.fail(error)
+        if (!signal.aborted) setError(error)
+      }
     } finally {
       if (!signal.aborted && version === reading) setBusy(false)
     }
@@ -693,6 +698,7 @@ function SharedMessageRow(props: {
         <PublicationFiles
           files={files()}
           target={{ kind: "session", sessionID: props.sessionID, shareGeneration: props.shareGeneration }}
+          invalidated={props.fail}
         />
       </Show>
     </article>

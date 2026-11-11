@@ -49,6 +49,7 @@ export function PrivateOrganizationTranscript(props: {
   title?: (value: string) => void
   observed?: (value: Sync.Status) => void
   invalidated?: (error: unknown) => void
+  read?: ReturnType<typeof createOrganizationSessionReader>
 }) {
   const { _ } = useLingui()
   const space = useSpace()
@@ -58,14 +59,18 @@ export function PrivateOrganizationTranscript(props: {
   const signal = AbortSignal.any([view.signal, controller.signal])
   const sourceID = props.sourceSessionID ?? props.sessionID
   const connection = space.connection()!
-  const read = createOrganizationSessionReader({
-    api: space.client()!,
-    bridge: platform.organization,
-    connectionID: connection.transport === "desktop" ? connection.id : undefined,
-    binding: props.binding,
-    signal,
-    authorizationRequired: () => space.authorizationRequired(view),
-  })
+  const dispatch =
+    props.read ??
+    createOrganizationSessionReader({
+      api: space.client()!,
+      bridge: platform.organization,
+      connectionID: connection.transport === "desktop" ? connection.id : undefined,
+      binding: props.binding,
+      signal,
+      authorizationRequired: () => space.authorizationRequired(view),
+    })
+  const read: ReturnType<typeof createOrganizationSessionReader> = (query, requestSignal = signal) =>
+    dispatch(query, AbortSignal.any([signal, requestSignal]))
   const [state, setState] = createStore<{
     order: string[]
     messages: Record<string, Read.Message | undefined>
@@ -233,13 +238,15 @@ export function PrivateOrganizationTranscript(props: {
   }
   async function poll() {
     try {
-      const [session, status] = await Promise.all([
-        read({ operation: "session", rootSessionID: props.sessionID, sourceSessionID: props.sourceSessionID }),
-        read({ operation: "status", rootSessionID: props.sessionID, sourceSessionID: props.sourceSessionID }),
-      ])
-      if (signal.aborted) return
-      if (session.operation === "session") props.title?.(session.session.title)
-      if (status.operation === "status") props.observed?.(status.status)
+      if (!props.read) {
+        const [session, status] = await Promise.all([
+          read({ operation: "session", rootSessionID: props.sessionID, sourceSessionID: props.sourceSessionID }),
+          read({ operation: "status", rootSessionID: props.sessionID, sourceSessionID: props.sourceSessionID }),
+        ])
+        if (signal.aborted) return
+        if (session.operation === "session") props.title?.(session.session.title)
+        if (status.operation === "status") props.observed?.(status.status)
+      }
       await windowPage(false, true)
     } catch (error) {
       fail(error)
@@ -568,6 +575,7 @@ function PrivateMessageRow(props: {
                   reference={reference}
                   binding={props.binding}
                   read={props.read}
+                  invalidated={props.fail}
                 />
               </div>
             )}

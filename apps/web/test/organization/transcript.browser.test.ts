@@ -63,8 +63,8 @@ beforeAll(async () => {
     import { SpaceProvider, useSpace } from ${JSON.stringify(`/@fs/${source}/context/space.tsx`)}
     import { PlatformProvider } from ${JSON.stringify(`/@fs/${source}/context/platform.tsx`)}
     import { SharedOrganizationTranscript } from ${JSON.stringify(`/@fs/${source}/organization/shared-transcript.tsx`)}
-    const platform = { platform: "web", openLink() {}, organization: { list: () => window.hostList(), request: value => window.hostRequest(value).then(result => result.ok && result.value.base64 !== undefined ? {ok:true,value:{status:result.value.status,contentType:result.value.contentType,contentRange:result.value.contentRange,bodyBytes:Uint8Array.from(atob(result.value.base64), c => c.charCodeAt(0))}} : result), cancel: () => Promise.resolve({ok:true}) }, fetch: async () => Response.json({ healthy: false }) }
-    function Fixture() { const space = useSpace(); return <Show when={space.current()?.identity.kind === "organization"}><SharedOrganizationTranscript sessionID="session-a" shareGeneration={1} /></Show> }
+    const platform = { platform: "web", openLink() {}, organization: { list: () => window.hostList(), request: value => window.hostRequest(value).then(result => result.ok && result.value.base64 !== undefined ? {ok:true,value:{status:result.value.status,contentType:result.value.contentType,contentRange:result.value.contentRange,bodyBytes:Uint8Array.from(atob(result.value.base64), c => c.charCodeAt(0))}} : result), download: value => window.hostDownload(value), cancel: () => Promise.resolve({ok:true}) }, fetch: async () => Response.json({ healthy: false }) }
+    function Fixture() { const space = useSpace(); return <Show when={space.current()?.identity.kind === "organization"}><SharedOrganizationTranscript sessionID="session-a" shareGeneration={1} invalidated={error => window.hostInvalidated?.(error)} /></Show> }
     render(() => <PlatformProvider value={platform}><AppBaseProviders><SpaceProvider><Fixture /></SpaceProvider></AppBaseProviders></PlatformProvider>, document.getElementById("root"))
   `,
   )
@@ -419,5 +419,65 @@ test("a late replay response cannot rewind a refreshed conversation window", asy
   } finally {
     replay.resolve({ ok: true, value: { status: 200, body: "{}" } })
     await page.close()
+  }
+})
+
+test("denial while loading a cold shared field clears previously visible content and reports the captured owner", async () => {
+  for (const action of ["Load full content", "Preview", "Download"]) {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 760 } })
+    const failures: unknown[] = []
+    const reported = Promise.withResolvers<void>()
+    await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
+    await page.exposeFunction("hostInvalidated", (error: unknown) => {
+      failures.push(error)
+      reported.resolve()
+    })
+    await page.exposeFunction("hostDownload", () => ({ ok: false, error: { code: "permission_denied" } }))
+    await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+      const url = new URL(request.path, entry.issuer)
+      if (url.pathname.endsWith("/content"))
+        return { ok: true, value: { status: 403, body: JSON.stringify({ code: "SHARE_REVOKED" }) } }
+      const body = url.pathname.endsWith("/messages")
+        ? { shareGeneration: 1, watermark: 3, items: [message("message-a")] }
+        : url.pathname.endsWith("/parts")
+          ? {
+              shareGeneration: 1,
+              watermark: 3,
+              complete: true,
+              items: [
+                part("Previously visible shared content"),
+                {
+                  type: "part",
+                  sequence: 3,
+                  messageID: "message-a",
+                  partID: "cold-field",
+                  part: {
+                    type: "text",
+                    content: {
+                      kind: "blob",
+                      blobID: "cold-content",
+                      hash: "b".repeat(64),
+                      bytes: 100000,
+                      mediaType: "text/plain",
+                    },
+                  },
+                  integrity: "a".repeat(64),
+                },
+              ],
+            }
+          : { shareGeneration: 1, nextSeq: 4, items: [] }
+      return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
+    })
+    try {
+      await page.goto(new URL("/organization/org-a/account-a/deployment-a", server.url).href)
+      await page.getByText("Previously visible shared content", { exact: true }).waitFor()
+      await page.getByRole("button", { name: action, exact: true }).click()
+      await page.getByRole("alert").waitFor()
+      expect(await page.getByText("Previously visible shared content", { exact: true }).count()).toBe(0)
+      await reported.promise
+      expect(failures).toEqual([{ code: action === "Download" ? "permission_denied" : "SHARE_REVOKED" }])
+    } finally {
+      await page.close()
+    }
   }
 })

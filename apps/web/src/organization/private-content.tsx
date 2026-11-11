@@ -9,6 +9,7 @@ import {
   type OrganizationProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { useSpace } from "@/context/space"
+import { organizationOwnerFailure } from "./owner-error"
 import { usePlatform } from "@/context/platform"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { publicationMessages as messages } from "./publication-messages"
@@ -19,6 +20,7 @@ type SaveWindow = Window & {
   showSaveFilePicker?: (input: { suggestedName: string }) => Promise<{ createWritable(): Promise<Writable> }>
 }
 export function PrivateContentDownload(props: {
+  invalidated?: (error: unknown) => void
   rootSessionID: string
   sourceSessionID?: string
   messageID: string
@@ -133,7 +135,10 @@ export function PrivateContentDownload(props: {
         throw error
       }
     } catch (error) {
-      if (!signal.aborted && !(error instanceof DOMException && error.name === "AbortError")) setError(error)
+      if (!signal.aborted && !(error instanceof DOMException && error.name === "AbortError")) {
+        if (organizationOwnerFailure(error)) props.invalidated?.(error)
+        if (!signal.aborted) setError(error)
+      }
     } finally {
       if (transfer === active) transfer = undefined
       if (!lifetime.aborted) setBusy(false)

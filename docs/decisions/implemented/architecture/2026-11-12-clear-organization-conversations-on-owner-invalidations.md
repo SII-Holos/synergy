@@ -12,6 +12,8 @@ Use one focused classifier for the documented service, Main and private-read aut
 
 Directory, transcript and interaction readers report a recognized invalidation to the captured conversation owner. The owner clears its directory, sharing and resource presentation together, disposes descendants, fences in-flight directory responses and suspends automatic polling. Explicit Retry reads current authority before mounting a new conversation. Authentication recovery remains bound to the captured space, so a late failure cannot alter a newly selected account.
 
+Manual field loading, file preview and authenticated file saving report the same recognized owner failures. A local button error cannot retain previously readable conversation content after its owning access has been denied. Independent publication previews also discard their retained preview on those failures. Download cancellation and integrity errors keep their existing local recovery behavior.
+
 ## Alternatives considered
 
 **Clear only the reader that failed.** This leaves controls whose visibility depends on an obsolete parent record, and later directory polls can resurrect a failed reader.
@@ -20,4 +22,4 @@ Directory, transcript and interaction readers report a recognized invalidation t
 
 ## Consequences
 
-Focused tests exercise canonical and Main errors, preserve unknown and offline outcomes and release still-mounted password drafts on interaction denial. The isolated full-App browser regression covers a lowercase Main directory denial, removal of the title, transcript and controls, and explicit recovery with the retained ordinary Composer draft. Transcript-level denial uses the same parent cleanup rather than creating a separate authorization authority.
+Focused tests exercise canonical and Main errors, preserve unknown and offline outcomes and release still-mounted password drafts on interaction denial. The isolated full-App browser regression covers a lowercase Main directory denial, removal of the title, transcript and controls, and explicit recovery with the retained ordinary Composer draft. Transcript-level denial uses the same parent cleanup rather than creating a separate authorization authority. Manual shared-field loading, preview and native download regressions verify that access denial clears content already rendered by the reader.

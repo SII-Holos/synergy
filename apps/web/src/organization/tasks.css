@@ -1,0 +1,40 @@
+.organization-task-directory {
+  width: min(100%, 50rem);
+  margin-inline: auto;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.organization-task-directory .organization-page-heading {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.organization-task-directory .organization-page-heading p {
+  margin-top: 4px;
+  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.organization-task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.organization-task-list > li + li {
+  border-top: 1px solid var(--border-weaker-base);
+}
+.organization-task-entry strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.organization-task-entry .organization-task-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.5;
+}

@@ -4,6 +4,7 @@ import type { OrgPublicationFile, OrganizationClient } from "@ericsanchezok/syne
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { usePlatform } from "@/context/platform"
 import { useSpace } from "@/context/space"
+import { organizationOwnerFailure } from "./owner-error"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 import { publicationFileHash, streamPublicationDownload } from "./publication-transfer"
 import { WorkspaceError } from "./workspace-error"
@@ -50,6 +51,7 @@ export function PublicationFiles(props: {
   target: PublicationTarget
   more?: () => void
   loading?: boolean
+  invalidated?: (error: unknown) => void
 }) {
   const { _, i18n } = useLingui()
   const space = useSpace()
@@ -70,6 +72,16 @@ export function PublicationFiles(props: {
     setPreview(undefined)
   }
   onCleanup(close)
+  function fail(error: unknown) {
+    if (signal.aborted) return
+    const failure = organizationOwnerFailure(error)
+    if (failure) {
+      close()
+      props.invalidated?.(error)
+      if (failure === "authentication") space.authorizationRequired(view)
+    }
+    if (!signal.aborted) setError(error)
+  }
   async function show(file: OrgPublicationFile) {
     if (busy()) return
     setError(undefined)
@@ -98,7 +110,7 @@ export function PublicationFiles(props: {
         setPreview({ file, image: imageURL })
       } else setPreview({ file, text: new TextDecoder().decode(content.bytes) })
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      fail(error)
     } finally {
       if (!signal.aborted) setBusy(undefined)
     }
@@ -160,7 +172,7 @@ export function PublicationFiles(props: {
         throw error
       }
     } catch (error) {
-      if (!signal.aborted && !(error instanceof DOMException && error.name === "AbortError")) setError(error)
+      if (!(error instanceof DOMException && error.name === "AbortError")) fail(error)
     } finally {
       if (!signal.aborted) setBusy(undefined)
     }

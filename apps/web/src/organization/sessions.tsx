@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { createSignal, createMemo, createEffect, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import type {
@@ -8,6 +8,7 @@ import type {
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import type { OrgSessionResourceContract } from "@ericsanchezok/synergy-sdk/organization"
 import { useSpace } from "@/context/space"
+import { usePlatform } from "@/context/platform"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { WorkspaceError } from "./workspace-error"
 import { organizationOwnerFailure } from "./owner-error"
@@ -19,6 +20,8 @@ import { OrganizationKnowledge } from "./knowledge"
 import { OrganizationArtifacts } from "./artifacts"
 import { SharedOrganizationTranscript } from "./shared-transcript"
 import { PrivateOrganizationTranscript } from "./private-transcript"
+import { createOrganizationSessionReader } from "./private-read"
+import { OrganizationTasks, organizationTaskMessages as tasks } from "./tasks"
 import { organizationSessionMessages as messages } from "./session-messages"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
 import "./session.css"
@@ -149,6 +152,7 @@ function OrganizationSessionPage(props: {
   const api = space.client()!
   const view = space.current()!
   const confirm = useConfirm()
+  const platform = usePlatform()
   const controller = new AbortController()
   const signal = AbortSignal.any([view.signal, controller.signal])
   const options = { throwOnError: true, signal } as const
@@ -159,9 +163,12 @@ function OrganizationSessionPage(props: {
   }>({})
   const [error, setError] = createSignal<unknown>()
   const [busy, setBusy] = createSignal(false)
-  const [tab, setTab] = createSignal<"conversation" | "resources" | "knowledge" | "artifacts">("conversation")
+  const [tab, setTab] = createSignal<"conversation" | "tasks" | "resources" | "knowledge" | "artifacts">("conversation")
   const [nativeTitle, setNativeTitle] = createSignal<string>()
   const [nativeStatus, setNativeStatus] = createSignal<Sync.Status>()
+  const [selectedTask, setSelectedTask] = createSignal<Sync.TaskSummary>()
+  const [taskUnavailable, setTaskUnavailable] = createSignal(false)
+  const sourceID = () => selectedTask()?.sessionID ?? props.sessionID
   const binding = createMemo(
     () =>
       state.session && {
@@ -174,11 +181,73 @@ function OrganizationSessionPage(props: {
       },
   )
   const bindingKey = createMemo(() => JSON.stringify(binding()))
+  const reader = createMemo(
+    on(bindingKey, (key) => {
+      const captured = binding()
+      if (!captured) return
+      const controller = new AbortController()
+      const current = AbortSignal.any([signal, controller.signal])
+      const connection = space.connection()!
+      const read = createOrganizationSessionReader({
+        api,
+        bridge: platform.organization,
+        connectionID: connection.transport === "desktop" ? connection.id : undefined,
+        binding: captured,
+        signal: current,
+        authorizationRequired: () => space.authorizationRequired(view),
+      })
+      onCleanup(() => controller.abort())
+      return { key, binding: captured, signal: current, read }
+    }),
+  )
   createEffect(() => {
     bindingKey()
     setNativeStatus(undefined)
     setNativeTitle(undefined)
+    setSelectedTask(undefined)
+    setTaskUnavailable(false)
   })
+  createEffect(
+    on(
+      () => [reader(), state.share?.shareState] as const,
+      ([captured, shareState]) => {
+        if (!captured || shareState !== "private") return
+        const controller = new AbortController()
+        const current = AbortSignal.any([captured.signal, controller.signal])
+        let timer: ReturnType<typeof setTimeout> | undefined
+        async function observe() {
+          try {
+            const [session, status] = await Promise.all([
+              captured!.read({ operation: "session", rootSessionID: props.sessionID }, current),
+              captured!.read({ operation: "status", rootSessionID: props.sessionID }, current),
+            ])
+            if (current.aborted || captured !== reader()) return
+            if (session.operation === "session") setNativeTitle(session.session.title)
+            if (status.operation === "status") setNativeStatus(status.status)
+          } catch (error) {
+            if (!current.aborted && captured === reader()) invalidated(error)
+          }
+          if (!current.aborted)
+            timer = setTimeout(() => void observe(), document.visibilityState === "visible" ? 5000 : 15000)
+        }
+        void observe()
+        onCleanup(() => {
+          controller.abort()
+          if (timer) clearTimeout(timer)
+        })
+      },
+    ),
+  )
+  function sourceFailure(error: unknown, captured: ReturnType<typeof reader>, source: string) {
+    if (!captured || captured.signal.aborted || captured !== reader() || source !== sourceID()) return
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined
+    if (source !== props.sessionID && code === "NOT_FOUND") {
+      setSelectedTask(undefined)
+      setTaskUnavailable(true)
+      return
+    }
+    invalidated(error)
+  }
   let timer: ReturnType<typeof setTimeout> | undefined
   let revision = 0
   let unavailable = false
@@ -276,9 +345,30 @@ function OrganizationSessionPage(props: {
           <>
             <div class="organization-page-heading">
               <div class="organization-session-title">
-                <Button variant="ghost" onClick={() => space.page("sessions", props.projectID)}>
-                  {props.projectName} / {_(messages.conversations)}
-                </Button>
+                <Show
+                  when={selectedTask()}
+                  fallback={
+                    <Button variant="ghost" onClick={() => space.page("sessions", props.projectID)}>
+                      {props.projectName} / {_(messages.conversations)}
+                    </Button>
+                  }
+                >
+                  {(task) => (
+                    <div class="organization-session-source">
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setSelectedTask(undefined)
+                          setTaskUnavailable(false)
+                          setTab("conversation")
+                        }}
+                      >
+                        {_(tasks.main)}
+                      </Button>
+                      <strong title={task().description}>{task().description}</strong>
+                    </div>
+                  )}
+                </Show>
                 <h2>
                   {session().title ??
                     nativeTitle() ??
@@ -317,14 +407,25 @@ function OrganizationSessionPage(props: {
               </Show>
             </div>
             <nav class="organization-workspace-nav" aria-label={_(messages.conversations)}>
-              <For each={["conversation", "resources", "knowledge", "artifacts"] as const}>
+              <For each={["conversation", "tasks", "resources", "knowledge", "artifacts"] as const}>
                 {(value) => (
                   <Button variant="ghost" data-selected={tab() === value} onClick={() => setTab(value)}>
-                    {_(value === "conversation" ? messages.conversations : common[value])}
+                    {_(
+                      value === "conversation"
+                        ? messages.conversations
+                        : value === "tasks"
+                          ? tasks.tasks
+                          : common[value],
+                    )}
                   </Button>
                 )}
               </For>
             </nav>
+            <Show when={taskUnavailable()}>
+              <p role="status">
+                {_({ id: "organization.tasks.unavailable", message: "This task is no longer available." })}
+              </p>
+            </Show>
             <Switch>
               <Match when={tab() === "conversation"}>
                 <div class="organization-session-chat">
@@ -333,48 +434,105 @@ function OrganizationSessionPage(props: {
                     <Button onClick={() => setTab("resources")}>{_(messages.chooseResources)}</Button>
                   </Show>
                   <Show
-                    when={state.share?.shareState === "shared" && `${props.sessionID}:${state.share.shareGeneration}`}
+                    when={
+                      state.share?.shareState === "shared" &&
+                      `${bindingKey()}:${sourceID()}:${state.share.shareGeneration}`
+                    }
                     keyed
                   >
-                    {(_generation) => (
-                      <SharedOrganizationTranscript
-                        sessionID={props.sessionID}
-                        shareGeneration={state.share!.shareGeneration}
-                        invalidated={invalidated}
-                      />
-                    )}
+                    {(_generation) => {
+                      const captured = reader()
+                      const source = sourceID()
+                      return (
+                        <SharedOrganizationTranscript
+                          sessionID={props.sessionID}
+                          sourceSessionID={source}
+                          shareGeneration={state.share!.shareGeneration}
+                          invalidated={(error) => sourceFailure(error, captured, source)}
+                        />
+                      )
+                    }}
                   </Show>
-                  <Show when={state.share?.shareState === "private" && bindingKey()} keyed>
-                    {(_binding) => (
-                      <PrivateOrganizationTranscript
-                        sessionID={props.sessionID}
-                        binding={binding()!}
-                        title={setNativeTitle}
-                        observed={setNativeStatus}
-                        invalidated={invalidated}
-                      />
-                    )}
+                  <Show
+                    when={state.share?.shareState === "private" && reader() && `${bindingKey()}:${sourceID()}`}
+                    keyed
+                  >
+                    {(_binding) => {
+                      const captured = reader()!
+                      const source = sourceID()
+                      return (
+                        <PrivateOrganizationTranscript
+                          sessionID={props.sessionID}
+                          sourceSessionID={source}
+                          binding={captured.binding}
+                          read={captured.read}
+                          invalidated={(error) => sourceFailure(error, captured, source)}
+                        />
+                      )
+                    }}
                   </Show>
-                  <Show when={session().permissions.stop && bindingKey()} keyed>
-                    {(_binding) => (
-                      <OrganizationSessionInteractions
-                        sessionID={props.sessionID}
-                        binding={binding()!}
-                        online={session().runtime?.state === "online"}
-                        invalidated={invalidated}
-                      />
-                    )}
+                  <Show when={session().permissions.stop && reader() && `${bindingKey()}:${sourceID()}`} keyed>
+                    {(_binding) => {
+                      const captured = reader()!
+                      const source = sourceID()
+                      return (
+                        <OrganizationSessionInteractions
+                          sessionID={props.sessionID}
+                          sourceSessionID={source}
+                          binding={captured.binding}
+                          online={session().runtime?.state === "online"}
+                          invalidated={(error) => sourceFailure(error, captured, source)}
+                        />
+                      )
+                    }}
                   </Show>
                   <Show when={session().permissions.execute || session().permissions.stop}>
                     <OrganizationSessionComposer
                       session={session()}
                       online={session().runtime?.state === "online"}
                       modelReady={!!state.resources?.selection?.modelResourceID}
+                      messageLabel={selectedTask() ? _(tasks.rootMessage) : undefined}
                       control={observedControl()}
                       accepted={() => void load()}
                     />
                   </Show>
                 </div>
+              </Match>
+              <Match when={tab() === "tasks"}>
+                <Show
+                  when={
+                    reader() &&
+                    `${bindingKey()}:${sourceID()}:${state.share?.shareState}:${state.share?.shareGeneration}`
+                  }
+                  keyed
+                >
+                  {(_source) => {
+                    const captured = reader()!
+                    const source = sourceID()
+                    return (
+                      <OrganizationTasks
+                        sessionID={props.sessionID}
+                        sourceSessionID={source}
+                        binding={captured.binding}
+                        read={captured.read}
+                        shareGeneration={state.share?.shareState === "shared" ? state.share.shareGeneration : undefined}
+                        invalidated={(error) => sourceFailure(error, captured, source)}
+                        open={(task) => {
+                          if (
+                            captured.signal.aborted ||
+                            captured !== reader() ||
+                            source !== sourceID() ||
+                            task.parentSessionID !== source
+                          )
+                            return
+                          setSelectedTask(task)
+                          setTaskUnavailable(false)
+                          setTab("conversation")
+                        }}
+                      />
+                    )
+                  }}
+                </Show>
               </Match>
               <Match when={tab() === "resources"}>
                 <OrganizationSessionResources
