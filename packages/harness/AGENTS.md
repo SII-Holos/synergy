@@ -19,7 +19,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Harness owns [resource admission](../../docs/architecture/resource-admission.md); Local Runtime supplies samples. Verify `test/resources/`.
 - Workspace catalog/binding generations own file identity. `workspace/access` owns native claims and maintenance drainage; capacity scheduling stays private. File resources use `WorkspaceState`; Scope configuration/events use `ScopedState`. Startup contributions declare Workspace ownership. Verify `test/workspace/access-maintenance.test.ts`.
 - Tool `resourceNeeds` augments static requirements through the resolver. Follow `add-tool`.
-- Environment/mount ownership: [Environments](../../docs/architecture/environments.md). Verify Local Runtime's `test/workspace/mount-maintenance.test.ts`.
+- Environment/mount release ownership: [Environments](../../docs/architecture/environments.md). Verify Local Runtime's `test/workspace/mount-maintenance.test.ts`.
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.
 
 `Storage.Handle` owns [Agent authority](../../docs/architecture/agent-storage.md), transactions and content lifetimes. External effects precede references. Pin checkpoints; verify complete logical scans against captured manifests. Fence restores. Archives require Host authority; history cannot authorize. Read object v1/v2. Maintenance drains native/detached writers; reopen admission after confirmed release. Preserve purpose/cohort holds. Test storage/secrets. SQLite: workspace-sqlite; PG: `SYNERGY_TEST_POSTGRES_URL`.

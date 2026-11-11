@@ -552,6 +552,37 @@ export namespace WorkspaceMounts {
     }
   }
 
+  export async function* releaseMounts(environment: Environment.Info) {
+    const target = Environment.targetOf(environment)
+    for await (const row of Storage.records({ prefix: ["workspace"], limit: 128 })) {
+      const info = WorkspaceCatalog.Info.parse(row.value)
+      if (info.activeMount?.target.environmentID !== environment.id) continue
+      const [scopeID] = await Storage.readMany([StoragePath.workspaceEnvironment(environment.id, info.id)])
+      if (
+        row.key.length !== 2 ||
+        row.key[1] !== info.id ||
+        info.scopeID !== environment.scopeID ||
+        scopeID !== info.scopeID
+      )
+        throw new Error("Environment release requires complete canonical mount coverage")
+    }
+    for await (const row of Storage.records<string>({
+      prefix: StoragePath.workspaceEnvironment(environment.id),
+      limit: 128,
+    })) {
+      if (row.key.length !== 3 || row.value !== environment.scopeID)
+        throw new Error("Workspace allocation has an invalid native mount index")
+      const info = await WorkspaceCatalog.get(row.key[2], environment.scopeID)
+      if (
+        !info.activeMount ||
+        info.activeMount.state !== "active" ||
+        !Environment.sameTarget(info.activeMount.target, target)
+      )
+        throw new Error("Workspace allocation requires reconciliation")
+      yield { ...reference(info), path: info.activeMount.path }
+    }
+  }
+
   async function beforeDeallocate(environment: Environment.Info) {
     const target = Environment.targetOf(environment)
     for (const key of await Storage.list(StoragePath.workspaceEnvironment(environment.id))) {

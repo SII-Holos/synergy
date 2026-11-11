@@ -178,6 +178,22 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     }
     return mount
   }
+  async inspectRelease(reference: WorkspaceProtocol.Reference): Promise<
+    { state: "active"; mount: WorkspaceProtocol.Mount } | { state: "detached" }
+  > {
+    const input = WorkspaceProtocol.Reference.parse(reference)
+    const receipt = MountReceipt.parse(await this.receipt("mounts", input.id))
+    const mount = receipt.mount
+    if (
+      !mount ||
+      mount.id !== input.id ||
+      mount.workspaceID !== input.workspaceID ||
+      mount.generation !== input.generation
+    )
+      throw new Error("Workspace allocation has no matching native mount receipt")
+    if (receipt.detached) return { state: "detached" }
+    return { state: "active", mount: await this.required(input) }
+  }
   private async required(reference: WorkspaceProtocol.Reference) {
     const mount = await this.inspect(reference)
     if (!mount) throw new Error("Workspace mount is unavailable")

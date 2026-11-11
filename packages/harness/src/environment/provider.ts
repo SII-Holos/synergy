@@ -25,6 +25,10 @@ export interface EnvironmentProvider {
   >
   resume?(request: EnvironmentRequest): Promise<EnvironmentSchema.Allocation>
   deallocate(request: EnvironmentRequest): Promise<void>
+  withDeallocation?(
+    info: EnvironmentSchema.Info,
+    release: () => Promise<EnvironmentSchema.Info>,
+  ): Promise<EnvironmentSchema.Info>
   connect?(request: EnvironmentRequest, target: EnvironmentSchema.Target): Promise<Executor>
   workspacePath?(spec: EnvironmentSchema.Info["spec"], workspace: WorkspaceCatalog.Info): Promise<string>
   close?(): Promise<void>

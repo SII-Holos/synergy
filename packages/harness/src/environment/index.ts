@@ -27,6 +27,7 @@ export namespace Environment {
   }
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const providerRequests = RuntimeContext.state(() => new Set<string>())
+  const releasePreparations = RuntimeContext.state(() => new Set<string>())
   const epoch = RuntimeContext.state(() => randomUUID())
   const consumers = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<void>>())
   const lostResources = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<boolean>>())
@@ -182,6 +183,8 @@ export namespace Environment {
     },
   ) {
     input.signal?.throwIfAborted()
+    if (releasePreparations().has(id))
+      throw new Busy({ environmentID: id, message: "Environment release owns resource admission" })
     const info = await ensure(id, input.scopeID)
     input.signal?.throwIfAborted()
     const target = targetOf(info)
@@ -191,6 +194,8 @@ export namespace Environment {
         message: `Environment does not support ${input.capabilities.join(", ")}`,
       })
     await Storage.transaction(async () => {
+      if (releasePreparations().has(id))
+        throw new Busy({ environmentID: id, message: "Environment release owns resource admission" })
       await assertTarget(target, input.scopeID)
       await Storage.write(
         StoragePath.environmentUse(id, input.useID),
@@ -253,24 +258,99 @@ export namespace Environment {
 
   async function release(id: string, scopeID: string, idleBefore?: number, expectedGeneration?: number) {
     await get(id, scopeID)
-    return providerRequest(id, async () => {
-      const info = await Storage.transaction(async () => {
-        const info = await get(id, scopeID)
-        if (expectedGeneration !== undefined && info.generation !== expectedGeneration)
+    await RuntimeMaintenance.assertAdmission()
+    return providerRequest(id, () =>
+      withReleasePreparation(id, async () => {
+        const selected = await get(id, scopeID)
+        if (expectedGeneration !== undefined && selected.generation !== expectedGeneration)
           throw new Stale({ environmentID: id, message: "Environment allocation changed" })
-        if (info.state === "idle") return info
-        if (idleBefore !== undefined && info.lastUsedAt > idleBefore) return info
-        if (info.state !== "ready")
+        if (selected.state === "idle" || (idleBefore !== undefined && selected.lastUsedAt > idleBefore)) return selected
+        if (selected.state !== "ready")
           throw new Unavailable({ environmentID: id, message: "Reconcile the Environment before releasing it" })
         if ((await uses(id)).length)
           throw new Busy({ environmentID: id, message: "Environment still has active or unreconciled uses" })
-        return write({ ...info, state: "releasing" })
-      })
+        return releaseOwned(selected, async (assertOwner) => {
+          return await Storage.transaction(
+            async () => {
+              assertOwner()
+              await RuntimeMaintenance.assertAdmission()
+              const info = await get(id, scopeID)
+              if (
+                info.generation !== selected.generation ||
+                info.allocation?.requestID !== selected.allocation?.requestID ||
+                info.allocation?.id !== selected.allocation?.id ||
+                (expectedGeneration !== undefined && info.generation !== expectedGeneration)
+              )
+                throw new Stale({ environmentID: id, message: "Environment allocation changed" })
+              if (idleBefore !== undefined && info.lastUsedAt > idleBefore) return info
+              if (info.state !== "ready")
+                throw new Unavailable({ environmentID: id, message: "Reconcile the Environment before releasing it" })
+              if ((await uses(id)).length)
+                throw new Busy({ environmentID: id, message: "Environment still has active or unreconciled uses" })
+              return write({ ...info, state: "releasing" })
+            },
+            { commitGuard: assertOwner },
+          )
+        })
+      }),
+    )
+  }
+
+  async function withReleasePreparation<T>(id: string, body: () => Promise<T>) {
+    releasePreparations().add(id)
+    try {
+      return await body()
+    } finally {
+      releasePreparations().delete(id)
+    }
+  }
+
+  async function releaseOwned(selected: Info, publish: (assertOwner: () => void) => Promise<Info>) {
+    const provider = EnvironmentProviders.get(selected.provider)
+    const runtime = RuntimeContext.current()
+    const storage = Storage.current()
+    let active = true
+    const assertOwner = () => {
+      if (
+        !active ||
+        RuntimeContext.current() !== runtime ||
+        Storage.current().store !== storage.store ||
+        Storage.current().artifactDirectory !== storage.artifactDirectory ||
+        Storage.current().artifactObjects !== storage.artifactObjects
+      )
+        throw new Error("Environment release owner is closed or belongs to another Runtime or storage")
+    }
+    const performRelease = async () => {
+      assertOwner()
+      const info = await publish(assertOwner)
+      assertOwner()
       if (info.state !== "releasing") return info
       await releaseResources(info)
-      await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
+      assertOwner()
+      await provider.deallocate(requestOf(info))
+      assertOwner()
       return updateAllocation(info, undefined)
-    })
+    }
+    let owned: Promise<Info> | undefined
+    const release = async () => {
+      assertOwner()
+      return (owned ??= performRelease())
+    }
+    try {
+      if (provider.withDeallocation) await provider.withDeallocation(selected, release)
+      else await release()
+      if (!owned) throw new Error("Environment provider returned without invoking its release owner")
+      return await owned
+    } catch (error) {
+      if (owned)
+        await owned.catch((failure) => {
+          if (failure !== error)
+            throw new AggregateError([error, failure], "Environment release and provider wrapper failed")
+        })
+      throw error
+    } finally {
+      active = false
+    }
   }
 
   export async function reclaimIdle(scopeID: string, now = Date.now()) {
@@ -298,11 +378,21 @@ export namespace Environment {
     return providerRequest(id, async () => {
       if (!info.allocation) return info
       const provider = EnvironmentProviders.get(info.provider)
-      if (info.state === "releasing") {
-        await releaseResources(info)
-        await provider.deallocate(requestOf(info))
-        return updateAllocation(info, undefined)
-      }
+      if (info.state === "releasing")
+        return withReleasePreparation(id, () =>
+          releaseOwned(info, async (assertOwner) => {
+            assertOwner()
+            await RuntimeMaintenance.assertMutation()
+            const latest = await get(id, scopeID)
+            if (
+              latest.state !== "releasing" ||
+              latest.allocation?.requestID !== info.allocation?.requestID ||
+              !sameTarget(targetOf(latest), targetOf(info))
+            )
+              throw new Stale({ environmentID: id, message: "Environment release allocation changed" })
+            return latest
+          }),
+        )
       const status = await provider.inspect(requestOf(info))
       if (status.state === "pending") {
         if (info.state !== "allocating" || !provider.resume || (await uses(id)).length)

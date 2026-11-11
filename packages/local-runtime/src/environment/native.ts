@@ -19,6 +19,7 @@ import { ProcessEnvironment } from "../process/environment"
 import { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 import { RuntimeResources } from "@ericsanchezok/synergy-harness/resources/runtime"
 import { NativeProcessMaintenance } from "../process/maintenance"
+import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 
 const Allocation = z.object({ id: z.string(), capabilities: z.array(z.string()), target: Environment.Target })
 
@@ -97,6 +98,24 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
         void pending.catch(() => executors.delete(request.requestID))
       }
       return pending
+    },
+    async withDeallocation(info, release) {
+      const request = Environment.requestOf(info)
+      const roots: string[] = []
+      for await (const original of WorkspaceMounts.releaseMounts(info)) {
+        await provider.connect!(request, Environment.targetOf(info))
+        const executor = await executors.get(request.requestID)
+        if (!executor) throw new Error("Native Environment release has no original Executor")
+        const receipt = await executor.files.inspectRelease(original)
+        if (receipt.state === "detached") {
+          if (info.state !== "releasing") throw new Error("Native Workspace was detached before release admission")
+          continue
+        }
+        if (receipt.mount.path !== original.path) throw new Error("Native Workspace release path changed")
+        roots.push(receipt.mount.path)
+      }
+      if (!roots.length) return release()
+      return WorkspaceAccess.maintenance(() => WorkspaceAccess.retire(roots, release))
     },
     async deallocate(request) {
       const status = await provider.inspect(request)

@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0105](0105-native-deallocation-crossed-maintenance-hold.md)
+
 - [0104](0104-cancelled-target-receive-waited-for-native-lock.md)
 
 - [0103](0103-task-retry-replaced-original-release-identity.md)
