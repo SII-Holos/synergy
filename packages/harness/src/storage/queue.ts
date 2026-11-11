@@ -51,6 +51,10 @@ export interface StorageQueueOptions {
 
 const admission = new AsyncLocalStorage<StorageQueueOptions>()
 
+export function storageQueueSignal() {
+  return admission.getStore()?.signal
+}
+
 export function storageQueuePriority() {
   return admission.getStore()?.priority ?? "foreground"
 }

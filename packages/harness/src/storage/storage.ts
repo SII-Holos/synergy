@@ -1,9 +1,10 @@
 import { StorageMutationGuard } from "./mutation-guard"
 import { RuntimeContext } from "../lifecycle/context"
 import path from "node:path"
+import fs from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { StorageQueue } from "./queue"
+import { StorageQueue, storageQueueSignal } from "./queue"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { ArtifactPack } from "./artifact-pack"
 import { ObjectArtifacts, type ObjectArtifactOptions } from "./object-artifacts"
@@ -15,6 +16,7 @@ import {
   StorageClosedError,
   StorageCommitUnknownError,
   StorageConflictError,
+  StorageIntegrityError,
   StorageUnavailableError as UnavailableStorage,
 } from "./errors"
 import {
@@ -31,6 +33,8 @@ import { ObservabilityResources } from "../observability/resources"
 import { StorageEventSinks } from "./event-sinks"
 import { observeStorageProgress } from "./progress"
 import { StoragePortable } from "./portable"
+import { Global } from "../global"
+import { ArtifactStreamProducers } from "./stream-producers"
 
 export namespace Storage {
   export const NotFoundError = MissingRecord
@@ -354,7 +358,7 @@ export namespace Storage {
     if (!pack) {
       pack = {
         pack: new ArtifactPack(path.join(handle.artifactDirectory, "agent-artifacts")),
-        objects: handle.artifactObjects ? new ObjectArtifacts(handle.store, handle.artifactObjects) : undefined,
+        objects: handle.artifactObjects ? new ObjectArtifacts(handle.store, { ...handle.artifactObjects }) : undefined,
         gate: new StorageQueue("artifact.gate"),
         prepared: new Map(),
       }
@@ -438,18 +442,118 @@ export namespace Storage {
   ): Promise<PreparedBinary> {
     if (current().transaction)
       throw new StorageConflictError("Artifact bytes must be flushed before the business transaction")
-    const state = artifactPack(key)
-    return state.gate.run(
-      async () => {
-        if (state.objects) {
-          const object = await state.objects.prepareStream(content, options.signal)
-          return retainPreparedBinary(key, state, object.location, object)
+    const runtime = RuntimeContext.current()
+    const handle = current()
+    const store = handle.store
+    const artifactDirectory = handle.artifactDirectory
+    const artifactObjects = handle.artifactObjects
+    const blobs = artifactObjects?.blobs
+    const writerID = artifactObjects?.writerID
+    const now = artifactObjects?.now
+    const stableKey = [...key]
+    const state = artifactPack(stableKey)
+    const inherited = storageQueueSignal()
+    const signal =
+      inherited && options.signal ? AbortSignal.any([inherited, options.signal]) : (inherited ?? options.signal)
+    return ArtifactStreamProducers.run(async () => {
+      const assertOwner = () => {
+        const active = current()
+        if (
+          RuntimeContext.current() !== runtime ||
+          active.store !== store ||
+          active.transaction ||
+          active.artifactDirectory !== artifactDirectory ||
+          active.artifactObjects !== artifactObjects ||
+          active.artifactObjects?.blobs !== blobs ||
+          active.artifactObjects?.writerID !== writerID ||
+          active.artifactObjects?.now !== now
+        )
+          throw new StorageConflictError("Artifact preparation belongs to another storage owner")
+      }
+      assertOwner()
+      const parent = path.join(Global.Path.cache, "artifact-stream-preparations")
+      await fs.mkdir(parent, { recursive: true, mode: 0o700 })
+      const directory = await fs.mkdtemp(path.join(parent, "prepare-"))
+      let file: Awaited<ReturnType<typeof fs.open>> | undefined
+      let prepared: PreparedBinary | undefined
+      try {
+        file = await fs.open(path.join(directory, "content"), "wx+", 0o600)
+        const checksum = createHash("sha256")
+        let size = 0
+        for await (const chunk of content) {
+          assertOwner()
+          signal?.throwIfAborted()
+          if (!(chunk instanceof Uint8Array))
+            throw new StorageIntegrityError("Artifact stream must contain byte chunks")
+          if (!Number.isSafeInteger(size + chunk.length))
+            throw new StorageIntegrityError("Artifact stream byte count is not representable")
+          let offset = 0
+          while (offset < chunk.length) {
+            const result = await file.write(chunk, offset, chunk.length - offset, size + offset)
+            if (!result.bytesWritten) throw new StorageIntegrityError("Artifact stream write made no progress")
+            offset += result.bytesWritten
+          }
+          checksum.update(chunk)
+          size += chunk.length
         }
-        return retainPreparedBinary(key, state, await state.pack.appendStream(content, options.signal))
-      },
-      { signal: options.signal },
-    )
+        signal?.throwIfAborted()
+        assertOwner()
+        await file.sync()
+        const sha256 = checksum.digest("hex")
+        const spool = file
+        const read = async function* () {
+          let offset = 0
+          while (offset < size) {
+            assertOwner()
+            signal?.throwIfAborted()
+            const bytes = new Uint8Array(Math.min(4 * 1024 * 1024, size - offset))
+            const result = await spool.read(bytes, 0, bytes.length, offset)
+            assertOwner()
+            if (!result.bytesRead) throw new StorageIntegrityError("Artifact preparation spool is incomplete")
+            offset += result.bytesRead
+            yield bytes.subarray(0, result.bytesRead)
+          }
+          if ((await spool.stat()).size !== size)
+            throw new StorageIntegrityError("Artifact preparation spool size changed")
+        }
+        prepared = await state.gate.run(
+          async () => {
+            signal?.throwIfAborted()
+            assertOwner()
+            const object = await state.objects?.prepareStream(read(), signal)
+            const location = object?.location ?? (await state.pack.appendStream(read(), signal))
+            try {
+              assertOwner()
+            } catch (error) {
+              if (object) state.objects!.release(object, "aborted")
+              throw error
+            }
+            if (location.sha256 !== sha256 || location.size !== size) {
+              if (object) state.objects!.release(object, "aborted")
+              throw new StorageIntegrityError("Artifact preparation spool checksum changed")
+            }
+            return retainPreparedBinary(stableKey, state, location, object)
+          },
+          { signal },
+        )
+        return prepared
+      } finally {
+        try {
+          try {
+            await file?.close()
+          } finally {
+            await fs.rm(directory, { recursive: true, force: true })
+          }
+        } catch (error) {
+          prepared?.[Symbol.dispose]()
+          throw error
+        }
+      }
+    }, signal)
   }
+
+  export const closeArtifactAdmission = ArtifactStreamProducers.closeAdmission
+  export const drainArtifactPreparations = ArtifactStreamProducers.drain
 
   const preparedObjects = new WeakMap<
     PreparedBinary,

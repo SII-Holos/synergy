@@ -123,7 +123,7 @@ test("object artifact streams use paged manifests without whole-artifact bufferi
     })
   }))
 
-test("interrupted streams retain every uploaded object until an explicit writer retirement or abort grace period", () =>
+test("producer failures precede upload while direct object preparations retain every uploaded chunk", () =>
   runtime.run(async () => {
     await using f = await fixture()
     await Storage.provide(f.handle(), async () => {
@@ -136,10 +136,21 @@ test("interrupted streams retain every uploaded object until an explicit writer 
           })(),
         ),
       ).rejects.toThrow("Interrupted stream")
+      expect(f.objects.size).toBe(0)
+      expect(await f.store().list(["storage_object_intents"])).toEqual([])
+      const backend = new ObjectArtifacts(f.store(), f.handle().artifactObjects)
+      await expect(
+        backend.prepareStream(
+          (async function* () {
+            yield new Uint8Array(ObjectArtifacts.chunkBytes).fill(0x71)
+            throw new Error("Interrupted direct upload")
+          })(),
+        ),
+      ).rejects.toThrow("Interrupted direct upload")
       expect(f.objects.size).toBe(1)
-      expect(await Storage.collectArtifactGarbage({ scanOrphans: true })).toBe(0)
+      expect(await backend.collect([])).toBe(0)
       f.advance(8 * day)
-      await Storage.collectArtifactGarbage({ scanOrphans: true })
+      await backend.collect([])
       expect(f.objects.size).toBe(0)
     })
   }))

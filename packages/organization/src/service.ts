@@ -121,6 +121,8 @@ export async function openOrganizationService(options: OrganizationServiceOption
           errors.push(error)
         }
         try {
+          Storage.closeArtifactAdmission()
+          await Storage.drainArtifactPreparations()
           await store?.close()
         } catch (error) {
           errors.push(error)

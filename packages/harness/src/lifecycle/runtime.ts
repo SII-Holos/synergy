@@ -208,6 +208,10 @@ export namespace RuntimeHandle {
         if (!attached) {
           await cleanup(() => RuntimeResources.stop())
           await cleanup(() => Log.close())
+          await cleanup(async () => {
+            Storage.closeArtifactAdmission()
+            await Storage.drainArtifactPreparations()
+          })
           await cleanup(() => storage?.handle.store.close())
           await cleanup(() => ownership?.release())
           phase = "closed"
@@ -294,6 +298,10 @@ export namespace RuntimeHandle {
         await cleanup(() => Log.close())
         await cleanup(async () => {
           if (errors.length === 0) await RolloutRecovery.settle()
+        })
+        await cleanup(async () => {
+          Storage.closeArtifactAdmission()
+          await Storage.drainArtifactPreparations()
         })
         await cleanup(() => storage?.handle.store.close())
         if (attached && instance.storage) storageOwners.delete(instance.storage.store)

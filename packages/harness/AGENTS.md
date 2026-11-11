@@ -2,7 +2,6 @@
 
 Own lifecycle, features and `./host/identity`; `context` owns attribution and `agent/primary-identity` primary names. See: [Host connections](../../docs/architecture/host-connections.md).
 
-- Keep tools, routes, config and migrations with their domain.
 - `SessionExecutionOwners` gates components using references and `MessageV2` semantics. Preserve blocked records; human tasks cannot resume unavailable predecessors. Root admission and Agent selection persist independently; execution views cannot replace Session writes. Compose native receipts and observe activity/release without recovery; verify `test/session/{resume,rollout-cancel,rollout-activity}.test.ts`.
 - Session L/progress: `session/long-term-memory`, never workflows/Library. [State](../../docs/architecture/session-and-messages.md#session-long-term-summary).
 - `SessionSchemaRegistry` owns fields, inheritance, indexes, required portability readers and epoch-only adoption; domains own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition completes schema registration.
@@ -22,7 +21,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Environment/mount release ownership: [Environments](../../docs/architecture/environments.md). Verify Local Runtime's `test/workspace/mount-maintenance.test.ts`.
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.
 
-`Storage.Handle` owns [Agent authority](../../docs/architecture/agent-storage.md), transactions and content lifetimes. External effects precede references. Pin checkpoints; verify complete logical scans against captured manifests. Fence restores. Archives require Host authority; history cannot authorize. Read object v1/v2. Maintenance drains native/detached writers; reopen admission after confirmed release. Preserve purpose/cohort holds. Test storage/secrets. SQLite: workspace-sqlite; PG: `SYNERGY_TEST_POSTGRES_URL`.
+`Storage.Handle` owns [Agent authority](../../docs/architecture/agent-storage.md), transactions and content lifetimes. Prepare effects before references; drain binary producers before closure. Pin checkpoints; verify complete logical scans against captured manifests. Fence restores. Archives require Host authority; history cannot authorize. Read object v1/v2. Maintenance drains native/detached writers; reopen admission after confirmed release. Preserve purpose/cohort holds. Test storage/secrets. SQLite: workspace-sqlite; PG: `SYNERGY_TEST_POSTGRES_URL`.
 
 Register PG contracts in `test/support/storage-backends.ts`; see [backend selection](../../.synergy/skill/testing-guide/SKILL.md).
 
