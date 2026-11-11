@@ -47,6 +47,27 @@ export namespace SessionTransferGate {
       })
   }
 
+  export async function assertOwnerMutation(sessionID: string) {
+    await SessionTransferEpochs.assertOwnerMutation(sessionID)
+    const [reservation, value] = await Storage.readMany([reservationKey(sessionID), key(sessionID)])
+    const active = activation.getStore()
+    const reserved = z.object({ migrationID: z.string() }).optional().parse(reservation)
+    if (reserved && (active?.runtime !== RuntimeContext.current() || active.migrationID !== reserved.migrationID))
+      throw new Blocked({
+        sessionID,
+        migrationID: reserved.migrationID,
+        message: "Session transfer reserves this identity on the destination",
+      })
+    if (value !== undefined) {
+      const gate = Info.parse(value)
+      throw new Blocked({
+        sessionID,
+        migrationID: gate.migrationID,
+        message: "Session transfer prevents changes to retained source data",
+      })
+    }
+  }
+
   export function register() {
     SessionTransferEpochs.register()
     StorageMutationGuard.register("session-transfer", async (tx, keys, tree) => {

@@ -137,8 +137,7 @@ export namespace RolloutQuery {
               processes.exited++
             else processes.unknown++
           }
-          const children = await Session.readChildIndex(run.owner.scopeID, run.owner.sessionID)
-          for (const child of children.entries) {
+          for await (const child of Session.childIndexEntries(run.owner.scopeID, run.owner.sessionID, signal)) {
             signal?.throwIfAborted()
             const childOwner: RolloutSchema.Owner = { kind: "session", scopeID: run.owner.scopeID, sessionID: child.id }
             if ((owners.size >= 64 || candidates >= 256) && !owners.has(JSON.stringify(childOwner))) {

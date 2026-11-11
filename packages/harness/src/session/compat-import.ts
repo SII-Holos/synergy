@@ -503,19 +503,18 @@ export namespace SessionCompat {
     return { ...index, entries }
   }
 
-  export async function mergeChildIndex(
+  export async function* pendingChildEntries(
     scopeID: string,
     parentID: string,
-    index: Session.ChildIndex,
-  ): Promise<Session.ChildIndex> {
-    if (!(await isActive())) return index
+  ): AsyncGenerator<Session.ChildIndexEntry> {
+    if (!(await isActive())) return
     const { Session } = await import(".")
-    const entries = index.entries.slice()
-    const known = new Set(entries.map((entry) => entry.id))
-    for (const info of await pendingInfos(scopeID))
-      if (info.parentID === parentID && !known.has(info.id)) entries.push(Session.toChildIndexEntry(info))
-    entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
-    return { ...index, entries }
+    const storage = Storage.current()
+    for await (const row of StorageCompat.catalog(storage.transaction ?? storage.store, scopeID)) {
+      if (row.status === "quarantined") continue
+      const info = await projectedPending(row.info)
+      if (info?.parentID === parentID && info.scope.id === scopeID) yield Session.toChildIndexEntry(info)
+    }
   }
 
   async function importAggregate(locator: StorageCompat.Locator, stageOnly = false): Promise<StorageCompat.Locator> {

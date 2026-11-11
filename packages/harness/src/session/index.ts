@@ -48,6 +48,9 @@ import { PartContent } from "./part-content"
 import { SessionLastExchange } from "./last-exchange"
 import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionCompat } from "./compat-import"
+import { SessionChildIndex } from "./child-index"
+import { SessionTransferGate } from "./transfer-gate"
+import { StorageCompat } from "../storage/compat"
 import { Config } from "../config/config"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import type { ProfileId } from "../control-profile/types"
@@ -194,7 +197,6 @@ export namespace Session {
     const scopes = await tx.scan(["sessions"])
     for (const scopeID of scopes) {
       const page: PageIndex = { entries: [] }
-      const children = new Map<string, ChildIndex>()
       const nav: SessionNavEntry[] = []
       let after: string[] | undefined
       for (;;) {
@@ -219,17 +221,8 @@ export namespace Session {
             )
           page.entries.push(toPageIndexEntry(session))
           nav.push(toNavEntry(session))
-          if (session.parentID) {
-            const child = children.get(session.parentID) ?? {
-              version: 1,
-              scopeID,
-              parentID: session.parentID,
-              updatedAt: Date.now(),
-              entries: [],
-            }
-            child.entries.push(toChildIndexEntry(session))
-            children.set(session.parentID, child)
-          }
+          if (session.parentID)
+            await SessionChildIndex.upsert(scopeID, session.parentID, toChildIndexEntry(session), tx)
         }
         after = batch.at(-1)!.key
       }
@@ -243,10 +236,6 @@ export namespace Session {
         updatedAt: Date.now(),
         entries: nav,
       })
-      for (const [parentID, child] of children) {
-        sortChildIndexEntries(child.entries)
-        await tx.write(["session_child_index", scopeID, parentID], child)
-      }
     }
     await tx.remove(StoragePath.rolloutRecoveryPending())
   }
@@ -267,21 +256,9 @@ export namespace Session {
     }>
   }
 
-  export type ChildIndexEntry = {
-    id: string
-    title: string
-    updated: number
-    created: number
-    archived: boolean
-  }
+  export type ChildIndexEntry = SessionChildIndex.Entry
 
-  export type ChildIndex = {
-    version: 1
-    scopeID: string
-    parentID: string
-    updatedAt: number
-    entries: ChildIndexEntry[]
-  }
+  export type ChildIndex = SessionChildIndex.Header & { entries: ChildIndexEntry[] }
 
   export const ChildCursor = z
     .object({
@@ -386,54 +363,56 @@ export namespace Session {
     }
   }
 
-  function sortChildIndexEntries(entries: ChildIndexEntry[]) {
-    entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
-  }
-
-  async function readStoredChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
-    const index = await Storage.read<ChildIndex>(
-      StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)),
-    ).catch((error): ChildIndex => {
-      if (error instanceof Storage.NotFoundError) return { version: 1, scopeID, parentID, updatedAt: 0, entries: [] }
-      throw error
-    })
-    return index
-  }
-
   export async function readChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
-    return SessionCompat.mergeChildIndex(scopeID, parentID, await readStoredChildIndex(scopeID, parentID))
+    const header = await SessionChildIndex.ensure(scopeID, parentID)
+    const entries: ChildIndexEntry[] = []
+    for await (const entry of SessionChildIndex.entries(scopeID, parentID)) entries.push(entry)
+    for await (const entry of SessionCompat.pendingChildEntries(scopeID, parentID))
+      if (!(await SessionChildIndex.contains(scopeID, parentID, entry.id))) entries.push(entry)
+    entries.sort((a, b) => b.updated - a.updated || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))
+    return {
+      ...header,
+      total: entries.length,
+      active: entries.reduce((count, entry) => count + Number(!entry.archived), 0),
+      entries,
+    }
   }
 
   export async function writeChildIndex(scopeID: string, parentID: string, index: ChildIndex) {
-    sortChildIndexEntries(index.entries)
-    await Storage.write(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)), {
-      ...index,
-      updatedAt: Date.now(),
-    })
+    return Storage.transaction((tx) => SessionChildIndex.replace(tx, scopeID, parentID, index.entries))
   }
 
   export async function upsertChildIndexEntry(scopeID: string, parentID: string, entry: ChildIndexEntry) {
-    return Storage.transaction(async () => {
-      const index = await readStoredChildIndex(scopeID, parentID)
-      const existing = index.entries.findIndex((e) => e.id === entry.id)
-      if (existing >= 0) index.entries.splice(existing, 1)
-      index.entries.push(entry)
-      await writeChildIndex(scopeID, parentID, index)
-    })
+    return SessionChildIndex.upsert(scopeID, parentID, entry)
   }
 
   export async function removeChildIndexEntry(scopeID: string, parentID: string, sessionID: string) {
-    return Storage.transaction(async () => {
-      const index = await readStoredChildIndex(scopeID, parentID)
-      const nextEntries = index.entries.filter((e) => e.id !== sessionID)
-      if (nextEntries.length === index.entries.length) return
-      index.entries = nextEntries
-      await writeChildIndex(scopeID, parentID, index)
-    })
+    return SessionChildIndex.remove(scopeID, parentID, sessionID)
   }
 
   export async function removeChildIndex(scopeID: string, parentID: string) {
-    await Storage.remove(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
+    await Storage.transaction(async () => {
+      await SessionTransferGate.assertOwnerMutation(parentID)
+      await Storage.removeTree(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
+    })
+  }
+
+  export async function* childEntries(parentID: string, signal?: AbortSignal): AsyncGenerator<ChildIndexEntry> {
+    signal?.throwIfAborted()
+    const parent = await SessionManager.requireSession(parentID)
+    yield* childIndexEntries(parent.scope.id, parentID, signal)
+  }
+
+  export async function* childIndexEntries(
+    scopeID: string,
+    parentID: string,
+    signal?: AbortSignal,
+  ): AsyncGenerator<ChildIndexEntry> {
+    for await (const entry of SessionChildIndex.entries(scopeID, parentID, signal)) yield entry
+    for await (const entry of SessionCompat.pendingChildEntries(scopeID, parentID)) {
+      signal?.throwIfAborted()
+      if (!(await SessionChildIndex.contains(scopeID, parentID, entry.id))) yield entry
+    }
   }
 
   export function toNavEntry(session: Info): SessionNavEntry {
@@ -559,6 +538,19 @@ export namespace Session {
       ]),
     )
     return workMap(LIST_ENRICH_CONCURRENCY, sessions, (session) => withClientInfo(session, runtimeRecords))
+  }
+
+  async function withClientMetadataInfos(sessions: Info[]) {
+    const locators = await Storage.readMany<StorageCompat.Locator>(
+      sessions.map((session) => StorageCompat.locatorKey(session.id)),
+    )
+    const indices = sessions.flatMap((_, index) =>
+      !locators[index] || locators[index].status === "imported" ? [index] : [],
+    )
+    const published = await withClientInfos(indices.map((index) => sessions[index]))
+    const result = sessions.slice()
+    for (const [index, session] of published.entries()) result[indices[index]] = session
+    return result
   }
 
   // Dedup redundant session.updated publishes: a diff limited to time.updated
@@ -1673,40 +1665,19 @@ export namespace Session {
   }): Promise<ChildrenPage> {
     const parent = await SessionManager.requireSession(input.parentID)
     const scope = parent.scope as Scope
-    const index = await readChildIndex(scope.id, input.parentID)
-    let entries = index.entries
-
-    if (!input.includeArchived) entries = entries.filter((entry) => !entry.archived)
-
-    const search = input.search?.trim().toLowerCase()
-    if (search) {
-      entries = entries.filter((entry) => entry.title.toLowerCase().includes(search))
-    }
-
-    const total = entries.length
-    let startIdx = 0
-    if (input.cursor) {
-      const cursor = input.cursor
-      startIdx = entries.findIndex(
-        (entry) =>
-          entry.updated < cursor.lastActivityAt || (entry.updated === cursor.lastActivityAt && entry.id < cursor.id),
-      )
-      if (startIdx === -1) startIdx = entries.length
-    }
-
-    const limit = input.limit ?? total
-    const slice = entries.slice(startIdx, startIdx + limit)
-    const hasMore = startIdx + slice.length < total
-    const last = slice.at(-1)
-    const nextCursor = hasMore && last ? { lastActivityAt: last.updated, id: last.id } : null
+    const page = await SessionChildIndex.page(scope.id, input.parentID, {
+      ...input,
+      extras: SessionCompat.pendingChildEntries(scope.id, input.parentID),
+    })
+    const slice = page.items
 
     const keys = slice.map((entry) => StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(entry.id)))
-    const sessions = await SessionRecords.readMany(keys)
-    const items = await withClientInfos(
+    const sessions = await SessionRecords.readMetadataMany(keys)
+    const items = await withClientMetadataInfos(
       sessions.filter((session): session is Info => session != null && !!session.scope),
     )
 
-    return { items, nextCursor, total }
+    return { items, nextCursor: page.nextCursor, total: page.total }
   }
 
   export const childPage = fn(
@@ -1721,8 +1692,12 @@ export namespace Session {
   )
 
   export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const page = await queryChildren({ parentID, includeArchived: true })
-    return page.items
+    const parent = await SessionManager.requireSession(parentID)
+    const keys: string[][] = []
+    for await (const entry of childEntries(parentID))
+      keys.push(StoragePath.sessionInfo(asScopeID(parent.scope.id), asSessionID(entry.id)))
+    const sessions = await SessionRecords.readMetadataMany(keys)
+    return withClientMetadataInfos(sessions.filter((session): session is Info => session != null && !!session.scope))
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {

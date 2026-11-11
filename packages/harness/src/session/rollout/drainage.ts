@@ -52,9 +52,8 @@ export async function readReleaseEvidence(
     for (let index = 0; index < pendingSessions.length; index++) {
       signal?.throwIfAborted()
       const parent = pendingSessions[index]
-      const entries = (await Session.readChildIndex(parent.scope.id, parent.id)).entries
       const values: Session.Info[] = []
-      for (const entry of entries) {
+      for await (const entry of Session.childIndexEntries(parent.scope.id, parent.id, signal)) {
         const child = await Session.get(entry.id).catch((error) => {
           if (error instanceof Storage.NotFoundError) return
           throw error
