@@ -7,26 +7,26 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { readMemberHome, type MemberIdentity } from "./home"
+import { readRuntimeHome, type RuntimeIdentity, type MemberIdentity, type HostedIdentity } from "./home"
 import { readCredentials } from "./credentials"
 import { MemberHomeError, writeRecord } from "./record"
 import { OrganizationRuntimeError } from "./error"
-import { checkMemberRegistration, readMemberRegistration, registrationFilename } from "./registration"
+import { checkRuntimeRegistration, readRuntimeRegistration, registrationFilename } from "./registration"
 
-export async function enrollMemberRuntime(input: {
+export async function enrollRuntime(input: {
   home: string
-  identity: MemberIdentity
+  identity: RuntimeIdentity
   ticket: z.infer<typeof Protocol.Ticket>
   ca?: string | string[]
   signal?: AbortSignal
 }) {
-  const member = await readMemberHome(input.home, input.identity)
+  const member = await readRuntimeHome(input.home, input.identity)
   const ticket = Protocol.Ticket.parse(input.ticket)
-  checkMemberRegistration(member, ticket.runtime)
+  checkRuntimeRegistration(member, ticket.runtime)
   return withFileLock(
     { directory: path.join(member.root, "state", ".locks"), key: "organization-enrollment", signal: input.signal },
     async () => {
-      const existing = await readMemberRegistration(member.home, member.identity)
+      const existing = await readRuntimeRegistration(member.home, member.identity)
       if (
         existing &&
         (existing.runtimeID !== ticket.runtime.runtimeID ||
@@ -82,7 +82,7 @@ export async function enrollMemberRuntime(input: {
           )
         }
         const registration = Protocol.Registration.parse(response.data)
-        checkMemberRegistration(member, registration)
+        checkRuntimeRegistration(member, registration)
         if (
           registration.runtimeID !== ticket.runtime.runtimeID ||
           registration.deploymentIncarnation !== ticket.runtime.deploymentIncarnation ||
@@ -100,4 +100,12 @@ export async function enrollMemberRuntime(input: {
       }
     },
   )
+}
+
+export async function enrollMemberRuntime(input: Omit<Parameters<typeof enrollRuntime>[0], "identity"> & { identity: MemberIdentity }) {
+  return Protocol.MemberRegistrationRecord.parse(await enrollRuntime(input))
+}
+
+export async function enrollHostedRuntime(input: Omit<Parameters<typeof enrollRuntime>[0], "identity"> & { identity: HostedIdentity }) {
+  return Protocol.HostedRegistrationRecord.parse(await enrollRuntime(input))
 }

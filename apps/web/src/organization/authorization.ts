@@ -1,4 +1,4 @@
-import { OrganizationClientAuth as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationClientAuth as Protocol, OrganizationIdentity } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient, type OrgClientTokens } from "@ericsanchezok/synergy-sdk/organization"
 import { generateSecureRandomBytes, type UUIDCrypto } from "@ericsanchezok/synergy-util/uuid"
 
@@ -21,6 +21,7 @@ export class OrganizationAuthorizationError extends Error {
 export type AuthorizationPage =
   | { kind: "authorize"; request: Protocol.Authorize }
   | { kind: "callback"; code: ReturnType<typeof Protocol.Code.parse> }
+  | { kind: "invite" | "reset" | "setup"; token: string }
 
 export function consumeAuthorizationLocation(
   location: Pick<Location, "href">,
@@ -36,6 +37,12 @@ export function consumeAuthorizationLocation(
     if (query || fragment.length > 8192) throw new Error()
     const params = new URLSearchParams(fragment.slice(1))
     if ([...params].length !== 1) throw new Error()
+    for (const kind of ["invite", "reset", "setup"] as const) {
+      if (params.has(kind)) {
+        if (url.protocol !== "https:" || url.pathname !== "/organization.html") throw new Error()
+        return { kind, token: OrganizationIdentity.Token.parse(params.get(kind)) }
+      }
+    }
     if (params.has("authorize")) {
       const request = Protocol.Authorize.parse(JSON.parse(params.get("authorize")!))
       if (url.href !== `${request.issuer}/organization.html`) throw new Error()

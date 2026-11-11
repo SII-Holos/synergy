@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import path from "node:path"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
@@ -65,7 +66,7 @@ test("registration refuses foreign identity and untrusted TLS before publishing 
     enrollMemberRuntime({
       ...options,
       ca: f.ca,
-      ticket: { ...ticket, runtime: { ...ticket.runtime, accountID: "other" } },
+      ticket: { ...ticket, runtime: { ...Protocol.MemberRegistrationRecord.parse(ticket.runtime), accountID: "other" } },
     }),
   ).rejects.toThrow("identity")
   expect(f.requests).toHaveLength(0)

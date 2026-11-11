@@ -16,7 +16,7 @@ test("member Runtime tickets bind the authenticated account and machine key, and
   ])
   expect(first.runtime.runtimeID).toBe(second.runtime.runtimeID)
   const account = Identity.CurrentSession.parse(await (await owner.request("GET", "/auth/session")).json()).account
-  expect(first.runtime.accountID).toBe(account.accountID)
+  expect(Runtime.MemberRegistrationRecord.parse(first.runtime).accountID).toBe(account.accountID)
   expect(first.runtime.state).toBe("pending")
   const other = await keys()
   expect(

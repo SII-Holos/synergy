@@ -44,9 +44,13 @@ export namespace OrganizationResourceProtocol {
     protocol: z.literal("fixed-http"),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   })
-  export const Definition = z.discriminatedUnion("protocol", [ModelDefinition, MCPDefinition, HTTPDefinition])
+  const WorkspaceDefinition = z.strictObject({ protocol: z.literal("workspace-storage") })
+  const EnvironmentDefinition = z.strictObject({ protocol: z.literal("environment") })
+  export const Definition = z.discriminatedUnion("protocol", [ModelDefinition, MCPDefinition, HTTPDefinition, WorkspaceDefinition, EnvironmentDefinition])
   export type Definition = z.infer<typeof Definition>
   export function kind(definition: Definition) {
+    if (definition.protocol === "workspace-storage") return "workspace" as const
+    if (definition.protocol === "environment") return "environment" as const
     return definition.protocol === "openai-compatible" || definition.protocol === "anthropic-compatible"
       ? ("model" as const)
       : ("connection" as const)
@@ -68,8 +72,19 @@ export namespace OrganizationResourceProtocol {
     ModelDefinition.extend({ endpoint: Endpoint }),
     MCPDefinition.extend({ endpoint: Endpoint }),
     HTTPDefinition.extend({ endpoint: Endpoint }),
+    WorkspaceDefinition.extend({ profile: Identity.Name }),
+    EnvironmentDefinition.extend({ profile: Identity.Name }),
   ])
   export type Configuration = z.infer<typeof Configuration>
+  export function definition(configuration: Configuration): Definition {
+    return Definition.parse(configuration.protocol === "workspace-storage" || configuration.protocol === "environment"
+      ? { protocol: configuration.protocol }
+      : "model" in configuration
+        ? { protocol: configuration.protocol, model: configuration.model }
+        : configuration.protocol === "fixed-http"
+          ? { protocol: configuration.protocol, method: configuration.method }
+          : { protocol: configuration.protocol })
+  }
   const Header = z
     .string()
     .regex(/^[A-Za-z][A-Za-z0-9-]{0,63}$/)
@@ -116,7 +131,7 @@ export namespace OrganizationResourceProtocol {
     resourceID: Identity.ID,
     orgID: Identity.ID,
     scope: Scope,
-    kind: z.enum(["model", "connection"]),
+    kind: z.enum(["model", "connection", "workspace", "environment"]),
     name: Identity.Name,
     state: z.enum(["enabled", "disabled"]),
     revision: Identity.Revision,

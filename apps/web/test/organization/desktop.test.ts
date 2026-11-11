@@ -30,6 +30,7 @@ function fixture() {
     signOut: async () => ({ ok: true, value: { ...connection, state: "signed_out" } }),
     memberStatus: async () => ({ ok: true, value: { connectionID: connection.id, state: "stopped" } }),
     startMember: async () => ({ ok: false, error: { code: "unavailable" } }),
+    download: async () => ({ ok: false, error: { code: "unavailable" } }),
     cancel: async (input) => {
       cancelled.push(input.requestID)
       return { ok: true, value: undefined }
@@ -106,4 +107,33 @@ test("native API errors preserve their status and payload while bridge errors re
   await expect(
     desktopOrganizationFetch(f.bridge, connection)(`${connection.issuer}/org/v1/projects`),
   ).rejects.toMatchObject({ code: "revocation_pending" })
+})
+
+test("native content transfers preserve binary bytes, bounded ranges and cancellation", async () => {
+  const f = fixture()
+  const bytes = new Uint8Array([0, 255, 128, 10])
+  f.bridge.request = async (request) => {
+    f.requests.push(request)
+    return {
+      ok: true,
+      value: { status: 206, bodyBytes: bytes, contentType: "application/octet-stream", contentRange: "bytes 0-3/8" },
+    }
+  }
+  const native = desktopOrganizationFetch(f.bridge, connection)
+  const response = await native(`${connection.issuer}/org/v1/sessions/session/blobs/${"b".repeat(64)}/content`, {
+    headers: { Range: "bytes=0-3" },
+  })
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
+  expect(response.headers.get("content-range")).toBe("bytes 0-3/8")
+  expect(f.requests[0]?.range).toBe("bytes=0-3")
+  await native(`${connection.issuer}/org/v1/sessions/session/blobs/${"b".repeat(64)}?offset=0&totalBytes=4`, {
+    method: "PUT",
+    body: bytes,
+    headers: { "Content-Type": "application/octet-stream" },
+  })
+  expect(f.requests[1]?.bodyBytes).toEqual(bytes)
+  expect(f.requests[1]?.body).toBeUndefined()
+  await expect(
+    native(`${connection.issuer}/org/v1/projects`, { headers: { Range: "bytes=0-4194304" } }),
+  ).rejects.toMatchObject({ code: "invalid_request" })
 })

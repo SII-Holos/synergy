@@ -17,26 +17,36 @@ export const MemberIdentity = z.strictObject({
   deviceID: OrganizationIdentity.ID,
 })
 export type MemberIdentity = z.infer<typeof MemberIdentity>
+export const HostedIdentity = z.strictObject({ orgID: OrganizationIdentity.ID, hostID: OrganizationIdentity.ID })
+export type HostedIdentity = z.infer<typeof HostedIdentity>
+export const RuntimeIdentity = z.union([MemberIdentity, HostedIdentity])
+export type RuntimeIdentity = z.infer<typeof RuntimeIdentity>
 
-const binding = { schemaVersion: z.literal(1), identity: MemberIdentity, origin: z.string() }
+const binding = { schemaVersion: z.literal(1), identity: RuntimeIdentity, origin: z.string() }
 const Binding = z.discriminatedUnion("state", [
   z.strictObject({ ...binding, state: z.literal("provisioning") }),
   z.strictObject({ ...binding, state: z.literal("ready"), publicKey: Protocol.PublicKey }),
 ])
 type Binding = z.infer<typeof Binding>
 
-export interface MemberHome {
+export interface RuntimeHome {
   home: string
   root: string
-  identity: MemberIdentity
+  identity: RuntimeIdentity
   origin: string
   publicKey: string
 }
+export interface MemberHome extends RuntimeHome { identity: MemberIdentity }
+export interface HostedHome extends RuntimeHome { identity: HostedIdentity }
 
 export function memberIdentityDigest(identity: MemberIdentity) {
-  const value = MemberIdentity.parse(identity)
+  return runtimeIdentityDigest(MemberIdentity.parse(identity))
+}
+
+export function runtimeIdentityDigest(identity: RuntimeIdentity) {
+  const value = RuntimeIdentity.parse(identity)
   return createHash("sha256")
-    .update(JSON.stringify([value.orgID, value.accountID, value.deviceID]))
+    .update(JSON.stringify("accountID" in value ? [value.orgID, value.accountID, value.deviceID] : ["hosted", value.orgID, value.hostID]))
     .digest("hex")
 }
 
@@ -68,14 +78,14 @@ async function entries(directory: string) {
 
 async function withOwner<T>(
   home: string,
-  identity: MemberIdentity,
+  identity: RuntimeIdentity,
   body: (root: string, owner: ReturnType<typeof HomeOwnershipFile.open>) => Promise<T>,
 ) {
   const root = path.join(home, ".synergy")
   const owner = HomeOwnershipFile.open({
     root,
     env: { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME },
-    selected: { schemaVersion: 1, owner: "organization-runtime", identity: memberIdentityDigest(identity) },
+    selected: { schemaVersion: 1, owner: "organization-runtime", identity: runtimeIdentityDigest(identity) },
   })
   for (const directory of [home, root]) {
     const stat = await fs.lstat(directory).catch((error: NodeJS.ErrnoException) => {
@@ -87,13 +97,13 @@ async function withOwner<T>(
   return body(root, owner)
 }
 
-function checkIdentity(current: Binding, identity: MemberIdentity) {
-  if (memberIdentityDigest(current.identity) !== memberIdentityDigest(identity))
+function checkIdentity(current: Binding, identity: RuntimeIdentity) {
+  if (runtimeIdentityDigest(current.identity) !== runtimeIdentityDigest(identity))
     throw new MemberHomeError("Member Runtime identity does not match this Home")
   origin(current.origin)
 }
 
-async function ready(home: string, root: string, current: Binding): Promise<MemberHome> {
+async function ready(home: string, root: string, current: Binding): Promise<RuntimeHome> {
   if (current.state !== "ready") throw new MemberHomeError("Member Runtime provisioning is incomplete")
   const credentials = await readCredentials(root)
   if (!credentials || credentials.publicKey !== current.publicKey)
@@ -101,9 +111,9 @@ async function ready(home: string, root: string, current: Binding): Promise<Memb
   return { home, root, identity: current.identity, origin: current.origin, publicKey: current.publicKey }
 }
 
-export async function readMemberHome(input: string, expected: MemberIdentity) {
+export async function readRuntimeHome(input: string, expected: RuntimeIdentity) {
   const home = absolute(input)
-  const identity = MemberIdentity.parse(expected)
+  const identity = RuntimeIdentity.parse(expected)
   return withOwner(home, identity, async (root, owner) => {
     await owner.assert({ required: true })
     const current = await readRecord(filename(root), Binding, "identity records")
@@ -113,11 +123,11 @@ export async function readMemberHome(input: string, expected: MemberIdentity) {
   })
 }
 
-export async function prepareMemberHome(input: { baseDirectory: string; identity: MemberIdentity; origin: string }) {
+async function prepareRuntimeHome(input: { baseDirectory: string; identity: RuntimeIdentity; origin: string }) {
   const baseDirectory = absolute(input.baseDirectory)
-  const identity = MemberIdentity.parse(input.identity)
+  const identity = RuntimeIdentity.parse(input.identity)
   const address = origin(input.origin)
-  const digest = memberIdentityDigest(identity)
+  const digest = runtimeIdentityDigest(identity)
   const home = path.join(baseDirectory, digest)
   return withOwner(home, identity, (root, ownership) =>
     withFileLock({ directory: path.join(baseDirectory, ".locks"), key: digest }, async () => {
@@ -142,4 +152,19 @@ export async function prepareMemberHome(input: { baseDirectory: string; identity
       return ready(home, root, complete)
     }),
   )
+}
+
+export async function readMemberHome(input: string, expected: MemberIdentity): Promise<MemberHome> {
+  const home = await readRuntimeHome(input, MemberIdentity.parse(expected))
+  return { ...home, identity: MemberIdentity.parse(home.identity) }
+}
+
+export async function prepareMemberHome(input: { baseDirectory: string; identity: MemberIdentity; origin: string }): Promise<MemberHome> {
+  const home = await prepareRuntimeHome({ ...input, identity: MemberIdentity.parse(input.identity) })
+  return { ...home, identity: MemberIdentity.parse(home.identity) }
+}
+
+export async function prepareHostedHome(input: { baseDirectory: string; identity: HostedIdentity; origin: string }): Promise<HostedHome> {
+  const home = await prepareRuntimeHome({ ...input, identity: HostedIdentity.parse(input.identity) })
+  return { ...home, identity: HostedIdentity.parse(home.identity) }
 }

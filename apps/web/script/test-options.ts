@@ -9,6 +9,7 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 const playwrightIsolated = [
   "test/organization/authorization.browser.test.ts",
   "test/organization/space.browser.test.ts",
+  "test/organization/workspace.browser.test.ts",
   "test/components/settings/panels/runtime-resources.browser.test.ts",
   "test/components/provider/provider-connection-test.dom.test.ts",
   "test/components/digital-twin/composer.dom.test.ts",

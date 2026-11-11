@@ -31,6 +31,10 @@ export namespace OrganizationResources {
     configuration: Resource.Configuration,
     credential: z.infer<typeof Resource.CredentialInfo>,
   ) {
+    if (configuration.protocol === "workspace-storage" || configuration.protocol === "environment") {
+      if (credential.kind !== "none") fail("INVALID_REQUEST", "Infrastructure credentials belong to the cloud resource owner")
+      return
+    }
     if (credential.kind === "none") return
     if (configuration.protocol === "openai-compatible" && credential.kind !== "bearer")
       fail("INVALID_REQUEST", "OpenAI-compatible resources require a bearer credential")

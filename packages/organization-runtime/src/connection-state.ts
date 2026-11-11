@@ -6,7 +6,7 @@ import {
   OrganizationRuntimeProtocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import type { MemberHome } from "./home"
+import type { RuntimeHome } from "./home"
 import { MemberHomeError, readRecord, writeRecord } from "./record"
 import { OrganizationRuntimeError } from "./error"
 
@@ -18,7 +18,7 @@ const Checkpoint = z.strictObject({
   connectionEpoch: OrganizationProtocol.Revision,
 })
 
-export function connectionState(member: MemberHome, registration: OrganizationRuntimeProtocol.Registration) {
+export function connectionState(member: RuntimeHome, registration: OrganizationRuntimeProtocol.Registration) {
   const filename = path.join(member.root, "organization-connection.json")
   async function read() {
     const current = await readRecord(filename, Checkpoint, "connection records")

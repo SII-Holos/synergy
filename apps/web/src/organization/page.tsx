@@ -7,24 +7,33 @@ import { type AuthorizationPage } from "./authorization"
 import { createOrganizationApproval, OrganizationApprovalError } from "./approval"
 import { organizationAuthMessages as messages } from "./messages"
 import "./page.css"
+import { OrganizationOnboarding, onboardingMessages } from "./onboarding"
 
 export function OrganizationAuthorizationPage(props: { page?: AuthorizationPage }) {
   const { _ } = useLingui()
+  const title = () => (props.page && "token" in props.page ? _(onboardingMessages[props.page.kind]) : _(messages.title))
   onMount(() => {
-    document.title = _(messages.title)
+    document.title = title()
   })
   return (
     <main class="organization-auth">
       <section class="organization-auth-content" aria-labelledby="organization-auth-title">
         <p class="organization-auth-brand">{_({ id: "app.name.synergy", message: "Synergy" })}</p>
-        <h1 id="organization-auth-title">{_(messages.title)}</h1>
+        <h1 id="organization-auth-title">{title()}</h1>
         <Show when={props.page} fallback={<p role="alert">{_(messages.invalid)}</p>}>
           {(page) => (
             <Show
-              when={page().kind === "authorize"}
-              fallback={<Callback page={page() as Extract<AuthorizationPage, { kind: "callback" }>} />}
+              when={"token" in page()}
+              fallback={
+                <Show
+                  when={page().kind === "authorize"}
+                  fallback={<Callback page={page() as Extract<AuthorizationPage, { kind: "callback" }>} />}
+                >
+                  <Approval page={page() as Extract<AuthorizationPage, { kind: "authorize" }>} />
+                </Show>
+              }
             >
-              <Approval page={page() as Extract<AuthorizationPage, { kind: "authorize" }>} />
+              {(_token) => <OrganizationOnboarding page={page() as Extract<AuthorizationPage, { token: string }>} />}
             </Show>
           )}
         </Show>

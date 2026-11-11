@@ -22,6 +22,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `environment` | manage compute on an attached server; print JSON results |
 | `export` | export a session transcript or self-contained rollout ZIP |
 | `generate` | generate the OpenAPI contract |
+| `hosted-runtime` | serve a prepared organization-hosted Runtime from a private supervisor request |
 | `import` | import a session transcript or rollout ZIP |
 | `install` | install components, presets, plugins or applications |
 | `library` | manage library memory and learning |
@@ -477,11 +478,6 @@ LSP debugging utilities
 ## mcp
 
 manage MCP (Model Context Protocol) servers
-
-
-## member-runtime
-
-serve a prepared member Runtime from a private supervisor request
 
 
 ## memory

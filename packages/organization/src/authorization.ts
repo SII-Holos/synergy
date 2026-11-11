@@ -118,7 +118,7 @@ export async function authorize(
     if (!allowed) fail("PERMISSION_DENIED", "This action is not allowed")
     return { ...current, target: subject }
   }
-  if (["accounts.list", "invites.create", "sessions.capacity", "resources.manage"].includes(action))
+  if (["accounts.list", "invites.create", "sessions.capacity", "resources.manage", "runtimes.hosted.register"].includes(action))
     requireAdministrator(account)
   else if (
     !["organization.read", "project.create", "project.list", "runtimes.register", "runtimes.list"].includes(action)
@@ -163,10 +163,11 @@ export function runtimeView(account: Identity.Account, runtime: Record.RuntimeRe
   if (
     account.state !== "active" ||
     runtime.orgID !== account.orgID ||
-    (runtime.accountID !== account.accountID && account.role === "member")
+    (runtime.runtimeKind === "member" && runtime.accountID !== account.accountID && account.role === "member")
   )
     fail("NOT_FOUND", "Runtime not found")
   if (!["runtime.read", "runtime.revoke"].includes(action)) fail("PERMISSION_DENIED", "This action is not allowed")
+  if (action === "runtime.revoke" && runtime.runtimeKind === "hosted") requireAdministrator(account)
   const { schemaVersion: _, ...result } = runtime
   return Runtime.Registration.parse(result)
 }
@@ -200,7 +201,7 @@ export function resourceView(
       fail("PERMISSION_DENIED", "Invalid resource grant")
   }
   if (!personal?.enabled && !shared?.enabled) fail("NOT_FOUND", "Resource not found")
-  const { endpoint: _, ...definition } = resource.configuration
+  const definition = Resource.definition(resource.configuration)
   return Resource.View.parse({
     ...Resource.Metadata.strip().parse(resource),
     definition,

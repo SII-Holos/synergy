@@ -2,8 +2,10 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationExecutionProtocol as Execution,
+  OrganizationResourceProtocol as Resource,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationSessionResources as Resources } from "./session-resources"
+import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
@@ -99,36 +101,11 @@ export function createExecutionGrants(options: {
       fail("PERMISSION_DENIED", "Execution binding proof is outside its validity window")
   }
   async function machine(proof: ReceiptProof) {
-    const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(proof.runtimeID))
-    if (
-      !runtime ||
-      runtime.runtimeID !== proof.runtimeID ||
-      runtime.orgID !== proof.orgID ||
-      runtime.deploymentIncarnation !== proof.deploymentIncarnation ||
-      runtime.state !== "active" ||
-      runtime.connectionEpoch !== proof.connectionEpoch
-    )
-      fail("PERMISSION_DENIED", "Execution binding Runtime is not authorized")
-    const account = await Record.read(Record.Account, Keys.account(runtime.accountID))
-    if (
-      !account ||
-      account.accountID !== runtime.accountID ||
-      account.orgID !== runtime.orgID ||
-      account.state !== "active"
-    )
-      fail("PERMISSION_DENIED", "Execution binding Runtime account is not active")
-    return { runtime, account }
+    return runtimeAuthority(proof)
   }
-  function capture(proof: ReceiptProof, accountID: string) {
+  function capture(proof: ReceiptProof, runtime: Record.RuntimeRegistration) {
     const connection = options.connections.capture(proof.runtimeID)
-    if (
-      connection.handshake.orgID !== proof.orgID ||
-      connection.handshake.deploymentIncarnation !== proof.deploymentIncarnation ||
-      connection.handshake.connectionEpoch !== proof.connectionEpoch ||
-      connection.handshake.runtimeKind !== "member" ||
-      connection.handshake.accountID !== accountID
-    )
-      fail("STALE_CONNECTION", "Execution binding connection changed")
+    assertRuntimeConnection(runtime, connection.handshake)
     return connection
   }
   async function resolve(proof: ReceiptProof, publicKey: string) {
@@ -164,18 +141,18 @@ export function createExecutionGrants(options: {
       fail("PERMISSION_DENIED", "Execution grant does not match the accepted admission")
     return { session, grant, account }
   }
-  async function enabled(session: Record.SessionDirectory, grant: Execution.Grant, account: Record.Account) {
+  async function enabled(session: Record.SessionDirectory, grant: Execution.Grant, account: Record.Account | undefined) {
     if (session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks execution binding")
     if (grant.state === "closed") fail("PERMISSION_DENIED", "Execution grant is closed")
     if ((grant.state === "provisional" || grant.retention.state === "held") && session.retainedExecutionGrants === 0)
       fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
     const [project, membership] = await Promise.all([
       Record.read(Record.Project, Keys.project(session.projectID)),
-      Record.read(Record.ProjectMember, Keys.projectMember(session.projectID, account.accountID)),
+      account ? Record.read(Record.ProjectMember, Keys.projectMember(session.projectID, account.accountID)) : undefined,
     ])
     if (!project) fail("NOT_FOUND", "Project not found")
-    const view = projectView(account, project, membership, "project.read")
-    if (!projectExecutionRole(view.role)) fail("PERMISSION_DENIED", "Runtime account cannot execute project work")
+    if (account && !projectExecutionRole(projectView(account, project, membership, "project.read").role))
+      fail("PERMISSION_DENIED", "Runtime account cannot execute project work")
     const contract = await Resources.read(session)
     if (
       !contract ||
@@ -193,7 +170,7 @@ export function createExecutionGrants(options: {
       const registered = await Storage.snapshot(() => machine(proof))
       if (!(await Execution.verifyDescription(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution retention proof signature is invalid")
-      const connection = capture(proof, registered.account.accountID)
+      const connection = capture(proof, registered.runtime)
       await options.admissions.observe(connection, proof.receipt)
       return Storage.snapshot(async () => {
         const { grant } = await resolve(proof, registered.runtime.publicKey)
@@ -209,7 +186,7 @@ export function createExecutionGrants(options: {
       const registered = await Storage.snapshot(() => machine(proof))
       if (!(await Execution.verifyDescription(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution resource proof signature is invalid")
-      const connection = capture(proof, registered.account.accountID)
+      const connection = capture(proof, registered.runtime)
       await options.admissions.observe(connection, proof.receipt)
       return Storage.snapshot(async () => {
         const { session, grant, account } = await resolve(proof, registered.runtime.publicKey)
@@ -219,7 +196,7 @@ export function createExecutionGrants(options: {
         return Execution.Description.parse({
           grant,
           resources: resources.map((resource) => {
-            const { endpoint: _, ...definition } = resource.configuration
+            const definition = Resource.definition(resource.configuration)
             return { resourceID: resource.resourceID, revision: resource.revision, name: resource.name, definition }
           }),
         })
@@ -232,7 +209,7 @@ export function createExecutionGrants(options: {
       const registered = await Storage.snapshot(() => machine(proof))
       if (!(await Execution.verifyBinding(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution binding signature is invalid")
-      const connection = capture(proof, registered.account.accountID)
+      const connection = capture(proof, registered.runtime)
       await options.admissions.observe(connection, proof.receipt)
       return Storage.transaction(
         async () => {
@@ -289,7 +266,7 @@ export function createExecutionGrants(options: {
       const registered = await Storage.snapshot(() => machine(proof))
       if (!(await Execution.verifyRelease(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution release signature is invalid")
-      const connection = capture(proof, registered.account.accountID)
+      const connection = capture(proof, registered.runtime)
       await options.admissions.observe(connection, proof.receipt)
       let releasingGrantID: string | undefined
       return Storage.transaction(

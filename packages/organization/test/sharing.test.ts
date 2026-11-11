@@ -474,9 +474,8 @@ test("shared blobs require the active generation and verify chunked bytes before
     }),
   )
   expect(complete).toMatchObject({ complete: true, bytes: content.byteLength, receivedBytes: content.byteLength })
-  expect(
-    await f.run(() => Sharing.downloadBlob(f.credentials.bob, "session-blob", { shareGeneration: 1, hash })),
-  ).toEqual(Buffer.from(content))
+  const downloaded = await f.run(() => Sharing.downloadBlob(f.credentials.bob, "session-blob", { shareGeneration: 1, hash }))
+  expect(Buffer.from(await downloaded.arrayBuffer())).toEqual(Buffer.from(content))
   await f.run(() => Sharing.unshare(f.credentials.alice, "session-blob", { expectedShareGeneration: 1 }))
   await expect(
     f.run(() => Sharing.getBlobStatus(f.credentials.bob, "session-blob", { shareGeneration: 1, hash })),
@@ -525,4 +524,16 @@ test("shared blob routes accept authenticated chunks and return bytes only after
   expect(content.status).toBe(200)
   expect(content.headers.get("content-type")).toContain("application/octet-stream")
   expect(new Uint8Array(await content.arrayBuffer())).toEqual(bytes)
+  const ranged = await fetch(
+    new URL(`/org/v1/sessions/session-blob-http/blobs/${hash}/content?shareGeneration=1`, f.baseUrl),
+    { headers: { ...f.headers("bob"), range: "bytes=1-2" } },
+  )
+  expect(ranged.status).toBe(206)
+  expect(ranged.headers.get("content-range")).toBe("bytes 1-2/4")
+  expect(await ranged.text()).toBe("lo")
+  const invalid = await fetch(
+    new URL(`/org/v1/sessions/session-blob-http/blobs/${hash}/content?shareGeneration=1`, f.baseUrl),
+    { headers: { ...f.headers("bob"), range: "bytes=4-6" } },
+  )
+  expect(invalid.status).toBe(416)
 })

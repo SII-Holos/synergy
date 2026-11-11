@@ -23,6 +23,7 @@ import { createMemberConnectionTool } from "../../src/connection-tool"
 import { createMemberMcpTool } from "../../src/mcp-tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { fixture } from "./organization"
+import { registerOrganizationKnowledge } from "../../src/knowledge-source"
 
 export async function executionFixture(
   input: {
@@ -31,6 +32,7 @@ export async function executionFixture(
     connectionEndpoint?: string
     connectionProtocol?: "fixed-http" | "mcp-http" | "mcp-sse"
     execution?: boolean
+    knowledge?: boolean
   } = {},
 ) {
   const resources = testResources()
@@ -52,6 +54,7 @@ export async function executionFixture(
       home: path.join(f.root, "agent"),
       register() {
         registerSessionSchema({ orgID: f.identity.orgID })
+        if (input.knowledge) registerOrganizationKnowledge(member.identity)
         if (input.execution) {
           registerMemberExecution(member.identity)
           ToolRegistry.registerToolProvider("organization-runtime", () => [

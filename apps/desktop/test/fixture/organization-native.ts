@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createServer } from "node:http"
+import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationClientAuth as Auth } from "@ericsanchezok/synergy-organization-protocol"
@@ -11,6 +12,7 @@ import { DesktopOrganizationAuthorization } from "../../src/organization/authori
 import { DesktopOrganizationIPC, registerOrganizationIPC } from "../../src/organization/ipc"
 import { organizationEncryption } from "../../src/organization/encryption"
 import { trustedServerFrame } from "../../src/server-ipc"
+import { saveOrganizationDownload } from "../../src/organization/download"
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 app.setName(path.basename(path.dirname(root)))
@@ -20,7 +22,38 @@ app.once("ready", () => app.setActivationPolicy?.("accessory"))
 let window: BrowserWindow | undefined
 let child: BrowserWindow | undefined
 let ipc: DesktopOrganizationIPC<Parameters<typeof trustedServerFrame>[0]> | undefined
-const server = createServer((_request, response) => {
+const binaryBytes = new Uint8Array([0, 255, 128, 10])
+const binaryPath = `/org/v1/sessions/native-session/blobs/${"b".repeat(64)}`
+const binaryEntered = Promise.withResolvers<void>()
+const binaryClosed = Promise.withResolvers<void>()
+let uploadedBytes: Uint8Array | undefined
+const server = createServer(async (request, response) => {
+  if (request.url?.startsWith(binaryPath)) {
+    assert.match(request.headers.authorization ?? "", /^Bearer [a-f0-9]{64}$/)
+    if (request.method === "PUT") {
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(Buffer.from(chunk))
+      uploadedBytes = new Uint8Array(Buffer.concat(chunks))
+      response.writeHead(200, { "content-type": "application/json" })
+      response.end('{"offset":4}')
+      return
+    }
+    if (!request.headers.range) {
+      response.writeHead(200, { "content-type": "application/octet-stream", "content-length": binaryBytes.byteLength })
+      response.end(binaryBytes)
+      return
+    }
+    assert.equal(request.headers.range, "bytes=0-3")
+    response.writeHead(206, { "content-type": "application/octet-stream", "content-range": "bytes 0-3/8" })
+    if (request.url.includes("hold=1")) {
+      response.write(binaryBytes.subarray(0, 1))
+      response.once("close", () => binaryClosed.resolve())
+      binaryEntered.resolve()
+      return
+    }
+    response.end(binaryBytes)
+    return
+  }
   response.writeHead(200, { "content-type": "text/html" })
   response.end("<!doctype html><html><body>Organization native test</body></html>")
 })
@@ -52,14 +85,17 @@ async function run() {
       assert.equal(request.redirect, "error")
       const target = new URL(request.url)
       assert.equal(target.origin, info.issuer)
-      const response = await fetch(new URL(target.pathname + target.search, info.url), {
-        method: request.method,
-        headers: request.headers,
-        signal: request.signal,
-        redirect: "error",
-        credentials: "omit",
-        body: request.body ? await request.arrayBuffer() : undefined,
-      })
+      const response = await fetch(
+        new URL(target.pathname + target.search, target.pathname.startsWith(binaryPath) ? appURL : info.url),
+        {
+          method: request.method,
+          headers: request.headers,
+          signal: request.signal,
+          redirect: "error",
+          credentials: "omit",
+          body: request.body ? await request.arrayBuffer() : undefined,
+        },
+      )
       if (hold && target.pathname === "/org/v1/projects") {
         heldSignal = request.signal
         entered.resolve()
@@ -107,6 +143,13 @@ async function run() {
       authorization,
       fetch: transport,
       trusted: (event) => trustedServerFrame(event, window?.webContents, appURL, null),
+      saveFile: (fileName, write, signal) =>
+        saveOrganizationDownload({
+          fileName,
+          write,
+          signal,
+          choose: async () => path.join(root, "native-download.bin"),
+        }),
     })
     registerOrganizationIPC(ipcMain, ipc)
     window.webContents.on("did-start-navigation", (event) => {
@@ -133,6 +176,29 @@ async function run() {
     )
     assert.equal(visible.ok, true)
     assert.equal(visible.value.status, 200)
+    const binary = await window.webContents.executeJavaScript(
+      `window.synergyDesktop.organization.request(${JSON.stringify({ requestID: "binary", connectionID: connection.id, method: "GET", path: binaryPath + "/content", range: "bytes=0-3" })})`,
+    )
+    assert.equal(binary.ok, true)
+    assert.deepEqual(new Uint8Array(binary.value.bodyBytes), binaryBytes)
+    assert.equal(binary.value.contentRange, "bytes 0-3/8")
+    const uploaded = await window.webContents.executeJavaScript(
+      `window.synergyDesktop.organization.request({ requestID: "binary-upload", connectionID: ${JSON.stringify(connection.id)}, method: "PUT", path: ${JSON.stringify(binaryPath + "?offset=0&totalBytes=4")}, bodyBytes: new Uint8Array([0,255,128,10]), contentType: "application/octet-stream" })`,
+    )
+    assert.equal(uploaded.ok, true)
+    assert.deepEqual(uploadedBytes, binaryBytes)
+    const downloaded = await window.webContents.executeJavaScript(
+      `window.synergyDesktop.organization.download(${JSON.stringify({ requestID: "native-download", connectionID: connection.id, path: binaryPath + "/content", fileName: "native-download.bin", bytes: 4, sha256: createHash("sha256").update(binaryBytes).digest("hex") })})`,
+    )
+    assert.deepEqual(downloaded, { ok: true, value: { saved: true, bytes: 4 } })
+    assert.deepEqual(new Uint8Array(await fs.readFile(path.join(root, "native-download.bin"))), binaryBytes)
+    const heldBinary = window.webContents.executeJavaScript(
+      `window.synergyDesktop.organization.request(${JSON.stringify({ requestID: "binary-held", connectionID: connection.id, method: "GET", path: binaryPath + "/content?hold=1", range: "bytes=0-3" })})`,
+    )
+    await binaryEntered.promise
+    await window.webContents.executeJavaScript('window.synergyDesktop.organization.cancel({requestID:"binary-held"})')
+    assert.deepEqual(await heldBinary, { ok: false, error: { code: "cancelled" } })
+    await binaryClosed.promise
     const memberStatus = await window.webContents.executeJavaScript(
       `window.synergyDesktop.organization.memberStatus(${JSON.stringify({ connectionID: connection.id })})`,
     )
@@ -179,6 +245,7 @@ async function run() {
         navigationCancellation: true,
         logout: true,
         memberIPC: true,
+        binaryIPC: true,
       }),
     )
   } catch (error) {

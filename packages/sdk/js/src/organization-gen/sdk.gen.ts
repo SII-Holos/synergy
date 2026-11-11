@@ -10,6 +10,20 @@ import type {
   OrgAccountsResetResponses,
   OrgAccountsUpdateErrors,
   OrgAccountsUpdateResponses,
+  OrgArtifactsContentErrors,
+  OrgArtifactsContentResponses,
+  OrgArtifactsGetErrors,
+  OrgArtifactsGetResponses,
+  OrgArtifactsListErrors,
+  OrgArtifactsListResponses,
+  OrgArtifactsPublishErrors,
+  OrgArtifactsPublishResponses,
+  OrgArtifactsReferenceErrors,
+  OrgArtifactsReferenceResponses,
+  OrgArtifactsVersionErrors,
+  OrgArtifactsVersionResponses,
+  OrgArtifactsVersionsErrors,
+  OrgArtifactsVersionsResponses,
   OrgAuthAuthorizeErrors,
   OrgAuthAuthorizeResponses,
   OrgAuthDiscoveryErrors,
@@ -33,6 +47,24 @@ import type {
   OrgAuthSessionResponses,
   OrgBootstrapInput,
   OrgClientRevocationInput,
+  OrgCloudEnvironmentCreate,
+  OrgCloudEnvironmentsCreateErrors,
+  OrgCloudEnvironmentsCreateResponses,
+  OrgCloudEnvironmentsGetErrors,
+  OrgCloudEnvironmentsGetResponses,
+  OrgCloudWorkspaceCreate,
+  OrgCloudWorkspaceRead,
+  OrgCloudWorkspacesCreateErrors,
+  OrgCloudWorkspacesCreateResponses,
+  OrgCloudWorkspacesGetErrors,
+  OrgCloudWorkspacesGetResponses,
+  OrgCloudWorkspacesListErrors,
+  OrgCloudWorkspacesListResponses,
+  OrgCloudWorkspacesReadErrors,
+  OrgCloudWorkspacesReadResponses,
+  OrgCloudWorkspacesWriteErrors,
+  OrgCloudWorkspacesWriteResponses,
+  OrgCloudWorkspaceWrite,
   OrgCodeExchangeInput,
   OrgCommandControlRequest,
   OrgCommandCreateRequest,
@@ -71,14 +103,70 @@ import type {
   OrgGatewayRequest,
   OrgGatewayReserveErrors,
   OrgGatewayReserveResponses,
+  OrgHandoffAccept,
+  OrgHandoffAcceptErrors,
+  OrgHandoffAcceptResponses,
+  OrgHandoffCancelErrors,
+  OrgHandoffCancelResponses,
+  OrgHandoffCommitErrors,
+  OrgHandoffCommitResponses,
+  OrgHandoffGetErrors,
+  OrgHandoffGetResponses,
+  OrgHandoffListErrors,
+  OrgHandoffListResponses,
+  OrgHandoffPermitErrors,
+  OrgHandoffPermitRequest,
+  OrgHandoffPermitResponses,
+  OrgHandoffPrepare,
+  OrgHandoffPrepareErrors,
+  OrgHandoffPrepareResponses,
+  OrgHandoffProofErrors,
+  OrgHandoffProofResponses,
+  OrgHandoffSignedProof,
   OrgHealthGetErrors,
   OrgHealthGetResponses,
+  OrgHostedRuntimeRegistration,
   OrgInviteConsume,
   OrgInviteCreate,
   OrgInvitesConsumeErrors,
   OrgInvitesConsumeResponses,
   OrgInvitesCreateErrors,
   OrgInvitesCreateResponses,
+  OrgKnowledgeAppliedErrors,
+  OrgKnowledgeAppliedResponses,
+  OrgKnowledgeApplyErrors,
+  OrgKnowledgeApplyResponses,
+  OrgKnowledgeContentErrors,
+  OrgKnowledgeContentResponses,
+  OrgKnowledgeExecutionContent,
+  OrgKnowledgeExecutionContentErrors,
+  OrgKnowledgeExecutionContentResponses,
+  OrgKnowledgeExecutionFiles,
+  OrgKnowledgeExecutionFilesErrors,
+  OrgKnowledgeExecutionFilesResponses,
+  OrgKnowledgeExecutionQuery,
+  OrgKnowledgeExecutionSelectionErrors,
+  OrgKnowledgeExecutionSelectionResponses,
+  OrgKnowledgeFilesErrors,
+  OrgKnowledgeFilesResponses,
+  OrgKnowledgeGetErrors,
+  OrgKnowledgeGetResponses,
+  OrgKnowledgeListErrors,
+  OrgKnowledgeListResponses,
+  OrgKnowledgePublishErrors,
+  OrgKnowledgePublishResponses,
+  OrgKnowledgeSearchErrors,
+  OrgKnowledgeSearchResponses,
+  OrgKnowledgeSessionSelectionErrors,
+  OrgKnowledgeSessionSelectionResponses,
+  OrgKnowledgeSetSessionSelectionErrors,
+  OrgKnowledgeSetSessionSelectionResponses,
+  OrgKnowledgeVersionErrors,
+  OrgKnowledgeVersionResponses,
+  OrgKnowledgeVersionsErrors,
+  OrgKnowledgeVersionsResponses,
+  OrgKnowledgeWithdrawErrors,
+  OrgKnowledgeWithdrawResponses,
   OrgLoginInput,
   OrgMemberRuntimeRegistration,
   OrgOrganizationGetErrors,
@@ -93,6 +181,8 @@ import type {
   OrgProjectMemberChange,
   OrgProjectResourcesListErrors,
   OrgProjectResourcesListResponses,
+  OrgProjectsCandidatesErrors,
+  OrgProjectsCandidatesResponses,
   OrgProjectsCreateErrors,
   OrgProjectsCreateResponses,
   OrgProjectsGetErrors,
@@ -101,8 +191,21 @@ import type {
   OrgProjectsListResponses,
   OrgProjectsMemberErrors,
   OrgProjectsMemberResponses,
+  OrgProjectsMembersErrors,
+  OrgProjectsMembersResponses,
   OrgProjectsUpdateErrors,
   OrgProjectsUpdateResponses,
+  OrgPublicationsCreateUploadErrors,
+  OrgPublicationsCreateUploadResponses,
+  OrgPublicationsFilesErrors,
+  OrgPublicationsFilesResponses,
+  OrgPublicationsPutChunkResponses,
+  OrgPublicationsPutFileErrors,
+  OrgPublicationsPutFileResponses,
+  OrgPublicationsSealErrors,
+  OrgPublicationsSealResponses,
+  OrgPublicationsUploadStatusErrors,
+  OrgPublicationsUploadStatusResponses,
   OrgResetConsume,
   OrgResetCreate,
   OrgResourceChange,
@@ -129,6 +232,8 @@ import type {
   OrgRuntimeGetResponses,
   OrgRuntimeListErrors,
   OrgRuntimeListResponses,
+  OrgRuntimeRegisterHostedErrors,
+  OrgRuntimeRegisterHostedResponses,
   OrgRuntimeRegisterMemberErrors,
   OrgRuntimeRegisterMemberResponses,
   OrgRuntimeRevoke,
@@ -155,11 +260,14 @@ import type {
   OrgSessionSyncApplyBatchResponses,
   OrgSessionSyncBlobStatusErrors,
   OrgSessionSyncBlobStatusResponses,
+  OrgSessionSyncDownloadBlobErrors,
   OrgSessionSyncDownloadBlobResponses,
   OrgSessionSyncEventsErrors,
   OrgSessionSyncEventsResponses,
   OrgSessionSyncSearchErrors,
   OrgSessionSyncSearchResponses,
+  OrgSessionSyncSnapshotErrors,
+  OrgSessionSyncSnapshotResponses,
   OrgSessionSyncUploadBlobResponses,
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
@@ -767,9 +875,101 @@ export class OrgProjects extends HeyApiClient {
       },
     })
   }
+
+  /**
+   * List public project member identities
+   */
+  public members<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgProjectsMembersResponses, OrgProjectsMembersErrors, ThrowOnError>({
+      url: "/org/v1/projects/{projectID}/members",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Find current accounts for project membership management
+   */
+  public candidates<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      limit?: number
+      cursor?: string
+      q?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "q" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgProjectsCandidatesResponses,
+      OrgProjectsCandidatesErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/projects/{projectID}/member-candidates",
+      ...options,
+      ...params,
+    })
+  }
 }
 
 export class OrgRuntime extends HeyApiClient {
+  /**
+   * Issue an organization-hosted Runtime registration ticket
+   */
+  public registerHosted<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgHostedRuntimeRegistration: OrgHostedRuntimeRegistration
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgHostedRuntimeRegistration", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgRuntimeRegisterHostedResponses,
+      OrgRuntimeRegisterHostedErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/runtimes/hosted",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Issue a member Runtime registration ticket
    */
@@ -1181,6 +1381,42 @@ export class OrgSessionSync extends HeyApiClient {
   }
 
   /**
+   * Read a current authorized transcript page with its replay watermark
+   */
+  public snapshot<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      limit?: number
+      cursor?: string
+      watermark?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "watermark" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgSessionSyncSnapshotResponses,
+      OrgSessionSyncSnapshotErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/sync/snapshot",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Read committed safe Session projection events
    */
   public events<ThrowOnError extends boolean = false>(
@@ -1349,7 +1585,11 @@ export class OrgSessionSync extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<OrgSessionSyncDownloadBlobResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      OrgSessionSyncDownloadBlobResponses,
+      OrgSessionSyncDownloadBlobErrors,
+      ThrowOnError
+    >({
       url: "/org/v1/sessions/{sessionID}/blobs/{hash}/content",
       ...options,
       ...params,
@@ -1570,6 +1810,1362 @@ export class OrgProjectResources extends HeyApiClient {
       url: "/org/v1/projects/{projectID}/resources",
       ...options,
       ...params,
+    })
+  }
+}
+
+export class OrgPublications extends HeyApiClient {
+  /**
+   * Prepare an authorized publication upload
+   */
+  public createUpload<ThrowOnError extends boolean = false>(
+    parameters?: {
+      requestID?: string
+      purpose?: "knowledge" | "artifact"
+      scope?:
+        | {
+            kind: "organization"
+          }
+        | {
+            kind: "project"
+            projectID: string
+          }
+      sourceSessionID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "requestID" },
+            { in: "body", key: "purpose" },
+            { in: "body", key: "scope" },
+            { in: "body", key: "sourceSessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgPublicationsCreateUploadResponses,
+      OrgPublicationsCreateUploadErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/publications/uploads",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read this account's publication upload
+   */
+  public uploadStatus<ThrowOnError extends boolean = false>(
+    parameters: {
+      uploadID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "uploadID" }] }])
+    return (options?.client ?? this.client).get<
+      OrgPublicationsUploadStatusResponses,
+      OrgPublicationsUploadStatusErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/publications/uploads/{uploadID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Page declared publication files
+   */
+  public files<ThrowOnError extends boolean = false>(
+    parameters: {
+      uploadID: string
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "uploadID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgPublicationsFilesResponses,
+      OrgPublicationsFilesErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/publications/uploads/{uploadID}/files",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Declare one immutable relative publication file
+   */
+  public putFile<ThrowOnError extends boolean = false>(
+    parameters: {
+      uploadID: string
+      path?: string
+      bytes?: number
+      sha256?: string
+      mediaType?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "uploadID" },
+            { in: "body", key: "path" },
+            { in: "body", key: "bytes" },
+            { in: "body", key: "sha256" },
+            { in: "body", key: "mediaType" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      OrgPublicationsPutFileResponses,
+      OrgPublicationsPutFileErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/publications/uploads/{uploadID}/files",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Upload one immutable publication chunk of at most 4 MiB
+   */
+  public putChunk<ThrowOnError extends boolean = false>(
+    parameters: {
+      uploadID: string
+      fileID: string
+      offset: number
+      body: Blob | File
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "uploadID" },
+            { in: "path", key: "fileID" },
+            { in: "query", key: "offset" },
+            { in: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<OrgPublicationsPutChunkResponses, unknown, ThrowOnError>({
+      bodySerializer: null,
+      url: "/org/v1/publications/uploads/{uploadID}/files/{fileID}/chunks",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Verify every declared file and freeze the publication manifest
+   */
+  public seal<ThrowOnError extends boolean = false>(
+    parameters: {
+      uploadID: string
+      fileCount?: number
+      totalBytes?: number
+      manifestHash?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "uploadID" },
+            { in: "body", key: "fileCount" },
+            { in: "body", key: "totalBytes" },
+            { in: "body", key: "manifestHash" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgPublicationsSealResponses, OrgPublicationsSealErrors, ThrowOnError>(
+      {
+        url: "/org/v1/publications/uploads/{uploadID}/seal",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
+export class OrgKnowledge extends HeyApiClient {
+  /**
+   * List authorized published materials and Skills
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      projectID?: string
+      kind?: "material" | "skill"
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "projectID" },
+            { in: "query", key: "kind" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgKnowledgeListResponses, OrgKnowledgeListErrors, ThrowOnError>({
+      url: "/org/v1/knowledge",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Publish an immutable material or Skill version
+   */
+  public publish<ThrowOnError extends boolean = false>(
+    parameters?: {
+      requestID?: string
+      itemID?: string
+      expectedRevision?: number
+      uploadID?: string
+      title?: string
+      kind?: "material" | "skill"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "requestID" },
+            { in: "body", key: "itemID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "uploadID" },
+            { in: "body", key: "title" },
+            { in: "body", key: "kind" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgKnowledgePublishResponses, OrgKnowledgePublishErrors, ThrowOnError>(
+      {
+        url: "/org/v1/knowledge",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Search authorized knowledge before returning any matching content
+   */
+  public search<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID?: string
+      kind?: "material" | "skill"
+      limit?: number
+      cursor?: string
+      q: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "projectID" },
+            { in: "query", key: "kind" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "q" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgKnowledgeSearchResponses, OrgKnowledgeSearchErrors, ThrowOnError>({
+      url: "/org/v1/knowledge/search",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Withdraw a catalog entry while retaining referenced historical bytes
+   */
+  public withdraw<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+      expectedRevision?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemID" },
+            { in: "body", key: "expectedRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      OrgKnowledgeWithdrawResponses,
+      OrgKnowledgeWithdrawErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/knowledge/{itemID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read the latest authorized knowledge version
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "itemID" }] }])
+    return (options?.client ?? this.client).get<OrgKnowledgeGetResponses, OrgKnowledgeGetErrors, ThrowOnError>({
+      url: "/org/v1/knowledge/{itemID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Page immutable knowledge versions
+   */
+  public versions<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+      limit?: number
+      cursor?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgKnowledgeVersionsResponses,
+      OrgKnowledgeVersionsErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/knowledge/{itemID}/versions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resolve an exact knowledge version
+   */
+  public version<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+      version: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemID" },
+            { in: "path", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgKnowledgeVersionResponses, OrgKnowledgeVersionErrors, ThrowOnError>({
+      url: "/org/v1/knowledge/{itemID}/versions/{version}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Page files in an exact knowledge release
+   */
+  public files<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+      version: number
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemID" },
+            { in: "path", key: "version" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgKnowledgeFilesResponses, OrgKnowledgeFilesErrors, ThrowOnError>({
+      url: "/org/v1/knowledge/{itemID}/versions/{version}/files",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download an authorized immutable knowledge file
+   */
+  public content<ThrowOnError extends boolean = false>(
+    parameters: {
+      itemID: string
+      version: number
+      fileID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemID" },
+            { in: "path", key: "version" },
+            { in: "path", key: "fileID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgKnowledgeContentResponses, OrgKnowledgeContentErrors, ThrowOnError>({
+      url: "/org/v1/knowledge/{itemID}/versions/{version}/files/{fileID}/content",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read this member's explicitly applied project versions
+   */
+  public applied<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "projectID" }] }])
+    return (options?.client ?? this.client).get<OrgKnowledgeAppliedResponses, OrgKnowledgeAppliedErrors, ThrowOnError>({
+      url: "/org/v1/projects/{projectID}/knowledge/applied",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Atomically select the complete member knowledge manifest
+   */
+  public apply<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      expectedRevision?: number
+      releases?: Array<{
+        itemID: string
+        version: number
+        manifestHash: string
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "releases" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<OrgKnowledgeApplyResponses, OrgKnowledgeApplyErrors, ThrowOnError>({
+      url: "/org/v1/projects/{projectID}/knowledge/applied",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read one Session's independent knowledge versions
+   */
+  public sessionSelection<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      OrgKnowledgeSessionSelectionResponses,
+      OrgKnowledgeSessionSelectionErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/knowledge",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Explicitly update one Session's knowledge versions
+   */
+  public setSessionSelection<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      expectedRevision?: number
+      releases?: Array<{
+        itemID: string
+        version: number
+        manifestHash: string
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "releases" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      OrgKnowledgeSetSessionSelectionResponses,
+      OrgKnowledgeSetSessionSelectionErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/knowledge",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class OrgArtifacts extends HeyApiClient {
+  /**
+   * Publish an immutable project artifact version
+   */
+  public publish<ThrowOnError extends boolean = false>(
+    parameters?: {
+      requestID?: string
+      artifactID?: string
+      expectedRevision?: number
+      uploadID?: string
+      title?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "requestID" },
+            { in: "body", key: "artifactID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "uploadID" },
+            { in: "body", key: "title" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgArtifactsPublishResponses, OrgArtifactsPublishErrors, ThrowOnError>(
+      {
+        url: "/org/v1/artifacts",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * List published artifacts independently of source Session visibility
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgArtifactsListResponses, OrgArtifactsListErrors, ThrowOnError>({
+      url: "/org/v1/projects/{projectID}/artifacts",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read the latest authorized project artifact
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      artifactID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "artifactID" }] }])
+    return (options?.client ?? this.client).get<OrgArtifactsGetResponses, OrgArtifactsGetErrors, ThrowOnError>({
+      url: "/org/v1/artifacts/{artifactID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Page immutable artifact versions
+   */
+  public versions<ThrowOnError extends boolean = false>(
+    parameters: {
+      artifactID: string
+      limit?: number
+      cursor?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "artifactID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgArtifactsVersionsResponses,
+      OrgArtifactsVersionsErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/artifacts/{artifactID}/versions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read one immutable artifact version
+   */
+  public version<ThrowOnError extends boolean = false>(
+    parameters: {
+      artifactID: string
+      version: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "artifactID" },
+            { in: "path", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgArtifactsVersionResponses, OrgArtifactsVersionErrors, ThrowOnError>({
+      url: "/org/v1/artifacts/{artifactID}/versions/{version}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resolve an authorized versioned artifact reference
+   */
+  public reference<ThrowOnError extends boolean = false>(
+    parameters: {
+      artifactID: string
+      version: number
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "artifactID" },
+            { in: "path", key: "version" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgArtifactsReferenceResponses,
+      OrgArtifactsReferenceErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/artifacts/{artifactID}/versions/{version}/reference",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download a project artifact after current authorization, including byte ranges
+   */
+  public content<ThrowOnError extends boolean = false>(
+    parameters: {
+      artifactID: string
+      version: number
+      fileID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "artifactID" },
+            { in: "path", key: "version" },
+            { in: "path", key: "fileID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgArtifactsContentResponses, OrgArtifactsContentErrors, ThrowOnError>({
+      url: "/org/v1/artifacts/{artifactID}/versions/{version}/files/{fileID}/content",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class OrgCloudWorkspaces extends HeyApiClient {
+  /**
+   * Create an organization-owned cloud Workspace without allocating compute
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudWorkspaceCreate: OrgCloudWorkspaceCreate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgCloudWorkspaceCreate", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgCloudWorkspacesCreateResponses,
+      OrgCloudWorkspacesCreateErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/cloud/workspaces",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Inspect the canonical cloud Workspace head
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "workspaceID" }] }])
+    return (options?.client ?? this.client).get<
+      OrgCloudWorkspacesGetResponses,
+      OrgCloudWorkspacesGetErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/cloud/workspaces/{workspaceID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List currently authorized Workspaces in a storage resource
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      limit?: number
+      cursor?: string
+      resourceID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "resourceID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgCloudWorkspacesListResponses,
+      OrgCloudWorkspacesListErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/projects/{projectID}/cloud/workspaces",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a bounded file range through current cloud authorization
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      orgCloudWorkspaceRead: OrgCloudWorkspaceRead
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { key: "orgCloudWorkspaceRead", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgCloudWorkspacesReadResponses,
+      OrgCloudWorkspacesReadErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/cloud/workspaces/{workspaceID}/read",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Commit a version-checked file write with a durable operation receipt
+   */
+  public write<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      orgCloudWorkspaceWrite: OrgCloudWorkspaceWrite
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { key: "orgCloudWorkspaceWrite", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgCloudWorkspacesWriteResponses,
+      OrgCloudWorkspacesWriteErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/cloud/workspaces/{workspaceID}/write",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class OrgCloudEnvironments extends HeyApiClient {
+  /**
+   * Bind an organization-owned Environment without allocating compute
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudEnvironmentCreate: OrgCloudEnvironmentCreate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgCloudEnvironmentCreate", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgCloudEnvironmentsCreateResponses,
+      OrgCloudEnvironmentsCreateErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/cloud/environments",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Inspect an organization-owned Environment and retained uses
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      environmentID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "environmentID" }] }])
+    return (options?.client ?? this.client).get<
+      OrgCloudEnvironmentsGetResponses,
+      OrgCloudEnvironmentsGetErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/cloud/environments/{environmentID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class OrgHandoff extends HeyApiClient {
+  /**
+   * List handoff facts without retrying an unknown result
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgHandoffListResponses, OrgHandoffListErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/handoffs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Lock the current execution binding and reserve a destination epoch
+   */
+  public prepare<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgHandoffPrepare: OrgHandoffPrepare
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgHandoffPrepare", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgHandoffPrepareResponses, OrgHandoffPrepareErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/handoffs",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Inspect the last durable handoff facts
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      handoffID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "handoffID" }] }])
+    return (options?.client ?? this.client).get<OrgHandoffGetResponses, OrgHandoffGetErrors, ThrowOnError>({
+      url: "/org/v1/handoffs/{handoffID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Accept the exact mapping plan as the destination member
+   */
+  public accept<ThrowOnError extends boolean = false>(
+    parameters: {
+      handoffID: string
+      orgHandoffAccept: OrgHandoffAccept
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "handoffID" },
+            { key: "orgHandoffAccept", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgHandoffAcceptResponses, OrgHandoffAcceptErrors, ThrowOnError>({
+      url: "/org/v1/handoffs/{handoffID}/accept",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Request cancellation while retaining the lock until the source proves it
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      handoffID: string
+      body: unknown
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "handoffID" }, { in: "body" }] }])
+    return (options?.client ?? this.client).post<OrgHandoffCancelResponses, OrgHandoffCancelErrors, ThrowOnError>({
+      url: "/org/v1/handoffs/{handoffID}/cancel",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Commit a proven source surrender and destination preparation
+   */
+  public commit<ThrowOnError extends boolean = false>(
+    parameters: {
+      handoffID: string
+      body: unknown
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "handoffID" }, { in: "body" }] }])
+    return (options?.client ?? this.client).post<OrgHandoffCommitResponses, OrgHandoffCommitErrors, ThrowOnError>({
+      url: "/org/v1/handoffs/{handoffID}/commit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Persist a separate surrender or paused activation permit
+   */
+  public permit<ThrowOnError extends boolean = false>(
+    parameters: {
+      handoffID: string
+      orgHandoffPermitRequest: OrgHandoffPermitRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "handoffID" },
+            { key: "orgHandoffPermitRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgHandoffPermitResponses, OrgHandoffPermitErrors, ThrowOnError>({
+      url: "/org/v1/handoffs/{handoffID}/permit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Reconcile an existing machine's signed durable handoff fact
+   */
+  public proof<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgHandoffSignedProof: OrgHandoffSignedProof
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgHandoffSignedProof", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgHandoffProofResponses, OrgHandoffProofErrors, ThrowOnError>({
+      url: "/runtime/v1/handoffs/proof",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class OrgKnowledgeExecution extends HeyApiClient {
+  /**
+   * Read the versions selected by accepted Session work
+   */
+  public selection<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgKnowledgeExecutionQuery: OrgKnowledgeExecutionQuery
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgKnowledgeExecutionQuery", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeExecutionSelectionResponses,
+      OrgKnowledgeExecutionSelectionErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/knowledge/selection",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Page files in a selected immutable knowledge version
+   */
+  public files<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgKnowledgeExecutionFiles: OrgKnowledgeExecutionFiles
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgKnowledgeExecutionFiles", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeExecutionFilesResponses,
+      OrgKnowledgeExecutionFilesErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/knowledge/files",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read a bounded verified slice of selected knowledge
+   */
+  public content<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgKnowledgeExecutionContent: OrgKnowledgeExecutionContent
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgKnowledgeExecutionContent", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeExecutionContentResponses,
+      OrgKnowledgeExecutionContentErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/knowledge/content",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }
@@ -1994,6 +3590,20 @@ export class OrganizationClient extends HeyApiClient {
   orgResourceGrants = new OrgResourceGrants({ client: this.client })
 
   orgProjectResources = new OrgProjectResources({ client: this.client })
+
+  orgPublications = new OrgPublications({ client: this.client })
+
+  orgKnowledge = new OrgKnowledge({ client: this.client })
+
+  orgArtifacts = new OrgArtifacts({ client: this.client })
+
+  orgCloudWorkspaces = new OrgCloudWorkspaces({ client: this.client })
+
+  orgCloudEnvironments = new OrgCloudEnvironments({ client: this.client })
+
+  orgHandoff = new OrgHandoff({ client: this.client })
+
+  orgKnowledgeExecution = new OrgKnowledgeExecution({ client: this.client })
 
   orgCommands = new OrgCommands({ client: this.client })
 

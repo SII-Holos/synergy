@@ -154,7 +154,7 @@ export namespace OrganizationRecord {
   export const ClientAccess = tokenState.extend({ grantID: Identity.ID })
   export const ClientRefresh = tokenState.extend({ grantID: Identity.ID, consumedAt: z.number().int().optional() })
   export const Project = Identity.Project.extend({ schemaVersion: z.literal(1) })
-  export const RuntimeRegistration = Runtime.Registration.extend({ schemaVersion: z.literal(1) })
+  export const RuntimeRegistration = Runtime.StoredRegistration
   export type RuntimeRegistration = z.infer<typeof RuntimeRegistration>
   export const RuntimeConnection = z.strictObject({
     schemaVersion: z.literal(1),

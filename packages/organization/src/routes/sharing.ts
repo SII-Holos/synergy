@@ -54,6 +54,13 @@ export function sharingRoutes(publicOrigin?: string) {
       },
     )
     .get(
+      "/sessions/:sessionID/sync/snapshot",
+      operation("orgSessionSync.snapshot", "Read a current authorized transcript page with its replay watermark", Sync.SnapshotPage),
+      validator("param", target, validation),
+      validator("query", Sync.SnapshotQuery, validation),
+      async (c) => c.json(await Sharing.snapshot(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"))),
+    )
+    .get(
       "/sessions/:sessionID/sync/events",
       operation("orgSessionSync.events", "Read committed safe Session projection events", Sync.EventPage),
       validator("param", target, validation),
@@ -130,6 +137,8 @@ export function sharingRoutes(publicOrigin?: string) {
             description: "Blob bytes",
             content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } },
           },
+          206: { description: "Authorized byte range" },
+          416: { description: "Unsatisfiable byte range" },
         },
       }),
       validator("param", blobTarget, validation),
@@ -137,16 +146,11 @@ export function sharingRoutes(publicOrigin?: string) {
       async (c) => {
         const target = c.req.valid("param")
         const query = c.req.valid("query")
-        const bytes = await Sharing.downloadBlob(credentials(c), target.sessionID, {
+        return Sharing.downloadBlob(credentials(c), target.sessionID, {
           shareGeneration: query.shareGeneration,
           hash: target.hash,
-        })
-        return new Response(bytes, {
-          headers: {
-            "content-type": "application/octet-stream",
-            "content-length": String(bytes.byteLength),
-            etag: `"${target.hash}"`,
-          },
+          range: c.req.header("range"),
+          signal: c.req.raw.signal,
         })
       },
     )

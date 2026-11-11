@@ -6,8 +6,8 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
-import { readMemberHome, type MemberHome, type MemberIdentity } from "./home"
-import { readMemberRegistration } from "./registration"
+import { readRuntimeHome, type RuntimeHome, type RuntimeIdentity } from "./home"
+import { readRuntimeRegistration } from "./registration"
 import { readCredentials } from "./credentials"
 import { MemberHomeError } from "./record"
 import { OrganizationRuntimeError } from "./error"
@@ -41,7 +41,7 @@ export interface MemberConnection {
 }
 export interface MemberConnectionOptions {
   home: string
-  identity: MemberIdentity
+  identity: RuntimeIdentity
   buildVersion: string
   ca?: string | string[]
   signal?: AbortSignal
@@ -82,7 +82,7 @@ function failure(code: OrganizationProtocol.Error["code"], message: string) {
 
 async function attempt(input: {
   options: MemberConnectionOptions
-  member: MemberHome
+  member: RuntimeHome
   registration: Protocol.Registration
   epoch: number
   key: CryptoKey
@@ -97,9 +97,8 @@ async function attempt(input: {
       orgID: member.identity.orgID,
       deploymentIncarnation: registration.deploymentIncarnation,
       runtimeID: registration.runtimeID,
-      runtimeKind: "member",
-      accountID: member.identity.accountID,
-      deviceID: member.identity.deviceID,
+      runtimeKind: registration.runtimeKind,
+      ...(registration.runtimeKind === "member" ? { accountID: registration.accountID, deviceID: registration.deviceID } : {}),
       connectionEpoch: epoch,
       buildVersion: options.buildVersion,
       capabilities: ["bridge", ...(options.commands ? ["commands"] : []), ...(options.sync ? ["sync"] : [])],
@@ -640,8 +639,8 @@ export async function openMemberConnection(options: MemberConnectionOptions): Pr
     .positive()
     .max(timerLimit)
     .parse(options.connectTimeoutMs ?? 5_000)
-  const member = await readMemberHome(options.home, options.identity)
-  const registration = await readMemberRegistration(member.home, member.identity)
+  const member = await readRuntimeHome(options.home, options.identity)
+  const registration = await readRuntimeRegistration(member.home, member.identity)
   if (!registration) throw new MemberHomeError("Member Runtime registration is missing")
   const credentials = await readCredentials(member.root)
   if (!credentials || credentials.publicKey !== member.publicKey)

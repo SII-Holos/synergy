@@ -6,8 +6,8 @@ import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
 import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { version } from "../package.json" with { type: "json" }
-import { readMemberHome, type MemberIdentity } from "./home"
-import { readMemberRegistration } from "./registration"
+import { readRuntimeHome, MemberIdentity, HostedIdentity, type RuntimeIdentity } from "./home"
+import { readRuntimeRegistration } from "./registration"
 import { MemberHomeError } from "./record"
 import { registerMemberSources } from "./sources"
 import { MemberDesktop, MemberDesktopEntry, MemberListener } from "./launch"
@@ -31,7 +31,7 @@ export type MemberRuntimeOptions = Pick<
   | "migrationOutput"
 > & {
   home: string
-  identity: MemberIdentity
+  identity: RuntimeIdentity
   environment?: Readonly<Record<string, string | undefined>>
   entry?: RuntimeLaunch["entry"]
   ca?: string | string[]
@@ -40,6 +40,14 @@ export type MemberRuntimeOptions = Pick<
 }
 
 export async function openMemberRuntime(input: MemberRuntimeOptions) {
+  return openOrganizationRuntime({ ...input, identity: MemberIdentity.parse(input.identity) })
+}
+
+export async function openHostedRuntime(input: Omit<MemberRuntimeOptions, "identity" | "desktop"> & { identity: HostedIdentity }) {
+  return openOrganizationRuntime({ ...input, identity: HostedIdentity.parse(input.identity) })
+}
+
+async function openOrganizationRuntime(input: MemberRuntimeOptions) {
   input.signal?.throwIfAborted()
   const listener = MemberListener.optional().safeParse(input.listen)
   if (!listener.success)
@@ -47,8 +55,8 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
   const desktop = MemberDesktop.optional().safeParse(input.desktop)
   if (!desktop.success || (desktop.data && (!listener.data || !MemberDesktopEntry.safeParse(input.entry).success)))
     throw new MemberHomeError("Member Desktop capabilities require a managed Desktop listener and private credential")
-  const member = await readMemberHome(input.home, input.identity)
-  const registration = await readMemberRegistration(member.home, member.identity)
+  const member = await readRuntimeHome(input.home, input.identity)
+  const registration = await readRuntimeRegistration(member.home, member.identity)
   if (!registration || registration.state !== "active")
     throw new MemberHomeError("Member Runtime must be enrolled before startup")
   const components = [
@@ -75,7 +83,7 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
                   const intake = createCommandIntake({
                     identity: connection.signingIdentity,
                     runtimeID: connection.runtimeID,
-                    accountID: member.identity.accountID,
+                    accountID: "accountID" in member.identity ? member.identity.accountID : undefined,
                     connectionEpoch: connection.connectionEpoch,
                     signal,
                   })

@@ -4,7 +4,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { z } from "zod"
-import type { MemberIdentity } from "./home"
+import type { RuntimeIdentity } from "./home"
 import { denied, withMemberExecution } from "./execution-source"
 
 const Parameters = z.strictObject({
@@ -47,7 +47,7 @@ async function readBody(response: Response, signal: AbortSignal) {
   }
 }
 
-export function createMemberConnectionTool(identity: MemberIdentity): Tool.Info {
+export function createMemberConnectionTool(identity: RuntimeIdentity): Tool.Info {
   return Tool.define(
     "organization_connection",
     {

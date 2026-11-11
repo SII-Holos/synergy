@@ -9,6 +9,7 @@ import { authorize } from "./authorization"
 import { authenticate, type Credentials } from "./auth/session"
 import { OrganizationSessionDirectory } from "./session-directory"
 import { OrganizationRecord as Record } from "./storage/records"
+import { runtimeAuthority, assertRuntimeConnection } from "./runtime-authority"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail, OrganizationError } from "./error"
 import type { RuntimeConnections, RuntimeConnectionLease } from "./runtime-connection"
@@ -112,29 +113,18 @@ export function createCommandAdmissions(options: {
           fail("REVISION_CONFLICT", "Reconcile the earlier Session command before admitting this request")
         }
         const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(session.driverRuntimeID))
-        const owner = runtime && (await Record.read(Record.Account, Keys.account(runtime.accountID)))
         if (
           !runtime ||
           runtime.runtimeID !== session.driverRuntimeID ||
           runtime.orgID !== account.orgID ||
           runtime.deploymentIncarnation !== signing.identity.deploymentIncarnation ||
-          runtime.state !== "active" ||
-          !owner ||
-          owner.orgID !== account.orgID ||
-          owner.state !== "active"
+          runtime.state !== "active"
         )
           fail("RUNTIME_OFFLINE", "Session Runtime is not available")
+        await runtimeAuthority({ runtimeID: runtime.runtimeID, orgID: account.orgID, deploymentIncarnation: signing.identity.deploymentIncarnation, connectionEpoch: runtime.connectionEpoch })
         connection = connections.capture(runtime.runtimeID)
         const handshake = connection.handshake
-        if (
-          handshake.runtimeID !== runtime.runtimeID ||
-          handshake.orgID !== account.orgID ||
-          handshake.deploymentIncarnation !== signing.identity.deploymentIncarnation ||
-          handshake.runtimeKind !== "member" ||
-          handshake.accountID !== runtime.accountID ||
-          handshake.connectionEpoch !== runtime.connectionEpoch
-        )
-          fail("STALE_CONNECTION", "Runtime registration and active connection do not match")
+        assertRuntimeConnection(runtime, handshake)
         const authorizedAt = Date.now()
         deadline = authorizedAt + 30_000
         const prepared = Command.Permit.parse({

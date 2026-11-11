@@ -1,9 +1,54 @@
 import { z } from "zod"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
 
 export namespace OrganizationSyncProtocol {
   export const Sequence = z.number().int().positive()
+
+  export const Content = z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("inline"),
+      text: z.string().refine((value) => new TextEncoder().encode(value).byteLength <= 64 * 1024, "Inline content exceeds its transport window"),
+    }),
+    z.strictObject({
+      kind: z.literal("blob"),
+      blobID: Identity.ID,
+      hash: Protocol.Digest,
+      bytes: z.number().int().nonnegative().safe(),
+      mediaType: z.string().min(1).max(256),
+    }),
+  ]).meta({ ref: "OrgTranscriptContent" })
+  export type Content = z.infer<typeof Content>
+
+  export const TranscriptPart = z.discriminatedUnion("type", [
+    z.strictObject({ type: z.literal("text"), content: Content, origin: z.enum(["user", "system"]).optional() }),
+    z.strictObject({ type: z.literal("reasoning"), content: Content }),
+    z.strictObject({
+      type: z.literal("tool"),
+      callID: Identity.ID,
+      tool: z.string().min(1).max(256),
+      status: z.enum(["pending", "generating", "running", "completed", "error"]),
+      input: Content,
+      output: Content.optional(),
+      error: Content.optional(),
+      title: z.string().max(1024).optional(),
+      startedAt: z.number().nonnegative().optional(),
+      completedAt: z.number().nonnegative().optional(),
+    }),
+    z.strictObject({
+      type: z.literal("attachment"),
+      filename: z.string().min(1).max(512),
+      mediaType: z.string().min(1).max(256),
+      hash: Protocol.Digest.optional(),
+      bytes: z.number().int().nonnegative().optional(),
+    }),
+    z.strictObject({ type: z.literal("step-start") }),
+    z.strictObject({ type: z.literal("step-finish"), reason: z.string().max(256), cost: z.number().nonnegative() }),
+    z.strictObject({ type: z.literal("compaction"), auto: z.boolean() }),
+    z.strictObject({ type: z.literal("notice"), kind: z.string().min(1).max(256), content: Content }),
+  ]).meta({ ref: "OrgTranscriptPart" })
+  export type TranscriptPart = z.infer<typeof TranscriptPart>
 
   export const ShareChange = z
     .strictObject({ expectedShareGeneration: Identity.Revision })
@@ -54,8 +99,30 @@ export namespace OrganizationSyncProtocol {
     role: z.enum(["user", "assistant"]),
     createdAt: z.number().int().nonnegative(),
     summary: z.string().max(32 * 1024),
+    actor: ActorStamp.Info.optional(),
+    agent: z.string().max(256).optional(),
+    parentID: Identity.ID.optional(),
+    rootID: Identity.ID.optional(),
+    completedAt: z.number().int().nonnegative().optional(),
+    finish: z.string().max(256).optional(),
+    model: z.strictObject({ providerID: z.string().max(256), modelID: z.string().max(512) }).optional(),
+    mode: z.string().max(256).optional(),
+    cost: z.number().finite().optional(),
+    tokens: z.strictObject({ input: z.number(), output: z.number(), reasoning: z.number(), cache: z.strictObject({ read: z.number(), write: z.number() }) }).optional(),
+    error: z.strictObject({ code: z.string().max(256), message: z.string().max(32 * 1024) }).optional(),
+    removed: z.literal(true).optional(),
     integrity: Protocol.Digest,
   })
+  const PartEvent = z.strictObject({
+    type: z.literal("part"),
+    sequence: Sequence,
+    sessionID: Identity.ID.optional(),
+    messageID: Identity.ID,
+    partID: Identity.ID,
+    part: TranscriptPart.optional(),
+    removed: z.literal(true).optional(),
+    integrity: Protocol.Digest,
+  }).refine((value) => value.removed ? value.part === undefined : value.part !== undefined, "A transcript part must contain content or a deletion")
   const ToolEvent = z.strictObject({
     type: z.literal("tool"),
     sequence: Sequence,
@@ -111,7 +178,7 @@ export namespace OrganizationSyncProtocol {
     sequence: Sequence,
     sessionID: Identity.ID.optional(),
     blobID: Identity.ID,
-    kind: z.enum(["tool-input", "tool-output", "tool-observation", "cortex-output"]),
+    kind: z.enum(["tool-input", "tool-output", "tool-observation", "cortex-output", "message-content"]),
     mediaType: z.string().min(1).max(256),
     bytes: z.number().int().nonnegative(),
     hash: Protocol.Digest,
@@ -121,6 +188,7 @@ export namespace OrganizationSyncProtocol {
     .discriminatedUnion("type", [
       SessionEvent,
       MessageEvent,
+      PartEvent,
       ToolEvent,
       AttachmentEvent,
       CortexEvent,
@@ -193,6 +261,21 @@ export namespace OrganizationSyncProtocol {
   })
   export type EventPageQuery = z.infer<typeof EventPageQuery>
 
+  export const SnapshotQuery = z.strictObject({
+    limit: z.coerce.number().int().min(1).max(256).default(128),
+    cursor: Identity.ID.optional(),
+    watermark: Identity.Revision.optional(),
+  })
+  export type SnapshotQuery = z.infer<typeof SnapshotQuery>
+  export const SnapshotPage = z.strictObject({
+    sessionID: Identity.ID,
+    shareGeneration: Identity.Revision,
+    watermark: Identity.Revision,
+    items: z.array(Event).max(256),
+    cursor: Identity.ID.optional(),
+  }).meta({ ref: "OrgTranscriptSnapshotPage" })
+  export type SnapshotPage = z.infer<typeof SnapshotPage>
+
   export const SearchQuery = z.strictObject({
     q: z.string().trim().min(1).max(256),
     limit: z.coerce.number().int().min(1).max(64).default(32),
@@ -203,7 +286,7 @@ export namespace OrganizationSyncProtocol {
   export const SearchHit = z.strictObject({
     sequence: Sequence,
     sessionID: Identity.ID,
-    kind: z.enum(["session", "message", "tool", "attachment", "cortex", "notification", "blob"]),
+    kind: z.enum(["session", "message", "part", "tool", "attachment", "cortex", "notification", "blob"]),
     id: Identity.ID,
     snippet: z.string().max(512),
     integrity: Protocol.Digest,

@@ -13,9 +13,11 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RolloutEvents } from "@ericsanchezok/synergy-harness/session/rollout/events"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import type { MemberIdentity } from "./home"
+import type { RuntimeIdentity } from "./home"
 import type { MemberConnection } from "./connection"
 import { OrganizationSyncPath as Keys } from "./storage/path"
+import { projectSharedPart } from "./transcript"
+import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
 
 const State = z.strictObject({
   schemaVersion: z.literal(1),
@@ -73,6 +75,7 @@ const Batch = z.strictObject({
   lastSeq: Sync.Sequence,
   payloadHash: Protocol.Digest,
   draftIDs: z.array(Identity.ID).min(1).max(256),
+  draftHashes: z.array(Protocol.Digest).min(1).max(256).optional(),
   events: z.array(Sync.Event).min(1).max(256),
 })
 type Batch = z.infer<typeof Batch>
@@ -101,14 +104,16 @@ export interface MemberSyncExporter {
 }
 
 export function startMemberSyncExporter(input: {
-  identity: MemberIdentity
-  connection: MemberConnection
+  identity: RuntimeIdentity
+  connection: Pick<MemberConnection, "connected" | "sync" | "syncState" | "uploadBlob">
   signal: AbortSignal
 }): MemberSyncExporter {
   const { identity, connection, signal } = input
   const sessions = new Set<string>()
   const tails = new Map<string, Promise<void>>()
   const unsubs: Array<() => void> = []
+  const pendingParts = new Map<string, MessageV2.Part>()
+  const partWorkers = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | undefined
   const retryTimer = setInterval(() => {
     if (sessions.size) schedule()
@@ -192,9 +197,10 @@ export function startMemberSyncExporter(input: {
       const previous = await read(Draft, draftKey)
       const retained =
         previous ?? (await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, draftID)))
+      if (retained && JSON.stringify(retained.event) === JSON.stringify(event)) return
       const bytes = Buffer.byteLength(JSON.stringify(event))
       const localSequence = retained?.localSequence ?? current?.nextDraft ?? 1
-      const nextDraft = retained ? (current?.nextDraft ?? localSequence) : localSequence + 1
+      const nextDraft = Math.max(current?.nextDraft ?? 1, localSequence + 1)
       await Storage.write(
         draftKey,
         Draft.parse({
@@ -228,6 +234,8 @@ export function startMemberSyncExporter(input: {
           updatedAt: Date.now(),
         }),
       )
+      await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), { draftID })
+      await Storage.write(Keys.registeredRoot(identity.orgID, rootSessionID), { sessionID: rootSessionID })
     })
     sessions.add(rootSessionID)
     schedule()
@@ -340,6 +348,42 @@ export function startMemberSyncExporter(input: {
     })
   }
 
+  async function projectPart(part: MessageV2.Part) {
+    const bound = await sessionBinding(part.sessionID)
+    if (!bound) return
+    await ensureSession(part.sessionID)
+    const owner = { kind: "session", scopeID: bound.session.scope.id, sessionID: part.sessionID } as const
+    const projected = await projectSharedPart(part, owner)
+    if (!projected.part) return
+    for (const artifact of projected.blobs) {
+      await rememberBlob(part.sessionID, owner, artifact)
+      await putDraft(bound.rootSessionID, digest({ type: "blob", sessionID: part.sessionID, blobID: artifact.id }).slice(0, 32), Sync.Event.parse({
+        type: "blob", sequence: 1, sessionID: part.sessionID, blobID: artifact.id, kind: "message-content",
+        mediaType: artifact.mediaType, bytes: artifact.bytes, hash: artifact.sha256, state: "available",
+      }))
+    }
+    await putDraft(bound.rootSessionID, digest({ type: "part", sessionID: part.sessionID, partID: part.id }).slice(0, 32), Sync.Event.parse({
+      type: "part", sequence: 1, sessionID: part.sessionID, messageID: part.messageID, partID: part.id,
+      part: projected.part, integrity: digest(projected.part),
+    }))
+  }
+
+  function observePart(part: MessageV2.Part) {
+    const key = `${part.sessionID}:${part.id}`
+    pendingParts.set(key, part)
+    if (partWorkers.has(key)) return
+    partWorkers.add(key)
+    queue(part.sessionID, async () => {
+      try {
+        while (pendingParts.has(key)) {
+          const latest = pendingParts.get(key)!
+          pendingParts.delete(key)
+          await projectPart(latest)
+        }
+      } finally { partWorkers.delete(key) }
+    })
+  }
+
   function observeMessage(info: MessageV2.Info) {
     queue(info.sessionID, async () => {
       const bound = await sessionBinding(info.sessionID)
@@ -361,6 +405,14 @@ export function startMemberSyncExporter(input: {
           role: info.role,
           createdAt: info.time.created,
           summary,
+          actor: info.actor,
+          agent: info.agent,
+          rootID: info.rootID,
+          model: info.role === "user" ? info.model : { providerID: info.providerID, modelID: info.modelID },
+          ...(info.role === "assistant" ? { mode: info.mode, cost: info.cost, tokens: info.tokens,
+            error: info.error && { code: info.error.name, message: (await SecretMask.apply("message" in info.error.data && typeof info.error.data.message === "string" ? info.error.data.message : info.error.name)).slice(0, 32 * 1024) },
+          } : {}),
+          ...(info.role === "assistant" ? { parentID: info.parentID, completedAt: info.time.completed, finish: info.finish } : {}),
           integrity: digest(safe),
         }),
       )
@@ -545,24 +597,38 @@ export function startMemberSyncExporter(input: {
     if (current?.shareGeneration === share.shareGeneration) return
     const bound = await sessionBinding(rootSessionID)
     if (!bound) return
-    const retained: ProjectionRecord[] = []
+    const pending = [rootSessionID]
+    const visited = new Set<string>()
+    while (pending.length) {
+      signal.throwIfAborted()
+      const sessionID = pending.shift()!
+      if (!visited.add(sessionID) || !await sessionBinding(sessionID)) continue
+      await ensureSession(sessionID)
+      for await (const message of MessageV2.stream({ sessionID })) {
+        observeMessage(message.info)
+        await tails.get(sessionID)
+        for (const part of message.parts) {
+          await projectPart(part)
+          if (part.type === "attachment") observeAttachment(part)
+          if (part.type === "tool" && part.state.status === "completed")
+            for (const attachment of part.state.attachments ?? []) observeAttachment(attachment)
+        }
+        await tails.get(sessionID)
+      }
+      observeSession(sessionID)
+      await tails.get(sessionID)
+      pending.push(...(await Session.children(sessionID)).map((child) => child.id))
+    }
     for await (const row of Storage.records<unknown>({
       prefix: Keys.projections(identity.orgID, rootSessionID),
       limit: 256,
     })) {
-      const projection = ProjectionRecord.safeParse(row.value)
-      if (projection.success) retained.push(projection.data)
-    }
-    retained.sort((a, b) => a.localSequence - b.localSequence)
-    await Storage.transaction(async () => {
-      const latest = await read(State, Keys.state(identity.orgID, rootSessionID))
-      if (latest?.shareGeneration === share.shareGeneration) return
-      let nextDraft = latest?.nextDraft ?? 1
-      for (const projection of retained) {
+      await Storage.transaction(async () => {
+        const projection = await read(ProjectionRecord, row.key)
+        if (!projection) return
         const draftKey = Keys.draft(identity.orgID, rootSessionID, projection.draftID)
         const previous = await read(Draft, draftKey)
         const localSequence = previous?.localSequence ?? projection.localSequence
-        nextDraft = Math.max(nextDraft, localSequence + 1)
         const event = Sync.Event.parse({ ...projection.event, sequence: 1 })
         await Storage.write(
           draftKey,
@@ -576,14 +642,18 @@ export function startMemberSyncExporter(input: {
             bytes: Buffer.byteLength(JSON.stringify(event)),
           }),
         )
-      }
+        await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), { draftID: projection.draftID })
+      })
+    }
+    await Storage.transaction(async () => {
+      const latest = await read(State, Keys.state(identity.orgID, rootSessionID))
       await Storage.write(
         Keys.state(identity.orgID, rootSessionID),
         State.parse({
           schemaVersion: 1,
           orgID: identity.orgID,
           sessionID: rootSessionID,
-          nextDraft,
+          nextDraft: latest?.nextDraft ?? 1,
           shareGeneration: share.shareGeneration,
           syncState: "pending",
           updatedAt: Date.now(),
@@ -613,13 +683,20 @@ export function startMemberSyncExporter(input: {
       })
     }
     if (stored) await Storage.remove(batchKey)
-    const rows = await Storage.query({ prefix: Keys.drafts(identity.orgID, sessionID), limit: 257 })
-    const drafts = rows
-      .map((row) => Draft.safeParse(row.value))
-      .filter((row): row is { success: true; data: Draft } => row.success)
-      .map((row) => row.data)
-      .sort((a, b) => a.localSequence - b.localSequence)
-      .slice(0, 256)
+    const rows = await Storage.query({ prefix: Keys.orderedDrafts(identity.orgID, sessionID), limit: 256 })
+    const candidates = await Promise.all(rows.map(async (row) => {
+      const index = z.strictObject({ draftID: Identity.ID }).parse(row.value)
+      const draft = await read(Draft, Keys.draft(identity.orgID, sessionID, index.draftID))
+      if (!draft) throw new Error("Pending sync order has no matching draft")
+      return draft
+    }))
+    const drafts: Draft[] = []
+    let bytes = 1024
+    for (const candidate of candidates) {
+      if (drafts.length && bytes + candidate.bytes + 128 > 1024 * 1024) break
+      drafts.push(candidate)
+      bytes += candidate.bytes + 128
+    }
     if (!drafts.length) return
     const bound = await sessionBinding(sessionID)
     if (!bound) return
@@ -640,6 +717,7 @@ export function startMemberSyncExporter(input: {
       lastSeq,
       payloadHash: hash,
       draftIDs: drafts.map((draft) => draft.draftID),
+      draftHashes: drafts.map((draft) => digest(draft.event)),
       events,
     })
     await Storage.write(batchKey, persisted)
@@ -663,7 +741,7 @@ export function startMemberSyncExporter(input: {
     const batch = await prepare(sessionID, share)
     if (!batch) return
     await uploadBatchBlobs(sessionID, share, batch)
-    const ack = await connection.sync(batch, signal)
+    const ack = Sync.Ack.parse(await connection.sync(batch, signal))
     if (
       ack.sessionID !== batch.sessionID ||
       ack.shareGeneration !== batch.shareGeneration ||
@@ -675,7 +753,13 @@ export function startMemberSyncExporter(input: {
     if (!stored || stored.payloadHash !== batch.payloadHash) return
     await Storage.transaction(async () => {
       await Storage.remove(Keys.batch(identity.orgID, sessionID))
-      for (const draftID of stored.draftIDs) await Storage.remove(Keys.draft(identity.orgID, sessionID, draftID))
+      for (const [index, draftID] of stored.draftIDs.entries()) {
+        const draftKey = Keys.draft(identity.orgID, sessionID, draftID)
+        const draft = await read(Draft, draftKey)
+        if (!draft || stored.draftHashes?.[index] !== digest(draft.event)) continue
+        await Storage.remove(draftKey)
+        await Storage.remove(Keys.orderedDraft(identity.orgID, sessionID, draft.localSequence))
+      }
       const current = await read(State, Keys.state(identity.orgID, sessionID))
       await Storage.write(
         Keys.state(identity.orgID, sessionID),
@@ -695,6 +779,8 @@ export function startMemberSyncExporter(input: {
   async function flush() {
     if (running || closed || signal.aborted) return running
     running = (async () => {
+      await startup
+      await Promise.all([...tails.values()])
       for (const sessionID of [...sessions]) {
         if (closed || signal.aborted) return
         try {
@@ -726,11 +812,22 @@ export function startMemberSyncExporter(input: {
   unsubs.push(
     Bus.subscribeGlobal(MessageV2.Event.PartUpdated, (event) => {
       const part = event.properties.part
+      observePart(part)
       if (part.type === "attachment") observeAttachment(part)
       if (part.type === "tool" && part.state.status === "completed")
         for (const attachment of part.state.attachments ?? []) observeAttachment(attachment)
     }),
   )
+  unsubs.push(Bus.subscribeGlobal(MessageV2.Event.PartRemoved, (event) => {
+    const { sessionID, messageID, partID } = event.properties
+    pendingParts.delete(`${sessionID}:${partID}`)
+    queue(sessionID, async () => {
+      const bound = await sessionBinding(sessionID)
+      if (!bound) return
+      const removed = { type: "part", sequence: 1, sessionID, messageID, partID, removed: true }
+      await putDraft(bound.rootSessionID, digest({ type: "part", sessionID, partID }).slice(0, 32), Sync.Event.parse({ ...removed, integrity: digest(removed) }))
+    })
+  }))
   unsubs.push(
     Bus.subscribeGlobal(RolloutEvents.Updated, (event) => {
       if (event.properties.owner.kind !== "session") return
@@ -743,16 +840,18 @@ export function startMemberSyncExporter(input: {
     }),
   )
   signal.addEventListener("abort", close, { once: true })
-  void Storage.query({ prefix: Keys.sessions(identity.orgID), limit: 4096 })
-    .then((rows) => rows.forEach((row) => row.key[3] && sessions.add(row.key[3])))
-    .then(schedule)
-    .catch(() => {})
+  const startup = (async () => {
+    for await (const row of Storage.records<unknown>({ prefix: Keys.roots(identity.orgID), limit: 256 }))
+      sessions.add(z.strictObject({ sessionID: Identity.ID }).parse(row.value).sessionID)
+    schedule()
+  })()
 
   function close() {
     if (closed) return
     closed = true
     clearTimeout(timer)
     clearInterval(retryTimer)
+    pendingParts.clear()
     for (const unsubscribe of unsubs) unsubscribe()
     signal.removeEventListener("abort", close)
   }

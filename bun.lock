@@ -68,6 +68,7 @@
         "@kobalte/core": "catalog:",
         "@lingui/core": "catalog:",
         "@lingui/solid": "catalog:",
+        "@noble/hashes": "1.8.0",
         "@office-kit/pptx": "0.24.1",
         "@office-kit/pptx-preview": "0.16.0",
         "@pierre/diffs": "catalog:",
@@ -1122,6 +1123,7 @@
       "version": "1.1.26",
       "dependencies": {
         "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-organization-protocol": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@modelcontextprotocol/sdk": "1.32.1",

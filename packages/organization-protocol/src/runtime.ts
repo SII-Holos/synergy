@@ -12,23 +12,42 @@ export namespace OrganizationRuntimeProtocol {
     .strictObject({ deviceID: Identity.ID, publicKey: PublicKey })
     .meta({ ref: "OrgMemberRuntimeRegistration" })
   export type MemberRegistration = z.infer<typeof MemberRegistration>
-  export const Registration = z
-    .strictObject({
+  export const HostedRegistration = z
+    .strictObject({ name: z.string().trim().min(1).max(256), publicKey: PublicKey })
+    .meta({ ref: "OrgHostedRuntimeRegistration" })
+  export type HostedRegistration = z.infer<typeof HostedRegistration>
+  const registration = {
       runtimeID: Identity.ID,
       orgID: Identity.ID,
       deploymentIncarnation: Identity.ID,
-      runtimeKind: z.literal("member"),
-      accountID: Identity.ID,
-      deviceID: Identity.ID,
       publicKey: PublicKey,
       state: z.enum(["pending", "active", "revoked"]),
       revision: Identity.Revision,
       connectionEpoch: Protocol.Revision,
       createdAt: z.number().int().nonnegative(),
       lastSeen: z.number().int().nonnegative().optional(),
-    })
+  }
+  export const MemberRegistrationRecord = z.strictObject({
+    ...registration,
+    runtimeKind: z.literal("member"),
+    accountID: Identity.ID,
+    deviceID: Identity.ID,
+  })
+  export type MemberRegistrationRecord = z.infer<typeof MemberRegistrationRecord>
+  export const HostedRegistrationRecord = z.strictObject({
+    ...registration,
+    runtimeKind: z.literal("hosted"),
+    name: z.string().trim().min(1).max(256),
+    createdBy: Identity.ID,
+  })
+  export type HostedRegistrationRecord = z.infer<typeof HostedRegistrationRecord>
+  export const Registration = z.discriminatedUnion("runtimeKind", [MemberRegistrationRecord, HostedRegistrationRecord])
     .meta({ ref: "OrgRuntimeRegistration" })
   export type Registration = z.infer<typeof Registration>
+  export const StoredRegistration = z.discriminatedUnion("runtimeKind", [
+    MemberRegistrationRecord.extend({ schemaVersion: z.literal(1) }),
+    HostedRegistrationRecord.extend({ schemaVersion: z.literal(1) }),
+  ])
   export const RegistrationPage = z
     .strictObject({ items: z.array(Registration), cursor: Identity.ID.optional() })
     .meta({ ref: "OrgRuntimeRegistrationPage" })

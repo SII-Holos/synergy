@@ -2,6 +2,7 @@ import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { OrganizationSessionProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { SessionSchemaRegistry } from "@ericsanchezok/synergy-harness/session/schema-registry"
+import { registerSyncMigrations } from "./sync-migration"
 
 export const SessionBindingError = NamedError.create(
   "OrganizationSessionBindingError",
@@ -17,6 +18,7 @@ declare module "@ericsanchezok/synergy-harness/session/types" {
 }
 
 export function registerSessionSchema(member?: { orgID: string }) {
+  registerSyncMigrations()
   SessionSchemaRegistry.register("organization-runtime", {
     shape: fields,
     inherit: ["organization"],

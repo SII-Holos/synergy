@@ -131,7 +131,7 @@ export interface GateOptions {
 }
 
 const SESSION_STATE_TOOLS = new Set(["dagwrite", "dagpatch", "todowrite", "task", "task_cancel"])
-const NETWORK_READ_TOOLS = new Set(["webfetch"])
+const NETWORK_READ_TOOLS = new Set(["webfetch", "organization_knowledge"])
 
 const AGENT_ORCHESTRATION_TOOLS = new Set([
   "runtime_reload",

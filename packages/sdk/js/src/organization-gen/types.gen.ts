@@ -175,27 +175,70 @@ export type OrgProjectMemberChange = {
   role: "maintainer" | "collaborator" | "reader" | null
 }
 
+export type OrgProjectMemberPage = {
+  items: Array<{
+    accountID: string
+    displayName: string
+    loginName: string
+    state: "active" | "removed"
+    role: "maintainer" | "collaborator" | "reader"
+  }>
+  projectRevision: number
+  cursor?: string
+}
+
+export type OrgProjectCandidatePage = {
+  items: Array<{
+    accountID: string
+    displayName: string
+    loginName: string
+    state: "active" | "removed"
+  }>
+  projectRevision: number
+  cursor?: string
+}
+
 export type OrgRuntimePublicKey = string
 
-export type OrgRuntimeRegistration = {
-  runtimeID: string
-  orgID: string
-  deploymentIncarnation: string
-  runtimeKind: "member"
-  accountID: string
-  deviceID: string
-  publicKey: OrgRuntimePublicKey
-  state: "pending" | "active" | "revoked"
-  revision: number
-  connectionEpoch: number
-  createdAt: number
-  lastSeen?: number
-}
+export type OrgRuntimeRegistration =
+  | {
+      runtimeID: string
+      orgID: string
+      deploymentIncarnation: string
+      publicKey: OrgRuntimePublicKey
+      state: "pending" | "active" | "revoked"
+      revision: number
+      connectionEpoch: number
+      createdAt: number
+      lastSeen?: number
+      runtimeKind: "member"
+      accountID: string
+      deviceID: string
+    }
+  | {
+      runtimeID: string
+      orgID: string
+      deploymentIncarnation: string
+      publicKey: OrgRuntimePublicKey
+      state: "pending" | "active" | "revoked"
+      revision: number
+      connectionEpoch: number
+      createdAt: number
+      lastSeen?: number
+      runtimeKind: "hosted"
+      name: string
+      createdBy: string
+    }
 
 export type OrgRuntimeRegistrationTicket = {
   token: string
   expiresAt: number
   runtime: OrgRuntimeRegistration
+}
+
+export type OrgHostedRuntimeRegistration = {
+  name: string
+  publicKey: OrgRuntimePublicKey
 }
 
 export type OrgMemberRuntimeRegistration = {
@@ -277,6 +320,116 @@ export type OrgSyncAck = {
   syncState: "pending" | "syncing" | "synced" | "blocked" | "failed"
 }
 
+export type ActorStamp =
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "account"
+      orgID: string
+    }
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "local"
+    }
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "system"
+      orgID?: string
+      causedBy?: Array<
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "account"
+            orgID: string
+          }
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "local"
+          }
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "system"
+            orgID?: string
+          }
+      >
+    }
+
+export type OrgTranscriptContent =
+  | {
+      kind: "inline"
+      text: string
+    }
+  | {
+      kind: "blob"
+      blobID: string
+      hash: string
+      bytes: number
+      mediaType: string
+    }
+
+export type OrgTranscriptPart =
+  | {
+      type: "text"
+      content: OrgTranscriptContent
+      origin?: "user" | "system"
+    }
+  | {
+      type: "reasoning"
+      content: OrgTranscriptContent
+    }
+  | {
+      type: "tool"
+      callID: string
+      tool: string
+      status: "pending" | "generating" | "running" | "completed" | "error"
+      input: OrgTranscriptContent
+      output?: OrgTranscriptContent
+      error?: OrgTranscriptContent
+      title?: string
+      startedAt?: number
+      completedAt?: number
+    }
+  | {
+      type: "attachment"
+      filename: string
+      mediaType: string
+      hash?: string
+      bytes?: number
+    }
+  | {
+      type: "step-start"
+    }
+  | {
+      type: "step-finish"
+      reason: string
+      cost: number
+    }
+  | {
+      type: "compaction"
+      auto: boolean
+    }
+  | {
+      type: "notice"
+      kind: string
+      content: OrgTranscriptContent
+    }
+
 export type OrgSyncEvent =
   | {
       type: "session"
@@ -312,6 +465,42 @@ export type OrgSyncEvent =
       role: "user" | "assistant"
       createdAt: number
       summary: string
+      actor?: ActorStamp
+      agent?: string
+      parentID?: string
+      rootID?: string
+      completedAt?: number
+      finish?: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      mode?: string
+      cost?: number
+      tokens?: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      error?: {
+        code: string
+        message: string
+      }
+      removed?: true
+      integrity: string
+    }
+  | {
+      type: "part"
+      sequence: number
+      sessionID?: string
+      messageID: string
+      partID: string
+      part?: OrgTranscriptPart
+      removed?: true
       integrity: string
     }
   | {
@@ -369,7 +558,7 @@ export type OrgSyncEvent =
       sequence: number
       sessionID?: string
       blobID: string
-      kind: "tool-input" | "tool-output" | "tool-observation" | "cortex-output"
+      kind: "tool-input" | "tool-output" | "tool-observation" | "cortex-output" | "message-content"
       mediaType: string
       bytes: number
       hash: string
@@ -388,6 +577,14 @@ export type OrgSyncBatch = {
   events: Array<OrgSyncEvent>
 }
 
+export type OrgTranscriptSnapshotPage = {
+  sessionID: string
+  shareGeneration: number
+  watermark: number
+  items: Array<OrgSyncEvent>
+  cursor?: string
+}
+
 export type OrgSyncEventPage = {
   sessionID: string
   shareGeneration: number
@@ -403,7 +600,7 @@ export type OrgSyncSearchPage = {
   items: Array<{
     sequence: number
     sessionID: string
-    kind: "session" | "message" | "tool" | "attachment" | "cortex" | "notification" | "blob"
+    kind: "session" | "message" | "part" | "tool" | "attachment" | "cortex" | "notification" | "blob"
     id: string
     snippet: string
     integrity: string
@@ -433,7 +630,7 @@ export type OrgResourceAdminView = {
         kind: "project"
         projectID: string
       }
-  kind: "model" | "connection"
+  kind: "model" | "connection" | "workspace" | "environment"
   name: string
   state: "enabled" | "disabled"
   revision: number
@@ -470,6 +667,14 @@ export type OrgResourceAdminView = {
         protocol: "fixed-http"
         method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
         endpoint: string
+      }
+    | {
+        protocol: "workspace-storage"
+        profile: string
+      }
+    | {
+        protocol: "environment"
+        profile: string
       }
   credential:
     | {
@@ -531,6 +736,14 @@ export type OrgResourceCreate = {
         method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
         endpoint: string
       }
+    | {
+        protocol: "workspace-storage"
+        profile: string
+      }
+    | {
+        protocol: "environment"
+        profile: string
+      }
   credential:
     | {
         kind: "none"
@@ -582,6 +795,14 @@ export type OrgResourceChange = {
         method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
         endpoint: string
       }
+    | {
+        protocol: "workspace-storage"
+        profile: string
+      }
+    | {
+        protocol: "environment"
+        profile: string
+      }
   credential?:
     | {
         kind: "none"
@@ -631,7 +852,7 @@ export type OrgResourceView = {
         kind: "project"
         projectID: string
       }
-  kind: "model" | "connection"
+  kind: "model" | "connection" | "workspace" | "environment"
   name: string
   state: "enabled" | "disabled"
   revision: number
@@ -666,6 +887,12 @@ export type OrgResourceView = {
         protocol: "fixed-http"
         method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
       }
+    | {
+        protocol: "workspace-storage"
+      }
+    | {
+        protocol: "environment"
+      }
   permissions: {
     use: boolean
   }
@@ -673,6 +900,435 @@ export type OrgResourceView = {
 
 export type OrgResourcePage = {
   items: Array<OrgResourceView>
+  cursor?: string
+}
+
+export type OrgPublicationUpload = {
+  uploadID: string
+  orgID: string
+  purpose: "knowledge" | "artifact"
+  scope:
+    | {
+        kind: "organization"
+      }
+    | {
+        kind: "project"
+        projectID: string
+      }
+  sourceSessionID?: string
+  authorID: string
+  state: "open" | "sealing" | "sealed"
+  fileCount: number
+  totalBytes: number
+  manifestHash?: string
+  createdAt: number
+}
+
+export type OrgPublicationFile = {
+  path: string
+  bytes: number
+  sha256: string
+  mediaType: string
+  fileID: string
+}
+
+export type OrgPublicationFilePage = {
+  items: Array<OrgPublicationFile>
+  cursor?: string
+}
+
+export type OrgPublicationChunkStatus = {
+  uploadID: string
+  fileID: string
+  receivedBytes: number
+  bytes: number
+  chunkBytes: 4194304
+}
+
+export type OrgKnowledgeItem = {
+  itemID: string
+  orgID: string
+  scope:
+    | {
+        kind: "organization"
+      }
+    | {
+        kind: "project"
+        projectID: string
+      }
+  kind: "material" | "skill"
+  title: string
+  authorID: string
+  state: "published" | "withdrawn"
+  revision: number
+  latestVersion: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type OrgKnowledgePage = {
+  items: Array<OrgKnowledgeItem>
+  cursor?: string
+}
+
+export type OrgKnowledgeRelease = {
+  itemID: string
+  orgID: string
+  scope:
+    | {
+        kind: "organization"
+      }
+    | {
+        kind: "project"
+        projectID: string
+      }
+  kind: "material" | "skill"
+  title: string
+  version: number
+  authorID: string
+  publishedAt: number
+  manifestHash: string
+  fileCount: number
+  totalBytes: number
+  skill?: {
+    name: string
+    description: string
+    license?: string
+    compatibility?: string
+  }
+}
+
+export type OrgKnowledgeVersionPage = {
+  items: Array<OrgKnowledgeRelease>
+  cursor?: number
+}
+
+export type OrgKnowledgeSelection = {
+  revision: number
+  manifestHash: string
+  releases: Array<{
+    itemID: string
+    version: number
+    manifestHash: string
+  }>
+  updatedBy: string
+  updatedAt: number
+}
+
+export type OrgArtifactVersion = {
+  artifactID: string
+  orgID: string
+  projectID: string
+  title: string
+  version: number
+  revision: number
+  authorID: string
+  publishedAt: number
+  manifestHash: string
+  fileCount: number
+  totalBytes: number
+  sourceAvailable: boolean
+  sourceSessionID?: string
+}
+
+export type OrgArtifactPage = {
+  items: Array<OrgArtifactVersion>
+  cursor?: string
+}
+
+export type OrgArtifactVersionPage = {
+  items: Array<OrgArtifactVersion>
+  cursor?: number
+}
+
+export type OrgArtifactReference = {
+  artifactID: string
+  version: number
+  manifestHash: string
+  projectID: string
+  files: Array<OrgPublicationFile>
+  cursor?: string
+}
+
+export type OrgCloudWorkspace = {
+  workspaceID: string
+  orgID: string
+  projectID: string
+  resourceID: string
+  name: string
+  revision: number
+  generation: number
+  contentRevision: number
+  manifest: string | null
+  activeMount: boolean
+}
+
+export type OrgCloudWorkspaceCreate = {
+  projectID: string
+  resourceID: string
+  requestID: string
+  name: string
+}
+
+export type OrgCloudWorkspacePage = {
+  items: Array<OrgCloudWorkspace>
+  cursor?: string
+}
+
+export type OrgCloudWorkspaceBytes = {
+  data: string
+  version: string
+  size: number
+  mode: number
+}
+
+export type OrgCloudWorkspaceRead = {
+  path: string
+  offset: number
+  length: number
+}
+
+export type OrgCloudWorkspaceWrite = {
+  operationID: string
+  expectedRevision: number
+  path: string
+  data: string
+  expectedVersion: string | null
+  mode?: number
+}
+
+export type OrgCloudEnvironment = {
+  environmentID: string
+  orgID: string
+  projectID: string
+  resourceID: string
+  name: string
+  generation: number
+  state: "idle" | "allocating" | "ready" | "releasing" | "unavailable"
+  activeUses: number
+}
+
+export type OrgCloudEnvironmentCreate = {
+  projectID: string
+  resourceID: string
+  requestID: string
+  name: string
+}
+
+export type OrgHandoffView = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  phase:
+    | "preparing"
+    | "prepared"
+    | "surrendered"
+    | "committed"
+    | "activation_permitted"
+    | "completed"
+    | "cancelled"
+    | "retired"
+  initiator: string
+  targetAccepted: boolean
+  commandSeq: number
+  manifestHash?: string
+  missingRequirements: Array<{
+    code: string
+    label: string
+    recoverable: boolean
+  }>
+  canCancel: boolean
+  canAccept: boolean
+  canContinue: boolean
+  currentDriver: string
+  bindingEpoch: number
+}
+
+export type OrgHandoffPrepare = {
+  handoffID: string
+  targetRuntimeID: string
+  expectedBindingEpoch: number
+  expectedControlRevision: number
+  mappingPlanRevision: number
+}
+
+export type OrgHandoffPage = {
+  items: Array<OrgHandoffView>
+  cursor?: string
+}
+
+export type OrgHandoffAccept = {
+  mappingPlanRevision: number
+}
+
+export type OrgHandoffPermit = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  purpose: "handoff-surrender" | "handoff-activation"
+  permitID: string
+  keyID: string
+  manifestHash: string
+  preparedHash: string
+  createdAt: number
+}
+
+export type OrgHandoffSignedPermit = {
+  permit: OrgHandoffPermit
+  signature: string
+}
+
+export type OrgHandoffPermitRequest = {
+  purpose: "handoff-surrender" | "handoff-activation"
+}
+
+export type OrgHandoffProof =
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      handoffID: string
+      sessionID: string
+      sourceRuntimeID: string
+      targetRuntimeID: string
+      fromEpoch: number
+      toEpoch: number
+      mappingPlanRevision: number
+      shareGeneration: number
+      purpose: "source-frozen"
+      manifestHash: string
+      commandSeq: number
+      receivedSeq: number
+      compatibilityHash: string
+      closureHash: string
+      workspaceMoveReceiptHash: string | null
+      paused: true
+      drained: true
+    }
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      handoffID: string
+      sessionID: string
+      sourceRuntimeID: string
+      targetRuntimeID: string
+      fromEpoch: number
+      toEpoch: number
+      mappingPlanRevision: number
+      shareGeneration: number
+      purpose: "target-prepared"
+      manifestHash: string
+      compatibilityHash: string
+      convertedHash: string
+      closureHash: string
+      workspaceMoveReceiptHash: string | null
+      paused: true
+    }
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      handoffID: string
+      sessionID: string
+      sourceRuntimeID: string
+      targetRuntimeID: string
+      fromEpoch: number
+      toEpoch: number
+      mappingPlanRevision: number
+      shareGeneration: number
+      purpose: "source-surrendered"
+      manifestHash: string
+      permitID: string
+      preparedHash: string
+      gatePersisted: true
+    }
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      handoffID: string
+      sessionID: string
+      sourceRuntimeID: string
+      targetRuntimeID: string
+      fromEpoch: number
+      toEpoch: number
+      mappingPlanRevision: number
+      shareGeneration: number
+      purpose: "source-cancelled"
+      manifestHash: string | null
+      gateCancelled: true
+      paused: true
+    }
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      handoffID: string
+      sessionID: string
+      sourceRuntimeID: string
+      targetRuntimeID: string
+      fromEpoch: number
+      toEpoch: number
+      mappingPlanRevision: number
+      shareGeneration: number
+      purpose: "target-activated"
+      manifestHash: string
+      permitID: string
+      preparedHash: string
+      paused: true
+    }
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      handoffID: string
+      sessionID: string
+      sourceRuntimeID: string
+      targetRuntimeID: string
+      fromEpoch: number
+      toEpoch: number
+      mappingPlanRevision: number
+      shareGeneration: number
+      purpose: "target-never-activate"
+      manifestHash: string
+      preparedHash: string
+      tombstonePersisted: true
+    }
+
+export type OrgHandoffSignedProof = {
+  proof: OrgHandoffProof
+  signature: string
+}
+
+export type OrgKnowledgeExecutionPage = {
+  orgID: string
+  projectID: string
+  sessionID: string
+  selection: {
+    revision: number
+    manifestHash: string
+    updatedBy: string
+    updatedAt: number
+    releaseCount: number
+  }
+  items: Array<OrgKnowledgeRelease>
   cursor?: string
 }
 
@@ -707,6 +1363,119 @@ export type OrgCommandPermit = {
   authorizedAt: number
   deadline: number
   provisionalGrantID?: string
+}
+
+export type OrgCommandInputAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect: {
+    kind: "inbox"
+    itemID: string
+    messageID: string
+    mode: "task" | "steer" | "context"
+  }
+}
+
+export type OrgExecutionDescriptionProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+  purpose: "execution-resource-description"
+}
+
+export type OrgExecutionDescriptionRequest = {
+  proof: OrgExecutionDescriptionProof
+  signature: string
+}
+
+export type OrgKnowledgeExecutionQuery = {
+  authority: OrgExecutionDescriptionRequest
+  limit?: number
+  cursor?: string
+  manifestHash?: string
+}
+
+export type OrgKnowledgeExecutionFiles = {
+  authority: OrgExecutionDescriptionRequest
+  reference: {
+    itemID: string
+    version: number
+    manifestHash: string
+  }
+  limit?: number
+  cursor?: string
+}
+
+export type OrgKnowledgeContentChunk = {
+  fileID: string
+  sha256: string
+  offset: number
+  totalBytes: number
+  data: string
+}
+
+export type OrgKnowledgeExecutionContent = {
+  authority: OrgExecutionDescriptionRequest
+  reference: {
+    itemID: string
+    version: number
+    manifestHash: string
+  }
+  fileID: string
+  offset: number
+  length: number
 }
 
 export type OrgCommandControlAccepted = {
@@ -786,19 +1555,6 @@ export type OrgCommandCreateRequest = {
   creation: {
     operation: "create"
     title?: string
-  }
-}
-
-export type OrgCommandInputAccepted = {
-  schemaVersion: 1
-  permit: OrgCommandPermit
-  acceptedAt: number
-  intakeSeq: number
-  effect: {
-    kind: "inbox"
-    itemID: string
-    messageID: string
-    mode: "task" | "steer" | "context"
   }
 }
 
@@ -1233,68 +1989,6 @@ export type OrgExecutionGrant =
       closedAt: number
     }
 
-export type OrgExecutionDescriptionProof = {
-  schemaVersion: 1
-  orgID: string
-  deploymentIncarnation: string
-  runtimeID: string
-  connectionEpoch: number
-  receipt: {
-    attempt:
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "accepted"
-          acceptedAttemptID: string
-        }
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "rejected"
-          reason:
-            | "EXPIRED_PERMIT"
-            | "STALE_CONNECTION"
-            | "STALE_BINDING"
-            | "SESSION_UNAVAILABLE"
-            | "TRANSFER_BLOCKED"
-            | "SEQUENCE_GAP"
-            | "SEQUENCE_CLOSED"
-            | "REQUEST_CONFLICT"
-            | "PAYLOAD_MISMATCH"
-            | "CONTROL_CONFLICT"
-        }
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "skipped"
-        }
-    accepted?: OrgCommandInputAccepted
-    skip?: {
-      schemaVersion: 1
-      permit: {
-        schemaVersion: 1
-        purpose: "session-command-skip"
-        command: OrgCommandPermit
-        connectionEpoch: number
-        authorizedAt: number
-        deadline: number
-      }
-      receivedAt: number
-    }
-  }
-  issuedAt: number
-  expiresAt: number
-  purpose: "execution-resource-description"
-}
-
-export type OrgExecutionDescriptionRequest = {
-  proof: OrgExecutionDescriptionProof
-  signature: string
-}
-
 export type OrgExecutionDescription = {
   grant: OrgExecutionGrant
   resources: Array<{
@@ -1329,6 +2023,12 @@ export type OrgExecutionDescription = {
       | {
           protocol: "fixed-http"
           method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+        }
+      | {
+          protocol: "workspace-storage"
+        }
+      | {
+          protocol: "environment"
         }
   }>
 }
@@ -2318,6 +3018,153 @@ export type OrgProjectsMemberResponses = {
 
 export type OrgProjectsMemberResponse = OrgProjectsMemberResponses[keyof OrgProjectsMemberResponses]
 
+export type OrgProjectsMembersData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/projects/{projectID}/members"
+}
+
+export type OrgProjectsMembersErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgProjectsMembersError = OrgProjectsMembersErrors[keyof OrgProjectsMembersErrors]
+
+export type OrgProjectsMembersResponses = {
+  /**
+   * Success
+   */
+  200: OrgProjectMemberPage
+}
+
+export type OrgProjectsMembersResponse = OrgProjectsMembersResponses[keyof OrgProjectsMembersResponses]
+
+export type OrgProjectsCandidatesData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+    q?: string
+  }
+  url: "/org/v1/projects/{projectID}/member-candidates"
+}
+
+export type OrgProjectsCandidatesErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgProjectsCandidatesError = OrgProjectsCandidatesErrors[keyof OrgProjectsCandidatesErrors]
+
+export type OrgProjectsCandidatesResponses = {
+  /**
+   * Success
+   */
+  200: OrgProjectCandidatePage
+}
+
+export type OrgProjectsCandidatesResponse = OrgProjectsCandidatesResponses[keyof OrgProjectsCandidatesResponses]
+
+export type OrgRuntimeRegisterHostedData = {
+  body: OrgHostedRuntimeRegistration
+  path?: never
+  query?: never
+  url: "/org/v1/runtimes/hosted"
+}
+
+export type OrgRuntimeRegisterHostedErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgRuntimeRegisterHostedError = OrgRuntimeRegisterHostedErrors[keyof OrgRuntimeRegisterHostedErrors]
+
+export type OrgRuntimeRegisterHostedResponses = {
+  /**
+   * Success
+   */
+  200: OrgRuntimeRegistrationTicket
+}
+
+export type OrgRuntimeRegisterHostedResponse =
+  OrgRuntimeRegisterHostedResponses[keyof OrgRuntimeRegisterHostedResponses]
+
 export type OrgRuntimeRegisterMemberData = {
   body: OrgMemberRuntimeRegistration
   path?: never
@@ -2933,6 +3780,57 @@ export type OrgSessionSyncApplyBatchResponses = {
 export type OrgSessionSyncApplyBatchResponse =
   OrgSessionSyncApplyBatchResponses[keyof OrgSessionSyncApplyBatchResponses]
 
+export type OrgSessionSyncSnapshotData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+    watermark?: number
+  }
+  url: "/org/v1/sessions/{sessionID}/sync/snapshot"
+}
+
+export type OrgSessionSyncSnapshotErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionSyncSnapshotError = OrgSessionSyncSnapshotErrors[keyof OrgSessionSyncSnapshotErrors]
+
+export type OrgSessionSyncSnapshotResponses = {
+  /**
+   * Success
+   */
+  200: OrgTranscriptSnapshotPage
+}
+
+export type OrgSessionSyncSnapshotResponse = OrgSessionSyncSnapshotResponses[keyof OrgSessionSyncSnapshotResponses]
+
 export type OrgSessionSyncEventsData = {
   body?: never
   path: {
@@ -3121,11 +4019,22 @@ export type OrgSessionSyncDownloadBlobData = {
   url: "/org/v1/sessions/{sessionID}/blobs/{hash}/content"
 }
 
+export type OrgSessionSyncDownloadBlobErrors = {
+  /**
+   * Unsatisfiable byte range
+   */
+  416: unknown
+}
+
 export type OrgSessionSyncDownloadBlobResponses = {
   /**
    * Blob bytes
    */
   200: Blob | File
+  /**
+   * Authorized byte range
+   */
+  206: unknown
 }
 
 export type OrgSessionSyncDownloadBlobResponse =
@@ -3467,6 +4376,2099 @@ export type OrgProjectResourcesListResponses = {
 }
 
 export type OrgProjectResourcesListResponse = OrgProjectResourcesListResponses[keyof OrgProjectResourcesListResponses]
+
+export type OrgPublicationsCreateUploadData = {
+  body: {
+    requestID: string
+    purpose: "knowledge" | "artifact"
+    scope:
+      | {
+          kind: "organization"
+        }
+      | {
+          kind: "project"
+          projectID: string
+        }
+    sourceSessionID?: string
+  }
+  path?: never
+  query?: never
+  url: "/org/v1/publications/uploads"
+}
+
+export type OrgPublicationsCreateUploadErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgPublicationsCreateUploadError =
+  OrgPublicationsCreateUploadErrors[keyof OrgPublicationsCreateUploadErrors]
+
+export type OrgPublicationsCreateUploadResponses = {
+  /**
+   * Success
+   */
+  200: OrgPublicationUpload
+}
+
+export type OrgPublicationsCreateUploadResponse =
+  OrgPublicationsCreateUploadResponses[keyof OrgPublicationsCreateUploadResponses]
+
+export type OrgPublicationsUploadStatusData = {
+  body?: never
+  path: {
+    uploadID: string
+  }
+  query?: never
+  url: "/org/v1/publications/uploads/{uploadID}"
+}
+
+export type OrgPublicationsUploadStatusErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgPublicationsUploadStatusError =
+  OrgPublicationsUploadStatusErrors[keyof OrgPublicationsUploadStatusErrors]
+
+export type OrgPublicationsUploadStatusResponses = {
+  /**
+   * Success
+   */
+  200: OrgPublicationUpload
+}
+
+export type OrgPublicationsUploadStatusResponse =
+  OrgPublicationsUploadStatusResponses[keyof OrgPublicationsUploadStatusResponses]
+
+export type OrgPublicationsFilesData = {
+  body?: never
+  path: {
+    uploadID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/publications/uploads/{uploadID}/files"
+}
+
+export type OrgPublicationsFilesErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgPublicationsFilesError = OrgPublicationsFilesErrors[keyof OrgPublicationsFilesErrors]
+
+export type OrgPublicationsFilesResponses = {
+  /**
+   * Success
+   */
+  200: OrgPublicationFilePage
+}
+
+export type OrgPublicationsFilesResponse = OrgPublicationsFilesResponses[keyof OrgPublicationsFilesResponses]
+
+export type OrgPublicationsPutFileData = {
+  body: {
+    path: string
+    bytes: number
+    sha256: string
+    mediaType: string
+  }
+  path: {
+    uploadID: string
+  }
+  query?: never
+  url: "/org/v1/publications/uploads/{uploadID}/files"
+}
+
+export type OrgPublicationsPutFileErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgPublicationsPutFileError = OrgPublicationsPutFileErrors[keyof OrgPublicationsPutFileErrors]
+
+export type OrgPublicationsPutFileResponses = {
+  /**
+   * Success
+   */
+  200: OrgPublicationFile
+}
+
+export type OrgPublicationsPutFileResponse = OrgPublicationsPutFileResponses[keyof OrgPublicationsPutFileResponses]
+
+export type OrgPublicationsPutChunkData = {
+  body: Blob | File
+  path: {
+    uploadID: string
+    fileID: string
+  }
+  query: {
+    offset: number
+  }
+  url: "/org/v1/publications/uploads/{uploadID}/files/{fileID}/chunks"
+}
+
+export type OrgPublicationsPutChunkResponses = {
+  /**
+   * File checkpoint
+   */
+  200: OrgPublicationChunkStatus
+}
+
+export type OrgPublicationsPutChunkResponse = OrgPublicationsPutChunkResponses[keyof OrgPublicationsPutChunkResponses]
+
+export type OrgPublicationsSealData = {
+  body: {
+    fileCount: number
+    totalBytes: number
+    manifestHash?: string
+  }
+  path: {
+    uploadID: string
+  }
+  query?: never
+  url: "/org/v1/publications/uploads/{uploadID}/seal"
+}
+
+export type OrgPublicationsSealErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgPublicationsSealError = OrgPublicationsSealErrors[keyof OrgPublicationsSealErrors]
+
+export type OrgPublicationsSealResponses = {
+  /**
+   * Success
+   */
+  200: OrgPublicationUpload
+}
+
+export type OrgPublicationsSealResponse = OrgPublicationsSealResponses[keyof OrgPublicationsSealResponses]
+
+export type OrgKnowledgeListData = {
+  body?: never
+  path?: never
+  query?: {
+    projectID?: string
+    kind?: "material" | "skill"
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/knowledge"
+}
+
+export type OrgKnowledgeListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeListError = OrgKnowledgeListErrors[keyof OrgKnowledgeListErrors]
+
+export type OrgKnowledgeListResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgePage
+}
+
+export type OrgKnowledgeListResponse = OrgKnowledgeListResponses[keyof OrgKnowledgeListResponses]
+
+export type OrgKnowledgePublishData = {
+  body: {
+    requestID: string
+    itemID: string
+    expectedRevision: number
+    uploadID: string
+    title: string
+    kind: "material" | "skill"
+  }
+  path?: never
+  query?: never
+  url: "/org/v1/knowledge"
+}
+
+export type OrgKnowledgePublishErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgePublishError = OrgKnowledgePublishErrors[keyof OrgKnowledgePublishErrors]
+
+export type OrgKnowledgePublishResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeRelease
+}
+
+export type OrgKnowledgePublishResponse = OrgKnowledgePublishResponses[keyof OrgKnowledgePublishResponses]
+
+export type OrgKnowledgeSearchData = {
+  body?: never
+  path?: never
+  query: {
+    projectID?: string
+    kind?: "material" | "skill"
+    limit?: number
+    cursor?: string
+    q: string
+  }
+  url: "/org/v1/knowledge/search"
+}
+
+export type OrgKnowledgeSearchErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeSearchError = OrgKnowledgeSearchErrors[keyof OrgKnowledgeSearchErrors]
+
+export type OrgKnowledgeSearchResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgePage
+}
+
+export type OrgKnowledgeSearchResponse = OrgKnowledgeSearchResponses[keyof OrgKnowledgeSearchResponses]
+
+export type OrgKnowledgeWithdrawData = {
+  body: {
+    expectedRevision: number
+  }
+  path: {
+    itemID: string
+  }
+  query?: never
+  url: "/org/v1/knowledge/{itemID}"
+}
+
+export type OrgKnowledgeWithdrawErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeWithdrawError = OrgKnowledgeWithdrawErrors[keyof OrgKnowledgeWithdrawErrors]
+
+export type OrgKnowledgeWithdrawResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeItem
+}
+
+export type OrgKnowledgeWithdrawResponse = OrgKnowledgeWithdrawResponses[keyof OrgKnowledgeWithdrawResponses]
+
+export type OrgKnowledgeGetData = {
+  body?: never
+  path: {
+    itemID: string
+  }
+  query?: never
+  url: "/org/v1/knowledge/{itemID}"
+}
+
+export type OrgKnowledgeGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeGetError = OrgKnowledgeGetErrors[keyof OrgKnowledgeGetErrors]
+
+export type OrgKnowledgeGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeRelease
+}
+
+export type OrgKnowledgeGetResponse = OrgKnowledgeGetResponses[keyof OrgKnowledgeGetResponses]
+
+export type OrgKnowledgeVersionsData = {
+  body?: never
+  path: {
+    itemID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: number
+  }
+  url: "/org/v1/knowledge/{itemID}/versions"
+}
+
+export type OrgKnowledgeVersionsErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeVersionsError = OrgKnowledgeVersionsErrors[keyof OrgKnowledgeVersionsErrors]
+
+export type OrgKnowledgeVersionsResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeVersionPage
+}
+
+export type OrgKnowledgeVersionsResponse = OrgKnowledgeVersionsResponses[keyof OrgKnowledgeVersionsResponses]
+
+export type OrgKnowledgeVersionData = {
+  body?: never
+  path: {
+    itemID: string
+    version: number
+  }
+  query?: never
+  url: "/org/v1/knowledge/{itemID}/versions/{version}"
+}
+
+export type OrgKnowledgeVersionErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeVersionError = OrgKnowledgeVersionErrors[keyof OrgKnowledgeVersionErrors]
+
+export type OrgKnowledgeVersionResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeRelease
+}
+
+export type OrgKnowledgeVersionResponse = OrgKnowledgeVersionResponses[keyof OrgKnowledgeVersionResponses]
+
+export type OrgKnowledgeFilesData = {
+  body?: never
+  path: {
+    itemID: string
+    version: number
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/knowledge/{itemID}/versions/{version}/files"
+}
+
+export type OrgKnowledgeFilesErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeFilesError = OrgKnowledgeFilesErrors[keyof OrgKnowledgeFilesErrors]
+
+export type OrgKnowledgeFilesResponses = {
+  /**
+   * Success
+   */
+  200: OrgPublicationFilePage
+}
+
+export type OrgKnowledgeFilesResponse = OrgKnowledgeFilesResponses[keyof OrgKnowledgeFilesResponses]
+
+export type OrgKnowledgeContentData = {
+  body?: never
+  path: {
+    itemID: string
+    version: number
+    fileID: string
+  }
+  query?: never
+  url: "/org/v1/knowledge/{itemID}/versions/{version}/files/{fileID}/content"
+}
+
+export type OrgKnowledgeContentErrors = {
+  /**
+   * Unsatisfiable range
+   */
+  416: unknown
+}
+
+export type OrgKnowledgeContentResponses = {
+  /**
+   * File bytes
+   */
+  200: Blob | File
+  /**
+   * Authorized file range
+   */
+  206: unknown
+}
+
+export type OrgKnowledgeContentResponse = OrgKnowledgeContentResponses[keyof OrgKnowledgeContentResponses]
+
+export type OrgKnowledgeAppliedData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: never
+  url: "/org/v1/projects/{projectID}/knowledge/applied"
+}
+
+export type OrgKnowledgeAppliedErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeAppliedError = OrgKnowledgeAppliedErrors[keyof OrgKnowledgeAppliedErrors]
+
+export type OrgKnowledgeAppliedResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeSelection
+}
+
+export type OrgKnowledgeAppliedResponse = OrgKnowledgeAppliedResponses[keyof OrgKnowledgeAppliedResponses]
+
+export type OrgKnowledgeApplyData = {
+  body: {
+    expectedRevision: number
+    releases: Array<{
+      itemID: string
+      version: number
+      manifestHash: string
+    }>
+  }
+  path: {
+    projectID: string
+  }
+  query?: never
+  url: "/org/v1/projects/{projectID}/knowledge/applied"
+}
+
+export type OrgKnowledgeApplyErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeApplyError = OrgKnowledgeApplyErrors[keyof OrgKnowledgeApplyErrors]
+
+export type OrgKnowledgeApplyResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeSelection
+}
+
+export type OrgKnowledgeApplyResponse = OrgKnowledgeApplyResponses[keyof OrgKnowledgeApplyResponses]
+
+export type OrgKnowledgeSessionSelectionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/knowledge"
+}
+
+export type OrgKnowledgeSessionSelectionErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeSessionSelectionError =
+  OrgKnowledgeSessionSelectionErrors[keyof OrgKnowledgeSessionSelectionErrors]
+
+export type OrgKnowledgeSessionSelectionResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeSelection
+}
+
+export type OrgKnowledgeSessionSelectionResponse =
+  OrgKnowledgeSessionSelectionResponses[keyof OrgKnowledgeSessionSelectionResponses]
+
+export type OrgKnowledgeSetSessionSelectionData = {
+  body: {
+    expectedRevision: number
+    releases: Array<{
+      itemID: string
+      version: number
+      manifestHash: string
+    }>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/knowledge"
+}
+
+export type OrgKnowledgeSetSessionSelectionErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeSetSessionSelectionError =
+  OrgKnowledgeSetSessionSelectionErrors[keyof OrgKnowledgeSetSessionSelectionErrors]
+
+export type OrgKnowledgeSetSessionSelectionResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeSelection
+}
+
+export type OrgKnowledgeSetSessionSelectionResponse =
+  OrgKnowledgeSetSessionSelectionResponses[keyof OrgKnowledgeSetSessionSelectionResponses]
+
+export type OrgArtifactsPublishData = {
+  body: {
+    requestID: string
+    artifactID: string
+    expectedRevision: number
+    uploadID: string
+    title: string
+  }
+  path?: never
+  query?: never
+  url: "/org/v1/artifacts"
+}
+
+export type OrgArtifactsPublishErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgArtifactsPublishError = OrgArtifactsPublishErrors[keyof OrgArtifactsPublishErrors]
+
+export type OrgArtifactsPublishResponses = {
+  /**
+   * Success
+   */
+  200: OrgArtifactVersion
+}
+
+export type OrgArtifactsPublishResponse = OrgArtifactsPublishResponses[keyof OrgArtifactsPublishResponses]
+
+export type OrgArtifactsListData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/projects/{projectID}/artifacts"
+}
+
+export type OrgArtifactsListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgArtifactsListError = OrgArtifactsListErrors[keyof OrgArtifactsListErrors]
+
+export type OrgArtifactsListResponses = {
+  /**
+   * Success
+   */
+  200: OrgArtifactPage
+}
+
+export type OrgArtifactsListResponse = OrgArtifactsListResponses[keyof OrgArtifactsListResponses]
+
+export type OrgArtifactsGetData = {
+  body?: never
+  path: {
+    artifactID: string
+  }
+  query?: never
+  url: "/org/v1/artifacts/{artifactID}"
+}
+
+export type OrgArtifactsGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgArtifactsGetError = OrgArtifactsGetErrors[keyof OrgArtifactsGetErrors]
+
+export type OrgArtifactsGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgArtifactVersion
+}
+
+export type OrgArtifactsGetResponse = OrgArtifactsGetResponses[keyof OrgArtifactsGetResponses]
+
+export type OrgArtifactsVersionsData = {
+  body?: never
+  path: {
+    artifactID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: number
+  }
+  url: "/org/v1/artifacts/{artifactID}/versions"
+}
+
+export type OrgArtifactsVersionsErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgArtifactsVersionsError = OrgArtifactsVersionsErrors[keyof OrgArtifactsVersionsErrors]
+
+export type OrgArtifactsVersionsResponses = {
+  /**
+   * Success
+   */
+  200: OrgArtifactVersionPage
+}
+
+export type OrgArtifactsVersionsResponse = OrgArtifactsVersionsResponses[keyof OrgArtifactsVersionsResponses]
+
+export type OrgArtifactsVersionData = {
+  body?: never
+  path: {
+    artifactID: string
+    version: number
+  }
+  query?: never
+  url: "/org/v1/artifacts/{artifactID}/versions/{version}"
+}
+
+export type OrgArtifactsVersionErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgArtifactsVersionError = OrgArtifactsVersionErrors[keyof OrgArtifactsVersionErrors]
+
+export type OrgArtifactsVersionResponses = {
+  /**
+   * Success
+   */
+  200: OrgArtifactVersion
+}
+
+export type OrgArtifactsVersionResponse = OrgArtifactsVersionResponses[keyof OrgArtifactsVersionResponses]
+
+export type OrgArtifactsReferenceData = {
+  body?: never
+  path: {
+    artifactID: string
+    version: number
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/artifacts/{artifactID}/versions/{version}/reference"
+}
+
+export type OrgArtifactsReferenceErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgArtifactsReferenceError = OrgArtifactsReferenceErrors[keyof OrgArtifactsReferenceErrors]
+
+export type OrgArtifactsReferenceResponses = {
+  /**
+   * Success
+   */
+  200: OrgArtifactReference
+}
+
+export type OrgArtifactsReferenceResponse = OrgArtifactsReferenceResponses[keyof OrgArtifactsReferenceResponses]
+
+export type OrgArtifactsContentData = {
+  body?: never
+  path: {
+    artifactID: string
+    version: number
+    fileID: string
+  }
+  query?: never
+  url: "/org/v1/artifacts/{artifactID}/versions/{version}/files/{fileID}/content"
+}
+
+export type OrgArtifactsContentErrors = {
+  /**
+   * Unsatisfiable range
+   */
+  416: unknown
+}
+
+export type OrgArtifactsContentResponses = {
+  /**
+   * File bytes
+   */
+  200: Blob | File
+  /**
+   * Authorized file range
+   */
+  206: unknown
+}
+
+export type OrgArtifactsContentResponse = OrgArtifactsContentResponses[keyof OrgArtifactsContentResponses]
+
+export type OrgCloudWorkspacesCreateData = {
+  body: OrgCloudWorkspaceCreate
+  path?: never
+  query?: never
+  url: "/org/v1/cloud/workspaces"
+}
+
+export type OrgCloudWorkspacesCreateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudWorkspacesCreateError = OrgCloudWorkspacesCreateErrors[keyof OrgCloudWorkspacesCreateErrors]
+
+export type OrgCloudWorkspacesCreateResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudWorkspace
+}
+
+export type OrgCloudWorkspacesCreateResponse =
+  OrgCloudWorkspacesCreateResponses[keyof OrgCloudWorkspacesCreateResponses]
+
+export type OrgCloudWorkspacesGetData = {
+  body?: never
+  path: {
+    workspaceID: string
+  }
+  query?: never
+  url: "/org/v1/cloud/workspaces/{workspaceID}"
+}
+
+export type OrgCloudWorkspacesGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudWorkspacesGetError = OrgCloudWorkspacesGetErrors[keyof OrgCloudWorkspacesGetErrors]
+
+export type OrgCloudWorkspacesGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudWorkspace
+}
+
+export type OrgCloudWorkspacesGetResponse = OrgCloudWorkspacesGetResponses[keyof OrgCloudWorkspacesGetResponses]
+
+export type OrgCloudWorkspacesListData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query: {
+    limit?: number
+    cursor?: string
+    resourceID: string
+  }
+  url: "/org/v1/projects/{projectID}/cloud/workspaces"
+}
+
+export type OrgCloudWorkspacesListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudWorkspacesListError = OrgCloudWorkspacesListErrors[keyof OrgCloudWorkspacesListErrors]
+
+export type OrgCloudWorkspacesListResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudWorkspacePage
+}
+
+export type OrgCloudWorkspacesListResponse = OrgCloudWorkspacesListResponses[keyof OrgCloudWorkspacesListResponses]
+
+export type OrgCloudWorkspacesReadData = {
+  body: OrgCloudWorkspaceRead
+  path: {
+    workspaceID: string
+  }
+  query?: never
+  url: "/org/v1/cloud/workspaces/{workspaceID}/read"
+}
+
+export type OrgCloudWorkspacesReadErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudWorkspacesReadError = OrgCloudWorkspacesReadErrors[keyof OrgCloudWorkspacesReadErrors]
+
+export type OrgCloudWorkspacesReadResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudWorkspaceBytes
+}
+
+export type OrgCloudWorkspacesReadResponse = OrgCloudWorkspacesReadResponses[keyof OrgCloudWorkspacesReadResponses]
+
+export type OrgCloudWorkspacesWriteData = {
+  body: OrgCloudWorkspaceWrite
+  path: {
+    workspaceID: string
+  }
+  query?: never
+  url: "/org/v1/cloud/workspaces/{workspaceID}/write"
+}
+
+export type OrgCloudWorkspacesWriteErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudWorkspacesWriteError = OrgCloudWorkspacesWriteErrors[keyof OrgCloudWorkspacesWriteErrors]
+
+export type OrgCloudWorkspacesWriteResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudWorkspace
+}
+
+export type OrgCloudWorkspacesWriteResponse = OrgCloudWorkspacesWriteResponses[keyof OrgCloudWorkspacesWriteResponses]
+
+export type OrgCloudEnvironmentsCreateData = {
+  body: OrgCloudEnvironmentCreate
+  path?: never
+  query?: never
+  url: "/org/v1/cloud/environments"
+}
+
+export type OrgCloudEnvironmentsCreateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudEnvironmentsCreateError = OrgCloudEnvironmentsCreateErrors[keyof OrgCloudEnvironmentsCreateErrors]
+
+export type OrgCloudEnvironmentsCreateResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudEnvironment
+}
+
+export type OrgCloudEnvironmentsCreateResponse =
+  OrgCloudEnvironmentsCreateResponses[keyof OrgCloudEnvironmentsCreateResponses]
+
+export type OrgCloudEnvironmentsGetData = {
+  body?: never
+  path: {
+    environmentID: string
+  }
+  query?: never
+  url: "/org/v1/cloud/environments/{environmentID}"
+}
+
+export type OrgCloudEnvironmentsGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudEnvironmentsGetError = OrgCloudEnvironmentsGetErrors[keyof OrgCloudEnvironmentsGetErrors]
+
+export type OrgCloudEnvironmentsGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudEnvironment
+}
+
+export type OrgCloudEnvironmentsGetResponse = OrgCloudEnvironmentsGetResponses[keyof OrgCloudEnvironmentsGetResponses]
+
+export type OrgHandoffListData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/sessions/{sessionID}/handoffs"
+}
+
+export type OrgHandoffListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffListError = OrgHandoffListErrors[keyof OrgHandoffListErrors]
+
+export type OrgHandoffListResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffPage
+}
+
+export type OrgHandoffListResponse = OrgHandoffListResponses[keyof OrgHandoffListResponses]
+
+export type OrgHandoffPrepareData = {
+  body: OrgHandoffPrepare
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/handoffs"
+}
+
+export type OrgHandoffPrepareErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffPrepareError = OrgHandoffPrepareErrors[keyof OrgHandoffPrepareErrors]
+
+export type OrgHandoffPrepareResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffView
+}
+
+export type OrgHandoffPrepareResponse = OrgHandoffPrepareResponses[keyof OrgHandoffPrepareResponses]
+
+export type OrgHandoffGetData = {
+  body?: never
+  path: {
+    handoffID: string
+  }
+  query?: never
+  url: "/org/v1/handoffs/{handoffID}"
+}
+
+export type OrgHandoffGetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffGetError = OrgHandoffGetErrors[keyof OrgHandoffGetErrors]
+
+export type OrgHandoffGetResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffView
+}
+
+export type OrgHandoffGetResponse = OrgHandoffGetResponses[keyof OrgHandoffGetResponses]
+
+export type OrgHandoffAcceptData = {
+  body: OrgHandoffAccept
+  path: {
+    handoffID: string
+  }
+  query?: never
+  url: "/org/v1/handoffs/{handoffID}/accept"
+}
+
+export type OrgHandoffAcceptErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffAcceptError = OrgHandoffAcceptErrors[keyof OrgHandoffAcceptErrors]
+
+export type OrgHandoffAcceptResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffView
+}
+
+export type OrgHandoffAcceptResponse = OrgHandoffAcceptResponses[keyof OrgHandoffAcceptResponses]
+
+export type OrgHandoffCancelData = {
+  body: unknown
+  path: {
+    handoffID: string
+  }
+  query?: never
+  url: "/org/v1/handoffs/{handoffID}/cancel"
+}
+
+export type OrgHandoffCancelErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffCancelError = OrgHandoffCancelErrors[keyof OrgHandoffCancelErrors]
+
+export type OrgHandoffCancelResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffView
+}
+
+export type OrgHandoffCancelResponse = OrgHandoffCancelResponses[keyof OrgHandoffCancelResponses]
+
+export type OrgHandoffCommitData = {
+  body: unknown
+  path: {
+    handoffID: string
+  }
+  query?: never
+  url: "/org/v1/handoffs/{handoffID}/commit"
+}
+
+export type OrgHandoffCommitErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffCommitError = OrgHandoffCommitErrors[keyof OrgHandoffCommitErrors]
+
+export type OrgHandoffCommitResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffView
+}
+
+export type OrgHandoffCommitResponse = OrgHandoffCommitResponses[keyof OrgHandoffCommitResponses]
+
+export type OrgHandoffPermitData = {
+  body: OrgHandoffPermitRequest
+  path: {
+    handoffID: string
+  }
+  query?: never
+  url: "/org/v1/handoffs/{handoffID}/permit"
+}
+
+export type OrgHandoffPermitErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffPermitError = OrgHandoffPermitErrors[keyof OrgHandoffPermitErrors]
+
+export type OrgHandoffPermitResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffSignedPermit
+}
+
+export type OrgHandoffPermitResponse = OrgHandoffPermitResponses[keyof OrgHandoffPermitResponses]
+
+export type OrgHandoffProofData = {
+  body: OrgHandoffSignedProof
+  path?: never
+  query?: never
+  url: "/runtime/v1/handoffs/proof"
+}
+
+export type OrgHandoffProofErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffProofError = OrgHandoffProofErrors[keyof OrgHandoffProofErrors]
+
+export type OrgHandoffProofResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffView
+}
+
+export type OrgHandoffProofResponse = OrgHandoffProofResponses[keyof OrgHandoffProofResponses]
+
+export type OrgKnowledgeExecutionSelectionData = {
+  body: OrgKnowledgeExecutionQuery
+  path?: never
+  query?: never
+  url: "/runtime/v1/knowledge/selection"
+}
+
+export type OrgKnowledgeExecutionSelectionErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeExecutionSelectionError =
+  OrgKnowledgeExecutionSelectionErrors[keyof OrgKnowledgeExecutionSelectionErrors]
+
+export type OrgKnowledgeExecutionSelectionResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeExecutionPage
+}
+
+export type OrgKnowledgeExecutionSelectionResponse =
+  OrgKnowledgeExecutionSelectionResponses[keyof OrgKnowledgeExecutionSelectionResponses]
+
+export type OrgKnowledgeExecutionFilesData = {
+  body: OrgKnowledgeExecutionFiles
+  path?: never
+  query?: never
+  url: "/runtime/v1/knowledge/files"
+}
+
+export type OrgKnowledgeExecutionFilesErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeExecutionFilesError = OrgKnowledgeExecutionFilesErrors[keyof OrgKnowledgeExecutionFilesErrors]
+
+export type OrgKnowledgeExecutionFilesResponses = {
+  /**
+   * Success
+   */
+  200: OrgPublicationFilePage
+}
+
+export type OrgKnowledgeExecutionFilesResponse =
+  OrgKnowledgeExecutionFilesResponses[keyof OrgKnowledgeExecutionFilesResponses]
+
+export type OrgKnowledgeExecutionContentData = {
+  body: OrgKnowledgeExecutionContent
+  path?: never
+  query?: never
+  url: "/runtime/v1/knowledge/content"
+}
+
+export type OrgKnowledgeExecutionContentErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeExecutionContentError =
+  OrgKnowledgeExecutionContentErrors[keyof OrgKnowledgeExecutionContentErrors]
+
+export type OrgKnowledgeExecutionContentResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeContentChunk
+}
+
+export type OrgKnowledgeExecutionContentResponse =
+  OrgKnowledgeExecutionContentResponses[keyof OrgKnowledgeExecutionContentResponses]
 
 export type OrgCommandsControlData = {
   body: OrgCommandControlRequest

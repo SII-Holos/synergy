@@ -10,6 +10,7 @@ import { projectView, projectExecutionRole } from "./authorization"
 import { fail, OrganizationError } from "./error"
 import type { RuntimeConnections } from "./runtime-connection"
 import type { CommandSigningAuthority } from "./signing"
+import { runtimeAuthority } from "./runtime-authority"
 
 function sameCall(left: Gateway.Target, right: Gateway.Target) {
   return (Object.keys(Gateway.Target.shape) as (keyof Gateway.Target)[]).every(
@@ -29,33 +30,14 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
     const identity = options.signing.identity
     if (target.orgID !== identity.orgID || target.deploymentIncarnation !== identity.deploymentIncarnation)
       fail("PERMISSION_DENIED", "Gateway authority belongs to another deployment")
-    const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(target.runtimeID))
-    if (
-      !runtime ||
-      runtime.runtimeID !== target.runtimeID ||
-      runtime.orgID !== target.orgID ||
-      runtime.deploymentIncarnation !== target.deploymentIncarnation ||
-      runtime.state !== "active" ||
-      runtime.connectionEpoch !== target.connectionEpoch
-    )
-      fail("PERMISSION_DENIED", "Gateway Runtime is not authorized")
-    const account = await Record.read(Record.Account, Keys.account(runtime.accountID))
-    if (
-      !account ||
-      account.accountID !== runtime.accountID ||
-      account.orgID !== target.orgID ||
-      account.state !== "active"
-    )
-      fail("PERMISSION_DENIED", "Gateway Runtime account is not active")
-    return { runtime, account }
+    return runtimeAuthority(target)
   }
   function connection(target: Gateway.Target) {
     const lease = options.connections.capture(target.runtimeID)
     if (
       lease.handshake.orgID !== target.orgID ||
       lease.handshake.deploymentIncarnation !== target.deploymentIncarnation ||
-      lease.handshake.connectionEpoch !== target.connectionEpoch ||
-      lease.handshake.runtimeKind !== "member"
+      lease.handshake.connectionEpoch !== target.connectionEpoch
     )
       fail("STALE_CONNECTION", "Gateway Runtime connection changed")
     return lease
@@ -94,11 +76,11 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
     if (invoke && session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks new resource calls")
     const [project, membership, contract] = await Promise.all([
       Record.read(Record.Project, Keys.project(grant.projectID)),
-      Record.read(Record.ProjectMember, Keys.projectMember(grant.projectID, account.accountID)),
+      account ? Record.read(Record.ProjectMember, Keys.projectMember(grant.projectID, account.accountID)) : undefined,
       OrganizationSessionResources.read(session),
     ])
     if (!project) fail("NOT_FOUND", "Project not found")
-    if (!projectExecutionRole(projectView(account, project, membership, "project.read").role))
+    if (account && !projectExecutionRole(projectView(account, project, membership, "project.read").role))
       fail("PERMISSION_DENIED", "Runtime account cannot execute project work")
     if (
       invoke &&
@@ -152,6 +134,8 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
             fail("PERMISSION_DENIED", "Runtime identity changed")
           const { grant, resource } = await access(proof, true)
           const configuration = resource.configuration
+          if (configuration.protocol === "workspace-storage" || configuration.protocol === "environment")
+            fail("PROTOCOL_MISMATCH", "This resource requires the cloud owner protocol")
           const previous = await Record.read(Record.GatewayCall, Keys.gatewayCall(grant.grantID, proof.callID))
           if (previous) {
             if (!sameCall(previous.authorization.permit, proof))

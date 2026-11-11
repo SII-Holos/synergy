@@ -4,6 +4,8 @@ import {
   OrganizationRuntimeProtocol as Runtime,
   OrganizationExecutionProtocol as Execution,
   OrganizationGatewayProtocol as Gateway,
+  OrganizationKnowledgeProtocol as Knowledge,
+  OrganizationPublicationProtocol as Publication,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationRuntimeError } from "./error"
@@ -20,6 +22,25 @@ export interface MemberResourceClient {
     input?: { body?: string | Uint8Array | ArrayBuffer; signal?: AbortSignal },
   ): Promise<Response>
   invokeMcp(permit: Gateway.SignedPermit, input: Gateway.McpRequest, signal?: AbortSignal): Promise<Gateway.McpResult>
+  knowledge(
+    proof: Execution.DescriptionProof,
+    query?: { cursor?: string; manifestHash?: string },
+    signal?: AbortSignal,
+  ): Promise<Knowledge.ExecutionPage>
+  knowledgeFiles(
+    proof: Execution.DescriptionProof,
+    reference: Knowledge.Reference,
+    query?: { cursor?: string },
+    signal?: AbortSignal,
+  ): Promise<z.infer<typeof Publication.FilePage>>
+  knowledgeContent(
+    proof: Execution.DescriptionProof,
+    reference: Knowledge.Reference,
+    fileID: string,
+    offset: number,
+    length: number,
+    signal?: AbortSignal,
+  ): Promise<Knowledge.ContentChunk>
 }
 
 type Proof = Execution.DescriptionProof | Execution.BindingProof | Execution.ReleaseProof | Gateway.Proof
@@ -241,6 +262,84 @@ export function createMemberResourceClient(options: {
     return permit
   }
   const resources: MemberResourceClient = {
+    async knowledge(value, query = {}, signal) {
+      const proof = Execution.DescriptionProof.parse(value)
+      return invoke(
+        proof,
+        Knowledge.ExecutionPage,
+        async (signal) =>
+          client.orgKnowledgeExecution.selection(
+            {
+              orgKnowledgeExecutionQuery: {
+                authority: { proof, signature: await Execution.signDescription(proof, options.key) },
+                limit: 50,
+                ...query,
+              },
+            },
+            { signal },
+          ),
+        (result) => {
+          const target = proof.receipt.accepted!.permit
+          if (
+            result.orgID !== proof.orgID ||
+            result.sessionID !== target.sessionID ||
+            result.projectID !== target.projectID
+          )
+            throw failure("PROTOCOL_MISMATCH", "Knowledge selection belongs to another Session")
+        },
+        signal,
+      )
+    },
+    async knowledgeFiles(value, reference, query = {}, signal) {
+      const proof = Execution.DescriptionProof.parse(value)
+      return invoke(
+        proof,
+        Publication.FilePage,
+        async (signal) =>
+          client.orgKnowledgeExecution.files(
+            {
+              orgKnowledgeExecutionFiles: {
+                authority: { proof, signature: await Execution.signDescription(proof, options.key) },
+                reference,
+                limit: 50,
+                ...query,
+              },
+            },
+            { signal },
+          ),
+        () => {},
+        signal,
+      )
+    },
+    async knowledgeContent(value, reference, fileID, offset, length, signal) {
+      const proof = Execution.DescriptionProof.parse(value)
+      return invoke(
+        proof,
+        Knowledge.ContentChunk,
+        async (signal) =>
+          client.orgKnowledgeExecution.content(
+            {
+              orgKnowledgeExecutionContent: {
+                authority: { proof, signature: await Execution.signDescription(proof, options.key) },
+                reference,
+                fileID,
+                offset,
+                length,
+              },
+            },
+            { signal },
+          ),
+        (result) => {
+          if (
+            result.fileID !== fileID ||
+            result.offset !== offset ||
+            Buffer.from(result.data, "base64url").length > length
+          )
+            throw failure("PROTOCOL_MISMATCH", "Knowledge content does not match its selected file range")
+        },
+        signal,
+      )
+    },
     async retention(value, signal) {
       const proof = Execution.DescriptionProof.parse(value)
       return invoke(

@@ -255,6 +255,7 @@ export class DesktopMemberRuntimes {
     if (!ticket.success) throw new Failure(result.response.status === 401 ? "reauthorization_required" : "unavailable")
     const runtime = ticket.data.runtime
     if (
+      runtime.runtimeKind !== "member" ||
       runtime.orgID !== member.identity.orgID ||
       runtime.deploymentIncarnation !== access.connection.deploymentIncarnation ||
       runtime.accountID !== member.identity.accountID ||

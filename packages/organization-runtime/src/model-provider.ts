@@ -11,7 +11,7 @@ import {
   loadBundledProviderSync,
 } from "@ericsanchezok/synergy-local-runtime/provider/sdk-registry"
 import { OrganizationRuntimeError } from "./error"
-import type { MemberIdentity } from "./home"
+import type { RuntimeIdentity } from "./home"
 
 function denied(message: string) {
   return new OrganizationRuntimeError({
@@ -107,7 +107,7 @@ function protocol(packageName: string): Gateway.ModelProtocol | undefined {
 }
 
 function factory(
-  identity: MemberIdentity,
+  identity: RuntimeIdentity,
   protocol: Gateway.ModelProtocol,
   create: ProviderSdkSource.Factory,
 ): ProviderSdkSource.Factory {
@@ -178,7 +178,7 @@ function factory(
   }
 }
 
-export function registerMemberProviderSdks(identity: MemberIdentity) {
+export function registerMemberProviderSdks(identity: RuntimeIdentity) {
   ProviderSdkSource.register(undefined)
   ProviderSdkSource.register({
     async load(packageName) {

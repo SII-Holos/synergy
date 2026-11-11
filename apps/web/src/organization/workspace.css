@@ -1,0 +1,187 @@
+.organization-workspace {
+  display: grid;
+  gap: 28px;
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+}
+.organization-workspace-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-weaker-base);
+  padding-bottom: 16px;
+}
+.organization-workspace-nav > button {
+  min-height: 36px;
+  padding-inline: 14px;
+  font-size: 14px;
+}
+.organization-workspace-main,
+.organization-projects-view,
+.organization-members-view {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.organization-resource-view,
+.organization-access-view {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.organization-page-heading p {
+  color: var(--text-weak);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+.organization-field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.organization-resource-list,
+.organization-access-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.organization-resource-list > li,
+.organization-access-list > li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-block: 16px;
+}
+.organization-resource-list > li + li,
+.organization-access-list > li + li {
+  border-top: 1px solid var(--border-weaker-base);
+}
+.organization-access-list > li > span:first-child {
+  flex: 1;
+  min-width: 160px;
+}
+.organization-resource-access {
+  flex-basis: 100%;
+  padding-top: 16px;
+}
+.organization-page-heading,
+.organization-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.organization-actions {
+  justify-content: flex-start;
+}
+.organization-page-heading h2 {
+  color: var(--text-strong);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.organization-editor {
+  display: grid;
+  gap: 20px;
+  width: 100%;
+  max-width: 560px;
+}
+.organization-editor > label,
+.organization-editor > p {
+  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.organization-workspace-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-critical-weak);
+  color: var(--text-error);
+}
+.organization-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  gap: 12px;
+  padding: 80px 24px;
+  color: var(--text-weak);
+}
+.organization-empty h3 {
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 500;
+}
+.organization-project-mark,
+.organization-member-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised-base);
+  color: var(--icon-base);
+}
+.organization-project-list .organization-project-copy {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+.organization-member-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.organization-member-list > li {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-block: 16px;
+}
+.organization-member-list > li + li {
+  border-top: 1px solid var(--border-weaker-base);
+}
+.organization-member-identity {
+  flex: 1;
+  min-width: 160px;
+  display: grid;
+  gap: 4px;
+}
+.organization-member-identity strong {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 500;
+}
+.organization-member-identity span {
+  color: var(--text-weak);
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .organization-page-heading {
+    align-items: flex-start;
+  }
+  .organization-workspace {
+    gap: 20px;
+  }
+  .organization-workspace-nav > button,
+  .organization-actions > button {
+    min-height: 44px;
+  }
+  .organization-empty {
+    padding: 48px 12px;
+  }
+}

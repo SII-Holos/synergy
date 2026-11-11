@@ -46,6 +46,10 @@ export namespace OrganizationSyncPath {
   export const state = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "state"]
   export const drafts = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "drafts"]
   export const draft = (orgID: string, sessionID: string, draftID: string) => [...drafts(orgID, sessionID), draftID]
+  export const orderedDrafts = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "draft-order"]
+  export const orderedDraft = (orgID: string, sessionID: string, sequence: number) => [...orderedDrafts(orgID, sessionID), String(sequence).padStart(16, "0")]
+  export const roots = (orgID: string) => ["organization-sync", orgID, "roots"]
+  export const registeredRoot = (orgID: string, sessionID: string) => [...roots(orgID), sessionID]
   export const projections = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "projections"]
   export const projection = (orgID: string, sessionID: string, draftID: string) => [
     ...projections(orgID, sessionID),

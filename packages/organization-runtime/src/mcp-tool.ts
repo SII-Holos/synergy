@@ -4,7 +4,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { z } from "zod"
-import type { MemberIdentity } from "./home"
+import type { RuntimeIdentity } from "./home"
 import { denied, withMemberExecution } from "./execution-source"
 
 const Parameters = z.discriminatedUnion("operation", [
@@ -19,7 +19,7 @@ const Parameters = z.discriminatedUnion("operation", [
 
 const MAX_TOOL_RESPONSE_BYTES = 4 * 1024 * 1024
 
-export function createMemberMcpTool(identity: MemberIdentity): Tool.Info {
+export function createMemberMcpTool(identity: RuntimeIdentity): Tool.Info {
   return Tool.define(
     "organization_mcp",
     {

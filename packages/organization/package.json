@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-organization-protocol": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.1",

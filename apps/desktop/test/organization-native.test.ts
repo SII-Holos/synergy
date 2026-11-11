@@ -93,6 +93,7 @@ nativeTest(
         navigationCancellation: true,
         logout: true,
         memberIPC: true,
+        binaryIPC: true,
       })
     } finally {
       clearTimeout(timeout)

@@ -7,4 +7,10 @@ export const commands: CommandEntry[] = [
     initialization: "owner",
     load: async () => (await import("./cli/member")).MemberRuntimeCommand as unknown as CommandModule,
   },
+  {
+    command: "hosted-runtime",
+    describe: "serve a prepared organization-hosted Runtime from a private supervisor request",
+    initialization: "owner",
+    load: async () => (await import("./cli/hosted")).HostedRuntimeCommand as unknown as CommandModule,
+  },
 ]

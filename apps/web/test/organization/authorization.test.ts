@@ -3,6 +3,33 @@ import { createHash } from "node:crypto"
 import { OrganizationClientAuth as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { authorizeOrganization, consumeAuthorizationLocation } from "../../src/organization/authorization"
 
+test("one-time organization onboarding tokens are consumed from the URL before rendering", () => {
+  const cleared: string[] = []
+  const history = {
+    replaceState(_state: unknown, _unused: string, url?: string | URL | null) {
+      cleared.push(String(url))
+    },
+  }
+  for (const kind of ["invite", "reset", "setup"] as const) {
+    expect(
+      consumeAuthorizationLocation(
+        { href: `https://org.example/organization.html#${kind}=${"a".repeat(64)}` },
+        history,
+      ),
+    ).toEqual({ kind, token: "a".repeat(64) })
+    expect(cleared.at(-1)).toBe("https://org.example/organization.html")
+  }
+  expect(() =>
+    consumeAuthorizationLocation(
+      { href: `https://org.example/organization.html#invite=${"a".repeat(64)}&code=other` },
+      history,
+    ),
+  ).toThrow()
+  expect(() =>
+    consumeAuthorizationLocation({ href: `http://org.example/organization.html#invite=${"a".repeat(64)}` }, history),
+  ).toThrow()
+})
+
 const authority = { issuer: "https://org.example", orgID: "org", deploymentIncarnation: "incarnation" }
 const client = { kind: "web", clientID: "web", redirectUri: "https://app.example/organization.html" } as const
 const account = {

@@ -9,6 +9,39 @@ export class DesktopOrganizationClientError extends Error {
   }
 }
 
+async function requestBytes(request: Request, limit: number) {
+  const reader = request.body!.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  const cancel = () => {
+    void reader.cancel().catch(() => {})
+  }
+  request.signal.addEventListener("abort", cancel, { once: true })
+  try {
+    for (;;) {
+      if (request.signal.aborted) throw new DOMException("The request was cancelled", "AbortError")
+      const next = await reader.read()
+      if (next.done) break
+      size += next.value.byteLength
+      if (size > limit) throw new DesktopOrganizationClientError("invalid_request")
+      chunks.push(next.value)
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {})
+    throw error
+  } finally {
+    request.signal.removeEventListener("abort", cancel)
+    reader.releaseLock()
+  }
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
+}
+
 export function desktopOrganizationFetch(bridge: Desktop.Bridge, connection: Desktop.Connection): typeof fetch {
   const identity = Desktop.Connection.parse(connection)
   const transport = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -26,15 +59,24 @@ export function desktopOrganizationFetch(bridge: Desktop.Bridge, connection: Des
     )
       throw new DesktopOrganizationClientError("invalid_request")
     if (request.signal.aborted) throw new DOMException("The request was cancelled", "AbortError")
-    const body = request.body ? await request.text() : undefined
-    if (body !== undefined && new TextEncoder().encode(body).byteLength > 65_536)
-      throw new DesktopOrganizationClientError("invalid_request")
+    const binary = request.body && headers.get("content-type") === "application/octet-stream"
+    const bytes = request.body ? await requestBytes(request, binary ? Desktop.BinaryLimit : 65_536) : undefined
+    let body: string | undefined
+    if (bytes !== undefined && !binary) {
+      try {
+        body = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+      } catch {
+        throw new DesktopOrganizationClientError("invalid_request")
+      }
+    }
     const parsed = Desktop.Request.safeParse({
       requestID: generateUUID(),
       connectionID: identity.id,
       method: request.method,
       path: url.pathname + url.search,
       ...(body !== undefined ? { body } : {}),
+      ...(binary ? { bodyBytes: bytes, contentType: "application/octet-stream" } : {}),
+      ...(headers.has("range") ? { range: headers.get("range") } : {}),
     })
     if (!parsed.success) throw new DesktopOrganizationClientError("invalid_request")
     const cancel = () => {
@@ -48,10 +90,23 @@ export function desktopOrganizationFetch(bridge: Desktop.Bridge, connection: Des
       if (!result.ok) throw new DesktopOrganizationClientError(result.error.code)
       const response = Desktop.Response.safeParse(result.value)
       if (!response.success) throw new DesktopOrganizationClientError("invalid_response")
-      return new Response(response.data.status === 204 ? null : response.data.body, {
-        status: response.data.status,
-        headers: { "content-type": "application/json" },
-      })
+      const binaryResponse = "bodyBytes" in response.data ? response.data : undefined
+      return new Response(
+        response.data.status === 204
+          ? null
+          : binaryResponse
+            ? binaryResponse.bodyBytes
+            : "body" in response.data
+              ? response.data.body
+              : null,
+        {
+          status: response.data.status,
+          headers: {
+            "content-type": binaryResponse?.contentType ?? "application/json",
+            ...(binaryResponse?.contentRange ? { "content-range": binaryResponse.contentRange } : {}),
+          },
+        },
+      )
     } finally {
       request.signal.removeEventListener("abort", cancel)
     }

@@ -1,16 +1,14 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import { createStore, reconcile } from "solid-js/store"
+import { createSignal, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
-import { OrganizationIdentity } from "@ericsanchezok/synergy-organization-protocol"
-import type { OrgProjectView } from "@ericsanchezok/synergy-sdk/organization"
 import { useSpace } from "@/context/space"
 import { usePlatform } from "@/context/platform"
 import { SpaceSwitcher } from "@/components/sidebar/space-switcher"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { organizationSpaceMessages as messages } from "./space-messages"
+import { OrganizationWorkspace } from "./workspace"
 import "./space-page.css"
 
 export function SpaceAccess() {
@@ -138,7 +136,7 @@ export function OrganizationSpace() {
                     </div>
                   }
                 >
-                  {(_view) => <Projects />}
+                  {(_view) => <OrganizationWorkspace />}
                 </Show>
               )}
             </Show>
@@ -214,124 +212,5 @@ function Connect() {
         {_(messages.personalBack)}
       </Button>
     </form>
-  )
-}
-
-function Projects() {
-  const space = useSpace()
-  const { _ } = useLingui()
-  const api = space.client()!
-  const view = space.current()!
-  const route = space.route()
-  const projectID = route?.kind === "organization" ? route.projectID : undefined
-  const [state, setState] = createStore({
-    projects: [] as OrgProjectView[],
-    project: undefined as OrgProjectView | undefined,
-  })
-  const [cursor, setCursor] = createSignal<string>()
-  const [loading, setLoading] = createSignal(false)
-  const [loaded, setLoaded] = createSignal(false)
-  const [error, setError] = createSignal(false)
-  let disposed = false
-  onCleanup(() => {
-    disposed = true
-  })
-  const current = () => !disposed && !view.signal.aborted
-  async function load(more = false) {
-    if (loading() || !current()) return
-    setLoading(true)
-    setError(false)
-    try {
-      const result = projectID
-        ? await api.orgProjects.get({ projectID }, { throwOnError: true })
-        : await api.orgProjects.list({ limit: 50, cursor: more ? cursor() : undefined }, { throwOnError: true })
-      if (!current()) return
-      if (projectID) {
-        const project = OrganizationIdentity.ProjectView.parse(result.data)
-        if (project.orgID !== space.connection()?.orgID || project.projectID !== projectID)
-          throw new Error("Project identity changed")
-        setState("project", reconcile(project))
-      } else {
-        const page = OrganizationIdentity.ProjectPage.parse(result.data)
-        if (page.items.some((project) => project.orgID !== space.connection()?.orgID))
-          throw new Error("Project identity changed")
-        const combined = more ? [...state.projects, ...page.items] : page.items
-        setState("projects", reconcile([...new Map(combined.map((project) => [project.projectID, project])).values()]))
-        setCursor(page.cursor)
-      }
-      setLoaded(true)
-    } catch {
-      if (current()) setError(true)
-    } finally {
-      if (current()) setLoading(false)
-    }
-  }
-  onMount(() => {
-    void load()
-    void api.orgOrganization
-      .get({ throwOnError: true })
-      .then((response) => {
-        if (!current()) return
-        const organization = OrganizationIdentity.Organization.parse(response.data)
-        if (organization.orgID === space.connection()?.orgID) space.name(view.key, organization.name)
-      })
-      .catch(() => {})
-  })
-  const role = (project: OrgProjectView) =>
-    project.role ? _(messages[project.role]) : project.permissions.manage ? _(messages.manage) : ""
-  return (
-    <section class="organization-projects" aria-label={_(messages.projects)}>
-      <Show when={projectID} fallback={<h2>{_(messages.projects)}</h2>}>
-        <Button variant="ghost" onClick={() => space.project()}>
-          {_(messages.back)}
-        </Button>
-      </Show>
-      <Show when={error()}>
-        <div role="alert">
-          <p>{_(messages.projectFailed)}</p>
-          <Button onClick={() => void load()}>{_(messages.retry)}</Button>
-        </div>
-      </Show>
-      <Show when={loading()}>
-        <p role="status">{_(messages.loading)}</p>
-      </Show>
-      <Show when={state.project}>
-        {(project) => (
-          <article class="organization-project-detail">
-            <h2>{project().name}</h2>
-            <p>{role(project())}</p>
-            <Show when={project().state === "archived"}>
-              <p>{_(messages.archived)}</p>
-            </Show>
-            <p class="organization-project-description">{project().description}</p>
-          </article>
-        )}
-      </Show>
-      <Show when={!projectID && loaded() && !state.projects.length}>
-        <p>{_(messages.empty)}</p>
-      </Show>
-      <ul class="organization-project-list">
-        <For each={state.projects}>
-          {(project) => (
-            <li>
-              <button onClick={() => space.project(project.projectID)}>
-                <span>
-                  <strong>{project.name}</strong>
-                  <span>{project.description}</span>
-                </span>
-                <span class="organization-project-role">
-                  {project.state === "archived" ? _(messages.archived) : role(project)}
-                </span>
-              </button>
-            </li>
-          )}
-        </For>
-      </ul>
-      <Show when={cursor()}>
-        <Button disabled={loading()} onClick={() => void load(true)}>
-          {_(messages.more)}
-        </Button>
-      </Show>
-    </section>
   )
 }

@@ -9,6 +9,7 @@ import { authorize, sessionView } from "./authorization"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
+import { OrganizationKnowledge } from "./knowledge"
 
 const Reservation = z.strictObject({ sessionID: Identity.ID, projectID: Identity.ID, runtimeID: Identity.ID })
 
@@ -22,7 +23,7 @@ export namespace OrganizationSessionDirectory {
         !runtime ||
         runtime.runtimeID !== request.runtimeID ||
         runtime.orgID !== account.orgID ||
-        runtime.accountID !== account.accountID
+        (runtime.runtimeKind === "member" && runtime.accountID !== account.accountID)
       )
         fail("NOT_FOUND", "Runtime not found")
       if (runtime.state !== "active") fail("PERMISSION_DENIED", "Runtime registration is not active")
@@ -49,6 +50,7 @@ export namespace OrganizationSessionDirectory {
       await Storage.write(Keys.session(directory.sessionID), directory)
       await Storage.write(Keys.creatorSession(directory.projectID, directory.creatorID, directory.sessionID), index)
       await Storage.write(Keys.visibleSession("private", directory.projectID, directory.sessionID), index)
+      await OrganizationKnowledge.inheritSession(directory.sessionID)
       return directory
     })
   }

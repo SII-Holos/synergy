@@ -58,7 +58,16 @@ test("organization IPC rejects untrusted frames and credential or arbitrary-targ
     calls++
     return f.transport(...args)
   }) as typeof fetch)
-  for (const action of ["list", "request", "connect", "signOut", "cancel", "memberStatus", "startMember"] as const)
+  for (const action of [
+    "list",
+    "request",
+    "connect",
+    "signOut",
+    "cancel",
+    "memberStatus",
+    "startMember",
+    "download",
+  ] as const)
     expect(await ipc.handle({}, action, {})).toEqual({ ok: false, error: { code: "untrusted_sender" } })
   const base = { requestID: "request-a", connectionID: connection.id, method: "GET", path: "/org/v1/projects" }
   for (const changed of [
@@ -102,6 +111,133 @@ test("member process requests require a main-owned Runtime registry and reject c
         token: "renderer-supplied-credential",
       }),
     ).toEqual({ ok: false, error: { code: "invalid_request" } })
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("the organization bridge exposes the resource directory through main-owned credentials", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const { trusted, ipc } = bridge(f)
+  try {
+    const result = await ipc.handle(trusted, "request", {
+      requestID: "resources",
+      connectionID: connection.id,
+      method: "GET",
+      path: "/org/v1/resources?limit=20",
+    })
+    expect(result).toMatchObject({ ok: true, value: { status: 200 } })
+    if (!result.ok) throw new Error("Resource directory was not admitted")
+    expect(JSON.stringify(result.value)).not.toContain("accessToken")
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("native blob chunks retain exact bytes and reject ranges or byte bodies on control routes", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const bytes = new Uint8Array([0, 255, 128, 10])
+  const received: Request[] = []
+  const { trusted, ipc } = bridge(f, (async (input: RequestInfo | URL) => {
+    const request = input as Request
+    received.push(request)
+    if (request.method === "PUT") return Response.json({ offset: 4 })
+    return new Response(bytes, {
+      status: 206,
+      headers: { "content-type": "application/octet-stream", "content-range": "bytes 0-3/8" },
+    })
+  }) as typeof fetch)
+  const base = {
+    requestID: "blob",
+    connectionID: connection.id,
+    method: "GET",
+    path: `/org/v1/sessions/session/blobs/${"b".repeat(64)}/content`,
+    range: "bytes=0-3",
+  }
+  try {
+    expect(await ipc.handle(trusted, "request", base)).toEqual({
+      ok: true,
+      value: { status: 206, bodyBytes: bytes, contentType: "application/octet-stream", contentRange: "bytes 0-3/8" },
+    })
+    expect(received[0]?.headers.get("range")).toBe("bytes=0-3")
+    expect(received[0]?.headers.get("authorization")).toMatch(/^Bearer [a-f0-9]{64}$/)
+    const upload = await ipc.handle(trusted, "request", {
+      ...base,
+      requestID: "upload",
+      method: "PUT",
+      path: `/org/v1/sessions/session/blobs/${"b".repeat(64)}?offset=0&totalBytes=4`,
+      range: undefined,
+      bodyBytes: bytes,
+      contentType: "application/octet-stream",
+    })
+    expect(upload).toMatchObject({ ok: true, value: { status: 200 } })
+    expect(new Uint8Array(await received[1]!.arrayBuffer())).toEqual(bytes)
+    for (const changed of [
+      { path: "/org/v1/projects" },
+      {
+        method: "POST",
+        path: "/org/v1/projects",
+        range: undefined,
+        bodyBytes: bytes,
+        contentType: "application/octet-stream",
+      },
+    ]) {
+      expect(await ipc.handle(trusted, "request", { ...base, ...changed })).toEqual({
+        ok: false,
+        error: { code: "invalid_request" },
+      })
+    }
+    expect(received).toHaveLength(2)
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("native downloads stream only authorized immutable content and verify its digest before publishing", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const bytes = new Uint8Array([0, 255, 128, 10])
+  const chunks: Uint8Array[] = []
+  const trusted = {}
+  const ipc = new DesktopOrganizationIPC({
+    accounts: f.accounts,
+    authorization: new DesktopOrganizationAuthorization({
+      accounts: f.accounts,
+      fetch: f.transport,
+      openExternal: async () => {},
+    }),
+    trusted: (event) => event === trusted,
+    fetch: (async () =>
+      new Response(bytes, {
+        headers: { "content-type": "application/octet-stream", "content-length": "4" },
+      })) as typeof fetch,
+    saveFile: async (_name, write) => ({
+      saved: true,
+      bytes: await write(async (chunk) => {
+        chunks.push(chunk)
+      }),
+    }),
+  })
+  const request = {
+    requestID: "download",
+    connectionID: connection.id,
+    path: `/org/v1/sessions/session/blobs/${"b".repeat(64)}/content`,
+    fileName: "evidence.bin",
+    bytes: 4,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  }
+  try {
+    expect(await ipc.handle(trusted, "download", request)).toEqual({ ok: true, value: { saved: true, bytes: 4 } })
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from(bytes))
+    expect(
+      await ipc.handle(trusted, "download", { ...request, requestID: "bad-digest", sha256: "a".repeat(64) }),
+    ).toEqual({ ok: false, error: { code: "invalid_response" } })
+    expect(await ipc.handle(trusted, "download", { ...request, path: "/org/v1/projects" })).toEqual({
+      ok: false,
+      error: { code: "invalid_request" },
+    })
   } finally {
     ipc.dispose()
   }

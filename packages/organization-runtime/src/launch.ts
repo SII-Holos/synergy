@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { OrganizationIdentity, OrganizationRuntimeProtocol } from "@ericsanchezok/synergy-organization-protocol"
-import { MemberIdentity } from "./home.js"
+import { HostedIdentity, MemberIdentity } from "./home.js"
 
 export const MemberListener = z.strictObject({
   port: z.number().int().min(1).max(65535),
@@ -24,3 +24,6 @@ export const MemberLaunchRequest = z.strictObject({
     .optional(),
 })
 export type MemberLaunchRequest = z.infer<typeof MemberLaunchRequest>
+
+export const HostedLaunchRequest = MemberLaunchRequest.omit({ identity: true, desktop: true }).extend({ identity: HostedIdentity })
+export type HostedLaunchRequest = z.infer<typeof HostedLaunchRequest>

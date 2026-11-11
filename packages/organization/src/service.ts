@@ -35,6 +35,8 @@ import { createExecutionGrants } from "./execution-grants"
 import { createGatewayCalls } from "./gateway-calls"
 import { createConnectionGateway, createModelGateway, type ConnectionGateway, type ModelGateway } from "./gateway"
 import { OrganizationSharing } from "./sharing"
+import { OrganizationCloud, type OrganizationCloudOptions } from "./cloud"
+import { createHandoffs } from "./handoff"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -45,6 +47,7 @@ export interface OrganizationServiceOptions {
   registration?: RuntimeRegistrationSettings
   connections?: RuntimeConnectionSettings
   web?: { directory: string }
+  cloud?: OrganizationCloudOptions
 }
 
 export async function openOrganizationService(options: OrganizationServiceOptions) {
@@ -149,6 +152,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       )
       context.storage = { store, artifactDirectory: path.join(root, "data", "artifacts") }
       registerOrganizationMigrations()
+      OrganizationCloud.register(options.cloud)
       MigrationRegistry.lock()
       RuntimeContext.sealComposition()
       await ensureMigrations({ output: "silent" })
@@ -180,6 +184,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
       const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)
+      const handoffs = createHandoffs({ connections, signing })
       const app = organizationApp(
         () => ready,
         authentication,
@@ -190,6 +195,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
         commands,
         execution,
         { calls: gatewayCalls, models: modelGateway, connections: connectionGateway },
+        handoffs,
       )
       if (web) app.route("/", web)
       ready = true

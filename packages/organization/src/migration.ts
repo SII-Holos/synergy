@@ -7,10 +7,12 @@ import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-own
 import { initializeSigningIdentity } from "./signing"
 import { executionMigration } from "./execution-migration"
 import { executionRetentionMigration } from "./execution-retention-migration"
+import { sharedProjectionMigration } from "./shared-projection"
 
 const migrations: Migration[] = [
   executionMigration,
   executionRetentionMigration,
+  sharedProjectionMigration,
   {
     id: "20261108-organization-deployment",
     description: "Establish independent organization deployment identity",

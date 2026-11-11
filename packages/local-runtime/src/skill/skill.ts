@@ -150,7 +150,7 @@ export namespace Skill {
     }
   }
 
-  async function scanFilesystemCandidates() {
+  async function scanFilesystemCandidates(roots?: readonly SkillSourceProfile.ResolvedRoot[]) {
     const candidates = new Map<string, FilesystemCandidate>()
     const sourceCounts: Record<Source, number> = {
       synergy: 0,
@@ -160,14 +160,14 @@ export namespace Skill {
       openclaw: 0,
     }
 
-    if (!SkillSelection.filesystem()) return { candidates: [], sourceCounts }
-    for (const root of SkillSourceProfile.existingRoots(ScopeContext.current.workspace?.path ?? null)) {
+    if (!roots && !SkillSelection.filesystem()) return { candidates: [], sourceCounts }
+    for (const root of roots ?? SkillSourceProfile.existingRoots(ScopeContext.current.workspace?.path ?? null)) {
       try {
         for await (const match of ENTRY_GLOB.scan({
           cwd: root.path,
           absolute: true,
           onlyFiles: true,
-          followSymlinks: true,
+          followSymlinks: roots === undefined,
           dot: true,
         })) {
           if (!root.acceptedEntryNames.includes(path.basename(match))) continue
@@ -177,6 +177,12 @@ export namespace Skill {
           // but would fail strict validation and surface as load errors.
           if (path.dirname(match).split(path.sep).includes("references")) continue
           sourceCounts[root.source]++
+          if (roots) {
+            const stat = await fs.lstat(match)
+            const base = await fs.realpath(root.path)
+            const relative = path.relative(base, await fs.realpath(match))
+            if (stat.isSymbolicLink() || !relative || relative.startsWith("..") || path.isAbsolute(relative)) continue
+          }
           const entryFile = await fs.realpath(match)
           const candidate: FilesystemCandidate = {
             kind: "filesystem",
@@ -412,7 +418,10 @@ export namespace Skill {
     return normalized.value?.name === skill.name && normalized.diagnostics.length === 0
   }
 
-  async function materialize(candidate: Candidate): Promise<{ info?: Info; diagnostics: Diagnostic[] }> {
+  async function materialize(
+    candidate: Candidate,
+    exportable = true,
+  ): Promise<{ info?: Info; diagnostics: Diagnostic[] }> {
     if (candidate.kind === "programmatic") {
       exportability.set(candidate.info, false)
       return { info: candidate.info, diagnostics: [] }
@@ -433,22 +442,32 @@ export namespace Skill {
       },
       diagnostics: normalized.value.diagnostics,
     }
-    exportability.set(info, await computeExportable(info).catch(() => false))
+    exportability.set(info, exportable && (await computeExportable(info).catch(() => false)))
     return { info, diagnostics: normalized.diagnostics }
   }
 
-  export const state = ScopedState.create(async () => {
-    const [config, filesystem, programmatic] = await Promise.all([
-      readConfig(),
-      scanFilesystemCandidates(),
-      programmaticCandidates(),
-    ])
-    const compatibility = config.skills?.compatibility ?? {}
-    const disabledSources = new Set<Source>()
-    for (const source of ["agents", "claude", "codex", "openclaw"] as const) {
-      if (compatibility[source] === false) disabledSources.add(source)
-    }
+  export async function snapshot(input: {
+    roots: readonly SkillSourceProfile.ResolvedRoot[]
+    entries?: Array<{ info: Info; rank: readonly [number, number, number, string] }>
+  }): Promise<State> {
+    const filesystem = await scanFilesystemCandidates(input.roots)
+    return resolve(
+      filesystem,
+      {
+        candidates: (input.entries ?? []).map((entry) => ({ kind: "programmatic" as const, ...entry })),
+        diagnostics: [],
+      },
+      new Set(),
+      false,
+    )
+  }
 
+  async function resolve(
+    filesystem: Awaited<ReturnType<typeof scanFilesystemCandidates>>,
+    programmatic: Awaited<ReturnType<typeof programmaticCandidates>>,
+    disabledSources: Set<Source>,
+    exportable = true,
+  ): Promise<State> {
     const skills: Record<string, Info> = {}
     const diagnostics: Diagnostic[] = []
     const grouped = new Map<string, Array<{ candidate: Candidate; info: Info }>>()
@@ -456,7 +475,7 @@ export namespace Skill {
 
     for (const candidate of [...filesystem.candidates, ...programmatic.candidates]) {
       if (candidate.kind === "filesystem" && disabledSources.has(candidate.source)) continue
-      const materialized = await materialize(candidate)
+      const materialized = await materialize(candidate, exportable)
       diagnostics.push(...materialized.diagnostics)
       if (!materialized.info) continue
       const entries = grouped.get(materialized.info.name) ?? []
@@ -476,6 +495,18 @@ export namespace Skill {
     }
 
     return { skills, diagnostics, sourceCounts: filesystem.sourceCounts }
+  }
+
+  export const state = ScopedState.create(async () => {
+    const [config, filesystem, programmatic] = await Promise.all([
+      readConfig(),
+      scanFilesystemCandidates(),
+      programmaticCandidates(),
+    ])
+    const disabledSources = new Set<Source>()
+    for (const source of ["agents", "claude", "codex", "openclaw"] as const)
+      if (config.skills?.compatibility?.[source] === false) disabledSources.add(source)
+    return resolve(filesystem, programmatic, disabledSources)
   })
 
   export async function reload() {

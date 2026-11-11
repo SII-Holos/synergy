@@ -127,6 +127,7 @@ import { DesktopOrganizationAuthorization } from "./organization/authorization.j
 import { DesktopOrganizationIPC, registerOrganizationIPC } from "./organization/ipc.js"
 import { DesktopMemberRuntimes } from "./organization/member-runtimes.js"
 import { DesktopMemberBrowsers } from "./organization/member-browsers.js"
+import { saveOrganizationDownload } from "./organization/download.js"
 import { organizationEncryption } from "./organization/encryption.js"
 
 installDesktopStdioHandlers()
@@ -1381,6 +1382,14 @@ async function start() {
     accounts: organizationAccounts,
     authorization: organizationAuthorization,
     members: memberRuntimes,
+    saveFile: (fileName, write, signal) => saveOrganizationDownload({
+      fileName, write, signal,
+      choose: async (defaultPath) => {
+        const options = { defaultPath }
+        const result = mainWindow && !mainWindow.isDestroyed() ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options)
+        return result.canceled ? undefined : result.filePath
+      },
+    }),
     trusted: (event) => trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null),
   })
   registerOrganizationIPC(ipcMain, organizationIPC)

@@ -12,12 +12,49 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail, revision } from "./error"
 
+const hostedRuntimes = () => ["organization", "hosted-runtimes"]
+
 export function createRuntimeRegistrations(
   options: RuntimeRegistrationSettings = {},
   onRevoke?: (runtimeID: string) => void,
 ) {
   const settings = RuntimeRegistrationSettings.parse(options)
   return {
+    async hosted(credentials: Credentials, value: Runtime.HostedRegistration) {
+      const input = Runtime.HostedRegistration.parse(value)
+      return Storage.transaction(async () => {
+        const { account } = await authorize(credentials, "runtimes.hosted.register")
+        const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
+        const runtime = Record.RuntimeRegistration.parse({
+          schemaVersion: 1,
+          runtimeID: crypto.randomUUID(),
+          orgID: account.orgID,
+          deploymentIncarnation: deployment.deploymentIncarnation,
+          runtimeKind: "hosted",
+          name: input.name,
+          createdBy: account.accountID,
+          publicKey: input.publicKey,
+          state: "pending",
+          revision: 1,
+          connectionEpoch: 0,
+          createdAt: Date.now(),
+        })
+        await Storage.write(Keys.runtime(runtime.runtimeID), runtime)
+        await Storage.write([...hostedRuntimes(), runtime.runtimeID], { runtimeID: runtime.runtimeID })
+        const secret = token()
+        const expiresAt = Date.now() + settings.ticketMs
+        await Storage.write(Keys.runtimeTicket(digest(secret)), Record.RuntimeTicket.parse({
+          schemaVersion: 1,
+          tokenHash: digest(secret),
+          runtimeID: runtime.runtimeID,
+          accountID: account.accountID,
+          authRevision: account.authRevision,
+          registrationRevision: runtime.revision,
+          expiresAt,
+        }))
+        return { token: secret, expiresAt, runtime: runtimeView(account, runtime, "runtime.read") }
+      })
+    },
     async member(credentials: Credentials, input: Runtime.MemberRegistration) {
       return Storage.transaction(async () => {
         const { account } = await authorize(credentials, "runtimes.register")
@@ -41,6 +78,9 @@ export function createRuntimeRegistrations(
             })
         if (!runtime) fail("SERVICE_UNAVAILABLE", "Runtime registration is inconsistent")
         if (
+          runtime.runtimeKind !== "member" ||
+          runtime.accountID !== account.accountID ||
+          runtime.deviceID !== input.deviceID ||
           runtime.publicKey !== input.publicKey ||
           runtime.state === "revoked" ||
           runtime.deploymentIncarnation !== deployment.deploymentIncarnation
@@ -111,18 +151,17 @@ export function createRuntimeRegistrations(
     async list(credentials: Credentials, page: Identity.Page) {
       return Storage.snapshot(async () => {
         const { account } = await authorize(credentials, "runtimes.list")
-        const prefix = account.role === "member" ? Keys.accountRuntimes(account.accountID) : Keys.runtimes()
-        const entries = await Storage.query({
+        const prefixes = account.role === "member" ? [Keys.accountRuntimes(account.accountID), hostedRuntimes()] : [Keys.runtimes()]
+        const pages = await Promise.all(prefixes.map((prefix) => Storage.query({
           prefix,
           after: page.cursor ? [...prefix, page.cursor] : undefined,
           limit: page.limit + 1,
-        })
-        const ids = entries.slice(0, page.limit).map((entry) => entry.key.at(-1)!)
-        const records = await Storage.readMany(ids.map(Keys.runtime))
-        const items = records.map((value) =>
-          runtimeView(account, Record.RuntimeRegistration.parse(value), "runtime.read"),
-        )
-        return { items, cursor: entries.length > page.limit ? items.at(-1)?.runtimeID : undefined }
+        })))
+        const ids = [...new Set(pages.flatMap((entries) => entries.map((entry) => entry.key.at(-1)!)))].sort()
+        const selected = ids.slice(0, page.limit)
+        const records = await Storage.readMany(selected.map(Keys.runtime))
+        const items = records.map((value) => runtimeView(account, Record.RuntimeRegistration.parse(value), "runtime.read"))
+        return { items, cursor: ids.length > page.limit ? items.at(-1)?.runtimeID : undefined }
       })
     },
     async revoke(credentials: Credentials, runtimeID: string, expectedRevision: number) {

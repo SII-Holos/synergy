@@ -6,6 +6,7 @@ import {
   OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { z } from "zod"
 import type { Credentials } from "./auth/session"
 import { authorize } from "./authorization"
@@ -13,6 +14,8 @@ import { digest } from "./auth/secret"
 import { OrganizationError, fail, revision } from "./error"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
+import { OrganizationSharedProjection as Projection } from "./shared-projection"
+import { runtimeAuthority, assertRuntimeConnection } from "./runtime-authority"
 
 function payloadHash(batch: Sync.Batch) {
   return digest(JSON.stringify({ firstSeq: batch.firstSeq, lastSeq: batch.lastSeq, events: batch.events }))
@@ -50,6 +53,13 @@ function searchFields(event: Sync.Event) {
       return { sessionID: event.session.sessionID, id: event.session.sessionID, text: JSON.stringify(event.session) }
     case "message":
       return { sessionID: event.sessionID, id: event.messageID, text: `${event.messageID} ${event.summary}` }
+    case "part": {
+      const part = event.part
+      const contents = part?.type === "text" || part?.type === "reasoning" || part?.type === "notice"
+        ? [part.content]
+        : part?.type === "tool" ? [part.input, part.output, part.error] : []
+      return { sessionID: event.sessionID, id: event.partID, text: contents.map((value) => value?.kind === "inline" ? value.text : "").join("\n") }
+    }
     case "tool":
       return { sessionID: event.sessionID, id: event.callID, text: `${event.callID} ${event.name} ${event.summary}` }
     case "attachment":
@@ -88,6 +98,15 @@ function searchSnippet(text: string, query: string) {
 }
 
 const blobChunkBytes = 4 * 1024 * 1024
+function blobRange(value: string | undefined, bytes: number) {
+  if (!value) return { start: 0, end: bytes - 1 }
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value)
+  if (!match || (!match[1] && !match[2])) return
+  const start = match[1] ? Number(match[1]) : Math.max(0, bytes - Number(match[2]))
+  const end = match[1] && match[2] ? Math.min(Number(match[2]), bytes - 1) : bytes - 1
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= bytes || end < start) return
+  return { start, end }
+}
 type BlobUploadInput = {
   sessionID: string
   shareGeneration: number
@@ -193,22 +212,12 @@ function stateRecord(
 }
 
 async function runtimeSession(handshake: Protocol.Handshake, sessionID: string) {
-  if (handshake.runtimeKind !== "member") fail("PERMISSION_DENIED", "Only a member Runtime may export Session sync")
-  const [runtime, member, session] = await Promise.all([
-    Record.read(Record.RuntimeRegistration, Keys.runtime(handshake.runtimeID)),
-    Record.read(Record.Account, Keys.account(handshake.accountID)),
+  const [{ runtime }, session] = await Promise.all([
+    runtimeAuthority(handshake),
     Record.read(Record.SessionDirectory, Keys.session(sessionID)),
   ])
+  assertRuntimeConnection(runtime, handshake)
   if (
-    !runtime ||
-    !member ||
-    runtime.state !== "active" ||
-    member.state !== "active" ||
-    runtime.orgID !== handshake.orgID ||
-    runtime.deploymentIncarnation !== handshake.deploymentIncarnation ||
-    runtime.accountID !== handshake.accountID ||
-    runtime.connectionEpoch !== handshake.connectionEpoch ||
-    member.orgID !== handshake.orgID ||
     !session ||
     session.orgID !== handshake.orgID ||
     session.driverRuntimeID !== handshake.runtimeID
@@ -320,13 +329,19 @@ async function uploadBlobChunk(input: BlobUploadInput, loadSession: () => Promis
   }
   await Storage.snapshot(active)
   const chunkKey = Keys.sharedBlobChunk(input.sessionID, shareGeneration, hash, offset)
-  await Storage.writeBinary(chunkKey, input.bytes)
+  using prepared = await Storage.prepareBinary(chunkKey, input.bytes)
   const manifest = await Storage.transaction(async () => {
     const session = await active()
     const key = Keys.sharedBlob(input.sessionID, shareGeneration, hash)
     const current = await Record.read(Record.SharedBlob, key)
     if (current && (current.bytes !== totalBytes || current.hash !== hash))
       fail("REVISION_CONFLICT", "Blob metadata cannot change after its first chunk")
+    if (current?.chunks.some((chunk) => chunk.offset === offset)) {
+      const existing = await Storage.readBinary(chunkKey, { maxBytes: blobChunkBytes })
+      if (!Buffer.from(existing).equals(input.bytes)) fail("REVISION_CONFLICT", "Published blob chunks are immutable")
+    } else {
+      await Storage.publishPreparedBinary(prepared)
+    }
     const chunks = [...(current?.chunks ?? [])].filter((chunk) => chunk.offset !== offset)
     chunks.push({ offset, bytes: input.bytes.byteLength })
     chunks.sort((a, b) => a.offset - b.offset)
@@ -353,14 +368,15 @@ async function uploadBlobChunk(input: BlobUploadInput, loadSession: () => Promis
     return next
   })
   if (manifest.complete) {
-    const parts = await Promise.all(
-      manifest.chunks.map((chunk) =>
-        Storage.readBinary(Keys.sharedBlobChunk(input.sessionID, shareGeneration, hash, chunk.offset)),
-      ),
-    )
-    const bytes = Buffer.concat(parts.map((part) => Buffer.from(part)))
-    const computed = createHash("sha256").update(bytes).digest("hex")
-    if (bytes.byteLength !== manifest.bytes || computed !== manifest.hash) {
+    const hasher = createHash("sha256")
+    let byteLength = 0
+    for (const chunk of manifest.chunks) {
+      await Storage.snapshot(active)
+      const bytes = await Storage.readBinary(Keys.sharedBlobChunk(input.sessionID, shareGeneration, hash, chunk.offset), { maxBytes: blobChunkBytes })
+      byteLength += bytes.byteLength
+      hasher.update(bytes)
+    }
+    if (byteLength !== manifest.bytes || hasher.digest("hex") !== manifest.hash) {
       await Storage.removeTree(Keys.sharedBlob(input.sessionID, shareGeneration, hash))
       fail("INVALID_REQUEST", "Blob bytes do not match the declared content hash")
     }
@@ -420,11 +436,13 @@ async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) 
       outcome: "not_dispatched",
       retryable: false,
     })
-  for (const event of events)
+  for (const event of events) {
     await Storage.write(
       Keys.sharedEvent(session.sessionID, session.shareGeneration, event.sequence),
       Record.SharedEvent.parse({ schemaVersion: 1, event }),
     )
+    await Projection.write(session.sessionID, session.shareGeneration, event)
+  }
   for (const projection of projections.values())
     await Storage.write(
       Keys.sharedSession(session.sessionID, session.shareGeneration, projection.sessionID),
@@ -456,6 +474,25 @@ async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) 
 }
 
 export namespace OrganizationSharing {
+  export async function rebind(previous: Record.SessionDirectory, next: Record.SessionDirectory) {
+    if (!Storage.inTransaction()) fail("INVALID_REQUEST", "Sharing rebind must join the handoff commit")
+    if (previous.sessionID !== next.sessionID || previous.orgID !== next.orgID || previous.projectID !== next.projectID || previous.creatorID !== next.creatorID || previous.shareState !== next.shareState || previous.shareGeneration !== next.shareGeneration || next.bindingEpoch <= previous.bindingEpoch)
+      fail("STALE_BINDING", "Sharing rebind cannot change Session identity or visibility")
+    const current = await Record.read(Record.SessionDirectory, Keys.session(next.sessionID))
+    if (!current || current.bindingEpoch !== next.bindingEpoch || current.driverRuntimeID !== next.driverRuntimeID)
+      fail("STALE_BINDING", "Sharing rebind requires the committed destination binding")
+    const state = await currentState(previous)
+    await Storage.write(Keys.sharedState(next.sessionID), stateRecord(next, next.shareState === "shared" ? "pending" : "blocked", state.nextSeq))
+    if (next.shareState !== "shared") return
+    const event = Sync.Event.parse({ type: "session", sequence: state.nextSeq, session: expectedSessionEvent(next, next.shareGeneration) })
+    await commitBatch(next, Sync.Batch.parse({
+      schemaVersion: 1, sessionID: next.sessionID, projectID: next.projectID, bindingEpoch: next.bindingEpoch,
+      shareGeneration: next.shareGeneration, firstSeq: event.sequence, lastSeq: event.sequence, events: [event],
+      payloadHash: digest(JSON.stringify({ firstSeq: event.sequence, lastSeq: event.sequence, events: [event] })),
+    }))
+    await Storage.write(Keys.sharedState(next.sessionID), stateRecord(next, "pending", state.nextSeq + 1))
+  }
+
   export async function get(credentials: Credentials, sessionID: string) {
     return Storage.snapshot(async () => {
       const { session } = await authorize(credentials, "session.read", { sessionID })
@@ -493,7 +530,7 @@ export namespace OrganizationSharing {
       requireNoHandoff(session)
       if (session.shareState === "private") return view(session)
       const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(session.driverRuntimeID))
-      if (!runtime || runtime.orgID !== session.orgID || runtime.accountID !== account.accountID)
+      if (!runtime || runtime.orgID !== session.orgID || (runtime.runtimeKind === "member" && runtime.accountID !== account.accountID))
         fail("HANDOFF_BLOCKED", "The current Session driver must be the creator before sharing is revoked")
       const updated = Record.SessionDirectory.parse({
         ...session,
@@ -567,22 +604,71 @@ export namespace OrganizationSharing {
   export async function downloadBlob(
     credentials: Credentials,
     sessionID: string,
-    input: { shareGeneration: number; hash: string },
+    input: { shareGeneration: number; hash: string; range?: string; signal?: AbortSignal },
   ) {
     const status = await getBlobStatus(credentials, sessionID, input)
     if (!status.complete) fail("BLOB_INCOMPLETE", "Blob upload is incomplete")
-    const parts = await Promise.all(
-      Array.from({ length: Math.ceil(status.bytes / blobChunkBytes) }, (_, index) =>
-        Storage.readBinary(
-          Keys.sharedBlobChunk(sessionID, status.shareGeneration, status.hash, index * blobChunkBytes),
-          { maxBytes: blobChunkBytes },
-        ),
-      ),
-    )
-    const bytes = Buffer.concat(parts.map((part) => Buffer.from(part)))
-    if (bytes.byteLength !== status.bytes || createHash("sha256").update(bytes).digest("hex") !== status.hash)
+    const range = blobRange(input.range, status.bytes)
+    if (!range) return new Response(null, { status: 416, headers: { "content-range": `bytes */${status.bytes}` } })
+    const hasher = createHash("sha256")
+    let byteLength = 0
+    for (let offset = 0; offset < status.bytes; offset += blobChunkBytes) {
+      input.signal?.throwIfAborted()
+      await getBlobStatus(credentials, sessionID, input)
+      const bytes = await Storage.readBinary(Keys.sharedBlobChunk(sessionID, status.shareGeneration, status.hash, offset), { maxBytes: blobChunkBytes })
+      byteLength += bytes.byteLength
+      hasher.update(bytes)
+    }
+    if (byteLength !== status.bytes || hasher.digest("hex") !== status.hash)
       fail("SERVICE_UNAVAILABLE", "Blob storage integrity could not be verified")
-    return bytes
+    let offset = range.start
+    const bind = RuntimeContext.current().bind
+    const body = new ReadableStream<Uint8Array>({
+      pull: bind(async (controller) => {
+        input.signal?.throwIfAborted()
+        await getBlobStatus(credentials, sessionID, input)
+        if (offset > range.end) { controller.close(); return }
+        const chunkOffset = Math.floor(offset / blobChunkBytes) * blobChunkBytes
+        const bytes = await Storage.readBinary(Keys.sharedBlobChunk(sessionID, status.shareGeneration, status.hash, chunkOffset), { maxBytes: blobChunkBytes })
+        const start = offset - chunkOffset
+        const length = Math.min(bytes.byteLength - start, range.end - offset + 1)
+        if (length <= 0) fail("SERVICE_UNAVAILABLE", "Blob chunk is incomplete")
+        input.signal?.throwIfAborted()
+        await getBlobStatus(credentials, sessionID, input)
+        controller.enqueue(bytes.subarray(start, start + length))
+        offset += length
+      }),
+    }, { highWaterMark: 0 })
+    return new Response(body, { status: input.range ? 206 : 200, headers: {
+      "content-type": "application/octet-stream", "content-length": String(range.end - range.start + 1),
+      etag: `"${status.hash}"`, "accept-ranges": "bytes", "cache-control": "private, no-store",
+      ...(input.range ? { "content-range": `bytes ${range.start}-${range.end}/${status.bytes}` } : {}),
+    } })
+  }
+
+  export async function snapshot(credentials: Credentials, sessionID: string, input: Sync.SnapshotQuery) {
+    const query = Sync.SnapshotQuery.parse(input)
+    const initial = await Storage.snapshot(() => authorize(credentials, "session.read", { sessionID }))
+    const generation = initial.session.shareGeneration
+    const check = async () => {
+      const current = await authorize(credentials, "session.read", { sessionID })
+      if (current.session.shareState !== "shared" || current.session.shareGeneration !== generation)
+        fail("SHARE_REVOKED", "The Session share generation is no longer active")
+      return current
+    }
+    await check()
+    await Projection.prepare(sessionID, generation, check)
+    return Storage.snapshot(async () => {
+      const { session } = await check()
+      const state = await currentState(session)
+      const watermark = query.watermark ?? state.nextSeq - 1
+      if (watermark >= state.nextSeq) fail("REVISION_CONFLICT", "Snapshot watermark is ahead of its checkpoint")
+      const prefix = Projection.root(sessionID, generation)
+      const rows = await Storage.query({ prefix, after: query.cursor ? [...prefix, query.cursor] : undefined, limit: query.limit + 1 })
+      const selected = rows.slice(0, query.limit)
+      const items = selected.map((row) => Record.parse(Record.SharedEvent, row.key, row.value).event).filter((event) => event.sequence <= watermark)
+      return Sync.SnapshotPage.parse({ sessionID, shareGeneration: generation, watermark, items, cursor: rows.length > query.limit ? selected.at(-1)?.key.at(-1) : undefined })
+    })
   }
 
   export async function events(credentials: Credentials, sessionID: string, input: Sync.EventPageQuery) {

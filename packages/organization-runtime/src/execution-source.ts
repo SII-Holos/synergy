@@ -15,7 +15,7 @@ import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/e
 import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
-import type { MemberIdentity } from "./home"
+import type { RuntimeIdentity } from "./home"
 import type { MemberConnection } from "./connection"
 import type { createCommandIntake } from "./command-intake"
 import { OrganizationRuntimeError } from "./error"
@@ -80,7 +80,7 @@ function current() {
 }
 
 export async function withMemberExecution<T>(
-  identity: MemberIdentity,
+  identity: RuntimeIdentity,
   input: {
     sessionID: string
     scopeID?: string
@@ -112,10 +112,10 @@ export async function withMemberExecution<T>(
   const description = await source.resources.describe(descriptionProof, signal)
   const proof = await source.intake.bindingProof(lookup, acceptedRootID)
   const lineageAccepted = lineage ?? { sessionID: session.id, rootID: acceptedRootID, actor: lookup }
-  return fn({ source, session, lineage, descriptionProof, proof, description, accepted: lineageAccepted }, signal)
+  return await fn({ source, session, lineage, descriptionProof, proof, description, accepted: lineageAccepted }, signal)
 }
 
-function assertBinding(session: Awaited<ReturnType<typeof Session.get>>, identity: MemberIdentity, source: Connection) {
+function assertBinding(session: Awaited<ReturnType<typeof Session.get>>, identity: RuntimeIdentity, source: Connection) {
   if (
     !session.organization ||
     session.time.archived ||
@@ -127,7 +127,7 @@ function assertBinding(session: Awaited<ReturnType<typeof Session.get>>, identit
     throw denied("Member execution requires its current organization Session binding")
 }
 
-async function sessionFor(sessionID: string, identity: MemberIdentity, source: Connection) {
+async function sessionFor(sessionID: string, identity: RuntimeIdentity, source: Connection) {
   const session = await Session.get(sessionID)
   assertBinding(session, identity, source)
   return session
@@ -135,7 +135,7 @@ async function sessionFor(sessionID: string, identity: MemberIdentity, source: C
 
 async function executionLineage(
   session: Awaited<ReturnType<typeof Session.get>>,
-  identity: MemberIdentity,
+  identity: RuntimeIdentity,
   source: Connection,
 ): Promise<ExecutionLineage | undefined> {
   const visited = new Set<string>()
@@ -180,14 +180,14 @@ async function executionLineage(
   return undefined
 }
 
-function actor(value: unknown, identity: MemberIdentity) {
+function actor(value: unknown, identity: RuntimeIdentity) {
   const parsed = Command.Actor.safeParse(value)
   if (!parsed.success || parsed.data.orgID !== identity.orgID)
     throw denied("Member execution requires an accepted organization actor")
   return { subjectID: parsed.data.subjectID, requestID: parsed.data.requestID }
 }
 
-export function registerMemberExecution(identity: MemberIdentity) {
+export function registerMemberExecution(identity: RuntimeIdentity) {
   ProviderCatalogSource.register({ providers: async () => Object.fromEntries(models()) })
   SessionExecutionSource.register({
     async authorize(input) {

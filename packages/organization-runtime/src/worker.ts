@@ -1,6 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { version } from "../package.json" with { type: "json" }
-import { MemberIdentity } from "./home"
+import { RuntimeIdentity } from "./home"
 import { MemberHomeError } from "./record"
 import { registerMemberSources } from "./sources"
 
@@ -8,9 +8,9 @@ export const metadata = { id: "organization-runtime", version, apiVersion: 1 } a
 
 export function registerWorker() {
   const raw = RuntimeContext.current().host.env.SYNERGY_MEMBER_IDENTITY
-  let identity: MemberIdentity
+  let identity: RuntimeIdentity
   try {
-    identity = MemberIdentity.parse(JSON.parse(raw ?? ""))
+    identity = RuntimeIdentity.parse(JSON.parse(raw ?? ""))
   } catch {
     throw new MemberHomeError("Member worker identity is missing or invalid")
   }

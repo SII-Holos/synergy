@@ -56,6 +56,7 @@
     "@kobalte/core": "catalog:",
     "@lingui/core": "catalog:",
     "@lingui/solid": "catalog:",
+    "@noble/hashes": "1.8.0",
     "@office-kit/pptx": "0.24.1",
     "@office-kit/pptx-preview": "0.16.0",
     "@pierre/diffs": "catalog:",

@@ -101,3 +101,11 @@ test("re-parsing the same broken frontmatter keeps throwing instead of serving t
       .catch(() => {})
   }
 })
+
+test("published in-memory Markdown uses the same frontmatter parser and errors as a file", () => {
+  const parsed = ConfigMarkdown.parseContent("---\nname: team-skill\ndescription: A team skill\n---\n# Instructions\n", "SKILL.md")
+  expect(parsed.data).toEqual({ name: "team-skill", description: "A team skill" })
+  expect(parsed.content).toBe("# Instructions\n")
+  for (let attempt = 0; attempt < 2; attempt++)
+    expect(() => ConfigMarkdown.parseContent("---\ndescription: bad: yaml\n---\n", "SKILL.md")).toThrow(ConfigMarkdown.FrontmatterError)
+})

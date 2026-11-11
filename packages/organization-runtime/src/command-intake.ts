@@ -110,13 +110,13 @@ class AdmissionChanged extends Error {}
 export function createCommandIntake(options: {
   identity: Command.SigningIdentity
   runtimeID: string
-  accountID: string
+  accountID?: string
   connectionEpoch: number
   signal: AbortSignal
 }) {
   const authority = Command.SigningIdentity.parse(options.identity)
   const runtimeID = Identity.ID.parse(options.runtimeID)
-  const accountID = Identity.ID.parse(options.accountID)
+  const accountID = options.accountID === undefined ? undefined : Identity.ID.parse(options.accountID)
   const connectionEpoch = OrganizationProtocol.Epoch.parse(options.connectionEpoch)
   const signal = options.signal
 
@@ -155,7 +155,7 @@ export function createCommandIntake(options: {
       current.bindingEpoch !== permit.bindingEpoch
     )
       return "STALE_BINDING"
-    if (permit.operation === "create" && current.creatorID !== accountID) return "STALE_BINDING"
+    if (permit.operation === "create" && current.creatorID !== permit.actor.subjectID) return "STALE_BINDING"
   }
   async function records(permit: Command.Permit) {
     const expected = identity(permit)
@@ -360,7 +360,7 @@ export function createCommandIntake(options: {
     const bindingReason = await binding(permit)
     let reason: Command.Rejection | undefined
     if (!current.matches) reason = "REQUEST_CONFLICT"
-    else if (permit.operation === "create" && permit.actor.subjectID !== accountID) reason = "REQUEST_CONFLICT"
+    else if (permit.operation === "create" && accountID !== undefined && permit.actor.subjectID !== accountID) reason = "REQUEST_CONFLICT"
     else if (!payloadMatches) reason = "PAYLOAD_MISMATCH"
     else if (permit.connectionEpoch !== connectionEpoch) reason = "STALE_CONNECTION"
     else if (expired(permit)) reason = "EXPIRED_PERMIT"
@@ -818,7 +818,7 @@ export function createCommandIntake(options: {
                     schemaVersion: 1,
                     orgID: permit.orgID,
                     projectID: permit.projectID,
-                    creatorID: accountID,
+                    creatorID: permit.actor.subjectID,
                     driverRuntimeID: runtimeID,
                     bindingEpoch: permit.bindingEpoch,
                   },

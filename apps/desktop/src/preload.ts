@@ -31,6 +31,7 @@ const organization: OrganizationDesktop.Bridge = {
   signOut: (input) => ipcRenderer.invoke("desktop.organization.signOut", input),
   memberStatus: (input) => ipcRenderer.invoke("desktop.organization.memberStatus", input),
   startMember: (input) => ipcRenderer.invoke("desktop.organization.startMember", input),
+  download: (input) => ipcRenderer.invoke("desktop.organization.download", input),
 }
 
 const browserNative = {

@@ -6,6 +6,7 @@ import {
   OrganizationProtocol,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationGatewayProtocol as Gateway,
+  OrganizationHandoffProtocol as Handoff,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
@@ -66,6 +67,12 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
   const identity = Object.freeze(Command.SigningIdentity.parse(publicFields))
   return {
     identity,
+    async signHandoff(value: Handoff.Permit): Promise<Handoff.SignedPermit> {
+      const permit = Handoff.Permit.parse(value)
+      if (permit.orgID !== identity.orgID || permit.deploymentIncarnation !== identity.deploymentIncarnation || permit.keyID !== identity.keyID)
+        fail("PERMISSION_DENIED", "Handoff permit belongs to another signing authority")
+      return { permit, signature: await Handoff.signPermit(permit, privateKey) }
+    },
     async signGateway(value: Gateway.Permit): Promise<Gateway.SignedPermit> {
       const permit = Gateway.Permit.parse(value)
       if (

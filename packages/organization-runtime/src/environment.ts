@@ -1,10 +1,10 @@
 import path from "node:path"
-import type { MemberHome } from "./home.js"
+import type { RuntimeHome } from "./home.js"
 import { installedWorkerCommand, installedWorkerEnvironment } from "@ericsanchezok/synergy-util/installed-launcher"
 import { MemberHomeError } from "./record.js"
 
 export function memberEnvironment(
-  member: MemberHome,
+  member: RuntimeHome,
   input: Readonly<Record<string, string | undefined>>,
 ): Record<string, string> {
   const selected: Record<string, string> = {}
