@@ -10,6 +10,8 @@ Reuse the portable account actor schema from Util. Command permits bind the logi
 
 Hash the complete strict input and target. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
 
+Decision digests bind the native pending identity, source Session and answer. Accepted winners omit question answers and distinguish expired requests. Verify `test/decision-command.test.ts`.
+
 Current execution observations belong beside immutable receipts. Bind their root and observation window to acceptance; reject observation fields in durable results.
 
 Resource definitions declare fixed supported protocols and portable model capabilities. Keep upstream configuration, public descriptors and secret input distinct. No arbitrary Runtime options, caller-selected ownership changes or transport-routing credential headers. Verify strict contracts in `test/resource.test.ts`.
@@ -24,4 +26,4 @@ Shared synchronization DTOs are strict and generation-bound. Explicitly shared t
 
 Private field consumption validates the same wire identities, versions, offsets and original-content state through `Read.matches`. Keep `read-content` stateless and transport-independent: typed read, awaited append and incremental hash ports only. Bound each chunk, propagate cancellation and retain partial-original status through completion. Preparation returns its progress and verified prefix offset without polling or finalizing the digest; resumption retains the same sink and hash state. Sinks publish only after the final digest succeeds.
 
-Publications use immutable file manifests and exact item/version/hash references. Separate project artifact visibility from source Session visibility. Machine knowledge access reuses signed accepted execution authority and the current Session's selected versions. Page metadata and bound byte chunks without imposing a lifetime object quota.
+Publications use immutable file manifests and exact item/version/hash references. Selection updates bind a stable request, exact target, ordered page identities and a final expected sequence; page limits never become lifetime item quotas. Separate project artifact visibility from source Session visibility. Machine knowledge access reuses signed accepted execution authority and the current Session's selected versions. Page metadata and bound byte chunks without imposing a lifetime object quota.

@@ -25,6 +25,25 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
   }
   return new Hono()
     .post(
+      "/sessions/:sessionID/interactions/reply",
+      operation(
+        "orgSessionInteractions.reply",
+        "Answer an existing native permission or question through signed command admission",
+        Command.DecisionAccepted,
+        true,
+        true,
+      ),
+      validator("param", z.strictObject({ sessionID: Identity.ID }), validation),
+      validator("json", Command.DecisionRequest, validation),
+      async (c) => {
+        const request = c.req.valid("json")
+        if (request.sessionID !== c.req.valid("param").sessionID)
+          fail("INVALID_REQUEST", "Decision Session does not match its route")
+        const result = await owner().decision(credentials(c), request, c.req.raw.signal)
+        return c.json(result.receipt, result.existing ? 200 : 202)
+      },
+    )
+    .post(
       "/sessions/:sessionID/control",
       operation(
         "orgCommands.control",

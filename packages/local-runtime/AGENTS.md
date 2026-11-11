@@ -7,7 +7,7 @@ Own native execution/adapters.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/; use isolated homes from testing support.
 - `Skill.snapshot` reuses canonical parsing/collision rules for host-authorized roots without resetting Scope caches; test `test/skill/snapshot.test.ts`.
-- Question owns pending requests and answers; `Question.decide` joins native Session decision receipts. Settle callers after commit and redact private answers in receipts/events. Verify `test/question/decision-receipt.test.ts`.
+- Question owns pending requests and answers; `Question.decide/reconcile` uses native Session receipts. Restore Scope when settling after commit and redact private answers in receipts/events. Verify `test/question/decision-receipt.test.ts`.
 
 Run typecheck, focused tests and root package/dependency checks.
 

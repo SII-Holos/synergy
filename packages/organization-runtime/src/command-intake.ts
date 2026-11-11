@@ -24,6 +24,9 @@ import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { OrganizationRuntimeError } from "./error"
 import { OrganizationIntakePath as Keys } from "./storage/path"
 import { OrganizationLocalProjects } from "./local-project"
+import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
+import { Question } from "@ericsanchezok/synergy-local-runtime/question"
+import { boundSessionSource } from "./session-source"
 
 const RequestIdentity = z.strictObject({
   schemaVersion: z.literal(1),
@@ -315,6 +318,42 @@ export function createCommandIntake(options: {
     if (!(await Command.verify(permit, signature, authority.publicKey)))
       throw failure("PERMISSION_DENIED", "Command signature is invalid")
     return (await digest()) === permit.payloadHash
+  }
+  async function reconcileDecision(accepted: Command.Accepted) {
+    const effect = accepted.effect
+    if (effect.kind !== "decision" || effect.decision.status === "expired") return
+    const winner = effect.decision.winner
+    await Storage.transaction(
+      async () => {
+        assertActive()
+        if ((await binding(accepted.permit)) || (await SessionTransfer.isFrozen(accepted.permit.sessionID))) return
+        const root = await Session.get(accepted.permit.sessionID)
+        const source = await boundSessionSource(root, effect.sourceSessionID)
+        await ScopeContext.provide({
+          scope: source.scope,
+          workspace: null,
+        fn: async () => {
+          const receipt = await (
+            winner.outcome.kind === "permission"
+              ? PermissionNext.reconcile({ sessionID: source.id, requestID: effect.requestID })
+            : Question.reconcile({ sessionID: source.id, requestID: effect.requestID })
+          )
+          if (!receipt || JSON.stringify(decisionWinner(receipt)) !== JSON.stringify(winner))
+            throw failure("PROTOCOL_MISMATCH", "Committed decision has no matching native winner")
+        },
+        })
+      },
+      { commitGuard: assertActive },
+    )
+  }
+  function decisionWinner(receipt: NonNullable<Awaited<ReturnType<typeof PermissionNext.reconcile>>>) {
+    return Command.DecisionWinner.parse({
+      sessionID: receipt.sessionID,
+      requestID: receipt.requestID,
+      actor: receipt.actor,
+      decidedAt: receipt.decidedAt,
+      outcome: receipt.outcome.kind === "permission" ? receipt.outcome : { kind: "question", reply: receipt.outcome.reply },
+    })
   }
   async function controlVersion(permit: Command.Permit) {
     return readCommandControlVersion(permit.orgID, permit.sessionID)
@@ -807,6 +846,53 @@ export function createCommandIntake(options: {
         ),
       )
     },
+    async decision(value: Command.DecisionDelivery): Promise<Command.DecisionResult> {
+      const delivery = parse(Command.DecisionDelivery, value)
+      const { permit } = delivery.authorization
+      const result = await receive(
+        delivery.authorization,
+        () => Command.digestDecision(Command.decisionRequest(permit, delivery.decision)),
+        async () => {
+          const root = await Session.get(permit.sessionID)
+          const source = await boundSessionSource(root, delivery.decision.sourceSessionID)
+          const decision = await ScopeContext.provide({
+            scope: source.scope,
+            workspace: null,
+            fn: () =>
+              delivery.decision.kind === "permission"
+                ? PermissionNext.decide({
+                    sessionID: source.id,
+                    requestID: delivery.decision.requestID,
+                    reply: delivery.decision.reply,
+                    message: delivery.decision.message,
+                    actor: permit.actor,
+                  })
+                : Question.decide({
+                    sessionID: source.id,
+                    requestID: delivery.decision.requestID,
+                    reply: delivery.decision.reply,
+                    answers: delivery.decision.answers,
+                    actor: permit.actor,
+                  }),
+          })
+          const resolution =
+            decision.status === "expired"
+              ? { status: "expired" as const }
+              : {
+                  status: decision.status,
+                    winner: decisionWinner(decision.receipt),
+                }
+          return {
+            kind: "decision",
+            sourceSessionID: source.id,
+            requestID: delivery.decision.requestID,
+            decision: resolution,
+          }
+        },
+      )
+      if (result.accepted) await reconcileDecision(result.accepted)
+      return Command.DecisionResult.parse(result)
+    },
     async create(value: Command.CreateDelivery): Promise<Command.CreatedResult> {
       const delivery = parse(Command.CreateDelivery, value)
       const { permit } = delivery.authorization
@@ -877,6 +963,7 @@ export function createCommandIntake(options: {
           result: original ? result(original, original.attempt!) : undefined,
         })
       })
+      if (receipt.result?.accepted) await reconcileDecision(receipt.result.accepted)
       return Command.QueryResult.parse({
         ...receipt,
         ...(receipt.result?.accepted ? { execution: await execution(receipt.result.accepted) } : {}),

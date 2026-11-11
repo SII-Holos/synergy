@@ -123,6 +123,9 @@ test("verified WSS keeps heartbeats and receipt queries live while a control dra
       signal = currentSignal
       identity = connected.signingIdentity
       return {
+        async decision() {
+          throw new Error("unavailable")
+        },
         async create() {
           throw new Error("private creation storage details")
         },
@@ -233,6 +236,9 @@ test("the resident bridge reassembles ordered command chunks before delivery", a
     ...f.options,
     commands() {
       return {
+        async decision() {
+          throw new Error("unavailable")
+        },
         async create() {
           throw new Error("unavailable")
         },
@@ -319,6 +325,9 @@ test("a committed control receipt returns before drainage while close retains th
     commands(_connected, currentSignal) {
       signal = currentSignal
       return {
+        async decision() {
+          throw new Error("unavailable")
+        },
         async create() {
           throw new Error("unavailable")
         },
@@ -412,6 +421,9 @@ for (const limit of ["count", "bytes"] as const)
         signal = currentSignal
         signal.addEventListener("abort", () => aborted.resolve(), { once: true })
         return {
+          async decision() {
+            throw new Error("unavailable")
+          },
           async create() {
             throw new Error("unavailable")
           },

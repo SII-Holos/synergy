@@ -8,6 +8,7 @@ import { InstructionRegistry } from "@ericsanchezok/synergy-harness/instruction/
 import { Skill } from "@ericsanchezok/synergy-local-runtime/skill/skill"
 import { SkillManifest } from "@ericsanchezok/synergy-local-runtime/skill/manifest"
 import { skillEntry } from "@ericsanchezok/synergy-local-runtime/skill/register"
+import { ActiveKnowledgeStore as ActiveStore } from "./knowledge-active"
 import {
   OrganizationKnowledgeProtocol as Knowledge,
   OrganizationPublicationProtocol as Publication,
@@ -36,18 +37,11 @@ export interface KnowledgeTransport {
   failed?(signal?: AbortSignal): Promise<void>
 }
 
-const CachedRelease = z.strictObject({ release: Knowledge.Release, directory: z.string() })
-const Active = z.strictObject({
-  schemaVersion: z.literal(1),
-  orgID: Identity.ID,
-  projectID: Identity.ID,
-  sessionID: Identity.ID,
-  selection: Knowledge.Selection,
-  releases: z.array(CachedRelease),
-})
-export type ActiveKnowledge = z.infer<typeof Active> & { updateError?: string }
+const CachedRelease = ActiveStore.CachedRelease
+const Active = ActiveStore.Header
+export type ActiveKnowledge = ActiveStore.Header & { updateError?: string }
 const key = {
-  active: (sessionID: string) => ["organization-knowledge", "active", sessionID],
+  active: ActiveStore.key,
   release: (cacheID: string) => ["organization-knowledge", "cache", cacheID],
   files: (cacheID: string) => ["organization-knowledge", "cache-files", cacheID],
   file: (cacheID: string, fileID: string) => ["organization-knowledge", "cache-files", cacheID, fileID],
@@ -316,13 +310,13 @@ export async function knowledgeFiles(
   reference: Knowledge.Reference,
   query: { cursor?: string; limit?: number } = {},
 ) {
-  const selected = active.releases.find(
-    ({ release }) =>
-      release.itemID === reference.itemID &&
-      release.version === reference.version &&
-      release.manifestHash === reference.manifestHash,
+  const selected = await selectedKnowledge(active, reference.itemID)
+  if (
+    !selected ||
+    selected.release.version !== reference.version ||
+    selected.release.manifestHash !== reference.manifestHash
   )
-  if (!selected) throw new Error("Knowledge version is not selected for this Session")
+    throw new Error("Knowledge version is not selected for this Session")
   const cacheID = hash(
     JSON.stringify([active.orgID, active.projectID, reference.itemID, reference.version, reference.manifestHash]),
   )
@@ -347,86 +341,120 @@ export async function stageKnowledgeSelection(input: {
 }): Promise<ActiveKnowledge> {
   using lock = await Lock.write(`organization-knowledge-session:${input.sessionID}`)
   input.signal?.throwIfAborted()
-  const releases: Knowledge.Release[] = []
+  let preexisting = false
+  let publicationStarted = false
   let cursor: string | undefined
   let metadata: Knowledge.ExecutionPage["selection"] | undefined
-  let previousItemID = ""
-  do {
-    const page = Knowledge.ExecutionPage.parse(
-      await input.transport.selection({ cursor, manifestHash: metadata?.manifestHash }, input.signal),
-    )
-    if (
-      page.orgID !== input.orgID ||
-      page.projectID !== input.projectID ||
-      page.sessionID !== (input.sourceSessionID ?? input.sessionID)
-    )
-      throw new Error("Knowledge selection belongs to another organization, project or Session")
-    if (metadata && JSON.stringify(metadata) !== JSON.stringify(page.selection))
-      throw new Error("Knowledge selection changed during preparation")
-    metadata = page.selection
-    for (const release of page.items) {
-      if (
-        release.orgID !== input.orgID ||
-        (release.scope.kind === "project" && release.scope.projectID !== input.projectID) ||
-        release.itemID <= previousItemID
+  let header: ActiveStore.Header | undefined
+  let previousItemID: string | undefined
+  let count = 0
+  const digest = createHash("sha256").update("[")
+  try {
+    do {
+      input.signal?.throwIfAborted()
+      const page = Knowledge.ExecutionPage.parse(
+        await input.transport.selection({ cursor, manifestHash: metadata?.manifestHash }, input.signal),
       )
-        throw new Error("Knowledge release ownership or ordering is inconsistent")
-      previousItemID = release.itemID
-      releases.push(release)
-    }
-    if (page.cursor && (page.cursor !== previousItemID || page.cursor === cursor))
-      throw new Error("Knowledge selection pagination did not advance")
-    cursor = page.cursor
-  } while (cursor)
-  if (
-    !metadata ||
-    metadata.releaseCount !== releases.length ||
-    hash(JSON.stringify(releases.map(reference))) !== metadata.manifestHash
-  )
-    throw new Error("Knowledge selection manifest is incomplete")
-  const { releaseCount: _, ...selection } = metadata
-  const prepared: z.infer<typeof CachedRelease>[] = []
-  for (const release of releases) prepared.push(await prepareRelease({ ...input, release }))
-  input.signal?.throwIfAborted()
-  const confirmed = Knowledge.ExecutionPage.parse(
-    await input.transport.selection({ manifestHash: metadata.manifestHash }, input.signal),
-  )
-  if (
-    confirmed.orgID !== input.orgID ||
-    confirmed.projectID !== input.projectID ||
-    confirmed.sessionID !== (input.sourceSessionID ?? input.sessionID) ||
-    JSON.stringify(confirmed.selection) !== JSON.stringify(metadata)
-  )
-    throw new Error("Knowledge selection changed before activation")
-  return await Storage.transaction(async () => {
-    const previous = await activeKnowledge(input.sessionID)
+      if (
+        page.orgID !== input.orgID ||
+        page.projectID !== input.projectID ||
+        page.sessionID !== (input.sourceSessionID ?? input.sessionID)
+      )
+        throw new Error("Knowledge selection belongs to another organization, project or Session")
+      if (metadata && JSON.stringify(metadata) !== JSON.stringify(page.selection))
+        throw new Error("Knowledge selection changed during preparation")
+      metadata = page.selection
+      if (!header) {
+        header = Active.parse({
+          schemaVersion: 2,
+          orgID: input.orgID,
+          projectID: input.projectID,
+          sessionID: input.sessionID,
+          manifestID: hash(JSON.stringify([input.orgID, input.projectID, metadata.manifestHash])),
+          selection: metadata,
+        })
+        preexisting = await ActiveStore.sealed(header)
+      }
+      for (const release of page.items) {
+        if (
+          release.orgID !== input.orgID ||
+          (release.scope.kind === "project" && release.scope.projectID !== input.projectID)
+        )
+          throw new Error("Knowledge release ownership is inconsistent")
+        const selected = reference(release)
+        if (count) digest.update(",")
+        digest.update(JSON.stringify(selected))
+        const cached = await prepareRelease({ ...input, release })
+        await ActiveStore.put(header, count++, cached)
+        previousItemID = release.itemID
+      }
+      if (page.cursor && (page.cursor !== previousItemID || page.cursor === cursor || !page.items.length))
+        throw new Error("Knowledge selection pagination did not advance")
+      cursor = page.cursor
+    } while (cursor)
     if (
-      previous &&
-      (previous.orgID !== input.orgID ||
-        previous.projectID !== input.projectID ||
-        previous.selection.revision > selection.revision ||
-        (previous.selection.revision === selection.revision &&
-          previous.selection.manifestHash !== selection.manifestHash))
+      !metadata ||
+      !header ||
+      metadata.releaseCount !== count ||
+      digest.update("]").digest("hex") !== metadata.manifestHash
     )
-      throw new Error("A stale knowledge selection cannot replace the active manifest")
-    const active = Active.parse({
-      schemaVersion: 1,
-      orgID: input.orgID,
-      projectID: input.projectID,
-      sessionID: input.sessionID,
-      selection: { ...selection, releases: releases.map(reference) },
-      releases: prepared,
+      throw new Error("Knowledge selection manifest is incomplete")
+    input.signal?.throwIfAborted()
+    const confirmed = Knowledge.ExecutionPage.parse(
+      await input.transport.selection({ manifestHash: metadata.manifestHash }, input.signal),
+    )
+    if (
+      confirmed.orgID !== input.orgID ||
+      confirmed.projectID !== input.projectID ||
+      confirmed.sessionID !== (input.sourceSessionID ?? input.sessionID) ||
+      JSON.stringify(confirmed.selection) !== JSON.stringify(metadata)
+    )
+      throw new Error("Knowledge selection changed before activation")
+    const active = header
+    await ActiveStore.seal(active)
+    publicationStarted = true
+    return await Storage.transaction(async () => {
+      const previous = await activeKnowledge(input.sessionID)
+      if (
+        previous &&
+        (previous.orgID !== input.orgID ||
+          previous.projectID !== input.projectID ||
+          previous.selection.revision > active.selection.revision ||
+          (previous.selection.revision === active.selection.revision &&
+            previous.selection.manifestHash !== active.selection.manifestHash))
+      )
+        throw new Error("A stale knowledge selection cannot replace the active manifest")
+      await Storage.write(key.active(input.sessionID), active)
+      return active
     })
-    await Storage.write(key.active(input.sessionID), active)
-    return active
-  })
+  } catch (error) {
+    const current = header ? await activeKnowledge(input.sessionID) : undefined
+    if (header && publicationStarted) {
+      if (
+        current?.manifestID === header.manifestID &&
+        current.selection.revision === header.selection.revision &&
+        current.selection.manifestHash === header.selection.manifestHash
+      )
+        return current
+    }
+    if (header && !preexisting && current?.manifestID !== header.manifestID)
+      await Storage.removeTree(ActiveStore.root(header))
+    throw error
+  }
+}
+
+export function selectedKnowledge(active: ActiveKnowledge, itemID: string) {
+  return ActiveStore.selected(active, itemID)
+}
+export function knowledgePage(active: ActiveKnowledge, query?: { cursor?: string; limit?: number }) {
+  return ActiveStore.page(active, query)
 }
 
 export async function knowledgeSkills(
   active: ActiveKnowledge,
 ): Promise<Array<{ info: Skill.Info; release: Knowledge.Release }>> {
   const result: Array<{ info: Skill.Info; release: Knowledge.Release }> = []
-  for (const selected of active.releases) {
+  for await (const selected of ActiveStore.releases(active)) {
     if (selected.release.kind !== "skill") continue
     const entryFile = path.join(selected.directory, "SKILL.md")
     const parsed = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })

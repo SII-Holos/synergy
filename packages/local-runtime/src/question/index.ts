@@ -111,7 +111,7 @@ export namespace Question {
         info: Request
         resolve: (answers: Answer[]) => void
         reject: (e: any) => void
-        decision?: { receipt: Decisions.Receipt; settle: () => void }
+        decision?: { receipt: Decisions.Receipt; settle: () => Promise<void> }
       }
     > = {}
 
@@ -256,14 +256,10 @@ export namespace Question {
     actor?: ActorStamp.Info
   }): Promise<Decisions.Result> {
     const s = await state()
+    const scope = ScopeContext.current.scope
     return Storage.transaction(async () => {
-      const prior = await Decisions.read({ sessionID: input.sessionID, requestID: input.requestID, kind: "question" })
-      if (prior) {
-        const candidate = s.pending[input.requestID]?.decision
-        if (candidate && JSON.stringify(candidate.receipt) === JSON.stringify(prior))
-          Storage.afterCommit(candidate.settle)
-        return { status: "already_resolved", receipt: prior }
-      }
+      const prior = await reconcile(input)
+      if (prior) return { status: "already_resolved", receipt: prior }
       const existing = s.pending[input.requestID]
       if (!existing || existing.info.sessionID !== input.sessionID) return { status: "expired" }
       const original = input.reply === "answer" ? z.array(Answer).parse(input.answers) : undefined
@@ -274,24 +270,33 @@ export namespace Question {
         actor: input.actor,
         outcome: { kind: "question", reply: input.reply, ...(answers ? { answers } : {}) },
       })
-      const settle = () => {
-        if (s.pending[input.requestID] !== existing) return
-        delete s.pending[input.requestID]
-        if (original && answers) {
-          existing.resolve(original)
-          log.info("replied", { requestID: input.requestID, answers })
-          Bus.publish(Event.Replied, {
-            sessionID: input.sessionID,
-            requestID: input.requestID,
-            answers,
-            actor: input.actor,
-          })
-        } else {
-          existing.reject(new RejectedError())
-          log.info("rejected", { requestID: input.requestID })
-          Bus.publish(Event.Rejected, { sessionID: input.sessionID, requestID: input.requestID, actor: input.actor })
-        }
-      }
+      const settle = () =>
+        ScopeContext.provide({
+          scope,
+          workspace: null,
+          fn: () => {
+            if (s.pending[input.requestID] !== existing) return
+            delete s.pending[input.requestID]
+            if (original && answers) {
+              existing.resolve(original)
+              log.info("replied", { requestID: input.requestID, answers })
+              Bus.publish(Event.Replied, {
+                sessionID: input.sessionID,
+                requestID: input.requestID,
+                answers,
+                actor: input.actor,
+              })
+            } else {
+              existing.reject(new RejectedError())
+              log.info("rejected", { requestID: input.requestID })
+              Bus.publish(Event.Rejected, {
+                sessionID: input.sessionID,
+                requestID: input.requestID,
+                actor: input.actor,
+              })
+            }
+          },
+        })
       existing.decision = { receipt, settle }
       await Storage.transaction(
         async () => {
@@ -312,6 +317,17 @@ export namespace Question {
     return answers.map((answer, index) =>
       questions[index]?.input_type === "password" ? answer.map(() => "[redacted]") : [...answer],
     )
+  }
+
+  export async function reconcile(input: { sessionID: string; requestID: string }) {
+    const s = await state()
+    return Storage.transaction(async () => {
+      const prior = await Decisions.read({ ...input, kind: "question" })
+      const candidate = s.pending[input.requestID]?.decision
+      if (prior && candidate && JSON.stringify(candidate.receipt) === JSON.stringify(prior))
+        Storage.afterCommit(candidate.settle)
+      return prior
+    })
   }
 
   export async function reject(requestID: string): Promise<void> {

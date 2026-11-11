@@ -17,6 +17,7 @@ import { startMemberSyncExporter } from "../src/sync-exporter"
 import type { MemberConnection } from "../src/connection"
 import { registerSessionSchema } from "../src/session-schema"
 import { OrganizationSyncPath as Keys } from "../src/storage/path"
+import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 
 const binding: Sessions.Binding = {
   schemaVersion: 1,
@@ -113,6 +114,63 @@ function transport(sessionID: string, receive?: (batch: Sync.Batch) => Promise<v
   }
   return { connection, batches }
 }
+
+test("the native exporter initializes a complete empty attachment before publishing its reference", async () => {
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const f = await fixture()
+    const artifact = await RolloutArtifact.writeText(
+      { kind: "session", scopeID: f.scope.id, sessionID: f.session.id },
+      "",
+      "application/octet-stream",
+    )
+    const id = Identifier.ascending("part")
+    await ScopeContext.provide({
+      scope: f.scope,
+      workspace: null,
+      fn: () =>
+        Session.updatePart({
+          id,
+          sessionID: f.session.id,
+          messageID: f.info.id,
+          type: "attachment",
+          artifact,
+          mime: "application/octet-stream",
+          filename: "empty.bin",
+          url: "attachment://empty",
+        }),
+    })
+    const remote = transport(f.session.id)
+    const uploads: Array<Parameters<MemberConnection["uploadBlob"]>[0]> = []
+    remote.connection.uploadBlob = async (input) => {
+      uploads.push(input)
+      return Sync.BlobStatus.parse({
+        sessionID: input.sessionID,
+        shareGeneration: input.shareGeneration,
+        hash: input.hash,
+        bytes: 0,
+        chunkBytes: 4 * 1024 * 1024,
+        receivedBytes: 0,
+        complete: true,
+      })
+    }
+    const exporter = startMemberSyncExporter({
+      identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "device-sync" },
+      connection: remote.connection,
+      signal: new AbortController().signal,
+    })
+    try {
+      await exporter.flush()
+      expect(uploads).toHaveLength(1)
+      expect(uploads[0]).toMatchObject({ offset: 0, totalBytes: 0, bytes: new Uint8Array(), hash: artifact.sha256 })
+      expect(remote.batches.flatMap((batch) => batch.events)).toContainEqual(
+        expect.objectContaining({ type: "attachment", attachmentID: id, bytes: 0, state: "available" }),
+      )
+    } finally {
+      await exporter.close()
+    }
+  })
+})
 
 test("sharing after restart backfills canonical history before streaming live updates", async () => {
   await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })

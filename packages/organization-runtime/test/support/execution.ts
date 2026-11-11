@@ -100,6 +100,7 @@ export async function executionFixture(
           return {
             create: context.bind(intake.create),
             input: context.bind(intake.input),
+            decision: context.bind(intake.decision),
             control: context.bind(intake.control),
             query: context.bind(intake.query),
             skip: context.bind(intake.skip),

@@ -101,6 +101,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                     create: context.bind(intake.create),
                     control: context.bind(intake.control),
                     input: context.bind(intake.input),
+                    decision: context.bind(intake.decision),
                     query: context.bind(intake.query),
                     skip: context.bind(intake.skip),
                     close: context.bind(closeReleaseObserver),

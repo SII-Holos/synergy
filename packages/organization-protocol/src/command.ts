@@ -22,7 +22,7 @@ export namespace OrganizationCommandProtocol {
     requestID: Identity.ID,
     clientKind: z.enum(["web", "desktop", "cli", "api"]),
   })
-  export const Operation = z.enum(["create", "input", "pause", "continue", "cancel"])
+  export const Operation = z.enum(["create", "input", "pause", "continue", "cancel", "decision"])
   export const Permit = z
     .strictObject({
       schemaVersion: z.literal(1),
@@ -185,6 +185,87 @@ export namespace OrganizationCommandProtocol {
     )
   export type ControlDelivery = z.infer<typeof ControlDelivery>
 
+  const decisionTarget = {
+    operation: z.literal("decision"),
+    requestID: Identity.ID,
+    sourceSessionID: Identity.ID.optional(),
+  }
+  export const Decision = z
+    .discriminatedUnion("kind", [
+      z.strictObject({
+        ...decisionTarget,
+        kind: z.literal("permission"),
+        reply: z.enum(["once", "session", "always", "reject"]),
+        message: z.string().max(65_536).optional(),
+      }),
+      z
+        .strictObject({
+          ...decisionTarget,
+          kind: z.literal("question"),
+          reply: z.enum(["answer", "reject"]),
+          answers: z.array(z.array(z.string())).optional(),
+        })
+        .refine(
+          (value) => (value.reply === "answer") === (value.answers !== undefined),
+          "Question answers require exactly the answer mode",
+        ),
+    ])
+    .refine(
+      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 512 * 1024,
+      "Decision payload exceeds its transport window",
+    )
+    .meta({ ref: "OrgCommandDecision" })
+  export type Decision = z.infer<typeof Decision>
+  export const DecisionRequest = InputRequest.omit({ input: true })
+    .extend({ decision: Decision })
+    .meta({ ref: "OrgCommandDecisionRequest" })
+  export type DecisionRequest = z.infer<typeof DecisionRequest>
+  export function decisionRequest(permit: Permit, decision: Decision): DecisionRequest {
+    return DecisionRequest.parse({
+      schemaVersion: 1,
+      orgID: permit.orgID,
+      requestID: permit.requestID,
+      sessionID: permit.sessionID,
+      projectID: permit.projectID,
+      runtimeID: permit.runtimeID,
+      decision,
+    })
+  }
+  export function digestDecision(request: DecisionRequest) {
+    return digestProtocol(DecisionRequest, "synergy.organization.command.decision.v1\n", request)
+  }
+  export const DecisionDelivery = z
+    .strictObject({ authorization: SignedPermit, decision: Decision })
+    .refine(
+      (value) => value.authorization.permit.operation === "decision",
+      "Decisions require a matching operation permit",
+    )
+  export type DecisionDelivery = z.infer<typeof DecisionDelivery>
+  export const DecisionWinner = z
+    .strictObject({
+      sessionID: Identity.ID,
+      requestID: Identity.ID,
+      actor: ActorStamp.Info.optional(),
+      decidedAt: z.number().int().nonnegative(),
+      outcome: z.discriminatedUnion("kind", [
+        z.strictObject({
+          kind: z.literal("permission"),
+          reply: z.enum(["once", "session", "always", "reject"]),
+          causedBy: Identity.ID.optional(),
+        }),
+        z.strictObject({ kind: z.literal("question"), reply: z.enum(["answer", "reject"]) }),
+      ]),
+    })
+    .meta({ ref: "OrgCommandDecisionWinner" })
+  export const DecisionResolution = z
+    .discriminatedUnion("status", [
+      z.strictObject({ status: z.literal("resolved"), winner: DecisionWinner }),
+      z.strictObject({ status: z.literal("already_resolved"), winner: DecisionWinner }),
+      z.strictObject({ status: z.literal("expired") }),
+    ])
+    .meta({ ref: "OrgCommandDecisionResolution" })
+  export type DecisionResolution = z.infer<typeof DecisionResolution>
+
   export const SkipPermit = z
     .strictObject({
       schemaVersion: z.literal(1),
@@ -295,7 +376,35 @@ export namespace OrganizationCommandProtocol {
     )
     .meta({ ref: "OrgCommandControlAccepted" })
   export type ControlAccepted = z.infer<typeof ControlAccepted>
-  export const Accepted = z.union([InputAccepted, CreatedAccepted, ControlAccepted]).meta({ ref: "OrgCommandAccepted" })
+  export const DecisionAccepted = z
+    .strictObject({
+      ...acceptance,
+      effect: z.strictObject({
+        kind: z.literal("decision"),
+        sourceSessionID: Identity.ID,
+        requestID: Identity.ID,
+        decision: DecisionResolution,
+      }),
+    })
+    .refine(
+      (value) =>
+        value.permit.operation === "decision" &&
+        value.acceptedAt >= value.permit.authorizedAt &&
+        value.acceptedAt < value.permit.deadline,
+      "Accepted decision must match its permit and reception window",
+    )
+    .refine(
+      (value) =>
+        value.effect.decision.status === "expired" ||
+        (value.effect.decision.winner.sessionID === value.effect.sourceSessionID &&
+          value.effect.decision.winner.requestID === value.effect.requestID),
+      "Decision winner must match the native pending identity",
+    )
+    .meta({ ref: "OrgCommandDecisionAccepted" })
+  export type DecisionAccepted = z.infer<typeof DecisionAccepted>
+  export const Accepted = z
+    .union([InputAccepted, CreatedAccepted, ControlAccepted, DecisionAccepted])
+    .meta({ ref: "OrgCommandAccepted" })
   export type Accepted = z.infer<typeof Accepted>
   const attempt = {
     schemaVersion: z.literal(1),
@@ -325,6 +434,8 @@ export namespace OrganizationCommandProtocol {
   export type CreatedResult = z.infer<typeof CreatedResult>
   export const ControlResult = Result.extend({ accepted: ControlAccepted.optional() })
   export type ControlResult = z.infer<typeof ControlResult>
+  export const DecisionResult = Result.extend({ accepted: DecisionAccepted.optional() })
+  export type DecisionResult = z.infer<typeof DecisionResult>
   export const ExecutionObservation = z
     .discriminatedUnion("state", [
       z.strictObject({
@@ -406,6 +517,7 @@ export namespace OrganizationCommandProtocol {
     z.strictObject({ kind: z.literal("input"), delivery: InputDelivery }),
     z.strictObject({ kind: z.literal("create"), delivery: CreateDelivery }),
     z.strictObject({ kind: z.literal("control"), delivery: ControlDelivery }),
+    z.strictObject({ kind: z.literal("decision"), delivery: DecisionDelivery }),
     z.strictObject({ kind: z.literal("query"), authorization: SignedPermit }),
     z.strictObject({ kind: z.literal("skip"), authorization: SignedSkip }),
     z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit }),

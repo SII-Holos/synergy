@@ -17,15 +17,15 @@ export namespace OrganizationRuntimeProtocol {
     .meta({ ref: "OrgHostedRuntimeRegistration" })
   export type HostedRegistration = z.infer<typeof HostedRegistration>
   const registration = {
-      runtimeID: Identity.ID,
-      orgID: Identity.ID,
-      deploymentIncarnation: Identity.ID,
-      publicKey: PublicKey,
-      state: z.enum(["pending", "active", "revoked"]),
-      revision: Identity.Revision,
-      connectionEpoch: Protocol.Revision,
-      createdAt: z.number().int().nonnegative(),
-      lastSeen: z.number().int().nonnegative().optional(),
+    runtimeID: Identity.ID,
+    orgID: Identity.ID,
+    deploymentIncarnation: Identity.ID,
+    publicKey: PublicKey,
+    state: z.enum(["pending", "active", "revoked"]),
+    revision: Identity.Revision,
+    connectionEpoch: Protocol.Revision,
+    createdAt: z.number().int().nonnegative(),
+    lastSeen: z.number().int().nonnegative().optional(),
   }
   export const MemberRegistrationRecord = z.strictObject({
     ...registration,
@@ -41,7 +41,8 @@ export namespace OrganizationRuntimeProtocol {
     createdBy: Identity.ID,
   })
   export type HostedRegistrationRecord = z.infer<typeof HostedRegistrationRecord>
-  export const Registration = z.discriminatedUnion("runtimeKind", [MemberRegistrationRecord, HostedRegistrationRecord])
+  export const Registration = z
+    .discriminatedUnion("runtimeKind", [MemberRegistrationRecord, HostedRegistrationRecord])
     .meta({ ref: "OrgRuntimeRegistration" })
   export type Registration = z.infer<typeof Registration>
   export const StoredRegistration = z.discriminatedUnion("runtimeKind", [
@@ -110,22 +111,30 @@ export namespace OrganizationRuntimeProtocol {
     batch: Sync.Batch,
   })
   export type SyncBatch = z.infer<typeof SyncBatch>
-  export const BlobChunk = z.strictObject({
-    type: z.literal("blob-chunk"),
-    connectionEpoch: Protocol.Epoch,
-    exchangeID: Identity.ID,
-    sessionID: Identity.ID,
-    shareGeneration: Identity.Revision,
-    hash: Protocol.Digest,
-    offset: z.number().int().nonnegative(),
-    totalBytes: z.number().int().positive().safe(),
-    index: z.number().int().nonnegative(),
-    total: z.number().int().positive().max(128),
-    data: z
-      .string()
-      .regex(/^[A-Za-z0-9_-]+$/)
-      .max(60_000),
-  })
+  export const BlobChunk = z
+    .strictObject({
+      type: z.literal("blob-chunk"),
+      connectionEpoch: Protocol.Epoch,
+      exchangeID: Identity.ID,
+      sessionID: Identity.ID,
+      shareGeneration: Identity.Revision,
+      hash: Protocol.Digest,
+      offset: z.number().int().nonnegative(),
+      totalBytes: z.number().int().nonnegative().safe(),
+      index: z.number().int().nonnegative(),
+      total: z.number().int().positive().max(128),
+      data: z
+        .string()
+        .regex(/^[A-Za-z0-9_-]*$/)
+        .max(60_000),
+    })
+    .refine(
+      (value) =>
+        value.totalBytes === 0
+          ? value.offset === 0 && value.index === 0 && value.total === 1 && value.data === ""
+          : value.data.length > 0,
+      "Empty blobs require one exact zero-length frame",
+    )
   export type BlobChunk = z.infer<typeof BlobChunk>
   export const CommandChunk = z.strictObject({
     type: z.literal("command-chunk"),

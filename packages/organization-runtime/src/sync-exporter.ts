@@ -614,6 +614,20 @@ export function startMemberSyncExporter(input: {
         "scopeID" in record
           ? ({ kind: "session", scopeID: record.scopeID, sessionID: sourceSessionID } as const)
           : record.owner
+      if (artifact.bytes === 0) {
+        await connection.uploadBlob(
+          {
+            sessionID: rootSessionID,
+            shareGeneration: share.shareGeneration,
+            hash,
+            offset: 0,
+            totalBytes: 0,
+            bytes: new Uint8Array(),
+          },
+          signal,
+        )
+        continue
+      }
       const parts: Uint8Array[] = []
       let buffered = 0
       let offset = 0

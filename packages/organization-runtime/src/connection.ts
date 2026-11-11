@@ -59,6 +59,7 @@ export interface MemberConnectionOptions {
       received?: (result: Command.ControlResult) => void,
     ): Promise<Command.ControlResult>
     input(delivery: Command.InputDelivery): Promise<Command.Result>
+    decision(delivery: Command.DecisionDelivery): Promise<Command.DecisionResult>
     query(authorization: Command.SignedPermit): Promise<Command.QueryResult>
     skip(authorization: Command.SignedSkip): Promise<Command.Result>
     close?(): void | Promise<void>
@@ -452,9 +453,11 @@ async function attempt(input: {
               }
             : command.kind === "input"
               ? { kind: "result", result: await receiver.input(command.delivery) }
-              : command.kind === "skip"
-                ? { kind: "result", result: await receiver.skip(command.authorization) }
-                : { kind: "query", query: await receiver.query(command.authorization) }
+              : command.kind === "decision"
+                ? { kind: "result", result: await receiver.decision(command.delivery) }
+                : command.kind === "skip"
+                  ? { kind: "result", result: await receiver.skip(command.authorization) }
+                  : { kind: "query", query: await receiver.query(command.authorization) }
       reply = Command.Reply.parse(reply)
     } catch (error) {
       reply = {
@@ -544,10 +547,18 @@ async function attempt(input: {
       return Promise.reject(failure("PROTOCOL_MISMATCH", "Shared Session sync is not enabled"))
     if (signal?.aborted) return Promise.reject(failure("RUNTIME_OFFLINE", "Blob upload was cancelled"))
     const bytes = Buffer.from(input.bytes)
-    if (!bytes.byteLength || bytes.byteLength > 4 * 1024 * 1024)
-      return Promise.reject(failure("INVALID_REQUEST", "Blob upload must contain between one byte and 4 MiB"))
+    if (
+      !Number.isSafeInteger(input.totalBytes) ||
+      input.totalBytes < 0 ||
+      !Number.isSafeInteger(input.offset) ||
+      input.offset < 0 ||
+      input.offset % (4 * 1024 * 1024) !== 0 ||
+      bytes.byteLength !== Math.min(4 * 1024 * 1024, input.totalBytes - input.offset) ||
+      (!bytes.byteLength && (input.totalBytes !== 0 || input.offset !== 0))
+    )
+      return Promise.reject(failure("INVALID_REQUEST", "Blob upload must cover its complete declared aligned range"))
     const fragmentBytes = 45_000
-    const total = Math.ceil(bytes.byteLength / fragmentBytes)
+    const total = Math.max(1, Math.ceil(bytes.byteLength / fragmentBytes))
     if (total > 128) return Promise.reject(failure("INVALID_REQUEST", "Blob upload has too many transport fragments"))
     const exchangeID = crypto.randomUUID()
     return new Promise((resolve, reject) => {

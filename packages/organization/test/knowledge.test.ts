@@ -1,3 +1,4 @@
+import { appliedSelection, applySelection, sessionSelection, setSessionSelection } from "./support/knowledge"
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -54,7 +55,7 @@ describe("organization knowledge releases", () => {
     expect(release.version).toBe(1)
     expect(release.author).toEqual({ accountID: "alice", displayName: "alice", loginName: "alice" })
     const applied = await f.run(() =>
-      OrganizationKnowledge.apply(f.credentials.bob, "project", {
+      applySelection(f.credentials.bob, "project", {
         expectedRevision: 0,
         releases: [{ itemID: release.itemID, version: release.version, manifestHash: release.manifestHash }],
       }),
@@ -70,9 +71,7 @@ describe("organization knowledge releases", () => {
         kind: "skill",
       }),
     )
-    expect((await f.run(() => OrganizationKnowledge.applied(f.credentials.bob, "project"))).releases).toEqual(
-      applied.releases,
-    )
+    expect((await f.run(() => appliedSelection(f.credentials.bob, "project"))).releases).toEqual(applied.releases)
     const old = await f.run(() => OrganizationKnowledge.get(f.credentials.reader, "skill-one", 1))
     expect(old.manifestHash).toBe(release.manifestHash)
     expect(old.version).toBe(1)
@@ -105,11 +104,11 @@ describe("organization knowledge releases", () => {
     )
     const selected = { itemID: release.itemID, version: release.version, manifestHash: release.manifestHash }
     const applied = await f.run(() =>
-      OrganizationKnowledge.apply(f.credentials.bob, "project", { expectedRevision: 0, releases: [selected] }),
+      applySelection(f.credentials.bob, "project", { expectedRevision: 0, releases: [selected] }),
     )
     await expect(
       f.run(() =>
-        OrganizationKnowledge.apply(f.credentials.bob, "project", {
+        applySelection(f.credentials.bob, "project", {
           expectedRevision: applied.revision,
           releases: [selected, { itemID: "missing", version: 1, manifestHash: "a".repeat(64) }],
         }),
@@ -117,14 +116,14 @@ describe("organization knowledge releases", () => {
     ).rejects.toMatchObject({ data: { code: "NOT_FOUND" } })
     await expect(
       f.run(() =>
-        OrganizationKnowledge.apply(f.credentials.bob, "project", {
+        applySelection(f.credentials.bob, "project", {
           expectedRevision: 0,
           releases: [],
         }),
       ),
     ).rejects.toMatchObject({ data: { code: "REVISION_CONFLICT" } })
     await f.restart()
-    expect(await f.run(() => OrganizationKnowledge.applied(f.credentials.bob, "project"))).toEqual(applied)
+    expect(await f.run(() => appliedSelection(f.credentials.bob, "project"))).toEqual(applied)
   })
 
   test("publication, retrieval and search recheck current scope permissions", async () => {
@@ -158,7 +157,7 @@ describe("organization knowledge releases", () => {
       { data: { code: "NOT_FOUND" } },
     )
     await expect(
-      f.run(() => OrganizationKnowledge.apply(f.credentials.reader, "project", { expectedRevision: 0, releases: [] })),
+      f.run(() => applySelection(f.credentials.reader, "project", { expectedRevision: 0, releases: [] })),
     ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
     await f.run(() => Storage.remove(OrganizationStoragePath.projectMember("project", "reader")))
     await expect(
@@ -269,17 +268,13 @@ describe("organization knowledge releases", () => {
         )
     })
     const selection = await f.run(() =>
-      OrganizationKnowledge.setSessionSelection(f.credentials.bob, "one", {
+      setSessionSelection(f.credentials.bob, "one", {
         expectedRevision: 0,
         releases: [{ itemID: release.itemID, version: 1, manifestHash: release.manifestHash }],
       }),
     )
     expect(selection.updatedBy).toBe("bob")
-    expect(
-      (await f.run(() => OrganizationKnowledge.sessionSelection(f.credentials.reader, "one"))).releases,
-    ).toHaveLength(1)
-    expect((await f.run(() => OrganizationKnowledge.sessionSelection(f.credentials.reader, "two"))).releases).toEqual(
-      [],
-    )
+    expect((await f.run(() => sessionSelection(f.credentials.reader, "one"))).releases).toHaveLength(1)
+    expect((await f.run(() => sessionSelection(f.credentials.reader, "two"))).releases).toEqual([])
   })
 })

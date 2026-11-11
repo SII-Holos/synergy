@@ -1,3 +1,4 @@
+import { OrganizationSharedBlobs } from "./shared-blob"
 import { createHash } from "node:crypto"
 import {
   OrganizationIdentity as Identity,
@@ -123,25 +124,7 @@ type BlobUploadInput = {
   bytes: Uint8Array
 }
 
-function blobStatus(manifest: Record.SharedBlob): Sync.BlobStatus {
-  const offsets = new Set(manifest.chunks.map((chunk) => chunk.offset))
-  let nextOffset = 0
-  while (offsets.has(nextOffset)) {
-    const chunk = manifest.chunks.find((value) => value.offset === nextOffset)
-    if (!chunk) break
-    nextOffset += chunk.bytes
-  }
-  return Sync.BlobStatus.parse({
-    sessionID: manifest.sessionID,
-    shareGeneration: manifest.shareGeneration,
-    hash: manifest.hash,
-    bytes: manifest.bytes,
-    chunkBytes: blobChunkBytes,
-    receivedBytes: manifest.receivedBytes,
-    complete: manifest.complete,
-    nextOffset: manifest.complete ? undefined : nextOffset,
-  })
-}
+const blobStatus = OrganizationSharedBlobs.status
 
 async function currentState(session: Record.SessionDirectory) {
   const stored = await Record.read(Record.SharedState, Keys.sharedState(session.sessionID))
@@ -408,78 +391,7 @@ async function validateProjectionEvents(session: Record.SessionDirectory, batch:
 }
 
 async function uploadBlobChunk(input: BlobUploadInput, loadSession: () => Promise<Record.SessionDirectory>) {
-  const hash = Protocol.Digest.parse(input.hash)
-  const shareGeneration = Identity.Revision.parse(input.shareGeneration)
-  const offset = z.number().int().nonnegative().parse(input.offset)
-  const totalBytes = z.number().int().positive().safe().parse(input.totalBytes)
-  if (!input.bytes.byteLength || input.bytes.byteLength > blobChunkBytes)
-    fail("INVALID_REQUEST", "Blob chunks must contain between one byte and 4 MiB")
-  if (offset % blobChunkBytes !== 0 || offset + input.bytes.byteLength > totalBytes)
-    fail("INVALID_REQUEST", "Blob chunk offset is not aligned to its declared size")
-  const active = async () => {
-    const session = await loadSession()
-    if (session.shareState !== "shared" || session.shareGeneration !== shareGeneration)
-      fail("SHARE_REVOKED", "The Session share generation is no longer active")
-    return session
-  }
-  await Storage.snapshot(active)
-  const chunkKey = Keys.sharedBlobChunk(input.sessionID, shareGeneration, hash, offset)
-  using prepared = await Storage.prepareBinary(chunkKey, input.bytes)
-  const manifest = await Storage.transaction(async () => {
-    const session = await active()
-    const key = Keys.sharedBlob(input.sessionID, shareGeneration, hash)
-    const current = await Record.read(Record.SharedBlob, key)
-    if (current && (current.bytes !== totalBytes || current.hash !== hash))
-      fail("REVISION_CONFLICT", "Blob metadata cannot change after its first chunk")
-    if (current?.chunks.some((chunk) => chunk.offset === offset)) {
-      const existing = await Storage.readBinary(chunkKey, { maxBytes: blobChunkBytes })
-      if (!Buffer.from(existing).equals(input.bytes)) fail("REVISION_CONFLICT", "Published blob chunks are immutable")
-    } else {
-      await Storage.publishPreparedBinary(prepared)
-    }
-    const chunks = [...(current?.chunks ?? [])].filter((chunk) => chunk.offset !== offset)
-    chunks.push({ offset, bytes: input.bytes.byteLength })
-    chunks.sort((a, b) => a.offset - b.offset)
-    const receivedBytes = chunks.reduce((sum, chunk) => sum + chunk.bytes, 0)
-    const complete =
-      receivedBytes === totalBytes &&
-      chunks.every(
-        (chunk, index) => chunk.offset === (index === 0 ? 0 : chunks[index - 1]!.offset + chunks[index - 1]!.bytes),
-      )
-    const next = Record.SharedBlob.parse({
-      schemaVersion: 1,
-      sessionID: session.sessionID,
-      shareGeneration,
-      hash,
-      bytes: totalBytes,
-      chunkBytes: blobChunkBytes,
-      chunks,
-      receivedBytes,
-      complete,
-      createdAt: current?.createdAt ?? Date.now(),
-      updatedAt: Date.now(),
-    })
-    await Storage.write(key, next)
-    return next
-  })
-  if (manifest.complete) {
-    const hasher = createHash("sha256")
-    let byteLength = 0
-    for (const chunk of manifest.chunks) {
-      await Storage.snapshot(active)
-      const bytes = await Storage.readBinary(
-        Keys.sharedBlobChunk(input.sessionID, shareGeneration, hash, chunk.offset),
-        { maxBytes: blobChunkBytes },
-      )
-      byteLength += bytes.byteLength
-      hasher.update(bytes)
-    }
-    if (byteLength !== manifest.bytes || hasher.digest("hex") !== manifest.hash) {
-      await Storage.removeTree(Keys.sharedBlob(input.sessionID, shareGeneration, hash))
-      fail("INVALID_REQUEST", "Blob bytes do not match the declared content hash")
-    }
-  }
-  return blobStatus(manifest)
+  return OrganizationSharedBlobs.upload(input, loadSession)
 }
 
 async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) {
@@ -802,10 +714,11 @@ export namespace OrganizationSharing {
       bytes: Uint8Array
     },
   ) {
-    return uploadBlobChunk(
-      { sessionID, ...input },
-      async () => (await authorize(credentials, "session.read", { sessionID })).session,
-    )
+    return uploadBlobChunk({ sessionID, ...input }, async () => {
+      const { account, session } = await authorize(credentials, "session.read", { sessionID })
+      requireCreator(account.accountID, session)
+      return session
+    })
   }
 
   export async function uploadBlobFromRuntime(handshake: Protocol.Handshake, input: BlobUploadInput) {
@@ -834,7 +747,20 @@ export namespace OrganizationSharing {
     sessionID: string,
     input: { shareGeneration: number; hash: string; range?: string; signal?: AbortSignal },
   ) {
-    const status = await getBlobStatus(credentials, sessionID, input)
+    let status = await getBlobStatus(credentials, sessionID, input)
+    if (!status.complete && status.receivedBytes === status.bytes) {
+      const manifest = await Record.read(
+        Record.SharedBlob,
+        Keys.sharedBlob(sessionID, status.shareGeneration, status.hash),
+      )
+      if (!manifest) fail("NOT_FOUND", "Blob not found")
+      status = OrganizationSharedBlobs.status(
+        await OrganizationSharedBlobs.complete(
+          manifest,
+          async () => (await authorize(credentials, "session.read", { sessionID })).session,
+        ),
+      )
+    }
     if (!status.complete) fail("BLOB_INCOMPLETE", "Blob upload is incomplete")
     const range = blobRange(input.range, status.bytes)
     if (!range) return new Response(null, { status: 416, headers: { "content-range": `bytes */${status.bytes}` } })

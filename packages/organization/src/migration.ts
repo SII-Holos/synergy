@@ -10,6 +10,8 @@ import { executionRetentionMigration } from "./execution-retention-migration"
 import { sharedProjectionMigration, sharedWindowMigration, sharedWindowHistoryMigration } from "./shared-projection"
 import { publicationMigration } from "./publications"
 import { inviteCatalogMigration } from "./auth/invite-migration"
+import { knowledgeSelectionMigration } from "./knowledge-selection"
+import { sharedBlobMigration } from "./shared-blob"
 
 const migrations: Migration[] = [
   executionMigration,
@@ -19,6 +21,8 @@ const migrations: Migration[] = [
   sharedWindowHistoryMigration,
   publicationMigration,
   inviteCatalogMigration,
+  knowledgeSelectionMigration,
+  sharedBlobMigration,
   {
     id: "20261108-organization-deployment",
     description: "Establish independent organization deployment identity",

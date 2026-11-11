@@ -154,7 +154,7 @@ export function createCommandForwarder(options: {
     | { kind: "accepted"; receipt: Command.Accepted }
     | {
         kind: "admitted"
-        command: Extract<Command.Delivery, { kind: "input" | "create" | "control" }>
+        command: Extract<Command.Delivery, { kind: "input" | "create" | "control" | "decision" }>
         connection: ReturnType<RuntimeConnections["capture"]>
       }
   async function submit(
@@ -262,6 +262,28 @@ export function createCommandForwarder(options: {
     })
   }
   return {
+    async decision(credentials: Credentials, value: Command.DecisionRequest, signal?: AbortSignal) {
+      credentials = { ...credentials }
+      const request = Command.DecisionRequest.parse(value)
+      const result = await submit(
+        credentials,
+        request,
+        request.sessionID,
+        signal,
+        () => admissions.inspectDecision(credentials, request),
+        async () => {
+          const prepared = await admissions.decision(credentials, request)
+          return prepared.kind === "accepted"
+            ? prepared
+            : {
+                kind: "admitted",
+                connection: prepared.connection,
+                command: { kind: "decision", delivery: prepared.delivery },
+              }
+        },
+      )
+      return { ...result, receipt: Command.DecisionAccepted.parse(result.receipt) }
+    },
     async control(credentials: Credentials, value: Command.ControlRequest, signal?: AbortSignal) {
       credentials = { ...credentials }
       const request = Command.ControlRequest.parse(value)

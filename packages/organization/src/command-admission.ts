@@ -99,7 +99,9 @@ export function createCommandAdmissions(options: {
         if (previous?.accepted) return { kind: "accepted" as const, receipt: previous.accepted }
         await authorize(
           credentials,
-          operation === "pause" || operation === "cancel" ? "session.stop" : "session.execute",
+          operation === "pause" || operation === "cancel" || operation === "decision"
+            ? "session.stop"
+            : "session.execute",
           {
             sessionID: request.sessionID,
           },
@@ -121,7 +123,12 @@ export function createCommandAdmissions(options: {
           runtime.state !== "active"
         )
           fail("RUNTIME_OFFLINE", "Session Runtime is not available")
-        await runtimeAuthority({ runtimeID: runtime.runtimeID, orgID: account.orgID, deploymentIncarnation: signing.identity.deploymentIncarnation, connectionEpoch: runtime.connectionEpoch })
+        await runtimeAuthority({
+          runtimeID: runtime.runtimeID,
+          orgID: account.orgID,
+          deploymentIncarnation: signing.identity.deploymentIncarnation,
+          connectionEpoch: runtime.connectionEpoch,
+        })
         connection = connections.capture(runtime.runtimeID)
         const handshake = connection.handshake
         assertRuntimeConnection(runtime, handshake)
@@ -372,6 +379,24 @@ export function createCommandAdmissions(options: {
   }
 
   return {
+    async decision(credentials: Credentials, value: Command.DecisionRequest) {
+      standalone()
+      credentials = { ...credentials }
+      const request = Command.DecisionRequest.parse(value)
+      const payloadHash = await Command.digestDecision(request)
+      const result = await admit(credentials, "decision", async () => ({
+        request,
+        payloadHash,
+        ...(await lookupTarget(credentials, request, payloadHash, "decision")),
+      }))
+      if (result.kind === "accepted")
+        return { kind: "accepted" as const, receipt: Command.DecisionAccepted.parse(result.receipt) }
+      return {
+        kind: "admitted" as const,
+        delivery: { authorization: result.authorization, decision: request.decision },
+        connection: result.connection,
+      }
+    },
     async control(credentials: Credentials, value: Command.ControlRequest) {
       standalone()
       credentials = { ...credentials }
@@ -441,6 +466,15 @@ export function createCommandAdmissions(options: {
     },
     observe,
     prepareSkip,
+    async inspectDecision(credentials: Credentials, value: Command.DecisionRequest) {
+      credentials = { ...credentials }
+      const request = Command.DecisionRequest.parse(value)
+      const payloadHash = await Command.digestDecision(request)
+      return Storage.snapshot(async () => {
+        const { previous } = await lookupTarget(credentials, request, payloadHash, "decision")
+        return previous ? { attempt: await attempt(previous.lastAttemptID), accepted: previous.accepted } : undefined
+      })
+    },
     async inspectControl(credentials: Credentials, value: Command.ControlRequest) {
       credentials = { ...credentials }
       const request = Command.ControlRequest.parse(value)

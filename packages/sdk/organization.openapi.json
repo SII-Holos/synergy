@@ -2857,6 +2857,285 @@
         ]
       }
     },
+    "/org/v1/knowledge/selection-updates": {
+      "post": {
+        "operationId": "orgKnowledge.beginSelectionUpdate",
+        "summary": "Stage an explicit update over the complete current knowledge manifest",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "target": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": { "type": "string", "const": "member" },
+                          "projectID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          }
+                        },
+                        "required": ["kind", "projectID"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": { "type": "string", "const": "session" },
+                          "sessionID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          }
+                        },
+                        "required": ["kind", "sessionID"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["requestID", "target", "expectedRevision"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelectionUpdate" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/knowledge/selection-updates/{updateID}": {
+      "get": {
+        "operationId": "orgKnowledge.selectionUpdate",
+        "summary": "Inspect a knowledge update after interruption or an unknown response",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelectionUpdate" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "updateID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/knowledge/selection-updates/{updateID}/pages": {
+      "post": {
+        "operationId": "orgKnowledge.patchSelectionUpdate",
+        "summary": "Apply one immutable retryable page of explicit knowledge changes",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "changes": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "itemID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                        "reference": {
+                          "type": "object",
+                          "properties": {
+                            "itemID": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[a-zA-Z0-9_-]+$"
+                            },
+                            "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                            "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                          },
+                          "required": ["itemID", "version", "manifestHash"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["itemID"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["sequence", "changes"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelectionUpdate" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "updateID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/knowledge/selection-updates/{updateID}/commit": {
+      "post": {
+        "operationId": "orgKnowledge.commitSelectionUpdate",
+        "summary": "Reauthorize and atomically publish the complete staged knowledge manifest",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "expectedSequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } },
+                "required": ["expectedSequence"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelectionSummary" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "updateID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
     "/org/v1/knowledge": {
       "get": {
         "operationId": "orgKnowledge.list",
@@ -3318,14 +3597,16 @@
         ]
       }
     },
-    "/org/v1/projects/{projectID}/knowledge/applied": {
+    "/org/v1/projects/{projectID}/knowledge/applied/releases": {
       "get": {
-        "operationId": "orgKnowledge.applied",
-        "summary": "Read this member's explicitly applied project versions",
+        "operationId": "orgKnowledge.appliedPage",
+        "summary": "Page this member's exact applied references without loading the whole manifest",
         "responses": {
           "200": {
             "description": "Success",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelection" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelectionPage" } }
+            }
           },
           "400": {
             "description": "Organization error",
@@ -3358,12 +3639,25 @@
             "name": "projectID",
             "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
             "required": true
-          }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          },
+          { "in": "query", "name": "manifestHash", "schema": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
         ]
-      },
-      "put": {
-        "operationId": "orgKnowledge.apply",
-        "summary": "Atomically select the complete member knowledge manifest",
+      }
+    },
+    "/org/v1/projects/{projectID}/knowledge/applied/references": {
+      "post": {
+        "operationId": "orgKnowledge.appliedReferences",
+        "summary": "Read applied references for the visible catalog window",
         "requestBody": {
           "required": true,
           "content": {
@@ -3371,22 +3665,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "releases": {
+                  "itemIDs": {
+                    "maxItems": 100,
                     "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "itemID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                        "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                        "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
-                      },
-                      "required": ["itemID", "version", "manifestHash"],
-                      "additionalProperties": false
-                    }
-                  }
+                    "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                  },
+                  "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
                 },
-                "required": ["expectedRevision", "releases"],
+                "required": ["itemIDs"],
                 "additionalProperties": false
               }
             }
@@ -3395,7 +3681,9 @@
         "responses": {
           "200": {
             "description": "Success",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelection" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelectionPage" } }
+            }
           },
           "400": {
             "description": "Organization error",
@@ -3432,14 +3720,16 @@
         ]
       }
     },
-    "/org/v1/sessions/{sessionID}/knowledge": {
+    "/org/v1/sessions/{sessionID}/knowledge/releases": {
       "get": {
-        "operationId": "orgKnowledge.sessionSelection",
-        "summary": "Read one Session's independent knowledge versions",
+        "operationId": "orgKnowledge.sessionSelectionPage",
+        "summary": "Page the executing Session's exact desired knowledge references",
         "responses": {
           "200": {
             "description": "Success",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelection" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelectionPage" } }
+            }
           },
           "400": {
             "description": "Organization error",
@@ -3472,12 +3762,25 @@
             "name": "sessionID",
             "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
             "required": true
-          }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          },
+          { "in": "query", "name": "manifestHash", "schema": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
         ]
-      },
-      "put": {
-        "operationId": "orgKnowledge.setSessionSelection",
-        "summary": "Explicitly update one Session's knowledge versions",
+      }
+    },
+    "/org/v1/sessions/{sessionID}/knowledge/references": {
+      "post": {
+        "operationId": "orgKnowledge.sessionSelectionReferences",
+        "summary": "Read executing Session knowledge references for the visible catalog window",
         "requestBody": {
           "required": true,
           "content": {
@@ -3485,22 +3788,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "releases": {
+                  "itemIDs": {
+                    "maxItems": 100,
                     "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "itemID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                        "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                        "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
-                      },
-                      "required": ["itemID", "version", "manifestHash"],
-                      "additionalProperties": false
-                    }
-                  }
+                    "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                  },
+                  "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
                 },
-                "required": ["expectedRevision", "releases"],
+                "required": ["itemIDs"],
                 "additionalProperties": false
               }
             }
@@ -3509,7 +3804,9 @@
         "responses": {
           "200": {
             "description": "Success",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelection" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgeSelectionPage" } }
+            }
           },
           "400": {
             "description": "Organization error",
@@ -4839,6 +5136,66 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
           }
         }
+      }
+    },
+    "/org/v1/sessions/{sessionID}/interactions/reply": {
+      "post": {
+        "operationId": "orgSessionInteractions.reply",
+        "summary": "Answer an existing native permission or question through signed command admission",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCommandDecisionRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgCommandDecisionAccepted" } }
+            }
+          },
+          "202": {
+            "description": "Runtime durably received the command",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgCommandDecisionAccepted" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "504": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
       }
     },
     "/org/v1/sessions/{sessionID}/control": {
@@ -8843,6 +9200,52 @@
         "required": ["uploadID", "fileID", "receivedBytes", "bytes", "chunkBytes"],
         "additionalProperties": false
       },
+      "OrgKnowledgeSelectionSummary": {
+        "type": "object",
+        "properties": {
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "updatedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "releaseCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["revision", "manifestHash", "updatedBy", "updatedAt", "releaseCount"],
+        "additionalProperties": false
+      },
+      "OrgKnowledgeSelectionUpdate": {
+        "type": "object",
+        "properties": {
+          "updateID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "target": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "member" },
+                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "projectID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "session" },
+                  "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "sessionID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "baseRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "nextSequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "state": { "type": "string", "enum": ["draft", "committed"] },
+          "committed": { "$ref": "#/components/schemas/OrgKnowledgeSelectionSummary" }
+        },
+        "required": ["updateID", "target", "baseRevision", "nextSequence", "state"],
+        "additionalProperties": false
+      },
       "OrgKnowledgeItem": {
         "type": "object",
         "properties": {
@@ -8978,12 +9381,12 @@
         "required": ["items"],
         "additionalProperties": false
       },
-      "OrgKnowledgeSelection": {
+      "OrgKnowledgeSelectionPage": {
         "type": "object",
         "properties": {
-          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-          "releases": {
+          "selection": { "$ref": "#/components/schemas/OrgKnowledgeSelectionSummary" },
+          "items": {
+            "maxItems": 100,
             "type": "array",
             "items": {
               "type": "object",
@@ -8996,10 +9399,9 @@
               "additionalProperties": false
             }
           },
-          "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "updatedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
         },
-        "required": ["revision", "manifestHash", "releases", "updatedBy", "updatedAt"],
+        "required": ["selection", "items"],
         "additionalProperties": false
       },
       "OrgKnowledgeStatus": {
@@ -9008,30 +9410,8 @@
           "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "desired": {
-            "type": "object",
-            "properties": {
-              "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-              "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-              "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-              "updatedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-              "releaseCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
-            },
-            "required": ["revision", "manifestHash", "updatedBy", "updatedAt", "releaseCount"],
-            "additionalProperties": false
-          },
-          "activated": {
-            "type": "object",
-            "properties": {
-              "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-              "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-              "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-              "updatedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-              "releaseCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
-            },
-            "required": ["revision", "manifestHash", "updatedBy", "updatedAt", "releaseCount"],
-            "additionalProperties": false
-          },
+          "desired": { "$ref": "#/components/schemas/OrgKnowledgeSelectionSummary" },
+          "activated": { "$ref": "#/components/schemas/OrgKnowledgeSelectionSummary" },
           "state": { "type": "string", "enum": ["pending", "active", "failed"] },
           "error": { "type": "string", "const": "update_failed" }
         },
@@ -9755,7 +10135,7 @@
             "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
             "additionalProperties": false
           },
-          "operation": { "type": "string", "enum": ["create", "input", "pause", "continue", "cancel"] },
+          "operation": { "type": "string", "enum": ["create", "input", "pause", "continue", "cancel", "decision"] },
           "authorizedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
           "deadline": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
           "provisionalGrantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
@@ -10035,6 +10415,134 @@
         "required": ["authority", "manifestHash"],
         "additionalProperties": false
       },
+      "OrgCommandDecisionWinner": {
+        "type": "object",
+        "properties": {
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "actor": { "$ref": "#/components/schemas/ActorStamp" },
+          "decidedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "outcome": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "permission" },
+                  "reply": { "type": "string", "enum": ["once", "session", "always", "reject"] },
+                  "causedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "reply"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "question" },
+                  "reply": { "type": "string", "enum": ["answer", "reject"] }
+                },
+                "required": ["kind", "reply"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["sessionID", "requestID", "decidedAt", "outcome"],
+        "additionalProperties": false
+      },
+      "OrgCommandDecisionResolution": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "const": "resolved" },
+              "winner": { "$ref": "#/components/schemas/OrgCommandDecisionWinner" }
+            },
+            "required": ["status", "winner"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "const": "already_resolved" },
+              "winner": { "$ref": "#/components/schemas/OrgCommandDecisionWinner" }
+            },
+            "required": ["status", "winner"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": { "status": { "type": "string", "const": "expired" } },
+            "required": ["status"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgCommandDecisionAccepted": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": { "type": "number", "const": 1 },
+          "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+          "acceptedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "intakeSeq": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "effect": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "decision" },
+              "sourceSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "decision": { "$ref": "#/components/schemas/OrgCommandDecisionResolution" }
+            },
+            "required": ["kind", "sourceSessionID", "requestID", "decision"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["schemaVersion", "permit", "acceptedAt", "intakeSeq", "effect"],
+        "additionalProperties": false
+      },
+      "OrgCommandDecision": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": { "type": "string", "const": "decision" },
+              "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "sourceSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "kind": { "type": "string", "const": "permission" },
+              "reply": { "type": "string", "enum": ["once", "session", "always", "reject"] },
+              "message": { "type": "string", "maxLength": 65536 }
+            },
+            "required": ["operation", "requestID", "kind", "reply"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": { "type": "string", "const": "decision" },
+              "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "sourceSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "kind": { "type": "string", "const": "question" },
+              "reply": { "type": "string", "enum": ["answer", "reject"] },
+              "answers": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
+            },
+            "required": ["operation", "requestID", "kind", "reply"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgCommandDecisionRequest": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": { "type": "number", "const": 1 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "decision": { "$ref": "#/components/schemas/OrgCommandDecision" }
+        },
+        "required": ["schemaVersion", "orgID", "requestID", "sessionID", "projectID", "runtimeID", "decision"],
+        "additionalProperties": false
+      },
       "OrgCommandControlAccepted": {
         "type": "object",
         "properties": {
@@ -10218,7 +10726,8 @@
         "anyOf": [
           { "$ref": "#/components/schemas/OrgCommandInputAccepted" },
           { "$ref": "#/components/schemas/OrgCommandCreatedAccepted" },
-          { "$ref": "#/components/schemas/OrgCommandControlAccepted" }
+          { "$ref": "#/components/schemas/OrgCommandControlAccepted" },
+          { "$ref": "#/components/schemas/OrgCommandDecisionAccepted" }
         ]
       },
       "OrgCommandExecutionObservation": {

@@ -1,6 +1,25 @@
 import { expect, test } from "bun:test"
 import { OrganizationRuntimeProtocol as Runtime, OrganizationProtocol } from "../src/index"
 
+test("an empty shared blob has one strict zero-length transport frame", () => {
+  const frame = {
+    type: "blob-chunk",
+    connectionEpoch: 1,
+    exchangeID: "empty",
+    sessionID: "session",
+    shareGeneration: 1,
+    hash: new Bun.CryptoHasher("sha256").digest("hex"),
+    offset: 0,
+    totalBytes: 0,
+    index: 0,
+    total: 1,
+    data: "",
+  }
+  expect(Runtime.BlobChunk.safeParse(frame).success).toBe(true)
+  for (const changes of [{ offset: 1 }, { index: 1 }, { total: 2 }, { totalBytes: 1 }, { data: "AA" }])
+    expect(Runtime.BlobChunk.safeParse({ ...frame, ...changes }).success).toBe(false)
+})
+
 async function keys() {
   const pair = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
   return { pair, publicKey: await Runtime.publicKey(pair.publicKey) }

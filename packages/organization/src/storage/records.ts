@@ -230,15 +230,14 @@ export namespace OrganizationRecord {
   })
   export type SharedSession = z.infer<typeof SharedSession>
   export const SharedBlob = z.strictObject({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     sessionID: Identity.ID,
     shareGeneration: Identity.Revision,
     hash: OrganizationProtocol.Digest,
     bytes: z.number().int().nonnegative(),
     chunkBytes: z.literal(4 * 1024 * 1024),
-    chunks: z
-      .array(z.strictObject({ offset: z.number().int().nonnegative(), bytes: z.number().int().positive() }))
-      .max(16_384),
+    nextOffset: z.number().int().nonnegative().safe(),
+    receivedChunks: z.number().int().nonnegative().safe(),
     receivedBytes: z.number().int().nonnegative(),
     complete: z.boolean(),
     createdAt: z.number().int().nonnegative(),

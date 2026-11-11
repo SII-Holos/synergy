@@ -10,8 +10,53 @@ import { OrganizationKnowledgeProtocol as Knowledge } from "@ericsanchezok/syner
 import { loadOrganizationKnowledge } from "../src/knowledge-source"
 import { createMemberKnowledgeTool } from "../src/tools/knowledge"
 import { executionFixture } from "./support/execution"
+import { knowledgePage } from "../src/knowledge"
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
+
+async function applySelection(
+  f: Awaited<ReturnType<typeof executionFixture>>,
+  input: { projectID: string; expectedRevision: number; releases: Knowledge.Reference[] },
+) {
+  const options = { headers: f.headers, throwOnError: true as const }
+  const update = (
+    await f.client.orgKnowledge.beginSelectionUpdate(
+      {
+        requestID: crypto.randomUUID(),
+        target: { kind: "member", projectID: input.projectID },
+        expectedRevision: input.expectedRevision,
+      },
+      options,
+    )
+  ).data
+  const previous: Knowledge.Reference[] = []
+  let cursor: string | undefined
+  do {
+    const page = (await f.client.orgKnowledge.appliedPage({ projectID: input.projectID, cursor, limit: 100 }, options))
+      .data
+    previous.push(...page.items)
+    cursor = page.cursor
+  } while (cursor)
+  const selected = new Set(input.releases.map((reference) => reference.itemID))
+  const changes = [
+    ...previous
+      .filter((reference) => !selected.has(reference.itemID))
+      .map((reference) => ({ itemID: reference.itemID })),
+    ...input.releases.map((reference) => ({ itemID: reference.itemID, reference })),
+  ]
+  let sequence = 0
+  for (let start = 0; start < changes.length; start += 100)
+    await f.client.orgKnowledge.patchSelectionUpdate(
+      { updateID: update.updateID, sequence: sequence++, changes: changes.slice(start, start + 100) },
+      options,
+    )
+  return (
+    await f.client.orgKnowledge.commitSelectionUpdate(
+      { updateID: update.updateID, expectedSequence: sequence },
+      options,
+    )
+  ).data
+}
 
 async function publish(
   f: Awaited<ReturnType<typeof executionFixture>>,
@@ -73,10 +118,7 @@ test("signed machine knowledge reads selected versions and fences removed select
   const session = await f.runtime.run(() => Session.get(f.sessionID))
   const body = "---\nname: team-work\ndescription: Team work\n---\nSigned selected instructions"
   const { release, reference, file } = await publish(f, session.scope.id, body, 0)
-  await f.client.orgKnowledge.apply(
-    { projectID: session.scope.id, expectedRevision: 0, releases: [reference] },
-    options,
-  )
+  await applySelection(f, { projectID: session.scope.id, expectedRevision: 0, releases: [reference] })
   const proof = await f.description()
   expect((await f.connection.resources.knowledge(proof)).items).toEqual([release])
   expect((await f.connection.resources.knowledgeFiles(proof, reference)).items).toEqual([file])
@@ -92,7 +134,11 @@ test("signed machine knowledge reads selected versions and fences removed select
       workspace: null,
       fn: async () => {
         const active = await loadOrganizationKnowledge(f.member.identity, f.sessionID)
-        expect(active.selection.releases).toEqual([reference])
+        expect(
+          (await knowledgePage(active)).items.map(({ release }) =>
+            Knowledge.Reference.parse(Knowledge.Reference.strip().parse(release)),
+          ),
+        ).toEqual([reference])
         const ctx: Tool.Context = {
           sessionID: f.sessionID,
           messageID: "tool-message",
@@ -134,10 +180,7 @@ test("signed machine knowledge reads selected versions and fences removed select
           body.replace("Signed selected instructions", "Updated selected instructions"),
           1,
         )
-        await f.client.orgKnowledge.apply(
-          { projectID: session.scope.id, expectedRevision: 1, releases: [second.reference] },
-          options,
-        )
+        await applySelection(f, { projectID: session.scope.id, expectedRevision: 1, releases: [second.reference] })
         f.interceptHTTP(async (request) => {
           if (!request.url.endsWith("/knowledge/content")) return
           const input = (await request.clone().json()) as { reference?: { version?: number } }
@@ -153,7 +196,11 @@ test("signed machine knowledge reads selected versions and fences removed select
             )
         })
         const retained = await loadOrganizationKnowledge(f.member.identity, f.sessionID)
-        expect(retained.selection.releases).toEqual([reference])
+        expect(
+          (await knowledgePage(retained)).items.map(({ release }) =>
+            Knowledge.Reference.parse(Knowledge.Reference.strip().parse(release)),
+          ),
+        ).toEqual([reference])
         expect(retained.updateError).toContain("previous complete version remains active")
         expect((await f.client.orgKnowledge.status({ sessionID: f.sessionID }, options)).data).toMatchObject({
           state: "failed",
@@ -177,7 +224,7 @@ test("signed machine knowledge reads selected versions and fences removed select
           "Updated selected instructions",
         )
         expect((await f.client.orgKnowledge.status({ sessionID: f.sessionID }, options)).data.state).toBe("active")
-        await f.client.orgKnowledge.apply({ projectID: session.scope.id, expectedRevision: 2, releases: [] }, options)
+        await applySelection(f, { projectID: session.scope.id, expectedRevision: 2, releases: [] })
         const updated = await SessionContextContributions.collect(
           { sessionID: f.sessionID, scopeID: session.scope.id, messages: [], isTopSession: true, signal: ctx.abort },
           "model",

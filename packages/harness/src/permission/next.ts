@@ -6,6 +6,7 @@ import { isNonBypassableMetadata } from "../enforcement/capability"
 import { Identifier } from "../id/id"
 import { PermissionRules } from "./rules"
 import { ScopedState } from "../scope/scoped-state"
+import { ScopeContext } from "../scope/context"
 import { SessionInteraction } from "../session/interaction"
 import { SessionDecisionReceipts as Decisions } from "../session/decision-receipts"
 import { Storage } from "../storage/storage"
@@ -119,7 +120,7 @@ export namespace PermissionNext {
         resolve: () => void
         reject: (e: any) => void
         cleanup?: () => void
-        decision?: { receipt: Decisions.Receipt; settle: () => void }
+        decision?: { receipt: Decisions.Receipt; settle: () => Promise<void> }
       }
     > = {}
 
@@ -228,20 +229,10 @@ export namespace PermissionNext {
     actor?: ActorStamp.Info
   }): Promise<Decisions.Result> {
     const s = await state()
-    const target = { sessionID: input.sessionID, requestID: input.requestID, kind: "permission" as const }
+    const scope = ScopeContext.current.scope
     return Storage.transaction(async () => {
-      const prior = await Decisions.read(target)
-      if (prior) {
-        const candidate = s.pending[input.requestID]?.decision
-        if (candidate && JSON.stringify(candidate.receipt) === JSON.stringify(prior)) {
-          Storage.afterCommit(() => {
-            if (prior.outcome.kind === "permission" && prior.outcome.reply === "always")
-              PermissionRules.invalidateUserRules()
-            candidate.settle()
-          })
-        }
-        return { status: "already_resolved", receipt: prior }
-      }
+      const prior = await reconcile(input)
+      if (prior) return { status: "already_resolved", receipt: prior }
       const existing = s.pending[input.requestID]
       if (!existing || existing.info.sessionID !== input.sessionID) return { status: "expired" }
       const selected =
@@ -275,30 +266,35 @@ export namespace PermissionNext {
             }),
           })
       }
-      const settle = () => {
-        if (input.reply === "session" && s.pending[input.requestID] === existing)
-          for (const pattern of existing.info.patterns)
-            PermissionRules.addSessionRule(input.sessionID, {
-              permission: existing.info.permission,
-              pattern,
-              action: "allow",
-            })
-        for (const pending of selected) {
-          if (s.pending[pending.info.id] !== pending) continue
-          delete s.pending[pending.info.id]
-          if (input.reply === "reject")
-            pending.reject(
-              pending === existing && input.message ? new CorrectedError(input.message) : new RejectedError(),
-            )
-          else pending.resolve()
-          Bus.publish(Event.Replied, {
-            sessionID: input.sessionID,
-            requestID: pending.info.id,
-            reply: pending === existing ? input.reply : "reject",
-            actor: input.actor,
-          })
-        }
-      }
+      const settle = () =>
+        ScopeContext.provide({
+          scope,
+          workspace: null,
+          fn: () => {
+            if (input.reply === "session" && s.pending[input.requestID] === existing)
+              for (const pattern of existing.info.patterns)
+                PermissionRules.addSessionRule(input.sessionID, {
+                  permission: existing.info.permission,
+                  pattern,
+                  action: "allow",
+                })
+            for (const pending of selected) {
+              if (s.pending[pending.info.id] !== pending) continue
+              delete s.pending[pending.info.id]
+              if (input.reply === "reject")
+                pending.reject(
+                  pending === existing && input.message ? new CorrectedError(input.message) : new RejectedError(),
+                )
+              else pending.resolve()
+              Bus.publish(Event.Replied, {
+                sessionID: input.sessionID,
+                requestID: pending.info.id,
+                reply: pending === existing ? input.reply : "reject",
+                actor: input.actor,
+              })
+            }
+          },
+        })
       for (const { pending, receipt } of decisions) pending.decision = { receipt, settle }
       await Storage.transaction(
         async () => {
@@ -312,6 +308,21 @@ export namespace PermissionNext {
         },
       )
       return { status: "resolved", receipt }
+    })
+  }
+
+  export async function reconcile(input: { sessionID: string; requestID: string }) {
+    const s = await state()
+    return Storage.transaction(async () => {
+      const prior = await Decisions.read({ ...input, kind: "permission" })
+      const candidate = s.pending[input.requestID]?.decision
+      if (prior && candidate && JSON.stringify(candidate.receipt) === JSON.stringify(prior))
+        Storage.afterCommit(() => {
+          if (prior.outcome.kind === "permission" && prior.outcome.reply === "always")
+            PermissionRules.invalidateUserRules()
+          return candidate.settle()
+        })
+      return prior
     })
   }
 

@@ -305,7 +305,7 @@ export function createRuntimeConnections(input: {
       if (!input.onBlobChunk) fail("SERVICE_UNAVAILABLE", "Shared Session blobs are unavailable")
       if (frame.data.index >= frame.data.total) fail("PROTOCOL_MISMATCH", "Blob chunk index is out of range")
       const encoded = Buffer.from(frame.data.data, "base64url")
-      if (!encoded.length || encoded.toString("base64url") !== frame.data.data)
+      if (encoded.toString("base64url") !== frame.data.data || (!encoded.length && frame.data.totalBytes !== 0))
         fail("PROTOCOL_MISMATCH", "Blob chunk encoding is invalid")
       const transfers = blobTransfers.get(socket) ?? new Map()
       blobTransfers.set(socket, transfers)

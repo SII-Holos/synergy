@@ -4,7 +4,8 @@ import { useLingui } from "@lingui/solid"
 import type {
   OrgKnowledgeItem,
   OrgKnowledgeRelease,
-  OrgKnowledgeSelection,
+  OrgKnowledgeSelectionSummary,
+  OrgKnowledgeSelectionPage,
   OrgKnowledgeStatus,
   OrgPublicationFile,
 } from "@ericsanchezok/synergy-sdk/organization"
@@ -16,6 +17,8 @@ import { WorkspaceError } from "./workspace-error"
 import { PublicationEditor } from "./publication-editor"
 import { PublicationFiles } from "./publication-files"
 import { publicationMessages as messages } from "./publication-messages"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+import { createKnowledgeUpdate } from "./knowledge-update"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
 import "./publication.css"
 
@@ -37,10 +40,16 @@ export function OrganizationKnowledge(props: {
   const options = { throwOnError: true, signal } as const
   const [state, setState] = createStore<{
     items: OrgKnowledgeItem[]
-    applied?: OrgKnowledgeSelection
-    selected?: OrgKnowledgeSelection
+    applied?: OrgKnowledgeSelectionSummary
+    selected?: OrgKnowledgeSelectionSummary
+    appliedReferences: OrgKnowledgeSelectionPage["items"]
+    selectedReferences: OrgKnowledgeSelectionPage["items"]
     status?: OrgKnowledgeStatus
-  }>({ items: [] })
+  }>({ items: [], appliedReferences: [], selectedReferences: [] })
+  const ledger = createKnowledgeUpdate(localStorage, view.key, `${props.projectID ?? "organization"}:${props.sessionID ?? "project"}`)
+  const [pending, setPending] = createSignal<ReturnType<typeof ledger.pending>>()
+  const [referencesBusy, setReferencesBusy] = createSignal(false)
+  let referencesRevision = 0
   const [cursor, setCursor] = createSignal<string>()
   const [loading, setLoading] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
@@ -51,6 +60,31 @@ export function OrganizationKnowledge(props: {
   const [query, setQuery] = createSignal("")
   const [selected, setSelected] = createSignal<string>()
   const [publishing, setPublishing] = createSignal(false)
+  function storeReferences(target: "applied" | "selected", page: OrgKnowledgeSelectionPage, itemIDs: string[]) {
+    if (page.selection.revision < (state[target]?.revision ?? 0)) return
+    const key = target === "applied" ? "appliedReferences" : "selectedReferences"
+    const previous = state[target]?.manifestHash === page.selection.manifestHash ? state[key] : []
+    const requested = new Set(itemIDs)
+    setState(key, reconcile([...previous.filter((entry) => !requested.has(entry.itemID)), ...page.items], { key: "itemID" }))
+    setState(target, reconcile(page.selection))
+  }
+  async function selectionReferences(itemIDs: string[]) {
+    const version = ++referencesRevision
+    const ids = [...new Set(itemIDs)]
+    const pages = ids.length ? Array.from({length:Math.ceil(ids.length/100)},(_,index) => ids.slice(index*100,(index+1)*100)) : [[]]
+    setReferencesBusy(true)
+    try {
+      for (const ids of pages) {
+        const [applied, selected] = await Promise.all([
+          props.projectID ? api.orgKnowledge.appliedReferences({projectID:props.projectID,itemIDs:ids},options) : undefined,
+          props.sessionID ? api.orgKnowledge.sessionSelectionReferences({sessionID:props.sessionID,itemIDs:ids},options) : undefined,
+        ])
+        if (signal.aborted || version !== referencesRevision) return
+        if (applied) storeReferences("applied",applied.data,ids)
+        if (selected) storeReferences("selected",selected.data,ids)
+      }
+    } finally { if (!signal.aborted && version === referencesRevision) setReferencesBusy(false) }
+  }
   async function load(more = false) {
     if (loading()) return
     setLoading(true)
@@ -69,14 +103,7 @@ export function OrganizationKnowledge(props: {
       setState("items", reconcile(more ? [...state.items, ...result.data.items] : result.data.items))
       setCursor(result.data.cursor)
       setLoaded(true)
-      if (!more && props.projectID) {
-        const result = await api.orgKnowledge.applied({ projectID: props.projectID }, options)
-        if (!signal.aborted) setState("applied", reconcile(result.data))
-      }
-      if (!more && props.sessionID) {
-        const result = await api.orgKnowledge.sessionSelection({ sessionID: props.sessionID }, options)
-        if (!signal.aborted) setState("selected", reconcile(result.data))
-      }
+      await selectionReferences(result.data.items.map((item) => item.itemID))
     } catch (error) {
       if (!signal.aborted) setError(error)
     } finally {
@@ -85,27 +112,30 @@ export function OrganizationKnowledge(props: {
   }
   async function apply(release: OrgKnowledgeRelease, target: "project" | "session", remove = false) {
     const current = target === "project" ? state.applied : state.selected
-    if (busy() || !current || !props.projectID || (target === "session" && !props.sessionID)) return
+    if (busy() || pending() || referencesBusy() || !current || !props.projectID || (target === "session" && !props.sessionID)) return
+    try {
+      ledger.begin({requestID:generateUUID(),target:target === "project" ? {kind:"member",projectID:props.projectID} : {kind:"session",sessionID:props.sessionID!},expectedRevision:current.revision,change:{itemID:release.itemID,...(remove ? {} : {reference:{itemID:release.itemID,version:release.version,manifestHash:release.manifestHash}})}})
+      setPending(ledger.pending())
+      await resume()
+    } catch (error) { if (!signal.aborted) setError(error) }
+  }
+  async function resume() {
+    if (busy()) return
     setBusy(true)
     setError(undefined)
-    const releases = current.releases.filter((entry) => entry.itemID !== release.itemID)
-    if (!remove) releases.push({ itemID: release.itemID, version: release.version, manifestHash: release.manifestHash })
     try {
-      const result =
-        target === "project"
-          ? await api.orgKnowledge.apply(
-              { projectID: props.projectID, expectedRevision: current.revision, releases },
-              options,
-            )
-          : await api.orgKnowledge.setSessionSelection(
-              { sessionID: props.sessionID!, expectedRevision: current.revision, releases },
-              options,
-            )
-      if (!signal.aborted) setState(target === "project" ? "applied" : "selected", reconcile(result.data))
+      const request = ledger.pending()
+      if (!request) return
+      const summary = await ledger.execute(api,signal)
+      if (signal.aborted) return
+      setPending(undefined)
+      setState(request.target.kind === "member" ? "applied" : "selected",reconcile(summary))
+      await selectionReferences([request.change.itemID])
+      if (props.sessionID) await status()
     } catch (error) {
       if (!signal.aborted) setError(error)
     } finally {
-      if (!signal.aborted) setBusy(false)
+      if (!signal.aborted) { setBusy(false); setPending(ledger.pending()) }
     }
   }
   async function status() {
@@ -121,6 +151,7 @@ export function OrganizationKnowledge(props: {
     }
   }
   onMount(() => {
+    try { setPending(ledger.pending()) } catch (error) { setError(error) }
     void load()
     if (props.sessionID) {
       void status()
@@ -157,6 +188,7 @@ export function OrganizationKnowledge(props: {
         </Show>
       </div>
       <WorkspaceError error={error()} retry={() => void load()} />
+      <Show when={pending()}><div class="organization-workspace-error" role="status"><p>{_({id:"organization.knowledge.pendingUpdate",message:"A knowledge change is awaiting confirmation. Retry the same change before submitting another."})}</p><Button disabled={busy()} onClick={() => void resume()}>{_(common.retry)}</Button></div></Show>
       <Show when={state.status}>
         {(value) => (
           <section class="organization-selection-status" aria-live="polite">
@@ -223,9 +255,10 @@ export function OrganizationKnowledge(props: {
                 class="organization-publication-entry"
                 data-selected={selected() === item.itemID}
                 aria-expanded={selected() === item.itemID}
-                onClick={() => {
+                onClick={async () => {
                   setPublishing(false)
                   setSelected(selected() === item.itemID ? undefined : item.itemID)
+                  if (selected()) try { await selectionReferences([item.itemID]) } catch (error) { if (!signal.aborted) setError(error) }
                 }}
               >
                 <span>
@@ -243,9 +276,9 @@ export function OrganizationKnowledge(props: {
                   runtimeOwnerID={props.runtimeOwnerID}
                   projectID={props.projectID}
                   sessionID={props.sessionID}
-                  busy={busy()}
-                  applied={state.applied?.releases.find((entry) => entry.itemID === item.itemID)?.version}
-                  selected={state.selected?.releases.find((entry) => entry.itemID === item.itemID)?.version}
+                  busy={busy() || !!pending() || referencesBusy()}
+                  applied={state.appliedReferences.find((entry) => entry.itemID === item.itemID)?.version}
+                  selected={state.selectedReferences.find((entry) => entry.itemID === item.itemID)?.version}
                   apply={apply}
                   updated={() => {
                     setSelected(undefined)

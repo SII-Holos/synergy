@@ -68,6 +68,7 @@ import type {
   OrgCodeExchangeInput,
   OrgCommandControlRequest,
   OrgCommandCreateRequest,
+  OrgCommandDecisionRequest,
   OrgCommandInputRequest,
   OrgCommandsControlErrors,
   OrgCommandsControlResponses,
@@ -139,10 +140,14 @@ import type {
   OrgInvitesRevokeResponses,
   OrgKnowledgeActivatedQuery,
   OrgKnowledgeActivationRequest,
-  OrgKnowledgeAppliedErrors,
-  OrgKnowledgeAppliedResponses,
-  OrgKnowledgeApplyErrors,
-  OrgKnowledgeApplyResponses,
+  OrgKnowledgeAppliedPageErrors,
+  OrgKnowledgeAppliedPageResponses,
+  OrgKnowledgeAppliedReferencesErrors,
+  OrgKnowledgeAppliedReferencesResponses,
+  OrgKnowledgeBeginSelectionUpdateErrors,
+  OrgKnowledgeBeginSelectionUpdateResponses,
+  OrgKnowledgeCommitSelectionUpdateErrors,
+  OrgKnowledgeCommitSelectionUpdateResponses,
   OrgKnowledgeContentErrors,
   OrgKnowledgeContentResponses,
   OrgKnowledgeExecutionActivatedErrors,
@@ -164,14 +169,18 @@ import type {
   OrgKnowledgeGetResponses,
   OrgKnowledgeListErrors,
   OrgKnowledgeListResponses,
+  OrgKnowledgePatchSelectionUpdateErrors,
+  OrgKnowledgePatchSelectionUpdateResponses,
   OrgKnowledgePublishErrors,
   OrgKnowledgePublishResponses,
   OrgKnowledgeSearchErrors,
   OrgKnowledgeSearchResponses,
-  OrgKnowledgeSessionSelectionErrors,
-  OrgKnowledgeSessionSelectionResponses,
-  OrgKnowledgeSetSessionSelectionErrors,
-  OrgKnowledgeSetSessionSelectionResponses,
+  OrgKnowledgeSelectionUpdateErrors,
+  OrgKnowledgeSelectionUpdateResponses,
+  OrgKnowledgeSessionSelectionPageErrors,
+  OrgKnowledgeSessionSelectionPageResponses,
+  OrgKnowledgeSessionSelectionReferencesErrors,
+  OrgKnowledgeSessionSelectionReferencesResponses,
   OrgKnowledgeStatusErrors,
   OrgKnowledgeStatusResponses,
   OrgKnowledgeVersionErrors,
@@ -256,6 +265,8 @@ import type {
   OrgRuntimeRevoke,
   OrgRuntimeRevokeErrors,
   OrgRuntimeRevokeResponses,
+  OrgSessionInteractionsReplyErrors,
+  OrgSessionInteractionsReplyResponses,
   OrgSessionReadReadErrors,
   OrgSessionReadReadResponses,
   OrgSessionResourceChange,
@@ -2264,6 +2275,157 @@ export class OrgPublications extends HeyApiClient {
 
 export class OrgKnowledge extends HeyApiClient {
   /**
+   * Stage an explicit update over the complete current knowledge manifest
+   */
+  public beginSelectionUpdate<ThrowOnError extends boolean = false>(
+    parameters?: {
+      requestID?: string
+      target?:
+        | {
+            kind: "member"
+            projectID: string
+          }
+        | {
+            kind: "session"
+            sessionID: string
+          }
+      expectedRevision?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "requestID" },
+            { in: "body", key: "target" },
+            { in: "body", key: "expectedRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeBeginSelectionUpdateResponses,
+      OrgKnowledgeBeginSelectionUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/knowledge/selection-updates",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Inspect a knowledge update after interruption or an unknown response
+   */
+  public selectionUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      updateID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "updateID" }] }])
+    return (options?.client ?? this.client).get<
+      OrgKnowledgeSelectionUpdateResponses,
+      OrgKnowledgeSelectionUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/knowledge/selection-updates/{updateID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Apply one immutable retryable page of explicit knowledge changes
+   */
+  public patchSelectionUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      updateID: string
+      sequence?: number
+      changes?: Array<{
+        itemID: string
+        reference?: {
+          itemID: string
+          version: number
+          manifestHash: string
+        }
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "updateID" },
+            { in: "body", key: "sequence" },
+            { in: "body", key: "changes" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgKnowledgePatchSelectionUpdateResponses,
+      OrgKnowledgePatchSelectionUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/knowledge/selection-updates/{updateID}/pages",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Reauthorize and atomically publish the complete staged knowledge manifest
+   */
+  public commitSelectionUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      updateID: string
+      expectedSequence?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "updateID" },
+            { in: "body", key: "expectedSequence" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeCommitSelectionUpdateResponses,
+      OrgKnowledgeCommitSelectionUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/knowledge/selection-updates/{updateID}/commit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * List authorized published materials and Skills
    */
   public list<ThrowOnError extends boolean = false>(
@@ -2551,34 +2713,14 @@ export class OrgKnowledge extends HeyApiClient {
   }
 
   /**
-   * Read this member's explicitly applied project versions
+   * Page this member's exact applied references without loading the whole manifest
    */
-  public applied<ThrowOnError extends boolean = false>(
+  public appliedPage<ThrowOnError extends boolean = false>(
     parameters: {
       projectID: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "projectID" }] }])
-    return (options?.client ?? this.client).get<OrgKnowledgeAppliedResponses, OrgKnowledgeAppliedErrors, ThrowOnError>({
-      url: "/org/v1/projects/{projectID}/knowledge/applied",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Atomically select the complete member knowledge manifest
-   */
-  public apply<ThrowOnError extends boolean = false>(
-    parameters: {
-      projectID: string
-      expectedRevision?: number
-      releases?: Array<{
-        itemID: string
-        version: number
-        manifestHash: string
-      }>
+      limit?: number
+      cursor?: string
+      manifestHash?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2588,14 +2730,53 @@ export class OrgKnowledge extends HeyApiClient {
         {
           args: [
             { in: "path", key: "projectID" },
-            { in: "body", key: "expectedRevision" },
-            { in: "body", key: "releases" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "manifestHash" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).put<OrgKnowledgeApplyResponses, OrgKnowledgeApplyErrors, ThrowOnError>({
-      url: "/org/v1/projects/{projectID}/knowledge/applied",
+    return (options?.client ?? this.client).get<
+      OrgKnowledgeAppliedPageResponses,
+      OrgKnowledgeAppliedPageErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/projects/{projectID}/knowledge/applied/releases",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read applied references for the visible catalog window
+   */
+  public appliedReferences<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      itemIDs?: Array<string>
+      manifestHash?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "body", key: "itemIDs" },
+            { in: "body", key: "manifestHash" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeAppliedReferencesResponses,
+      OrgKnowledgeAppliedReferencesErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/projects/{projectID}/knowledge/applied/references",
       ...options,
       ...params,
       headers: {
@@ -2607,38 +2788,14 @@ export class OrgKnowledge extends HeyApiClient {
   }
 
   /**
-   * Read one Session's independent knowledge versions
+   * Page the executing Session's exact desired knowledge references
    */
-  public sessionSelection<ThrowOnError extends boolean = false>(
+  public sessionSelectionPage<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
-    return (options?.client ?? this.client).get<
-      OrgKnowledgeSessionSelectionResponses,
-      OrgKnowledgeSessionSelectionErrors,
-      ThrowOnError
-    >({
-      url: "/org/v1/sessions/{sessionID}/knowledge",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Explicitly update one Session's knowledge versions
-   */
-  public setSessionSelection<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      expectedRevision?: number
-      releases?: Array<{
-        itemID: string
-        version: number
-        manifestHash: string
-      }>
+      limit?: number
+      cursor?: string
+      manifestHash?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2648,18 +2805,53 @@ export class OrgKnowledge extends HeyApiClient {
         {
           args: [
             { in: "path", key: "sessionID" },
-            { in: "body", key: "expectedRevision" },
-            { in: "body", key: "releases" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "manifestHash" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).put<
-      OrgKnowledgeSetSessionSelectionResponses,
-      OrgKnowledgeSetSessionSelectionErrors,
+    return (options?.client ?? this.client).get<
+      OrgKnowledgeSessionSelectionPageResponses,
+      OrgKnowledgeSessionSelectionPageErrors,
       ThrowOnError
     >({
-      url: "/org/v1/sessions/{sessionID}/knowledge",
+      url: "/org/v1/sessions/{sessionID}/knowledge/releases",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read executing Session knowledge references for the visible catalog window
+   */
+  public sessionSelectionReferences<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      itemIDs?: Array<string>
+      manifestHash?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "body", key: "itemIDs" },
+            { in: "body", key: "manifestHash" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeSessionSelectionReferencesResponses,
+      OrgKnowledgeSessionSelectionReferencesErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/knowledge/references",
       ...options,
       ...params,
       headers: {
@@ -3462,6 +3654,45 @@ export class OrgKnowledgeExecution extends HeyApiClient {
   }
 }
 
+export class OrgSessionInteractions extends HeyApiClient {
+  /**
+   * Answer an existing native permission or question through signed command admission
+   */
+  public reply<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgCommandDecisionRequest: OrgCommandDecisionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgCommandDecisionRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgSessionInteractionsReplyResponses,
+      OrgSessionInteractionsReplyErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/interactions/reply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgCommands extends HeyApiClient {
   /**
    * Pause, continue or cancel work in an online Session
@@ -3898,6 +4129,8 @@ export class OrganizationClient extends HeyApiClient {
   orgHandoff = new OrgHandoff({ client: this.client })
 
   orgKnowledgeExecution = new OrgKnowledgeExecution({ client: this.client })
+
+  orgSessionInteractions = new OrgSessionInteractions({ client: this.client })
 
   orgCommands = new OrgCommands({ client: this.client })
 

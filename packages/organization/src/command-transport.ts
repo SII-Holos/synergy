@@ -134,7 +134,7 @@ export function createCommandTransport(input: {
       return
     }
     const permit =
-      command.kind === "input" || command.kind === "create" || command.kind === "control"
+      command.kind === "input" || command.kind === "create" || command.kind === "control" || command.kind === "decision"
         ? command.delivery.authorization.permit
         : command.authorization.permit.command
     if (reply.kind !== "result" || JSON.stringify(reply.result.attempt.permit) !== JSON.stringify(permit))

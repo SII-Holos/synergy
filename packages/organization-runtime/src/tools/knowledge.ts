@@ -9,7 +9,14 @@ import {
 import type { RuntimeIdentity } from "../home"
 import { denied, withMemberExecution } from "../execution-source"
 import { knowledgeTransport } from "../knowledge-source"
-import { knowledgeFiles, syncKnowledgeSelection, type ActiveKnowledge, type KnowledgeTransport } from "../knowledge"
+import {
+  knowledgeFiles,
+  knowledgePage,
+  selectedKnowledge,
+  syncKnowledgeSelection,
+  type ActiveKnowledge,
+  type KnowledgeTransport,
+} from "../knowledge"
 
 const Parameters = z.strictObject({
   input: z.discriminatedUnion("operation", [
@@ -50,11 +57,19 @@ async function search(
   const cursor = encoded ? SearchCursor.parse(JSON.parse(Buffer.from(encoded, "base64url").toString())) : undefined
   if (cursor && cursor.manifestHash !== active.selection.manifestHash)
     throw denied("Knowledge selection changed; restart the search without its cursor")
-  let index = cursor ? active.releases.findIndex(({ release }) => release.itemID === cursor.itemID) : 0
-  if (index < 0) throw denied("Search cursor does not belong to the selected knowledge manifest")
+  let selected = cursor
+    ? await selectedKnowledge(active, cursor.itemID)
+    : (await knowledgePage(active, { limit: 1 })).items[0]
+  if (cursor && !selected) throw denied("Search cursor does not belong to the selected knowledge manifest")
+  const advance = async () => {
+    selected = selected
+      ? (await knowledgePage(active, { cursor: selected.release.itemID, limit: 1 })).items[0]
+      : undefined
+  }
   let afterFileID = cursor?.afterFileID
   let offset = cursor?.offset ?? 0
   let remaining = 256 * 1024
+  let scanned = 0
   const items: Array<{
     reference: Knowledge.Reference
     title: string
@@ -64,9 +79,10 @@ async function search(
     snippet: string
   }> = []
   const needle = q.toLocaleLowerCase()
-  while (index < active.releases.length && remaining > 0 && items.length < 25) {
+  while (selected && remaining > 0 && scanned < 100 && items.length < 25) {
     signal.throwIfAborted()
-    const release = active.releases[index]!.release
+    scanned++
+    const release = selected.release
     const reference = Knowledge.Reference.parse({
       itemID: release.itemID,
       version: release.version,
@@ -75,7 +91,7 @@ async function search(
     const page = await knowledgeFiles(active, reference, { cursor: afterFileID, limit: 1 })
     const file = page.items[0]
     if (!file) {
-      index++
+      await advance()
       afterFileID = undefined
       offset = 0
       continue
@@ -107,17 +123,17 @@ async function search(
       offset = 0
       if (page.cursor) afterFileID = file.fileID
       else {
-        index++
+        await advance()
         afterFileID = undefined
       }
     }
   }
   const next =
-    index < active.releases.length
+    selected !== undefined
       ? Buffer.from(
           JSON.stringify({
             manifestHash: active.selection.manifestHash,
-            itemID: active.releases[index]!.release.itemID,
+            itemID: selected.release.itemID,
             afterFileID,
             offset,
           }),
@@ -184,13 +200,13 @@ export function createMemberKnowledgeTool(identity: RuntimeIdentity): Tool.Info 
               version: input.version,
               manifestHash: input.manifestHash,
             })
-            const selected = active.releases.find(
-              ({ release }) =>
-                release.itemID === reference.itemID &&
-                release.version === reference.version &&
-                release.manifestHash === reference.manifestHash,
+            const selected = await selectedKnowledge(active, reference.itemID)
+            if (
+              !selected ||
+              selected.release.version !== reference.version ||
+              selected.release.manifestHash !== reference.manifestHash
             )
-            if (!selected) throw denied("Knowledge version is not selected for this Session; list its current versions")
+              throw denied("Knowledge version is not selected for this Session; list its current versions")
             if (input.operation === "files") {
               const result = await transport.files(reference, { cursor: input.cursor }, signal)
               return {

@@ -15,6 +15,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import type { RuntimeIdentity } from "./home"
 import { OrganizationRuntimeError } from "./error"
 import { observeSessionStatus } from "./session-status"
+import { boundSessionSource } from "./session-source"
 
 type ContentRead = Extract<Read.Result, { operation: "partContent" }>
 type ContentResponse = ContentRead extends infer T
@@ -101,27 +102,7 @@ export function createSessionReader(options: {
       JSON.stringify(SessionProtocol.Binding.parse(binding)) !== JSON.stringify(SessionProtocol.Binding.parse(expected))
     )
       throw denied("Private reading authority belongs to another native binding")
-    const sourceID = query.sourceSessionID ?? root.id
-    const source = sourceID === root.id ? root : await retainedSession(sourceID)
-    if (!source) throw denied("Private source Session not found", "NOT_FOUND")
-    let current = source
-    const visited = new Set<string>()
-    while (true) {
-      const currentBinding = SessionProtocol.Binding.safeParse(current.organization)
-      if (
-        visited.has(current.id) ||
-        !currentBinding.success ||
-        JSON.stringify(currentBinding.data) !== JSON.stringify(SessionProtocol.Binding.parse(binding))
-      )
-        throw denied("Private source Session is outside the authorized tree", "NOT_FOUND")
-      visited.add(current.id)
-      if (current.id === root.id) break
-      if (!current.parentID || !current.cortex || current.cortex.parentSessionID !== current.parentID)
-        throw denied("Private source Session is outside the authorized tree", "NOT_FOUND")
-      const parent = await retainedSession(current.parentID)
-      if (!parent) throw denied("Private source Session is outside the authorized tree", "NOT_FOUND")
-      current = parent
-    }
+    const source = await boundSessionSource(root, query.sourceSessionID)
     return { root, source }
   }
 

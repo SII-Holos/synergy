@@ -10,7 +10,14 @@ import { Skill } from "@ericsanchezok/synergy-local-runtime/skill/skill"
 import { skillEntry } from "@ericsanchezok/synergy-local-runtime/skill/register"
 import type { RuntimeIdentity } from "./home"
 import { denied, withMemberExecution, type MemberExecutionResolution } from "./execution-source"
-import { syncKnowledgeSelection, knowledgeSkills, type ActiveKnowledge, type KnowledgeTransport } from "./knowledge"
+import {
+  syncKnowledgeSelection,
+  knowledgeSkills,
+  selectedKnowledge,
+  knowledgePage,
+  type ActiveKnowledge,
+  type KnowledgeTransport,
+} from "./knowledge"
 
 export function knowledgeTransport(
   resolution: MemberExecutionResolution,
@@ -145,15 +152,13 @@ export function registerOrganizationKnowledge(
       }
       const guard = async () => {
         const latest = await load(sessionID, signal)
+        const selected = await selectedKnowledge(latest, reference.itemID)
         if (
           latest.orgID !== active.orgID ||
           latest.projectID !== active.projectID ||
-          !latest.selection.releases.some(
-            (item) =>
-              item.itemID === reference.itemID &&
-              item.version === reference.version &&
-              item.manifestHash === reference.manifestHash,
-          )
+          !selected ||
+          selected.release.version !== reference.version ||
+          selected.release.manifestHash !== reference.manifestHash
         )
           throw denied("Skill version is no longer selected for this Session")
       }
@@ -193,24 +198,38 @@ export function registerOrganizationKnowledge(
     async contribute(input) {
       const current = await catalog(input.sessionID, input.signal)
       const active = current.active!
+      const visible = await knowledgePage(active, { limit: 25 })
+      const skills = current.entries.filter((entry) => entry.model)
       return {
         context: [
           "Current organization knowledge selection (explicit immutable versions):",
           ...(active.updateError ? [active.updateError] : []),
-          ...active.releases.map(
+          `${active.selection.releaseCount} immutable releases selected.`,
+          ...visible.items.map(
             ({ release }) =>
               `${release.kind}: ${release.title} itemID=${release.itemID} version=${release.version} manifestHash=${release.manifestHash}`,
           ),
+          ...(visible.cursor
+            ? [
+                "This context shows the first release window. Use organization_knowledge list with its returned cursor for all selected releases.",
+              ]
+            : []),
           "Use organization_knowledge to list files, search selected materials or read a bounded file range. Cite the exact itemID, version and manifestHash.",
           "Available Skills (load through skill):",
-          ...current.entries
-            .filter((entry) => entry.model)
+          ...skills
+            .slice(0, 25)
             .map(
               (entry) =>
                 `${entry.name}: ${entry.description.replace(/\s+/g, " ")}${entry.provenance ? ` [v${entry.provenance.version}]` : ""}`,
             ),
+          ...(skills.length > 25
+            ? [
+                "More selected Skills are available through organization_knowledge list; load their exact declared names through skill.",
+              ]
+            : []),
           ...current.diagnostics
             .filter((entry) => entry.code === "skill.candidate_shadowed")
+            .slice(0, 25)
             .map((entry) => entry.message),
         ].join("\n"),
         injection: { organizationKnowledge: active.selection.manifestHash },

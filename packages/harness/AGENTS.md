@@ -38,4 +38,4 @@ Portability: epochs, bounded streams, private staging, dependency verification, 
 
 Native fields: `SessionHistory` bodyless headers and bounded UTF8 ranges. Verify `test/session/{part-field,part-field-cache,rollout-tool-part-index}.test.ts`.
 
-Install Assets before Session activation; verify `test/asset/portable.test.ts`. Native decisions use `session/decision-receipts`; test `test/permission/decision-receipt.test.ts`.
+Install Assets before Session activation; verify `test/asset/portable.test.ts`. Decisions/reconciliation use `session/decision-receipts`; test `test/permission/decision-receipt.test.ts`.

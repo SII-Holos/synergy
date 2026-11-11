@@ -17,11 +17,81 @@ import {
   stageKnowledgeSelection,
   syncKnowledgeSelection,
   activeKnowledge,
+  knowledgePage,
   type KnowledgeTransport,
 } from "../src/knowledge"
 import { registerOrganizationKnowledge } from "../src/knowledge-source"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { knowledgeActiveMigration } from "../src/knowledge-active"
 
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
+
+test("active knowledge manifests retain bounded headers while staging a complete paged release collection", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const releases: Knowledge.Release[] = Array.from({ length: 1001 }, (_, index) => ({
+      itemID: `material-${String(index).padStart(6, "0")}`,
+      orgID: "org",
+      scope: { kind: "project", projectID: "project" },
+      kind: "material",
+      title: `Material ${index}`,
+      version: 1,
+      authorID: "alice",
+      publishedAt: 1,
+      manifestHash: hash(""),
+      fileCount: 0,
+      totalBytes: 0,
+    }))
+    const references = releases.map(({ itemID, version, manifestHash }) => ({ itemID, version, manifestHash }))
+    const selection = {
+      revision: 1,
+      manifestHash: hash(JSON.stringify(references)),
+      releaseCount: releases.length,
+      updatedBy: "alice",
+      updatedAt: 1,
+    }
+    const transport: KnowledgeTransport = {
+      async selection(query) {
+        const start = query?.cursor ? releases.findIndex((release) => release.itemID === query.cursor) + 1 : 0
+        const items = releases.slice(start, start + 100)
+        return {
+          orgID: "org",
+          projectID: "project",
+          sessionID: "paged",
+          selection,
+          items,
+          ...(start + items.length < releases.length ? { cursor: items.at(-1)!.itemID } : {}),
+        }
+      },
+      async files() {
+        return { items: [] }
+      },
+      async content() {
+        throw new Error("An empty material must not request file content")
+      },
+    }
+    const initial = await stageKnowledgeSelection({
+      root: runtime.host.root,
+      orgID: "org",
+      projectID: "project",
+      sessionID: "paged",
+      transport,
+    })
+    const stored = await Storage.read(["organization-knowledge", "active", "paged"])
+    expect(Object.hasOwn(stored as object, "releases")).toBe(false)
+    expect(Object.hasOwn((stored as { selection: object }).selection, "releases")).toBe(false)
+    expect(JSON.stringify(stored).length).toBeLessThan(1024)
+    expect((await activeKnowledge("paged"))?.selection.releaseCount).toBe(releases.length)
+    const repeated = await stageKnowledgeSelection({
+      root: runtime.host.root,
+      orgID: "org",
+      projectID: "project",
+      sessionID: "paged",
+      transport,
+    })
+    expect(repeated.manifestID).toBe(initial.manifestID)
+  })
+}, 60000)
 
 function source(
   sessionID: string,
@@ -180,7 +250,7 @@ test("partial download, bad hash and edited cache preserve the previous applied 
       ).rejects.toThrow()
       expect((await activeKnowledge("one"))?.selection).toEqual(current.selection)
     }
-    const file = path.join(current.releases[0]!.directory, "SKILL.md")
+    const file = path.join((await knowledgePage(current, { limit: 1 })).items[0]!.directory, "SKILL.md")
     await fs.writeFile(file, "local user edit")
     await expect(
       stageKnowledgeSelection({
@@ -193,6 +263,83 @@ test("partial download, bad hash and edited cache preserve the previous applied 
     ).rejects.toThrow()
     expect(await fs.readFile(file, "utf8")).toBe("local user edit")
     expect((await activeKnowledge("one"))?.selection).toEqual(current.selection)
+  })
+})
+
+test("active manifest upgrades preserve the exact previous release and reuse its immutable seal", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const active = await stageKnowledgeSelection({
+      root: runtime.host.root,
+      orgID: "org",
+      projectID: "project",
+      sessionID: "one",
+      transport: source("one", 1, "Retained original"),
+    })
+    const cached = (await knowledgePage(active)).items[0]!
+    const reference = {
+      itemID: cached.release.itemID,
+      version: cached.release.version,
+      manifestHash: cached.release.manifestHash,
+    }
+    const { releaseCount: _, ...selection } = active.selection
+    await Storage.write(["organization-knowledge", "active", "one"], {
+      schemaVersion: 1,
+      orgID: "org",
+      projectID: "project",
+      sessionID: "one",
+      selection: { ...selection, releases: [reference] },
+      releases: [cached],
+    })
+    await knowledgeActiveMigration.up(() => {})
+    const migrated = (await activeKnowledge("one"))!
+    expect(migrated.selection).toEqual(active.selection)
+    expect((await knowledgePage(migrated)).items).toEqual([cached])
+    await knowledgeActiveMigration.up(() => {})
+    expect((await activeKnowledge("one"))?.manifestID).toBe(migrated.manifestID)
+  })
+})
+
+test("a committed active pointer with a lost acknowledgement keeps its verified release rows usable", async () => {
+  const { spyOn } = await import("bun:test")
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const originalWrite = Storage.write
+    const originalTransaction = Storage.transaction
+    let marked = false
+    let dropped = false
+    const write = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+      if (JSON.stringify(key) === JSON.stringify(["organization-knowledge", "active", "one"])) marked = true
+      return originalWrite(key, value)
+    })
+    const acknowledgement = spyOn(Storage, "transaction").mockImplementation(
+      async <T>(
+        body: Parameters<typeof Storage.transaction<T>>[0],
+        options?: Parameters<typeof Storage.transaction<T>>[1],
+      ): Promise<T> => {
+        const result = await originalTransaction(body, options)
+        if (marked && !dropped && !Storage.inTransaction()) {
+          dropped = true
+          throw new Error("Synthetic active pointer acknowledgement lost")
+        }
+        return result
+      },
+    )
+    try {
+      const active = await stageKnowledgeSelection({
+        root: runtime.host.root,
+        orgID: "org",
+        projectID: "project",
+        sessionID: "one",
+        transport: source("one", 1, "Committed complete content"),
+      })
+      expect(dropped).toBe(true)
+      expect(await activeKnowledge("one")).toEqual(active)
+      expect((await knowledgePage(active)).items[0]?.release.itemID).toBe("team")
+    } finally {
+      acknowledgement.mockRestore()
+      write.mockRestore()
+    }
   })
 })
 

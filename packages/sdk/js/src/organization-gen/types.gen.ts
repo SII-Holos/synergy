@@ -1507,6 +1507,31 @@ export type OrgPublicationChunkStatus = {
   chunkBytes: 4194304
 }
 
+export type OrgKnowledgeSelectionSummary = {
+  revision: number
+  manifestHash: string
+  updatedBy: string
+  updatedAt: number
+  releaseCount: number
+}
+
+export type OrgKnowledgeSelectionUpdate = {
+  updateID: string
+  target:
+    | {
+        kind: "member"
+        projectID: string
+      }
+    | {
+        kind: "session"
+        sessionID: string
+      }
+  baseRevision: number
+  nextSequence: number
+  state: "draft" | "committed"
+  committed?: OrgKnowledgeSelectionSummary
+}
+
 export type OrgKnowledgeItem = {
   itemID: string
   orgID: string
@@ -1570,36 +1595,22 @@ export type OrgKnowledgeVersionPage = {
   cursor?: number
 }
 
-export type OrgKnowledgeSelection = {
-  revision: number
-  manifestHash: string
-  releases: Array<{
+export type OrgKnowledgeSelectionPage = {
+  selection: OrgKnowledgeSelectionSummary
+  items: Array<{
     itemID: string
     version: number
     manifestHash: string
   }>
-  updatedBy: string
-  updatedAt: number
+  cursor?: string
 }
 
 export type OrgKnowledgeStatus = {
   orgID: string
   projectID: string
   sessionID: string
-  desired: {
-    revision: number
-    manifestHash: string
-    updatedBy: string
-    updatedAt: number
-    releaseCount: number
-  }
-  activated?: {
-    revision: number
-    manifestHash: string
-    updatedBy: string
-    updatedAt: number
-    releaseCount: number
-  }
+  desired: OrgKnowledgeSelectionSummary
+  activated?: OrgKnowledgeSelectionSummary
   state: "pending" | "active" | "failed"
   error?: "update_failed"
 }
@@ -1953,7 +1964,7 @@ export type OrgCommandPermit = {
     kind: "account"
     orgID: string
   }
-  operation: "create" | "input" | "pause" | "continue" | "cancel"
+  operation: "create" | "input" | "pause" | "continue" | "cancel" | "decision"
   authorizedAt: number
   deadline: number
   provisionalGrantID?: string
@@ -2096,6 +2107,77 @@ export type OrgKnowledgeActivatedQuery = {
   cursor?: string
 }
 
+export type OrgCommandDecisionWinner = {
+  sessionID: string
+  requestID: string
+  actor?: ActorStamp
+  decidedAt: number
+  outcome:
+    | {
+        kind: "permission"
+        reply: "once" | "session" | "always" | "reject"
+        causedBy?: string
+      }
+    | {
+        kind: "question"
+        reply: "answer" | "reject"
+      }
+}
+
+export type OrgCommandDecisionResolution =
+  | {
+      status: "resolved"
+      winner: OrgCommandDecisionWinner
+    }
+  | {
+      status: "already_resolved"
+      winner: OrgCommandDecisionWinner
+    }
+  | {
+      status: "expired"
+    }
+
+export type OrgCommandDecisionAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect: {
+    kind: "decision"
+    sourceSessionID: string
+    requestID: string
+    decision: OrgCommandDecisionResolution
+  }
+}
+
+export type OrgCommandDecision =
+  | {
+      operation: "decision"
+      requestID: string
+      sourceSessionID?: string
+      kind: "permission"
+      reply: "once" | "session" | "always" | "reject"
+      message?: string
+    }
+  | {
+      operation: "decision"
+      requestID: string
+      sourceSessionID?: string
+      kind: "question"
+      reply: "answer" | "reject"
+      answers?: Array<Array<string>>
+    }
+
+export type OrgCommandDecisionRequest = {
+  schemaVersion: 1
+  orgID: string
+  requestID: string
+  sessionID: string
+  projectID: string
+  runtimeID: string
+  decision: OrgCommandDecision
+}
+
 export type OrgCommandControlAccepted = {
   schemaVersion: 1
   permit: OrgCommandPermit
@@ -2195,7 +2277,8 @@ export type OrgCommandInputRequest = {
   input: OrgCommandInput
 }
 
-export type OrgCommandAccepted = OrgCommandInputAccepted | OrgCommandCreatedAccepted | OrgCommandControlAccepted
+export type OrgCommandAccepted =
+  OrgCommandInputAccepted | OrgCommandCreatedAccepted | OrgCommandControlAccepted | OrgCommandDecisionAccepted
 
 export type OrgCommandExecutionObservation =
   | {
@@ -5571,6 +5654,224 @@ export type OrgPublicationsSealResponses = {
 
 export type OrgPublicationsSealResponse = OrgPublicationsSealResponses[keyof OrgPublicationsSealResponses]
 
+export type OrgKnowledgeBeginSelectionUpdateData = {
+  body: {
+    requestID: string
+    target:
+      | {
+          kind: "member"
+          projectID: string
+        }
+      | {
+          kind: "session"
+          sessionID: string
+        }
+    expectedRevision: number
+  }
+  path?: never
+  query?: never
+  url: "/org/v1/knowledge/selection-updates"
+}
+
+export type OrgKnowledgeBeginSelectionUpdateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeBeginSelectionUpdateError =
+  OrgKnowledgeBeginSelectionUpdateErrors[keyof OrgKnowledgeBeginSelectionUpdateErrors]
+
+export type OrgKnowledgeBeginSelectionUpdateResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeSelectionUpdate
+}
+
+export type OrgKnowledgeBeginSelectionUpdateResponse =
+  OrgKnowledgeBeginSelectionUpdateResponses[keyof OrgKnowledgeBeginSelectionUpdateResponses]
+
+export type OrgKnowledgeSelectionUpdateData = {
+  body?: never
+  path: {
+    updateID: string
+  }
+  query?: never
+  url: "/org/v1/knowledge/selection-updates/{updateID}"
+}
+
+export type OrgKnowledgeSelectionUpdateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeSelectionUpdateError =
+  OrgKnowledgeSelectionUpdateErrors[keyof OrgKnowledgeSelectionUpdateErrors]
+
+export type OrgKnowledgeSelectionUpdateResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeSelectionUpdate
+}
+
+export type OrgKnowledgeSelectionUpdateResponse =
+  OrgKnowledgeSelectionUpdateResponses[keyof OrgKnowledgeSelectionUpdateResponses]
+
+export type OrgKnowledgePatchSelectionUpdateData = {
+  body: {
+    sequence: number
+    changes: Array<{
+      itemID: string
+      reference?: {
+        itemID: string
+        version: number
+        manifestHash: string
+      }
+    }>
+  }
+  path: {
+    updateID: string
+  }
+  query?: never
+  url: "/org/v1/knowledge/selection-updates/{updateID}/pages"
+}
+
+export type OrgKnowledgePatchSelectionUpdateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgePatchSelectionUpdateError =
+  OrgKnowledgePatchSelectionUpdateErrors[keyof OrgKnowledgePatchSelectionUpdateErrors]
+
+export type OrgKnowledgePatchSelectionUpdateResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeSelectionUpdate
+}
+
+export type OrgKnowledgePatchSelectionUpdateResponse =
+  OrgKnowledgePatchSelectionUpdateResponses[keyof OrgKnowledgePatchSelectionUpdateResponses]
+
+export type OrgKnowledgeCommitSelectionUpdateData = {
+  body: {
+    expectedSequence: number
+  }
+  path: {
+    updateID: string
+  }
+  query?: never
+  url: "/org/v1/knowledge/selection-updates/{updateID}/commit"
+}
+
+export type OrgKnowledgeCommitSelectionUpdateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeCommitSelectionUpdateError =
+  OrgKnowledgeCommitSelectionUpdateErrors[keyof OrgKnowledgeCommitSelectionUpdateErrors]
+
+export type OrgKnowledgeCommitSelectionUpdateResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeSelectionSummary
+}
+
+export type OrgKnowledgeCommitSelectionUpdateResponse =
+  OrgKnowledgeCommitSelectionUpdateResponses[keyof OrgKnowledgeCommitSelectionUpdateResponses]
+
 export type OrgKnowledgeListData = {
   body?: never
   path?: never
@@ -6000,16 +6301,20 @@ export type OrgKnowledgeContentResponses = {
 
 export type OrgKnowledgeContentResponse = OrgKnowledgeContentResponses[keyof OrgKnowledgeContentResponses]
 
-export type OrgKnowledgeAppliedData = {
+export type OrgKnowledgeAppliedPageData = {
   body?: never
   path: {
     projectID: string
   }
-  query?: never
-  url: "/org/v1/projects/{projectID}/knowledge/applied"
+  query?: {
+    limit?: number
+    cursor?: string
+    manifestHash?: string
+  }
+  url: "/org/v1/projects/{projectID}/knowledge/applied/releases"
 }
 
-export type OrgKnowledgeAppliedErrors = {
+export type OrgKnowledgeAppliedPageErrors = {
   /**
    * Organization error
    */
@@ -6036,34 +6341,30 @@ export type OrgKnowledgeAppliedErrors = {
   503: OrgError
 }
 
-export type OrgKnowledgeAppliedError = OrgKnowledgeAppliedErrors[keyof OrgKnowledgeAppliedErrors]
+export type OrgKnowledgeAppliedPageError = OrgKnowledgeAppliedPageErrors[keyof OrgKnowledgeAppliedPageErrors]
 
-export type OrgKnowledgeAppliedResponses = {
+export type OrgKnowledgeAppliedPageResponses = {
   /**
    * Success
    */
-  200: OrgKnowledgeSelection
+  200: OrgKnowledgeSelectionPage
 }
 
-export type OrgKnowledgeAppliedResponse = OrgKnowledgeAppliedResponses[keyof OrgKnowledgeAppliedResponses]
+export type OrgKnowledgeAppliedPageResponse = OrgKnowledgeAppliedPageResponses[keyof OrgKnowledgeAppliedPageResponses]
 
-export type OrgKnowledgeApplyData = {
+export type OrgKnowledgeAppliedReferencesData = {
   body: {
-    expectedRevision: number
-    releases: Array<{
-      itemID: string
-      version: number
-      manifestHash: string
-    }>
+    itemIDs: Array<string>
+    manifestHash?: string
   }
   path: {
     projectID: string
   }
   query?: never
-  url: "/org/v1/projects/{projectID}/knowledge/applied"
+  url: "/org/v1/projects/{projectID}/knowledge/applied/references"
 }
 
-export type OrgKnowledgeApplyErrors = {
+export type OrgKnowledgeAppliedReferencesErrors = {
   /**
    * Organization error
    */
@@ -6090,27 +6391,33 @@ export type OrgKnowledgeApplyErrors = {
   503: OrgError
 }
 
-export type OrgKnowledgeApplyError = OrgKnowledgeApplyErrors[keyof OrgKnowledgeApplyErrors]
+export type OrgKnowledgeAppliedReferencesError =
+  OrgKnowledgeAppliedReferencesErrors[keyof OrgKnowledgeAppliedReferencesErrors]
 
-export type OrgKnowledgeApplyResponses = {
+export type OrgKnowledgeAppliedReferencesResponses = {
   /**
    * Success
    */
-  200: OrgKnowledgeSelection
+  200: OrgKnowledgeSelectionPage
 }
 
-export type OrgKnowledgeApplyResponse = OrgKnowledgeApplyResponses[keyof OrgKnowledgeApplyResponses]
+export type OrgKnowledgeAppliedReferencesResponse =
+  OrgKnowledgeAppliedReferencesResponses[keyof OrgKnowledgeAppliedReferencesResponses]
 
-export type OrgKnowledgeSessionSelectionData = {
+export type OrgKnowledgeSessionSelectionPageData = {
   body?: never
   path: {
     sessionID: string
   }
-  query?: never
-  url: "/org/v1/sessions/{sessionID}/knowledge"
+  query?: {
+    limit?: number
+    cursor?: string
+    manifestHash?: string
+  }
+  url: "/org/v1/sessions/{sessionID}/knowledge/releases"
 }
 
-export type OrgKnowledgeSessionSelectionErrors = {
+export type OrgKnowledgeSessionSelectionPageErrors = {
   /**
    * Organization error
    */
@@ -6137,36 +6444,32 @@ export type OrgKnowledgeSessionSelectionErrors = {
   503: OrgError
 }
 
-export type OrgKnowledgeSessionSelectionError =
-  OrgKnowledgeSessionSelectionErrors[keyof OrgKnowledgeSessionSelectionErrors]
+export type OrgKnowledgeSessionSelectionPageError =
+  OrgKnowledgeSessionSelectionPageErrors[keyof OrgKnowledgeSessionSelectionPageErrors]
 
-export type OrgKnowledgeSessionSelectionResponses = {
+export type OrgKnowledgeSessionSelectionPageResponses = {
   /**
    * Success
    */
-  200: OrgKnowledgeSelection
+  200: OrgKnowledgeSelectionPage
 }
 
-export type OrgKnowledgeSessionSelectionResponse =
-  OrgKnowledgeSessionSelectionResponses[keyof OrgKnowledgeSessionSelectionResponses]
+export type OrgKnowledgeSessionSelectionPageResponse =
+  OrgKnowledgeSessionSelectionPageResponses[keyof OrgKnowledgeSessionSelectionPageResponses]
 
-export type OrgKnowledgeSetSessionSelectionData = {
+export type OrgKnowledgeSessionSelectionReferencesData = {
   body: {
-    expectedRevision: number
-    releases: Array<{
-      itemID: string
-      version: number
-      manifestHash: string
-    }>
+    itemIDs: Array<string>
+    manifestHash?: string
   }
   path: {
     sessionID: string
   }
   query?: never
-  url: "/org/v1/sessions/{sessionID}/knowledge"
+  url: "/org/v1/sessions/{sessionID}/knowledge/references"
 }
 
-export type OrgKnowledgeSetSessionSelectionErrors = {
+export type OrgKnowledgeSessionSelectionReferencesErrors = {
   /**
    * Organization error
    */
@@ -6193,18 +6496,18 @@ export type OrgKnowledgeSetSessionSelectionErrors = {
   503: OrgError
 }
 
-export type OrgKnowledgeSetSessionSelectionError =
-  OrgKnowledgeSetSessionSelectionErrors[keyof OrgKnowledgeSetSessionSelectionErrors]
+export type OrgKnowledgeSessionSelectionReferencesError =
+  OrgKnowledgeSessionSelectionReferencesErrors[keyof OrgKnowledgeSessionSelectionReferencesErrors]
 
-export type OrgKnowledgeSetSessionSelectionResponses = {
+export type OrgKnowledgeSessionSelectionReferencesResponses = {
   /**
    * Success
    */
-  200: OrgKnowledgeSelection
+  200: OrgKnowledgeSelectionPage
 }
 
-export type OrgKnowledgeSetSessionSelectionResponse =
-  OrgKnowledgeSetSessionSelectionResponses[keyof OrgKnowledgeSetSessionSelectionResponses]
+export type OrgKnowledgeSessionSelectionReferencesResponse =
+  OrgKnowledgeSessionSelectionReferencesResponses[keyof OrgKnowledgeSessionSelectionReferencesResponses]
 
 export type OrgKnowledgeStatusData = {
   body?: never
@@ -7522,6 +7825,63 @@ export type OrgKnowledgeExecutionActivatedResponses = {
 
 export type OrgKnowledgeExecutionActivatedResponse =
   OrgKnowledgeExecutionActivatedResponses[keyof OrgKnowledgeExecutionActivatedResponses]
+
+export type OrgSessionInteractionsReplyData = {
+  body: OrgCommandDecisionRequest
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/interactions/reply"
+}
+
+export type OrgSessionInteractionsReplyErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+  /**
+   * Organization error
+   */
+  504: OrgError
+}
+
+export type OrgSessionInteractionsReplyError =
+  OrgSessionInteractionsReplyErrors[keyof OrgSessionInteractionsReplyErrors]
+
+export type OrgSessionInteractionsReplyResponses = {
+  /**
+   * Success
+   */
+  200: OrgCommandDecisionAccepted
+  /**
+   * Runtime durably received the command
+   */
+  202: OrgCommandDecisionAccepted
+}
+
+export type OrgSessionInteractionsReplyResponse =
+  OrgSessionInteractionsReplyResponses[keyof OrgSessionInteractionsReplyResponses]
 
 export type OrgCommandsControlData = {
   body: OrgCommandControlRequest

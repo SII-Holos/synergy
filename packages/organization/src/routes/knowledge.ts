@@ -15,10 +15,62 @@ const versionTarget = target.extend({ version: z.coerce.number().int().positive(
 const fileTarget = versionTarget.extend({ fileID: Protocol.Digest })
 const projectTarget = z.strictObject({ projectID: Identity.ID })
 const sessionTarget = z.strictObject({ sessionID: Identity.ID })
+const updateTarget = z.strictObject({ updateID: Identity.ID })
 
 export function knowledgeRoutes(publicOrigin?: string) {
   const { credentials } = browserCredentials(publicOrigin)
   return new Hono()
+    .post(
+      "/knowledge/selection-updates",
+      operation(
+        "orgKnowledge.beginSelectionUpdate",
+        "Stage an explicit update over the complete current knowledge manifest",
+        Knowledge.SelectionUpdate,
+        true,
+      ),
+      validator("json", Knowledge.BeginSelectionUpdate, validation),
+      async (c) => c.json(await Published.beginSelectionUpdate(credentials(c), c.req.valid("json"))),
+    )
+    .get(
+      "/knowledge/selection-updates/:updateID",
+      operation(
+        "orgKnowledge.selectionUpdate",
+        "Inspect a knowledge update after interruption or an unknown response",
+        Knowledge.SelectionUpdate,
+      ),
+      validator("param", updateTarget, validation),
+      async (c) => c.json(await Published.selectionUpdate(credentials(c), c.req.valid("param").updateID)),
+    )
+    .post(
+      "/knowledge/selection-updates/:updateID/pages",
+      operation(
+        "orgKnowledge.patchSelectionUpdate",
+        "Apply one immutable retryable page of explicit knowledge changes",
+        Knowledge.SelectionUpdate,
+        true,
+      ),
+      validator("param", updateTarget, validation),
+      validator("json", Knowledge.PatchSelectionUpdate, validation),
+      async (c) =>
+        c.json(
+          await Published.patchSelectionUpdate(credentials(c), c.req.valid("param").updateID, c.req.valid("json")),
+        ),
+    )
+    .post(
+      "/knowledge/selection-updates/:updateID/commit",
+      operation(
+        "orgKnowledge.commitSelectionUpdate",
+        "Reauthorize and atomically publish the complete staged knowledge manifest",
+        Knowledge.SelectionSummary,
+        true,
+      ),
+      validator("param", updateTarget, validation),
+      validator("json", Knowledge.CommitSelectionUpdate, validation),
+      async (c) =>
+        c.json(
+          await Published.commitSelectionUpdate(credentials(c), c.req.valid("param").updateID, c.req.valid("json")),
+        ),
+    )
     .get(
       "/knowledge",
       operation("orgKnowledge.list", "List authorized published materials and Skills", Knowledge.Page),
@@ -109,32 +161,62 @@ export function knowledgeRoutes(publicOrigin?: string) {
         ),
     )
     .get(
-      "/projects/:projectID/knowledge/applied",
-      operation("orgKnowledge.applied", "Read this member's explicitly applied project versions", Knowledge.Selection),
-      validator("param", projectTarget, validation),
-      async (c) => c.json(await Published.applied(credentials(c), c.req.valid("param").projectID)),
-    )
-    .put(
-      "/projects/:projectID/knowledge/applied",
+      "/projects/:projectID/knowledge/applied/releases",
       operation(
-        "orgKnowledge.apply",
-        "Atomically select the complete member knowledge manifest",
-        Knowledge.Selection,
+        "orgKnowledge.appliedPage",
+        "Page this member's exact applied references without loading the whole manifest",
+        Knowledge.SelectionPage,
+      ),
+      validator("param", projectTarget, validation),
+      validator("query", Knowledge.SelectionPageQuery, validation),
+      async (c) =>
+        c.json(await Published.appliedPage(credentials(c), c.req.valid("param").projectID, c.req.valid("query"))),
+    )
+    .post(
+      "/projects/:projectID/knowledge/applied/references",
+      operation(
+        "orgKnowledge.appliedReferences",
+        "Read applied references for the visible catalog window",
+        Knowledge.SelectionPage,
         true,
       ),
       validator("param", projectTarget, validation),
-      validator("json", Knowledge.Apply, validation),
-      async (c) => c.json(await Published.apply(credentials(c), c.req.valid("param").projectID, c.req.valid("json"))),
+      validator("json", Knowledge.SelectionReferences, validation),
+      async (c) =>
+        c.json(await Published.appliedReferences(credentials(c), c.req.valid("param").projectID, c.req.valid("json"))),
     )
     .get(
-      "/sessions/:sessionID/knowledge",
+      "/sessions/:sessionID/knowledge/releases",
       operation(
-        "orgKnowledge.sessionSelection",
-        "Read one Session's independent knowledge versions",
-        Knowledge.Selection,
+        "orgKnowledge.sessionSelectionPage",
+        "Page the executing Session's exact desired knowledge references",
+        Knowledge.SelectionPage,
       ),
       validator("param", sessionTarget, validation),
-      async (c) => c.json(await Published.sessionSelection(credentials(c), c.req.valid("param").sessionID)),
+      validator("query", Knowledge.SelectionPageQuery, validation),
+      async (c) =>
+        c.json(
+          await Published.sessionSelectionPage(credentials(c), c.req.valid("param").sessionID, c.req.valid("query")),
+        ),
+    )
+    .post(
+      "/sessions/:sessionID/knowledge/references",
+      operation(
+        "orgKnowledge.sessionSelectionReferences",
+        "Read executing Session knowledge references for the visible catalog window",
+        Knowledge.SelectionPage,
+        true,
+      ),
+      validator("param", sessionTarget, validation),
+      validator("json", Knowledge.SelectionReferences, validation),
+      async (c) =>
+        c.json(
+          await Published.sessionSelectionReferences(
+            credentials(c),
+            c.req.valid("param").sessionID,
+            c.req.valid("json"),
+          ),
+        ),
     )
     .get(
       "/sessions/:sessionID/knowledge/status",
@@ -145,20 +227,5 @@ export function knowledgeRoutes(publicOrigin?: string) {
       ),
       validator("param", sessionTarget, validation),
       async (c) => c.json(await Published.status(credentials(c), c.req.valid("param").sessionID)),
-    )
-    .put(
-      "/sessions/:sessionID/knowledge",
-      operation(
-        "orgKnowledge.setSessionSelection",
-        "Explicitly update one Session's knowledge versions",
-        Knowledge.Selection,
-        true,
-      ),
-      validator("param", sessionTarget, validation),
-      validator("json", Knowledge.Apply, validation),
-      async (c) =>
-        c.json(
-          await Published.setSessionSelection(credentials(c), c.req.valid("param").sessionID, c.req.valid("json")),
-        ),
     )
 }

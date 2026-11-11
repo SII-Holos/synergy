@@ -152,21 +152,27 @@ test("a member explicitly applies a historical release without changing other fi
     fileCount: 0,
     totalBytes: 0,
   }))
+  let nextSequence = 0
+  let change: { itemID: string; reference?: typeof selected.releases[number] } | undefined
   await page.exposeFunction("hostList", () => ({ ok: true, value: [entries[0]!] }))
   await page.exposeFunction("hostCancel", () => ({ ok: true }))
   await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
     const url = new URL(request.path, "https://a.example")
-    if (request.method === "PUT") {
+    if (request.method === "POST" && url.pathname.includes("/selection-updates")) {
       writes.push(request)
-      selected = { ...selected, ...JSON.parse(request.body!), revision: 3 }
+      if (url.pathname.endsWith("/pages")) { change = JSON.parse(request.body!).changes[0]; nextSequence=1 }
+      if (url.pathname.endsWith("/commit")) selected = {...selected,revision:3,releases:[...selected.releases.filter((reference) => reference.itemID !== change!.itemID),...(change?.reference ? [change.reference] : [])]}
     }
+    const summary = {revision:selected.revision,manifestHash:selected.manifestHash,updatedBy:selected.updatedBy,updatedAt:selected.updatedAt,releaseCount:selected.releases.length}
     const body =
       url.pathname === "/org/v1/organization"
         ? { orgID: "org-a", name: "Field team", revision: 1 }
         : url.pathname === "/org/v1/projects/project-one"
           ? project
-          : url.pathname.endsWith("/knowledge/applied")
-            ? selected
+          : url.pathname.endsWith("/knowledge/applied/references")
+            ? {selection:summary,items:selected.releases.filter((reference) => JSON.parse(request.body!).itemIDs.includes(reference.itemID))}
+            : url.pathname.includes("/selection-updates")
+              ? url.pathname.endsWith("/commit") ? summary : {updateID:"update-guide",target:{kind:"member",projectID:"project-one"},baseRevision:2,nextSequence,state:"draft"}
             : url.pathname === "/org/v1/knowledge"
               ? { items: [item] }
               : url.pathname.endsWith("/versions")
@@ -183,14 +189,11 @@ test("a member explicitly applies a historical release without changing other fi
     expect(writes).toHaveLength(0)
     await page.getByRole("button", { name: "Update my applied version", exact: true }).click()
     await page.getByText("Applied version 2", { exact: true }).waitFor()
-    expect(writes).toHaveLength(1)
-    expect(JSON.parse(writes[0]!.body!)).toEqual({
-      expectedRevision: 2,
-      releases: [
-        { itemID: "keep", version: 5, manifestHash: "5".repeat(64) },
-        { itemID: "guide", version: 2, manifestHash: "2".repeat(64) },
-      ],
-    })
+    expect(writes).toHaveLength(3)
+    expect(JSON.parse(writes[0]!.body!)).toMatchObject({target:{kind:"member",projectID:"project-one"},expectedRevision:2})
+    expect(JSON.parse(writes[1]!.body!)).toEqual({sequence:0,changes:[{itemID:"guide",reference:{itemID:"guide",version:2,manifestHash:"2".repeat(64)}}]})
+    expect(JSON.parse(writes[2]!.body!)).toEqual({expectedSequence:1})
+    expect(selected.releases).toContainEqual({itemID:"keep",version:5,manifestHash:"5".repeat(64)})
     expect(await page.getByRole("button", { name: "Publish new version", exact: true }).count()).toBe(0)
   } finally {
     await page.close()

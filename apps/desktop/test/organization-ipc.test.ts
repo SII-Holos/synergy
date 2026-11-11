@@ -77,6 +77,14 @@ test("shared transcript windows and runtime availability use exact main-authenti
       ["POST", "/org/v1/invites/invite-one/revoke"],
       ["POST", "/org/v1/organization/leave"],
       ["POST", "/org/v1/sessions/session-one/read"],
+      ["GET", "/org/v1/projects/project-one/knowledge/applied/releases?limit=50"],
+      ["POST", "/org/v1/projects/project-one/knowledge/applied/references"],
+      ["GET", "/org/v1/sessions/session-one/knowledge/releases?limit=50"],
+      ["POST", "/org/v1/sessions/session-one/knowledge/references"],
+      ["POST", "/org/v1/knowledge/selection-updates"],
+      ["GET", "/org/v1/knowledge/selection-updates/update-one"],
+      ["POST", "/org/v1/knowledge/selection-updates/update-one/pages"],
+      ["POST", "/org/v1/knowledge/selection-updates/update-one/commit"],
     ] as const
   ).entries()) {
     const result = await ipc.handle(trusted, "request", {
@@ -88,7 +96,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
     })
     expect(result).toMatchObject({ ok: true, value: { status: 200 } })
   }
-  expect(calls).toBe(9)
+  expect(calls).toBe(17)
   ipc.dispose()
 })
 
@@ -121,6 +129,10 @@ test("organization IPC rejects untrusted frames and credential or arbitrary-targ
     { path: "/runtime/v1/register", method: "POST" },
     { path: "/org/v1/runtimes/member", method: "POST" },
     { path: "/org/v1/invites/consume", method: "POST" },
+    { path: "/org/v1/projects/project-one/knowledge/applied" },
+    { path: "/org/v1/projects/project-one/knowledge/applied", method: "PUT", body: "{}" },
+    { path: "/org/v1/sessions/session-one/knowledge" },
+    { path: "/org/v1/sessions/session-one/knowledge", method: "PUT", body: "{}" },
     { path: "/org/v1/projects#credential" },
     { headers: { authorization: "injected" } },
     { body: "{}" },

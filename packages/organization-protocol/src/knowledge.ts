@@ -169,8 +169,68 @@ export namespace OrganizationKnowledgeProtocol {
     })
     .meta({ ref: "OrgKnowledgeActivationReceipt" })
   export type ActivationReceipt = z.infer<typeof ActivationReceipt>
-  export const SelectionSummary = Selection.omit({ releases: true }).extend({ releaseCount: z.number().int().nonnegative() })
-  export const Status = z.strictObject({ orgID: Identity.ID, projectID: Identity.ID, sessionID: Identity.ID, desired: SelectionSummary, activated: SelectionSummary.optional(), state: z.enum(["pending", "active", "failed"]), error: z.literal("update_failed").optional() }).meta({ ref: "OrgKnowledgeStatus" })
+  export const SelectionSummary = Selection.omit({ releases: true })
+    .extend({
+      releaseCount: z.number().int().nonnegative(),
+    })
+    .meta({ ref: "OrgKnowledgeSelectionSummary" })
+  export type SelectionSummary = z.infer<typeof SelectionSummary>
+  export const SelectionPageQuery = z.strictObject({
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    cursor: Identity.ID.optional(),
+    manifestHash: Protocol.Digest.optional(),
+  })
+  export const SelectionReferences = z.strictObject({
+    itemIDs: z.array(Identity.ID).max(100),
+    manifestHash: Protocol.Digest.optional(),
+  })
+  export const SelectionPage = z
+    .strictObject({ selection: SelectionSummary, items: z.array(Reference).max(100), cursor: Identity.ID.optional() })
+    .meta({ ref: "OrgKnowledgeSelectionPage" })
+  export const SelectionTarget = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("member"), projectID: Identity.ID }),
+    z.strictObject({ kind: z.literal("session"), sessionID: Identity.ID }),
+  ])
+  export type SelectionTarget = z.infer<typeof SelectionTarget>
+  export const BeginSelectionUpdate = z.strictObject({
+    requestID: Identity.ID,
+    target: SelectionTarget,
+    expectedRevision: Identity.Revision,
+  })
+  export const SelectionChange = z
+    .strictObject({ itemID: Identity.ID, reference: Reference.optional() })
+    .refine(
+      (value) => !value.reference || value.reference.itemID === value.itemID,
+      "Knowledge change identity must match its reference",
+    )
+  export const PatchSelectionUpdate = z
+    .strictObject({ sequence: Identity.Revision, changes: z.array(SelectionChange).max(100) })
+    .refine(
+      (value) => new Set(value.changes.map((change) => change.itemID)).size === value.changes.length,
+      "Each page may change an item only once",
+    )
+  export const CommitSelectionUpdate = z.strictObject({ expectedSequence: Identity.Revision })
+  export const SelectionUpdate = z
+    .strictObject({
+      updateID: Identity.ID,
+      target: SelectionTarget,
+      baseRevision: Identity.Revision,
+      nextSequence: Identity.Revision,
+      state: z.enum(["draft", "committed"]),
+      committed: SelectionSummary.optional(),
+    })
+    .meta({ ref: "OrgKnowledgeSelectionUpdate" })
+  export const Status = z
+    .strictObject({
+      orgID: Identity.ID,
+      projectID: Identity.ID,
+      sessionID: Identity.ID,
+      desired: SelectionSummary,
+      activated: SelectionSummary.optional(),
+      state: z.enum(["pending", "active", "failed"]),
+      error: z.literal("update_failed").optional(),
+    })
+    .meta({ ref: "OrgKnowledgeStatus" })
   export const ActivatedQuery = z
     .strictObject({
       authority: Execution.DescriptionRequest,

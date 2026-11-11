@@ -17,15 +17,38 @@ import { OrganizationStoragePath as OrganizationKeys } from "./storage/path"
 import { OrganizationRecord } from "./storage/records"
 import { fail, revision } from "./error"
 import { searchPublication } from "./publication-search"
+import { KnowledgeSelections as Selections } from "./knowledge-selection"
 
 const Item = Knowledge.Item.extend({ schemaVersion: z.literal(1) })
 const Release = Knowledge.Release.extend({ schemaVersion: z.literal(1), uploadID: Identity.ID })
 const Receipt = z.strictObject({ requestHash: z.string(), itemID: Identity.ID, version: z.number().int().positive() })
-const Selection = Knowledge.Selection.extend({
+const Selection = Selections.Header
+const SelectionUpdate = Knowledge.SelectionUpdate.extend({
   schemaVersion: z.literal(1),
   orgID: Identity.ID,
+  accountID: Identity.ID,
   projectID: Identity.ID,
+  requestHash: z.string(),
+  pointer: z.array(z.string()),
 })
+const updateKey = (orgID: string, accountID: string, updateID: string) => [
+  "organization-knowledge",
+  "updates",
+  orgID,
+  accountID,
+  Identity.ID.parse(updateID),
+]
+const updateRequestKey = (orgID: string, accountID: string, requestID: string) => [
+  "organization-knowledge",
+  "update-requests",
+  orgID,
+  accountID,
+  requestID,
+]
+const updateReferences = (update: z.infer<typeof SelectionUpdate>) => [
+  ...updateKey(update.orgID, update.accountID, update.updateID),
+  "references",
+]
 const ActivationStatus = z.strictObject({
   schemaVersion: z.literal(1),
   bindingEpoch: z.number().int().positive(),
@@ -85,16 +108,8 @@ function releaseView(value: z.infer<typeof Release>) {
   return Knowledge.Release.parse(Knowledge.Release.strip().parse(value))
 }
 
-function selectionView(value: z.infer<typeof Selection>) {
-  return Knowledge.Selection.parse(Knowledge.Selection.strip().parse(value))
-}
-
 function digest(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex")
-}
-
-function emptySelection(accountID: string): Knowledge.Selection {
-  return { revision: 0, releases: [], manifestHash: digest([]), updatedBy: accountID, updatedAt: 0 }
 }
 
 async function item(credentials: Credentials, itemID: string, write = false) {
@@ -116,16 +131,13 @@ async function getRelease(current: z.infer<typeof Item>, version = current.lates
   return result
 }
 
-async function validateSelection(credentials: Credentials, projectID: string, input: Knowledge.Apply) {
-  const releases = [...input.releases].sort((a, b) => a.itemID.localeCompare(b.itemID))
-  for (const reference of releases) {
-    const current = await item(credentials, reference.itemID)
-    if (current.state !== "published" || (current.scope.kind === "project" && current.scope.projectID !== projectID))
-      fail("NOT_FOUND", "Knowledge is not available to this project")
-    const release = await getRelease(current, reference.version)
-    if (release.manifestHash !== reference.manifestHash) fail("REVISION_CONFLICT", "Knowledge version hash changed")
-  }
-  return releases
+async function validateReference(credentials: Credentials, projectID: string, reference: Knowledge.Reference) {
+  const current = await item(credentials, reference.itemID)
+  if (current.state !== "published" || (current.scope.kind === "project" && current.scope.projectID !== projectID))
+    fail("NOT_FOUND", "Knowledge is not available to this project")
+  const release = await getRelease(current, reference.version)
+  if (release.manifestHash !== reference.manifestHash) fail("REVISION_CONFLICT", "Knowledge version hash changed")
+  return reference
 }
 
 async function validateSkill(uploadID: string) {
@@ -382,34 +394,193 @@ export namespace OrganizationKnowledge {
     })
   }
 
-  export async function applied(credentials: Credentials, projectID: string) {
-    return Storage.snapshot(async () => {
-      const { account } = await authorize(credentials, "project.read", { projectID })
-      const selected = await read(Selection, keys.applied(account.orgID, account.accountID, projectID))
-      return selected ? selectionView(selected) : emptySelection(account.accountID)
+  async function appliedHeader(credentials: Credentials, projectID: string) {
+    const { account } = await authorize(credentials, "project.read", { projectID })
+    return (
+      (await Selections.read(keys.applied(account.orgID, account.accountID, projectID))) ??
+      Selections.empty(account.orgID, projectID, account.accountID)
+    )
+  }
+
+  export async function appliedPage(
+    credentials: Credentials,
+    projectID: string,
+    query: z.input<typeof Knowledge.SelectionPageQuery>,
+  ) {
+    return Storage.snapshot(async () => Selections.page(await appliedHeader(credentials, projectID), query))
+  }
+
+  export async function appliedReferences(
+    credentials: Credentials,
+    projectID: string,
+    query: z.infer<typeof Knowledge.SelectionReferences>,
+  ) {
+    return Storage.snapshot(async () => Selections.selected(await appliedHeader(credentials, projectID), query))
+  }
+
+  async function updateTarget(credentials: Credentials, target: Knowledge.SelectionTarget) {
+    if (target.kind === "member") {
+      const { account } = await authorize(credentials, "project.execute", { projectID: target.projectID })
+      return {
+        account,
+        projectID: target.projectID,
+        pointer: keys.applied(account.orgID, account.accountID, target.projectID),
+      }
+    }
+    const { account, session } = await authorize(credentials, "session.execute", { sessionID: target.sessionID })
+    const runtime = await OrganizationRecord.read(
+      OrganizationRecord.RuntimeRegistration,
+      OrganizationKeys.runtime(session.driverRuntimeID),
+    )
+    if (!runtime || runtime.orgID !== session.orgID)
+      fail("SERVICE_UNAVAILABLE", "Knowledge Runtime ownership is unavailable")
+    if (runtime.runtimeKind === "member")
+      fail("INVALID_REQUEST", "Member Runtime Sessions use their owner's project applied collection")
+    return { account, projectID: session.projectID, pointer: keys.session(session.sessionID) }
+  }
+
+  function updateView(update: z.infer<typeof SelectionUpdate>) {
+    return Knowledge.SelectionUpdate.parse(Knowledge.SelectionUpdate.strip().parse(update))
+  }
+
+  async function loadUpdate(credentials: Credentials, updateID: string) {
+    const { account } = await authorize(credentials, "organization.read")
+    const update = await read(SelectionUpdate, updateKey(account.orgID, account.accountID, updateID))
+    if (!update || update.orgID !== account.orgID || update.accountID !== account.accountID)
+      fail("NOT_FOUND", "Knowledge update not found")
+    const authorized = await updateTarget(credentials, update.target)
+    if (
+      authorized.projectID !== update.projectID ||
+      JSON.stringify(authorized.pointer) !== JSON.stringify(update.pointer)
+    )
+      fail("STALE_BINDING", "Knowledge update target changed")
+    return update
+  }
+
+  export async function beginSelectionUpdate(
+    credentials: Credentials,
+    value: z.infer<typeof Knowledge.BeginSelectionUpdate>,
+  ) {
+    const input = Knowledge.BeginSelectionUpdate.parse(value)
+    return Storage.transaction(async () => {
+      const target = await updateTarget(credentials, input.target)
+      const requestHash = digest(input)
+      const requestKey = updateRequestKey(target.account.orgID, target.account.accountID, input.requestID)
+      const [existing] = await Storage.readMany([requestKey])
+      if (existing !== undefined) {
+        const receipt = z.strictObject({ updateID: Identity.ID, requestHash: z.string() }).parse(existing)
+        if (receipt.requestHash !== requestHash) fail("REVISION_CONFLICT", "Knowledge update request changed")
+        return updateView(await loadUpdate(credentials, receipt.updateID))
+      }
+      const previous =
+        (await Selections.read(target.pointer)) ??
+        Selections.empty(target.account.orgID, target.projectID, target.account.accountID)
+      revision(input.expectedRevision, previous.revision)
+      const update = SelectionUpdate.parse({
+        schemaVersion: 1,
+        updateID: crypto.randomUUID(),
+        orgID: target.account.orgID,
+        accountID: target.account.accountID,
+        projectID: target.projectID,
+        pointer: target.pointer,
+        requestHash,
+        target: input.target,
+        baseRevision: previous.revision,
+        nextSequence: 0,
+        state: "draft",
+      })
+      for await (const reference of Selections.references(previous))
+        await Storage.write([...updateReferences(update), reference.itemID], reference)
+      await Storage.write(updateKey(update.orgID, update.accountID, update.updateID), update)
+      await Storage.write(requestKey, { updateID: update.updateID, requestHash })
+      return updateView(update)
     })
   }
 
-  export async function apply(credentials: Credentials, projectID: string, value: Knowledge.Apply) {
-    const input = Knowledge.Apply.parse(value)
+  export async function selectionUpdate(credentials: Credentials, updateID: string) {
+    return Storage.snapshot(async () => updateView(await loadUpdate(credentials, updateID)))
+  }
+
+  export async function patchSelectionUpdate(
+    credentials: Credentials,
+    updateID: string,
+    value: z.infer<typeof Knowledge.PatchSelectionUpdate>,
+  ) {
+    const input = Knowledge.PatchSelectionUpdate.parse(value)
     return Storage.transaction(async () => {
-      const { account } = await authorize(credentials, "project.execute", { projectID })
-      const key = keys.applied(account.orgID, account.accountID, projectID)
-      const previous = await read(Selection, key)
-      revision(input.expectedRevision, previous?.revision ?? 0)
-      const releases = await validateSelection(credentials, projectID, input)
-      const selection = Selection.parse({
-        schemaVersion: 1,
-        orgID: account.orgID,
-        projectID,
-        revision: (previous?.revision ?? 0) + 1,
-        releases,
-        manifestHash: digest(releases),
-        updatedBy: account.accountID,
+      const update = await loadUpdate(credentials, updateID)
+      const pageKey = [...updateKey(update.orgID, update.accountID, updateID), "pages", String(input.sequence)]
+      const requestHash = digest(input)
+      const [existing] = await Storage.readMany([pageKey])
+      if (existing !== undefined) {
+        if (existing !== requestHash) fail("REVISION_CONFLICT", "Knowledge update page changed")
+        return updateView(update)
+      }
+      if (update.state !== "draft") fail("REVISION_CONFLICT", "Knowledge update is already committed")
+      revision(input.sequence, update.nextSequence)
+      for (const change of input.changes) {
+        const key = [...updateReferences(update), change.itemID]
+        if (!change.reference) await Storage.remove(key)
+        else {
+          await validateReference(credentials, update.projectID, change.reference)
+          await Storage.write(key, change.reference)
+        }
+      }
+      const next = SelectionUpdate.parse({ ...update, nextSequence: update.nextSequence + 1 })
+      await Storage.write(pageKey, requestHash)
+      await Storage.write(updateKey(update.orgID, update.accountID, updateID), next)
+      return updateView(next)
+    })
+  }
+
+  export async function commitSelectionUpdate(
+    credentials: Credentials,
+    updateID: string,
+    value: z.infer<typeof Knowledge.CommitSelectionUpdate>,
+  ) {
+    const input = Knowledge.CommitSelectionUpdate.parse(value)
+    return Storage.transaction(async () => {
+      const update = await loadUpdate(credentials, updateID)
+      revision(input.expectedSequence, update.nextSequence)
+      if (update.state === "committed") {
+        if (!update.committed) fail("SERVICE_UNAVAILABLE", "Knowledge update receipt is incomplete")
+        return update.committed
+      }
+      const previous = await Selections.read(update.pointer)
+      revision(update.baseRevision, previous?.revision ?? 0)
+      const hash = createHash("sha256").update("[")
+      let count = 0
+      const base = Selections.Header.parse({
+        schemaVersion: 2,
+        orgID: update.orgID,
+        projectID: update.projectID,
+        manifestID: update.updateID,
+        revision: update.baseRevision + 1,
+        manifestHash: "0".repeat(64),
+        releaseCount: 0,
+        updatedBy: update.accountID,
         updatedAt: Date.now(),
       })
-      await Storage.write(key, selection)
-      return selectionView(selection)
+      for await (const row of Storage.records({ prefix: updateReferences(update), limit: 100 })) {
+        const reference = Knowledge.Reference.parse(row.value)
+        if (row.key.at(-1) !== reference.itemID) fail("SERVICE_UNAVAILABLE", "Knowledge update item identity changed")
+        await validateReference(credentials, update.projectID, reference)
+        if (count) hash.update(",")
+        hash.update(JSON.stringify(reference))
+        await Selections.put(base, count++, reference)
+      }
+      const header = Selections.Header.parse({
+        ...base,
+        manifestHash: hash.update("]").digest("hex"),
+        releaseCount: count,
+      })
+      const committed = Selections.summary(header)
+      await Storage.write(update.pointer, header)
+      await Storage.write(
+        updateKey(update.orgID, update.accountID, updateID),
+        SelectionUpdate.parse({ ...update, state: "committed", committed }),
+      )
+      return committed
     })
   }
 
@@ -419,24 +590,36 @@ export namespace OrganizationKnowledge {
       OrganizationKeys.session(sessionID),
     )
     if (!session) fail("NOT_FOUND", "Session not found")
-    const existing = await read(Selection, keys.session(sessionID))
-    if (existing) return selectionView(existing)
-    const applied = await read(Selection, keys.applied(session.orgID, session.creatorID, session.projectID))
+    const existing = await Selections.read(keys.session(sessionID))
+    if (existing) return Selections.summary(existing)
+    const applied = await Selections.read(keys.applied(session.orgID, session.creatorID, session.projectID))
     const selected = Selection.parse({
-      schemaVersion: 1,
-      orgID: session.orgID,
-      projectID: session.projectID,
-      ...(applied ? selectionView(applied) : emptySelection(session.creatorID)),
+      ...(applied ?? Selections.empty(session.orgID, session.projectID, session.creatorID)),
       revision: 0,
     })
     await Storage.write(keys.session(sessionID), selected)
-    return selectionView(selected)
+    return Selections.summary(selected)
   }
 
-  export async function sessionSelection(credentials: Credentials, sessionID: string) {
+  export async function sessionSelectionPage(
+    credentials: Credentials,
+    sessionID: string,
+    query: z.input<typeof Knowledge.SelectionPageQuery>,
+  ) {
     return Storage.snapshot(async () => {
       const { session } = await authorize(credentials, "session.read", { sessionID })
-      return desiredSelection(session)
+      return Selections.page(await desiredSelection(session), query)
+    })
+  }
+
+  export async function sessionSelectionReferences(
+    credentials: Credentials,
+    sessionID: string,
+    query: z.infer<typeof Knowledge.SelectionReferences>,
+  ) {
+    return Storage.snapshot(async () => {
+      const { session } = await authorize(credentials, "session.read", { sessionID })
+      return Selections.selected(await desiredSelection(session), query)
     })
   }
 
@@ -446,45 +629,16 @@ export namespace OrganizationKnowledge {
       const desired = await desiredSelection(session)
       const current = await read(ActivationStatus, keys.status(sessionID))
       const observed = current?.bindingEpoch === session.bindingEpoch ? current : undefined
-      const { releases, ...summary } = desired
       const failed = observed?.failedManifestHash === desired.manifestHash
       return Knowledge.Status.parse({
         orgID: session.orgID,
         projectID: session.projectID,
         sessionID,
-        desired: { ...summary, releaseCount: releases.length },
+        desired: Selections.summary(desired),
         activated: observed?.activated,
         state: failed ? "failed" : observed?.activated?.manifestHash === desired.manifestHash ? "active" : "pending",
         error: failed ? "update_failed" : undefined,
       })
-    })
-  }
-
-  export async function setSessionSelection(credentials: Credentials, sessionID: string, value: Knowledge.Apply) {
-    const input = Knowledge.Apply.parse(value)
-    return Storage.transaction(async () => {
-      const { account, session } = await authorize(credentials, "session.execute", { sessionID })
-      const runtime = await OrganizationRecord.read(
-        OrganizationRecord.RuntimeRegistration,
-        OrganizationKeys.runtime(session.driverRuntimeID),
-      )
-      if (runtime?.runtimeKind === "member")
-        fail("INVALID_REQUEST", "Member Runtime Sessions use their owner's project applied collection")
-      const previous = await read(Selection, keys.session(sessionID))
-      revision(input.expectedRevision, previous?.revision ?? 0)
-      const releases = await validateSelection(credentials, session.projectID, input)
-      const selected = Selection.parse({
-        schemaVersion: 1,
-        orgID: session.orgID,
-        projectID: session.projectID,
-        revision: (previous?.revision ?? 0) + 1,
-        releases,
-        manifestHash: digest(releases),
-        updatedBy: account.accountID,
-        updatedAt: Date.now(),
-      })
-      await Storage.write(keys.session(sessionID), selected)
-      return selectionView(selected)
     })
   }
 
@@ -495,17 +649,21 @@ export namespace OrganizationKnowledge {
     )
     if (!runtime || runtime.orgID !== session.orgID)
       fail("SERVICE_UNAVAILABLE", "Knowledge Runtime ownership is unavailable")
-    const selected = await read(
-      Selection,
+    const selected = await Selections.read(
       runtime.runtimeKind === "member"
         ? keys.applied(session.orgID, runtime.accountID, session.projectID)
         : keys.session(session.sessionID),
     )
     if (selected && (selected.orgID !== session.orgID || selected.projectID !== session.projectID))
       fail("SERVICE_UNAVAILABLE", "Knowledge selection ownership is inconsistent")
-    return selected
-      ? selectionView(selected)
-      : emptySelection(runtime.runtimeKind === "member" ? runtime.accountID : session.creatorID)
+    return (
+      selected ??
+      Selections.empty(
+        session.orgID,
+        session.projectID,
+        runtime.runtimeKind === "member" ? runtime.accountID : session.creatorID,
+      )
+    )
   }
 
   async function executionSelection(grant: Execution.Grant, activatedManifestHash?: string) {
@@ -522,7 +680,7 @@ export namespace OrganizationKnowledge {
     )
       fail("STALE_BINDING", "Knowledge execution binding changed")
     if (!activatedManifestHash) return desiredSelection(session)
-    const selected = await read(Selection, keys.activated(grant.sessionID, activatedManifestHash))
+    const selected = await Selections.read(keys.activated(grant.sessionID, activatedManifestHash))
     if (!selected) fail("PERMISSION_DENIED", "Knowledge manifest was never activated for this Session")
     if (
       selected.orgID !== grant.orgID ||
@@ -530,7 +688,7 @@ export namespace OrganizationKnowledge {
       selected.manifestHash !== activatedManifestHash
     )
       fail("SERVICE_UNAVAILABLE", "Knowledge selection ownership is inconsistent")
-    return selectionView(selected)
+    return selected
   }
 
   async function executionRelease(
@@ -539,14 +697,8 @@ export namespace OrganizationKnowledge {
     activatedManifestHash?: string,
   ) {
     const selected = await executionSelection(grant, activatedManifestHash)
-    if (
-      !selected.releases.some(
-        (current) =>
-          current.itemID === reference.itemID &&
-          current.version === reference.version &&
-          current.manifestHash === reference.manifestHash,
-      )
-    )
+    const chosen = await Selections.reference(selected, reference.itemID)
+    if (!chosen || chosen.version !== reference.version || chosen.manifestHash !== reference.manifestHash)
       fail("PERMISSION_DENIED", "Knowledge version is not selected by this Session")
     const current = await read(Item, keys.item(grant.orgID, reference.itemID))
     if (
@@ -578,18 +730,17 @@ export namespace OrganizationKnowledge {
       const selection = await executionSelection(grant, activatedManifestHash)
       if (value.manifestHash && selection.manifestHash !== value.manifestHash)
         fail("REVISION_CONFLICT", "Session knowledge selection changed during preparation")
-      const selected = selection.releases.filter((reference) => !value.cursor || reference.itemID > value.cursor)
+      const page = await Selections.page(selection, value)
       const items: Knowledge.Release[] = []
-      for (const reference of selected.slice(0, value.limit))
+      for (const reference of page.items)
         items.push(releaseView(await executionRelease(grant, reference, activatedManifestHash)))
-      const { releases, ...metadata } = selection
       return Knowledge.ExecutionPage.parse({
         orgID: grant.orgID,
         projectID: grant.projectID,
         sessionID: grant.sessionID,
-        selection: { ...metadata, releaseCount: releases.length },
+        selection: page.selection,
         items,
-        cursor: selected.length > value.limit ? items.at(-1)?.itemID : undefined,
+        cursor: page.cursor,
       })
     })
   }
@@ -614,18 +765,14 @@ export namespace OrganizationKnowledge {
           }),
         )
       else {
-        for (const reference of selection.releases) await executionRelease(grant, reference)
-        await Storage.write(
-          keys.activated(grant.sessionID, selection.manifestHash),
-          Selection.parse({ schemaVersion: 1, orgID: grant.orgID, projectID: grant.projectID, ...selection }),
-        )
-        const { releases, ...summary } = selection
+        for await (const reference of Selections.references(selection)) await executionRelease(grant, reference)
+        await Storage.write(keys.activated(grant.sessionID, selection.manifestHash), selection)
         await Storage.write(
           keys.status(grant.sessionID),
           ActivationStatus.parse({
             schemaVersion: 1,
             bindingEpoch: grant.bindingEpoch,
-            activated: { ...summary, releaseCount: releases.length },
+            activated: Selections.summary(selection),
           }),
         )
       }
