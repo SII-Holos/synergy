@@ -53,6 +53,7 @@ export namespace SessionTransferOwners {
       record(key: string[]): Promise<StagedRecord | undefined>
       records(): AsyncIterable<StagedRecord>
       relatedRecords?(ownerID: string): AsyncIterable<StagedRecord>
+      ownerVersion?(ownerID: string): Promise<number | undefined>
       artifacts(): AsyncIterable<StagedArtifact>
     }
   }
@@ -149,8 +150,8 @@ export namespace SessionTransferOwners {
     return requirements
   }
 
-  export async function selected(context: SourceContext, required: readonly string[] = []) {
-    const ids = new Set(required)
+  export function requiredFromInfo(input: unknown) {
+    const ids = new Set<string>()
     const raw = z
       .object({
         cortex: z.unknown().optional(),
@@ -158,7 +159,7 @@ export namespace SessionTransferOwners {
         superplan: z.unknown().optional(),
         workflow: z.object({ kind: z.string(), extension: z.object({ kind: z.string() }).optional() }).optional(),
       })
-      .parse(await Storage.read(["sessions", context.session.scope.id, context.session.id, "info"]))
+      .parse(input)
     if (raw.cortex) ids.add("cortex")
     if (raw.blueprint || raw.superplan) ids.add("blueprint")
     const kind = raw.workflow?.kind === "extension" ? raw.workflow.extension?.kind : raw.workflow?.kind
@@ -168,6 +169,12 @@ export namespace SessionTransferOwners {
           kind
         ] ?? kind,
       )
+    return [...ids].sort()
+  }
+
+  export async function selected(context: SourceContext, required: readonly string[] = []) {
+    const raw = await Storage.read(["sessions", context.session.scope.id, context.session.id, "info"])
+    const ids = new Set([...required, ...requiredFromInfo(raw)])
     for (const [id, owner] of state()) {
       context.signal.throwIfAborted()
       if (await owner.applies(context.session)) ids.add(id)

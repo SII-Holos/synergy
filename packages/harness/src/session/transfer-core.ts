@@ -142,18 +142,52 @@ export namespace SessionTransferCore {
   }
 
   async function validate(context: Owners.TargetContext) {
-    await sourceInfo(context)
+    const source = await sourceInfo(context)
+    const checked = new Set<string>()
+    const requireOwner = async (ownerID: string) => {
+      if (checked.has(ownerID)) return
+      await requiredPartition(context, ownerID)
+      checked.add(ownerID)
+    }
+    for (const owner of Owners.requiredFromInfo(source.raw)) await requireOwner(owner)
     let infos = 0
     for await (const record of context.staged.records()) {
       context.signal.throwIfAborted()
       if (!own(context.session, record.key)) fail("Portable core contains another owner's records")
       if (isInfo(context.session, record.key)) infos++
+      if (record.key.length === 6 && record.key[3] === "messages" && record.key[5] === "info")
+        for (const owner of MessageV2.requiredOwners(MessageV2.Info.parse(record.value))) await requireOwner(owner)
+      if (
+        record.key.length === 7 &&
+        record.key[3] === "messages" &&
+        record.key[5] === "parts" &&
+        SnapshotRecords.partRoots(record.value).length
+      )
+        await requireOwner("session-snapshots")
       map(context, record.key, record.value)
     }
     if (infos !== 1) fail("Portable core metadata is missing or duplicated")
     for await (const artifact of context.staged.artifacts())
       if (!own(context.session, artifact.key) || artifact.key[0] !== "sessions")
         fail("Portable core contains another owner's binary artifacts")
+  }
+
+  async function requiredPartition(context: Owners.TargetContext, ownerID: string) {
+    const version = await context.staged.ownerVersion?.(ownerID)
+    if (version === undefined)
+      throw new Owners.Rejected({
+        message: "Portable core omits a required owner for this Session",
+        requirements: [
+          {
+            code: "owner_partition_missing",
+            owner: ownerID,
+            label: "Include this Session's required portability owner proof",
+            recoverable: true,
+          },
+        ],
+      })
+    const requirements = Owners.compatibility({ [ownerID]: version })
+    if (requirements.length) throw new Owners.Rejected({ message: "A required owner is incompatible", requirements })
   }
 
   async function* dependencies(context: Owners.SourceContext): AsyncGenerator<Owners.Dependency> {

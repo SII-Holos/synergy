@@ -72,6 +72,12 @@ export namespace SessionTransferStaging {
     throw new Rejected({ message })
   }
 
+  function compatible(owners: Readonly<Record<string, number>>) {
+    const requirements = Owners.compatibility(owners)
+    if (requirements.length)
+      throw new Owners.Rejected({ message: "Destination portability is incompatible", requirements })
+  }
+
   async function state(handoffID: string) {
     return State.parse(await Storage.read(stateKey(handoffID)))
   }
@@ -88,6 +94,7 @@ export namespace SessionTransferStaging {
   }) {
     const handoffID = ID.parse(input.handoffID)
     const root = Stream.Root.parse(input.root)
+    compatible(root.owners)
     const rootHash = Stream.digest(root)
     using lock = await Lock.write(`session-transfer-staging:${handoffID}`)
     const [stored] = await Storage.readMany([stateKey(handoffID)])
@@ -96,9 +103,6 @@ export namespace SessionTransferStaging {
       if (previous.rootHash !== rootHash) fail("A handoff cannot replace its staged manifest")
       if (previous.phase !== "receiving") return previous
     }
-    const requirements = Owners.compatibility(root.owners)
-    if (requirements.length)
-      throw new Owners.Rejected({ message: "Destination portability is incompatible", requirements })
     await Storage.write(stateKey(handoffID), State.parse({ version: 1, handoffID, root, rootHash, phase: "receiving" }))
     await fs.mkdir(Global.Path.cache, { recursive: true })
     await using reader = await Stream.open({
@@ -197,6 +201,7 @@ export namespace SessionTransferStaging {
     if (current.phase !== "verified") fail("Portable staging is not prepared for owner validation")
     if (!Object.hasOwn(current.root.owners, input.ownerID)) fail("Portable owner is absent from the manifest")
     const sourceVersion = current.root.owners[input.ownerID]
+    compatible({ [input.ownerID]: sourceVersion })
     const { ownerID, ...base } = input
     const runtime = RuntimeContext.current()
     function assertOwner() {
@@ -207,6 +212,13 @@ export namespace SessionTransferStaging {
       ...base,
       sourceVersion,
       staged: {
+        async ownerVersion(dependency) {
+          assertOwner()
+          if (!Object.hasOwn(current.root.owners, dependency)) return
+          const [member] = await Storage.readMany([[...ownersKey(input.handoffID), dependency, input.session.id]])
+          assertOwner()
+          return member === undefined ? undefined : current.root.owners[dependency]
+        },
         async record(key) {
           assertOwner()
           const [reference] = await Storage.readMany([
@@ -238,6 +250,7 @@ export namespace SessionTransferStaging {
             fail("Portable owner has not declared this staged dependency")
           if (!Object.hasOwn(current.root.owners, dependency))
             fail("Declared staged dependency is absent from the verified manifest")
+          compatible({ [dependency]: current.root.owners[dependency] })
           for await (const entry of entries(input.handoffID, dependency, input.session.id)) {
             assertOwner()
             if (entry.ownerID !== dependency || entry.sessionID !== input.session.id)
