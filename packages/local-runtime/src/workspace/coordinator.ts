@@ -479,6 +479,11 @@ export class WorkspaceCoordinator {
       id,
       recovery: durable ? { id, token } : undefined,
       isolated: () => this.isolated({ id, token }),
+      isReleased: () => this.update((ledger) => {
+        const claim = ledger.claims.find((claim) => claim.id === id)
+        if (claim && claim.token !== token) throw new Error("Workspace claim identity was replaced")
+        return claim === undefined
+      }),
       release: (beforeRelease?: () => Promise<void>) =>
         (releasing ??= this.release(id, token, beforeRelease).finally(() => {
           releasing = undefined

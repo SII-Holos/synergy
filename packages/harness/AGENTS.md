@@ -17,7 +17,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Local Runtime owns browsing, indexing, search, editing and conflicts; Harness retains execution read evidence and locking.
 - Native file imports cross the Runtime-scoped `workspace/file-import` Host contract; register the implementation before opening the Runtime and reject unavailable hosts explicitly.
 - Harness owns [resource admission](../../docs/architecture/resource-admission.md); Local Runtime supplies samples. Verify `test/resources/`.
-- Workspace catalog references and binding generations own file identity. Native write admission uses `workspace/access`; execution-capacity scheduling remains private. File resources use `WorkspaceState`; Scope configuration and event sequencing use `ScopedState`. Startup contributions declare Workspace ownership when they depend on working files.
+- Workspace catalog/binding generations own file identity. `workspace/access` owns native claims and maintenance drainage; capacity scheduling stays private. File resources use `WorkspaceState`; Scope configuration/events use `ScopedState`. Startup contributions declare Workspace ownership. Verify `test/workspace/access-maintenance.test.ts`.
 - Tool `resourceNeeds` augments static requirements through the resolver. Follow `add-tool`.
 - Environment ownership: [Environments](../../docs/architecture/environments.md).
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.

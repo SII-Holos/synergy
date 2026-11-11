@@ -21,7 +21,7 @@ Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClien
 
 Workspace removal and reclamation share the lifecycle gate and native retirement claim. Git/setup commands use the Workspace process owner; short metadata mutations cannot reserve read-only turns as writers. Preserve active users, on-disk locks and unverified commits. Run `bun test test/workspace` and Presets worktree suites.
 
-Workspace coordination owns physical overlap/process identity across Runtimes. Bind claims before commands and retain through exit. Windows Job Objects, macOS coalitions and Linux subreaper receipts prove liveness; native workers drain independently. Validate `bun test test/process/owned-process.test.ts test/workspace/bash-footprint.test.ts` and Windows suites on Windows.
+Workspace coordination owns physical overlap/process identity across Runtimes. Bind before commands; retain through saving. `isReleased` verifies the original native token, including recovered releases. Windows Jobs, macOS coalitions and Linux subreapers prove liveness. Verify `test/process/owned-process.test.ts`, `test/workspace/{access-maintenance,bash-footprint}.test.ts` and Windows suites.
 
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
