@@ -314,6 +314,8 @@ import type {
   OrgSessionSyncSnapshotErrors,
   OrgSessionSyncSnapshotResponses,
   OrgSessionSyncUploadBlobResponses,
+  OrgSessionTranscriptTasksErrors,
+  OrgSessionTranscriptTasksResponses,
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
   OrgShareChange,
@@ -1886,6 +1888,46 @@ export class OrgSessionSync extends HeyApiClient {
       ThrowOnError
     >({
       url: "/org/v1/sessions/{sessionID}/blobs/{hash}/content",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class OrgSessionTranscript extends HeyApiClient {
+  /**
+   * Read a bounded visible task page at a shared checkpoint
+   */
+  public tasks<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      sourceSessionID?: string
+      limit?: number
+      cursor?: string
+      watermark?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "sourceSessionID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "watermark" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgSessionTranscriptTasksResponses,
+      OrgSessionTranscriptTasksErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/sync/tasks",
       ...options,
       ...params,
     })
@@ -4242,6 +4284,8 @@ export class OrganizationClient extends HeyApiClient {
   orgSessions = new OrgSessions({ client: this.client })
 
   orgSessionSync = new OrgSessionSync({ client: this.client })
+
+  orgSessionTranscript = new OrgSessionTranscript({ client: this.client })
 
   orgSessionInteractions = new OrgSessionInteractions({ client: this.client })
 

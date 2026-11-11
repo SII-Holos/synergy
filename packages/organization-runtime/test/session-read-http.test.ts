@@ -88,6 +88,13 @@ test("generated native and organization clients read one private history through
         })
         await Session.updatePart({ id: partID, sessionID, messageID, type: "text", text })
         await Session.flushPartWrites(sessionID)
+        await Session.create({
+          parentID: sessionID,
+          workspaceID: null,
+          cortex: { taskID: "task-private-read", parentSessionID: sessionID, parentMessageID: messageID,
+            description: "A native private task", prompt: "Private delegation input", agent: "general", status: "completed", startedAt: 1,
+            output: { mode: "summary", value: "Private delegation result" } },
+        })
       },
     })
   })
@@ -110,6 +117,13 @@ test("generated native and organization clients read one private history through
   expect(Read.matches(query, remote, local.binding)).toBeTrue()
   expect(local.operation === "timeline" && local.items[0]?.messageID).toBe(messageID)
   expect(remote.operation === "timeline" && remote.items).toEqual(local.operation === "timeline" && local.items)
+  const tasks = Read.Query.parse({ operation: "tasks", rootSessionID: sessionID, limit: 1 })
+  const localTasks = Read.Result.parse((await client.orgLocalSession.read({ orgPrivateReadQuery: tasks }, { throwOnError: true })).data)
+  const remoteTasks = Read.Result.parse((await service.client.orgSessionRead.read({ sessionID, orgPrivateReadQuery: tasks }, { headers: service.headers, throwOnError: true })).data)
+  expect(Read.matches(tasks, remoteTasks, localTasks.binding)).toBeTrue()
+  expect(localTasks.operation === "tasks" && localTasks.items[0]?.taskID).toBe("task-private-read")
+  expect(remoteTasks.operation === "tasks" && remoteTasks.items).toEqual(localTasks.operation === "tasks" && localTasks.items)
+  expect(JSON.stringify(remoteTasks)).not.toContain("Private delegation")
   const field = Read.Query.parse({
     operation: "partContent",
     rootSessionID: sessionID,

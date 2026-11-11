@@ -13,6 +13,7 @@ import { inviteCatalogMigration } from "./auth/invite-migration"
 import { knowledgeSelectionMigration } from "./knowledge-selection"
 import { sharedBlobMigration } from "./shared-blob"
 import { organizationAuthorityMigration } from "./authority-history"
+import { sharedTaskMigration } from "./shared-tasks"
 
 const migrations: Migration[] = [
   executionMigration,
@@ -20,6 +21,7 @@ const migrations: Migration[] = [
   sharedProjectionMigration,
   sharedWindowMigration,
   sharedWindowHistoryMigration,
+  sharedTaskMigration,
   publicationMigration,
   inviteCatalogMigration,
   knowledgeSelectionMigration,

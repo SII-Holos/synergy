@@ -74,6 +74,13 @@ export function sharingRoutes(publicOrigin?: string) {
       async (c) => c.json(await Sharing.parts(credentials(c), c.req.valid("param").sessionID, { ...c.req.valid("query"), messageID: c.req.valid("param").messageID })),
     )
     .get(
+      "/sessions/:sessionID/sync/tasks",
+      operation("orgSessionTranscript.tasks", "Read a bounded visible task page at a shared checkpoint", Sync.TaskPage),
+      validator("param", target, validation),
+      validator("query", Sync.TaskQuery, validation),
+      async (c) => c.json(await Sharing.tasks(credentials(c, "sessions.read"), c.req.valid("param").sessionID, c.req.valid("query"))),
+    )
+    .get(
       "/sessions/:sessionID/sync/events",
       operation("orgSessionSync.events", "Read committed safe Session projection events", Sync.EventPage),
       validator("param", target, validation),

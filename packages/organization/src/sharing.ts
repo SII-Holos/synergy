@@ -16,6 +16,7 @@ import { OrganizationError, fail, revision } from "./error"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationSharedProjection as Projection } from "./shared-projection"
+import { OrganizationSharedTasks as Tasks } from "./shared-tasks"
 import { runtimeAuthority, assertRuntimeConnection } from "./runtime-authority"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
 
@@ -153,6 +154,7 @@ async function transcriptSnapshot<T>(
   source: string | undefined,
   watermark: number | undefined,
   read: (context: { session: Record.SessionDirectory; sourceSessionID: string; watermark: number }) => Promise<T>,
+  prepare?: (input: { sessionID: string; generation: number; watermark: number; authorize(): Promise<unknown> }) => Promise<void>,
 ) {
   const initial = await Storage.snapshot(() => authorize(credentials, "session.read", { sessionID }))
   const generation = initial.session.shareGeneration
@@ -163,11 +165,19 @@ async function transcriptSnapshot<T>(
     return current.session
   }
   await check()
-  await Projection.prepare(sessionID, generation, check)
-  return Storage.snapshot(async () => {
+  const fixed = prepare ? await Storage.snapshot(async () => {
     const session = await check()
     const state = await currentState(session)
     const selected = watermark ?? state.nextSeq - 1
+    if (selected >= state.nextSeq) fail("REVISION_CONFLICT", "Snapshot watermark is ahead of its checkpoint")
+    return selected
+  }) : undefined
+  if (prepare && fixed !== undefined) await prepare({ sessionID, generation, watermark: fixed, authorize: check })
+  else await Projection.prepare(sessionID, generation, check)
+  return Storage.snapshot(async () => {
+    const session = await check()
+    const state = await currentState(session)
+    const selected = fixed ?? watermark ?? state.nextSeq - 1
     if (selected >= state.nextSeq) fail("REVISION_CONFLICT", "Snapshot watermark is ahead of its checkpoint")
     const sourceSessionID = source ?? sessionID
     if (sourceSessionID !== sessionID) {
@@ -192,7 +202,7 @@ const WindowPosition = z.strictObject({
   sourceSessionID: Identity.ID,
   shareGeneration: Identity.Revision,
   watermark: Identity.Revision,
-  kind: z.enum(["messages", "parts"]),
+  kind: z.enum(["messages", "parts", "tasks"]),
   messageID: Identity.ID.optional(),
   position: z.array(Identity.ID).min(1).max(2),
 })
@@ -493,6 +503,18 @@ async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) 
 
 export namespace OrganizationSharing {
   export const describe = view
+  export async function tasks(credentials: Credentials, sessionID: string, value: Sync.TaskQuery) {
+    const query = Sync.TaskQuery.parse(value)
+    const cursor = decodeWindowCursor(query.cursor, WindowPosition)
+    const after = cursor && z.tuple([Identity.ID]).parse(cursor.position)[0]
+    return transcriptSnapshot(credentials, sessionID, query.sourceSessionID ?? cursor?.sourceSessionID,
+      query.watermark ?? cursor?.watermark, async ({ session, sourceSessionID, watermark }) => {
+        const binding: WindowBinding = { sessionID, sourceSessionID, shareGeneration: session.shareGeneration, watermark, kind: "tasks" }
+        checkWindowCursor(cursor, binding)
+        const page = await Tasks.page({ sessionID, generation: session.shareGeneration, parentSessionID: sourceSessionID, watermark, after, limit: query.limit })
+        return Sync.TaskPage.parse({ sessionID, sourceSessionID, shareGeneration: session.shareGeneration, watermark, items: page.items, cursor: page.cursor ? encodeWindowCursor([page.cursor], [], binding) : undefined })
+      }, Tasks.prepare)
+  }
   export async function messages(credentials: Credentials, sessionID: string, value: Sync.MessageQuery) {
     const query = Sync.MessageQuery.parse(value)
     const cursor = decodeWindowCursor(query.cursor, WindowPosition)

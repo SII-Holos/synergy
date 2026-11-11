@@ -69,6 +69,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
   for (const [index, [method, path]] of (
     [
       ["GET", "/org/v1/sessions/session-one/sync/messages?limit=32"],
+      ["GET", "/org/v1/sessions/session-one/sync/tasks?limit=32"],
       ["GET", "/org/v1/sessions/session-one/sync/messages/message-one/parts?limit=64"],
       ["GET", "/org/v1/runtimes/runtime-one/connection"],
       ["GET", "/org/v1/sessions/session-one/knowledge/status"],
@@ -101,7 +102,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
     })
     expect(result).toMatchObject({ ok: true, value: { status: 200 } })
   }
-  expect(calls).toBe(22)
+  expect(calls).toBe(23)
   ipc.dispose()
 })
 

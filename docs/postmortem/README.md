@@ -14,7 +14,7 @@
 - **Summary**.
 - **Timeline** — observations.
 - **Root cause**.
-- **Guardrails** — tests, docs, gates. A memory-residency failure also includes a checked machine check, `- [x] Machine check: <lint selector or contract test name>`, naming one new or tightened item. See [Memory residency scope](../operations/memory-residency-scope.md).
+- **Guardrails** — tests, docs, gates. A memory-residency failure also includes a checked machine check, `- [x] Machine check: <lint selector or contract test name>`, naming one item. See [Memory residency scope](../operations/memory-residency-scope.md).
 - **Lessons**.
 
 ## Index

@@ -338,6 +338,9 @@ export function startMemberSyncExporter(input: {
         description: safeSummary(cortex.description, 512),
         completedAt: cortex.completedAt,
         summary,
+        agent: safeSummary(cortex.agent, 256),
+        model: cortex.model,
+        category: cortex.category === undefined ? undefined : safeSummary(cortex.category, 512),
       }
       await putDraft(
         bound.rootSessionID,
@@ -356,6 +359,9 @@ export function startMemberSyncExporter(input: {
           notifyParentOnComplete: cortex.notifyParentOnComplete,
           deliveryNotifiedAt: cortex.deliveryNotifiedAt,
           summary,
+          agent: safe.agent,
+          model: safe.model,
+          category: safe.category,
           integrity: digest(safe),
         }),
       )

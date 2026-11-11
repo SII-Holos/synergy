@@ -1,6 +1,6 @@
 # Organization Service
 
-Own identity, authorization, resources, publication/projection storage, forwarding and handoff coordination. Never run Agent loops or import Runtime presets. Execution, Workspace heads and Environment lifecycle remain with canonical owners. See [organization architecture](../../docs/architecture/organization.md).
+Own identity, authorization, resources, publication/projection storage, forwarding and handoff. Never run Agent loops or import Runtime presets. Preserve native Execution/Workspace/Environment owners. See [organization architecture](../../docs/architecture/organization.md).
 
 Use an isolated Storage Handle, central migrations and owner-local keys. Keep authorization and admission in the same organization transaction; Runtime acceptance is separate. Prepare binary objects before retryable metadata transactions. Downloads and receipt reads require current authorization. Never copy private member Session bodies into forwarding records.
 
@@ -20,7 +20,7 @@ Commands derive actors from validated credentials and capture live connections i
 
 Resource secrets remain separate. Atomically update grants, bind from native evidence, inspect retention without acquisition, release drained generations and fence old capabilities. Gateways reauthorize, commit before transmission and retain capacity through drainage; preserve native budgets. Verify resource, grant, retention, release, gateway and migration suites.
 
-Sharing owns creator-only CAS, generation fencing, visibility indexes and checkpoint/idempotency commits. Explicit opt-in shares portable transcript DTOs and content references; private bodies remain Runtime-owned. Authorize every projection/blob read; never expose local paths, credentials or permanent asset URLs. Verify sharing/transcript suites and regenerate SDK after protocol/routes change.
+Sharing owns creator-only CAS, generation fencing, visibility indexes and checkpoint/idempotency commits. Explicit opt-in shares portable transcript DTOs and content references; private bodies remain Runtime-owned. Task pages seek canonical event versions at a fixed watermark and catch up later writes. Authorize every projection/blob read; never expose local paths, credentials or permanent asset URLs. Verify sharing/transcript/shared-tasks suites and regenerate SDK after protocol/routes change.
 
 Creator-only history and collaborative pending reads use distinct signed transient queries, exact bindings and post-response authorization; never persist bodies. Replies use command admission and current roles; archived projects allow existing confirmations. Verify session-read, interactions and decision-forwarding suites.
 
@@ -28,4 +28,4 @@ Publications verify immutable chunks before release. Knowledge stages pages befo
 
 Cloud locators own attribution only. Keep file CAS and operation receipts atomic and compose explicit infrastructure without personal configuration. Verify `test/cloud.test.ts`.
 
-Tests live under `test/` with isolated storage, Homes and ports. Run package typecheck and focused suites; preserve active Runtimes.
+Tests use isolated storage, Homes and ports under `test/`; preserve active Runtimes.

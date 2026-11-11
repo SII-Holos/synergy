@@ -1,5 +1,17 @@
 import { expect, test } from "bun:test"
 import { OrganizationReadProtocol as Read } from "../src/read"
+
+test("private task pages bind every visible child to the selected native parent without payload fields", () => {
+  const query = Read.Query.parse({ operation: "tasks", rootSessionID: "root", sourceSessionID: "parent", limit: 2 })
+  const binding = { schemaVersion: 1 as const, orgID: "org", projectID: "project", creatorID: "creator", driverRuntimeID: "runtime", bindingEpoch: 1 }
+  const item = { sessionID: "child", taskID: "task", parentSessionID: "parent", parentMessageID: "message", status: "completed", description: "Task description", startedAt: 1 }
+  const result = Read.Result.parse({ operation: "tasks", rootSessionID: "root", sourceSessionID: "parent", binding, items: [item], total: 1 })
+  expect(Read.matches(query, result, binding)).toBeTrue()
+  expect(Read.matches(query, { ...result, items: [{ ...item, parentSessionID: "foreign" }] } as typeof result, binding)).toBeFalse()
+  expect(Read.Result.safeParse({ ...result, items: [{ ...item, prompt: "private prompt" }] }).success).toBeFalse()
+  expect(Read.Query.safeParse({ operation: "tasks", rootSessionID: "root", limit: 65 }).success).toBeFalse()
+})
+
 test("private reads select fixed session operations and bounded content windows", () => {
   expect(Read.Query.parse({ operation: "timeline", rootSessionID: "session-one" })).toMatchObject({
     operation: "timeline",

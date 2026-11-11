@@ -24,7 +24,7 @@ The Cortex layer consumes this lower-level projection rather than introducing an
 
 ## Consequences
 
-Native task-summary reads remain bounded independently of sibling count after preparation. The one-time owning upgrade can traverse a complete parent's metadata but never reads its message histories. Canonical task execution, output, cancellation and transfer owners remain unchanged. The existing unqualified whole-Scope task search and organization transport/UI task panels are separate consumers to complete; this unit supplies the native page and qualified cold read contract.
+Native task-summary reads remain bounded independently of sibling count after preparation. The one-time owning upgrade can traverse a complete parent's metadata but never reads its message histories. Canonical task execution, output, cancellation and transfer owners remain unchanged. [Organization task metadata](2026-11-12-page-organization-task-metadata-at-native-checkpoints.md) consumes this native page through the private dispatcher and shared event checkpoints. The unqualified whole-Scope task search and task-panel rendering remain separate consumers.
 
 ## Verification
 

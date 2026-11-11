@@ -133,6 +133,15 @@ export namespace OrganizationSyncProtocol {
   })
   export type CortexProjection = z.infer<typeof CortexProjection>
 
+  export const TaskSummary = CortexProjection.omit({ visibility: true }).extend({
+    sessionID: Identity.ID,
+    deliveryNotifiedAt: z.number().int().nonnegative().optional(),
+    agent: z.string().max(256).optional(),
+    model: z.strictObject({ providerID: z.string().max(256), modelID: z.string().max(512) }).optional(),
+    category: z.string().max(512).optional(),
+  }).meta({ ref: "OrgTaskSummary" })
+  export type TaskSummary = z.infer<typeof TaskSummary>
+
   export const SessionProjection = z.strictObject({
     sessionID: Identity.ID,
     projectID: Identity.ID,
@@ -227,6 +236,9 @@ export namespace OrganizationSyncProtocol {
     deliveryNotifiedAt: z.number().int().nonnegative().optional(),
     summary: z.string().max(32 * 1024),
     integrity: Protocol.Digest,
+    agent: TaskSummary.shape.agent,
+    model: TaskSummary.shape.model,
+    category: TaskSummary.shape.category,
   })
   const NotificationEvent = z.strictObject({
     type: z.literal("notification"),
@@ -280,6 +292,8 @@ export namespace OrganizationSyncProtocol {
     watermark: z.coerce.number().int().nonnegative().safe().optional(),
   })
   export type MessageQuery = z.input<typeof MessageQuery>
+  export const TaskQuery = MessageQuery.omit({ latest: true })
+  export type TaskQuery = z.input<typeof TaskQuery>
   export const PartQuery = MessageQuery.extend({
     messageID: Identity.ID,
     limit: z.coerce.number().int().min(1).max(128).default(64),
@@ -298,6 +312,9 @@ export namespace OrganizationSyncProtocol {
   export const PartPage = z
     .strictObject({ ...window, messageID: Identity.ID, items: z.array(PartEvent).max(128), complete: z.boolean() })
     .meta({ ref: "OrgSharedPartPage" })
+  export const TaskPage = z
+    .strictObject({ ...window, items: z.array(TaskSummary).max(64) })
+    .meta({ ref: "OrgSharedTaskPage" })
 
   export const Batch = z
     .strictObject({

@@ -3191,6 +3191,25 @@ export type OrgSessionBinding = {
   bindingEpoch: number
 }
 
+export type OrgTaskSummary = {
+  taskID: string
+  parentSessionID: string
+  parentMessageID: string
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  description: string
+  startedAt: number
+  completedAt?: number
+  notifyParentOnComplete?: boolean
+  sessionID: string
+  deliveryNotifiedAt?: number
+  agent?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  category?: string
+}
+
 export type ActorStamp =
   | {
       subjectID: string
@@ -3244,6 +3263,15 @@ export type ActorStamp =
     }
 
 export type OrgPrivateReadResult =
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "tasks"
+      items: Array<OrgTaskSummary>
+      total: number
+      cursor?: string
+    }
   | {
       rootSessionID: string
       sourceSessionID: string
@@ -3578,6 +3606,13 @@ export type OrgPrivateReadQuery =
       rootSessionID: string
       sourceSessionID?: string
       operation: "session"
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "tasks"
+      cursor?: string
+      limit?: number
     }
   | {
       rootSessionID: string

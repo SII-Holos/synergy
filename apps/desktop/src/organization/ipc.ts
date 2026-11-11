@@ -30,7 +30,7 @@ const routes: [string, RegExp][] = [
   ["GET", /^\/org\/v1\/(organization|accounts|invites|projects|runtimes|resources|auth\/session)$/],
   ["GET", new RegExp(`^/org/v1/(projects|runtimes|resources|sessions)/${id}$`)],
   ["GET", new RegExp(`^/org/v1/projects/${id}/(members|member-candidates|sessions|resources)$`)],
-  ["GET", new RegExp(`^/org/v1/sessions/${id}/(resources|share|sync/events|sync/search|sync/snapshot)$`)],
+  ["GET", new RegExp(`^/org/v1/sessions/${id}/(resources|share|sync/events|sync/search|sync/snapshot|sync/tasks)$`)],
   ["GET", new RegExp(`^/org/v1/sessions/${id}/sync/messages(?:/${id}/parts)?$`)],
   ["GET", new RegExp(`^/org/v1/runtimes/${id}/connection$`)],
   ["GET", new RegExp(`^/org/v1/sessions/${id}/commands/${id}$`)],

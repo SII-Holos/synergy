@@ -13,6 +13,12 @@ export namespace OrganizationReadProtocol {
       z.strictObject({ ...target, operation: z.literal("session") }),
       z.strictObject({
         ...target,
+        operation: z.literal("tasks"),
+        cursor: cursor.optional(),
+        limit: z.number().int().min(1).max(64).default(32),
+      }),
+      z.strictObject({
+        ...target,
         operation: z.literal("timeline"),
         cursor: cursor.optional(),
         limit: z.number().int().min(1).max(64).default(32),
@@ -151,6 +157,13 @@ export namespace OrganizationReadProtocol {
     .discriminatedUnion("operation", [
       z.strictObject({
         ...envelope,
+        operation: z.literal("tasks"),
+        items: z.array(Sync.TaskSummary).max(64),
+        total: z.number().int().nonnegative().safe(),
+        cursor: cursor.optional(),
+      }).refine((value) => value.total >= value.items.length, "Task counts cannot omit returned rows"),
+      z.strictObject({
+        ...envelope,
         operation: z.literal("session"),
         session: z.strictObject({
           sessionID: Identity.ID,
@@ -234,6 +247,10 @@ export namespace OrganizationReadProtocol {
     if (query.operation === "session" && result.operation === "session")
       return result.session.sessionID === result.sourceSessionID
     if (query.operation === "timeline" && result.operation === "timeline") return result.items.length <= query.limit
+    if (query.operation === "tasks" && result.operation === "tasks")
+      return result.items.length <= query.limit &&
+        new Set(result.items.map((item) => item.sessionID)).size === result.items.length &&
+        result.items.every((item) => item.parentSessionID === result.sourceSessionID && item.sessionID !== result.sourceSessionID)
     if (query.operation === "parts" && result.operation === "parts")
       return (
         result.messageID === query.messageID &&

@@ -7,6 +7,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
+import { SessionCortexIndex } from "@ericsanchezok/synergy-harness/session/cortex-index"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -121,6 +122,22 @@ export function createSessionReader(options: {
       workspace: null,
       async fn(): Promise<Read.Result> {
         switch (query.operation) {
+          case "tasks": {
+            await SessionCortexIndex.prepare(source.scope.id, source.id)
+            signal?.throwIfAborted()
+            const page = await SessionCortexIndex.page(source.scope.id, source.id, { limit: query.limit, cursor: query.cursor })
+            return {
+              ...envelope,
+              operation: "tasks",
+              ...page,
+              items: await Promise.all(page.items.map(async (item) => Sync.TaskSummary.strip().parse({
+                ...item,
+                description: await safe(item.description),
+                agent: await safe(item.agent, 256),
+                category: item.category === undefined ? undefined : await safe(item.category),
+              }))),
+            }
+          }
           case "session":
             return {
               ...envelope,

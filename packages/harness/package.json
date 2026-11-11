@@ -93,6 +93,7 @@
     "./session": "./src/session/index.ts",
     "./session/invoke": "./src/session/invoke.ts",
     "./session/interaction": "./src/session/interaction.ts",
+    "./session/cortex-index": "./src/session/cortex-index.ts",
     "./session/decision-receipts": "./src/session/decision-receipts.ts",
     "./session/pending-window": "./src/session/pending-window.ts",
     "./session/lifecycle": "./src/session/lifecycle.ts",

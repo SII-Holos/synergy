@@ -720,6 +720,12 @@ export type OrgSyncEvent =
       deliveryNotifiedAt?: number
       summary: string
       integrity: string
+      agent?: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      category?: string
     }
   | {
       type: "notification"
@@ -828,6 +834,34 @@ export type OrgSharedPartPage = {
     integrity: string
   }>
   complete: boolean
+}
+
+export type OrgTaskSummary = {
+  taskID: string
+  parentSessionID: string
+  parentMessageID: string
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  description: string
+  startedAt: number
+  completedAt?: number
+  notifyParentOnComplete?: boolean
+  sessionID: string
+  deliveryNotifiedAt?: number
+  agent?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  category?: string
+}
+
+export type OrgSharedTaskPage = {
+  sessionID: string
+  sourceSessionID: string
+  shareGeneration: number
+  watermark: number
+  cursor?: string
+  items: Array<OrgTaskSummary>
 }
 
 export type OrgSyncEventPage = {
@@ -987,6 +1021,15 @@ export type OrgInteractionQuery =
     }
 
 export type OrgPrivateReadResult =
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "tasks"
+      items: Array<OrgTaskSummary>
+      total: number
+      cursor?: string
+    }
   | {
       rootSessionID: string
       sourceSessionID: string
@@ -1321,6 +1364,13 @@ export type OrgPrivateReadQuery =
       rootSessionID: string
       sourceSessionID?: string
       operation: "session"
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "tasks"
+      cursor?: string
+      limit?: number
     }
   | {
       rootSessionID: string
@@ -5078,6 +5128,59 @@ export type OrgSessionSyncPartsResponses = {
 }
 
 export type OrgSessionSyncPartsResponse = OrgSessionSyncPartsResponses[keyof OrgSessionSyncPartsResponses]
+
+export type OrgSessionTranscriptTasksData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    sourceSessionID?: string
+    limit?: number
+    cursor?: string
+    watermark?: number
+  }
+  url: "/org/v1/sessions/{sessionID}/sync/tasks"
+}
+
+export type OrgSessionTranscriptTasksErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionTranscriptTasksError = OrgSessionTranscriptTasksErrors[keyof OrgSessionTranscriptTasksErrors]
+
+export type OrgSessionTranscriptTasksResponses = {
+  /**
+   * Success
+   */
+  200: OrgSharedTaskPage
+}
+
+export type OrgSessionTranscriptTasksResponse =
+  OrgSessionTranscriptTasksResponses[keyof OrgSessionTranscriptTasksResponses]
 
 export type OrgSessionSyncEventsData = {
   body?: never
