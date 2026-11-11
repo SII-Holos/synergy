@@ -3,6 +3,7 @@ import path from "node:path"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { TransactionalStore, type StoreOptions } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { ensureMigrations } from "@ericsanchezok/synergy-harness/migration"
@@ -42,6 +43,7 @@ import { OrganizationCloud, type OrganizationCloudOptions } from "./cloud"
 import { OrganizationSessionDirectory } from "./session-directory"
 import { createHandoffs, registerHandoffAuthorityHistory } from "./handoff"
 import { createSessionReadForwarder } from "./session-read"
+import { OrganizationServiceMaintenance } from "./service-maintenance"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -92,7 +94,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
     const active = new Set<Promise<unknown>>()
     async function run<T>(body: () => T | Promise<T>): Promise<T> {
       if (!ready) throw new Error("Organization service is closed")
-      const pending = context.run(async () => body())
+      const pending = context.run(() => OrganizationServiceMaintenance.run(body))
       active.add(pending)
       try {
         return await pending
@@ -109,6 +111,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
         await modelGateway?.close()
         await connectionGateway?.close()
         await Promise.allSettled([...active])
+        await OrganizationServiceMaintenance.stop()
         const errors: unknown[] = []
         try {
           ObservabilityMetrics.stop()
@@ -164,6 +167,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       OrganizationArtifacts.registerAuthorityHistory()
       OrganizationCloud.registerAuthorityHistory()
       registerOrganizationMigrations()
+      OrganizationServiceMaintenance.register()
       OrganizationCloud.register(options.cloud)
       OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
         if (!connections) throw new Error("Organization Runtime presence is unavailable")
@@ -178,6 +182,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       await OrganizationAuthorityHistory.attach(deployment)
       connections = createRuntimeConnections({
         run,
+        captureTail: OrganizationServiceMaintenance.captureTail,
         settings: settings.connections,
         signingIdentity: signing.identity,
         onResult: (connection, result) => admissions.observe(connection, result),
@@ -189,8 +194,16 @@ export async function openOrganizationService(options: OrganizationServiceOption
       const commands = createCommandForwarder({ admissions, connections })
       const reads = createSessionReadForwarder({ connections, signing })
       const gatewayCalls = createGatewayCalls({ connections, signing })
-      modelGateway = createModelGateway({ calls: gatewayCalls, run: async (body) => context.run(body) })
-      connectionGateway = createConnectionGateway({ calls: gatewayCalls, run: async (body) => context.run(body) })
+      modelGateway = createModelGateway({
+        calls: gatewayCalls,
+        run: async (body) => context.run(body),
+        captureTail: OrganizationServiceMaintenance.captureTail,
+      })
+      connectionGateway = createConnectionGateway({
+        calls: gatewayCalls,
+        run: async (body) => context.run(body),
+        captureTail: OrganizationServiceMaintenance.captureTail,
+      })
       const execution = createExecutionGrants({
         admissions,
         connections,
@@ -222,7 +235,34 @@ export async function openOrganizationService(options: OrganizationServiceOption
       return {
         home,
         bootstrapToken: () => run(() => authentication.bootstrapToken()),
-        fetch: (request: Request, server?: Server<RuntimeSocket>) => run(() => app.fetch(request, { server })),
+        async fetch(request: Request, server?: Server<RuntimeSocket>) {
+          try {
+            return await run(() => app.fetch(request, { server }))
+          } catch (error) {
+            if (!(error instanceof RuntimeMaintenance.Blocked)) throw error
+            return Response.json(
+              {
+                code: "SERVICE_UNAVAILABLE",
+                message: "Organization maintenance holds new operations",
+                outcome: "not_dispatched",
+                retryable: true,
+              },
+              { status: 503 },
+            )
+          }
+        },
+        maintenance: Object.freeze({
+          async run<T>(body: () => Promise<T>): Promise<T> {
+            if (!ready) throw new Error("Organization service is closed")
+            const pending = context.run(body)
+            active.add(pending)
+            try {
+              return await pending
+            } finally {
+              active.delete(pending)
+            }
+          },
+        }),
         websocket: connections.websocket,
         deployment: () =>
           run(async () =>

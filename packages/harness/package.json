@@ -396,6 +396,7 @@
     "./secrets/vault": "./src/secrets/vault.ts",
     "./secrets/encrypted-store": "./src/secrets/encrypted-store.ts",
     "./lifecycle/context": "./src/lifecycle/context.ts",
+    "./lifecycle/namespace-identity": "./src/lifecycle/namespace-identity.ts",
     "./lifecycle/home-ownership": "./src/lifecycle/home-ownership.ts",
     "./lifecycle/home-ownership-file": "./src/lifecycle/home-ownership-file.ts",
     "./test/migration/fixture": "./test/migration/fixture.ts",

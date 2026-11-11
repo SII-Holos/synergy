@@ -12,6 +12,7 @@ import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { registerOrganizationKnowledge } from "./knowledge-source"
 import { createMemberKnowledgeTool } from "./tools/knowledge"
 import { registerOrganizationHomeMigration } from "./home-migration"
+import { registerOrganizationNamespaceIdentity } from "./namespace-identity"
 
 export function registerMemberSources(identity: RuntimeIdentity) {
   registerSessionSchema({ orgID: identity.orgID })
@@ -21,6 +22,7 @@ export function registerMemberSources(identity: RuntimeIdentity) {
     readerContract: NativeHomeReaderContract,
   })
   registerOrganizationHomeMigration(identity)
+  registerOrganizationNamespaceIdentity(identity)
   ConfigSource.register({
     resolve: async ({ scope }) =>
       (await import("@ericsanchezok/synergy-harness/config/project-source")).ProjectConfig.fields(scope, [

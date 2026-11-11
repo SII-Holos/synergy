@@ -2,7 +2,7 @@
 
 Own identity, authorization, resources, publication/projection storage, forwarding and handoff. Never run Agent loops or import Runtime presets. Preserve native Execution/Workspace/Environment owners. See [organization architecture](../../docs/architecture/organization.md).
 
-Use an isolated Storage Handle, central migrations and owner-local keys. Keep authorization and admission in the same organization transaction; Runtime acceptance is separate. Prepare binary objects before retryable metadata transactions. Downloads and receipt reads require current authorization. Never copy private member Session bodies into forwarding records.
+Use isolated Storage Handles, central migrations and owner-local keys. Commit authorization with admission; Runtime acceptance is separate. Prepare binaries before metadata transactions. Reauthorize downloads/receipts. Never copy private member bodies into forwarding records.
 
 Route actions through `authorization.ts`, resolving stored ownership before roles; deny unknown actions. Archived projects allow stopping, not new execution. Authentication and one-time token consumption belong to `auth/`. Do not duplicate role matrices in routes or Runtime adapters.
 
@@ -28,4 +28,4 @@ Publications verify immutable chunks before release. Knowledge stages pages befo
 
 Cloud locators own attribution only. Keep file CAS and operation receipts atomic and compose explicit infrastructure without personal configuration. Verify `test/cloud.test.ts`.
 
-Tests use isolated storage, Homes and ports under `test/`; preserve active Runtimes.
+Track accepted service operations and exact completions through maintenance. Freeze the service/hosted roster before capture; incomplete resource segments block completion. Verify service-maintenance/cohort suites with isolated Homes.

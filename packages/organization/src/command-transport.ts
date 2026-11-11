@@ -7,6 +7,7 @@ import {
   OrganizationHandoffProtocol as Handoff,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationError, fail } from "./error"
+import type { OrganizationServiceMaintenance } from "./service-maintenance"
 
 const commandChunkBytes = Runtime.commandChunkBytes
 
@@ -20,11 +21,13 @@ export function createCommandTransport(input: {
   current(): Protocol.Handshake
   buffered(): number
   send(frame: Runtime.ServerFrame): number
+  captureTail?(): OrganizationServiceMaintenance.Tail
 }) {
   const pending = new Map<
     string,
     {
       command: Command.Delivery
+      tail?: OrganizationServiceMaintenance.Tail
       resolve(reply: Command.Reply): void
       reject(error: InstanceType<typeof OrganizationError>): void
     }
@@ -166,86 +169,98 @@ export function createCommandTransport(input: {
       options: { signal: AbortSignal; deadline: number },
     ): Promise<Command.Reply> {
       const command = Command.Delivery.parse(value)
-      const release = await waitForCapacity(command, options)
-      let handshake: Protocol.Handshake
-      let exchangeID: string
+      const tail = input.captureTail?.()
       try {
-        if (closed || options.signal.aborted)
-          throw failure("not_dispatched", "Command request ended before transmission")
-        handshake = input.current()
-        exchangeID = crypto.randomUUID()
-      } catch (error) {
-        release()
-        throw error
-      }
-      return new Promise((resolve, reject) => {
-        function clear() {
-          pending.delete(exchangeID)
-          clearTimeout(timer)
-          options.signal.removeEventListener("abort", cancel)
-          wake()
-        }
-        function cancel() {
-          clear()
-          reject(failure("unknown", "Command response was not observed before the request ended"))
-        }
-        const timer = setTimeout(cancel, Math.min(options.deadline - Date.now(), 2 ** 31 - 1))
-        timer.unref()
-        options.signal.addEventListener("abort", cancel, { once: true })
-        pending.set(exchangeID, {
-          command,
-          resolve(reply) {
-            clear()
-            resolve(reply)
-          },
-          reject(error) {
-            clear()
-            reject(error)
-          },
-        })
-        release()
+        const release = await waitForCapacity(command, options)
+        let handshake: Protocol.Handshake
+        let exchangeID: string
         try {
-          const payload = new TextEncoder().encode(JSON.stringify(command))
-          const send = (frame: Runtime.ServerFrame) => {
-            // Provenance: https://bun.sh/docs/runtime/http/websockets#backpressure
-            // Bun's -1 is enqueued; only 0 proves a nonempty frame was dropped. Never resend an enqueued frame.
-            return input.send(frame)
+          if (closed || options.signal.aborted)
+            throw failure("not_dispatched", "Command request ended before transmission")
+          handshake = input.current()
+          exchangeID = crypto.randomUUID()
+        } catch (error) {
+          release()
+          throw error
+        }
+        return await new Promise<Command.Reply>((resolve, reject) => {
+          function clear() {
+            pending.delete(exchangeID)
+            clearTimeout(timer)
+            options.signal.removeEventListener("abort", cancel)
+            wake()
           }
-          if (payload.byteLength <= commandChunkBytes) {
-            const sent = send({ type: "command", connectionEpoch: handshake.connectionEpoch, exchangeID, command })
-            if (sent === 0) {
+          function cancel() {
+            clear()
+            reject(failure("unknown", "Command response was not observed before the request ended"))
+          }
+          const timer = setTimeout(cancel, Math.min(options.deadline - Date.now(), 2 ** 31 - 1))
+          timer.unref()
+          options.signal.addEventListener("abort", cancel, { once: true })
+          pending.set(exchangeID, {
+            command,
+            tail,
+            resolve(reply) {
               clear()
-              reject(failure("not_dispatched", "Runtime did not receive the command frame"))
+              resolve(reply)
+            },
+            reject(error) {
+              clear()
+              reject(error)
+            },
+          })
+          release()
+          try {
+            const payload = new TextEncoder().encode(JSON.stringify(command))
+            const send = (frame: Runtime.ServerFrame) => {
+              // Provenance: https://bun.sh/docs/runtime/http/websockets#backpressure
+              // Bun's -1 is enqueued; only 0 proves a nonempty frame was dropped. Never resend an enqueued frame.
+              return input.send(frame)
             }
-          } else {
-            const total = Math.ceil(payload.byteLength / commandChunkBytes)
-            let enqueued = false
-            for (let index = 0; index < total; index++) {
-              const start = index * commandChunkBytes
-              const data = Buffer.from(
-                payload.subarray(start, Math.min(payload.byteLength, start + commandChunkBytes)),
-              ).toString("base64url")
-              const sent = send({
-                type: "command-chunk",
-                connectionEpoch: handshake.connectionEpoch,
-                exchangeID,
-                index,
-                total,
-                data,
-              })
+            if (payload.byteLength <= commandChunkBytes) {
+              const sent = send({ type: "command", connectionEpoch: handshake.connectionEpoch, exchangeID, command })
               if (sent === 0) {
                 clear()
-                reject(failure(enqueued ? "unknown" : "not_dispatched", "Runtime did not receive the command frame"))
-                return
+                reject(failure("not_dispatched", "Runtime did not receive the command frame"))
               }
-              enqueued = true
+            } else {
+              const total = Math.ceil(payload.byteLength / commandChunkBytes)
+              let enqueued = false
+              for (let index = 0; index < total; index++) {
+                const start = index * commandChunkBytes
+                const data = Buffer.from(
+                  payload.subarray(start, Math.min(payload.byteLength, start + commandChunkBytes)),
+                ).toString("base64url")
+                const sent = send({
+                  type: "command-chunk",
+                  connectionEpoch: handshake.connectionEpoch,
+                  exchangeID,
+                  index,
+                  total,
+                  data,
+                })
+                if (sent === 0) {
+                  clear()
+                  reject(failure(enqueued ? "unknown" : "not_dispatched", "Runtime did not receive the command frame"))
+                  return
+                }
+                enqueued = true
+              }
             }
+          } catch {
+            clear()
+            reject(failure("unknown", "Command transmission outcome is unknown"))
           }
-        } catch {
-          clear()
-          reject(failure("unknown", "Command transmission outcome is unknown"))
-        }
-      })
+        })
+      } finally {
+        tail?.close()
+      }
+    },
+    resume(exchangeID: string, reply: Command.Reply, body: () => Promise<void>): Promise<void> | undefined {
+      const request = pending.get(exchangeID)
+      if (!request?.tail) return
+      validate(request.command, reply)
+      return request.tail.run(body)
     },
     validate(exchangeID: string, reply: Command.Reply) {
       const request = pending.get(exchangeID)

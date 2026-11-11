@@ -12,6 +12,7 @@ import { OrganizationStoragePath as Keys } from "./storage/path"
 import { authorize } from "./authorization"
 import type { Credentials } from "./auth/session"
 import { fail, OrganizationError } from "./error"
+import type { OrganizationServiceMaintenance } from "./service-maintenance"
 import { createCommandTransport, type RuntimeConnectionLease } from "./command-transport"
 export type { RuntimeConnectionLease } from "./command-transport"
 
@@ -40,6 +41,7 @@ function stale(epoch: number): never {
 
 export function createRuntimeConnections(input: {
   run: <T>(body: () => T | Promise<T>) => Promise<T>
+  captureTail?(): OrganizationServiceMaintenance.Tail
   signingIdentity: Command.SigningIdentity
   settings?: RuntimeConnectionSettings
   onResult?: (connection: RuntimeConnectionLease, result: Command.Result) => Promise<unknown>
@@ -142,6 +144,7 @@ export function createRuntimeConnections(input: {
         current: () => current(socket),
         buffered: () => socket.getBufferedAmount(),
         send: (frame) => socket.send(JSON.stringify(frame)),
+        captureTail: input.captureTail,
       })
       transports.set(socket, transport)
     }
@@ -420,11 +423,24 @@ export function createRuntimeConnections(input: {
       const size = Buffer.byteLength(message)
       if (++socket.data.frames > 16 || (socket.data.bytes += size) > syncFrameLimit * 4)
         return close(socket, 1013, "Runtime receive window is full")
-      socket.data.pending = socket.data.pending
-        .then(() => {
-          if (socket.data.closed) return
-          return input.run(() => receive(socket, message))
-        })
+      const prior = socket.data.pending
+      const body = async () => {
+        await prior
+        if (!socket.data.closed) await receive(socket, message)
+      }
+      let retained: Promise<void> | undefined
+      let raw: unknown
+      try {
+        raw = JSON.parse(message)
+      } catch {}
+      const frame = Runtime.ClientFrame.safeParse(raw)
+      try {
+        if (frame.success && frame.data.type === "receipt")
+          retained = transports.get(socket)?.resume(frame.data.exchangeID, frame.data.reply, body)
+      } catch (error) {
+        return reject(socket, error)
+      }
+      socket.data.pending = (retained ?? input.run(body))
         .catch((error: unknown) => reject(socket, error))
         .finally(() => {
           socket.data.frames--

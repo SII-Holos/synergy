@@ -7,6 +7,7 @@ import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { fail, OrganizationError } from "./error"
 import type { GatewayCalls } from "./gateway-calls"
+import type { OrganizationServiceMaintenance } from "./service-maintenance"
 
 async function readBody(request: Request, maximum: number, signal: AbortSignal) {
   const reader = request.body?.getReader()
@@ -41,7 +42,11 @@ async function readBody(request: Request, maximum: number, signal: AbortSignal) 
   }
 }
 
-export function createModelGateway(options: { calls: GatewayCalls; run<T>(body: () => T | Promise<T>): Promise<T> }) {
+export function createModelGateway(options: {
+  calls: GatewayCalls
+  run<T>(body: () => T | Promise<T>): Promise<T>
+  captureTail?(): OrganizationServiceMaintenance.Tail
+}) {
   const transport = new Bun.FetchSession({ proxy: false, tls: { rejectUnauthorized: true } })
   const active = new Set<{ grantID: string; controller: AbortController; done: Promise<void> }>()
   let reservedBytes = 0
@@ -87,6 +92,7 @@ export function createModelGateway(options: { calls: GatewayCalls; run<T>(body: 
       if (closed) fail("SERVICE_UNAVAILABLE", "Model gateway is closed")
       if (active.size >= 32 || reservedBytes + permit.requestBytes > 64 * 1024 * 1024)
         fail("RESOURCE_UNAVAILABLE", "Model gateway capacity is occupied")
+      const tail = options.captureTail?.()
       const controller = new AbortController()
       const completion = Promise.withResolvers<void>()
       const entry = { grantID: permit.grantID, controller, done: completion.promise }
@@ -112,10 +118,13 @@ export function createModelGateway(options: { calls: GatewayCalls; run<T>(body: 
               reader.releaseLock()
             }
             if (started)
-              await options.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus }))
+              await (tail
+                ? tail.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus }))
+                : options.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus })))
           } finally {
             active.delete(entry)
             reservedBytes -= permit.requestBytes
+            tail?.close()
             completion.resolve()
           }
         })()
@@ -261,6 +270,7 @@ export type ModelGateway = ReturnType<typeof createModelGateway>
 export function createConnectionGateway(options: {
   calls: GatewayCalls
   run<T>(body: () => T | Promise<T>): Promise<T>
+  captureTail?(): OrganizationServiceMaintenance.Tail
 }) {
   const transport = new Bun.FetchSession({ proxy: false, tls: { rejectUnauthorized: true } })
   const active = new Set<{ grantID: string; controller: AbortController; done: Promise<void> }>()
@@ -301,6 +311,7 @@ export function createConnectionGateway(options: {
       if (closed) fail("SERVICE_UNAVAILABLE", "Business gateway is closed")
       if (active.size >= 32 || reservedBytes + permit.requestBytes > 64 * 1024 * 1024)
         fail("RESOURCE_UNAVAILABLE", "Business gateway capacity is occupied")
+      const tail = options.captureTail?.()
       const controller = new AbortController()
       const completion = Promise.withResolvers<void>()
       const entry = { grantID: permit.grantID, controller, done: completion.promise }
@@ -326,10 +337,13 @@ export function createConnectionGateway(options: {
               reader.releaseLock()
             }
             if (started)
-              await options.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus }))
+              await (tail
+                ? tail.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus }))
+                : options.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus })))
           } finally {
             active.delete(entry)
             reservedBytes -= permit.requestBytes
+            tail?.close()
             completion.resolve()
           }
         })()
@@ -483,6 +497,7 @@ export function createConnectionGateway(options: {
       if (closed) fail("SERVICE_UNAVAILABLE", "Business gateway is closed")
       if (active.size >= 32 || reservedBytes + permit.requestBytes > 64 * 1024 * 1024)
         fail("RESOURCE_UNAVAILABLE", "Business gateway capacity is occupied")
+      const tail = options.captureTail?.()
       const controller = new AbortController()
       const completion = Promise.withResolvers<void>()
       const entry = { grantID: permit.grantID, controller, done: completion.promise }
@@ -501,10 +516,13 @@ export function createConnectionGateway(options: {
           try {
             if (state === "unknown") controller.abort()
             if (started)
-              await options.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus }))
+              await (tail
+                ? tail.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus }))
+                : options.run(() => options.calls.finish(authorization, { state, responseBytes, httpStatus })))
           } finally {
             active.delete(entry)
             reservedBytes -= permit.requestBytes
+            tail?.close()
             completion.resolve()
           }
         })()
