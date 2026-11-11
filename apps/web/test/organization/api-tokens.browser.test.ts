@@ -156,10 +156,11 @@ test("the account token panel reveals an original token once without storing it 
           }),
       ),
     ).toBe(true)
-    await page.screenshot({
-      path: "/Users/eric/.codex/runtime/synergy-pr1761-fb85/token-360-light-form.png",
-      fullPage: true,
-    })
+    if (process.env.SYNERGY_UI_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, "token-360-light-form.png"),
+        fullPage: true,
+      })
     await page.setViewportSize({ width: 375, height: 740 })
     await page.getByRole("button", { name: "Create token", exact: true }).click()
     await page.getByLabel("API token", { exact: true }).waitFor()
@@ -169,10 +170,11 @@ test("the account token panel reveals an original token once without storing it 
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(secret)
     expect(await page.evaluate(() => Object.values(localStorage).join(" "))).not.toContain(secret)
     expect(backend.requests[0]?.operations).toEqual(["sessions.read"])
-    await page.screenshot({
-      path: "/Users/eric/.codex/runtime/synergy-pr1761-fb85/token-375-light.png",
-      fullPage: true,
-    })
+    if (process.env.SYNERGY_UI_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, "token-375-light.png"),
+        fullPage: true,
+      })
     await page.getByRole("button", { name: "Hide token", exact: true }).click()
     expect(await page.getByLabel("API token", { exact: true }).count()).toBe(0)
     await page.reload()
@@ -200,10 +202,11 @@ test("lost issuance recovers the original request and requires confirmed revocat
     await page.getByRole("heading", { name: "API tokens", exact: true }).click()
     await page.getByRole("button", { name: "Recover token issuance", exact: true }).click()
     await page.getByText(/original value is unavailable/).waitFor()
-    await page.screenshot({
-      path: "/Users/eric/.codex/runtime/synergy-pr1761-fb85/token-900-dark-lost.png",
-      fullPage: true,
-    })
+    if (process.env.SYNERGY_UI_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, "token-900-dark-lost.png"),
+        fullPage: true,
+      })
     expect(backend.requests).toHaveLength(2)
     expect(backend.requests[1]).toEqual(backend.requests[0])
     expect(await page.getByRole("button", { name: "Create token", exact: true }).count()).toBe(0)
