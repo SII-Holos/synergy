@@ -14,74 +14,82 @@ export namespace RolloutArtifact {
   const Chunk = z
     .object({ sha256: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().positive().max(CHUNK_BYTES) })
     .strict()
-  const rangeState = Storage.state(() => ({
-    manifests: new Map<string, Array<z.infer<typeof Chunk> & { offset: number }>>(),
-    size: 0,
-  }))
+  type RangePosition = { index: number; offset: number }
+  const rangeState = Storage.state(() => ({ positions: new Map<string, RangePosition>(), size: 0 }))
+  const rangeCacheBytes = 2 * 1024 * 1024
+  const rangeWeight = (identity: string) => Buffer.byteLength(identity) + 64
 
-  async function manifest(owner: Owner, ref: Ref) {
+  function rememberRange(identity: string, position: RangePosition) {
     const cache = rangeState()
-    const identity = JSON.stringify([owner, ref.id, ref.chunks, ref.bytes, ref.sha256])
-    const previous = cache.manifests.get(identity)
-    if (previous) {
-      cache.manifests.delete(identity)
-      cache.manifests.set(identity, previous)
-      return previous
+    if (cache.positions.delete(identity)) cache.size -= rangeWeight(identity)
+    const weight = rangeWeight(identity)
+    if (weight > rangeCacheBytes) return
+    while (cache.positions.size && cache.size + weight > rangeCacheBytes) {
+      const first = cache.positions.keys().next().value!
+      cache.positions.delete(first)
+      cache.size -= rangeWeight(first)
     }
-    const key = artifactRoot(owner, ref.id)
-    const result: Array<z.infer<typeof Chunk> & { offset: number }> = []
-    let offset = 0
-    for (let index = 0; index < ref.chunks; index += 256) {
-      const entries = await Storage.readMany(
-        Array.from({ length: Math.min(256, ref.chunks - index) }, (_, next) => [
-          ...key,
-          "chunks",
-          String(index + next).padStart(12, "0"),
-        ]),
-      )
-      for (const entry of entries) {
-        const chunk = Chunk.parse(entry)
-        result.push({ ...chunk, offset })
-        offset += chunk.bytes
-      }
-    }
-    if (offset !== ref.bytes) throw new Error("Rollout artifact integrity check failed")
-    const size = result.length * 96
-    if (size <= 2 * 1024 * 1024 && !cache.manifests.has(identity)) {
-      while (cache.manifests.size && cache.size + size > 2 * 1024 * 1024) {
-        const first = cache.manifests.keys().next().value!
-        cache.size -= cache.manifests.get(first)!.length * 96
-        cache.manifests.delete(first)
-      }
-      cache.manifests.set(identity, result)
-      cache.size += size
-    }
-    return result
+    cache.positions.set(identity, position)
+    cache.size += weight
   }
 
-  export async function readRange(owner: Owner, input: Ref, offset: number, limit: number) {
+  export async function readRange(owner: Owner, input: Ref, offset: number, limit: number, signal?: AbortSignal) {
     const ref = Ref.parse(input)
     z.number().int().nonnegative().safe().parse(offset)
     z.number().int().min(1).max(65_540).parse(limit)
+    signal?.throwIfAborted()
     if (offset > ref.bytes) throw new RangeError("Content offset exceeds the recorded artifact")
-    const chunks = await manifest(owner, ref)
-    let left = 0
-    let right = chunks.length
-    while (left < right) {
-      const middle = (left + right) >>> 1
-      if (chunks[middle].offset + chunks[middle].bytes <= offset) left = middle + 1
-      else right = middle
+    if ((ref.bytes === 0) !== (ref.chunks === 0)) throw new Error("Rollout artifact integrity check failed")
+    const key = artifactRoot(owner, ref.id)
+    const result = Buffer.alloc(Math.min(limit, ref.bytes - offset))
+    if (!result.length) return result
+    const identity = JSON.stringify([Owner.parse(owner), ref.id, ref.chunks, ref.bytes, ref.sha256])
+    const previous = rangeState().positions.get(identity)
+    let position = previous && previous.offset <= offset ? { ...previous } : { index: 0, offset: 0 }
+    const end = offset + result.length
+    let written = 0
+    let resume = position
+    while (position.index < ref.chunks && written < result.length) {
+      signal?.throwIfAborted()
+      const entries = await Storage.readMany(
+        Array.from({ length: Math.min(128, ref.chunks - position.index) }, (_, next) => [
+          ...key,
+          "chunks",
+          String(position.index + next).padStart(12, "0"),
+        ]),
+      )
+      signal?.throwIfAborted()
+      for (const entry of entries) {
+        signal?.throwIfAborted()
+        const chunk = Chunk.parse(entry)
+        const start = position.offset
+        const next = start + chunk.bytes
+        if (next > ref.bytes) throw new Error("Rollout artifact integrity check failed")
+        const index = position.index
+        position = { index: index + 1, offset: next }
+        if (next <= offset) continue
+        const data = await Storage.readBinary([...root(owner), "blobs", chunk.sha256], { maxBytes: CHUNK_BYTES })
+        signal?.throwIfAborted()
+        if (
+          data.byteLength !== chunk.bytes ||
+          new Bun.CryptoHasher("sha256").update(data).digest("hex") !== chunk.sha256
+        )
+          throw new Error("Rollout artifact integrity check failed")
+        const from = Math.max(0, offset - start)
+        const to = Math.min(data.length, end - start)
+        result.set(data.subarray(from, to), written)
+        written += to - from
+        resume = end < next ? { index, offset: start } : position
+        if (written === result.length) break
+      }
     }
-    const parts: Uint8Array[] = []
-    const end = Math.min(ref.bytes, offset + limit)
-    for (let index = left; index < chunks.length && chunks[index].offset < end; index++) {
-      const chunk = chunks[index]
-      const data = await Storage.readBinary([...root(owner), "blobs", chunk.sha256], { maxBytes: CHUNK_BYTES })
-      if (data.byteLength !== chunk.bytes || new Bun.CryptoHasher("sha256").update(data).digest("hex") !== chunk.sha256)
-        throw new Error("Rollout artifact integrity check failed")
-      parts.push(data.subarray(Math.max(0, offset - chunk.offset), Math.min(data.length, end - chunk.offset)))
-    }
-    return Buffer.concat(parts)
+    if (
+      written !== result.length ||
+      (end === ref.bytes && (position.index !== ref.chunks || position.offset !== ref.bytes))
+    )
+      throw new Error("Rollout artifact integrity check failed")
+    rememberRange(identity, resume)
+    return result
   }
 
   export function root(input: Owner) {
