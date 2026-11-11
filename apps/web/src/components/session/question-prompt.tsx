@@ -12,6 +12,21 @@ import { requestSubmissionLocked } from "./request-submission"
 import "./question-prompt.css"
 
 const copy = {
+  draftLoading: { id: "session.question.draftLoading", message: "Loading saved answer…" },
+  draftLoadFailed: { id: "session.question.draftLoadFailed", message: "The saved answer could not be loaded." },
+  draftRemoveFailed: {
+    id: "session.question.draftRemoveFailed",
+    message: "The previous saved answer could not be cleared. Retry.",
+  },
+  draftSaveFailed: {
+    id: "session.question.draftSaveFailed",
+    message: "The answer has not been saved yet. Keep this page open and retry.",
+  },
+  draftSwitchFailed: {
+    id: "session.question.draftSwitchFailed",
+    message: "The previous answer could not be saved. Retry before changing questions.",
+  },
+  retryDraft: { id: "session.question.retryDraft", message: "Retry saved answer" },
   other: { id: "session.question.customAnswer", message: "Other answer" },
   supplement: { id: "session.question.supplement", message: "Additional context (optional)" },
   placeholder: { id: "session.question.answerPlaceholder", message: "Write your answer…" },
@@ -27,7 +42,7 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
   const decisions = useSessionDecision()
   const { i18n } = useLocale()
   const state = () => decisions.state(decisions.key("question", props.request))
-  const locked = () => !decisions.draftsReady() || requestSubmissionLocked(state())
+  const locked = () => !decisions.draftsReady(props.request) || requestSubmissionLocked(state())
   const draft = createMemo(() => decisions.draft(props.request))
   const question = createMemo(() => props.request.questions[draft().step])
   const direct = () => props.request.questions.length === 1 && !question()?.multiple
@@ -107,6 +122,29 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
         role={!direct() && !question()?.multiple ? "radiogroup" : undefined}
         aria-label={question()?.question}
       >
+        <Show when={!decisions.draftsReady(props.request) && !decisions.draftError()}>
+          <p role="status">{i18n._(copy.draftLoading)}</p>
+        </Show>
+        <Show when={decisions.draftError()}>
+          {(error) => (
+            <div role="status">
+              <p>
+                {i18n._(
+                  error() === "load"
+                    ? copy.draftLoadFailed
+                    : error() === "remove"
+                      ? copy.draftRemoveFailed
+                      : decisions.draftsReady(props.request)
+                        ? copy.draftSaveFailed
+                        : copy.draftSwitchFailed,
+                )}
+              </p>
+              <Button type="button" variant="ghost" onClick={() => decisions.retryDraft()}>
+                {i18n._(copy.retryDraft)}
+              </Button>
+            </div>
+          )}
+        </Show>
         <p class="question-text">{question()?.question}</p>
         <div class="question-meta">
           <Show when={props.request.questions.length > 1}>

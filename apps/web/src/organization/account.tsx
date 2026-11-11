@@ -9,6 +9,7 @@ import { WorkspaceError } from "./workspace-error"
 import { organizationMemberMessages as messages } from "./member-messages"
 import { organizationWorkspaceMessages as workspace } from "./workspace-messages"
 import "./account.css"
+import { OrganizationApiTokens, organizationApiTokenMessages } from "./api-tokens"
 
 const invitationStates = {
   open: messages.invitationOpen,
@@ -31,6 +32,7 @@ export function OrganizationAccount() {
   const [loading, setLoading] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<unknown>()
+  const [tokensOpened, setTokensOpened] = createSignal(false)
   const current = () => !view.signal.aborted
   async function load(more = false) {
     if (loading()) return
@@ -157,6 +159,19 @@ export function OrganizationAccount() {
           </Button>
         </Show>
       </section>
+      <details
+        class="organization-api-token-disclosure"
+        onToggle={(event) => {
+          if (event.currentTarget.open) setTokensOpened(true)
+        }}
+      >
+        <summary>
+          <h3>{_(organizationApiTokenMessages.title)}</h3>
+        </summary>
+        <Show when={tokensOpened()}>
+          <OrganizationApiTokens />
+        </Show>
+      </details>
       <section class="organization-editor">
         <h3>{_(messages.membership)}</h3>
         <p>{_(messages.leaveHint)}</p>

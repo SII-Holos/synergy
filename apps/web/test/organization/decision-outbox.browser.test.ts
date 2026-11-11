@@ -3,10 +3,12 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../support/browser-fixture"
+import { organizationDataFixtureSource } from "../support/organization-data-fixture"
 
 declare global {
   interface Window {
     decisionOutboxFixture: typeof import("../../src/organization/decision-outbox")
+    decisionDraftFixture: typeof import("../../src/organization/question-drafts")
     decisionRuntimeFixture: typeof import("../../src/organization/interaction-runtime") & {
       createOrganizationConnections: (typeof import("../../src/organization/connections"))["createOrganizationConnections"]
       createOrganizationClient: (typeof import("@ericsanchezok/synergy-sdk/organization"))["createOrganizationClient"]
@@ -20,10 +22,8 @@ let directory: string
 beforeAll(async () => {
   directory = await fs.mkdtemp(path.resolve(import.meta.dir, "../../node_modules/.decision-outbox-"))
   await Bun.write(path.join(directory, "index.html"), '<script type="module" src="/main.ts"></script>')
-  await Bun.write(
-    path.join(directory, "main.ts"),
-    `import * as outbox from ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../src/organization/decision-outbox.ts")}`)};import {createOrganizationInteractionRuntime} from ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../src/organization/interaction-runtime.ts")}`)};import {createOrganizationConnections} from ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../src/organization/connections.ts")}`)};import {createOrganizationClient} from "@ericsanchezok/synergy-sdk/organization";import {createRoot} from "solid-js";window.decisionOutboxFixture=outbox;window.decisionRuntimeFixture={createOrganizationInteractionRuntime,createOrganizationClient,createRoot,createOrganizationConnections};Date.now=()=>1;`,
-  )
+  await Bun.write(path.join(directory, "main.ts"), organizationDataFixtureSource)
+
   fixture = await createBrowserFixture({
     root: directory,
     styled: false,
@@ -309,7 +309,7 @@ test("finite pages do not confirm a lost password reply and a native winner does
           runtime: createOrganizationInteractionRuntime({
             api,
             accountID: "account-one",
-            connectionKey: "runtime-sensitive",
+            connectionKey: JSON.stringify(["organization", "org-one", "account-one", "runtime-sensitive"]),
             rootSessionID: "session-one",
             binding,
             signal: new AbortController().signal,
@@ -359,11 +359,16 @@ test("finite pages do not confirm a lost password reply and a native winner does
           sessionID: "session-one",
           questions: native.questions.map((item) => ({ ...item, options: [] })),
         }
+        reloaded.runtime.decisions.draft(question)
+        for (let turn = 0; turn < 100 && !reloaded.runtime.decisions.draftsReady(question); turn++)
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        if (!reloaded.runtime.decisions.draftsReady(question)) throw new Error("Question draft did not become ready")
         reloaded.runtime.decisions.updateDraft(question, (draft) => ({
           ...draft,
           custom: ["denied-live-answer"],
           source: ["custom"],
         }))
+        const deniedBefore = reloaded.runtime.decisions.draft(question).custom
         denied = true
         await reloaded.runtime.load()
         return {
@@ -373,6 +378,7 @@ test("finite pages do not confirm a lost password reply and a native winner does
           submitted,
           retryable,
           invalidated: !reloaded.runtime.active(),
+          deniedBefore,
           remaining: reloaded.runtime.state.retained.length,
           deniedDraft: reloaded.runtime.decisions.draft(question).custom,
         }
@@ -393,6 +399,7 @@ test("finite pages do not confirm a lost password reply and a native winner does
     expect(result.retryable).toBe(0)
     expect(result.invalidated).toBe(true)
     expect(result.remaining).toBe(0)
+    expect(result.deniedBefore).toEqual(["denied-live-answer"])
     expect(result.deniedDraft).toEqual([""])
   } finally {
     await page.close()
@@ -662,22 +669,48 @@ test("explicit sign-out removes only the captured connection's real durable resp
         owner: { ...owner, connectionKey: "other-connection" },
         binding,
       })
+      const { createOrganizationQuestionDrafts } = window.decisionDraftFixture
+      const draftOwner = { connectionKey, accountID: owner.accountID, projectID: owner.projectID }
+      const ownDraft = createOrganizationQuestionDrafts({ owner: draftOwner })
+      const otherDraft = createOrganizationQuestionDrafts({
+        owner: {
+          ...draftOwner,
+          connectionKey: JSON.stringify(["organization", "org-one", "account-other", "deployment"]),
+          accountID: "account-other",
+        },
+      })
+      const question = {
+        id: "draft-native",
+        sessionID: "session-one",
+        questions: [{ header: "Answer", question: "Answer?", options: [] }],
+      }
+      let verified: ReturnType<typeof createOrganizationQuestionDrafts> | undefined
       try {
         await own.begin(command, false)
         await other.begin(command, false)
+        await ownDraft.save(question, { step: 0, selections: [[]], custom: ["own-draft"], source: ["custom"] })
+        await otherDraft.save(question, { step: 0, selections: [[]], custom: ["other-draft"], source: ["custom"] })
         await registry.signOut(connectionKey)
+        verified = createOrganizationQuestionDrafts({ owner: draftOwner })
+        const ownBody = await verified.load(question)
+        const otherBody = await otherDraft.load(question)
         return {
           state: registry.connection(connectionKey)?.state,
           own: (await own.page()).items.length,
           other: (await other.page()).items.length,
+          ownDraft: ownBody?.custom[0] ?? null,
+          otherDraft: otherBody?.custom[0],
         }
       } finally {
         own.dispose()
         other.dispose()
+        ownDraft.dispose()
+        otherDraft.dispose()
+        verified?.dispose()
         registry.dispose()
       }
     })
-    expect(result).toEqual({ state: "signed_out", own: 0, other: 1 })
+    expect(result).toEqual({ state: "signed_out", own: 0, other: 1, ownDraft: null, otherDraft: "other-draft" })
   } finally {
     await page.close()
   }

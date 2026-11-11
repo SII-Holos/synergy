@@ -14,6 +14,8 @@ Only trusted route code selects the operation context. Unlisted routes reject AP
 
 Issuance stores a random token's digest and an independent metadata identity. The stable issuance request ID and complete input digest commit with the record and owner/hash indexes. Only the first successful invocation returns the original secret; repeated or uncertain issuance resolves to metadata with `secretUnavailable`. A lost secret requires explicit revocation and a new issuance request. Neither retry receipts nor token listings retain the original secret. Revocation is personal and revision checked, including an identical retry after acknowledgement loss.
 
+The Account panel retains only the original issuance request and confirmed metadata in connection-owned recovery storage. Recovery preserves the same request ID, project, actions, label and expiry rather than rebuilding settings from a current form. The original token remains a masked, copyable value in the current response's memory and is released on explicit hiding or owner cancellation. A metadata-only retry blocks replacement until that exact token's revocation is confirmed. Desktop exposes only the exact create, list and revoke settings routes for this flow.
+
 API command actors retain the account principal with `clientKind=api` and the issuing `tokenID`. That optional field enters the signed permit and canonical native attribution; existing actors omit it and preserve their proof encoding. The permit deadline is bounded by the authenticated credential expiry. Token revocation prevents future admission, queries and stream chunks, while already accepted effects retain the existing authorization/reception distinction and are not silently undone or replayed.
 
 ## Alternatives considered
@@ -31,6 +33,8 @@ Applications retain Session, artifact and request identities and reconcile uncer
 ## Verification
 
 `packages/organization/test/api-tokens.test.ts` uses real isolated SQLite storage, HTTP and machine WebSockets. It verifies one-time issuance, committed SQL acknowledgement loss, restart, current membership, operation/project fencing, token expiry, authentication revision and deployment replacement, signed token attribution and tamper rejection, exact command retries, offline refusal, resource descriptor redaction and retained artifact Range bytes. Revocation interrupts an active artifact stream before its remaining content is emitted. `packages/organization-runtime/test/api-token.test.ts` additionally uses verified HTTPS/WSS and the real native Session/Inbox/Run owners to create work, reconcile a lost HTTP acknowledgement, retain one input with token attribution, cancel its queued Run and refuse later offline/revoked requests. Adjacent authentication, client-grant and command-admission suites preserve their existing contracts.
+
+The Account Web fixture exercises masked one-time display, an actual clipboard copy, explicit hiding and reload without another issuance. Lost acknowledgements retain the exact original request, including expiry; a metadata-only recovery requires confirmed revocation before replacement. It also checks narrow control boundaries at 360 pixels and the dark recovery view on desktop. These renderer checks complement the real service and native transport coverage above.
 
 ## Related
 

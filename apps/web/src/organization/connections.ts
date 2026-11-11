@@ -18,6 +18,7 @@ import { Persist, workspaceEntryOwner } from "../utils/persist"
 import { authorizeOrganization } from "./authorization"
 import { desktopOrganizationFetch } from "./desktop"
 import { removeOrganizationDecisionOutbox } from "./decision-outbox"
+import { removeOrganizationQuestionDrafts } from "./question-drafts"
 
 const WebConnection = Auth.Authority.extend({
   transport: z.literal("web"),
@@ -377,7 +378,10 @@ export function createOrganizationConnections(options: {
       put({ ...entry, state: "sign_out_pending" })
       try {
         clearCache(options.storage, key)
-        if (globalThis.indexedDB) await removeOrganizationDecisionOutbox(key)
+        if (globalThis.indexedDB) {
+          await removeOrganizationDecisionOutbox(key)
+          await removeOrganizationQuestionDrafts(key)
+        }
         assertCurrent(controller, version)
       } catch {
         throw new OrganizationConnectionError("storage_unavailable")

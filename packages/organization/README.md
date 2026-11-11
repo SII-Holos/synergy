@@ -80,7 +80,7 @@ Organization administrators configure model and business resources through `orgR
 
 Knowledge selection uses paged reference reads and staged sequence-bound changes over a complete prior collection. Commit rechecks release access and atomically replaces one revisioned pointer. Member/project collections and hosted Session collections remain independent. Shared blob headers also use paged receipts; only verified full content is complete, and browser uploads require the creator. See [published knowledge](../../docs/architecture/organization.md#published-knowledge-and-project-artifacts).
 
-External applications obtain a personal API token from the project's token settings. Choose one project, the required operations and an expiry. The original secret is displayed once; keep it in the application's secret store. A lost issuance response returns metadata on retry, so revoke that identity and issue a new token. Tokens cannot sign in, manage accounts or grant resources. See [personal API tokens](../../docs/architecture/organization.md#personal-api-tokens).
+External applications obtain a personal API token from Account → API tokens. Choose one project, the required operations and an expiry. The original secret is displayed once; keep it in the application's secret store. A lost issuance response returns metadata on retry, so revoke that identity and issue a new token. Tokens cannot sign in, manage accounts or grant resources. See [personal API tokens](../../docs/architecture/organization.md#personal-api-tokens).
 
 ```ts
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"

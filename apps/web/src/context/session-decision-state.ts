@@ -3,6 +3,7 @@ import { createStore, produce, reconcile } from "solid-js/store"
 import { z } from "zod"
 import type { PermissionRequest, QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
 import type { QuestionSnapshotToken } from "./question-snapshot"
+import { createQuestionDraftPortState, type QuestionDraftPort } from "./question-draft-port"
 import { Persist, persisted } from "@/utils/persist"
 import { createRequestSubmission } from "@/components/session/request-submission"
 import {
@@ -14,9 +15,7 @@ import {
 
 const DraftsV1 = z.object({ version: z.literal(1), entries: z.record(z.string(), QuestionDraftSchema) })
 const InputType = z.enum(["text", "password"])
-const DraftV2 = QuestionDraftSchema.extend({ inputTypes: z.array(InputType) })
-const DraftsV2 = z.object({ version: z.literal(2), entries: z.record(z.string(), DraftV2) })
-type Drafts = { version: 1 | 2; entries: Record<string, QuestionDraft & { inputTypes?: z.infer<typeof InputType>[] }> }
+type Drafts = z.infer<typeof DraftsV1>
 type Request = PermissionRequest | QuestionRequest
 type RequestIdentity = Pick<Request, "id" | "sessionID">
 type Kind = "question" | "permission"
@@ -26,7 +25,7 @@ type Operation = Parameters<ReturnType<typeof createRequestSubmission>["run"]>[1
 export type DecisionRuntime = {
   connectionKey: string
   scopeID: string
-  draftStore?: "organization-v2"
+  drafts?: QuestionDraftPort
   signal?: AbortSignal
   questions(): readonly QuestionRequest[]
   permissions(): readonly PermissionRequest[]
@@ -47,18 +46,16 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
   const tracked = new Map<string, { request: RequestIdentity; kind: Kind }>()
   const [selected, setSelected] = createStore<Record<string, string>>({})
   const [sensitive, setSensitive] = createStore<Record<string, QuestionDraft>>({})
-  const version = runtime.draftStore === "organization-v2" ? 2 : 1
-  const initial = createStore<Drafts>({ version, entries: {} })
-  const [drafts, setDrafts, , draftsReady] = (() => {
+  const pointDrafts = runtime.drafts ? createQuestionDraftPortState(runtime.drafts, runtime.signal) : undefined
+  const initial = createStore<Drafts>({ version: 1, entries: {} })
+  const [drafts, setDrafts, , legacyReady] = (() => {
+    if (pointDrafts) return [initial[0], initial[1], undefined, () => true] as const
     try {
       return persisted<Drafts>(
         {
-          ...Persist.workspace(
-            Persist.scopeKey(runtime.connectionKey, runtime.scopeID),
-            version === 2 ? "question-drafts-v2" : "question-drafts-v1",
-          ),
+          ...Persist.workspace(Persist.scopeKey(runtime.connectionKey, runtime.scopeID), "question-drafts-v1"),
           migrate: (value) => {
-            const result = (version === 2 ? DraftsV2 : DraftsV1).safeParse(value)
+            const result = DraftsV1.safeParse(value)
             if (!result.success) throw new Error("The saved question draft could not be read")
             return result.data
           },
@@ -74,6 +71,7 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
     alive = false
     operations.clear()
     tracked.clear()
+    pointDrafts?.dispose()
     setSensitive(reconcile({}))
   }
   runtime.signal?.addEventListener("abort", release, { once: true })
@@ -93,6 +91,10 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
     })
   const clearDraft = (request: RequestIdentity) => {
     if (!alive) return
+    if (pointDrafts) {
+      void pointDrafts.clear(request)
+      return
+    }
     setSensitive(
       produce((entries) => {
         delete entries[draftKey(request)]
@@ -118,31 +120,21 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
   const hasPassword = (request: QuestionRequest) =>
     request.questions.some((question) => question.input_type === "password")
   const inputTypes = (request: QuestionRequest) => request.questions.map((question) => question.input_type ?? "text")
-  const restoreDraft = (request: QuestionRequest) => {
-    const stored = drafts.entries[draftKey(request)]
-    const value = sanitizeQuestionDraft(request, stored)
-    if (version === 1) return redactedDraft(request, value)
-    const policy = inputTypes(request)
-    return {
-      ...value,
-      custom: value.custom.map((answer, index) =>
-        policy[index] === "text" && stored?.inputTypes?.[index] === "text" ? answer : "",
-      ),
-      selections: value.selections.map((answer, index) =>
-        policy[index] === "text" && stored?.inputTypes?.[index] === "text" ? answer : [],
-      ),
-    }
-  }
-  const persistentDraft = (request: QuestionRequest, value: QuestionDraft) => ({
-    ...redactedDraft(request, value),
-    ...(version === 2 ? { inputTypes: inputTypes(request) } : {}),
-  })
+  const restoreDraft = (request: QuestionRequest) =>
+    redactedDraft(request, sanitizeQuestionDraft(request, drafts.entries[draftKey(request)]))
+  const persistentDraft = (request: QuestionRequest, value: QuestionDraft) => redactedDraft(request, value)
   const draft = (request: QuestionRequest) => {
+    if (pointDrafts) return pointDrafts.draft(request)
     const value = restoreDraft(request)
     return hasPassword(request) ? (sensitive[draftKey(request)] ?? redactedDraft(request, value)) : value
   }
   const updateDraft = (request: QuestionRequest, update: (previous: QuestionDraft) => QuestionDraft) => {
-    if (!alive || !draftsReady()) return
+    if (!alive || actions.state(key("question", request)).status === "settled") return
+    if (pointDrafts) {
+      pointDrafts.update(request, update)
+      return
+    }
+    if (!legacyReady()) return
     const next = sanitizeQuestionDraft(
       request,
       untrack(() => update(draft(request))),
@@ -152,12 +144,13 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
   }
 
   createEffect(() => {
+    if (pointDrafts) return
     const questions = runtime.questions()
-    if (!draftsReady()) return
+    if (!legacyReady()) return
     untrack(() => {
       for (const request of questions) {
         const stored = drafts.entries[draftKey(request)]
-        if (!stored || (version === 1 && !hasPassword(request))) continue
+        if (!stored || !hasPassword(request)) continue
         const redacted = persistentDraft(request, restoreDraft(request))
         if (JSON.stringify(stored) !== JSON.stringify(redacted))
           setDrafts("entries", draftKey(request), reconcile(redacted))
@@ -166,9 +159,10 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
   })
 
   createEffect(() => {
+    if (pointDrafts) return
     const confirmed = runtime.questionSnapshot()
     const questions = runtime.questions()
-    if (!confirmed || confirmed.scopeID !== runtime.scopeID || !draftsReady()) return
+    if (!confirmed || confirmed.scopeID !== runtime.scopeID || !legacyReady()) return
     const pendingQuestions = new Set(questions.map(draftKey))
     untrack(() => {
       setDrafts(
@@ -258,8 +252,12 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
   return {
     key,
     draft,
+    draftStep: (request: QuestionRequest) => (pointDrafts ? pointDrafts.step(request) : draft(request).step),
     updateDraft,
-    draftsReady,
+    draftsReady: (request?: QuestionRequest) =>
+      pointDrafts ? (request ? pointDrafts.ready(request) : true) : legacyReady(),
+    draftError: () => pointDrafts?.error(),
+    retryDraft: () => pointDrafts?.retry(),
     respondQuestion,
     respondPermission,
     retry,

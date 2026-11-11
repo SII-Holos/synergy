@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../support/browser-fixture"
+import { organizationCommandFixtureSource } from "../support/organization-command-fixture"
 import {
   OrganizationCommandProtocol as Command,
   type OrganizationDesktop as Desktop,
@@ -60,7 +61,8 @@ beforeAll(async () => {
     import { OrganizationSessionComposer } from ${JSON.stringify(`/@fs/${source}/organization/session-composer.tsx`)}
     import { OrganizationSessionResources } from ${JSON.stringify(`/@fs/${source}/organization/session-resources.tsx`)}
     import { PrivateOrganizationTranscript } from ${JSON.stringify(`/@fs/${source}/organization/private-transcript.tsx`)}
-    const platform = { platform: "web", openLink() {}, organization: { list: () => window.hostList(), request: value => window.hostRequest(value), memberStatus: value => window.hostMemberStatus ? window.hostMemberStatus(value) : Promise.resolve({ok:true,value:{connectionID:"${entry.id}",state:"stopped"}}),memberRequest:value => window.hostMemberRequest(value),startMember:value => window.hostStartMember(value),projectBinding:value => window.hostProjectBinding(value),bindProject:value => window.hostBindProject(value), cancel: () => Promise.resolve({ok:true}) }, fetch: async () => Response.json({ healthy: false }) }
+    ${organizationCommandFixtureSource}
+    const platform = { platform: "web", openLink() {}, organization: { list: () => window.hostList(), request: value => window.hostRequest(value), commandStream, memberStatus: value => window.hostMemberStatus ? window.hostMemberStatus(value) : Promise.resolve({ok:true,value:{connectionID:"${entry.id}",state:"stopped"}}),memberRequest:value => window.hostMemberRequest(value),startMember:value => window.hostStartMember(value),projectBinding:value => window.hostProjectBinding(value),bindProject:value => window.hostBindProject(value), cancel: value => {commandTransfers.delete(value.requestID);return Promise.resolve({ok:true})} }, fetch: async () => Response.json({ healthy: false }) }
     function Fixture() { const space = useSpace(); const mode = new URLSearchParams(location.search).get("fixture"); return <Show when={space.current()?.identity.kind === "organization"}>{mode === "private" ? <PrivateOrganizationTranscript sessionID="session-a" binding={{schemaVersion:1,orgID:"org-a",projectID:"project-a",creatorID:"account-a",driverRuntimeID:"runtime-a",bindingEpoch:1}} /> : mode === "resources" ? <OrganizationSessionResources projectID="project-a" sessionID="session-a" canExecute={true} /> : <OrganizationSessionComposer session={${JSON.stringify(session)}} online={true} modelReady={true} control={{runID:"run-a",controlVersion:7,pausedSince:42}} accepted={() => {}} />}</Show> }
     render(() => <PlatformProvider value={platform}><AppBaseProviders>{new URLSearchParams(location.search).get("fixture") === "app" ? <AppInterface /> : <SpaceProvider><Fixture /></SpaceProvider>}</AppBaseProviders></PlatformProvider>, document.getElementById("root"))
   `,

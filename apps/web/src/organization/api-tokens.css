@@ -1,0 +1,62 @@
+.organization-api-tokens {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.organization-api-token-disclosure > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+}
+.organization-api-token-disclosure > summary h3 {
+  display: inline;
+}
+.organization-api-token-field {
+  display: grid;
+  gap: 8px;
+}
+.organization-api-token-actions {
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.organization-api-token-actions legend {
+  padding: 0 0 12px;
+  font-weight: 500;
+}
+.organization-api-token-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.organization-api-token-list > li {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 16px;
+  border-bottom: 1px solid var(--border-weaker-base);
+}
+.organization-api-token-list > li > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.organization-api-token-list span {
+  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 20px;
+}
+.organization-api-token-secret {
+  background: var(--surface-raised-base);
+}
+@media (max-width: 600px) {
+  .organization-api-token-list > li {
+    flex-direction: column;
+  }
+  .organization-api-token-actions [data-component="checkbox"] {
+    min-height: 44px;
+  }
+}

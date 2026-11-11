@@ -3,10 +3,17 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../support/browser-fixture"
+import { organizationCommandFixtureSource } from "../support/organization-command-fixture"
 import {
   OrganizationCommandProtocol as Command,
   type OrganizationDesktop as Desktop,
 } from "@ericsanchezok/synergy-organization-protocol"
+
+declare global {
+  interface Window {
+    questionDraftBodyReads: number
+  }
+}
 
 let browser: Browser
 let fixture: BrowserFixture
@@ -54,7 +61,8 @@ beforeAll(async () => {
     import {PlatformProvider} from ${JSON.stringify(`/@fs/${source}/context/platform.tsx`)}
     import {SpaceProvider,useSpace} from ${JSON.stringify(`/@fs/${source}/context/space.tsx`)}
     import {OrganizationSessionInteractions} from ${JSON.stringify(`/@fs/${source}/organization/interactions.tsx`)}
-    const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{list:()=>window.hostList(),request:value=>window.hostRequest(value),cancel:()=>Promise.resolve({ok:true})}}
+    ${organizationCommandFixtureSource}
+    const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{list:()=>window.hostList(),request:value=>window.hostRequest(value),commandStream,cancel:value=>{commandTransfers.delete(value.requestID);return Promise.resolve({ok:true})}}}
     function Fixture(){const space=useSpace();return <Show when={space.current()?.identity.kind === "organization"}><main style={{padding:"16px"}}><OrganizationSessionInteractions sessionID="session-a" binding={${JSON.stringify(binding)}} online={true}/></main></Show>}
     render(()=><PlatformProvider value={platform}><AppBaseProviders><SpaceProvider><Fixture/></SpaceProvider></AppBaseProviders></PlatformProvider>,document.getElementById("root"))
   `,
@@ -217,18 +225,9 @@ test("a lost password response restores only its identity and cannot submit a di
     expect(await page.evaluate(() => Object.values(localStorage).join(" "))).not.toContain(
       "Do not persist the raw answer",
     )
-    await page.evaluate(() => {
-      for (const key of Object.keys(localStorage).filter((key) => key.includes("question-drafts-v1"))) {
-        const stored = JSON.parse(localStorage.getItem(key)!)
-        for (const draft of Object.values(stored.entries) as { custom: string[] }[])
-          draft.custom[0] = "Legacy sensitive answer"
-        localStorage.setItem(key, JSON.stringify(stored))
-      }
-    })
     await page.reload()
     await page.locator('input[type="password"]').waitFor()
     expect(await page.locator('input[type="password"]').inputValue()).toBe("")
-    await page.waitForFunction(() => !Object.values(localStorage).join(" ").includes("Legacy sensitive answer"))
     await page.locator('input[type="password"]').fill("Do not persist the raw answer")
     await page.getByRole("button", { name: "Send", exact: true }).click()
     await page.getByText("The response status is unconfirmed.", { exact: true }).waitFor()
@@ -241,6 +240,109 @@ test("a lost password response restores only its identity and cannot submit a di
     await page.getByRole("button", { name: "Check response status", exact: true }).click()
     expect(await page.getByRole("button", { name: "Retry original response", exact: true }).count()).toBe(0)
     expect(replies).toBe(1)
+  } finally {
+    await page.close()
+  }
+})
+
+test("opening a question queue reads only the selected saved answer and restores a later edit by identity", async () => {
+  const page = await browser.newPage({ viewport: { width: 900, height: 760 } })
+  const connectionKey = JSON.stringify([
+    "organization",
+    connection.orgID,
+    connection.account.accountID,
+    connection.deploymentIncarnation,
+  ])
+  const { Persist } = await import("../../src/utils/persist")
+  const target = Persist.workspace(Persist.scopeKey(connectionKey, "project-a"), "question-drafts-v2")
+  const legacyKey = `${target.storage}:${target.key}`
+  await page.addInitScript(
+    ({ legacyKey }) => {
+      const entries = Object.fromEntries(
+        Array.from({ length: 160 }, (_, index) => [
+          JSON.stringify(["session-a", `question-${String(index).padStart(3, "0")}`]),
+          {
+            step: 0,
+            selections: [[]],
+            custom: [`Saved answer ${index} ` + "x".repeat(4096)],
+            source: ["custom"],
+            inputTypes: ["text"],
+          },
+        ]),
+      )
+      localStorage.setItem(legacyKey, JSON.stringify({ version: 2, entries }))
+      window.questionDraftBodyReads = 0
+      const original = IDBObjectStore.prototype.get
+      IDBObjectStore.prototype.get = function (query) {
+        if (this.name === "drafts") window.questionDraftBodyReads++
+        return original.call(this, query)
+      }
+    },
+    { legacyKey },
+  )
+  await page.exposeFunction("hostList", () => ({ ok: true, value: [connection] }))
+  await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+    const query = JSON.parse(request.body!)
+    if (query.operation === "pending")
+      return success({
+        ...envelope,
+        operation: "pending",
+        items: Array.from({ length: 32 }, (_, index) => ({
+          kind: "question",
+          requestID: `question-${String(index).padStart(3, "0")}`,
+          sourceSessionID: "session-a",
+          questions: [{ header: `Question ${index}`, question: `Question ${index}`, options: [] }],
+        })),
+        hasMore: false,
+      })
+    return success({
+      ...envelope,
+      operation: "decisions",
+      items: query.identities.map((identity: { kind: string; requestID: string }) => ({ identity, state: "pending" })),
+    })
+  })
+  try {
+    await page.goto(url())
+    const input = page.getByRole("textbox", { name: "Other answer", exact: true })
+    await page.waitForFunction(() =>
+      document.querySelector<HTMLTextAreaElement>("textarea")?.value.startsWith("Saved answer 0 "),
+    )
+    expect(await page.evaluate(() => window.questionDraftBodyReads)).toBe(1)
+    await page.getByRole("button", { name: "Pending 32", exact: true }).click()
+    await page.getByRole("button", { name: /Question 31/ }).waitFor()
+    expect(await page.evaluate(() => window.questionDraftBodyReads)).toBe(1)
+    await page.getByRole("button", { name: /Question 31/ }).click()
+    await page.waitForFunction(() =>
+      document.querySelector<HTMLTextAreaElement>("textarea")?.value.startsWith("Saved answer 31 "),
+    )
+    expect(await page.evaluate(() => window.questionDraftBodyReads)).toBe(2)
+    await input.fill("Edited active answer")
+    await page.waitForFunction(async (connectionKey) => {
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const opening = indexedDB.open("synergy.organization-question-drafts", 1)
+        opening.onsuccess = () => resolve(opening.result)
+        opening.onerror = () => reject(opening.error)
+      })
+      try {
+        return await new Promise<boolean>((resolve, reject) => {
+          const request = database
+            .transaction("drafts", "readonly")
+            .objectStore("drafts")
+            .get([connectionKey, "account-a", "project-a", "session-a", "question-031"])
+          request.onsuccess = () => resolve(request.result?.draft.custom[0] === "Edited active answer")
+          request.onerror = () => reject(request.error)
+        })
+      } finally {
+        database.close()
+      }
+    }, connectionKey)
+    await page.reload()
+    await page.getByRole("button", { name: "Pending 32", exact: true }).click()
+    await page.getByRole("button", { name: /Question 31/ }).click()
+    await page.waitForFunction(
+      () => document.querySelector<HTMLTextAreaElement>("textarea")?.value === "Edited active answer",
+    )
+    expect(await input.inputValue()).toBe("Edited active answer")
   } finally {
     await page.close()
   }

@@ -74,6 +74,8 @@ For organization decisions, test finite pending pages separately from explicit n
 
 Exercise the real IndexedDB owner when changing decision recovery. Page headers without reading payloads, verify unresolved histories beyond the displayed residency budget, and keep exact native identities blocked outside the current page. Capture a question's step policy before asynchronous page changes; test disposal and a second live owner as well as reload.
 
+Question draft persistence stays behind the shared editor's port. Verify selected-question hydration, stale replies, write coalescing, a failed replacement racing native resolution and disposal while deletion is pending. Upgrade known project records through the owning transaction and completion receipt; exercise actual old Scope keys, account/source boundaries, rollback, restart and failed old-key cleanup. One-time migration parsing does not establish steady-state body residency. Queue labels must not open cold answers. See [point draft ownership](../../../docs/decisions/implemented/architecture/2026-11-12-hydrate-organization-question-drafts-by-identity.md).
+
 ## Localize Product UI
 
 Read [the domain guidance](references/presentation.md#localize-product-ui) when this area is affected.

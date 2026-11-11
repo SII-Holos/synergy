@@ -96,7 +96,10 @@ export function SessionDecisionSurface(props: {
   const toolTitle = (title: string | MessageDescriptor) => (typeof title === "string" ? title : _(title))
   const title = (item: DecisionItem, heading = false) => {
     if (item.kind === "question") {
-      const question = item.request.questions[decisions.draft(item.request).step]
+      const question =
+        item.request.questions[
+          item.key === active()?.key ? decisions.draft(item.request).step : decisions.draftStep(item.request)
+        ]
       return (heading ? question?.header : question?.question) || _(copy.question)
     }
     return toolTitle(permissionInfo(item.request, view()).title)

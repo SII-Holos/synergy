@@ -11,6 +11,7 @@ import { createSessionDecisionState } from "@/context/session-decision-state"
 import { createOrganizationDecisionOutbox } from "./decision-outbox"
 import { confirmDecisionOutboxReceipt, type DecisionOutboxRecord } from "./decision-outbox-record"
 import { organizationInteractionWindow } from "./interaction-window"
+import { createOrganizationQuestionDrafts } from "./question-drafts"
 
 export type OrganizationInteractionDecision = Extract<Interaction.Result, { operation: "decisions" }>["items"][number]
 export type OrganizationRetainedDecision = DecisionOutboxRecord & { available: boolean }
@@ -306,7 +307,9 @@ export function createOrganizationInteractionRuntime(input: {
   const decisions = createSessionDecisionState({
     connectionKey: input.connectionKey,
     scopeID: input.binding.projectID,
-    draftStore: "organization-v2",
+    drafts: createOrganizationQuestionDrafts({
+      owner: { connectionKey: input.connectionKey, accountID: input.accountID, projectID: input.binding.projectID },
+    }),
     signal,
     questions: () =>
       visible().flatMap((row) =>

@@ -133,56 +133,6 @@ test("password answers stay in the current decision state while ordinary answers
   }
 })
 
-test("organization question drafts use a policy-bearing v2 namespace and never restore a mismatched step", async () => {
-  localStorage.clear()
-  const question: QuestionRequest = {
-    ...request,
-    id: "v2-question",
-    questions: [{ ...request.questions[0]! }, { ...request.questions[0]!, input_type: "password" }],
-  }
-  const runtime = {
-    connectionKey: "organization-v2",
-    scopeID: "project-one",
-    draftStore: "organization-v2" as const,
-    questions: () => [question],
-    permissions: () => [],
-    questionSnapshot: () => undefined,
-    async replyQuestion() {},
-    async replyPermission() {},
-    async questionPending() {
-      return true
-    },
-    async permissionPending() {
-      return true
-    },
-  }
-  const scope = createRoot((dispose) => ({ dispose, state: createSessionDecisionState(runtime) }))
-  scope.state.updateDraft(question, (draft) => ({
-    ...draft,
-    custom: ["Ordinary answer", "Volatile password"],
-    source: ["custom", "custom"],
-  }))
-  await Promise.resolve()
-  const key = Object.keys(localStorage).find((key) => key.includes("question-drafts-v2"))
-  expect(key).toBeDefined()
-  const raw = localStorage.getItem(key!)!
-  const stored = JSON.parse(raw)
-  expect(stored.version).toBe(2)
-  const entry = stored.entries[JSON.stringify([question.sessionID, question.id])]
-  expect(entry.inputTypes).toEqual(["text", "password"])
-  expect(raw).not.toContain("Volatile password")
-  scope.dispose()
-  entry.inputTypes[0] = "password"
-  entry.custom[0] = "Unclassified sensitive value"
-  localStorage.setItem(key!, JSON.stringify(stored))
-  const restored = createRoot((dispose) => ({ dispose, state: createSessionDecisionState(runtime) }))
-  try {
-    expect(restored.state.draft(question).custom[0]).toBe("")
-  } finally {
-    restored.dispose()
-    localStorage.clear()
-  }
-})
 test("a cached question action passes its captured password policy independently of the current pending page", async () => {
   const question: QuestionRequest = { ...request, questions: [{ ...request.questions[0]!, input_type: "password" }] }
   let policy: readonly ("text" | "password")[] | undefined
@@ -227,7 +177,6 @@ test("an aborted organization owner releases password drafts before its componen
     state: createSessionDecisionState({
       connectionKey: "abort-password",
       scopeID: "project-one",
-      draftStore: "organization-v2",
       signal: controller.signal,
       questions: () => [question],
       permissions: () => [],
@@ -293,5 +242,64 @@ test("a Main permission denial invalidates the interaction owner and releases it
     expect(scope.runtime.decisions.draft(question).custom).toEqual([""])
   } finally {
     scope.dispose()
+  }
+})
+
+test("the shared question model uses its supplied point port without opening a legacy project draft record", async () => {
+  const loaded =
+    Promise.withResolvers<
+      ReturnType<typeof import("../../src/components/session/question-prompt-model").sanitizeQuestionDraft>
+    >()
+  let reads = 0
+  let writes = 0
+  const original = Storage.prototype.getItem
+  let legacyReads = 0
+  Storage.prototype.getItem = function (name) {
+    if (name.includes("question-drafts")) legacyReads++
+    return original.call(this, name)
+  }
+  const scope = createRoot((dispose) => ({
+    dispose,
+    state: createSessionDecisionState({
+      connectionKey: "point-model",
+      scopeID: "project-one",
+      drafts: {
+        async load() {
+          reads++
+          return loaded.promise
+        },
+        async save() {
+          writes++
+        },
+        async remove() {},
+        dispose() {},
+      },
+      questions: () => [request],
+      permissions: () => [],
+      questionSnapshot: () => undefined,
+      async replyQuestion() {},
+      async replyPermission() {},
+      async questionPending() {
+        return true
+      },
+      async permissionPending() {
+        return true
+      },
+    }),
+  }))
+  try {
+    expect(scope.state.draftsReady(request)).toBe(false)
+    scope.state.draft(request)
+    loaded.resolve({ step: 0, custom: ["saved answer"], selections: [[]], source: ["custom"] })
+    for (let turn = 0; turn < 20 && !scope.state.draftsReady(request); turn++) await Promise.resolve()
+    expect(scope.state.draft(request).custom).toEqual(["saved answer"])
+    expect(reads).toBe(1)
+    expect(legacyReads).toBe(0)
+    scope.state.updateDraft(request, (draft) => ({ ...draft, custom: ["updated answer"] }))
+    for (let turn = 0; turn < 20 && !writes; turn++) await Promise.resolve()
+    expect(writes).toBe(1)
+  } finally {
+    scope.dispose()
+    Storage.prototype.getItem = original
   }
 })
