@@ -31,6 +31,8 @@ import { cloudRoutes } from "./routes/cloud"
 import { handoffRoutes, handoffMachineRoutes } from "./routes/handoff"
 import type { Handoffs } from "./handoff"
 import { knowledgeExecutionRoutes } from "./routes/knowledge-execution"
+import { sessionReadRoutes } from "./routes/session-read"
+import type { SessionReadForwarder } from "./session-read"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -54,6 +56,7 @@ export function organizationApp(
   execution?: ExecutionGrants,
   gateway?: { calls: GatewayCalls; models: ModelGateway; connections: ConnectionGateway },
   handoffs?: Handoffs,
+  reads?: SessionReadForwarder,
 ) {
   function registry() {
     if (!registrations) fail("SERVICE_UNAVAILABLE", "Runtime registration is unavailable")
@@ -105,7 +108,9 @@ export function organizationApp(
         ? 16 * 1024 * 1024
         : /^\/org\/v1\/sessions\/[^/]+\/sync\/batches$/.test(c.req.path)
           ? 1024 * 1024
-          : c.req.method === "PUT" && (/^\/org\/v1\/sessions\/[^/]+\/blobs\/[^/]+$/.test(c.req.path) || /^\/org\/v1\/publications\/uploads\/[^/]+\/files\/[^/]+\/chunks$/.test(c.req.path))
+          : c.req.method === "PUT" &&
+              (/^\/org\/v1\/sessions\/[^/]+\/blobs\/[^/]+$/.test(c.req.path) ||
+                /^\/org\/v1\/publications\/uploads\/[^/]+\/files\/[^/]+\/chunks$/.test(c.req.path))
             ? 4 * 1024 * 1024
             : c.req.method === "POST" && /^\/org\/v1\/cloud\/workspaces\/[^/]+\/write$/.test(c.req.path)
               ? 6 * 1024 * 1024
@@ -151,23 +156,39 @@ export function organizationApp(
     .route("/org/v1", registrationRoutes(registry, publicOrigin))
     .route("/org/v1", sessionDirectoryRoutes(publicOrigin))
     .route("/org/v1", sharingRoutes(publicOrigin))
+    .route(
+      "/org/v1",
+      sessionReadRoutes(() => {
+        if (!reads) fail("SERVICE_UNAVAILABLE", "Private native reading is unavailable")
+        return reads
+      }, publicOrigin),
+    )
     .route("/org/v1", resourceRoutes(publicOrigin))
     .route("/org/v1", publicationRoutes(publicOrigin))
     .route("/org/v1", knowledgeRoutes(publicOrigin))
     .route("/org/v1", artifactRoutes(publicOrigin))
     .route("/org/v1", cloudRoutes(publicOrigin))
-    .route("/org/v1", handoffRoutes(() => {
-      if (!handoffs) fail("SERVICE_UNAVAILABLE", "Session handoff is unavailable")
-      return handoffs
-    }, publicOrigin))
-    .route("/runtime/v1", handoffMachineRoutes(() => {
-      if (!handoffs) fail("SERVICE_UNAVAILABLE", "Session handoff is unavailable")
-      return handoffs
-    }))
-    .route("/runtime/v1", knowledgeExecutionRoutes(() => {
-      if (!execution) fail("SERVICE_UNAVAILABLE", "Execution binding is unavailable")
-      return execution
-    }))
+    .route(
+      "/org/v1",
+      handoffRoutes(() => {
+        if (!handoffs) fail("SERVICE_UNAVAILABLE", "Session handoff is unavailable")
+        return handoffs
+      }, publicOrigin),
+    )
+    .route(
+      "/runtime/v1",
+      handoffMachineRoutes(() => {
+        if (!handoffs) fail("SERVICE_UNAVAILABLE", "Session handoff is unavailable")
+        return handoffs
+      }),
+    )
+    .route(
+      "/runtime/v1",
+      knowledgeExecutionRoutes(() => {
+        if (!execution) fail("SERVICE_UNAVAILABLE", "Execution binding is unavailable")
+        return execution
+      }),
+    )
     .route(
       "/org/v1",
       commandRoutes(() => {

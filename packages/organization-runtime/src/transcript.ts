@@ -2,7 +2,19 @@ import { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-organiz
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
-import { z } from "zod"
+
+export async function projectToolMetadata(tool: string, input: Record<string, unknown> | undefined) {
+  if (tool !== "organization_knowledge" || !input) return
+  const fields = Object.fromEntries(
+    await Promise.all(
+      Object.entries(input)
+        .filter(([key]) => Object.hasOwn(Sync.KnowledgeToolMetadata.shape, key))
+        .map(async ([key, value]) => [key, typeof value === "string" ? await SecretMask.apply(value) : value]),
+    ),
+  )
+  const parsed = Sync.KnowledgeToolMetadata.safeParse(fields)
+  return parsed.success ? parsed.data : undefined
+}
 
 export async function projectSharedPart(part: MessageV2.Part, owner: RolloutArtifact.Owner) {
   const blobs: RolloutArtifact.Ref[] = []
@@ -36,18 +48,7 @@ export async function projectSharedPart(part: MessageV2.Part, owner: RolloutArti
       const state = part.state
       const input =
         state.status === "pending" || state.status === "generating" ? state.raw : JSON.stringify(state.input)
-      let metadata: z.infer<typeof Sync.KnowledgeToolMetadata> | undefined
-      if (part.tool === "organization_knowledge" && "metadata" in state && state.metadata) {
-        const fields = Object.fromEntries(
-          await Promise.all(
-            Object.entries(state.metadata)
-              .filter(([key]) => Object.hasOwn(Sync.KnowledgeToolMetadata.shape, key))
-              .map(async ([key, value]) => [key, typeof value === "string" ? await SecretMask.apply(value) : value]),
-          ),
-        )
-        const parsed = Sync.KnowledgeToolMetadata.safeParse(fields)
-        if (parsed.success) metadata = parsed.data
-      }
+      const metadata = await projectToolMetadata(part.tool, "metadata" in state ? state.metadata : undefined)
       projected = {
         type: "tool",
         callID: part.callID,

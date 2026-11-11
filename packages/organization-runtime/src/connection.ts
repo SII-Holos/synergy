@@ -5,6 +5,7 @@ import {
   OrganizationRuntimeProtocol as Protocol,
   OrganizationCommandProtocol as Command,
   OrganizationSyncProtocol as Sync,
+  OrganizationReadProtocol as Read,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { readRuntimeHome, type RuntimeHome, type RuntimeIdentity } from "./home"
 import { readRuntimeRegistration } from "./registration"
@@ -63,6 +64,7 @@ export interface MemberConnectionOptions {
     close?(): void | Promise<void>
   }
   sync?: boolean
+  read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
   onConnected?: (
     connection: MemberConnection,
     signal: AbortSignal,
@@ -108,11 +110,17 @@ async function attempt(input: {
         : {}),
       connectionEpoch: epoch,
       buildVersion: options.buildVersion,
-      capabilities: ["bridge", ...(options.commands ? ["commands"] : []), ...(options.sync ? ["sync"] : [])],
+      capabilities: [
+        "bridge",
+        ...(options.commands ? ["commands"] : []),
+        ...(options.sync ? ["sync"] : []),
+        ...(options.read ? ["reads"] : []),
+      ],
       schemas: {
         bridge: 1,
         ...(options.commands ? { commands: 1 } : {}),
         ...(options.sync ? { sync: 1 } : {}),
+        ...(options.read ? { reads: 1 } : {}),
       },
     },
     nonce: randomBytes(32).toString("hex"),
@@ -139,7 +147,11 @@ async function attempt(input: {
   let resources: ReturnType<typeof createMemberResourceClient> | undefined
   let pending = Promise.resolve()
   const executing = new Map<string, Promise<void>>()
-  const windows = { command: { count: 0, bytes: 0 }, reconciliation: { count: 0, bytes: 0 } }
+  const windows = {
+    command: { count: 0, bytes: 0 },
+    reconciliation: { count: 0, bytes: 0 },
+    read: { count: 0, bytes: 0 },
+  }
   let queuedFrames = 0
   let queuedBytes = 0
   let sequence = 0
@@ -228,7 +240,12 @@ async function attempt(input: {
     if (stopped) return
     try {
       const encoded = JSON.stringify(frame)
-      const limit = frame.type === "sync-batch" || frame.type === "blob-chunk" ? syncFrameLimit : frameLimit
+      const limit =
+        frame.type === "sync-batch" ||
+        frame.type === "blob-chunk" ||
+        (frame.type === "receipt" && frame.reply.kind === "read")
+          ? syncFrameLimit
+          : frameLimit
       if (Buffer.byteLength(encoded) > limit || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > limit)
         throw failure("RUNTIME_OFFLINE", "Runtime connection is not receiving frames")
       socket.send(encoded)
@@ -252,8 +269,12 @@ async function attempt(input: {
     if (work.signal.aborted) return
     if (executing.has(frame.exchangeID)) throw failure("PROTOCOL_MISMATCH", "Duplicate active command exchange")
     const window =
-      frame.command.kind === "query" || frame.command.kind === "skip" ? windows.reconciliation : windows.command
-    if (window.count >= 16 || window.bytes + bytes > frameLimit * 4) {
+      frame.command.kind === "query" || frame.command.kind === "skip"
+        ? windows.reconciliation
+        : frame.command.kind === "read"
+          ? windows.read
+          : windows.command
+    if (window.count >= (frame.command.kind === "read" ? 4 : 16) || window.bytes + bytes > frameLimit * 4) {
       send({
         type: "receipt",
         connectionEpoch: epoch,
@@ -411,6 +432,14 @@ async function attempt(input: {
     let reply: Command.Reply
     try {
       const command = frame.command
+      if (command.kind === "read") {
+        if (!options.read || !connected) throw failure("PROTOCOL_MISMATCH", "Private native reads are unavailable")
+        const result = await options.read(command.authorization, connected, work.signal)
+        if (!Read.matches(command.authorization.permit.query, result, Read.bindingFor(command.authorization.permit)))
+          throw failure("PROTOCOL_MISMATCH", "Private native read returned another target")
+        respond({ kind: "read", authorization: command.authorization, result })
+        return
+      }
       reply =
         command.kind === "create"
           ? { kind: "result", result: await receiver.create(command.delivery) }

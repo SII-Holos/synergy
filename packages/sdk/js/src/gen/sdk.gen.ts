@@ -407,6 +407,9 @@ import type {
   OrgLocalProjectBindResponses,
   OrgLocalProjectGetErrors,
   OrgLocalProjectGetResponses,
+  OrgLocalSessionReadErrors,
+  OrgLocalSessionReadResponses,
+  OrgPrivateReadQuery,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
@@ -7028,6 +7031,32 @@ export class OrgLocalProject extends HeyApiClient {
     return (options?.client ?? this.client).post<OrgLocalProjectBindResponses, OrgLocalProjectBindErrors, ThrowOnError>(
       {
         url: "/organization-local-project/{projectID}",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
+export class OrgLocalSession extends HeyApiClient {
+  /**
+   * Read creator-only history from this native member Runtime
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgPrivateReadQuery: OrgPrivateReadQuery
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgPrivateReadQuery", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgLocalSessionReadResponses, OrgLocalSessionReadErrors, ThrowOnError>(
+      {
+        url: "/organization/session/read",
         ...options,
         ...params,
         headers: {
@@ -16595,6 +16624,8 @@ export class SynergyClient extends HeyApiClient {
   storage = new Storage({ client: this.client })
 
   orgLocalProject = new OrgLocalProject({ client: this.client })
+
+  orgLocalSession = new OrgLocalSession({ client: this.client })
 
   push = new Push({ client: this.client })
 

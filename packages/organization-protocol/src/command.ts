@@ -2,6 +2,7 @@ import { z } from "zod"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
+import { OrganizationReadProtocol as Read } from "./read.js"
 import { SigningPublicKey, SigningSignature, digestProtocol, signedProtocol } from "./signature.js"
 
 export namespace OrganizationCommandProtocol {
@@ -407,11 +408,13 @@ export namespace OrganizationCommandProtocol {
     z.strictObject({ kind: z.literal("control"), delivery: ControlDelivery }),
     z.strictObject({ kind: z.literal("query"), authorization: SignedPermit }),
     z.strictObject({ kind: z.literal("skip"), authorization: SignedSkip }),
+    z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit }),
   ])
   export type Delivery = z.infer<typeof Delivery>
   export const Reply = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("result"), result: Result }),
     z.strictObject({ kind: z.literal("query"), query: QueryResult }),
+    z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit, result: Read.Result }),
     z.strictObject({ kind: z.literal("error"), error: Protocol.Error }),
   ])
   export type Reply = z.infer<typeof Reply>

@@ -334,16 +334,19 @@ export type OrgSessionDirectoryView = {
     | {
         observedAt: number
         controlVersion: number
+        runID?: string
         type: "idle"
       }
     | {
         observedAt: number
         controlVersion: number
+        runID?: string
         type: "busy"
       }
     | {
         observedAt: number
         controlVersion: number
+        runID?: string
         type: "paused"
         since: number
         reason: "aborted" | "failed" | "interrupted" | "workflow"
@@ -351,6 +354,7 @@ export type OrgSessionDirectoryView = {
     | {
         observedAt: number
         controlVersion: number
+        runID?: string
         type: "retry"
         attempt: number
         next?: number
@@ -534,16 +538,19 @@ export type OrgSyncEvent =
           | {
               observedAt: number
               controlVersion: number
+              runID?: string
               type: "idle"
             }
           | {
               observedAt: number
               controlVersion: number
+              runID?: string
               type: "busy"
             }
           | {
               observedAt: number
               controlVersion: number
+              runID?: string
               type: "paused"
               since: number
               reason: "aborted" | "failed" | "interrupted" | "workflow"
@@ -551,6 +558,7 @@ export type OrgSyncEvent =
           | {
               observedAt: number
               controlVersion: number
+              runID?: string
               type: "retry"
               attempt: number
               next?: number
@@ -795,6 +803,383 @@ export type OrgSyncBlobStatus = {
   complete: boolean
   nextOffset?: number
 }
+
+export type OrgSessionBinding = {
+  schemaVersion: 1
+  orgID: string
+  projectID: string
+  creatorID: string
+  driverRuntimeID: string
+  bindingEpoch: number
+}
+
+export type OrgPrivateReadResult =
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "session"
+      session: {
+        sessionID: string
+        parentSessionID?: string
+        title: string
+        createdAt: number
+        updatedAt: number
+      }
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "timeline"
+      items: Array<{
+        messageID: string
+        role: "user" | "assistant"
+        createdAt: number
+        summary: string
+        actor?: ActorStamp
+        agent?: string
+        parentID?: string
+        rootID?: string
+        completedAt?: number
+        finish?: string
+        model?: {
+          providerID: string
+          modelID: string
+        }
+        mode?: string
+        cost?: number
+        tokens?: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        error?: {
+          code: string
+          message: string
+        }
+        version: string
+        order: string
+      }>
+      referencedRoots: Array<{
+        messageID: string
+        role: "user" | "assistant"
+        createdAt: number
+        summary: string
+        actor?: ActorStamp
+        agent?: string
+        parentID?: string
+        rootID?: string
+        completedAt?: number
+        finish?: string
+        model?: {
+          providerID: string
+          modelID: string
+        }
+        mode?: string
+        cost?: number
+        tokens?: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        error?: {
+          code: string
+          message: string
+        }
+        version: string
+        order: string
+      }>
+      cursor?: string
+      hasMore: boolean
+      total: number
+      generation: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "parts"
+      messageID: string
+      items: Array<{
+        partID: string
+        messageID: string
+        type: string
+        preview: string
+        render?: boolean
+        status?: string
+        tool?: string
+        content: {
+          version: string
+          bytes: number
+        }
+      }>
+      cursor?: string
+      hasMore: boolean
+      generation?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "partContent"
+      state?: "ready"
+      value: {
+        partID: string
+        messageID: string
+        version: string
+        part:
+          | {
+              type: "text"
+              content:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              origin?: "user" | "system"
+            }
+          | {
+              type: "reasoning"
+              content:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              time?: {
+                start: number
+                end?: number
+              }
+            }
+          | {
+              type: "tool"
+              callID: string
+              tool: string
+              status: "pending" | "generating" | "running" | "completed" | "error"
+              input:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              output?:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              error?:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              title?: string
+              startedAt?: number
+              completedAt?: number
+              metadata?: {
+                operation?: "list" | "files" | "read" | "search"
+                itemID?: string
+                version?: number
+                manifestHash?: string
+                fileID?: string
+                path?: string
+                title?: string
+                offset?: number
+                bytes?: number
+                truncated?: boolean
+                cursor?: string
+              }
+            }
+          | {
+              type: "attachment"
+              filename: string
+              mediaType: string
+              hash?: string
+              bytes?: number
+            }
+          | {
+              type: "step-start"
+            }
+          | {
+              type: "step-finish"
+              reason: string
+              cost: number
+              tokens?: {
+                input: number
+                output: number
+                reasoning: number
+                cache: {
+                  read: number
+                  write: number
+                }
+              }
+            }
+          | {
+              type: "compaction"
+              auto: boolean
+            }
+          | {
+              type: "notice"
+              kind: string
+              content:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+            }
+      }
+      chunk?: {
+        field: "text" | "input" | "output" | "error"
+        offset: number
+        nextOffset: number
+        totalBytes: number
+        sha256: string
+        original: "complete" | "partial"
+        data: string
+        complete: boolean
+      }
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "partContent"
+      state: "preparing"
+      messageID: string
+      partID: string
+      version: string
+      progress: {
+        phase: "queued" | "materializing" | "busy"
+        bytes: number
+        totalBytes?: number
+      }
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "status"
+      status:
+        | {
+            observedAt: number
+            controlVersion: number
+            runID?: string
+            type: "idle"
+          }
+        | {
+            observedAt: number
+            controlVersion: number
+            runID?: string
+            type: "busy"
+          }
+        | {
+            observedAt: number
+            controlVersion: number
+            runID?: string
+            type: "paused"
+            since: number
+            reason: "aborted" | "failed" | "interrupted" | "workflow"
+          }
+        | {
+            observedAt: number
+            controlVersion: number
+            runID?: string
+            type: "retry"
+            attempt: number
+            next?: number
+          }
+    }
+
+export type OrgPrivateReadQuery =
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "session"
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "timeline"
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "parts"
+      messageID: string
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "partContent"
+      messageID: string
+      partID: string
+      field?: "text" | "input" | "output" | "error"
+      version?: string
+      offset?: number
+      length?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "status"
+    }
 
 export type OrgResourceAdminView = {
   resourceID: string
@@ -4519,6 +4904,53 @@ export type OrgSessionSyncDownloadBlobResponses = {
 
 export type OrgSessionSyncDownloadBlobResponse =
   OrgSessionSyncDownloadBlobResponses[keyof OrgSessionSyncDownloadBlobResponses]
+
+export type OrgSessionReadReadData = {
+  body: OrgPrivateReadQuery
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/read"
+}
+
+export type OrgSessionReadReadErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionReadReadError = OrgSessionReadReadErrors[keyof OrgSessionReadReadErrors]
+
+export type OrgSessionReadReadResponses = {
+  /**
+   * Success
+   */
+  200: OrgPrivateReadResult
+}
+
+export type OrgSessionReadReadResponse = OrgSessionReadReadResponses[keyof OrgSessionReadReadResponses]
 
 export type OrgResourcesListData = {
   body?: never

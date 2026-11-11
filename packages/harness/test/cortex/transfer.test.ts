@@ -234,7 +234,9 @@ test("a running Cortex handoff resumes its recorded native root without resendin
         const roots = (await Session.messages({ sessionID: task.sessionID })).filter(
           (message) => message.info.role === "user" && message.info.isRoot,
         )
-        expect(roots.map((message) => message.info.id)).toEqual([held.cortex?.rootID])
+        const rootID = held.cortex?.rootID
+        if (!rootID) throw new Error("Native Cortex root was not retained")
+        expect(roots.map((message) => message.info.id)).toEqual([rootID])
         expect(calls).toBe(2)
         expect(
           (await SessionInbox.list(parent.id)).filter(

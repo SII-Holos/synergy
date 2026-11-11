@@ -2,6 +2,7 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationProtocol as Protocol,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationReadProtocol as Read,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationError, fail } from "./error"
 
@@ -26,7 +27,7 @@ export function createCommandTransport(input: {
       reject(error: InstanceType<typeof OrganizationError>): void
     }
   >()
-  const reserved = { command: 0, reconciliation: 0 }
+  const reserved = { command: 0, reconciliation: 0, read: 0 }
   let closed = false
   const waiters = new Set<{
     command: Command.Delivery
@@ -47,12 +48,13 @@ export function createCommandTransport(input: {
     })
   }
   function window(command: Command.Delivery) {
+    if (command.kind === "read") return "read"
     return command.kind === "query" || command.kind === "skip" ? "reconciliation" : "command"
   }
   function available(command: Command.Delivery) {
     const kind = window(command)
     const occupied = [...pending.values()].filter((request) => window(request.command) === kind).length
-    return occupied + reserved[kind] < 16 && input.buffered() <= 64 * 1024
+    return occupied + reserved[kind] < (kind === "read" ? 4 : 16) && input.buffered() <= 64 * 1024
   }
   function reserve(command: Command.Delivery) {
     const kind = window(command)
@@ -117,6 +119,15 @@ export function createCommandTransport(input: {
   }
   function validate(command: Command.Delivery, reply: Command.Reply) {
     if (reply.kind === "error") return
+    if (command.kind === "read") {
+      if (
+        reply.kind !== "read" ||
+        JSON.stringify(reply.authorization) !== JSON.stringify(command.authorization) ||
+        !Read.matches(command.authorization.permit.query, reply.result, Read.bindingFor(command.authorization.permit))
+      )
+        fail("PROTOCOL_MISMATCH", "Private read response does not match its authorization")
+      return
+    }
     if (command.kind === "query") {
       if (reply.kind !== "query" || JSON.stringify(reply.query.authorization) !== JSON.stringify(command.authorization))
         fail("PROTOCOL_MISMATCH", "Receipt query response does not match its authorization")

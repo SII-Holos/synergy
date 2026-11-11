@@ -97,7 +97,11 @@ export namespace OrganizationSyncProtocol {
   export const SyncState = z.enum(["pending", "syncing", "synced", "blocked", "failed"])
 
   export const CortexStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
-  const statusObservation = { observedAt: z.number().int().nonnegative(), controlVersion: Identity.Revision }
+  const statusObservation = {
+    observedAt: z.number().int().nonnegative(),
+    controlVersion: Identity.Revision,
+    runID: Identity.ID.optional(),
+  }
   export const Status = z.discriminatedUnion("type", [
     z.strictObject({ ...statusObservation, type: z.literal("idle") }),
     z.strictObject({ ...statusObservation, type: z.literal("busy") }),

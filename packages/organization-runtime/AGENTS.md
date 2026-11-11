@@ -1,6 +1,6 @@
 # Organization Runtime Adapter
 
-Own organization bindings, trusted bridge, command intake, synchronization and remote resource adapters. Service identity and authorization stay with the organization service. Verify current epochs and actor attribution without role tables. Reuse Harness execution owners and Inbox; never create another scheduler. See [organization architecture](../../docs/architecture/organization.md).
+Own bindings, bridge, command intake, synchronization and resource adapters. Service owns identity/authorization. Verify epochs and attribution without role tables. Reuse Harness execution owners and Inbox; never duplicate scheduling. See [organization architecture](../../docs/architecture/organization.md).
 
 Compose through Agent Runtime with explicit exclusive sources and fixed gateway SDKs in both worker roles. Personal configuration, credentials, ancestor/global Skills and plugins cannot leak into organization compositions. Hosted execution excludes Desktop and Memory. Authorization derives from accepted Inbox/root evidence and current grants, never enrollment alone. Verify Runtime/execution-source suites.
 
@@ -8,7 +8,7 @@ Read project configuration through Harness ProjectConfig with an explicit field 
 
 Provision member Homes by organization/account/device and hosted Homes by organization/host before startup. Preserve keys across retries; damaged or mismatched credentials need explicit recovery. Tickets remain in memory and snapshots never replace live authorization. Keep home/registration modules usable by Node hosts without Agent lifecycle or Bun networking. Reuse HomeOwnershipFile, bounded reads and positive test-home guards. Verify real Node Home and HTTPS enrollment tests; never disable TLS validation.
 
-Member local HTTP uses the existing Server with explicit loopback port and private bearer. CLI consumes bounded private stdin and reuses lifecycle. Components contribute discovery only; selected Runtime entrypoints own composition. Spawn through environment preparation, disable implicit loader inputs and preserve only the verified member installation pin. Test source and installed launches separately.
+Member HTTP uses Server with explicit loopback port and private bearer. CLI consumes bounded private stdin and reuses lifecycle. Components contribute discovery only; selected Runtime entrypoints own composition. Spawn through environment preparation, disable implicit loader inputs and preserve only the verified member installation pin. Test source and installed launches separately.
 
 Local project defaults stay in Scope and WorkspaceCatalog. Bind with CAS and stable receipts; return safe labels only. Validate native defaults before signed creation's transaction and recheck revisions inside it. Native-only composition excludes personal profile resolution. Verify `test/local-project.test.ts`.
 
@@ -20,6 +20,8 @@ Knowledge sources stage complete checksum-verified releases before atomically re
 
 Shared transcript export uses portable DTOs, ordered durable outboxes, generation/hash checkpoints and authorized chunk references. Private bodies remain local. Verify exporter/transcript migrations, restart and lost-ACK tests.
 
+Private reads share a dispatcher with canonical Scope/lineage and captured binding fences. Creator-only remote permits bind queries and current machine authority. Bound headers/ranges, preparation and provenance; exclude native paths/arbitrary metadata. Verify `test/session-read*.test.ts`; regenerate both SDKs for contract changes.
+
 Desktop Browser requires private managed launch data, explicit listener authentication and lazy page creation. Reject inherited native credentials and non-Desktop selection. Hosted/member machines share bridge/intake/worker composition; hosted identities have no human account. Verify desktop, hosted-home and hosted-runtime suites.
 
-Tests live under test/ with isolated Homes. Run typecheck and focused suites; root owns dependency/package checks. Preserve active Runtimes.
+Isolate Homes/tests under test/; run focused tests/typecheck. Root owns package/dependency checks; preserve active Runtimes.

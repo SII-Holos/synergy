@@ -19,6 +19,7 @@ import { attachMemberExecution } from "./execution-source"
 import { startExecutionReleaseObserver } from "./release-observer"
 import { startMemberSyncExporter } from "./sync-exporter"
 import { OrganizationLocalProjects } from "./local-project"
+import { OrganizationSessionReads } from "./session-reads"
 
 export type MemberRuntimeOptions = Pick<
   AgentRuntimeOptions,
@@ -72,6 +73,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
       register() {
         registerMemberSources(member.identity)
         OrganizationLocalProjects.register(member.identity)
+        OrganizationSessionReads.register(member.identity, registration.runtimeID)
       },
       services() {
         let bridge: ReturnType<typeof startMemberBridge> | undefined
@@ -105,6 +107,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                   }
                 }),
                 sync: true,
+                read: context.bind(OrganizationSessionReads.remote),
                 onConnected: context.bind((connection, signal) => {
                   const exporter = startMemberSyncExporter({ identity: member.identity, connection, signal })
                   void exporter.flush()

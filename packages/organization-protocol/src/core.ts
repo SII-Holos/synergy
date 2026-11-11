@@ -7,6 +7,17 @@ export namespace OrganizationProtocol {
   export const Epoch = z.number().int().positive()
   export const Revision = z.number().int().nonnegative()
   export const Digest = z.string().regex(/^[a-f0-9]{64}$/)
+  export const SessionBinding = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      orgID: OrganizationIdentity.ID,
+      projectID: OrganizationIdentity.ID,
+      creatorID: OrganizationIdentity.ID,
+      driverRuntimeID: OrganizationIdentity.ID,
+      bindingEpoch: Epoch,
+    })
+    .meta({ ref: "OrgSessionBinding" })
+  export type SessionBinding = z.infer<typeof SessionBinding>
 
   const handshake = {
     type: z.literal("handshake"),

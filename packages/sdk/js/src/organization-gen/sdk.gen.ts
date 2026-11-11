@@ -192,6 +192,7 @@ import type {
   OrgOrganizationTransferOwnerErrors,
   OrgOrganizationTransferOwnerResponses,
   OrgPasswordChange,
+  OrgPrivateReadQuery,
   OrgProjectChange,
   OrgProjectCreate,
   OrgProjectMemberChange,
@@ -255,6 +256,8 @@ import type {
   OrgRuntimeRevoke,
   OrgRuntimeRevokeErrors,
   OrgRuntimeRevokeResponses,
+  OrgSessionReadReadErrors,
+  OrgSessionReadReadResponses,
   OrgSessionResourceChange,
   OrgSessionResourcesGetErrors,
   OrgSessionResourcesGetResponses,
@@ -1778,6 +1781,41 @@ export class OrgSessionSync extends HeyApiClient {
       url: "/org/v1/sessions/{sessionID}/blobs/{hash}/content",
       ...options,
       ...params,
+    })
+  }
+}
+
+export class OrgSessionRead extends HeyApiClient {
+  /**
+   * Read creator-only native history through a transient authorized exchange
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgPrivateReadQuery: OrgPrivateReadQuery
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgPrivateReadQuery", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgSessionReadReadResponses, OrgSessionReadReadErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/read",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }
@@ -3838,6 +3876,8 @@ export class OrganizationClient extends HeyApiClient {
   orgSessions = new OrgSessions({ client: this.client })
 
   orgSessionSync = new OrgSessionSync({ client: this.client })
+
+  orgSessionRead = new OrgSessionRead({ client: this.client })
 
   orgResources = new OrgResources({ client: this.client })
 

@@ -18,7 +18,7 @@ import type { MemberConnection } from "./connection"
 import { OrganizationSyncPath as Keys } from "./storage/path"
 import { projectSharedPart } from "./transcript"
 import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
-import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { currentRunID, observeSessionStatus } from "./session-status"
 import type { StatusInfo } from "@ericsanchezok/synergy-harness/session/types"
 import { readCommandControlVersion } from "./command-intake"
 
@@ -258,22 +258,8 @@ export function startMemberSyncExporter(input: {
     const previous = await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, draftID))
     let status = previous?.event.type === "session" ? previous.event.session.status : undefined
     const controlVersion = await readCommandControlVersion(identity.orgID, rootSessionID)
-    if (!status || observed || status.controlVersion !== controlVersion) {
-      const native = observed ?? (await SessionManager.statusesFor([session]))[sessionID] ?? { type: "idle" }
-      const observation = { observedAt: Date.now(), controlVersion }
-      status = Sync.Status.parse(
-        native.type === "paused"
-          ? { ...observation, type: native.type, since: native.since, reason: native.reason }
-          : native.type === "retry"
-            ? {
-                ...observation,
-                type: native.type,
-                attempt: native.attempt,
-                ...(native.next === undefined ? {} : { next: native.next }),
-              }
-            : { ...observation, type: native.type },
-      )
-    }
+    if (!status || observed || status.controlVersion !== controlVersion || status.runID !== currentRunID(session))
+      status = await observeSessionStatus(session, identity.orgID, rootSessionID)
     await putDraft(
       rootSessionID,
       draftID,

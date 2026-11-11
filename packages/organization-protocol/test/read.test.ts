@@ -78,6 +78,7 @@ test("native content references describe exact fields without paths or shared bl
     field: "text",
     bytes: 20,
     sha256: "a".repeat(64),
+    original: "complete",
   } as const
   expect(Read.Content.parse(reference)).toEqual(reference)
   for (const changed of [
@@ -95,4 +96,41 @@ test("native content references describe exact fields without paths or shared bl
       part: { type: "text", content: reference },
     }).part.type,
   ).toBe("text")
+  expect(Read.Content.parse({ ...reference, original: "partial" })).toMatchObject({ original: "partial" })
+  expect(Read.Content.safeParse({ ...reference, original: undefined }).success).toBeFalse()
+})
+
+test("native field preparation reports real progress without inventing body metadata", () => {
+  const query = Read.Query.parse({
+    operation: "partContent",
+    rootSessionID: "root",
+    messageID: "message",
+    partID: "part",
+    version: "native-version",
+  })
+  const binding = {
+    schemaVersion: 1 as const,
+    orgID: "org",
+    projectID: "project",
+    creatorID: "creator",
+    driverRuntimeID: "runtime",
+    bindingEpoch: 1,
+  }
+  const result = Read.Result.parse({
+    operation: "partContent",
+    rootSessionID: "root",
+    sourceSessionID: "root",
+    binding,
+    state: "preparing",
+    messageID: "message",
+    partID: "part",
+    version: "native-version",
+    progress: { phase: "materializing", bytes: 1024 },
+  })
+  expect(Read.matches(query, result)).toBeTrue()
+  if (result.operation !== "partContent" || result.state !== "preparing")
+    throw new Error("Expected preparation progress")
+  expect(Read.matches(query, { ...result, partID: "other-part" })).toBeFalse()
+  expect(Read.Result.safeParse({ ...result, value: {} }).success).toBeFalse()
+  expect(Read.matches(query, result, { ...binding, bindingEpoch: 2 })).toBeFalse()
 })

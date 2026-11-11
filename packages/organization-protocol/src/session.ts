@@ -5,16 +5,7 @@ import { OrganizationSyncProtocol as Sync } from "./sync.js"
 import { OrganizationRuntimeProtocol as Runtime } from "./runtime.js"
 
 export namespace OrganizationSessionProtocol {
-  export const Binding = z
-    .strictObject({
-      schemaVersion: z.literal(1),
-      orgID: Identity.ID,
-      projectID: Identity.ID,
-      creatorID: Identity.ID,
-      driverRuntimeID: Identity.ID,
-      bindingEpoch: z.number().int().positive(),
-    })
-    .meta({ ref: "OrgSessionBinding" })
+  export const Binding = OrganizationProtocol.SessionBinding
   export type Binding = z.infer<typeof Binding>
 
   export const Metadata = OrganizationProtocol.PrivateSessionRegistration.extend({

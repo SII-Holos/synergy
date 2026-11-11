@@ -90,6 +90,7 @@ export namespace OrganizationReadProtocol {
       field: Field,
       bytes: z.number().int().nonnegative().safe(),
       sha256: Protocol.Digest,
+      original: z.enum(["complete", "partial"]),
     }),
   ])
   export type Content = z.infer<typeof Content>
@@ -123,7 +124,7 @@ export namespace OrganizationReadProtocol {
     tool: z.string().max(256).optional(),
     content: z.strictObject({ version: z.string().min(1).max(512), bytes: z.number().int().nonnegative().safe() }),
   })
-  const envelope = { rootSessionID: Identity.ID, sourceSessionID: Identity.ID }
+  const envelope = { rootSessionID: Identity.ID, sourceSessionID: Identity.ID, binding: Protocol.SessionBinding }
   export const Chunk = z
     .strictObject({
       field: Field,
@@ -131,6 +132,7 @@ export namespace OrganizationReadProtocol {
       nextOffset: z.number().int().nonnegative().safe(),
       totalBytes: z.number().int().nonnegative().safe(),
       sha256: Protocol.Digest,
+      original: z.enum(["complete", "partial"]),
       data: z
         .string()
         .regex(/^[A-Za-z0-9_-]*$/)
@@ -177,9 +179,95 @@ export namespace OrganizationReadProtocol {
         hasMore: z.boolean(),
         generation: z.number().int().nonnegative().optional(),
       }),
-      z.strictObject({ ...envelope, operation: z.literal("partContent"), value: Part, chunk: Chunk.optional() }),
+      z.discriminatedUnion("state", [
+        z.strictObject({
+          ...envelope,
+          operation: z.literal("partContent"),
+          state: z.literal("ready").default("ready"),
+          value: Part,
+          chunk: Chunk.optional(),
+        }),
+        z.strictObject({
+          ...envelope,
+          operation: z.literal("partContent"),
+          state: z.literal("preparing"),
+          messageID: Identity.ID,
+          partID: Identity.ID,
+          version: z.string().min(1).max(512),
+          progress: z.strictObject({
+            phase: z.enum(["queued", "materializing", "busy"]),
+            bytes: z.number().int().nonnegative().safe(),
+            totalBytes: z.number().int().nonnegative().safe().optional(),
+          }),
+        }),
+      ]),
       z.strictObject({ ...envelope, operation: z.literal("status"), status: Sync.Status }),
     ])
     .meta({ ref: "OrgPrivateReadResult" })
   export type Result = z.infer<typeof Result>
+
+  export const responseBytes = 512 * 1024
+  export function bindingFor(permit: Permit): Protocol.SessionBinding {
+    return Protocol.SessionBinding.parse({
+      schemaVersion: 1,
+      orgID: permit.orgID,
+      projectID: permit.projectID,
+      creatorID: permit.creatorID,
+      driverRuntimeID: permit.runtimeID,
+      bindingEpoch: permit.bindingEpoch,
+    })
+  }
+  export function matches(query: Query, result: Result, expected?: Protocol.SessionBinding) {
+    if (
+      result.operation !== query.operation ||
+      result.rootSessionID !== query.rootSessionID ||
+      result.sourceSessionID !== (query.sourceSessionID ?? query.rootSessionID) ||
+      new TextEncoder().encode(JSON.stringify(result)).byteLength > responseBytes
+    )
+      return false
+    if (
+      expected &&
+      JSON.stringify(Protocol.SessionBinding.parse(result.binding)) !==
+        JSON.stringify(Protocol.SessionBinding.parse(expected))
+    )
+      return false
+    if (query.operation === "session" && result.operation === "session")
+      return result.session.sessionID === result.sourceSessionID
+    if (query.operation === "timeline" && result.operation === "timeline") return result.items.length <= query.limit
+    if (query.operation === "parts" && result.operation === "parts")
+      return (
+        result.messageID === query.messageID &&
+        result.items.length <= query.limit &&
+        result.items.every((item) => item.messageID === query.messageID)
+      )
+    if (query.operation !== "partContent" || result.operation !== "partContent") return true
+    if (result.state === "preparing")
+      return (
+        result.messageID === query.messageID &&
+        result.partID === query.partID &&
+        (query.version === undefined || query.version === result.version)
+      )
+    if (
+      result.value.partID !== query.partID ||
+      result.value.messageID !== query.messageID ||
+      (query.version !== undefined && result.value.version !== query.version)
+    )
+      return false
+    const chunk = result.chunk
+    if (!chunk) return true
+    if (chunk.field !== query.field || chunk.offset !== query.offset || chunk.nextOffset - chunk.offset > query.length)
+      return false
+    const part = result.value.part
+    const references =
+      part.type === "tool" ? [part.input, part.output, part.error] : "content" in part ? [part.content] : []
+    return references.some(
+      (ref) =>
+        ref?.kind === "native" &&
+        ref.version === result.value.version &&
+        ref.field === chunk.field &&
+        ref.bytes === chunk.totalBytes &&
+        ref.sha256 === chunk.sha256 &&
+        ref.original === chunk.original,
+    )
+  }
 }

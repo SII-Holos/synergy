@@ -38,6 +38,7 @@ import { OrganizationSharing } from "./sharing"
 import { OrganizationCloud, type OrganizationCloudOptions } from "./cloud"
 import { OrganizationSessionDirectory } from "./session-directory"
 import { createHandoffs } from "./handoff"
+import { createSessionReadForwarder } from "./session-read"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -175,6 +176,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       })
       const admissions = createCommandAdmissions({ connections, signing })
       const commands = createCommandForwarder({ admissions, connections })
+      const reads = createSessionReadForwarder({ connections, signing })
       const gatewayCalls = createGatewayCalls({ connections, signing })
       modelGateway = createModelGateway({ calls: gatewayCalls, run: async (body) => context.run(body) })
       connectionGateway = createConnectionGateway({ calls: gatewayCalls, run: async (body) => context.run(body) })
@@ -201,6 +203,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
         execution,
         { calls: gatewayCalls, models: modelGateway, connections: connectionGateway },
         handoffs,
+        reads,
       )
       if (web) app.route("/", web)
       ready = true
