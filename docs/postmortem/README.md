@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0109](0109-native-publication-lost-input-priority.md)
+
 - [0108](0108-staged-context-read-foreign-storage.md)
 
 - [0107](0107-native-activation-outlived-cancellation.md)

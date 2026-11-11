@@ -87,6 +87,24 @@ test("native Workspace catalogs publish before Core while each owner's aggregate
   const before = ["session-core"]
   const register = () => {
     Core.register()
+    Owners.register("a-observer", {
+      ...empty,
+      stagedDependencies: ["session-core"],
+      async *export(context) {
+        yield {
+          id: "observer-" + context.session.id,
+          kind: "record",
+          metadata: { key: ["observer-proof", context.session.id] },
+          content: (async function* () {
+            yield Buffer.from(JSON.stringify({ sessionID: context.session.id }))
+          })(),
+        }
+      },
+      async publish(context) {
+        await Session.get(context.session.id)
+        events.push("observer:" + context.session.id)
+      },
+    })
     Owners.register("session-workspaces", {
       ...empty,
       publicationBefore: before,
@@ -182,7 +200,7 @@ test("native Workspace catalogs publish before Core while each owner's aggregate
             sessionID: member.session.id,
             ...(member.session.id === captured.root.id ? {} : { rootSessionID: captured.root.id }),
           })
-          for (const ownerID of ["session-core", "session-workspaces"]) {
+          for (const ownerID of ["session-core", "session-workspaces", "a-observer"]) {
             const context = await Staging.context({
               handoffID: captured.binding.handoffID,
               rootSessionID: captured.root.id,
@@ -210,6 +228,8 @@ test("native Workspace catalogs publish before Core while each owner's aggregate
           "workspace:" + captured.child.id,
           "core:" + captured.root.id,
           "core:" + captured.child.id,
+          "observer:" + captured.root.id,
+          "observer:" + captured.child.id,
         ])
         for (const sessionID of [captured.root.id, captured.child.id]) {
           expect(await Session.get(sessionID)).toMatchObject({

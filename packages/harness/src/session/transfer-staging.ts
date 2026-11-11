@@ -650,7 +650,7 @@ export namespace SessionTransferStaging {
     }
     const current = await state(handoffID)
     if (current.phase !== "verified") fail("Portable staging cannot be published in this phase")
-    const publicationOrder = Owners.publicationOrder(Object.keys(current.root.owners))
+    Owners.publicationOrder(Object.keys(current.root.owners))
     const selected = new Set<string>()
     const pairs = new Set<string>()
     for (const { ownerID, context } of publications) {
@@ -671,6 +671,7 @@ export namespace SessionTransferStaging {
     }
     if (Object.keys(current.root.owners).some((id) => !selected.has(id)))
       fail("Portable publication omitted a required owner")
+    const publicationOrder = Owners.publicationOrder([...selected])
     if ((current.root.owners["session-core"] ?? 0) >= 2) {
       const root = publications.find(
         ({ ownerID, context }) => ownerID === "session-core" && context.session.id === context.rootSessionID,

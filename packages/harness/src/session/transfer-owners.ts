@@ -138,19 +138,19 @@ export namespace SessionTransferOwners {
       }
       edges.set(id, before)
     }
-    const ready = selected.filter((id) => incoming.get(id) === 0)
+    const remaining = new Set(selected)
     const ordered: string[] = []
-    for (let cursor = 0; cursor < ready.length; cursor++) {
-      const id = ready[cursor]!
+    while (remaining.size) {
+      const id = selected.find((candidate) => remaining.has(candidate) && incoming.get(candidate) === 0)
+      if (id === undefined)
+        throw new Rejected({ message: "Native portability owners have cyclic publication dependencies" })
+      remaining.delete(id)
       ordered.push(id)
       for (const target of edges.get(id) ?? []) {
         const count = incoming.get(target)! - 1
         incoming.set(target, count)
-        if (count === 0) ready.push(target)
       }
     }
-    if (ordered.length !== selected.length)
-      throw new Rejected({ message: "Native portability owners have cyclic publication dependencies" })
     return ordered
   }
 
