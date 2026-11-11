@@ -22,6 +22,7 @@ import { EnvironmentExecution } from "../environment/execution"
 import { registerSnapshotOwnershipMigrations } from "../session/snapshot-ownership-migration"
 import { registerSessionChildIndexMigrations } from "../session/child-index-migration"
 import { registerSessionCortexIndexMigrations } from "../session/cortex-index-migration"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -44,6 +45,7 @@ export function registerHarness() {
   WorkspaceMounts.register()
   EnvironmentExecution.registerRecovery()
   WorkspaceOperations.register()
+  RuntimeMaintenance.registerProtection()
   SessionTransferGate.register()
   registerSessionResolver()
   registerSummaryJob()

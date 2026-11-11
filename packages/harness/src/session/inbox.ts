@@ -11,6 +11,7 @@ import { BusEvent } from "../bus/bus-event"
 import { Identifier } from "../id/id"
 import { Scope } from "../scope"
 import { Storage } from "../storage/storage"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { StorageIntegrityError } from "../storage/errors"
 import { StoragePath } from "../storage/path"
 import { Lock } from "../util/lock"
@@ -867,6 +868,7 @@ export namespace SessionInbox {
         })
         if (run && ["cancelled", "completed", "failed"].includes(run.status)) return item
       }
+      await RuntimeMaintenance.assertAdmission()
       const stored = await writeItem(item)
       await Session.recordActivity(input.sessionID)
       return stored

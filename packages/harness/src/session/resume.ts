@@ -3,6 +3,7 @@ import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { Session } from "."
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { Lock } from "../util/lock"
 import { SessionExecutionOwners } from "./execution-owners"
 import { SessionHistory } from "./history"
@@ -96,6 +97,7 @@ export namespace SessionResume {
     const admission = { ...options, actor: ActorStamp.Info.optional().parse(options?.actor) }
     const initial = await controlled(input.sessionID, admission.signal, () => inspect(input))
     if ("result" in initial) return initial.result
+    await RuntimeMaintenance.assertAdmission()
     await SessionManager.waitForIdle(input.sessionID, admission.signal)
     return controlled(input.sessionID, admission.signal, async () => {
       const current = await inspect(input)
@@ -140,6 +142,7 @@ export namespace SessionResume {
             async () => {
               admitted = false
               admission.signal?.throwIfAborted()
+              await RuntimeMaintenance.assertAdmission()
               await admission.validate?.()
               const current = await Session.get(session.id)
               if (current.time.archived) throw new ResumeChanged("blocked", "Archived sessions cannot continue.")

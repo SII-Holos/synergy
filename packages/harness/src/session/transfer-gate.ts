@@ -3,6 +3,7 @@ import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Storage } from "../storage/storage"
 import { StorageMutationGuard } from "../storage/mutation-guard"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { SessionTransferEpochs } from "./transfer-epochs"
 
 export namespace SessionTransferGate {
@@ -32,6 +33,7 @@ export namespace SessionTransferGate {
   }
 
   export async function assert(sessionID: string) {
+    await RuntimeMaintenance.assertAdmission()
     const [gate] = await Storage.readMany<z.infer<typeof Info>>([key(sessionID)])
     if (gate)
       throw new Blocked({
