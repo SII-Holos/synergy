@@ -267,45 +267,95 @@ export namespace StorageCheckpoint {
     }
   }
 
-  export async function verifyArchive(input: {
+  async function* scanArchive(input: {
     directory: string
     keys: VaultKeyProvider
+    expected?: Manifest
     signal?: AbortSignal
-  }): Promise<Manifest> {
+  }): AsyncGenerator<StorageEntry, Manifest> {
+    input.signal?.throwIfAborted()
     const root = await fs.realpath(input.directory)
     const file = await checkedFile(root, undefined, "manifest.json")
     if (file.bytes > 64 * 1024) throw new StorageIntegrityError("Checkpoint manifest is too large")
     const manifest = Manifest.parse(JSON.parse(await fs.readFile(file.filename, "utf8")))
-    const records = await checkedFile(root, undefined, "records.ndjson", manifest.records)
-    let entries = 0
+    if (input.expected && JSON.stringify(manifest) !== JSON.stringify(Manifest.parse(input.expected)))
+      throw new StorageIntegrityError("Checkpoint archive does not match its captured manifest")
+    const records = await checkedFile(root, undefined, "records.ndjson")
+    if (records.bytes !== manifest.records.bytes)
+      throw new StorageIntegrityError("Checkpoint portable size does not match its manifest")
+    let count = 0
     let artifactReferences = 0
     let referencedBytes = 0
     let secretEntries = 0
-    for await (const stored of StoragePortable.entries(records.filename)) {
-      input.signal?.throwIfAborted()
-      entries++
-      if (stored.type === "record" && stored.key[0] === secretRoot) {
-        if (Marker.parse(stored.value).index !== secretEntries)
-          throw new StorageIntegrityError("Recovery material sequence is incomplete")
-        secretEntries++
+    const hash = createHash("sha256")
+    let bytes = 0
+    let complete = false
+    let failed = false
+    try {
+      for await (const stored of StoragePortable.entries(records.filename, (line) => {
+        hash.update(line + "\n")
+        bytes += Buffer.byteLength(line) + 1
+      })) {
+        input.signal?.throwIfAborted()
+        count++
+        if (stored.type === "record" && stored.key[0] === secretRoot) {
+          if (Marker.parse(stored.value).index !== secretEntries)
+            throw new StorageIntegrityError("Recovery material sequence is incomplete")
+          secretEntries++
+        }
+        const entry = await recoveryEntry(root, manifest, stored, input.keys)
+        if (entry.type === "artifact") {
+          artifactReferences++
+          referencedBytes += entry.location.size
+          await checkedFile(root, "objects", `${entry.location.sha256}.bin`, {
+            bytes: entry.location.size,
+            sha256: entry.location.sha256,
+          })
+        }
+        input.signal?.throwIfAborted()
+        yield entry
       }
-      const entry = await recoveryEntry(root, manifest, stored, input.keys)
-      if (entry.type !== "artifact") continue
-      artifactReferences++
-      referencedBytes += entry.location.size
-      await checkedFile(root, "objects", `${entry.location.sha256}.bin`, {
-        bytes: entry.location.size,
-        sha256: entry.location.sha256,
-      })
+      input.signal?.throwIfAborted()
+      if (
+        count !== manifest.records.entries ||
+        bytes !== manifest.records.bytes ||
+        hash.digest("hex") !== manifest.records.sha256 ||
+        artifactReferences !== manifest.artifactReferences ||
+        referencedBytes !== manifest.referencedBytes ||
+        secretEntries !== manifest.secretEntries
+      )
+        throw new StorageIntegrityError("Checkpoint inventory is incomplete or changed during inspection")
+      complete = true
+      return manifest
+    } catch (error) {
+      failed = true
+      throw error
+    } finally {
+      if (!complete && !failed)
+        throw new StorageIntegrityError("Checkpoint logical entry scan must complete before capture is verified")
     }
-    if (
-      entries !== manifest.records.entries ||
-      artifactReferences !== manifest.artifactReferences ||
-      referencedBytes !== manifest.referencedBytes ||
-      secretEntries !== manifest.secretEntries
-    )
-      throw new StorageIntegrityError("Checkpoint inventory is incomplete")
-    return manifest
+  }
+
+  export async function* entries(input: {
+    directory: string
+    keys: VaultKeyProvider
+    expected?: Manifest
+    signal?: AbortSignal
+  }): AsyncGenerator<StorageEntry> {
+    yield* scanArchive(input)
+  }
+
+  export async function verifyArchive(input: {
+    directory: string
+    keys: VaultKeyProvider
+    expected?: Manifest
+    signal?: AbortSignal
+  }): Promise<Manifest> {
+    const entries = scanArchive(input)
+    for (;;) {
+      const next = await entries.next()
+      if (next.done) return next.value
+    }
   }
 
   export async function restoreArchive(input: {

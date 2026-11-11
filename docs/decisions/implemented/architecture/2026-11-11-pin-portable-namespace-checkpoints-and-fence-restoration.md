@@ -16,6 +16,8 @@ Restore first verifies the complete portable inventory, every referenced byte fi
 
 Portable export, archive inspection and import share one strict streaming parser. Page/frame bounds do not become lifetime object quotas. Unknown nested canonical fields remain intact. File and directory entries reject symlink substitution, ciphertexts have finite per-record bounds, and incomplete/corrupt inventories do not publish ordinary restored records.
 
+Trusted capture owners consume `StorageCheckpoint.entries()` for logical records, including independently protected entries. This stream and `verifyArchive()` share the canonical recovery decoder and portable parser. Capture consumers pass the actual exporter's returned manifest as `expected`, binding the read to that export even if the directory is replaced by another valid archive. The same consumed bytes must match the manifest and footer, every recovery key must resolve, and native artifact references validate before successful completion. An early break or returned/cancelled iterator cannot certify a complete capture; incomplete consumption rejects. Capturers keep any derived indexes private until the iteration completes. This port does not expose ordinary account downloads or make physical locations an authorization grant.
+
 ## Alternatives considered
 
 **Copy live SQLite files and the current artifact directory.** These have independent lifetimes and cannot establish the captured metadata/byte relationship.
@@ -30,7 +32,7 @@ This is a trusted Host storage primitive, not an organization administrator expo
 
 ## Verification
 
-Harness `test/storage/checkpoint.test.ts`, `checkpoint-archive.test.ts`, `checkpoint-receipts.test.ts`, `prepared-binary-evidence.test.ts`, `portable.test.ts` and `test/secrets/{envelope,encrypted-store}.test.ts` exercise actual SQLite, independent Homes, local and object-backed content, multi-chunk binary and empty-byte round trips, retained unknown fields, current-reference removal, reader lifetime, authenticated recovery identity, missing keys/bytes, failed export cleanup, atomic final fencing failure, held native preparation with competing record/artifact/other-restore/receipt/event writers and exact restore retries. The object case first reproduced the nested SQL snapshot deadlock and then passed without local pack fallback.
+Harness `test/storage/checkpoint.test.ts`, `checkpoint-entries.test.ts`, `checkpoint-archive.test.ts`, `checkpoint-receipts.test.ts`, `prepared-binary-evidence.test.ts`, `portable.test.ts` and `test/secrets/{envelope,encrypted-store}.test.ts` exercise actual SQLite, independent Homes, local and object-backed content, multi-chunk binary and empty-byte round trips, retained unknown fields, current-reference removal, reader lifetime, authenticated recovery identity, missing keys/bytes, failed export cleanup, atomic final fencing failure, held native preparation with competing record/artifact/other-restore/receipt/event writers and exact restore retries. Logical-entry tests recover protected owner/body records and reject early iteration, cancellation, unavailable keys and a removed footer even when an outer descriptor is rewritten. The object case first reproduced the nested SQL snapshot deadlock and then passed without local pack fallback.
 
 ## Related
 
