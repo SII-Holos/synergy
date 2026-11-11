@@ -15,8 +15,10 @@ import { SnapshotPack } from "./snapshot-pack"
 import { SnapshotRecords } from "./snapshot-records"
 import { SnapshotPool } from "./snapshot-pool"
 import { SnapshotProtection } from "./snapshot-protection"
+import { SnapshotCheckpoint } from "./snapshot-checkpoint"
 
 export namespace SnapshotMaintenance {
+  export const withCapture = SnapshotCheckpoint.withCapture
   const Journal = z.object({
     version: z.literal(2),
     phase: z.enum(["inventoried", "imported", "verified", "protected", "switched", "cleaned"]),

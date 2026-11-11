@@ -201,6 +201,10 @@ export namespace RuntimeHandle {
           }
         }
         await cleanup(closeAdmission)
+        await cleanup(async () => {
+          const { SnapshotCheckpoint } = await import("../session/snapshot-checkpoint")
+          await SnapshotCheckpoint.stop()
+        })
         if (!attached) {
           await cleanup(() => RuntimeResources.stop())
           await cleanup(() => Log.close())

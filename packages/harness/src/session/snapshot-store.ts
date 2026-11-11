@@ -12,6 +12,7 @@ import type { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotPath } from "./snapshot-path"
 import { SnapshotLease } from "./snapshot-lease"
+import { SnapshotCaptureAuthority } from "./snapshot-capture-authority"
 import { SnapshotProtection } from "./snapshot-protection"
 import { Log } from "../util/log"
 import { ObservabilityMetrics } from "../observability/metrics"
@@ -40,12 +41,15 @@ export namespace SnapshotStore {
   export function usesExternalStorage() {
     return state().backend !== undefined
   }
+  export const RepositoryFormat = z.object({
+    version: z.literal(2),
+    objectFormat: z.literal("sha1"),
+    content: z.literal("external-v1").optional(),
+  })
   async function assertStorageMode(scopeID: string) {
     const stored = await optional<unknown>(StoragePath.snapshotRepository(scopeID))
     if (stored === undefined) return
-    const format = z
-      .object({ version: z.literal(2), objectFormat: z.literal("sha1"), content: z.literal("external-v1").optional() })
-      .parse(stored)
+    const format = RepositoryFormat.parse(stored)
     if ((format.content === "external-v1") !== usesExternalStorage())
       throw new StorageError("Snapshot storage mode differs from its activated format; offline migration is required")
   }
@@ -156,6 +160,32 @@ export namespace SnapshotStore {
     signal?.throwIfAborted()
     const record = await owner(scopeID, sessionID)
     if (!record || record.backend === "deleted") return
+    yield* retainedRoots(scopeID, record, signal)
+  }
+
+  export async function* capturedRoots(
+    captured: SnapshotCaptureAuthority.Owner,
+    signal?: AbortSignal,
+  ): AsyncGenerator<string> {
+    const binding = SnapshotCaptureAuthority.current(captured)
+    signal?.throwIfAborted()
+    if (binding.owner.backend === "deleted") return
+    if (!binding.roots && binding.owner.backend !== "shared")
+      throw new StorageError("Captured legacy Snapshot ownership requires its retained inventory")
+    for await (const root of binding.roots?.() ?? nativeRoots(binding.scopeID, binding.owner.retentionID, signal)) {
+      signal?.throwIfAborted()
+      SnapshotCaptureAuthority.current(captured)
+      if (!OID.test(root)) throw new StorageError("Captured Snapshot root identity is invalid")
+      yield root
+    }
+    SnapshotCaptureAuthority.current(captured)
+  }
+
+  async function* retainedRoots(
+    scopeID: string,
+    record: Readonly<Owner>,
+    signal?: AbortSignal,
+  ): AsyncGenerator<string> {
     await assertStorageMode(scopeID)
     if (record.backend === "legacy")
       throw new StorageError("Migrate legacy Snapshot ownership before enumerating retained roots")
@@ -169,17 +199,21 @@ export namespace SnapshotStore {
       }
       return
     }
+    yield* nativeRoots(scopeID, record.retentionID, signal)
+  }
+
+  async function* nativeRoots(scopeID: string, retentionID: string, signal?: AbortSignal): AsyncGenerator<string> {
     const repositoryPath = repository(scopeID)
     if (!(await SnapshotPath.exists(path.join(repositoryPath, "HEAD"))))
       throw new StorageError("Snapshot object store is missing")
-    const prefix = `refs/synergy/snapshots/${component(record.retentionID)}/`
+    const prefix = `refs/synergy/snapshots/${component(retentionID)}/`
     for await (const line of SnapshotGit.lines(
       repositoryPath,
       ["for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", prefix],
       { signal },
     )) {
       const [ref, root, type] = line.split(" ")
-      if (!OID.test(root) || type !== "tree" || ref !== reference(record.retentionID, root))
+      if (!OID.test(root) || type !== "tree" || ref !== reference(retentionID, root))
         throw new StorageError("Retained Snapshot root reference is invalid")
       yield root
     }
