@@ -30,7 +30,7 @@ Vault and execution-time secret resolution stay here; detection belongs to `pack
 
 Before copying deferred datasets, use `storage/compat` convergence. Central migrations stage shared records and owner cohorts; Runtime Handle drains imports.
 
-Session summaries compare Workspace checkpoints across all writers. Keep tool evidence separate. File restoration requires version-checked previews. Verify snapshots, summaries, history and Local Runtime's `test/workspace/change-attribution.test.ts`.
+Session summaries compare checkpoints across Workspace writers. Keep tool evidence separate. Restore files with version-checked previews. Use versioned Snapshot retention ownership. Verify snapshots, summaries, history and Local Runtime's `test/workspace/change-attribution.test.ts`.
 
 Cortex holds retain native task/root/input/budget/deadline/notification identity; never cancel/recreate work. Personal transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
 

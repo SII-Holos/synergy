@@ -160,8 +160,9 @@ export namespace SnapshotMaintenance {
             continue
           if (await SnapshotStore.owner(scopeID, entry.name)) continue
           await SnapshotStore.write(StoragePath.snapshotOwner(scopeID, entry.name), {
-            version: 2,
+            version: 3,
             backend: "legacy",
+            retentionID: entry.name,
           } satisfies SnapshotStore.Owner)
         }
       })
@@ -463,8 +464,9 @@ export namespace SnapshotMaintenance {
         journal.phase = "protected"
         await SnapshotStore.write(key, journal)
         await SnapshotStore.write(StoragePath.snapshotOwner(scopeID, sessionID), {
-          version: 2,
+          version: 3,
           backend: "shared",
+          retentionID: sessionID,
         } satisfies SnapshotStore.Owner)
         journal.phase = "switched"
         await SnapshotStore.write(key, journal)

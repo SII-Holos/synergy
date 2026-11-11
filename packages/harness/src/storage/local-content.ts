@@ -213,7 +213,11 @@ export async function convertLocalContent(input: {
       if (!roots.length) {
         if (owner?.backend === "legacy")
           await target(() =>
-            Storage.write(StoragePath.snapshotOwner(scopeID, sessionID), { version: 2, backend: "shared" }),
+            Storage.write(StoragePath.snapshotOwner(scopeID, sessionID), {
+              version: 3,
+              backend: "shared",
+              retentionID: sessionID,
+            }),
           )
         continue
       }
@@ -257,7 +261,11 @@ export async function convertLocalContent(input: {
         result.snapshots++
       }
       await target(() =>
-        Storage.write(StoragePath.snapshotOwner(scopeID, sessionID), { version: 2, backend: "shared" }),
+        Storage.write(StoragePath.snapshotOwner(scopeID, sessionID), {
+          version: 3,
+          backend: "shared",
+          retentionID: sessionID,
+        }),
       )
     }
     await target(() =>

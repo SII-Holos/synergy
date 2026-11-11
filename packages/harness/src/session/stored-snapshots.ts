@@ -68,6 +68,14 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
     }
   }
   return {
+    async release(scopeID, sessionID) {
+      await Storage.removeTree([
+        "sessions",
+        SnapshotStore.component(scopeID),
+        SnapshotStore.component(sessionID),
+        "snapshot_content",
+      ])
+    },
     async retain(scopeID, sessionID, root, repository, signal) {
       signal?.throwIfAborted()
       if (await read(scopeID, sessionID, root)) return

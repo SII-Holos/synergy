@@ -14,10 +14,12 @@ import { SecretVault } from "../../src/secrets/vault"
 import { encryptedSecretVault } from "../../src/secrets/encrypted-store"
 import { storageTestRuntime } from "../support/storage-runtime"
 import { storageTestOptions } from "../support/storage-backends"
+import { registerSnapshotOwnershipMigrations } from "../../src/session/snapshot-ownership-migration"
 
 async function fixture() {
   const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "local-content-")))
   const runtime = await storageTestRuntime()
+  runtime.run(registerSnapshotOwnershipMigrations)
   const source = {
     store: await TransactionalStore.open(
       storageTestOptions({ namespace: crypto.randomUUID(), filename: path.join(root, "source.sqlite") }),
@@ -205,7 +207,7 @@ for (const backend of ["legacy", "shared"] as const) {
       const repo = SnapshotStore.repository(scope)
       expect(await storedSnapshots().restore(scope, session, [tree], repo)).toEqual(new Set([tree]))
       expect(await SnapshotStore.command(repo, ["show", `${tree}:file.txt`])).toBe("retained snapshot text")
-      expect(await SnapshotStore.owner(scope, session)).toEqual({ version: 2, backend: "shared" })
+      expect(await SnapshotStore.owner(scope, session)).toEqual({ version: 3, backend: "shared", retentionID: session })
     })
   }, 20_000)
 }
