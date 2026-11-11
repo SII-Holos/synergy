@@ -258,7 +258,7 @@ export function startMemberSyncExporter(input: {
     const previous = await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, draftID))
     let status = previous?.event.type === "session" ? previous.event.session.status : undefined
     const controlVersion = await readCommandControlVersion(identity.orgID, rootSessionID)
-    if (!status || observed || status.controlVersion !== controlVersion || status.runID !== currentRunID(session))
+    if (!status || observed || status.controlVersion !== controlVersion || status.runID !== (await currentRunID(session)))
       status = await observeSessionStatus(session, identity.orgID, rootSessionID)
     await putDraft(
       rootSessionID,

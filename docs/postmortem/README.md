@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0101](0101-paused-runtime-lost-cancellation-target.md)
+
 - [0100](0100-shared-window-current-version-loss.md)
 
 - [0099](0099-member-connection-observer-lifetime.md)
