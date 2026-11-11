@@ -1,4 +1,5 @@
 import { SessionTransferGate } from "./transfer-gate"
+import { SessionResume } from "./resume"
 import { RuntimeResources } from "../resources/runtime"
 import { sessionResourceOwner } from "../resources/owner"
 import { ResourceCosts } from "../resources/costs"
@@ -449,6 +450,36 @@ export namespace SessionInvoke {
 
   export async function invokeInternal(input: InternalInvokeInput) {
     return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })
+  }
+
+  export async function resumeInternal(input: {
+    sessionID: string
+    rootID: string
+    requestID: string
+    ephemeralTools?: ToolResolver.EphemeralTool[]
+    maxOutputTokens?: number
+  }) {
+    const root = await SessionHistory.effectiveMessageInfos(await Session.get(input.sessionID)).then((messages) =>
+      messages.findLast((message) => message.role === "user" && message.isRoot),
+    )
+    if (root?.id !== input.rootID) throw new Error("The delegated task root changed before native continuation")
+    const state = runtimeState()
+    if (input.ephemeralTools?.length) state.ephemeralToolsByMessage.set(root.id, input.ephemeralTools)
+    if (input.maxOutputTokens) state.maxOutputTokensByMessage.set(root.id, input.maxOutputTokens)
+    try {
+      const admitted = await SessionResume.request({ sessionID: input.sessionID, requestID: input.requestID })
+      if (!admitted.handled && admitted.outcome !== "idle")
+        throw new Error(admitted.reason ?? "Native task continuation is blocked")
+      if (admitted.outcome !== "idle") await SessionManager.wake(input.sessionID, { force: true })
+      const message = (await SessionHistory.modelMessages({ sessionID: input.sessionID })).findLast(
+        (message) => message.info.role === "assistant" && message.info.rootID === root.id,
+      )
+      if (!message) throw new Error("Native task continuation has no assistant result")
+      return message
+    } finally {
+      state.ephemeralToolsByMessage.delete(root.id)
+      state.maxOutputTokensByMessage.delete(root.id)
+    }
   }
 
   async function recallMemory(
@@ -3011,7 +3042,7 @@ export namespace SessionInvoke {
     const sessionIDs = await SessionManager.listInterruptedCortexDelegations(scopeID)
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
-      if (!session?.cortex) continue
+      if (!session?.cortex || session.cortex.transfer) continue
       if (session.cortex.status !== "queued" && session.cortex.status !== "running") continue
       if (SessionManager.isRunning(sessionID)) continue
 

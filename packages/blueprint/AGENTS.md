@@ -13,3 +13,5 @@ Supervisor permissions and prompts must not assume optional evidence tools. Medi
 Expose selection through `./component`; imports are inert. Keep factory requirements, published `synergy` metadata, worker roles and production dependencies aligned. Register owner schemas, events, tools and HTTP features before Runtime composition closes.
 
 Tests under `test/` select this owner and its real requirements. Run `bun run typecheck` and focused `bun test test/<file>.test.ts` with the package preload; then run the root dependency and installed-composition checks.
+
+Own the Plan/BlueprintLoop/SuperPlan portability contribution, native ledger indexes and mutation guards. Export exact related records and Note-owned sealed version references; retain reviewer and stop intent without restarting work during publication. Domain writes honor final epoch fences and exact activation authority. Verify `test/transfer.test.ts` with loop-store and document-field tests.

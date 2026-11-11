@@ -225,3 +225,13 @@ The repository also contains `superplan/` schemas, storage, events, session owne
 Treat SuperPlan fields as an internal persisted substrate that must remain import/export- and migration-safe while present. Do not route new product behavior through it or describe it as equivalent to Plan, BlueprintLoop, or Lattice without first adding an explicit lifecycle and user-facing contract.
 
 Boss and Lattice are experimental, default off and activated at restart. Their business parameters do not select components. Blueprint and other stable workflows remain independent; see [Feature lifecycle](feature-lifecycle.md).
+
+### Exact document versions
+
+Note retains immutable document versions in the same Storage transaction as content, owner metadata and archive mutations. Workflow execution and audit references can read the exact Scope, Note ID and version; they must not silently substitute the current document. The retained-version migration captures only content still available on disk, so overwritten historical references remain explicit missing dependencies. Deleting a private Note removes its private versions. Organization knowledge and artifact releases retain their separate publication lifecycle. See the [document version decision](../decisions/implemented/architecture/2026-11-11-retain-exact-note-document-versions.md).
+
+### Native Blueprint portability
+
+The Blueprint transfer owner carries Plan descriptors, BlueprintLoop review and stop intent, SuperPlan runs and events, and exact related Note versions. Per-Session derived indexes enumerate the closure in bounded pages; owning migrations rebuild them from canonical records. Related Sessions retain links while one canonical anchor publishes each native ledger. Core preserves the actual Session tree, messages, Inbox and Cortex controls.
+
+Note seals exact version references for each handoff and retains them until its outcome is known. Export and attachment dependency enumeration read those versions together, independent of later authoring changes. Document transport partitions publish through the existing Note owner, which rejects destination conflicts. Owner publication remains paused and never starts a reviewer. See the [native ledger decision](../decisions/implemented/architecture/2026-11-11-transfer-native-blueprint-ledgers-and-exact-documents.md).

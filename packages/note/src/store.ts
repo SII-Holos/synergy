@@ -1,3 +1,7 @@
+import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
+import { NoteTransferSnapshots } from "./transfer-snapshot"
+import { SessionTransferEpochs } from "@ericsanchezok/synergy-harness/session/transfer"
+import { NoteVersions } from "./version-store"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import type { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import z from "zod"
@@ -313,6 +317,7 @@ export namespace NoteStore {
     NoteDocumentKinds.create(note, create.note)
     await Storage.transaction(async () => {
       await Storage.write(StoragePath.note(scopeID, id), note)
+      await NoteVersions.capture(targetScopeID, note)
       await indexSet(targetScopeID, note)
       log.info("created", { id, title: note.title, global: isGlobal, scopeID: targetScopeID })
       await Bus.publish(NoteEvent.Created, {
@@ -410,7 +415,8 @@ export namespace NoteStore {
 
     const committed = await Storage.transaction(async () => {
       let wasGlobal = false
-      const before = structuredClone(current)
+      const before = normalize(await Storage.read<z.infer<typeof NoteTypes.Info>>(sourcePath))
+      await NoteVersions.capture(scopeID, before)
       const note = normalize(
         await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
           draft.global ??= false
@@ -462,6 +468,7 @@ export namespace NoteStore {
         await indexSet(scopeID, note)
       }
 
+      await NoteVersions.capture(finalScopeID, note)
       const meta = publicMetadata(toMetadata(note))
       log.info("updated", { id: noteID, version: note.version })
       await Bus.publish(NoteEvent.Updated, {
@@ -503,9 +510,11 @@ export namespace NoteStore {
       const note = structuredClone(before)
       if (mutate(note) === false) return
       NoteDocumentKinds.require(note)
+      await NoteVersions.capture(scopeID, before)
       note.version += 1
       note.time.updated = Date.now()
       await Storage.write(key, note)
+      await NoteVersions.capture(scopeID, note)
       await indexSet(scopeID, note)
       const meta = publicMetadata(toMetadata(note))
       await Bus.publish(NoteEvent.Updated, {
@@ -519,7 +528,50 @@ export namespace NoteStore {
     })
   }
 
+  export async function snapshotForTransfer(scopeID: string, noteID: string, version?: number) {
+    const current = NoteTypes.PersistedInfo.parse(
+      await Storage.read(StoragePath.note(Identifier.asScopeID(scopeID), noteID)),
+    )
+    const note =
+      version === undefined || version === current.version ? current : await NoteVersions.read(scopeID, noteID, version)
+    NoteDocumentKinds.require(note)
+    NoteTypes.Info.parse(note)
+    return note
+  }
+
+  export async function installTransferred(input: {
+    scopeID: string
+    sessionID: string
+    handoffID: string
+    note: unknown
+  }) {
+    if (!Storage.inWriteTransaction()) throw new Error("Note transfer publication requires its activation transaction")
+    SessionTransferEpochs.assertActivation({ sessionID: input.sessionID, handoffID: input.handoffID })
+    const note = NoteTypes.PersistedInfo.parse(input.note)
+    NoteDocumentKinds.require(note)
+    NoteTypes.Info.parse(note)
+    const path = StoragePath.note(Identifier.asScopeID(input.scopeID), note.id)
+    const [existing] = await Storage.readMany([path])
+    if (existing !== undefined && !isDeepEqual(existing, note))
+      throw new Error("Destination Note conflicts with the transferred document")
+    await NoteVersions.capture(input.scopeID, note)
+    if (existing !== undefined) return
+    await Storage.write(path, note)
+    await indexSet(input.scopeID, note)
+  }
+
+  export async function getVersion(
+    scopeID: string,
+    noteID: string,
+    version: number,
+  ): Promise<z.infer<typeof NoteTypes.Info>> {
+    const note = await NoteVersions.read(scopeID, noteID, version)
+    NoteDocumentKinds.require(note)
+    return publicInfo(note)
+  }
+
   export async function remove(scopeID: string, noteID: string): Promise<void> {
+    using lock = await Lock.write(NoteTransferSnapshots.documentLock(scopeID, noteID))
     return Storage.transaction(async () => {
       const sid = Identifier.asScopeID(scopeID)
       const note = normalize(await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(sid, noteID)))
@@ -530,7 +582,13 @@ export namespace NoteStore {
           message: "Note must be archived before it can be deleted. Use note_archive first.",
         })
       }
+      await NoteTransferSnapshots.assertDelete(scopeID, noteID)
+      if (note.originScope && note.originScope !== scopeID)
+        await NoteTransferSnapshots.assertDelete(note.originScope, noteID)
       await Storage.remove(StoragePath.note(sid, noteID))
+      await Storage.removeTree(["note_versions", scopeID, noteID])
+      if (note.originScope && note.originScope !== scopeID)
+        await Storage.removeTree(["note_versions", note.originScope, noteID])
       await indexRemove(scopeID, noteID)
       log.info("removed", { id: noteID })
       await Bus.publish(NoteEvent.Deleted, { id: noteID, scopeID })
@@ -561,6 +619,10 @@ export namespace NoteStore {
         const scopedResults: z.infer<typeof NoteTypes.Info>[] = []
         for (const noteID of ids) {
           const sourcePath = StoragePath.note(sid, noteID)
+          await NoteVersions.capture(
+            resolvedScopeID,
+            normalize(await Storage.read<z.infer<typeof NoteTypes.Info>>(sourcePath)),
+          )
           const note = normalize(
             await Storage.update<z.infer<typeof NoteTypes.Info>>(sourcePath, (draft) => {
               draft.version ??= 1
@@ -569,6 +631,7 @@ export namespace NoteStore {
               draft.time.updated = Date.now()
             }),
           )
+          await NoteVersions.capture(resolvedScopeID, note)
           scopedResults.push(note)
           results.push(publicInfo(note))
         }

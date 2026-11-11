@@ -32,7 +32,7 @@ Before copying deferred datasets, use `storage/compat` convergence. Central migr
 
 Session summaries compare Workspace checkpoints across all writers. Keep tool evidence separate. File restoration requires version-checked previews. Verify snapshots, summaries, history and Local Runtime's `test/workspace/change-attribution.test.ts`.
 
-Paused transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
+Cortex holds retain native task/root/input/budget/deadline/notification identity; never cancel/recreate work. Personal transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
 
 Organization portability owns permanent epochs, bounded streams and private staging. Preserve surrender/retirement history; verify complete streams before publication. Binary streams share prepared-token/pack-pin lifetimes. Verify `test/session/transfer-*.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
 

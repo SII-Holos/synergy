@@ -1,3 +1,4 @@
+import { SessionTransferEpochs, SessionTransferGate } from "@ericsanchezok/synergy-harness/session/transfer"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -157,7 +158,7 @@ export namespace LightLoopRuntime {
       const session = await Session.get(sessionID).catch((error: unknown) => {
         if (!(error instanceof Storage.NotFoundError)) throw error
       })
-      if (!session) continue
+      if (!session || (await SessionTransferEpochs.isFrozen(sessionID))) continue
       {
         using _ = await Lock.write(terminalHookLock(sessionID))
         const current = await LightLoopTerminalStore.get(session)
@@ -177,6 +178,7 @@ export namespace LightLoopRuntime {
     expected?: LightLoopWorkflow,
   ): Promise<void> {
     using _ = await Lock.write(terminalHookLock(sessionID))
+    await SessionTransferGate.assert(sessionID)
     const session = await Session.get(sessionID)
     const existing = await LightLoopTerminalStore.get(session)
     if (existing) await deliverTerminalHook(session, existing).catch(() => undefined)
@@ -227,6 +229,7 @@ export namespace LightLoopRuntime {
   export function scheduleDeadline(sessionID: string, deadlineAt: number) {
     setDeadlineTimer(sessionID, deadlineAt, async () => {
       try {
+        await SessionTransferGate.assert(sessionID)
         const session = await Session.get(sessionID)
         if (session.workflow?.kind !== "lightloop" || session.workflow.deadlineAt !== deadlineAt) return
         await SessionAbort.abort(sessionID, { internalCancel: true })
@@ -235,6 +238,11 @@ export namespace LightLoopRuntime {
         // best effort
       }
     })
+  }
+
+  export async function suspendForTransfer(sessionID: string) {
+    clearDeadlineTimer(sessionID)
+    using _ = await Lock.write(terminalHookLock(sessionID))
   }
 
   export function cancelDeadline(sessionID: string) {

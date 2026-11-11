@@ -1,3 +1,5 @@
+import { registerCortexTransferMigrations } from "./transfer-holds"
+import { registerCortexTransferOwner } from "./transfer"
 import { SessionCortexRuntime } from "../session/cortex-runtime"
 import type { CortexDelegationInfo } from "../session/types"
 import { Cortex } from "./manager"
@@ -12,6 +14,8 @@ import { pluginTaskSnapshotFromSession } from "./plugin-task"
  * src/registration.ts.
  */
 export function registerCortexSessionRuntime() {
+  registerCortexTransferMigrations()
+  registerCortexTransferOwner()
   SessionCortexRuntime.register({
     delegatedTask: async (sessionID) => {
       const task = Cortex.list().find((task) => task.sessionID === sessionID)
