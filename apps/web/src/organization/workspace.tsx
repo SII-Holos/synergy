@@ -76,7 +76,10 @@ export function OrganizationWorkspace(props: { footer: JSX.Element; signOut: () 
         </nav>
       }
     >
-      <div class="organization-workspace-main">
+      <div
+        class="organization-workspace-main"
+        classList={{ "organization-workspace-main--conversation": !!route()?.sessionID }}
+      >
         <Switch>
           <Match when={route()?.view === "account" && !route()?.projectID}>
             <OrganizationAccount />

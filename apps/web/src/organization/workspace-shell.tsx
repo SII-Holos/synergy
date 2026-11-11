@@ -18,6 +18,10 @@ export function OrganizationWorkspaceShell(
   const [organizationName, setOrganizationName] = createSignal<string>()
   const connection = () => space.connection()!
   const name = () => organizationName() ?? connection().name ?? new URL(connection().issuer).host
+  const conversation = () => {
+    const route = space.route()
+    return route?.kind === "organization" && !!route.sessionID
+  }
   onMount(() => {
     void api.orgOrganization
       .get({ signal: view.signal })
@@ -29,7 +33,10 @@ export function OrganizationWorkspaceShell(
   return (
     <div
       class="organization-workspace-shell"
-      classList={{ "organization-workspace-shell--desktop": platform.platform === "desktop" }}
+      classList={{
+        "organization-workspace-shell--desktop": platform.platform === "desktop",
+        "organization-workspace-shell--conversation": conversation(),
+      }}
     >
       <aside class="organization-workspace-sidebar">
         <header class="organization-workspace-identity">
@@ -47,7 +54,11 @@ export function OrganizationWorkspaceShell(
           </Button>
         </div>
       </aside>
-      <div class="organization-workspace-pane" data-scroll-viewport="vertical">
+      <div
+        class="organization-workspace-pane"
+        classList={{ "organization-workspace-pane--conversation": conversation() }}
+        data-scroll-viewport="vertical"
+      >
         {props.children}
       </div>
     </div>

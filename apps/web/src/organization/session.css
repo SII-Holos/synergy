@@ -59,6 +59,83 @@
   display: grid;
   gap: 24px;
 }
+.organization-session-view--detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  gap: 12px;
+}
+.organization-session-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.organization-session-view--detail > .organization-page-heading {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.organization-session-view--detail > .organization-page-heading > button {
+  flex-shrink: 0;
+}
+.organization-session-title > button {
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+  text-align: start;
+  font-size: 12px;
+  color: var(--text-weak);
+}
+.organization-session-title h2 {
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  line-height: 1.4;
+}
+.organization-session-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  gap: 12px;
+}
+.organization-session-chat > .organization-transcript {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+}
+.organization-session-chat .organization-transcript-viewport {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.organization-session-chat > .organization-session-composer {
+  flex-shrink: 0;
+  max-height: 45dvh;
+  overflow-y: auto;
+}
+.organization-session-view--detail > .organization-knowledge-view,
+.organization-session-view--detail > .organization-artifacts-view,
+.organization-session-view--detail > .organization-editor {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.organization-native-field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-weak);
+  font-size: 12px;
+}
+.organization-session-cancel-icon {
+  display: none;
+}
 .organization-session-status {
   display: flex;
   gap: 16px;
@@ -75,6 +152,43 @@
   background: var(--surface-raised-base);
 }
 @media (max-width: 600px) {
+  .organization-session-chat {
+    gap: 8px;
+  }
+  .organization-session-cancel {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .organization-session-cancel-icon {
+    display: inline;
+  }
+  .organization-session-cancel-label {
+    display: none;
+  }
+  .organization-session-view--detail > .organization-workspace-nav {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .organization-session-view--detail > .organization-workspace-nav > button {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .organization-session-chat > .organization-session-composer {
+    padding: 12px;
+  }
+  .organization-session-composer [data-slot="input-description"],
+  .organization-session-composer [data-slot="input-label"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .organization-transcript-viewport {
     min-height: 240px;
   }

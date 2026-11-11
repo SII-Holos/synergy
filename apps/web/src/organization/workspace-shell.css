@@ -94,9 +94,33 @@
   max-width: 1120px;
   margin-inline: auto;
 }
+.organization-workspace-pane--conversation {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  padding: 20px 24px;
+}
+.organization-workspace-pane > .organization-workspace-main--conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+}
+.organization-projects-view.organization-projects-view--conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
 .organization-workspace-shell--desktop .organization-workspace-sidebar,
 .organization-workspace-shell--desktop .organization-workspace-pane {
   padding-top: calc(var(--desktop-native-titlebar-height, 48px) + 24px);
+}
+.organization-workspace-shell--desktop .organization-workspace-pane--conversation {
+  padding-top: calc(var(--desktop-native-titlebar-height, 48px) + 12px);
 }
 @media (max-width: 760px) {
   .organization-workspace-shell {
@@ -143,7 +167,34 @@
     flex: 1;
     padding: 24px 20px;
   }
+  .organization-workspace-pane--conversation {
+    padding: 16px;
+  }
   .organization-workspace-shell--desktop .organization-workspace-pane {
     padding-top: 24px;
+  }
+}
+@media (max-width: 600px) {
+  .organization-workspace-shell--conversation .organization-workspace-sidebar {
+    padding-block: 8px 4px;
+  }
+  .organization-workspace-shell--conversation .organization-workspace-identity {
+    padding-bottom: 4px;
+  }
+  .organization-workspace-shell--conversation .organization-workspace-identity p {
+    display: none;
+  }
+  .organization-workspace-shell--conversation .organization-workspace-sidebar-footer {
+    padding-top: 4px;
+  }
+  .organization-workspace-shell--conversation .organization-workspace-sidebar-footer .space-switcher {
+    padding-block: 0;
+  }
+  .organization-workspace-shell--conversation .space-switcher-trigger {
+    min-height: 44px;
+    padding-block: 4px;
+  }
+  .organization-workspace-shell--desktop.organization-workspace-shell--conversation .organization-workspace-sidebar {
+    padding-top: calc(var(--desktop-native-titlebar-height, 48px) + 8px);
   }
 }

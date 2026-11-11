@@ -28,13 +28,17 @@ const messages = {
   loading: { id: "organization.projectBinding.loading", message: "Checking project folder…" },
 }
 
-export function OrganizationLocalProject(props: { projectID: string }) {
+export function OrganizationLocalProject(props: {
+  projectID: string
+  changed?: (summary: LocalProject.Summary) => void
+}) {
   const { _ } = useLingui()
   const space = useSpace()
   const bridge = usePlatform().organization!
   const connection = space.connection()!
   if (connection.transport !== "desktop") throw new DesktopOrganizationClientError("unavailable")
   const connectionID = connection.id
+  const view = space.current()!
   const controller = new AbortController()
   const signal = AbortSignal.any([space.current()!.signal, controller.signal])
   onCleanup(() => controller.abort())
@@ -52,7 +56,11 @@ export function OrganizationLocalProject(props: { projectID: string }) {
       if (signal.aborted) throw new DesktopOrganizationClientError("cancelled")
       const result = await run(requestID)
       if (signal.aborted) throw new DesktopOrganizationClientError("cancelled")
-      if (!result.ok) throw new DesktopOrganizationClientError(result.error.code)
+      if (!result.ok) {
+        if (result.error.code === "reauthorization_required" || result.error.code === "signed_out")
+          space.authorizationRequired(view)
+        throw new DesktopOrganizationClientError(result.error.code)
+      }
       return result.value
     } finally {
       signal.removeEventListener("abort", abort)
@@ -63,13 +71,18 @@ export function OrganizationLocalProject(props: { projectID: string }) {
     const valueSummary = result.kind === "ready" ? result.summary : result.current
     if (valueSummary.projectID !== props.projectID) throw new DesktopOrganizationClientError("identity_changed")
     setSummary(valueSummary)
+    props.changed?.(valueSummary)
     if (result.kind === "revision_conflict") setError({ code: "REVISION_CONFLICT" })
     return valueSummary
   }
   async function inspect() {
     const status = await bridge.memberStatus({ connectionID })
     if (signal.aborted) return
-    if (!status.ok) throw new DesktopOrganizationClientError(status.error.code)
+    if (!status.ok) {
+      if (status.error.code === "reauthorization_required" || status.error.code === "signed_out")
+        space.authorizationRequired(view)
+      throw new DesktopOrganizationClientError(status.error.code)
+    }
     setRunning(status.value.state === "running")
     if (status.value.state !== "running") return
     return receive(

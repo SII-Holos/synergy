@@ -12,7 +12,7 @@ import {
   type OrgClientTokens,
 } from "@ericsanchezok/synergy-sdk/organization"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
-import { createSpaceView, spaceKey } from "../context/space-state"
+import { createSpaceView, spaceKey, type SpaceView } from "../context/space-state"
 import { spaceFetch } from "../context/space-fetch"
 import { Persist, workspaceEntryOwner } from "../utils/persist"
 import { authorizeOrganization } from "./authorization"
@@ -454,6 +454,9 @@ export function createOrganizationConnections(options: {
     connect,
     restore,
     signOut,
+    authorizationRequired(owner: SpaceView) {
+      if (view.isCurrent(owner) && owner.identity.kind === "organization") requireAuthorization(owner.key)
+    },
     personal(runtimeID?: string) {
       if (selected() !== undefined || disposed) return
       if (!runtimeID) {

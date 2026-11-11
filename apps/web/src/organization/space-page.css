@@ -228,6 +228,9 @@
   .organization-space-content {
     padding: 24px 20px;
   }
+  .organization-space-content--workspace {
+    padding: 0;
+  }
   .organization-space-header > button,
   .organization-space-content button {
     min-height: 44px;

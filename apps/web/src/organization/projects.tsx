@@ -15,6 +15,8 @@ import { OrganizationKnowledge } from "./knowledge"
 import { OrganizationArtifacts } from "./artifacts"
 import { OrganizationProjectMembers } from "./project-members"
 import { OrganizationLocalProject } from "./local-project"
+import { OrganizationSessions } from "./sessions"
+import { organizationSessionMessages } from "./session-messages"
 
 export function OrganizationProjects() {
   const space = useSpace()
@@ -26,6 +28,7 @@ export function OrganizationProjects() {
   const route = space.route()
   const projectID = route?.kind === "organization" ? route.projectID : undefined
   const projectView = route?.kind === "organization" ? route.view : undefined
+  const conversation = route?.kind === "organization" && !!route.sessionID
   const [state, setState] = createStore<{ projects: OrgProjectView[]; project?: OrgProjectView }>({ projects: [] })
   const [cursor, setCursor] = createSignal<string>()
   const [loading, setLoading] = createSignal(false)
@@ -159,7 +162,10 @@ export function OrganizationProjects() {
     </form>
   )
   return (
-    <section class="organization-projects-view">
+    <section
+      class="organization-projects-view"
+      classList={{ "organization-projects-view--conversation": conversation }}
+    >
       <WorkspaceError error={error()} retry={() => void load()} />
       <Show when={loading()}>
         <p role="status">{_(messages.loading)}</p>
@@ -230,71 +236,93 @@ export function OrganizationProjects() {
           </>
         }
       >
-        <Button variant="ghost" onClick={() => space.project()}>
-          {_(messages.back)}
-        </Button>
+        <Show when={!conversation}>
+          <Button variant="ghost" onClick={() => space.project()}>
+            {_(messages.back)}
+          </Button>
+        </Show>
         <Show when={state.project}>
           {(project) => (
             <>
-              <div class="organization-page-heading">
-                <div>
-                  <h2>{project().name}</h2>
-                  <Show when={project().state === "archived"}>
-                    <p>{_(messages.archived)}</p>
+              <Show when={!conversation}>
+                <div class="organization-page-heading">
+                  <div>
+                    <h2>{project().name}</h2>
+                    <Show when={project().state === "archived"}>
+                      <p>{_(messages.archived)}</p>
+                    </Show>
+                  </div>
+                  <Show when={project().permissions.manage && !editing()}>
+                    <div class="organization-actions">
+                      <Button
+                        onClick={() => {
+                          setName(project().name)
+                          setDescription(project().description)
+                          setEditing(true)
+                        }}
+                      >
+                        {_(messages.edit)}
+                      </Button>
+                      <Button disabled={busy()} onClick={changeLifecycle}>
+                        {_(project().state === "archived" ? messages.restore : messages.archive)}
+                      </Button>
+                    </div>
                   </Show>
                 </div>
-                <Show when={project().permissions.manage && !editing()}>
-                  <div class="organization-actions">
-                    <Button
-                      onClick={() => {
-                        setName(project().name)
-                        setDescription(project().description)
-                        setEditing(true)
-                      }}
-                    >
-                      {_(messages.edit)}
-                    </Button>
-                    <Button disabled={busy()} onClick={changeLifecycle}>
-                      {_(project().state === "archived" ? messages.restore : messages.archive)}
-                    </Button>
-                  </div>
+                <Show
+                  when={editing()}
+                  fallback={<p class="organization-project-description">{project().description}</p>}
+                >
+                  {form()}
                 </Show>
-              </div>
-              <Show when={editing()} fallback={<p class="organization-project-description">{project().description}</p>}>
-                {form()}
-              </Show>
-              <nav
-                class="organization-workspace-nav"
-                aria-label={_({ id: "organization.workspace.projectNavigation", message: "Project navigation" })}
-              >
-                <Button variant="ghost" data-selected={!projectView} onClick={() => space.project(projectID)}>
-                  {_({ id: "organization.workspace.overview", message: "Overview" })}
-                </Button>
-                <Button
-                  variant="ghost"
-                  data-selected={projectView === "knowledge"}
-                  onClick={() => space.page("knowledge", projectID)}
+                <nav
+                  class="organization-workspace-nav"
+                  aria-label={_({ id: "organization.workspace.projectNavigation", message: "Project navigation" })}
                 >
-                  {_(messages.knowledge)}
-                </Button>
-                <Button
-                  variant="ghost"
-                  data-selected={projectView === "artifacts"}
-                  onClick={() => space.page("artifacts", projectID)}
-                >
-                  {_(messages.artifacts)}
-                </Button>
-                <Show when={project().permissions.manage}>
+                  <Button variant="ghost" data-selected={!projectView} onClick={() => space.project(projectID)}>
+                    {_({ id: "organization.workspace.overview", message: "Overview" })}
+                  </Button>
                   <Button
                     variant="ghost"
-                    data-selected={projectView === "members"}
-                    onClick={() => space.page("members", projectID)}
+                    data-selected={projectView === "sessions"}
+                    onClick={() => space.page("sessions", projectID)}
                   >
-                    {_(messages.members)}
+                    {_(organizationSessionMessages.conversations)}
                   </Button>
-                </Show>
-              </nav>
+                  <Button
+                    variant="ghost"
+                    data-selected={projectView === "knowledge"}
+                    onClick={() => space.page("knowledge", projectID)}
+                  >
+                    {_(messages.knowledge)}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    data-selected={projectView === "artifacts"}
+                    onClick={() => space.page("artifacts", projectID)}
+                  >
+                    {_(messages.artifacts)}
+                  </Button>
+                  <Show when={project().permissions.manage}>
+                    <Button
+                      variant="ghost"
+                      data-selected={projectView === "members"}
+                      onClick={() => space.page("members", projectID)}
+                    >
+                      {_(messages.members)}
+                    </Button>
+                  </Show>
+                </nav>
+              </Show>
               <Switch>
+                <Match when={projectView === "sessions"}>
+                  <OrganizationSessions
+                    projectID={projectID!}
+                    projectName={project().name}
+                    canManage={project().permissions.manage}
+                    canExecute={project().permissions.execute}
+                  />
+                </Match>
                 <Match
                   when={
                     !projectView &&
