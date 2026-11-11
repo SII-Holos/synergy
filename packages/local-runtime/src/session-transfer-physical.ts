@@ -33,6 +33,7 @@ export namespace NativeSessionTransferPhysical {
     readonly kind: "session-physical-source"
   }
   interface Held {
+    lease: Lease
     runtime: RuntimeContext.Instance
     store: Storage.Handle["store"]
     binding: Epochs.Binding
@@ -107,6 +108,7 @@ export namespace NativeSessionTransferPhysical {
     const writer = await ServerProcessLock.currentOwnership()
     const lease = Object.freeze({ kind: "session-physical-source" as const })
     held.set(lease, {
+      lease,
       runtime: RuntimeContext.current(),
       store: Storage.current().store,
       binding,
@@ -319,6 +321,25 @@ export namespace NativeSessionTransferPhysical {
       },
       owner.signal,
     )
+  }
+  export function sourceCapture(value: Epochs.Binding): Lease {
+    const binding = Epochs.Binding.parse(value)
+    const frame = context.getStore()
+    if (!frame?.open || frame.owner.phase !== "capturing") fail("requires its open source capture callback")
+    if (!same(frame.owner.binding, binding)) fail("capture belongs to another source binding")
+    assertSource(frame.owner.lease)
+    return frame.owner.lease
+  }
+  export function assertSource(lease: Lease) {
+    const owner = selected(lease)
+    owner.signal.throwIfAborted()
+    ServerProcessLock.assertCurrent(owner.writer)
+    if (owner.phase === "capturing") {
+      const frame = context.getStore()
+      if (!frame?.open || frame.owner !== owner) fail("requires its open source capture callback")
+      return
+    }
+    if (owner.phase !== "captured") fail("has not completed native drainage and capture")
   }
   export function assertCurrent(lease: Lease) {
     const owner = selected(lease)

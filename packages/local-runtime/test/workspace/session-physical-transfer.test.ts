@@ -34,6 +34,59 @@ function objects() {
   }
 }
 
+test("aggregate file owners receive only the exact open source capture lease and cannot retain it after release", async () => {
+  await using directory = await tmpdir()
+  await using runtime = await testRuntime({
+    register() {
+      registerWorkspace(new WorkspaceCoordinator({ directory: path.join(directory.path, "claims") }))
+      Core.register()
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const root = await Session.create({ workspaceID: null, environmentID: null })
+        const binding = {
+          sessionID: root.id,
+          scopeID: "home",
+          handoffID: "file-owner-capture",
+          sourceID: "source",
+          targetID: "target",
+          fromEpoch: 1,
+          toEpoch: 2,
+        }
+        let lease: Physical.Lease | undefined
+        let escaped: (() => Physical.Lease) | undefined
+        await Source.prepare({
+          binding,
+          store: objects(),
+          signal: new AbortController().signal,
+          async verify() {},
+          async beforeFreeze() {
+            lease = await Physical.begin({ ...binding, rootSessionID: root.id })
+            expect(() => Physical.sourceCapture(binding)).toThrow("capture")
+            expect(() => Physical.assertSource(lease!)).toThrow("capture")
+            await Physical.withCapture(lease, async () => {
+              expect(Physical.sourceCapture(binding)).toBe(lease!)
+              Physical.assertSource(lease!)
+              expect(() => Physical.sourceCapture({ ...binding, handoffID: "another-operation" })).toThrow("binding")
+              escaped = () => Physical.sourceCapture(binding)
+            })
+            Physical.assertSource(lease)
+            expect(() => escaped!()).toThrow("capture")
+          },
+        })
+        if (!lease) throw new Error("Expected the original source lease")
+        Physical.assertSource(lease)
+        await Physical.release(lease)
+        expect(() => Physical.assertSource(lease!)).toThrow("released")
+      },
+    }),
+  )
+})
+
 test("failed physical cleanup preserves both failures and requires release reconciliation before another capture", async () => {
   await using directory = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(directory.path, "claims") })
