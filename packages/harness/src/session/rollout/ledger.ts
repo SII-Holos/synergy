@@ -13,8 +13,10 @@ import { record, RolloutRecordingError } from "./error"
 import { ProviderPricing } from "../../provider/pricing"
 import { RolloutUsage } from "./usage"
 import { SessionActivityEvent } from "../activity-events"
+import { RolloutToolPartIndex } from "./tool-part-index"
 
 export namespace RolloutLedger {
+  export const toolForPart = RolloutToolPartIndex.get
   type Owner = RolloutSchema.Owner
   type Terminal = Exclude<RolloutSchema.CallRecord["status"], "running">
   const Segment = z.string().regex(/^[a-zA-Z0-9_-]+$/)

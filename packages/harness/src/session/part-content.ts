@@ -186,7 +186,7 @@ export namespace PartContent {
     })
   }
 
-  async function* textBlocks(key: string[], value: Stored, signal?: AbortSignal) {
+  export async function* textBlocks(key: string[], value: Stored, signal?: AbortSignal) {
     const content = checkpoint(value)
     if (!content) {
       if (value.type === "text" || value.type === "reasoning") yield (value as Streaming).text

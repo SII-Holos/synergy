@@ -35,3 +35,5 @@ Session summaries compare Workspace checkpoints across all writers. Keep tool ev
 Paused transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
 
 Organization portability owns permanent epochs, bounded streams and private staging. Preserve surrender/retirement history; verify complete streams before publication. Binary streams share prepared-token/pack-pin lifetimes. Verify `test/session/transfer-*.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
+
+Native fields: `SessionHistory` bodyless headers and bounded UTF8 ranges. Verify `test/session/{part-field,part-field-cache,rollout-tool-part-index}.test.ts`.
