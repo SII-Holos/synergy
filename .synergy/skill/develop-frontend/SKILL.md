@@ -72,6 +72,8 @@ Keep organization authorization and callback pages independent of personal Runti
 
 For organization decisions, test finite pending pages separately from explicit native winner queries and the client's own logical receipt. Do not use a partial page to clear unseen drafts or infer successful submission. Password input steps and original sensitive command payloads remain volatile: exercise storage inspection and reload recovery without reconstructing an answer under an old logical ID. See the [decision recovery record](../../../docs/decisions/implemented/architecture/2026-11-11-reconcile-organization-decisions-with-native-winners.md).
 
+Exercise the real IndexedDB owner when changing decision recovery. Page headers without reading payloads, verify unresolved histories beyond the displayed residency budget, and keep exact native identities blocked outside the current page. Capture a question's step policy before asynchronous page changes; test disposal and a second live owner as well as reload.
+
 ## Localize Product UI
 
 Read [the domain guidance](references/presentation.md#localize-product-ui) when this area is affected.

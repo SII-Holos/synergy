@@ -12,6 +12,7 @@ import type {
   OrgCommandView,
 } from "@ericsanchezok/synergy-sdk/organization"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
+import { OrganizationCommandProtocol as Command } from "@ericsanchezok/synergy-organization-protocol"
 import { useSpace } from "@/context/space"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { Persist, persisted } from "@/utils/persist"
@@ -52,7 +53,12 @@ export function OrganizationSessionComposer(props: {
     setError(error)
     setBlocked(true)
   }
-  const tooLarge = () => new TextEncoder().encode(JSON.stringify({ text: draft.text })).byteLength > 60_000
+  const input = () => ({
+    operation: "input" as const,
+    mode: draft.mode,
+    parts: [{ type: "text" as const, text: draft.text }],
+  })
+  const tooLarge = () => !Command.Input.safeParse(input()).success
   const envelope = () => ({
     schemaVersion: 1 as const,
     orgID: space.connection()!.orgID,
@@ -141,7 +147,7 @@ export function OrganizationSessionComposer(props: {
         if (!pending() && props.session.permissions.execute && props.modelReady && !tooLarge() && draft.text.trim())
           void submit({
             ...envelope(),
-            input: { operation: "input", mode: draft.mode, parts: [{ type: "text", text: draft.text }] },
+            input: input(),
           })
       }}
     >
@@ -185,7 +191,7 @@ export function OrganizationSessionComposer(props: {
           <p role="alert">
             {_({
               id: "organization.session.messageTooLarge",
-              message: "This message exceeds the connection's 60 KiB limit. Keep the draft and send a smaller message.",
+              message: "This message exceeds the supported input size. Your draft is retained; send a smaller message.",
             })}
           </p>
         </Show>

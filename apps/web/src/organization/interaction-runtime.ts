@@ -7,14 +7,13 @@ import {
   type OrganizationProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
-import { createSessionDecisionState } from "@/context/session-decision"
-import {
-  confirmOrganizationDecision,
-  createOrganizationDecisionCommands,
-  type OrganizationDecisionCommand,
-} from "./decision-command"
+import { createSessionDecisionState } from "@/context/session-decision-state"
+import { createOrganizationDecisionOutbox } from "./decision-outbox"
+import { confirmDecisionOutboxReceipt, type DecisionOutboxRecord } from "./decision-outbox-record"
+import { organizationInteractionWindow } from "./interaction-window"
 
 export type OrganizationInteractionDecision = Extract<Interaction.Result, { operation: "decisions" }>["items"][number]
+export type OrganizationRetainedDecision = DecisionOutboxRecord & { available: boolean }
 type Identity = { id: string; sessionID: string }
 const nativeKey = (kind: "question" | "permission", requestID: string) => `${kind}:${requestID}`
 const unknown = () =>
@@ -28,66 +27,159 @@ export function createOrganizationInteractionRuntime(input: {
   sourceSessionID?: string
   binding: Protocol.SessionBinding
   signal: AbortSignal
-  storage: Pick<Storage, "getItem" | "setItem" | "removeItem">
 }) {
   const sourceID = input.sourceSessionID ?? input.rootSessionID
-  const owner = JSON.stringify([input.binding.projectID, input.rootSessionID, sourceID])
-  const ledger = createOrganizationDecisionCommands(input.storage, input.connectionKey, owner)
+  const outbox = createOrganizationDecisionOutbox({
+    owner: {
+      connectionKey: input.connectionKey,
+      accountID: input.accountID,
+      projectID: input.binding.projectID,
+      rootSessionID: input.rootSessionID,
+      sourceSessionID: sourceID,
+    },
+    binding: input.binding,
+  })
   const controller = new AbortController()
   const signal = AbortSignal.any([input.signal, controller.signal])
-  onCleanup(() => controller.abort())
   const options = { throwOnError: true, signal } as const
-  const [state, setState] = createStore({ pending: [] as Interaction.Pending[], retained: ledger.pending() })
-  const restored = new Set(state.retained.map((entry) => nativeKey(entry.kind, entry.nativeID)))
+  const [state, setState] = createStore({
+    pending: [] as Interaction.Pending[],
+    retained: [] as OrganizationRetainedDecision[],
+    nativeRecords: [] as OrganizationRetainedDecision[],
+  })
   const [runtimeKind, setRuntimeKind] = createSignal<"member" | "hosted">()
   const [cursor, setCursor] = createSignal<string>()
+  const [earlier, setEarlier] = createSignal(false)
+  const [outboxCursor, setOutboxCursor] = createSignal<string>()
+  const [outboxStart, setOutboxStart] = createSignal<string>()
+  const [pinned, setPinned] = createSignal<OrganizationRetainedDecision>()
   const [loading, setLoading] = createSignal(false)
+  const [loadingRetained, setLoadingRetained] = createSignal(false)
   const [loaded, setLoaded] = createSignal(false)
   const [error, setError] = createSignal<unknown>()
   const [notice, setNotice] = createSignal<OrganizationInteractionDecision>()
   const [checking, setChecking] = createSignal<string>()
   const [retryable, setRetryable] = createSignal<ReadonlySet<string>>(new Set())
-  const [suspended, setSuspended] = createSignal<ReadonlySet<string>>(new Set())
-  function updateRetained() {
-    setState("retained", reconcile(ledger.pending(), { key: "requestID" }))
+  const [usable, setUsable] = createSignal(true)
+  const [localRevision, setLocalRevision] = createSignal(0)
+  const changed = () => setLocalRevision((value) => value + 1)
+  const live = new Set<string>()
+  const inflight = new Set<string>()
+  const suspended = new Set<string>()
+  const abort = () => {
+    setUsable(false)
+    outbox.dispose()
+    live.clear()
+    inflight.clear()
+    suspended.clear()
+    setState(reconcile({ pending: [], retained: [], nativeRecords: [] }))
+    setPinned(undefined)
+  }
+  signal.addEventListener("abort", abort, { once: true })
+  onCleanup(() => {
+    controller.abort()
+    signal.removeEventListener("abort", abort)
+  })
+  const decorate = (record: DecisionOutboxRecord): OrganizationRetainedDecision => ({
+    ...record,
+    available: outbox.available(record),
+  })
+  const sameDriver = (record: DecisionOutboxRecord) =>
+    record.runtimeID === input.binding.driverRuntimeID && record.bindingEpoch === input.binding.bindingEpoch
+  async function refreshRetained(more = false, first = false) {
+    if (signal.aborted || loadingRetained()) return
+    setLoadingRetained(true)
+    try {
+      const start = first ? undefined : more ? outboxCursor() : outboxStart()
+      const page = await outbox.page({ cursor: start, limit: 32 })
+      signal.throwIfAborted()
+      setOutboxStart(start)
+      setOutboxCursor(page.cursor)
+      setState("retained", reconcile(page.items.map(decorate), { key: "requestID" }))
+      const current = pinned()
+      if (current) {
+        const found = await outbox.get(current.requestID)
+        signal.throwIfAborted()
+        setPinned(found ? decorate(found) : undefined)
+      }
+    } finally {
+      if (!signal.aborted) setLoadingRetained(false)
+    }
+  }
+  async function refreshNativeRecords() {
+    const rows = state.pending
+    const records: OrganizationRetainedDecision[] = []
+    for (let start = 0; start < rows.length; start += 64) {
+      const found = await outbox.nativePage(
+        rows.slice(start, start + 64).map((row) => ({ kind: row.kind, nativeID: row.requestID })),
+      )
+      records.push(...found.flatMap((row) => (row ? [decorate(row)] : [])))
+    }
+    signal.throwIfAborted()
+    setState("nativeRecords", reconcile(records, { key: "requestID" }))
+    const keep = new Set([...records, ...state.retained].map((row) => row.requestID))
+    if (pinned()) keep.add(pinned()!.requestID)
+    for (const id of live) if (!keep.has(id) && !inflight.has(id)) live.delete(id)
+    for (const id of suspended) if (!keep.has(id) && !inflight.has(id)) suspended.delete(id)
+    changed()
   }
   function fail(error: unknown) {
     if (signal.aborted) return
     const code = error && typeof error === "object" && "code" in error ? error.code : undefined
-    if (code === "PERMISSION_DENIED" || code === "AUTHENTICATION_REQUIRED" || code === "NOT_FOUND") {
-      setState("pending", [])
+    if (
+      typeof code === "string" &&
+      [
+        "PERMISSION_DENIED",
+        "AUTHENTICATION_REQUIRED",
+        "NOT_FOUND",
+        "permission_denied",
+        "reauthorization_required",
+        "signed_out",
+        "identity_changed",
+      ].includes(code)
+    ) {
+      setState(reconcile({ pending: [], retained: [], nativeRecords: [] }))
+      setPinned(undefined)
       controller.abort()
     }
     setError({ code: typeof code === "string" ? code : "COMMAND_OUTCOME_UNKNOWN" })
   }
   async function query(query: Interaction.Query) {
-    const result = await input.api.orgSessionInteractions.list(
-      { sessionID: input.rootSessionID, orgInteractionQuery: query },
-      options,
-    )
+    const result = await input.api.orgSessionInteractions
+      .list({ sessionID: input.rootSessionID, orgInteractionQuery: query }, options)
+      .catch((error: unknown) => {
+        fail(error)
+        throw error
+      })
     signal.throwIfAborted()
     if (!Interaction.matches(query, result.data, input.binding)) throw unknown()
     setRuntimeKind(result.data.runtimeKind)
     return result.data
   }
-  function resolved(value: OrganizationInteractionDecision) {
+  async function resolved(value: OrganizationInteractionDecision) {
     if (value.state === "pending") return
     setNotice(value)
     decisions.ended(value.identity.kind, sourceID, value.identity.requestID)
-    ledger.release(value.identity.requestID)
-    setState("pending", (pending) =>
-      pending.filter(
-        (entry) => nativeKey(entry.kind, entry.requestID) !== nativeKey(value.identity.kind, value.identity.requestID),
+    const record = await outbox.native(value.identity.kind, value.identity.requestID)
+    signal.throwIfAborted()
+    if (record) outbox.release(record.requestID)
+    setState("pending", (rows) =>
+      rows.filter(
+        (row) => nativeKey(row.kind, row.requestID) !== nativeKey(value.identity.kind, value.identity.requestID),
       ),
     )
-    updateRetained()
+    await refreshRetained()
+    await refreshNativeRecords()
   }
-  function accepted(entry: OrganizationDecisionCommand, value: unknown) {
-    const result = confirmOrganizationDecision(entry, value, input.accountID, input.binding.bindingEpoch)
-    ledger.clear(entry.nativeID, entry.requestID)
-    updateRetained()
+  async function accepted(entry: DecisionOutboxRecord, value: unknown) {
+    const result = confirmDecisionOutboxReceipt(entry, value)
+    await outbox.remove(entry)
+    signal.throwIfAborted()
+    live.delete(entry.requestID)
+    suspended.delete(entry.requestID)
+    changed()
     const decision = result.effect.decision
-    resolved(
+    await resolved(
       decision.status === "expired"
         ? { identity: { kind: entry.kind, requestID: entry.nativeID }, state: "expired" }
         : { identity: { kind: entry.kind, requestID: entry.nativeID }, state: "resolved", winner: decision.winner },
@@ -104,7 +196,8 @@ export function createOrganizationInteractionRuntime(input: {
     return result.items[0]
   }
   async function pending(kind: "question" | "permission", identity: Identity) {
-    const entry = ledger.pending().find((value) => value.kind === kind && value.nativeID === identity.id)
+    const entry = await outbox.native(kind, identity.id)
+    signal.throwIfAborted()
     let canRetry = !entry
     let receiptError: unknown
     if (entry) {
@@ -115,21 +208,25 @@ export function createOrganizationInteractionRuntime(input: {
         if (result.requestID !== entry.requestID) throw unknown()
         const receipt = result.accepted ?? result.result?.accepted
         if (receipt) {
-          accepted(entry, receipt)
+          await accepted(entry, receipt)
           return false
         }
         if (result.state === "rejected") {
-          ledger.clear(entry.nativeID, entry.requestID)
-          updateRetained()
+          await outbox.remove(entry)
+          live.delete(entry.requestID)
+          suspended.delete(entry.requestID)
+          changed()
+          await refreshRetained()
+          await refreshNativeRecords()
           canRetry = true
-        } else if (result.state === "not_dispatched" && entry.command) canRetry = true
+        } else if (result.state === "not_dispatched" && sameDriver(entry) && outbox.available(entry)) canRetry = true
       } catch (error) {
         receiptError = error
       }
     }
     const native = await nativeDecision(kind, identity.id)
     if (native.state !== "pending") {
-      resolved(native)
+      await resolved(native)
       return false
     }
     if (!canRetry || receiptError) throw unknown()
@@ -141,15 +238,15 @@ export function createOrganizationInteractionRuntime(input: {
     decision: Command.Decision,
     sensitive: boolean,
   ) {
-    const retained = ledger.pending().find((value) => value.kind === kind && value.nativeID === identity.id)
-    let entry = retained
+    let entry = await outbox.native(kind, identity.id)
+    signal.throwIfAborted()
     if (entry) {
       if (!(await pending(kind, identity))) return
-      entry = ledger.pending().find((value) => value.kind === kind && value.nativeID === identity.id)
-      if (entry && !entry.command) throw unknown()
+      entry = await outbox.native(kind, identity.id)
+      if (entry && (!sameDriver(entry) || !outbox.available(entry))) throw unknown()
     }
     if (!entry) {
-      entry = await ledger.begin(
+      entry = await outbox.begin(
         {
           schemaVersion: 1,
           orgID: input.binding.orgID,
@@ -161,69 +258,89 @@ export function createOrganizationInteractionRuntime(input: {
         },
         sensitive,
       )
-      updateRetained()
+      live.add(entry.requestID)
+      changed()
     }
-    if (!entry.command) throw unknown()
+    const command = await outbox.command(entry)
+    signal.throwIfAborted()
+    if (!command) throw unknown()
+    inflight.add(entry.requestID)
     try {
+      await refreshNativeRecords()
       const result = await input.api.orgSessionInteractions.reply(
-        { sessionID: input.rootSessionID, orgCommandDecisionRequest: entry.command },
+        { sessionID: input.rootSessionID, orgCommandDecisionRequest: command },
         options,
       )
       signal.throwIfAborted()
-      accepted(entry, result.data)
+      await accepted(entry, result.data)
     } catch (error) {
-      const suspendedKey = nativeKey(kind, identity.id)
-      setSuspended((previous) => new Set([...previous, suspendedKey]))
+      fail(error)
+      if (!signal.aborted) {
+        suspended.add(entry.requestID)
+        changed()
+        setPinned(decorate(entry))
+        await refreshRetained()
+        await refreshNativeRecords()
+      }
       const code = error && typeof error === "object" && "code" in error ? error.code : undefined
       throw { code: typeof code === "string" ? code : "COMMAND_OUTCOME_UNKNOWN" }
+    } finally {
+      inflight.delete(entry.requestID)
     }
   }
-  const blocked = () =>
-    state.retained.filter(
-      (entry) =>
-        restored.has(nativeKey(entry.kind, entry.nativeID)) || suspended().has(nativeKey(entry.kind, entry.nativeID)),
-    )
+  const isBlocked = (record: DecisionOutboxRecord) => {
+    localRevision()
+    return !live.has(record.requestID) || suspended.has(record.requestID)
+  }
   const visible = () =>
     state.pending.filter(
-      (entry) => !blocked().some((value) => value.kind === entry.kind && value.nativeID === entry.requestID),
+      (row) =>
+        !state.nativeRecords.some(
+          (record) => record.kind === row.kind && record.nativeID === row.requestID && isBlocked(record),
+        ),
     )
+  const blocked = () => {
+    const page = [...(pinned() ? [pinned()!] : []), ...state.retained]
+    return [...new Map(page.filter(isBlocked).map((entry) => [entry.requestID, entry])).values()]
+  }
   const decisions = createSessionDecisionState({
     connectionKey: input.connectionKey,
     scopeID: input.binding.projectID,
+    draftStore: "organization-v2",
+    signal,
     questions: () =>
-      visible().flatMap((entry) =>
-        entry.kind === "question"
+      visible().flatMap((row) =>
+        row.kind === "question"
           ? [
               {
-                id: entry.requestID,
+                id: row.requestID,
                 sessionID: sourceID,
-                questions: entry.questions,
-                tool: entry.tool,
-                timeout: entry.timeout,
-                createdAt: entry.createdAt,
+                questions: row.questions,
+                tool: row.tool,
+                timeout: row.timeout,
+                createdAt: row.createdAt,
               },
             ]
           : [],
       ),
     permissions: () =>
-      visible().flatMap((entry) =>
-        entry.kind === "permission"
+      visible().flatMap((row) =>
+        row.kind === "permission"
           ? [
               {
-                id: entry.requestID,
+                id: row.requestID,
                 sessionID: sourceID,
-                permission: entry.permission,
-                patterns: entry.patterns,
+                permission: row.permission,
+                patterns: row.patterns,
                 metadata: {},
-                tool: entry.tool,
+                tool: row.tool,
               },
             ]
           : [],
       ),
     questionSnapshot: () => undefined,
-    replyQuestion(identity, answers) {
-      const request = state.pending.find((entry) => entry.kind === "question" && entry.requestID === identity.id)
-      return submit(
+    replyQuestion: (identity, answers, policy) =>
+      submit(
         "question",
         identity,
         {
@@ -234,9 +351,8 @@ export function createOrganizationInteractionRuntime(input: {
           reply: answers ? "answer" : "reject",
           ...(answers ? { answers } : {}),
         },
-        request?.kind === "question" && request.questions.some((question) => question.input_type === "password"),
-      )
-    },
+        policy?.includes("password") ?? true,
+      ),
     replyPermission: (identity, reply) =>
       submit(
         "permission",
@@ -248,9 +364,10 @@ export function createOrganizationInteractionRuntime(input: {
     permissionPending: (identity) => pending("permission", identity),
   })
   async function load(more = false, polling = false) {
-    if (loading() || signal.aborted) return
+    if (loading() || signal.aborted || (more && !cursor())) return
     setLoading(true)
     try {
+      await refreshRetained()
       const result = await query({
         operation: "pending",
         rootSessionID: input.rootSessionID,
@@ -259,21 +376,20 @@ export function createOrganizationInteractionRuntime(input: {
         cursor: more ? cursor() : undefined,
       })
       if (result.operation !== "pending") throw unknown()
-      const entries = more ? [...state.pending, ...result.items] : [...result.items, ...state.pending]
-      const unique = new Map(entries.map((entry) => [nativeKey(entry.kind, entry.requestID), entry]))
       const selected = decisions.selection(sourceID)
       const active = state.pending.find(
         (entry) => decisions.key(entry.kind, { id: entry.requestID, sessionID: sourceID }) === selected,
       )
-      const candidates = [...unique.values()]
-      const window = more ? candidates.slice(-128) : candidates.slice(0, 128)
-      if (
-        active &&
-        !window.some((entry) => nativeKey(entry.kind, entry.requestID) === nativeKey(active.kind, active.requestID))
-      )
-        window.splice(0, 1, active)
+      const window = organizationInteractionWindow({
+        current: state.pending,
+        incoming: result.items,
+        mode: more ? "more" : polling && loaded() && earlier() ? "poll" : "first",
+        selected: active,
+      })
       setState("pending", reconcile(window, { key: "requestID" }))
-      if (!polling || !loaded()) setCursor(result.cursor)
+      await refreshNativeRecords()
+      if (!polling || !loaded() || !earlier()) setCursor(result.cursor)
+      if (!polling) setEarlier(more)
       setLoaded(true)
       setError(undefined)
     } catch (error) {
@@ -296,31 +412,35 @@ export function createOrganizationInteractionRuntime(input: {
         identities,
       })
       if (result.operation !== "decisions") throw unknown()
-      for (const value of result.items) if (value.state !== "pending") resolved(value)
+      for (const value of result.items) if (value.state !== "pending") await resolved(value)
     }
   }
-  async function check(entry: OrganizationDecisionCommand, retry = false) {
+  async function check(entry: OrganizationRetainedDecision, retry = false) {
     if (checking() || signal.aborted) return
     setChecking(entry.requestID)
     setError(undefined)
     try {
       const exists = await pending(entry.kind, { id: entry.nativeID, sessionID: entry.sourceSessionID })
-      const current = ledger.pending().find((value) => value.requestID === entry.requestID)
+      const current = await outbox.get(entry.requestID)
+      signal.throwIfAborted()
       setRetryable(
         (previous) =>
           new Set(
             [...previous]
               .filter((id) => id !== entry.requestID)
-              .concat(exists && current?.command ? [entry.requestID] : []),
+              .concat(exists && current && sameDriver(current) && outbox.available(current) ? [entry.requestID] : []),
           ),
       )
-      if (retry && exists && current?.command) {
+      if (retry && exists && current && sameDriver(current)) {
+        const command = await outbox.command(current)
+        signal.throwIfAborted()
+        if (!command) throw unknown()
         const result = await input.api.orgSessionInteractions.reply(
-          { sessionID: input.rootSessionID, orgCommandDecisionRequest: current.command },
+          { sessionID: input.rootSessionID, orgCommandDecisionRequest: command },
           options,
         )
         signal.throwIfAborted()
-        accepted(current, result.data)
+        await accepted(current, result.data)
       }
     } catch (error) {
       fail(error)
@@ -328,6 +448,14 @@ export function createOrganizationInteractionRuntime(input: {
       if (!signal.aborted) setChecking(undefined)
     }
   }
+  const retainedPage = async (more = false, first = false) => {
+    try {
+      await refreshRetained(more, first)
+    } catch (error) {
+      fail(error)
+    }
+  }
+  if (signal.aborted) abort()
   return {
     state,
     decisions,
@@ -336,15 +464,21 @@ export function createOrganizationInteractionRuntime(input: {
     blocked,
     runtimeKind,
     cursor,
+    earlier,
+    outboxCursor,
+    outboxStart,
     loading,
+    loadingRetained,
     error,
     notice,
     dismissNotice: () => setNotice(undefined),
     checking,
     retryable,
+    active: usable,
     load,
     reconcilePending,
     check,
+    retainedPage,
     fail,
   }
 }

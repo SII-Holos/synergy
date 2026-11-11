@@ -20,6 +20,7 @@ import "./interactions.css"
 const messages = {
   refresh: { id: "organization.interactions.refresh", message: "Refresh requests" },
   more: { id: "organization.interactions.more", message: "More requests" },
+  first: { id: "organization.interactions.first", message: "First requests" },
   check: { id: "organization.interactions.check", message: "Check response status" },
   retry: { id: "organization.interactions.retry", message: "Retry original response" },
   unknown: { id: "organization.interactions.unknown", message: "The response status is unconfirmed." },
@@ -45,6 +46,9 @@ const messages = {
     message:
       "Save these rules for future matching work by all members in every project on this hosted Runtime, until the rules are removed.",
   },
+  moreStatuses: { id: "organization.interactions.moreStatuses", message: "More response statuses" },
+  firstStatuses: { id: "organization.interactions.firstStatuses", message: "First response statuses" },
+  submitted: { id: "organization.interactions.submitted", message: "Response submitted {date}" },
 }
 
 export function OrganizationSessionInteractions(props: {
@@ -65,7 +69,7 @@ function InteractionSurface(props: {
   binding: Protocol.SessionBinding
   online: boolean
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const space = useSpace()
   const owner = space.current()!
   const runtime = createOrganizationInteractionRuntime({
@@ -76,7 +80,6 @@ function InteractionSurface(props: {
     sourceSessionID: props.sourceSessionID,
     binding: props.binding,
     signal: owner.signal,
-    storage: localStorage,
   })
   const [data] = createStore<Data>({ session: [], session_diff: {}, message: {}, part: {} })
   const questions = createMemo(() =>
@@ -121,7 +124,7 @@ function InteractionSurface(props: {
   let disposed = false
   const compact = window.matchMedia("(max-width: 600px) and (max-height: 740px)").matches
   async function poll() {
-    if (disposed || owner.signal.aborted) return
+    if (disposed || owner.signal.aborted || !runtime.active()) return
     if (props.online) {
       await runtime.load(false, true)
       try {
@@ -160,7 +163,7 @@ function InteractionSurface(props: {
   }
   return (
     <div class="organization-interactions">
-      <WorkspaceError error={runtime.error()} retry={() => void runtime.load()} />
+      <WorkspaceError error={runtime.error()} retry={runtime.active() ? () => void runtime.load() : undefined} />
       <Show when={runtime.notice()}>
         {(value) => (
           <div role="status" class="organization-interaction-status">
@@ -175,14 +178,24 @@ function InteractionSurface(props: {
         {(entry) => (
           <div class="organization-interaction-recovery" role="status">
             <p>{_(messages.unknown)}</p>
-            <Show when={entry.sensitive && !entry.command}>
+            <p>
+              {_({
+                ...messages.submitted,
+                values: {
+                  date: new Intl.DateTimeFormat(i18n().locale, { dateStyle: "medium", timeStyle: "short" }).format(
+                    entry.createdAt,
+                  ),
+                },
+              })}
+            </p>
+            <Show when={entry.sensitive && !entry.available}>
               <p>{_(messages.passwordLost)}</p>
             </Show>
             <div class="organization-form-actions">
               <Button disabled={!!runtime.checking() || !props.online} onClick={() => void runtime.check(entry)}>
                 {_(messages.check)}
               </Button>
-              <Show when={runtime.retryable().has(entry.requestID) && entry.command}>
+              <Show when={runtime.retryable().has(entry.requestID) && entry.available}>
                 <Button
                   disabled={!!runtime.checking() || !props.online}
                   onClick={() => void runtime.check(entry, true)}
@@ -194,6 +207,28 @@ function InteractionSurface(props: {
           </div>
         )}
       </For>
+      <Show when={runtime.outboxStart() || runtime.outboxCursor()}>
+        <div class="organization-form-actions">
+          <Show when={runtime.outboxStart()}>
+            <Button
+              variant="ghost"
+              disabled={runtime.loadingRetained() || !runtime.active()}
+              onClick={() => void runtime.retainedPage(false, true)}
+            >
+              {_(messages.firstStatuses)}
+            </Button>
+          </Show>
+          <Show when={runtime.outboxCursor()}>
+            <Button
+              variant="ghost"
+              disabled={runtime.loadingRetained() || !runtime.active()}
+              onClick={() => void runtime.retainedPage(true)}
+            >
+              {_(messages.moreStatuses)}
+            </Button>
+          </Show>
+        </div>
+      </Show>
       <Show when={props.online}>
         <DataProvider data={data} directory={null} serverUrl={space.connection()!.issuer}>
           <SessionDecisionProvider value={runtime.decisions}>
@@ -206,10 +241,10 @@ function InteractionSurface(props: {
           </SessionDecisionProvider>
         </DataProvider>
       </Show>
-      <Show when={runtime.cursor()}>
+      <Show when={runtime.cursor() || runtime.earlier()}>
         <div class="organization-form-actions">
           <Button variant="ghost" disabled={runtime.loading() || !props.online} onClick={() => void runtime.load()}>
-            {_(messages.refresh)}
+            {_(runtime.earlier() ? messages.first : messages.refresh)}
           </Button>
           <Show when={runtime.cursor()}>
             <Button

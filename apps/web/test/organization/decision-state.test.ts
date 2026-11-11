@@ -1,17 +1,7 @@
-import { expect, mock, test } from "bun:test"
+import { expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import type { QuestionRequest } from "@ericsanchezok/synergy-sdk"
-mock.module("../../src/context/sdk", () => ({
-  useSDK() {
-    throw new Error("A personal client must not be acquired")
-  },
-}))
-mock.module("../../src/context/global-sync", () => ({
-  useGlobalSync() {
-    throw new Error("Personal synchronization must not be acquired")
-  },
-}))
-const { createSessionDecisionState } = await import("../../src/context/session-decision")
+import { createSessionDecisionState } from "../../src/context/session-decision-state"
 const request: QuestionRequest = {
   id: "question-one",
   sessionID: "session-one",
@@ -133,6 +123,7 @@ test("password answers stay in the current decision state while ordinary answers
   expect(first.state.draft(passwordRequest).custom).toEqual(["private-password-answer", "Retained ordinary answer"])
   expect(Object.values(localStorage).join(" ")).not.toContain("private-password-answer")
   first.dispose()
+  expect(first.state.draft(passwordRequest).custom[0]).toBe("")
   const second = createRoot((dispose) => ({ dispose, state: createSessionDecisionState(runtime) }))
   try {
     expect(second.state.draft(passwordRequest).custom).toEqual(["", "Retained ordinary answer"])
@@ -142,226 +133,164 @@ test("password answers stay in the current decision state while ordinary answers
   }
 })
 
-test("a finite pending page cannot confirm a lost response, while an explicit native winner is shown separately from the logical receipt", async () => {
-  const { createOrganizationInteractionRuntime } = await import("../../src/organization/interaction-runtime")
-  const { createOrganizationClient } = await import("@ericsanchezok/synergy-sdk/organization")
-  const binding = {
-    schemaVersion: 1,
-    orgID: "org-one",
-    projectID: "project-one",
-    creatorID: "account-one",
-    driverRuntimeID: "runtime-one",
-    bindingEpoch: 1,
-  } as const
-  const native = {
-    kind: "question",
-    requestID: "native-one",
-    sourceSessionID: "session-one",
-    questions: [{ header: "Password", question: "Enter a password", options: [], input_type: "password" }],
-  } as const
-  let phase: "pending" | "missing-page" | "resolved" = "pending"
-  let submitted = 0
-  const values = new Map<string, string>()
-  const storage = {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      values.set(key, value)
+test("organization question drafts use a policy-bearing v2 namespace and never restore a mismatched step", async () => {
+  localStorage.clear()
+  const question: QuestionRequest = {
+    ...request,
+    id: "v2-question",
+    questions: [{ ...request.questions[0]! }, { ...request.questions[0]!, input_type: "password" }],
+  }
+  const runtime = {
+    connectionKey: "organization-v2",
+    scopeID: "project-one",
+    draftStore: "organization-v2" as const,
+    questions: () => [question],
+    permissions: () => [],
+    questionSnapshot: () => undefined,
+    async replyQuestion() {},
+    async replyPermission() {},
+    async questionPending() {
+      return true
     },
-    removeItem: (key: string) => {
-      values.delete(key)
+    async permissionPending() {
+      return true
     },
   }
-  const api = createOrganizationClient({
-    baseUrl: "https://organization.example",
-    fetch: Object.assign(
-      async (input: RequestInfo | URL) => {
-        const request = new Request(input)
-        const url = new URL(request.url)
-        if (url.pathname.endsWith("/interactions/reply")) {
-          submitted++
-          return Response.json({ code: "COMMAND_OUTCOME_UNKNOWN" }, { status: 504 })
-        }
-        if (url.pathname.includes("/commands/"))
-          return Response.json({
-            requestID: url.pathname.split("/").at(-1),
-            attemptID: "attempt",
-            state: "unknown",
-            authorizedAt: 1,
-          })
-        const query = await request.json()
-        const envelope = {
-          rootSessionID: "session-one",
-          sourceSessionID: "session-one",
-          binding,
-          runtimeKind: "hosted",
-        }
-        if (query.operation === "pending")
-          return Response.json({
-            ...envelope,
-            operation: "pending",
-            items: phase === "pending" ? [native] : [],
-            hasMore: false,
-          })
-        return Response.json({
-          ...envelope,
-          operation: "decisions",
-          items: [
-            phase === "resolved"
-              ? {
-                  identity: { kind: "question", requestID: "native-one" },
-                  state: "resolved",
-                  winner: {
-                    sessionID: "session-one",
-                    requestID: "native-one",
-                    decidedAt: 2,
-                    actor: {
-                      kind: "account",
-                      subjectID: "another-account",
-                      displayName: "Another member",
-                      clientKind: "web",
-                      requestID: "another-logical",
-                      orgID: "org-one",
-                    },
-                    outcome: { kind: "question", reply: "answer" },
-                  },
-                }
-              : { identity: { kind: "question", requestID: "native-one" }, state: "pending" },
-          ],
-        })
+  const scope = createRoot((dispose) => ({ dispose, state: createSessionDecisionState(runtime) }))
+  scope.state.updateDraft(question, (draft) => ({
+    ...draft,
+    custom: ["Ordinary answer", "Volatile password"],
+    source: ["custom", "custom"],
+  }))
+  await Promise.resolve()
+  const key = Object.keys(localStorage).find((key) => key.includes("question-drafts-v2"))
+  expect(key).toBeDefined()
+  const raw = localStorage.getItem(key!)!
+  const stored = JSON.parse(raw)
+  expect(stored.version).toBe(2)
+  const entry = stored.entries[JSON.stringify([question.sessionID, question.id])]
+  expect(entry.inputTypes).toEqual(["text", "password"])
+  expect(raw).not.toContain("Volatile password")
+  scope.dispose()
+  entry.inputTypes[0] = "password"
+  entry.custom[0] = "Unclassified sensitive value"
+  localStorage.setItem(key!, JSON.stringify(stored))
+  const restored = createRoot((dispose) => ({ dispose, state: createSessionDecisionState(runtime) }))
+  try {
+    expect(restored.state.draft(question).custom[0]).toBe("")
+  } finally {
+    restored.dispose()
+    localStorage.clear()
+  }
+})
+test("a cached question action passes its captured password policy independently of the current pending page", async () => {
+  const question: QuestionRequest = { ...request, questions: [{ ...request.questions[0]!, input_type: "password" }] }
+  let policy: readonly ("text" | "password")[] | undefined
+  const scope = createRoot((dispose) => ({
+    dispose,
+    state: createSessionDecisionState({
+      connectionKey: "policy-capture",
+      scopeID: "project-one",
+      questions: () => [],
+      permissions: () => [],
+      questionSnapshot: () => undefined,
+      async replyQuestion(_identity, _answers, inputTypes) {
+        policy = inputTypes
       },
-      { preconnect() {} },
-    ),
-  })
-  const current = createRoot((dispose) => ({
-    dispose,
-    runtime: createOrganizationInteractionRuntime({
-      api,
-      accountID: "account-one",
-      connectionKey: "connection-one",
-      rootSessionID: "session-one",
-      binding,
-      signal: new AbortController().signal,
-      storage,
+      async replyPermission() {},
+      async questionPending() {
+        return false
+      },
+      async permissionPending() {
+        return false
+      },
     }),
   }))
   try {
-    await current.runtime.load()
-    const question = {
-      id: native.requestID,
-      sessionID: "session-one",
-      questions: [...native.questions].map((item) => ({ ...item, options: [] })),
-    }
-    await current.runtime.decisions.respondQuestion(question, [["private-answer"]])
-    expect(submitted).toBe(1)
-    expect(current.runtime.decisions.state(current.runtime.decisions.key("question", question)).status).toBe("unknown")
-    expect([...values.values()].join(" ")).not.toContain("private-answer")
-    phase = "missing-page"
-    await current.runtime.load()
-    expect(current.runtime.state.retained).toHaveLength(1)
-    expect(current.runtime.decisions.state(current.runtime.decisions.key("question", question)).status).toBe("unknown")
-    phase = "resolved"
-    await current.runtime.check(current.runtime.state.retained[0]!)
-    expect(current.runtime.notice()).toMatchObject({
-      state: "resolved",
-      winner: { actor: { displayName: "Another member" } },
-    })
-    expect(current.runtime.state.retained).toHaveLength(1)
-    expect(current.runtime.state.retained[0]?.command).toBeUndefined()
-    expect(submitted).toBe(1)
+    await scope.state.respondQuestion(question, [["secret-answer"]])
+    expect(policy).toEqual(["password"])
   } finally {
-    current.dispose()
-  }
-  phase = "pending"
-  const reloaded = createRoot((dispose) => ({
-    dispose,
-    runtime: createOrganizationInteractionRuntime({
-      api,
-      accountID: "account-one",
-      connectionKey: "connection-one",
-      rootSessionID: "session-one",
-      binding,
-      signal: new AbortController().signal,
-      storage,
-    }),
-  }))
-  try {
-    await reloaded.runtime.load()
-    expect(reloaded.runtime.visible()).toHaveLength(0)
-    expect(reloaded.runtime.blocked()).toHaveLength(1)
-    await reloaded.runtime.check(reloaded.runtime.state.retained[0]!, true)
-    expect(submitted).toBe(1)
-    expect(reloaded.runtime.state.retained[0]?.command).toBeUndefined()
-  } finally {
-    reloaded.dispose()
+    scope.dispose()
   }
 })
 
-test("pending pagination can pass the residency window while retaining the selected request", async () => {
-  const { createOrganizationInteractionRuntime } = await import("../../src/organization/interaction-runtime")
-  const { createOrganizationClient } = await import("@ericsanchezok/synergy-sdk/organization")
-  const binding = {
-    schemaVersion: 1,
-    orgID: "org-one",
-    projectID: "project-one",
-    creatorID: "account-one",
-    driverRuntimeID: "runtime-one",
-    bindingEpoch: 1,
-  } as const
-  let page = 0
-  const api = createOrganizationClient({
-    baseUrl: "https://organization.example",
-    fetch: Object.assign(
-      async (input: RequestInfo | URL) => {
-        const request = new Request(input)
-        const query = await request.json()
-        const start = query.cursor ? Number(query.cursor) : 0
-        page = start / 32
-        return Response.json({
-          rootSessionID: "session-one",
-          sourceSessionID: "session-one",
-          binding,
-          runtimeKind: "member",
-          operation: "pending",
-          items: Array.from({ length: 32 }, (_, index) => ({
-            kind: "permission",
-            requestID: `permission-${start + index}`,
-            sourceSessionID: "session-one",
-            permission: "bash",
-            patterns: [],
-            alwaysScope: "runtime",
-          })),
-          hasMore: true,
-          cursor: String(start + 32),
-        })
-      },
-      { preconnect() {} },
-    ),
-  })
+test("an aborted organization owner releases password drafts before its component unmounts", async () => {
+  const controller = new AbortController()
+  const question: QuestionRequest = {
+    ...request,
+    id: "aborted-password",
+    questions: [{ ...request.questions[0]!, input_type: "password" }],
+  }
+  let replies = 0
   const scope = createRoot((dispose) => ({
     dispose,
-    runtime: createOrganizationInteractionRuntime({
-      api,
-      accountID: "account-one",
-      connectionKey: "large-pending",
-      rootSessionID: "session-one",
-      binding,
-      signal: new AbortController().signal,
-      storage: localStorage,
+    state: createSessionDecisionState({
+      connectionKey: "abort-password",
+      scopeID: "project-one",
+      draftStore: "organization-v2",
+      signal: controller.signal,
+      questions: () => [question],
+      permissions: () => [],
+      questionSnapshot: () => undefined,
+      async replyQuestion() {
+        replies++
+      },
+      async replyPermission() {},
+      async questionPending() {
+        return true
+      },
+      async permissionPending() {
+        return true
+      },
     }),
   }))
   try {
-    await scope.runtime.load()
-    scope.runtime.decisions.select(
-      "session-one",
-      scope.runtime.decisions.key("permission", { id: "permission-0", sessionID: "session-one" }),
-    )
-    for (let index = 0; index < 4; index++) await scope.runtime.load(true)
-    expect(page).toBe(4)
-    expect(scope.runtime.visible()).toHaveLength(128)
-    expect(scope.runtime.visible().some((entry) => entry.requestID === "permission-159")).toBe(true)
-    expect(scope.runtime.visible().some((entry) => entry.requestID === "permission-0")).toBe(true)
-    await scope.runtime.load(false, true)
-    expect(scope.runtime.cursor()).toBe("160")
+    scope.state.updateDraft(question, (draft) => ({ ...draft, custom: ["volatile-owner-secret"], source: ["custom"] }))
+    expect(scope.state.draft(question).custom).toEqual(["volatile-owner-secret"])
+    controller.abort()
+    expect(scope.state.draft(question).custom).toEqual([""])
+    await scope.state.respondQuestion(question, [["obsolete-answer"]])
+    expect(replies).toBe(0)
+  } finally {
+    scope.dispose()
+  }
+})
+
+test("a Main permission denial invalidates the interaction owner and releases its still-mounted password draft", async () => {
+  const { createOrganizationInteractionRuntime } = await import("../../src/organization/interaction-runtime")
+  const { createOrganizationClient } = await import("@ericsanchezok/synergy-sdk/organization")
+  const question: QuestionRequest = {
+    ...request,
+    id: "denied-password",
+    questions: [{ ...request.questions[0]!, input_type: "password" }],
+  }
+  const scope = createRoot((dispose) => ({
+    dispose,
+    runtime: createOrganizationInteractionRuntime({
+      api: createOrganizationClient({ baseUrl: "https://organization.example" }),
+      accountID: "account-one",
+      connectionKey: "denied-owner",
+      rootSessionID: "session-one",
+      binding: {
+        schemaVersion: 1,
+        orgID: "org-one",
+        projectID: "project-one",
+        creatorID: "account-one",
+        driverRuntimeID: "runtime-one",
+        bindingEpoch: 1,
+      },
+      signal: new AbortController().signal,
+    }),
+  }))
+  try {
+    scope.runtime.decisions.updateDraft(question, (draft) => ({
+      ...draft,
+      custom: ["denied-volatile-secret"],
+      source: ["custom"],
+    }))
+    scope.runtime.fail({ code: "permission_denied" })
+    expect(scope.runtime.active()).toBe(false)
+    expect(scope.runtime.decisions.draft(question).custom).toEqual([""])
   } finally {
     scope.dispose()
   }

@@ -14,6 +14,7 @@ const playwrightIsolated = [
   "test/organization/transcript.browser.test.ts",
   "test/organization/sessions.browser.test.ts",
   "test/organization/interactions.browser.test.ts",
+  "test/organization/decision-outbox.browser.test.ts",
   "test/organization/decision-state.test.ts",
   "test/components/settings/panels/runtime-resources.browser.test.ts",
   "test/components/provider/provider-connection-test.dom.test.ts",
