@@ -16,6 +16,8 @@ The organization service owns a dedicated Home and SQL namespace. Its storage li
 
 The independent service selects redacted authority history for controlled recovery. Its baseline migration preserves existing signing keys while upgrading the private signing record; public machine signing identities stay unchanged. Current policy writers and history commit together. Missing history or a changed owner contract requires recovery instead of silent reinitialization. This Host evidence does not grant administrators access to private bodies or constitute complete deployment backup. See [authority history](../../docs/decisions/implemented/architecture/2026-11-11-retain-redacted-authority-history-for-recovery.md).
 
+Host recovery containers authenticate and encrypt captured namespace files with an external recovery key, using paged inventories and bounded byte chunks. They open only into independent private staging for validation by the original namespace owners. No ordinary account can download these private archives, and container completion alone does not establish deployment consistency or permit execution. See [recovery containers](../../docs/decisions/implemented/architecture/2026-11-11-encrypt-organization-recovery-containers.md).
+
 ```ts
 import { openOrganizationService } from "@ericsanchezok/synergy-organization/service"
 
