@@ -3262,6 +3262,24 @@ export type ActorStamp =
       >
     }
 
+export type OrgPrivateAttachmentReference = {
+  kind: "attachment"
+  version: string
+  filename: string
+  mediaType: string
+  bytes: number
+  sha256: string
+}
+
+export type OrgPrivateAttachmentChunk = {
+  offset: number
+  nextOffset: number
+  totalBytes: number
+  sha256: string
+  data: string
+  complete: boolean
+}
+
 export type OrgPrivateReadResult =
   | {
       rootSessionID: string
@@ -3600,6 +3618,28 @@ export type OrgPrivateReadResult =
             next?: number
           }
     }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "attachmentContent"
+      messageID: string
+      partID: string
+      state: "ready"
+      reference: OrgPrivateAttachmentReference
+      chunk: OrgPrivateAttachmentChunk
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "attachmentContent"
+      messageID: string
+      partID: string
+      state: "unavailable"
+      version: string
+      reason: "not_retained" | "partial"
+    }
 
 export type OrgPrivateReadQuery =
   | {
@@ -3644,6 +3684,16 @@ export type OrgPrivateReadQuery =
       rootSessionID: string
       sourceSessionID?: string
       operation: "status"
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "attachmentContent"
+      messageID: string
+      partID: string
+      version: string
+      offset?: number
+      length?: number
     }
 
 export type PushVapidKey = {

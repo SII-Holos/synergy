@@ -12,6 +12,7 @@ import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { PartContent as SessionPartContent } from "./part-content"
 import { SessionPartField } from "./part-field"
+import { SessionAttachmentContent } from "./attachment-content"
 import { SessionProgress } from "./progress"
 import { SessionMessageCache } from "./message-cache"
 import { selectModelWorkingSet, modelWorkingSetProjection } from "./model-working-set"
@@ -282,6 +283,28 @@ export namespace SessionHistory {
         Identifier.asPartID(input.partID),
       ),
       input,
+      input.signal,
+    )
+  }
+  export async function attachmentContent(
+    input: {
+      sessionID: string
+      messageID: string
+      partID: string
+      signal?: AbortSignal
+    } & SessionAttachmentContent.Range,
+  ) {
+    input.signal?.throwIfAborted()
+    const session = await SessionManager.requireSession(input.sessionID)
+    await requireDisplayMessage(session, input.messageID)
+    return SessionAttachmentContent.read(
+      StoragePath.messagePart(
+        Identifier.asScopeID(session.scope.id),
+        Identifier.asSessionID(input.sessionID),
+        Identifier.asMessageID(input.messageID),
+        Identifier.asPartID(input.partID),
+      ),
+      { version: input.version, offset: input.offset, length: input.length },
       input.signal,
     )
   }

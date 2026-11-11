@@ -5,6 +5,8 @@ import { OrganizationReadProtocol as Read } from "@ericsanchezok/synergy-organiz
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
+import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
 import { readMemberRegistration } from "../src/registration"
@@ -70,6 +72,9 @@ test("generated native and organization clients read one private history through
   const messageID = "msg_private_original"
   const partID = "prt_private_original"
   const text = "Native private evidence 🌏会話\n".repeat(1200)
+  const attachmentID = "prt_private_attachment"
+  const attachmentBytes = Uint8Array.from({ length: 90_001 }, (_, index) => index % 256)
+  let attachmentVersion = ""
   await runtime.run(async () => {
     const scope = (await Scope.fromID(project.projectID))!
     await ScopeContext.provide({
@@ -88,12 +93,39 @@ test("generated native and organization clients read one private history through
         })
         await Session.updatePart({ id: partID, sessionID, messageID, type: "text", text })
         await Session.flushPartWrites(sessionID)
+        const artifact = await RolloutArtifact.write(
+          { kind: "session", scopeID: project.projectID, sessionID },
+          (async function* () {
+            yield attachmentBytes
+          })(),
+          "application/octet-stream",
+        )
+        await Session.updatePart({
+          id: attachmentID,
+          sessionID,
+          messageID,
+          type: "attachment",
+          artifact,
+          filename: "private-file.bin",
+          mime: "application/octet-stream",
+          url: "asset://not-readable-as-a-global-reference.bin",
+        })
+        attachmentVersion = (await SessionHistory.partFieldDescriptor({ sessionID, messageID, partID: attachmentID }))
+          .version
         await Session.create({
           parentID: sessionID,
           workspaceID: null,
-          cortex: { taskID: "task-private-read", parentSessionID: sessionID, parentMessageID: messageID,
-            description: "A native private task", prompt: "Private delegation input", agent: "general", status: "completed", startedAt: 1,
-            output: { mode: "summary", value: "Private delegation result" } },
+          cortex: {
+            taskID: "task-private-read",
+            parentSessionID: sessionID,
+            parentMessageID: messageID,
+            description: "A native private task",
+            prompt: "Private delegation input",
+            agent: "general",
+            status: "completed",
+            startedAt: 1,
+            output: { mode: "summary", value: "Private delegation result" },
+          },
         })
       },
     })
@@ -118,11 +150,22 @@ test("generated native and organization clients read one private history through
   expect(local.operation === "timeline" && local.items[0]?.messageID).toBe(messageID)
   expect(remote.operation === "timeline" && remote.items).toEqual(local.operation === "timeline" && local.items)
   const tasks = Read.Query.parse({ operation: "tasks", rootSessionID: sessionID, limit: 1 })
-  const localTasks = Read.Result.parse((await client.orgLocalSession.read({ orgPrivateReadQuery: tasks }, { throwOnError: true })).data)
-  const remoteTasks = Read.Result.parse((await service.client.orgSessionRead.read({ sessionID, orgPrivateReadQuery: tasks }, { headers: service.headers, throwOnError: true })).data)
+  const localTasks = Read.Result.parse(
+    (await client.orgLocalSession.read({ orgPrivateReadQuery: tasks }, { throwOnError: true })).data,
+  )
+  const remoteTasks = Read.Result.parse(
+    (
+      await service.client.orgSessionRead.read(
+        { sessionID, orgPrivateReadQuery: tasks },
+        { headers: service.headers, throwOnError: true },
+      )
+    ).data,
+  )
   expect(Read.matches(tasks, remoteTasks, localTasks.binding)).toBeTrue()
   expect(localTasks.operation === "tasks" && localTasks.items[0]?.taskID).toBe("task-private-read")
-  expect(remoteTasks.operation === "tasks" && remoteTasks.items).toEqual(localTasks.operation === "tasks" && localTasks.items)
+  expect(remoteTasks.operation === "tasks" && remoteTasks.items).toEqual(
+    localTasks.operation === "tasks" && localTasks.items,
+  )
   expect(JSON.stringify(remoteTasks)).not.toContain("Private delegation")
   const field = Read.Query.parse({
     operation: "partContent",
@@ -157,6 +200,49 @@ test("generated native and organization clients read one private history through
     throw new Error("Expected an available private field")
   expect(Buffer.from(forwarded.chunk!.data, "base64url")).toEqual(Buffer.from(text).subarray(1, 4097))
   expect(forwarded.value.version).toBe(content.value.version)
+  const attachmentQuery = Read.Query.parse({
+    operation: "attachmentContent",
+    rootSessionID: sessionID,
+    messageID,
+    partID: attachmentID,
+    version: attachmentVersion,
+    offset: 0,
+    length: 65_536,
+  })
+  const localAttachment = Read.Result.parse(
+    (await client.orgLocalSession.read({ orgPrivateReadQuery: attachmentQuery }, { throwOnError: true })).data,
+  )
+  const remoteAttachment = Read.Result.parse(
+    (
+      await service.client.orgSessionRead.read(
+        { sessionID, orgPrivateReadQuery: attachmentQuery },
+        { headers: service.headers, throwOnError: true },
+      )
+    ).data,
+  )
+  expect(Read.matches(attachmentQuery, remoteAttachment, local.binding)).toBeTrue()
+  expect(remoteAttachment).toEqual(localAttachment)
+  if (remoteAttachment.operation !== "attachmentContent" || remoteAttachment.state !== "ready")
+    throw new Error("Expected retained private attachment")
+  expect(Buffer.from(remoteAttachment.chunk.data, "base64url")).toEqual(
+    Buffer.from(attachmentBytes.subarray(0, 65_536)),
+  )
+  expect(remoteAttachment.reference.filename).toBe("private-file.bin")
+  expect(JSON.stringify(remoteAttachment)).not.toContain("asset:")
+  const attachmentTail = Read.Query.parse({ ...attachmentQuery, offset: 65_536 })
+  const tail = Read.Result.parse(
+    (
+      await service.client.orgSessionRead.read(
+        { sessionID, orgPrivateReadQuery: attachmentTail },
+        { headers: service.headers, throwOnError: true },
+      )
+    ).data,
+  )
+  expect(Read.matches(attachmentTail, tail, local.binding)).toBeTrue()
+  if (tail.operation !== "attachmentContent" || tail.state !== "ready")
+    throw new Error("Expected final private attachment range")
+  expect(Buffer.from(tail.chunk.data, "base64url")).toEqual(Buffer.from(attachmentBytes.subarray(65_536)))
+  expect(tail.chunk.complete).toBe(true)
   expect(
     (await service.client.orgSessions.get({ sessionID }, { headers: service.headers, throwOnError: true })).data
       .shareState,

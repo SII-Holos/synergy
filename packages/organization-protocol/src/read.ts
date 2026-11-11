@@ -46,6 +46,15 @@ export namespace OrganizationReadProtocol {
           .default(64 * 1024),
       }),
       z.strictObject({ ...target, operation: z.literal("status") }),
+      z.strictObject({
+        ...target,
+        operation: z.literal("attachmentContent"),
+        messageID: Identity.ID,
+        partID: Identity.ID,
+        version: z.string().min(1).max(512),
+        offset: z.number().int().nonnegative().safe().default(0),
+        length: z.number().int().min(1).max(65_536).default(65_536),
+      }),
     ])
     .meta({ ref: "OrgPrivateReadQuery" })
   export type Query = z.infer<typeof Query>
@@ -100,6 +109,22 @@ export namespace OrganizationReadProtocol {
     }),
   ])
   export type Content = z.infer<typeof Content>
+  export const AttachmentReference = z
+    .strictObject({
+      kind: z.literal("attachment"),
+      version: z.string().min(1).max(512),
+      filename: z
+        .string()
+        .min(1)
+        .max(512)
+        .regex(/^[^/\\\u0000]+$/)
+        .refine((value) => value !== "." && value !== ".."),
+      mediaType: z.string().min(1).max(256),
+      bytes: z.number().int().nonnegative().safe(),
+      sha256: Protocol.Digest,
+    })
+    .meta({ ref: "OrgPrivateAttachmentReference" })
+  export type AttachmentReference = z.infer<typeof AttachmentReference>
   export const Part = z.strictObject({
     partID: Identity.ID,
     messageID: Identity.ID,
@@ -153,15 +178,38 @@ export namespace OrganizationReadProtocol {
         value.complete === (value.nextOffset === value.totalBytes),
       "Content bytes must match their declared window",
     )
+  export const AttachmentChunk = z
+    .strictObject({
+      offset: z.number().int().nonnegative().safe(),
+      nextOffset: z.number().int().nonnegative().safe(),
+      totalBytes: z.number().int().nonnegative().safe(),
+      sha256: Protocol.Digest,
+      data: z
+        .string()
+        .regex(/^[A-Za-z0-9_-]*$/)
+        .max(87_382),
+      complete: z.boolean(),
+    })
+    .refine(
+      (value) =>
+        value.offset <= value.nextOffset &&
+        value.nextOffset <= value.totalBytes &&
+        value.nextOffset - value.offset === Math.floor((value.data.length * 3) / 4) &&
+        value.complete === (value.nextOffset === value.totalBytes),
+      "Attachment bytes must match their declared window",
+    )
+    .meta({ ref: "OrgPrivateAttachmentChunk" })
   export const Result = z
     .discriminatedUnion("operation", [
-      z.strictObject({
-        ...envelope,
-        operation: z.literal("tasks"),
-        items: z.array(Sync.TaskSummary).max(64),
-        total: z.number().int().nonnegative().safe(),
-        cursor: cursor.optional(),
-      }).refine((value) => value.total >= value.items.length, "Task counts cannot omit returned rows"),
+      z
+        .strictObject({
+          ...envelope,
+          operation: z.literal("tasks"),
+          items: z.array(Sync.TaskSummary).max(64),
+          total: z.number().int().nonnegative().safe(),
+          cursor: cursor.optional(),
+        })
+        .refine((value) => value.total >= value.items.length, "Task counts cannot omit returned rows"),
       z.strictObject({
         ...envelope,
         operation: z.literal("session"),
@@ -215,6 +263,26 @@ export namespace OrganizationReadProtocol {
         }),
       ]),
       z.strictObject({ ...envelope, operation: z.literal("status"), status: Sync.Status }),
+      z.discriminatedUnion("state", [
+        z.strictObject({
+          ...envelope,
+          operation: z.literal("attachmentContent"),
+          messageID: Identity.ID,
+          partID: Identity.ID,
+          state: z.literal("ready"),
+          reference: AttachmentReference,
+          chunk: AttachmentChunk,
+        }),
+        z.strictObject({
+          ...envelope,
+          operation: z.literal("attachmentContent"),
+          messageID: Identity.ID,
+          partID: Identity.ID,
+          state: z.literal("unavailable"),
+          version: z.string().min(1).max(512),
+          reason: z.enum(["not_retained", "partial"]),
+        }),
+      ]),
     ])
     .meta({ ref: "OrgPrivateReadResult" })
   export type Result = z.infer<typeof Result>
@@ -248,15 +316,30 @@ export namespace OrganizationReadProtocol {
       return result.session.sessionID === result.sourceSessionID
     if (query.operation === "timeline" && result.operation === "timeline") return result.items.length <= query.limit
     if (query.operation === "tasks" && result.operation === "tasks")
-      return result.items.length <= query.limit &&
+      return (
+        result.items.length <= query.limit &&
         new Set(result.items.map((item) => item.sessionID)).size === result.items.length &&
-        result.items.every((item) => item.parentSessionID === result.sourceSessionID && item.sessionID !== result.sourceSessionID)
+        result.items.every(
+          (item) => item.parentSessionID === result.sourceSessionID && item.sessionID !== result.sourceSessionID,
+        )
+      )
     if (query.operation === "parts" && result.operation === "parts")
       return (
         result.messageID === query.messageID &&
         result.items.length <= query.limit &&
         result.items.every((item) => item.messageID === query.messageID)
       )
+    if (query.operation === "attachmentContent" && result.operation === "attachmentContent") {
+      if (result.messageID !== query.messageID || result.partID !== query.partID) return false
+      if (result.state === "unavailable") return result.version === query.version
+      return (
+        result.reference.version === query.version &&
+        result.chunk.offset === query.offset &&
+        result.chunk.nextOffset - result.chunk.offset <= query.length &&
+        result.chunk.totalBytes === result.reference.bytes &&
+        result.chunk.sha256 === result.reference.sha256
+      )
+    }
     if (query.operation !== "partContent" || result.operation !== "partContent") return true
     if (result.state === "preparing")
       return (

@@ -5,7 +5,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import type { z } from "zod"
 import { createSessionReader } from "./session-read"
-import { readNativeContent } from "./read-content"
+import { readNativeContent, readNativeAttachment } from "./read-content"
 import { createInteractionReader } from "./interactions"
 import { OrganizationInteractionProtocol as Interactions } from "@ericsanchezok/synergy-organization-protocol"
 import type { RuntimeIdentity } from "./home"
@@ -19,7 +19,12 @@ export namespace OrganizationSessionReads {
   export function register(identity: RuntimeIdentity, runtimeID: string) {
     RuntimeContext.assertCompositionOpen("native organization reading")
     if (state().reader) throw new Error("Native organization reading is already registered")
-    state().reader = createSessionReader({ identity, runtimeID, content: readNativeContent })
+    state().reader = createSessionReader({
+      identity,
+      runtimeID,
+      content: readNativeContent,
+      attachment: readNativeAttachment,
+    })
     state().interactions = createInteractionReader({ identity, runtimeID })
   }
   function reader() {

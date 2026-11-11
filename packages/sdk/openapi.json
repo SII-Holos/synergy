@@ -50581,6 +50581,76 @@
           }
         ]
       },
+      "OrgPrivateAttachmentReference": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "attachment"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^[^/\\\\\\u0000]+$"
+          },
+          "mediaType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": ["kind", "version", "filename", "mediaType", "bytes", "sha256"],
+        "additionalProperties": false
+      },
+      "OrgPrivateAttachmentChunk": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "nextOffset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "totalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "data": {
+            "type": "string",
+            "maxLength": 87382,
+            "pattern": "^[A-Za-z0-9_-]*$"
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": ["offset", "nextOffset", "totalBytes", "sha256", "data", "complete"],
+        "additionalProperties": false
+      },
       "OrgPrivateReadResult": {
         "oneOf": [
           {
@@ -52011,6 +52081,129 @@
             },
             "required": ["rootSessionID", "sourceSessionID", "binding", "operation", "status"],
             "additionalProperties": false
+          },
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "rootSessionID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sourceSessionID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "binding": {
+                    "$ref": "#/components/schemas/OrgSessionBinding"
+                  },
+                  "operation": {
+                    "type": "string",
+                    "const": "attachmentContent"
+                  },
+                  "messageID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "partID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "state": {
+                    "type": "string",
+                    "const": "ready"
+                  },
+                  "reference": {
+                    "$ref": "#/components/schemas/OrgPrivateAttachmentReference"
+                  },
+                  "chunk": {
+                    "$ref": "#/components/schemas/OrgPrivateAttachmentChunk"
+                  }
+                },
+                "required": [
+                  "rootSessionID",
+                  "sourceSessionID",
+                  "binding",
+                  "operation",
+                  "messageID",
+                  "partID",
+                  "state",
+                  "reference",
+                  "chunk"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "rootSessionID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sourceSessionID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "binding": {
+                    "$ref": "#/components/schemas/OrgSessionBinding"
+                  },
+                  "operation": {
+                    "type": "string",
+                    "const": "attachmentContent"
+                  },
+                  "messageID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "partID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "state": {
+                    "type": "string",
+                    "const": "unavailable"
+                  },
+                  "version": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": ["not_retained", "partial"]
+                  }
+                },
+                "required": [
+                  "rootSessionID",
+                  "sourceSessionID",
+                  "binding",
+                  "operation",
+                  "messageID",
+                  "partID",
+                  "state",
+                  "version",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            ]
           }
         ]
       },
@@ -52225,6 +52418,58 @@
               }
             },
             "required": ["rootSessionID", "operation"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "rootSessionID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "sourceSessionID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "operation": {
+                "type": "string",
+                "const": "attachmentContent"
+              },
+              "messageID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "partID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "length": {
+                "default": 65536,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65536
+              }
+            },
+            "required": ["rootSessionID", "operation", "messageID", "partID", "version"],
             "additionalProperties": false
           }
         ]

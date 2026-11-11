@@ -29,6 +29,17 @@ export type NativeContentReader = (
   source: Session.Info,
   signal?: AbortSignal,
 ) => Promise<ContentResponse>
+type AttachmentRead = Extract<Read.Result, { operation: "attachmentContent" }>
+type AttachmentResponse = AttachmentRead extends infer T
+  ? T extends AttachmentRead
+    ? Omit<T, "operation" | "rootSessionID" | "sourceSessionID" | "binding">
+    : never
+  : never
+export type NativeAttachmentReader = (
+  query: Extract<Read.Query, { operation: "attachmentContent" }>,
+  source: Session.Info,
+  signal?: AbortSignal,
+) => Promise<AttachmentResponse>
 
 function denied(message: string, code: "PERMISSION_DENIED" | "NOT_FOUND" = "PERMISSION_DENIED") {
   return new OrganizationRuntimeError({ code, message, outcome: "not_dispatched", retryable: false })
@@ -86,6 +97,7 @@ export function createSessionReader(options: {
   identity: RuntimeIdentity
   runtimeID: string
   content: NativeContentReader
+  attachment?: NativeAttachmentReader
 }) {
   async function targets(query: Read.Query, subjectID: string, expected?: SessionProtocol.Binding) {
     const root = await retainedSession(query.rootSessionID)
@@ -125,17 +137,24 @@ export function createSessionReader(options: {
           case "tasks": {
             await SessionCortexIndex.prepare(source.scope.id, source.id)
             signal?.throwIfAborted()
-            const page = await SessionCortexIndex.page(source.scope.id, source.id, { limit: query.limit, cursor: query.cursor })
+            const page = await SessionCortexIndex.page(source.scope.id, source.id, {
+              limit: query.limit,
+              cursor: query.cursor,
+            })
             return {
               ...envelope,
               operation: "tasks",
               ...page,
-              items: await Promise.all(page.items.map(async (item) => Sync.TaskSummary.strip().parse({
-                ...item,
-                description: await safe(item.description),
-                agent: await safe(item.agent, 256),
-                category: item.category === undefined ? undefined : await safe(item.category),
-              }))),
+              items: await Promise.all(
+                page.items.map(async (item) =>
+                  Sync.TaskSummary.strip().parse({
+                    ...item,
+                    description: await safe(item.description),
+                    agent: await safe(item.agent, 256),
+                    category: item.category === undefined ? undefined : await safe(item.category),
+                  }),
+                ),
+              ),
             }
           }
           case "session":
@@ -199,6 +218,15 @@ export function createSessionReader(options: {
           }
           case "partContent":
             return { ...envelope, operation: "partContent", ...(await options.content(query, source, signal)) }
+          case "attachmentContent":
+            if (!options.attachment)
+              throw new OrganizationRuntimeError({
+                code: "RESOURCE_UNAVAILABLE",
+                message: "Native attachment reading is unavailable",
+                retryable: false,
+                outcome: "not_dispatched",
+              })
+            return { ...envelope, operation: "attachmentContent", ...(await options.attachment(query, source, signal)) }
           case "status": {
             const status = await observeSessionStatus(source, options.identity.orgID, root.id)
             return { ...envelope, operation: "status", status }

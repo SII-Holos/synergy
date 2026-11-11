@@ -3,7 +3,7 @@ import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
 import { OrganizationRuntimeError } from "./error"
-import type { NativeContentReader } from "./session-read"
+import type { NativeContentReader, NativeAttachmentReader } from "./session-read"
 import { projectToolMetadata } from "./transcript"
 
 function unavailable(message: string) {
@@ -13,6 +13,44 @@ function unavailable(message: string) {
     retryable: false,
     outcome: "not_dispatched",
   })
+}
+
+export const readNativeAttachment: NativeAttachmentReader = async (query, source, signal) => {
+  try {
+    const result = await SessionHistory.attachmentContent({
+      sessionID: source.id,
+      messageID: query.messageID,
+      partID: query.partID,
+      version: query.version,
+      offset: query.offset,
+      length: query.length,
+      signal,
+    })
+    const target = { messageID: query.messageID, partID: query.partID }
+    if (result.state === "unavailable") return { ...target, ...result }
+    return {
+      ...target,
+      state: "ready",
+      reference: { kind: "attachment", ...result.descriptor },
+      chunk: {
+        offset: result.offset,
+        nextOffset: result.nextOffset,
+        totalBytes: result.descriptor.bytes,
+        sha256: result.descriptor.sha256,
+        data: Buffer.from(result.data).toString("base64url"),
+        complete: result.complete,
+      },
+    }
+  } catch (error) {
+    if (error instanceof SessionHistory.PartFieldConflict)
+      throw new OrganizationRuntimeError({
+        code: "REVISION_CONFLICT",
+        message: "Native attachment content changed",
+        retryable: false,
+        outcome: "not_dispatched",
+      })
+    throw error
+  }
 }
 
 export const readNativeContent: NativeContentReader = async (query, source, signal) => {
