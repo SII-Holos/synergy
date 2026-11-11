@@ -12,6 +12,7 @@ import { authenticateHuman, type Credentials } from "./session"
 import { ApiTokenRecord, ApiTokenReceipt, ApiTokenIndex, apiTokenKeys as keys } from "./api-token-record"
 import { digest, token } from "./secret"
 import { fail, revision } from "../error"
+import { OrganizationAuthorityHistory as History } from "../authority-history"
 
 function metadata(record: ApiTokenRecord) {
   return Protocol.Metadata.parse({
@@ -33,7 +34,7 @@ export namespace OrganizationApiTokens {
     const input = Protocol.Create.parse(value)
     const requestHash = digest(JSON.stringify(input))
     const secret = `sy_api_${token()}`
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "api-token.create", async () => {
       const human = await authenticateHuman(credentials)
       const current = await authorize(credentials, "project.read", { projectID: input.projectID })
       const previous = await Record.read(ApiTokenReceipt, keys.receipt(human.account.accountID, input.requestID))
@@ -105,7 +106,7 @@ export namespace OrganizationApiTokens {
   export async function revoke(credentials: Credentials, tokenID: string, value: z.infer<typeof Protocol.Revoke>) {
     Identity.ID.parse(tokenID)
     const input = Protocol.Revoke.parse(value)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "api-token.revoke", async () => {
       const { account } = await authenticateHuman(credentials)
       const record = await Record.read(ApiTokenRecord, keys.record(tokenID))
       if (!record || record.accountID !== account.accountID || record.orgID !== account.orgID)

@@ -10,6 +10,8 @@ import { authorize } from "./authorization"
 import type { Credentials } from "./auth/session"
 import { OrganizationPublications as Publications } from "./publications"
 import { OrganizationError, fail, revision } from "./error"
+import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 const Item = z.strictObject({
   schemaVersion: z.literal(1),
@@ -93,10 +95,27 @@ async function view(credentials: Credentials, value: z.infer<typeof Version>): P
 }
 
 export namespace OrganizationArtifacts {
+  export function registerAuthorityHistory() {
+    AuthorityJournal.register({
+      id: "organization-artifact-authority",
+      version: 1,
+      prefixes: [["organization-artifacts", "items"]],
+      project(_key, value) {
+        const item = Item.parse(value)
+        return {
+          artifactID: item.artifactID,
+          orgID: item.orgID,
+          projectID: item.projectID,
+          revision: item.revision,
+          latestVersion: item.latestVersion,
+        }
+      },
+    })
+  }
   export async function publish(credentials: Credentials, value: Artifact.Publish) {
     const input = Artifact.Publish.parse(value)
     const requestHash = createHash("sha256").update(JSON.stringify(input)).digest("hex")
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "artifact.publish", async () => {
       const { account } = await authorize(credentials, "organization.read")
       const receiptKey = keys.receipt(account.orgID, account.accountID, input.requestID)
       const receipt = await read(Receipt, receiptKey)

@@ -13,6 +13,7 @@ import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
 import { OrganizationKnowledge } from "./knowledge"
 import { OrganizationSharing } from "./sharing"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 const Reservation = z.strictObject({ sessionID: Identity.ID, projectID: Identity.ID, runtimeID: Identity.ID })
 type RuntimeStatusReader = (runtimeID: string) => Promise<z.infer<typeof Runtime.ConnectionStatus>>
@@ -63,7 +64,7 @@ export namespace OrganizationSessionDirectory {
   }
   export async function reservePrivate(credentials: Credentials, input: z.infer<typeof Reservation>) {
     const request = Reservation.parse(input)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "session.reserve", async () => {
       const { account } = await authorize(credentials, "project.execute", { projectID: request.projectID })
       const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(request.runtimeID))
       if (

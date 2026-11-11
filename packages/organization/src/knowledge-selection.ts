@@ -42,6 +42,23 @@ export namespace KnowledgeSelections {
   export function summary(header: Header) {
     return Knowledge.SelectionSummary.parse(Knowledge.SelectionSummary.strip().parse(header))
   }
+  export function authority(value: unknown) {
+    const current = Header.safeParse(value)
+    if (current.success) {
+      const { orgID, projectID, revision, manifestHash, releaseCount } = current.data
+      return { orgID, projectID, revision, manifestHash, releaseCount }
+    }
+    const legacy = Legacy.parse(value)
+    if (createHash("sha256").update(JSON.stringify(legacy.releases)).digest("hex") !== legacy.manifestHash)
+      fail("SERVICE_UNAVAILABLE", "Retained knowledge manifest is inconsistent")
+    return {
+      orgID: legacy.orgID,
+      projectID: legacy.projectID,
+      revision: legacy.revision,
+      manifestHash: legacy.manifestHash,
+      releaseCount: legacy.releases.length,
+    }
+  }
   export async function read(key: string[]) {
     const [value] = await Storage.readMany([key])
     return value === undefined ? undefined : Header.parse(value)

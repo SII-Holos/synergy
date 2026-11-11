@@ -12,7 +12,7 @@ Page authorized creator/shared Session indexes before records. Capacity exposes 
 
 Client grants bind login, callback and deployment. Consume codes atomically; refresh replay revokes before error. API tokens bind one project, operations, expiry and current authority. Routes supply trusted purposes; receipts never redisclose secrets. Preserve signed token attribution and current stream authorization. Verify client-auth/api-tokens suites and generated contracts.
 
-Configuration/CLI components register before startup. Require an absolute Home before writes and read only the organization domain. Keep initialization secrets out of argv/stdout. Signing identity is migration-owned: damaged completed credentials require recovery, never replacement. Verify configuration, CLI, migration and signing suites.
+Register config, CLI and history owners before startup. Require absolute Home; read only organization config. Keep secrets out of argv/stdout. Migrate private signing format and baseline atomically; preserve keys/public identities. Missing history requires recovery; current authorization never trusts journal entries. Verify authority-history/configuration/CLI/signing suites.
 
 Machine sockets run callbacks in the service context, verify registration/account state, fence superseded connections and carry liveness guards through commit. Heartbeat expiry is availability only. Hosted machines have administrator-owned authority independent of a human; member account fences remain distinct. Verify Runtime connection and hosted suites.
 

@@ -205,6 +205,18 @@ test("the generated identity client preserves cookies, CSRF and required request
       { throwOnError: true },
     )
     expect(activated.data.state).toBe("active")
+    const browserMachineHeaders: Record<string, string>[] = [{ origin }, { cookie: headers.cookie }]
+    for (const machineHeaders of browserMachineHeaders) {
+      const denied = await fetch(new URL("/runtime/v1/knowledge/selection", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json", ...machineHeaders },
+        body: JSON.stringify({}),
+      })
+      expect(denied.status).toBe(403)
+      expect(((await denied.json()) as { message: string }).message).toBe(
+        "Knowledge execution requires a machine proof",
+      )
+    }
     expect(
       (await client.orgRuntime.connection({ runtimeID: activated.data.runtimeID }, { headers, throwOnError: true }))
         .data,

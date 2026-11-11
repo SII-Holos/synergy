@@ -11,7 +11,7 @@ import { operation, validation } from "./shared"
 
 export function knowledgeExecutionRoutes(grants: () => ExecutionGrants) {
   return new Hono()
-    .use("*", async (c, next) => {
+    .use("/knowledge/*", async (c, next) => {
       if (c.req.header("origin") || c.req.header("cookie"))
         fail("PERMISSION_DENIED", "Knowledge execution requires a machine proof")
       await next()

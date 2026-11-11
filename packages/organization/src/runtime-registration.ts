@@ -11,6 +11,7 @@ import { token, digest } from "./auth/secret"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail, revision } from "./error"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 const hostedRuntimes = () => ["organization", "hosted-runtimes"]
 
@@ -22,7 +23,7 @@ export function createRuntimeRegistrations(
   return {
     async hosted(credentials: Credentials, value: Runtime.HostedRegistration) {
       const input = Runtime.HostedRegistration.parse(value)
-      return Storage.transaction(async () => {
+      return History.credentials(credentials, "runtime.hosted-register", async () => {
         const { account } = await authorize(credentials, "runtimes.hosted.register")
         const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
         const runtime = Record.RuntimeRegistration.parse({
@@ -43,20 +44,23 @@ export function createRuntimeRegistrations(
         await Storage.write([...hostedRuntimes(), runtime.runtimeID], { runtimeID: runtime.runtimeID })
         const secret = token()
         const expiresAt = Date.now() + settings.ticketMs
-        await Storage.write(Keys.runtimeTicket(digest(secret)), Record.RuntimeTicket.parse({
-          schemaVersion: 1,
-          tokenHash: digest(secret),
-          runtimeID: runtime.runtimeID,
-          accountID: account.accountID,
-          authRevision: account.authRevision,
-          registrationRevision: runtime.revision,
-          expiresAt,
-        }))
+        await Storage.write(
+          Keys.runtimeTicket(digest(secret)),
+          Record.RuntimeTicket.parse({
+            schemaVersion: 1,
+            tokenHash: digest(secret),
+            runtimeID: runtime.runtimeID,
+            accountID: account.accountID,
+            authRevision: account.authRevision,
+            registrationRevision: runtime.revision,
+            expiresAt,
+          }),
+        )
         return { token: secret, expiresAt, runtime: runtimeView(account, runtime, "runtime.read") }
       })
     },
     async member(credentials: Credentials, input: Runtime.MemberRegistration) {
-      return Storage.transaction(async () => {
+      return History.credentials(credentials, "runtime.member-register", async () => {
         const { account } = await authorize(credentials, "runtimes.register")
         const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
         const existing = await Record.read(Record.RuntimeIndex, Keys.runtimeDevice(account.accountID, input.deviceID))
@@ -112,7 +116,7 @@ export function createRuntimeRegistrations(
       })
     },
     async consume(input: Runtime.ConsumeTicket) {
-      return Storage.transaction(async () => {
+      return History.system("runtime.enroll", async (identify, actionID) => {
         const hash = digest(input.token)
         const ticket = await Record.read(Record.RuntimeTicket, Keys.runtimeTicket(hash))
         if (!ticket) fail("AUTHENTICATION_REQUIRED", "Invalid Runtime registration ticket")
@@ -135,6 +139,24 @@ export function createRuntimeRegistrations(
           fail("AUTHENTICATION_REQUIRED", "Runtime registration ticket is no longer valid")
         if (runtime.state === "revoked") fail("PERMISSION_DENIED", "Runtime registration is revoked")
         revision(ticket.registrationRevision, runtime.revision)
+        identify({
+          kind: "system",
+          orgID: runtime.orgID,
+          subjectID: runtime.runtimeID,
+          displayName: "Runtime registration",
+          clientKind: "runtime",
+          requestID: actionID,
+          causedBy: [
+            {
+              kind: "account",
+              orgID: member.orgID,
+              subjectID: member.accountID,
+              displayName: member.displayName,
+              clientKind: "system",
+              requestID: actionID,
+            },
+          ],
+        })
         const next =
           runtime.state === "pending"
             ? { ...runtime, state: "active" as const, revision: runtime.revision + 1 }
@@ -151,21 +173,28 @@ export function createRuntimeRegistrations(
     async list(credentials: Credentials, page: Identity.Page) {
       return Storage.snapshot(async () => {
         const { account } = await authorize(credentials, "runtimes.list")
-        const prefixes = account.role === "member" ? [Keys.accountRuntimes(account.accountID), hostedRuntimes()] : [Keys.runtimes()]
-        const pages = await Promise.all(prefixes.map((prefix) => Storage.query({
-          prefix,
-          after: page.cursor ? [...prefix, page.cursor] : undefined,
-          limit: page.limit + 1,
-        })))
+        const prefixes =
+          account.role === "member" ? [Keys.accountRuntimes(account.accountID), hostedRuntimes()] : [Keys.runtimes()]
+        const pages = await Promise.all(
+          prefixes.map((prefix) =>
+            Storage.query({
+              prefix,
+              after: page.cursor ? [...prefix, page.cursor] : undefined,
+              limit: page.limit + 1,
+            }),
+          ),
+        )
         const ids = [...new Set(pages.flatMap((entries) => entries.map((entry) => entry.key.at(-1)!)))].sort()
         const selected = ids.slice(0, page.limit)
         const records = await Storage.readMany(selected.map(Keys.runtime))
-        const items = records.map((value) => runtimeView(account, Record.RuntimeRegistration.parse(value), "runtime.read"))
+        const items = records.map((value) =>
+          runtimeView(account, Record.RuntimeRegistration.parse(value), "runtime.read"),
+        )
         return { items, cursor: ids.length > page.limit ? items.at(-1)?.runtimeID : undefined }
       })
     },
     async revoke(credentials: Credentials, runtimeID: string, expectedRevision: number) {
-      return Storage.transaction(async () => {
+      return History.credentials(credentials, "runtime.revoke", async () => {
         const { account, runtime } = await authorize(credentials, "runtime.revoke", { runtimeID })
         revision(expectedRevision, runtime.revision)
         if (runtime.state === "revoked") return runtimeView(account, runtime, "runtime.read")

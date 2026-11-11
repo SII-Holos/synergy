@@ -17,6 +17,7 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationSharedProjection as Projection } from "./shared-projection"
 import { runtimeAuthority, assertRuntimeConnection } from "./runtime-authority"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 function payloadHash(batch: Sync.Batch) {
   return digest(JSON.stringify({ firstSeq: batch.firstSeq, lastSeq: batch.lastSeq, events: batch.events }))
@@ -638,7 +639,7 @@ export namespace OrganizationSharing {
 
   export async function share(credentials: Credentials, sessionID: string, input: Sync.ShareChange) {
     const change = Sync.ShareChange.parse(input)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "session.share", async () => {
       const { account, session } = await authorize(credentials, "session.read", { sessionID })
       requireCreator(account.accountID, session)
       revision(change.expectedShareGeneration, session.shareGeneration)
@@ -659,7 +660,7 @@ export namespace OrganizationSharing {
 
   export async function unshare(credentials: Credentials, sessionID: string, input: Sync.ShareChange) {
     const change = Sync.ShareChange.parse(input)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "session.unshare", async () => {
       const { account, session } = await authorize(credentials, "session.read", { sessionID })
       requireCreator(account.accountID, session)
       revision(change.expectedShareGeneration, session.shareGeneration)

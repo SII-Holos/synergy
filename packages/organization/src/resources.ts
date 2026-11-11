@@ -9,6 +9,7 @@ import { authorize, resourceView } from "./authorization"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail, revision } from "./error"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 export namespace OrganizationResources {
   function adminView(resource: Record.Resource): Resource.AdminView {
@@ -32,7 +33,8 @@ export namespace OrganizationResources {
     credential: z.infer<typeof Resource.CredentialInfo>,
   ) {
     if (configuration.protocol === "workspace-storage" || configuration.protocol === "environment") {
-      if (credential.kind !== "none") fail("INVALID_REQUEST", "Infrastructure credentials belong to the cloud resource owner")
+      if (credential.kind !== "none")
+        fail("INVALID_REQUEST", "Infrastructure credentials belong to the cloud resource owner")
       return
     }
     if (credential.kind === "none") return
@@ -68,7 +70,7 @@ export namespace OrganizationResources {
   export async function create(credentials: Credentials, value: Resource.Create) {
     credentials = { ...credentials }
     const input = Resource.Create.parse(value)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "resource.create", async () => {
       const { account } = await authorize(credentials, "resources.manage")
       if (input.scope.kind === "project")
         await authorize(credentials, "project.read", { projectID: input.scope.projectID })
@@ -123,7 +125,7 @@ export namespace OrganizationResources {
     credentials = { ...credentials }
     resourceID = Identity.ID.parse(resourceID)
     const input = Resource.Change.parse(value)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "resource.update", async () => {
       const { resource } = await authorize(credentials, "resource.manage", { resourceID })
       revision(input.expectedRevision, resource.revision)
       if (input.configuration && input.configuration.protocol !== resource.configuration.protocol)
@@ -152,7 +154,7 @@ export namespace OrganizationResources {
     resourceID = Identity.ID.parse(resourceID)
     const subject = Resource.Subject.parse(target)
     const input = Resource.GrantChange.parse(value)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "resource.grant", async () => {
       const { account, resource } = await authorize(credentials, "resource.manage", { resourceID })
       if (subject.kind === "account") {
         const target = await resolveAccount(subject.id, account.orgID)

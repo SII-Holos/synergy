@@ -6,6 +6,7 @@ import { authorize, projectView } from "./authorization"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail, revision } from "./error"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 export namespace OrganizationProjects {
   export async function members(credentials: Credentials, projectID: string, input: Identity.Page) {
@@ -13,41 +14,81 @@ export namespace OrganizationProjects {
     return Storage.snapshot(async () => {
       const { project } = await authorize(credentials, "project.read", { projectID })
       const prefix = Keys.projectMembers(projectID)
-      const rows = await Storage.query({ prefix, after: page.cursor ? [...prefix, page.cursor] : undefined, limit: page.limit + 1 })
+      const rows = await Storage.query({
+        prefix,
+        after: page.cursor ? [...prefix, page.cursor] : undefined,
+        limit: page.limit + 1,
+      })
       const selected = rows.slice(0, page.limit)
-      const items = await Promise.all(selected.map(async (row) => {
-        const membership = Record.parse(Record.ProjectMember, row.key, row.value)
-        if (membership.projectID !== projectID || membership.accountID !== row.key.at(-1))
-          fail("SERVICE_UNAVAILABLE", "Project membership index is inconsistent")
-        const member = await account(membership.accountID, project.orgID)
-        return Identity.ProjectMemberView.parse({ ...Identity.ProjectMemberIdentity.parse({ accountID: member.accountID, displayName: member.displayName, loginName: member.loginName, state: member.state }), role: membership.role })
-      }))
-      return Identity.ProjectMemberPage.parse({ items, projectRevision: project.revision, cursor: rows.length > page.limit ? selected.at(-1)?.key.at(-1) : undefined })
+      const items = await Promise.all(
+        selected.map(async (row) => {
+          const membership = Record.parse(Record.ProjectMember, row.key, row.value)
+          if (membership.projectID !== projectID || membership.accountID !== row.key.at(-1))
+            fail("SERVICE_UNAVAILABLE", "Project membership index is inconsistent")
+          const member = await account(membership.accountID, project.orgID)
+          return Identity.ProjectMemberView.parse({
+            ...Identity.ProjectMemberIdentity.parse({
+              accountID: member.accountID,
+              displayName: member.displayName,
+              loginName: member.loginName,
+              state: member.state,
+            }),
+            role: membership.role,
+          })
+        }),
+      )
+      return Identity.ProjectMemberPage.parse({
+        items,
+        projectRevision: project.revision,
+        cursor: rows.length > page.limit ? selected.at(-1)?.key.at(-1) : undefined,
+      })
     })
   }
 
-  export async function candidates(credentials: Credentials, projectID: string, input: z.input<typeof Identity.CandidateQuery>) {
+  export async function candidates(
+    credentials: Credentials,
+    projectID: string,
+    input: z.input<typeof Identity.CandidateQuery>,
+  ) {
     const page = Identity.CandidateQuery.parse(input)
     return Storage.snapshot(async () => {
       const { project } = await authorize(credentials, "project.manage", { projectID })
       const prefix = Keys.accounts()
-      const rows = await Storage.query({ prefix, after: page.cursor ? [...prefix, page.cursor] : undefined, limit: 256 })
+      const rows = await Storage.query({
+        prefix,
+        after: page.cursor ? [...prefix, page.cursor] : undefined,
+        limit: 256,
+      })
       const items: z.infer<typeof Identity.ProjectMemberIdentity>[] = []
       let cursor: string | undefined
       for (const row of rows) {
         cursor = row.key.at(-1)
         const member = Record.parse(Record.Account, row.key, row.value)
         if (member.accountID !== cursor) fail("SERVICE_UNAVAILABLE", "Account index is inconsistent")
-        if (member.orgID !== project.orgID || member.state !== "active" || !`${member.displayName} ${member.loginName}`.toLocaleLowerCase().includes(page.q.toLocaleLowerCase())) continue
-        items.push({ accountID: member.accountID, displayName: member.displayName, loginName: member.loginName, state: member.state })
+        if (
+          member.orgID !== project.orgID ||
+          member.state !== "active" ||
+          !`${member.displayName} ${member.loginName}`.toLocaleLowerCase().includes(page.q.toLocaleLowerCase())
+        )
+          continue
+        items.push({
+          accountID: member.accountID,
+          displayName: member.displayName,
+          loginName: member.loginName,
+          state: member.state,
+        })
         if (items.length === page.limit) break
       }
-      return Identity.ProjectCandidatePage.parse({ items, projectRevision: project.revision, cursor: rows.length === 256 || (cursor && cursor !== rows.at(-1)?.key.at(-1)) ? cursor : undefined })
+      return Identity.ProjectCandidatePage.parse({
+        items,
+        projectRevision: project.revision,
+        cursor: rows.length === 256 || (cursor && cursor !== rows.at(-1)?.key.at(-1)) ? cursor : undefined,
+      })
     })
   }
 
   export async function create(credentials: Credentials, input: Identity.ProjectCreate) {
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "project.create", async () => {
       const { account } = await authorize(credentials, "project.create")
       const project = Record.Project.parse({
         schemaVersion: 1,
@@ -100,7 +141,7 @@ export namespace OrganizationProjects {
     })
   }
   export async function update(credentials: Credentials, projectID: string, input: Identity.ProjectChange) {
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "project.update", async () => {
       const { project } = await authorize(credentials, "project.manage", { projectID })
       revision(input.expectedRevision, project.revision)
       const { expectedRevision: _, ...changes } = input
@@ -115,7 +156,7 @@ export namespace OrganizationProjects {
     accountID: string,
     input: Identity.ProjectMemberChange,
   ) {
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "project.member", async () => {
       const { project } = await authorize(credentials, "project.manage", { projectID })
       revision(input.expectedRevision, project.revision)
       const target = await account(accountID, project.orgID)

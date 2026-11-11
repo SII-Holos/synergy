@@ -29,6 +29,9 @@ import type { Server } from "bun"
 import { createRuntimeConnections, type RuntimeConnections, type RuntimeSocket } from "./runtime-connection"
 import { organizationWeb } from "./web"
 import { loadSigningAuthority } from "./signing"
+import { OrganizationAuthorityHistory } from "./authority-history"
+import { OrganizationKnowledge } from "./knowledge"
+import { OrganizationArtifacts } from "./artifacts"
 import { createCommandAdmissions } from "./command-admission"
 import { createCommandForwarder } from "./command-forwarding"
 import { createExecutionGrants } from "./execution-grants"
@@ -37,7 +40,7 @@ import { createConnectionGateway, createModelGateway, type ConnectionGateway, ty
 import { OrganizationSharing } from "./sharing"
 import { OrganizationCloud, type OrganizationCloudOptions } from "./cloud"
 import { OrganizationSessionDirectory } from "./session-directory"
-import { createHandoffs } from "./handoff"
+import { createHandoffs, registerHandoffAuthorityHistory } from "./handoff"
 import { createSessionReadForwarder } from "./session-read"
 
 export interface OrganizationServiceOptions {
@@ -153,6 +156,11 @@ export async function openOrganizationService(options: OrganizationServiceOption
         },
       )
       context.storage = { store, artifactDirectory: path.join(root, "data", "artifacts") }
+      OrganizationAuthorityHistory.register()
+      registerHandoffAuthorityHistory()
+      OrganizationKnowledge.registerAuthorityHistory()
+      OrganizationArtifacts.registerAuthorityHistory()
+      OrganizationCloud.registerAuthorityHistory()
       registerOrganizationMigrations()
       OrganizationCloud.register(options.cloud)
       OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
@@ -165,6 +173,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       await HomeOwnership.assert({ required: true })
       const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
       const signing = await loadSigningAuthority(deployment)
+      await OrganizationAuthorityHistory.attach(deployment)
       connections = createRuntimeConnections({
         run,
         settings: settings.connections,

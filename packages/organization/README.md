@@ -14,6 +14,8 @@
 
 The organization service owns a dedicated Home and SQL namespace. Its storage lifecycle uses Harness transactions and the central migration runner without starting Agent execution, model discovery or Session recovery.
 
+The independent service selects redacted authority history for controlled recovery. Its baseline migration preserves existing signing keys while upgrading the private signing record; public machine signing identities stay unchanged. Current policy writers and history commit together. Missing history or a changed owner contract requires recovery instead of silent reinitialization. This Host evidence does not grant administrators access to private bodies or constitute complete deployment backup. See [authority history](../../docs/decisions/implemented/architecture/2026-11-11-retain-redacted-authority-history-for-recovery.md).
+
 ```ts
 import { openOrganizationService } from "@ericsanchezok/synergy-organization/service"
 

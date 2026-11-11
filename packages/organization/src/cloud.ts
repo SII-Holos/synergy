@@ -7,10 +7,15 @@ import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentProviders, type EnvironmentProvider } from "@ericsanchezok/synergy-harness/environment/provider"
 import type { BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
-import { OrganizationCloudProtocol as Cloud, OrganizationIdentity as Identity } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationCloudProtocol as Cloud,
+  OrganizationIdentity as Identity,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { authorize } from "./authorization"
 import type { Credentials } from "./auth/session"
 import { fail, revision } from "./error"
+import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 export interface OrganizationCloudOptions {
   blobStores?: Record<string, BlobStore>
@@ -22,15 +27,41 @@ export interface OrganizationCloudOptions {
 export namespace OrganizationCloud {
   const configuration = RuntimeContext.state(() => ({ profiles: undefined as OrganizationCloudOptions | undefined }))
   const Locator = z.strictObject({
-    schemaVersion: z.literal(1), orgID: Identity.ID, projectID: Identity.ID, resourceID: Identity.ID,
-    id: Identity.ID, name: Identity.Name,
+    schemaVersion: z.literal(1),
+    orgID: Identity.ID,
+    projectID: Identity.ID,
+    resourceID: Identity.ID,
+    id: Identity.ID,
+    name: Identity.Name,
   })
   const Receipt = z.strictObject({ schemaVersion: z.literal(1), digest: z.string(), result: Cloud.Workspace })
   const EnvironmentReceipt = z.strictObject({ schemaVersion: z.literal(1), digest: z.string(), id: Identity.ID })
   const key = (kind: "workspaces" | "environments", id: string) => ["organization", "cloud", kind, id]
-  const receiptKey = (workspaceID: string, operationID: string) => ["organization", "cloud", "receipts", workspaceID, operationID]
-  const creationKey = (kind: string, orgID: string, accountID: string, requestID: string) => ["organization", "cloud", "creation", kind, orgID, accountID, requestID]
-  const projectKey = (kind: string, orgID: string, projectID: string, resourceID: string) => ["organization", "cloud", "project", kind, orgID, projectID, resourceID]
+  const receiptKey = (workspaceID: string, operationID: string) => [
+    "organization",
+    "cloud",
+    "receipts",
+    workspaceID,
+    operationID,
+  ]
+  const creationKey = (kind: string, orgID: string, accountID: string, requestID: string) => [
+    "organization",
+    "cloud",
+    "creation",
+    kind,
+    orgID,
+    accountID,
+    requestID,
+  ]
+  const projectKey = (kind: string, orgID: string, projectID: string, resourceID: string) => [
+    "organization",
+    "cloud",
+    "project",
+    kind,
+    orgID,
+    projectID,
+    resourceID,
+  ]
   const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
 
   export function register(options: OrganizationCloudOptions = {}) {
@@ -43,7 +74,25 @@ export namespace OrganizationCloud {
       WorkspaceBlobs.get(parsed.blobStore, parsed.settings)
     }
     for (const profile of Object.values(options.environmentProfiles ?? {})) EnvironmentProviders.get(profile.provider)
-    configuration().profiles = structuredClone({ workspaceProfiles: options.workspaceProfiles, environmentProfiles: options.environmentProfiles })
+    configuration().profiles = structuredClone({
+      workspaceProfiles: options.workspaceProfiles,
+      environmentProfiles: options.environmentProfiles,
+    })
+  }
+
+  export function registerAuthorityHistory() {
+    AuthorityJournal.register({
+      id: "organization-cloud-authority",
+      version: 1,
+      prefixes: [
+        ["organization", "cloud", "workspaces"],
+        ["organization", "cloud", "environments"],
+      ],
+      project(_key, value) {
+        const locator = Locator.parse(value)
+        return { orgID: locator.orgID, projectID: locator.projectID, resourceID: locator.resourceID, id: locator.id }
+      },
+    })
   }
 
   export function scopeID(orgID: string, projectID: string) {
@@ -61,9 +110,14 @@ export namespace OrganizationCloud {
     if (!raw) fail("NOT_FOUND", "Cloud resource not found")
     const locator = Locator.parse(raw)
     if (locator.id !== id) fail("PROTOCOL_MISMATCH", "Cloud resource identity is inconsistent")
-    const authority = await authorize(credentials, write ? "resource.use" : "resource.read", { resourceID: locator.resourceID, projectID: locator.projectID })
-    if (authority.account.orgID !== locator.orgID || authority.resource.state !== "enabled") fail("NOT_FOUND", "Cloud resource not found")
-    if (authority.resource.configuration.protocol !== (kind === "workspaces" ? "workspace-storage" : "environment")) fail("PROTOCOL_MISMATCH", "Cloud resource owner is inconsistent")
+    const authority = await authorize(credentials, write ? "resource.use" : "resource.read", {
+      resourceID: locator.resourceID,
+      projectID: locator.projectID,
+    })
+    if (authority.account.orgID !== locator.orgID || authority.resource.state !== "enabled")
+      fail("NOT_FOUND", "Cloud resource not found")
+    if (authority.resource.configuration.protocol !== (kind === "workspaces" ? "workspace-storage" : "environment"))
+      fail("PROTOCOL_MISMATCH", "Cloud resource owner is inconsistent")
     return { locator, authority, scopeID: scopeID(locator.orgID, locator.projectID) }
   }
 
@@ -71,18 +125,29 @@ export namespace OrganizationCloud {
     const workspace = await WorkspaceCatalog.assertActive(locator.id, scopeID(locator.orgID, locator.projectID))
     if (workspace.backend?.provider !== "objects") fail("PROTOCOL_MISMATCH", "Cloud Workspace has no object authority")
     return Cloud.Workspace.parse({
-      workspaceID: workspace.id, orgID: locator.orgID, projectID: locator.projectID, resourceID: locator.resourceID,
-      name: locator.name, revision: workspace.revision, generation: workspace.binding.generation,
-      contentRevision: workspace.content?.revision ?? 0, manifest: workspace.content?.manifest ?? null, activeMount: !!workspace.activeMount,
+      workspaceID: workspace.id,
+      orgID: locator.orgID,
+      projectID: locator.projectID,
+      resourceID: locator.resourceID,
+      name: locator.name,
+      revision: workspace.revision,
+      generation: workspace.binding.generation,
+      contentRevision: workspace.content?.revision ?? 0,
+      manifest: workspace.content?.manifest ?? null,
+      activeMount: !!workspace.activeMount,
     })
   }
 
   export async function createWorkspace(credentials: Credentials, value: Cloud.CreateWorkspace) {
     const input = Cloud.CreateWorkspace.parse(value)
     const hash = digest(input)
-    return Storage.transaction(async () => {
-      const { account, resource } = await authorize(credentials, "resource.use", { resourceID: input.resourceID, projectID: input.projectID })
-      if (resource.configuration.protocol !== "workspace-storage") fail("INVALID_REQUEST", "Select a Workspace storage resource")
+    return History.credentials(credentials, "cloud.workspace-create", async () => {
+      const { account, resource } = await authorize(credentials, "resource.use", {
+        resourceID: input.resourceID,
+        projectID: input.projectID,
+      })
+      if (resource.configuration.protocol !== "workspace-storage")
+        fail("INVALID_REQUEST", "Select a Workspace storage resource")
       const receipt = creationKey("workspaces", account.orgID, account.accountID, input.requestID)
       const [raw] = await Storage.readMany([receipt])
       if (raw) {
@@ -93,12 +158,25 @@ export namespace OrganizationCloud {
       const profile = profiles().workspaceProfiles?.[resource.configuration.profile]
       if (!profile) fail("SERVICE_UNAVAILABLE", "Workspace storage profile is unavailable")
       const workspace = await WorkspaceCatalog.create({
-        scopeID: scopeID(account.orgID, input.projectID), backend: WorkspaceCatalog.Backend.parse({ provider: "objects", spec: WorkspaceContent.Spec.parse(profile) }),
-        metadata: { organization: { orgID: account.orgID, projectID: input.projectID, resourceID: resource.resourceID } },
+        scopeID: scopeID(account.orgID, input.projectID),
+        backend: WorkspaceCatalog.Backend.parse({ provider: "objects", spec: WorkspaceContent.Spec.parse(profile) }),
+        metadata: {
+          organization: { orgID: account.orgID, projectID: input.projectID, resourceID: resource.resourceID },
+        },
       })
-      const locator = Locator.parse({ schemaVersion: 1, orgID: account.orgID, projectID: input.projectID, resourceID: resource.resourceID, id: workspace.id, name: input.name })
+      const locator = Locator.parse({
+        schemaVersion: 1,
+        orgID: account.orgID,
+        projectID: input.projectID,
+        resourceID: resource.resourceID,
+        id: workspace.id,
+        name: input.name,
+      })
       await Storage.write(key("workspaces", workspace.id), locator)
-      await Storage.write([...projectKey("workspaces", account.orgID, input.projectID, resource.resourceID), workspace.id], { id: workspace.id })
+      await Storage.write(
+        [...projectKey("workspaces", account.orgID, input.projectID, resource.resourceID), workspace.id],
+        { id: workspace.id },
+      )
       const result = await view(locator)
       await Storage.write(receipt, Receipt.parse({ schemaVersion: 1, digest: hash, result }))
       return result
@@ -106,22 +184,37 @@ export namespace OrganizationCloud {
   }
 
   export async function getWorkspace(credentials: Credentials, workspaceID: string) {
-    return Storage.snapshot(async () => view((await resolve(credentials, "workspaces", Identity.ID.parse(workspaceID))).locator))
+    return Storage.snapshot(async () =>
+      view((await resolve(credentials, "workspaces", Identity.ID.parse(workspaceID))).locator),
+    )
   }
 
-  export async function listWorkspaces(credentials: Credentials, projectID: string, resourceID: string, value: Identity.Page) {
+  export async function listWorkspaces(
+    credentials: Credentials,
+    projectID: string,
+    resourceID: string,
+    value: Identity.Page,
+  ) {
     const page = Identity.Page.parse(value)
     return Storage.snapshot(async () => {
       const { account, resource } = await authorize(credentials, "resource.read", { resourceID, projectID })
-      if (resource.configuration.protocol !== "workspace-storage" || resource.state !== "enabled") fail("NOT_FOUND", "Workspace storage resource not found")
+      if (resource.configuration.protocol !== "workspace-storage" || resource.state !== "enabled")
+        fail("NOT_FOUND", "Workspace storage resource not found")
       const prefix = projectKey("workspaces", account.orgID, projectID, resourceID)
-      const rows = await Storage.query({ prefix, after: page.cursor ? [...prefix, page.cursor] : undefined, limit: page.limit + 1 })
-      const items = await Promise.all(rows.slice(0, page.limit).map(async row => {
-        const id = Identity.ID.parse(row.key.at(-1))
-        const { locator } = await resolve(credentials, "workspaces", id)
-        if (locator.resourceID !== resourceID || locator.projectID !== projectID) fail("PROTOCOL_MISMATCH", "Invalid cloud Workspace index")
-        return view(locator)
-      }))
+      const rows = await Storage.query({
+        prefix,
+        after: page.cursor ? [...prefix, page.cursor] : undefined,
+        limit: page.limit + 1,
+      })
+      const items = await Promise.all(
+        rows.slice(0, page.limit).map(async (row) => {
+          const id = Identity.ID.parse(row.key.at(-1))
+          const { locator } = await resolve(credentials, "workspaces", id)
+          if (locator.resourceID !== resourceID || locator.projectID !== projectID)
+            fail("PROTOCOL_MISMATCH", "Invalid cloud Workspace index")
+          return view(locator)
+        }),
+      )
       return { items, cursor: rows.length > page.limit ? items.at(-1)?.workspaceID : undefined }
     })
   }
@@ -130,12 +223,26 @@ export namespace OrganizationCloud {
     const input = Cloud.Read.parse(value)
     return Storage.snapshot(async () => {
       const target = await resolve(credentials, "workspaces", workspaceID)
-      const result = await WorkspaceContent.readRange({ workspaceID, scopeID: target.scopeID }, input.path, input.offset, input.length)
-      return Cloud.Bytes.parse({ data: Buffer.from(result.bytes).toString("base64"), version: result.version, size: result.size, mode: result.mode })
+      const result = await WorkspaceContent.readRange(
+        { workspaceID, scopeID: target.scopeID },
+        input.path,
+        input.offset,
+        input.length,
+      )
+      return Cloud.Bytes.parse({
+        data: Buffer.from(result.bytes).toString("base64"),
+        version: result.version,
+        size: result.size,
+        mode: result.mode,
+      })
     })
   }
 
-  export async function write(credentials: Credentials, workspaceID: string, value: Cloud.Write): Promise<Cloud.Workspace> {
+  export async function write(
+    credentials: Credentials,
+    workspaceID: string,
+    value: Cloud.Write,
+  ): Promise<Cloud.Workspace> {
     const input = Cloud.Write.parse(value)
     const hash = digest(input)
     const operation = receiptKey(workspaceID, input.operationID)
@@ -153,11 +260,18 @@ export namespace OrganizationCloud {
     })
     if (initial.result !== undefined) return initial.result
     const data = Buffer.from(input.data, "base64")
-    if (data.toString("base64") !== input.data || data.length > Cloud.chunkBytes) fail("INVALID_REQUEST", "Invalid file bytes")
-    const prepared = await WorkspaceContent.prepareWrite({ workspaceID, scopeID: initial.target.scopeID }, {
-      path: input.path, data, expectedVersion: input.expectedVersion, mode: input.mode,
-    })
-    return Storage.transaction(async () => {
+    if (data.toString("base64") !== input.data || data.length > Cloud.chunkBytes)
+      fail("INVALID_REQUEST", "Invalid file bytes")
+    const prepared = await WorkspaceContent.prepareWrite(
+      { workspaceID, scopeID: initial.target.scopeID },
+      {
+        path: input.path,
+        data,
+        expectedVersion: input.expectedVersion,
+        mode: input.mode,
+      },
+    )
+    return History.credentials(credentials, "cloud.workspace-write", async () => {
       const { locator, scopeID } = await resolve(credentials, "workspaces", workspaceID, true)
       const [raw] = await Storage.readMany([operation])
       if (raw) {
@@ -176,20 +290,36 @@ export namespace OrganizationCloud {
   export async function createEnvironment(credentials: Credentials, value: Cloud.CreateEnvironment) {
     const input = Cloud.CreateEnvironment.parse(value)
     const hash = digest(input)
-    return Storage.transaction(async () => {
-      const { account, resource } = await authorize(credentials, "resource.use", { resourceID: input.resourceID, projectID: input.projectID })
-      if (resource.configuration.protocol !== "environment") fail("INVALID_REQUEST", "Select an execution Environment resource")
+    return History.credentials(credentials, "cloud.environment-create", async () => {
+      const { account, resource } = await authorize(credentials, "resource.use", {
+        resourceID: input.resourceID,
+        projectID: input.projectID,
+      })
+      if (resource.configuration.protocol !== "environment")
+        fail("INVALID_REQUEST", "Select an execution Environment resource")
       const receipt = creationKey("environments", account.orgID, account.accountID, input.requestID)
       const [raw] = await Storage.readMany([receipt])
       if (raw) {
         const previous = EnvironmentReceipt.parse(raw)
-        if (previous.digest !== hash) fail("INVALID_REQUEST", "Request identity belongs to another Environment creation")
+        if (previous.digest !== hash)
+          fail("INVALID_REQUEST", "Request identity belongs to another Environment creation")
         return getEnvironment(credentials, previous.id)
       }
       const profile = profiles().environmentProfiles?.[resource.configuration.profile]
       if (!profile) fail("SERVICE_UNAVAILABLE", "Execution Environment profile is unavailable")
-      const environment = await Environment.bind({ scopeID: scopeID(account.orgID, input.projectID), ownerID: JSON.stringify([account.accountID, input.requestID]), ...profile })
-      const locator = Locator.parse({ schemaVersion: 1, orgID: account.orgID, projectID: input.projectID, resourceID: resource.resourceID, id: environment.id, name: input.name })
+      const environment = await Environment.bind({
+        scopeID: scopeID(account.orgID, input.projectID),
+        ownerID: JSON.stringify([account.accountID, input.requestID]),
+        ...profile,
+      })
+      const locator = Locator.parse({
+        schemaVersion: 1,
+        orgID: account.orgID,
+        projectID: input.projectID,
+        resourceID: resource.resourceID,
+        id: environment.id,
+        name: input.name,
+      })
       await Storage.write(key("environments", environment.id), locator)
       await Storage.write(receipt, EnvironmentReceipt.parse({ schemaVersion: 1, digest: hash, id: environment.id }))
       return environmentView(locator)
@@ -198,10 +328,21 @@ export namespace OrganizationCloud {
 
   async function environmentView(locator: z.infer<typeof Locator>) {
     const environment = await Environment.get(locator.id, scopeID(locator.orgID, locator.projectID))
-    return Cloud.Environment.parse({ environmentID: locator.id, orgID: locator.orgID, projectID: locator.projectID, resourceID: locator.resourceID, name: locator.name, generation: environment.generation, state: environment.state, activeUses: (await Environment.uses(locator.id)).length })
+    return Cloud.Environment.parse({
+      environmentID: locator.id,
+      orgID: locator.orgID,
+      projectID: locator.projectID,
+      resourceID: locator.resourceID,
+      name: locator.name,
+      generation: environment.generation,
+      state: environment.state,
+      activeUses: (await Environment.uses(locator.id)).length,
+    })
   }
 
   export async function getEnvironment(credentials: Credentials, environmentID: string) {
-    return Storage.snapshot(async () => environmentView((await resolve(credentials, "environments", Identity.ID.parse(environmentID))).locator))
+    return Storage.snapshot(async () =>
+      environmentView((await resolve(credentials, "environments", Identity.ID.parse(environmentID))).locator),
+    )
   }
 }

@@ -18,6 +18,8 @@ import { OrganizationRecord } from "./storage/records"
 import { fail, revision } from "./error"
 import { searchPublication } from "./publication-search"
 import { KnowledgeSelections as Selections } from "./knowledge-selection"
+import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 const Item = Knowledge.Item.extend({ schemaVersion: z.literal(1) })
 const Release = Knowledge.Release.extend({ schemaVersion: z.literal(1), uploadID: Identity.ID })
@@ -174,11 +176,35 @@ async function validateSkill(uploadID: string) {
 }
 
 export namespace OrganizationKnowledge {
+  export function registerAuthorityHistory() {
+    AuthorityJournal.register({
+      id: "organization-knowledge-authority",
+      version: 1,
+      prefixes: [
+        ["organization-knowledge", "items"],
+        ["organization-knowledge", "applied"],
+        ["organization-knowledge", "sessions"],
+      ],
+      project(key, value) {
+        if (key[1] !== "items") return Selections.authority(value)
+        const item = Item.parse(value)
+        return {
+          itemID: item.itemID,
+          orgID: item.orgID,
+          scope: item.scope,
+          kind: item.kind,
+          state: item.state,
+          revision: item.revision,
+          latestVersion: item.latestVersion,
+        }
+      },
+    })
+  }
   export async function publish(credentials: Credentials, value: Knowledge.Publish) {
     const input = Knowledge.Publish.parse(value)
     const upload = await Storage.snapshot(() => Publications.ready(credentials, input.uploadID, "knowledge"))
     const skill = input.kind === "skill" ? await validateSkill(input.uploadID) : undefined
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "knowledge.publish", async () => {
       const ready = await Publications.ready(credentials, input.uploadID, "knowledge")
       const account = await authorizePublicationScope(credentials, ready.scope, true)
       const requestHash = digest(input)
@@ -379,7 +405,7 @@ export namespace OrganizationKnowledge {
   }
 
   export async function withdraw(credentials: Credentials, itemID: string, expectedRevision: number) {
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "knowledge.withdraw", async () => {
       const current = await item(credentials, itemID, true)
       revision(expectedRevision, current.revision)
       const updated = Item.parse({
@@ -539,7 +565,7 @@ export namespace OrganizationKnowledge {
     value: z.infer<typeof Knowledge.CommitSelectionUpdate>,
   ) {
     const input = Knowledge.CommitSelectionUpdate.parse(value)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "knowledge.select", async () => {
       const update = await loadUpdate(credentials, updateID)
       revision(input.expectedSequence, update.nextSequence)
       if (update.state === "committed") {

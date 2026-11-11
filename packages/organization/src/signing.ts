@@ -13,6 +13,11 @@ import {
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
+import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
+
+const priorSigningIdentity = Record.SigningIdentity.omit({ historyContractHash: true }).extend({
+  schemaVersion: z.literal(1),
+})
 
 async function readSigningIdentity() {
   try {
@@ -29,7 +34,13 @@ export async function initializeSigningIdentity() {
   const pkcs8 = Buffer.from(await crypto.subtle.exportKey("pkcs8", keys.privateKey)).toString("hex")
   await Storage.transaction(async () => {
     const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
-    const existing = await readSigningIdentity()
+    const [raw] = await Storage.readMany([Keys.signingIdentity()])
+    const existing =
+      raw === undefined
+        ? undefined
+        : priorSigningIdentity.safeParse(raw).success
+          ? priorSigningIdentity.parse(raw)
+          : Record.SigningIdentity.parse(raw)
     if (existing) {
       if (existing.orgID !== deployment.orgID || existing.deploymentIncarnation !== deployment.deploymentIncarnation)
         throw new Error("Organization signing identity does not match this deployment")
@@ -38,7 +49,8 @@ export async function initializeSigningIdentity() {
     await Storage.write(
       Keys.signingIdentity(),
       Record.SigningIdentity.parse({
-        schemaVersion: 1,
+        schemaVersion: 2,
+        historyContractHash: AuthorityJournal.definition().hash,
         orgID: deployment.orgID,
         deploymentIncarnation: deployment.deploymentIncarnation,
         keyID: crypto.randomUUID(),
@@ -47,6 +59,23 @@ export async function initializeSigningIdentity() {
       }),
     )
   })
+}
+
+export async function upgradeSigningIdentityForAuthorityHistory(contractHash: string) {
+  if (!Storage.inWriteTransaction())
+    throw new Error("Signing identity history migration requires its baseline transaction")
+  const [raw] = await Storage.readMany([Keys.signingIdentity()])
+  const prior = priorSigningIdentity.safeParse(raw)
+  if (prior.success) {
+    await Storage.write(
+      Keys.signingIdentity(),
+      Record.SigningIdentity.parse({ ...prior.data, schemaVersion: 2, historyContractHash: contractHash }),
+    )
+    return
+  }
+  const current = Record.SigningIdentity.parse(raw)
+  if (current.historyContractHash !== contractHash)
+    throw new Error("Organization signing history contract requires an owning migration")
 }
 
 export async function loadSigningAuthority(deployment: OrganizationProtocol.Deployment) {
@@ -65,8 +94,8 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
   } catch {
     throw new Error("Organization signing credentials are invalid or unsupported")
   }
-  const { pkcs8: _, ...publicFields } = stored
-  const identity = Object.freeze(Command.SigningIdentity.parse(publicFields))
+  const { pkcs8: _, historyContractHash: _history, ...publicFields } = stored
+  const identity = Object.freeze(Command.SigningIdentity.parse({ ...publicFields, schemaVersion: 1 }))
   return {
     identity,
     async signInteractions(value: Interactions.Permit): Promise<Interactions.SignedPermit> {

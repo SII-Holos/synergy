@@ -8,6 +8,7 @@ import { createPasswordHasher } from "./password"
 import { token, digest, fingerprint, matches } from "./secret"
 import { authenticateHuman, account, revokeAccessLogin, type Credentials } from "./session"
 import { authorize, requireAdministrator } from "../authorization"
+import { OrganizationAuthorityHistory as History } from "../authority-history"
 export type { Credentials } from "./session"
 
 async function info() {
@@ -134,7 +135,7 @@ export async function createAuthentication(
         input.password,
       ])
       const passwordHash = await passwords.hash(input.password)
-      return Storage.transaction(async () => {
+      return History.system("organization.bootstrap", async (identify) => {
         const boot = await Record.read(Record.Bootstrap, Keys.bootstrap())
         if (!boot || !matches(input.token, boot.tokenHash))
           fail("AUTHENTICATION_REQUIRED", "Invalid initialization token")
@@ -142,6 +143,15 @@ export async function createAuthentication(
         if (previous) return boot.consumed!.result
         if (await Record.read(Record.Info, Keys.info()))
           fail("ALREADY_INITIALIZED", "Organization is already initialized")
+        const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
+        identify({
+          kind: "system",
+          orgID: deployment.orgID,
+          subjectID: "organization-bootstrap",
+          displayName: "Organization initialization",
+          clientKind: "system",
+          requestID: input.requestID,
+        })
         const owner = await createAccount(input, passwordHash, "owner")
         await Storage.write(
           Keys.info(),
@@ -211,7 +221,7 @@ export async function createAuthentication(
       if (!(await passwords.verify(input.currentPassword, original.passwordHash)))
         fail("AUTHENTICATION_REQUIRED", "Invalid password")
       const passwordHash = await passwords.hash(input.password)
-      await Storage.transaction(async () => {
+      await History.credentials(credentials, "account.password", async () => {
         const { account } = await authenticateHuman(credentials)
         if (account.authRevision !== original.authRevision)
           fail("AUTHENTICATION_REQUIRED", "Account changed; sign in again")
@@ -290,7 +300,7 @@ export async function createAuthentication(
     async consumeInvite(input: Identity.InviteConsume) {
       const hash = fingerprint(input.token, [input.requestID, input.loginName, input.displayName, input.password])
       const passwordHash = await passwords.hash(input.password)
-      return Storage.transaction(async () => {
+      return History.system("account.join", async (identify) => {
         const invite = await Record.read(Record.Invite, Keys.invite(digest(input.token)))
         if (!invite || invite.revokedAt !== undefined) fail("AUTHENTICATION_REQUIRED", "Invalid invitation")
         const previous = checkConsumption(invite, input.requestID, hash)
@@ -300,6 +310,24 @@ export async function createAuthentication(
         requireAdministrator(issuer)
         if (issuer.authRevision !== invite.issuerAuthRevision)
           fail("AUTHENTICATION_REQUIRED", "Invitation is no longer valid")
+        identify({
+          kind: "system",
+          orgID: invite.orgID,
+          subjectID: "organization-invitation",
+          displayName: "Organization invitation",
+          clientKind: "system",
+          requestID: input.requestID,
+          causedBy: [
+            {
+              kind: "account",
+              orgID: issuer.orgID,
+              subjectID: issuer.accountID,
+              displayName: issuer.displayName,
+              clientKind: "system",
+              requestID: input.requestID,
+            },
+          ],
+        })
         const joined = await createAccount(input, passwordHash, invite.role)
         await Storage.write(Keys.invite(invite.tokenHash), {
           ...invite,
@@ -331,7 +359,7 @@ export async function createAuthentication(
       })
     },
     async updateAccount(credentials: Credentials, id: string, input: Identity.AccountChange) {
-      return Storage.transaction(async () => {
+      return History.credentials(credentials, "account.update", async () => {
         const managing = input.role !== undefined || input.state !== undefined
         const action =
           input.role === "owner" ? "account.promote-owner" : managing ? "account.manage" : "account.profile"
@@ -340,14 +368,14 @@ export async function createAuthentication(
       })
     },
     async leave(credentials: Credentials, expectedRevision: number) {
-      return Storage.transaction(async () => {
+      return History.credentials(credentials, "account.leave", async () => {
         const { account } = await authorize(credentials, "organization.leave")
         await changeAccount(account, { expectedRevision, state: "removed" })
         return { ok: true as const }
       })
     },
     async transferOwner(credentials: Credentials, input: Identity.TransferOwner) {
-      return Storage.transaction(async () => {
+      return History.credentials(credentials, "account.transfer-owner", async () => {
         const { account: actor, target } = await authorize(credentials, "account.transfer-owner", {
           accountID: input.accountID,
         })
@@ -395,7 +423,7 @@ export async function createAuthentication(
     async consumeReset(input: Identity.ResetConsume) {
       const hash = fingerprint(input.token, [input.requestID, input.password])
       const passwordHash = await passwords.hash(input.password)
-      await Storage.transaction(async () => {
+      await History.system("account.password-reset", async (identify) => {
         const reset = await Record.read(Record.Reset, Keys.reset(digest(input.token)))
         if (!reset) fail("AUTHENTICATION_REQUIRED", "Invalid reset link")
         if (checkConsumption(reset, input.requestID, hash)) return
@@ -408,6 +436,24 @@ export async function createAuthentication(
           target.authRevision !== reset.authRevision
         )
           fail("AUTHENTICATION_REQUIRED", "Reset link is no longer valid")
+        identify({
+          kind: "system",
+          orgID: target.orgID,
+          subjectID: "organization-password-reset",
+          displayName: "Organization password reset",
+          clientKind: "system",
+          requestID: input.requestID,
+          causedBy: [
+            {
+              kind: "account",
+              orgID: issuer.orgID,
+              subjectID: issuer.accountID,
+              displayName: issuer.displayName,
+              clientKind: "system",
+              requestID: input.requestID,
+            },
+          ],
+        })
         await Storage.write(Keys.account(target.accountID), {
           ...target,
           passwordHash,

@@ -61,6 +61,8 @@ export namespace OrganizationRecord {
   export type ResourceGrant = z.infer<typeof ResourceGrant>
   export const ResourceAccess = z.strictObject({ resourceID: Identity.ID, subject: ResourceProtocol.Subject })
   export const SigningIdentity = Command.SigningIdentity.extend({
+    schemaVersion: z.literal(2),
+    historyContractHash: OrganizationProtocol.Digest,
     pkcs8: z.string().regex(/^(?:[a-f0-9]{2}){1,1024}$/),
   })
   export const CommandRequest = z

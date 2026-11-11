@@ -12,6 +12,7 @@ import { publicationMigration } from "./publications"
 import { inviteCatalogMigration } from "./auth/invite-migration"
 import { knowledgeSelectionMigration } from "./knowledge-selection"
 import { sharedBlobMigration } from "./shared-blob"
+import { organizationAuthorityMigration } from "./authority-history"
 
 const migrations: Migration[] = [
   executionMigration,
@@ -76,5 +77,13 @@ const migrations: Migration[] = [
 ]
 
 export function registerOrganizationMigrations() {
-  MigrationRegistry.register("organization", migrations)
+  MigrationRegistry.register("organization", [
+    ...migrations,
+    {
+      ...organizationAuthorityMigration,
+      dependsOn: migrations
+        .filter((migration) => !migration.execution || migration.execution === "startup")
+        .map((migration) => migration.id),
+    },
+  ])
 }

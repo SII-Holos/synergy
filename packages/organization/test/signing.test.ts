@@ -92,7 +92,7 @@ test("missing, damaged or foreign signing authority cannot silently regenerate a
     { ...original, pkcs8: "00" },
     { ...original, publicKey: "0".repeat(64) },
     { ...original, deploymentIncarnation: "another" },
-    { ...original, schemaVersion: 2 },
+    { ...original, schemaVersion: 3 },
   ]) {
     await f.database(async (store) => {
       if (value) await store.write(Keys.signingIdentity(), value)

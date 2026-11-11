@@ -8,6 +8,7 @@ import { authorize } from "./authorization"
 import { fail, revision } from "./error"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 export namespace OrganizationSessionResources {
   export async function read(session: Record.SessionDirectory) {
@@ -46,7 +47,7 @@ export namespace OrganizationSessionResources {
     credentials = { ...credentials }
     sessionID = Identity.ID.parse(sessionID)
     const input = Execution.Change.parse(value)
-    return Storage.transaction(async () => {
+    return History.credentials(credentials, "session.resources", async () => {
       const { account, session } = await authorize(credentials, "session.execute", { sessionID })
       const previous = await read(session)
       revision(input.expectedRevision, previous?.revision ?? 0)
