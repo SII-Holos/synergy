@@ -26,6 +26,20 @@ export namespace SessionCortexContract {
     maxCost: z.number().nonnegative().optional(),
     deadlineAt: z.number().int().nonnegative().optional(),
   })
+  export const MaintenanceHold = z.strictObject({
+    version: z.literal(1),
+    maintenanceID: z.string().min(1),
+    purpose: z.enum(["organization-backup", "organization-restore"]),
+    heldAt: z.number().int().nonnegative(),
+    releasedAt: z.number().int().nonnegative().optional(),
+    priorStatus: z.enum(["queued", "running"]),
+    resumeIntentID: z.string().min(1).optional(),
+    rootID: z.string().optional(),
+    admitted: z.boolean(),
+    maxOutputTokens: z.number().int().positive().optional(),
+    maxCost: z.number().nonnegative().optional(),
+    deadlineAt: z.number().int().nonnegative().optional(),
+  })
   export const PluginTaskOwner = z.object({
     pluginId: z.string(),
     pluginGeneration: z.string(),

@@ -103,6 +103,7 @@ const CortexDelegationInfoInner = z.object({
   timeoutMs: z.number().int().positive().optional(),
   usage: CortexTypes.TaskUsage.optional(),
   transfer: CortexTypes.TransferHold.optional(),
+  maintenance: CortexTypes.MaintenanceHold.optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
@@ -113,6 +114,7 @@ export const CortexDelegationSummary = CortexDelegationInfoInner.omit({
   repairTurns: true,
   pendingInput: true,
   transfer: true,
+  maintenance: true,
   prompt: true,
   error: true,
   tools: true,

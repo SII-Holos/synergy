@@ -3042,7 +3042,7 @@ export namespace SessionInvoke {
     const sessionIDs = await SessionManager.listInterruptedCortexDelegations(scopeID)
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
-      if (!session?.cortex || session.cortex.transfer) continue
+      if (!session?.cortex || session.cortex.transfer || session.cortex.maintenance) continue
       if (session.cortex.status !== "queued" && session.cortex.status !== "running") continue
       if (SessionManager.isRunning(sessionID)) continue
 

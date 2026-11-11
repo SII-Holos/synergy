@@ -21,12 +21,23 @@ test("Cortex summaries exclude exact continuation inputs and transfer authority"
       priorStatus: "running",
       admitted: true,
     },
+    maintenance: {
+      version: 1,
+      maintenanceID: "maintenance-private",
+      purpose: "organization-backup",
+      heldAt: 2,
+      priorStatus: "running",
+      rootID: "maintenance-root-private",
+      maxCost: 2,
+      admitted: true,
+    },
   })
   const summary = CortexDelegationSummary.parse(info)
   expect(summary.taskID).toBe(info.taskID)
   expect(summary.status).toBe("running")
-  for (const field of ["rootID", "repairTurns", "pendingInput", "transfer"])
+  for (const field of ["rootID", "repairTurns", "pendingInput", "transfer", "maintenance"])
     expect(Object.hasOwn(summary, field)).toBeFalse()
   expect(JSON.stringify(summary)).not.toContain("private exact repair input")
   expect(JSON.stringify(summary)).not.toContain("transfer-private")
+  expect(JSON.stringify(summary)).not.toContain("maintenance-private")
 })

@@ -245,6 +245,18 @@ export namespace RuntimeMaintenance {
       throw new Blocked({ message: "Native suspension requires its current draining operation" })
     return info
   }
+  export async function assertHeld(lease: Lease) {
+    const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
+    if (!["draining", "frozen", "releasing"].includes(info.phase))
+      throw new Blocked({ message: "Native owner inspection requires its current retained operation" })
+    return info
+  }
+  export async function assertReleasing(lease: Lease) {
+    const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
+    if (info.phase !== "releasing" || info.purpose !== "organization-backup")
+      throw new Blocked({ message: "Native source release requires its current releasing backup operation" })
+    return info
+  }
   export async function assertAdmission() {
     const info = await status()
     if (state().pending || (info && info.phase !== "released"))

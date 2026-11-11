@@ -1,4 +1,6 @@
 import { CortexTransferHolds } from "./transfer-holds"
+import { CortexMaintenanceHolds } from "./maintenance-holds"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { RolloutExecution } from "../session/rollout/execution"
 import { ExecutionCapacity } from "../session/execution-capacity"
 import { WorkspaceAccess } from "../workspace/access"
@@ -58,6 +60,7 @@ export namespace Cortex {
     taskBudgets: new Map<string, { maxOutputTokens?: number; maxCost?: number }>(),
     executionBudgets: new Map<string, { maxOutputTokens?: number; maxCost?: number }>(),
     transferHeld: new Set<string>(),
+    maintenanceHeld: new Map<string, string>(),
     taskDeadlines: new Map<string, number>(),
     acquiredTasks: new Set<string>(),
     admissionOwners: new Map<string, string>(),
@@ -70,6 +73,10 @@ export namespace Cortex {
     timeoutErrors: new Map<string, string>(),
     progressUpdateTimer: undefined as Timer | undefined,
   }))
+
+  function isHeld(taskID: string) {
+    return runtimeState().transferHeld.has(taskID) || runtimeState().maintenanceHeld.has(taskID)
+  }
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
   const TASK_CLEANUP_DELAY_MS = 5 * 60 * 1000
@@ -123,6 +130,7 @@ export namespace Cortex {
 
   export const prepare = fn(CortexTypes.LaunchInput, async (input) => {
     const instanceState = runtimeState()
+    await RuntimeMaintenance.assertAdmission()
 
     if (instanceState.stopped) throw new Error("Cortex is stopping")
     using _ = input.reuseInterrupted
@@ -325,8 +333,26 @@ export namespace Cortex {
     using _ = await Lock.write(`cortex-task-start:${taskID}`)
     const task = instanceState.tasks.get(taskID)
     if (!task) throw new Error(`Cortex task ${taskID} not found`)
-    if (instanceState.transferHeld.has(taskID)) return task
+    if (isHeld(taskID)) return task
+    await RuntimeMaintenance.assertAdmission()
+    const canonical = await Session.get(task.sessionID)
+    if (canonical.cortex?.maintenance && canonical.cortex.transfer)
+      throw new RuntimeMaintenance.Blocked({ message: "Cortex has ambiguous native continuation holds" })
+    if (canonical.cortex?.maintenance && !canonical.cortex.maintenance.releasedAt) return task
+    if (canonical.cortex?.maintenance) {
+      await SessionTransferGate.assert(task.sessionID)
+      await SessionExecutionOwners.assertResume(canonical)
+    }
     if (task.status !== "queued") return task
+    if (
+      canonical.cortex?.maintenance?.deadlineAt !== undefined &&
+      canonical.cortex.maintenance.deadlineAt <= Date.now()
+    ) {
+      await updateTaskStatus(taskID, "error", `Task exceeded its ${task.timeoutMs}ms runtime limit.`, undefined, {
+        launchFailure: true,
+      })
+      return task
+    }
 
     const admissionOwner = await sessionResourceOwner(task.parentSessionID)
     if (task.status !== "queued" || instanceState.stopped || instanceState.cancellationRequests.has(taskID)) return task
@@ -337,12 +363,7 @@ export namespace Cortex {
     try {
       await ExecutionCapacity.wait(() => CortexConcurrency.acquire(admissionOwner, admission.signal))
     } catch (error) {
-      if (
-        instanceState.transferHeld.has(taskID) ||
-        instanceState.cancellationRequests.has(taskID) ||
-        isTerminal(task.status)
-      )
-        return task
+      if (isHeld(taskID) || instanceState.cancellationRequests.has(taskID) || isTerminal(task.status)) return task
       throw error
     } finally {
       if (instanceState.admissions.get(taskID) === admission) instanceState.admissions.delete(taskID)
@@ -350,7 +371,7 @@ export namespace Cortex {
     instanceState.acquiredTasks.add(taskID)
 
     const current = instanceState.tasks.get(taskID)
-    if (!current || current.status === "cancelled" || instanceState.transferHeld.has(taskID)) {
+    if (!current || current.status === "cancelled" || isHeld(taskID)) {
       instanceState.taskBudgets.delete(taskID)
       instanceState.acquiredTasks.delete(taskID)
       CortexConcurrency.release(admissionOwner)
@@ -429,7 +450,7 @@ export namespace Cortex {
             taskID,
             (async () => {
               const active = instanceState.tasks.get(taskID)
-              if (!active || isTerminal(active.status) || instanceState.transferHeld.has(taskID)) return
+              if (!active || isTerminal(active.status) || isHeld(taskID)) return
               // Claim the deadline before any await so a concurrently settling run
               // cannot publish completed first; updateTaskStatus converts the claim.
               if (instanceState.timeoutRequests.has(taskID)) return
@@ -553,7 +574,7 @@ export namespace Cortex {
     log.info("running task", { taskID: task.id, sessionID: task.sessionID })
 
     const initial = instanceState.tasks.get(task.id)
-    if (!initial || initial.status === "cancelled" || instanceState.transferHeld.has(task.id)) return
+    if (!initial || initial.status === "cancelled" || isHeld(task.id)) return
 
     const agent = await Agent.get(task.agent)
     const resolvedModel =
@@ -632,16 +653,16 @@ export namespace Cortex {
       const invokeTools = CortexOutput.toolsFor(task.tools, outputConfig)
       const ephemeralTools = CortexOutput.ephemeralTools(outputConfig)
 
-      if (instanceState.transferHeld.has(task.id)) return
+      if (isHeld(task.id)) return
       const rootID = (await Session.get(task.sessionID)).cortex?.rootID ?? Identifier.ascending("message")
       await Session.update(task.sessionID, (draft) => {
         if (draft.cortex?.taskID !== task.id) throw new Error("Cortex task changed before native input admission")
         draft.cortex.rootID = rootID
         draft.cortex.pendingInput ??= { kind: "initial" }
       })
-      if (instanceState.transferHeld.has(task.id)) return
+      if (isHeld(task.id)) return
       const controls = (await Session.get(task.sessionID)).cortex!
-      const hold = controls.transfer
+      const hold = controls.transfer ?? controls.maintenance
       const initialMessage = hold?.admitted
         ? await SessionInvoke.resumeInternal({
             sessionID: task.sessionID,
@@ -689,7 +710,7 @@ export namespace Cortex {
               draft.cortex.pendingInput = { kind: "repair", text: repairText }
             }
           })
-          if (instanceState.transferHeld.has(task.id)) return
+          if (isHeld(task.id)) return
           const repairMessage = await SessionInvoke.invokeInternal({
             messageID: repairRootID,
             sessionID: task.sessionID,
@@ -793,7 +814,7 @@ export namespace Cortex {
     const instanceState = runtimeState()
 
     const task = instanceState.tasks.get(taskID)
-    if (!task || instanceState.transferHeld.has(taskID)) return
+    if (!task || isHeld(taskID)) return
 
     if (instanceState.cancellationRequests.has(taskID)) {
       status = "cancelled"
@@ -864,7 +885,7 @@ export namespace Cortex {
         completedAt: Date.now(),
         usage: await taskUsage(task.sessionID),
       }
-      if (instanceState.transferHeld.has(taskID)) return
+      if (isHeld(taskID)) return
       if (error) terminalTask.error = error
       if (output) terminalTask.output = output
       if (options?.launchFailure) terminalTask.launchFailure = true
@@ -880,11 +901,14 @@ export namespace Cortex {
 
       await record(() =>
         Storage.transaction(async () => {
-          await CortexTransferHolds.remove(await Session.get(task.sessionID))
+          const current = await Session.get(task.sessionID)
+          await CortexTransferHolds.remove(current)
+          await CortexMaintenanceHolds.remove(current)
           return Session.update(task.sessionID, (draft) => {
             if (draft.cortex) {
-              if (instanceState.transferHeld.has(taskID)) return
+              if (isHeld(taskID)) return
               delete draft.cortex.transfer
+              delete draft.cortex.maintenance
               delete draft.cortex.pendingInput
               draft.cortex.status = status
               draft.cortex.completedAt = terminalTask.completedAt
@@ -899,7 +923,7 @@ export namespace Cortex {
         }),
       )
 
-      if (instanceState.transferHeld.has(taskID)) return
+      if (isHeld(taskID)) return
 
       // Cancellation or a claimed runtime deadline may arrive while usage and
       // session metadata are being persisted. Reconcile once more immediately
@@ -1550,7 +1574,9 @@ export namespace Cortex {
     const task = instanceState.tasks.get(taskID)
     if (!task) return
     if (isTerminal(task.status)) return
-    if (instanceState.transferHeld.has(taskID))
+    if (instanceState.maintenanceHeld.has(taskID))
+      throw new RuntimeMaintenance.Blocked({ message: "Runtime maintenance retains this Cortex task" })
+    if (isHeld(taskID))
       throw new SessionTransferOwners.Rejected({
         message: "Cortex transfer owns this task; cancel its handoff before changing execution",
       })
@@ -1646,6 +1672,216 @@ export namespace Cortex {
       throw new AggregateError(state.backgroundErrors.splice(0), "Cortex background tasks failed")
   }
 
+  async function drainHeldTask(taskID: string, sessionID: string, signal: AbortSignal, reason: string) {
+    const state = runtimeState()
+    SessionManager.signalAbort(sessionID, { pauseTurn: true })
+    await SessionManager.waitForIdle(sessionID, signal)
+    const operations = [
+      state.taskRuns.get(taskID),
+      ...[...state.background].filter(([, id]) => id === taskID).map(([operation]) => operation),
+    ].filter((operation): operation is Promise<void> => !!operation)
+    await Promise.all(operations)
+    signal.throwIfAborted()
+    const settled = await Session.get(sessionID)
+    const rootID = settled.cortex?.rootID
+    const admitted = rootID
+      ? await MessageV2.readInfo({ scopeID: settled.scope.id, sessionID, messageID: rootID })
+          .then((message) => message.role === "user" && message.isRoot === true)
+          .catch((error) => {
+            if (error instanceof Storage.NotFoundError) return false
+            throw error
+          })
+      : false
+    const capacity = state.capacityOwners.get(taskID)
+    capacity?.controller.abort(new Error(reason))
+    capacity?.unregister()
+    state.capacityOwners.delete(taskID)
+    if (state.acquiredTasks.delete(taskID))
+      CortexConcurrency.release(state.admissionOwners.get(taskID) ?? settled.cortex!.parentSessionID)
+    state.admissionOwners.delete(taskID)
+    const timer = state.taskTimeouts.get(taskID)
+    if (timer) clearTimeout(timer)
+    state.taskTimeouts.delete(taskID)
+    state.taskDeadlines.delete(taskID)
+    return { rootID, admitted }
+  }
+
+  function maintenanceRequirement(code: string, label: string): RuntimeMaintenance.Requirement {
+    return { code, label, owner: "cortex", recoverable: true }
+  }
+
+  async function hasFrozenTransfer(session: Session.Info) {
+    const hold = session.cortex?.transfer
+    if (!hold || hold.resumeIntentID) return false
+    try {
+      await SessionTransferEpochs.assertFrozen(session.id, hold.handoffID)
+      return true
+    } catch (error) {
+      if (!(error instanceof SessionTransferEpochs.Rejected)) throw error
+      return false
+    }
+  }
+
+  async function assertMaintenanceContext(context: RuntimeMaintenance.Context) {
+    const info = await RuntimeMaintenance.assertHeld(context.lease)
+    if (info.maintenanceID !== context.maintenanceID || info.purpose !== context.purpose)
+      throw new RuntimeMaintenance.Blocked({ message: "Cortex maintenance requires its current native lease" })
+    return info
+  }
+
+  export async function suspendForMaintenance(sessionID: string, context: RuntimeMaintenance.Context) {
+    const state = runtimeState()
+    context.signal.throwIfAborted()
+    const operation = await RuntimeMaintenance.assertDraining(context.lease)
+    if (operation.maintenanceID !== context.maintenanceID || operation.purpose !== context.purpose)
+      throw new RuntimeMaintenance.Blocked({ message: "Cortex maintenance context changed" })
+    const session = await Session.get(sessionID)
+    const cortex = session.cortex
+    if (!cortex || isTerminal(cortex.status)) return
+    if (cortex.parentSessionID !== session.parentID)
+      throw new RuntimeMaintenance.Blocked({ message: "Cortex maintenance requires canonical parent ownership" })
+    if (cortex.transfer && !cortex.transfer.resumeIntentID) {
+      if (await hasFrozenTransfer(session)) return
+      throw new RuntimeMaintenance.Blocked({
+        message: "An unfinished Cortex handoff must settle before maintenance",
+        requirements: [
+          maintenanceRequirement(
+            "cortex_transfer_unsettled",
+            "Reconcile the draining Cortex handoff before maintenance",
+          ),
+        ],
+      })
+    }
+    if (cortex.owner)
+      throw new RuntimeMaintenance.Blocked({
+        message: "Cortex plugin writer requires its real generation owner",
+        requirements: [maintenanceRequirement("cortex_plugin_writer", "Reconcile the exact Cortex plugin generation")],
+      })
+    const cached = state.tasks.get(cortex.taskID)
+    if (!cached || cached.sessionID !== sessionID)
+      throw new RuntimeMaintenance.Blocked({
+        message: "An active Cortex task has no live owner; reconcile it before maintenance",
+        requirements: [maintenanceRequirement("cortex_cold_active", "Reconcile the interrupted Cortex writer")],
+      })
+    if (
+      cortex.maintenance &&
+      !cortex.maintenance.releasedAt &&
+      cortex.maintenance.maintenanceID !== context.maintenanceID
+    )
+      throw new RuntimeMaintenance.Blocked({ message: "Another maintenance operation retains this Cortex task" })
+    if (state.cancellationRequests.has(cortex.taskID) || state.timeoutRequests.has(cortex.taskID))
+      throw new RuntimeMaintenance.Blocked({ message: "Cortex cancellation or timeout must settle before maintenance" })
+    if (state.finalizingTasks.has(cortex.taskID)) {
+      await Promise.all([
+        state.taskRuns.get(cortex.taskID),
+        ...[...state.background].filter(([, id]) => id === cortex.taskID).map(([operation]) => operation),
+      ])
+      context.signal.throwIfAborted()
+      if (isTerminal((await Session.get(sessionID)).cortex!.status)) return
+    }
+    state.maintenanceHeld.set(cortex.taskID, context.maintenanceID)
+    state.admissions.get(cortex.taskID)?.abort(new Error("Cortex task is held for maintenance"))
+    using held = await Lock.writeWithSignal(`cortex-task-start:${cortex.taskID}`, context.signal)
+    const current = await Session.get(sessionID)
+    if (!current.cortex || isTerminal(current.cortex.status)) {
+      state.maintenanceHeld.delete(cortex.taskID)
+      return
+    }
+    const budget = state.taskBudgets.get(cortex.taskID) ?? state.executionBudgets.get(cortex.taskID)
+    const hold =
+      (current.cortex.maintenance?.maintenanceID === context.maintenanceID ? current.cortex.maintenance : undefined) ??
+      CortexTypes.MaintenanceHold.parse({
+        version: 1,
+        maintenanceID: context.maintenanceID,
+        purpose: context.purpose,
+        priorStatus: current.cortex.status,
+        heldAt: Date.now(),
+        admitted: false,
+        rootID: current.cortex.rootID,
+        maxOutputTokens: budget?.maxOutputTokens,
+        maxCost: budget?.maxCost,
+        deadlineAt: state.taskDeadlines.get(cortex.taskID),
+      })
+    await Storage.transaction(async () => {
+      if (current.cortex?.transfer) await CortexTransferHolds.remove(current)
+      const updated = await Session.update(sessionID, (draft) => {
+        if (draft.cortex?.taskID !== cortex.taskID) throw new Error("Cortex task changed before maintenance")
+        if (draft.cortex.transfer && !draft.cortex.transfer.resumeIntentID)
+          throw new RuntimeMaintenance.Blocked({ message: "An active transfer retains this Cortex task" })
+        if (
+          draft.cortex.maintenance &&
+          !draft.cortex.maintenance.releasedAt &&
+          draft.cortex.maintenance.maintenanceID !== context.maintenanceID
+        )
+          throw new RuntimeMaintenance.Blocked({ message: "Another maintenance operation retains this Cortex task" })
+        delete draft.cortex.transfer
+        draft.cortex.maintenance = hold
+      })
+      await CortexMaintenanceHolds.index(updated)
+    })
+    const settled = await drainHeldTask(cortex.taskID, sessionID, context.signal, "Cortex task is held for maintenance")
+    await Session.update(sessionID, (draft) => {
+      if (draft.cortex?.taskID !== cortex.taskID || draft.cortex.maintenance?.maintenanceID !== context.maintenanceID)
+        throw new Error("Cortex maintenance evidence changed while draining")
+      draft.cortex.maintenance = { ...draft.cortex.maintenance, ...settled }
+    })
+  }
+
+  export async function inspectMaintenance(sessionID: string, context: RuntimeMaintenance.Context) {
+    await assertMaintenanceContext(context)
+    const session = await Session.get(sessionID)
+    const cortex = session.cortex
+    if (!cortex || isTerminal(cortex.status)) return
+    if (cortex.transfer && !cortex.transfer.resumeIntentID) {
+      if (await hasFrozenTransfer(session)) return
+      return maintenanceRequirement(
+        "cortex_transfer_unsettled",
+        "Reconcile the draining Cortex handoff before maintenance",
+      )
+    }
+    if (cortex.owner)
+      return maintenanceRequirement("cortex_plugin_writer", "Reconcile the exact Cortex plugin generation")
+    const hold = cortex.maintenance
+    if (hold?.maintenanceID !== context.maintenanceID || hold.purpose !== context.purpose)
+      return maintenanceRequirement("cortex_maintenance_missing", "Suspend this Cortex task through its native owner")
+    const state = runtimeState()
+    if (
+      state.tasks.get(cortex.taskID)?.sessionID !== sessionID ||
+      SessionManager.isRunning(sessionID) ||
+      state.taskRuns.has(cortex.taskID) ||
+      state.admissions.has(cortex.taskID) ||
+      state.capacityOwners.has(cortex.taskID) ||
+      [...state.background.values()].some((taskID) => taskID === cortex.taskID) ||
+      (!hold.releasedAt && state.maintenanceHeld.get(cortex.taskID) !== context.maintenanceID)
+    )
+      return maintenanceRequirement("cortex_writer_unsettled", "Reconcile this Cortex task's native writer")
+  }
+
+  export async function releaseMaintenance(sessionID: string, context: RuntimeMaintenance.Context) {
+    const operation = await assertMaintenanceContext(context)
+    if (operation.phase !== "releasing" || context.purpose !== "organization-backup")
+      throw new RuntimeMaintenance.Blocked({ message: "Cortex source release requires its releasing backup operation" })
+    const requirement = await inspectMaintenance(sessionID, context)
+    if (requirement) throw new RuntimeMaintenance.Blocked({ message: requirement.label, requirements: [requirement] })
+    const state = runtimeState()
+    const session = await Session.get(sessionID)
+    const hold = session.cortex?.maintenance
+    if (!hold || !session.cortex || hold.maintenanceID !== context.maintenanceID)
+      throw new RuntimeMaintenance.Blocked({ message: "Cortex maintenance continuation changed" })
+    await Session.update(sessionID, (draft) => {
+      if (draft.cortex?.maintenance?.maintenanceID !== context.maintenanceID)
+        throw new RuntimeMaintenance.Blocked({ message: "Cortex maintenance hold changed before release" })
+      draft.cortex.maintenance.releasedAt ??= Date.now()
+      draft.cortex.maintenance.resumeIntentID ??= `cortex-maintenance:${context.maintenanceID}:${draft.cortex.taskID}`
+    })
+    const task = state.tasks.get(session.cortex.taskID)
+    if (!task) throw new RuntimeMaintenance.Blocked({ message: "Cortex release lost its native task owner" })
+    task.status = "queued"
+    state.taskBudgets.set(task.id, { maxOutputTokens: hold.maxOutputTokens, maxCost: hold.maxCost })
+    if (hold.deadlineAt !== undefined) state.taskDeadlines.set(task.id, hold.deadlineAt)
+    state.maintenanceHeld.delete(task.id)
+  }
+
   export async function suspendForTransfer(
     taskID: string,
     input: { sessionID?: string; rootSessionID: string; handoffID: string; signal: AbortSignal },
@@ -1660,6 +1896,8 @@ export namespace Cortex {
     if (!sessionID)
       throw new SessionTransferOwners.Rejected({ message: "Cortex portability requires canonical child identity" })
     const session = await Session.get(sessionID)
+    if (session.cortex?.maintenance && !session.cortex.maintenance.releasedAt)
+      throw new RuntimeMaintenance.Blocked({ message: "Runtime maintenance retains this Cortex task" })
     if (
       session.scope.id !== root.scope.id ||
       session.cortex?.taskID !== taskID ||
@@ -1678,7 +1916,13 @@ export namespace Cortex {
     if (session.cortex.transfer && !session.cortex.transfer.resumeIntentID) {
       if (session.cortex.transfer.handoffID !== input.handoffID || session.cortex.transfer.rootSessionID !== root.id)
         throw new SessionTransferOwners.Rejected({ message: "Another handoff owns this Cortex task" })
-      if (await SessionTransferEpochs.isFrozen(session.id)) {
+      const binding = await SessionTransferEpochs.ownerPreparationBinding({
+        sessionID: session.id,
+        handoffID: input.handoffID,
+      })
+      if (binding.scopeID !== session.scope.id || binding.rootSessionID !== root.id)
+        throw new SessionTransferOwners.Rejected({ message: "Cortex source intent has another aggregate binding" })
+      if ((await SessionTransferEpochs.inspect(binding)).phase === "frozen") {
         await SessionTransferEpochs.assertFrozen(session.id, input.handoffID)
         return
       }
@@ -1732,44 +1976,22 @@ export namespace Cortex {
         deadlineAt: state.taskDeadlines.get(taskID),
       })
     await Storage.transaction(async () => {
+      if (current.cortex?.maintenance) await CortexMaintenanceHolds.remove(current)
       const updated = await Session.update(session.id, (draft) => {
-        if (draft.cortex?.taskID === taskID) draft.cortex.transfer = hold
+        if (draft.cortex?.taskID === taskID) {
+          if (draft.cortex.maintenance && !draft.cortex.maintenance.releasedAt)
+            throw new RuntimeMaintenance.Blocked({ message: "Runtime maintenance retains this Cortex task" })
+          delete draft.cortex.maintenance
+          draft.cortex.transfer = hold
+        }
       })
       await CortexTransferHolds.index(updated)
     })
-    SessionManager.signalAbort(session.id, { pauseTurn: true })
-    await SessionManager.waitForIdle(session.id, input.signal)
-    const operations = [
-      state.taskRuns.get(taskID),
-      ...[...state.background].filter(([, id]) => id === taskID).map(([operation]) => operation),
-    ].filter((operation): operation is Promise<void> => !!operation)
-    await Promise.all(operations)
-    input.signal.throwIfAborted()
-    const settled = await Session.get(session.id)
-    const rootID = settled.cortex?.rootID
-    const admitted = rootID
-      ? await MessageV2.readInfo({ scopeID: settled.scope.id, sessionID: settled.id, messageID: rootID })
-          .then((message) => message.role === "user" && message.isRoot === true)
-          .catch((error) => {
-            if (error instanceof Storage.NotFoundError) return false
-            throw error
-          })
-      : false
+    const settled = await drainHeldTask(taskID, session.id, input.signal, "Cortex task is held for transfer")
     await Session.update(session.id, (draft) => {
       if (draft.cortex?.taskID === taskID && draft.cortex.transfer)
-        draft.cortex.transfer = { ...draft.cortex.transfer, rootID, admitted }
+        draft.cortex.transfer = { ...draft.cortex.transfer, ...settled }
     })
-    const capacity = state.capacityOwners.get(taskID)
-    capacity?.controller.abort(new Error("Cortex task is held for transfer"))
-    capacity?.unregister()
-    state.capacityOwners.delete(taskID)
-    if (state.acquiredTasks.delete(taskID))
-      CortexConcurrency.release(state.admissionOwners.get(taskID) ?? current.cortex.parentSessionID)
-    state.admissionOwners.delete(taskID)
-    const timer = state.taskTimeouts.get(taskID)
-    if (timer) clearTimeout(timer)
-    state.taskTimeouts.delete(taskID)
-    state.taskDeadlines.delete(taskID)
   }
 
   export async function resumeTransferred(sessionID: string, intentID?: string) {
@@ -1981,6 +2203,7 @@ export namespace Cortex {
     instanceState.taskBudgets.clear()
     instanceState.executionBudgets.clear()
     instanceState.transferHeld.clear()
+    instanceState.maintenanceHeld.clear()
     instanceState.taskDeadlines.clear()
     for (const admission of instanceState.admissions.values())
       admission.abort(new DOMException("Cortex stopped", "AbortError"))

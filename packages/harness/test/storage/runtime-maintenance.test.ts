@@ -42,6 +42,35 @@ const actor = {
   requestID: "maintenance-one",
 }
 
+test("native owner release validates the actual opaque lease and releasing phase", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    let releases = 0
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release(context) {
+        const info = await RuntimeMaintenance.assertReleasing(context.lease)
+        expect(info.maintenanceID).toBe(context.maintenanceID)
+        await expect(RuntimeMaintenance.assertReleasing({ ...context.lease })).rejects.toThrow()
+        releases++
+      },
+    })
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    await expect(RuntimeMaintenance.assertReleasing(lease)).rejects.toThrow()
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    await expect(RuntimeMaintenance.assertReleasing(lease)).rejects.toThrow()
+    await RuntimeMaintenance.release(lease)
+    expect(releases).toBe(1)
+    await expect(RuntimeMaintenance.assertReleasing(lease)).rejects.toThrow()
+  })
+})
+
 test("native maintenance stops new admission, drains a real trailing writer and freezes ordinary canonical changes", async () => {
   await using f = await fixture()
   await f.run(async () => {
