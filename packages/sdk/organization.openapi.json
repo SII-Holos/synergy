@@ -5182,6 +5182,66 @@
         ]
       }
     },
+    "/runtime/v1/handoffs/object": {
+      "post": {
+        "operationId": "orgHandoffObject.read",
+        "summary": "Relay one authorized frozen package range to its destination machine",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHandoffObjectRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                    "offset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "nextOffset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "totalBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "data": {
+                      "type": "string",
+                      "maxLength": 174763,
+                      "pattern": "^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2}|[A-Za-z0-9_-]{3})?$"
+                    },
+                    "complete": { "type": "boolean" }
+                  },
+                  "required": ["hash", "offset", "nextOffset", "totalBytes", "data", "complete"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/runtime/v1/handoffs/proof": {
       "post": {
         "operationId": "orgHandoff.proof",
@@ -11138,6 +11198,75 @@
           "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
         },
         "required": ["requestID", "operation"],
+        "additionalProperties": false
+      },
+      "OrgHandoffObjectProof": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": { "type": "number", "const": 1 },
+          "purpose": { "type": "string", "const": "handoff-object-read" },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "handoffID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sourceRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "targetRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "fromEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "toEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "range": {
+            "type": "object",
+            "properties": {
+              "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "offset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "length": { "type": "integer", "minimum": 1, "maximum": 131072 }
+            },
+            "required": ["hash", "offset", "length"],
+            "additionalProperties": false
+          },
+          "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "schemaVersion",
+          "purpose",
+          "orgID",
+          "deploymentIncarnation",
+          "handoffID",
+          "sessionID",
+          "sourceRuntimeID",
+          "targetRuntimeID",
+          "fromEpoch",
+          "toEpoch",
+          "mappingPlanRevision",
+          "shareGeneration",
+          "runtimeID",
+          "connectionEpoch",
+          "requestID",
+          "manifestHash",
+          "range",
+          "issuedAt",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgHandoffObjectRequest": {
+        "type": "object",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/OrgHandoffObjectProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
         "additionalProperties": false
       },
       "OrgKnowledgeExecutionPage": {

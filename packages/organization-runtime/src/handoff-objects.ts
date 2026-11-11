@@ -138,6 +138,15 @@ export namespace OrganizationHandoffObjects {
         return bytes
       },
     }
+    async function contains(hash: string) {
+      assertOwner()
+      Hash.parse(hash)
+      const [raw] = await Storage.readMany([objectKey(hash)])
+      assertOwner()
+      if (raw === undefined) return false
+      if (Object.parse(raw).hash !== hash) fail("Handoff cached object identity changed")
+      return true
+    }
     async function inspect() {
       assertOwner()
       const [raw] = await Storage.readMany([sealedKey])
@@ -217,6 +226,6 @@ export namespace OrganizationHandoffObjects {
         complete: nextOffset === bytes.length,
       })
     }
-    return { store, inspect, sealSource, range }
+    return { store, contains, inspect, sealSource, range }
   }
 }

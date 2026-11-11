@@ -4,7 +4,7 @@ Own strict, versioned DTOs and bridge messages for the organization service, Run
 
 Run `bun run typecheck` and `bun run test`; verify mounted OpenAPI and regenerate the SDK when a schema becomes API-visible.
 
-Machine proofs and finite handoff plans bind purpose, source ownership, operations, watermarks and connections. Separate signature domains; validate before verification. Test real-key tampering and completion facts. Bounded ranges never authorize arbitrary content.
+Handoff proofs/plans bind purpose, ownership, operations, watermarks and connections. Separate domains; validate before verification. Refresh destination range authority; system actors cannot drive human controls. Test tampering/completion facts. Ranges never authorize arbitrary content.
 
 API token schemas separate one-time secrets from metadata and bind explicit project/operation/expiry scope. Trusted routes select purposes; token scope never replaces current authorization. Reuse the portable account actor schema from Util, including optional signed token attribution. Command permits bind the logical request, actor, deployment, target, epochs, sequences and finite signing window; signature validity alone does not establish current execution admission. Preserve existing proof bytes when sharing signing primitives, and verify compiled Node imports across package boundaries.
 

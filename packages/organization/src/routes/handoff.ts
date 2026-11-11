@@ -3,6 +3,7 @@ import { validator } from "hono-openapi"
 import { z } from "zod"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationHandoffObjectProtocol as Objects,
   OrganizationIdentity as Identity,
 } from "@ericsanchezok/synergy-organization-protocol"
 import type { Handoffs } from "../handoff"
@@ -101,14 +102,30 @@ export function handoffRoutes(handoffs: () => Handoffs, publicOrigin?: string) {
 }
 
 export function handoffMachineRoutes(handoffs: () => Handoffs) {
-  return new Hono().post(
-    "/handoffs/proof",
-    operation("orgHandoff.proof", "Reconcile an existing machine's signed durable handoff fact", Handoff.View, true),
-    validator("json", Handoff.SignedProof, validation),
-    async (c) => {
-      if (c.req.header("cookie") || c.req.header("origin"))
-        fail("PERMISSION_DENIED", "Handoff recovery requires a machine proof")
-      return c.json(await handoffs().proof(c.req.valid("json")))
-    },
-  )
+  return new Hono()
+    .post(
+      "/handoffs/object",
+      operation(
+        "orgHandoffObject.read",
+        "Relay one authorized frozen package range to its destination machine",
+        Handoff.ObjectChunk,
+        true,
+      ),
+      validator("json", Objects.Request, validation),
+      async (c) => {
+        if (c.req.header("cookie") || c.req.header("origin"))
+          fail("PERMISSION_DENIED", "Handoff objects require a machine proof")
+        return c.json(await handoffs().object(c.req.valid("json"), { signal: c.req.raw.signal }))
+      },
+    )
+    .post(
+      "/handoffs/proof",
+      operation("orgHandoff.proof", "Reconcile an existing machine's signed durable handoff fact", Handoff.View, true),
+      validator("json", Handoff.SignedProof, validation),
+      async (c) => {
+        if (c.req.header("cookie") || c.req.header("origin"))
+          fail("PERMISSION_DENIED", "Handoff recovery requires a machine proof")
+        return c.json(await handoffs().proof(c.req.valid("json")))
+      },
+    )
 }

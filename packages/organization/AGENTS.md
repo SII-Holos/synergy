@@ -14,7 +14,7 @@ Client grants bind login, callback and deployment. Consume codes atomically; ref
 
 Register config, CLI and history owners before startup. Require absolute Home; read only organization config. Keep secrets out of argv/stdout. Migrate private signing format and baseline atomically; preserve keys/public identities. Missing history requires recovery; current authorization never trusts journal entries. Verify authority-history/configuration/CLI/signing suites.
 
-Machine sockets retain service context, registration/account checks, connection fencing and commit guards. Handoff permits bind canonical Directory source ownership. Heartbeat expiry is availability only. Hosted machines have administrator-owned authority independent of a human; member account fences remain distinct. Verify connections, hosted and handoff-dispatch suites.
+Machine sockets preserve registration/account checks, fences and commit guards. Handoff permits bind Directory source ownership. Object relays verify fresh destination signatures, consent and participants before/after forwarding; retain no content. Heartbeat expiry signals availability. Hosted authority is human-independent; member account fences differ. Verify connection, hosted and handoff-dispatch/object suites.
 
 Commands derive actors from validated credentials and capture live connections inside admission. Preserve metadata attempts, unresolved receipts and skip proofs across reconnect without replay. Bounded exchanges distinguish dropped, enqueued and unknown sends; observe cancellation independently and recheck binding/access after replies. Verify command-admission and command-forwarding suites plus Presets integration.
 

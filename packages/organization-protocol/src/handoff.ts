@@ -196,7 +196,7 @@ export namespace OrganizationHandoffProtocol {
     commandSeq: Identity.Revision,
     controlRevision: Identity.Revision,
     authRevision: Identity.Revision,
-    actor: ActorStamp.Account,
+    actor: ActorStamp.Info,
     issuedAt: z.number().int().nonnegative().safe(),
     expiresAt: z.number().int().nonnegative().safe(),
     expectedRevision: Hash.optional(),
@@ -213,10 +213,16 @@ export namespace OrganizationHandoffProtocol {
         value.sourceBinding.orgID === value.orgID &&
         value.sourceBinding.driverRuntimeID === value.sourceRuntimeID &&
         value.sourceBinding.bindingEpoch === value.fromEpoch &&
+        value.actor.kind !== "local" &&
         value.actor.orgID === value.orgID &&
         value.actor.requestID === value.requestID &&
-        value.actor.clientKind !== "runtime" &&
-        value.actor.clientKind !== "system" &&
+        (value.operation === "object"
+          ? value.actor.kind === "system" &&
+            value.actor.clientKind === "runtime" &&
+            value.actor.subjectID === value.targetRuntimeID
+          : value.actor.kind === "account" &&
+            value.actor.clientKind !== "runtime" &&
+            value.actor.clientKind !== "system") &&
         value.runtimeID === (machineRole(value.operation) === "source" ? value.sourceRuntimeID : value.targetRuntimeID),
       "Machine control requires its canonical source and exact destination",
     )

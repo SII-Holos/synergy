@@ -6,11 +6,18 @@ import {
   OrganizationGatewayProtocol as Gateway,
   OrganizationKnowledgeProtocol as Knowledge,
   OrganizationPublicationProtocol as Publication,
+  OrganizationHandoffProtocol as Handoff,
+  OrganizationHandoffObjectProtocol as Objects,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationRuntimeError } from "./error"
 
 export interface MemberResourceClient {
+  handoffObject(
+    reference: HandoffObjectReference,
+    range: z.infer<typeof Handoff.ObjectRange>,
+    signal?: AbortSignal,
+  ): Promise<z.infer<typeof Handoff.ObjectChunk>>
   retention(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Grant>
   describe(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Description>
   bind(proof: Execution.BindingProof, signal?: AbortSignal): Promise<Execution.BoundGrant>
@@ -54,7 +61,24 @@ export interface MemberResourceClient {
   ): Promise<Knowledge.ExecutionPage>
 }
 
-type Proof = Execution.DescriptionProof | Execution.BindingProof | Execution.ReleaseProof | Gateway.Proof
+export type HandoffObjectReference = Pick<
+  Objects.Proof,
+  | "schemaVersion"
+  | "orgID"
+  | "deploymentIncarnation"
+  | "handoffID"
+  | "sessionID"
+  | "sourceRuntimeID"
+  | "targetRuntimeID"
+  | "fromEpoch"
+  | "toEpoch"
+  | "mappingPlanRevision"
+  | "shareGeneration"
+  | "manifestHash"
+>
+
+type Proof =
+  Execution.DescriptionProof | Execution.BindingProof | Execution.ReleaseProof | Gateway.Proof | Objects.Proof
 
 function failure(
   code: OrganizationProtocol.Error["code"],
@@ -273,6 +297,39 @@ export function createMemberResourceClient(options: {
     return permit
   }
   const resources: MemberResourceClient = {
+    async handoffObject(reference, range, signal) {
+      const issuedAt = Date.now()
+      const proof = Objects.Proof.parse({
+        ...reference,
+        purpose: "handoff-object-read",
+        runtimeID: connection.runtimeID,
+        connectionEpoch: connection.connectionEpoch,
+        requestID: crypto.randomUUID(),
+        range,
+        issuedAt,
+        expiresAt: issuedAt + 15_000,
+      })
+      return invoke(
+        proof,
+        Handoff.ObjectChunk,
+        async (signal) =>
+          client.orgHandoffObject.read(
+            {
+              orgHandoffObjectRequest: { proof, signature: await Objects.sign(proof, options.key) },
+            },
+            { signal },
+          ),
+        (result) => {
+          if (
+            result.hash !== proof.range.hash ||
+            result.offset !== proof.range.offset ||
+            result.nextOffset - result.offset > proof.range.length
+          )
+            throw failure("PROTOCOL_MISMATCH", "Handoff object response changed its immutable range")
+        },
+        signal,
+      )
+    },
     async activateKnowledge(value, selection, signal) {
       const proof = Execution.DescriptionProof.parse(value)
       return invoke(

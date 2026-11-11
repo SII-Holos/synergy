@@ -2292,6 +2292,37 @@ export type OrgHandoffDrive = {
   cursor?: string
 }
 
+export type OrgHandoffObjectProof = {
+  schemaVersion: 1
+  purpose: "handoff-object-read"
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  runtimeID: string
+  connectionEpoch: number
+  requestID: string
+  manifestHash: string
+  range: {
+    hash: string
+    offset: number
+    length: number
+  }
+  issuedAt: number
+  expiresAt: number
+}
+
+export type OrgHandoffObjectRequest = {
+  proof: OrgHandoffObjectProof
+  signature: string
+}
+
 export type OrgKnowledgeExecutionPage = {
   orgID: string
   projectID: string
@@ -8191,6 +8222,58 @@ export type OrgHandoffDriveResponses = {
 }
 
 export type OrgHandoffDriveResponse = OrgHandoffDriveResponses[keyof OrgHandoffDriveResponses]
+
+export type OrgHandoffObjectReadData = {
+  body: OrgHandoffObjectRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/handoffs/object"
+}
+
+export type OrgHandoffObjectReadErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffObjectReadError = OrgHandoffObjectReadErrors[keyof OrgHandoffObjectReadErrors]
+
+export type OrgHandoffObjectReadResponses = {
+  /**
+   * Success
+   */
+  200: {
+    hash: string
+    offset: number
+    nextOffset: number
+    totalBytes: number
+    data: string
+    complete: boolean
+  }
+}
+
+export type OrgHandoffObjectReadResponse = OrgHandoffObjectReadResponses[keyof OrgHandoffObjectReadResponses]
 
 export type OrgHandoffProofData = {
   body: OrgHandoffSignedProof

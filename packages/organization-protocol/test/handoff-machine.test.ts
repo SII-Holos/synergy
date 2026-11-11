@@ -80,9 +80,22 @@ test("machine replies cannot switch handoff facts or use an object range as arbi
   const input = Handoff.MachinePlan.parse({
     ...plan,
     operation: "object",
+    actor: {
+      kind: "system",
+      orgID: plan.orgID,
+      subjectID: plan.targetRuntimeID,
+      displayName: "Destination Runtime",
+      clientKind: "runtime",
+      requestID: plan.requestID,
+    },
     manifestHash: "a".repeat(64),
     object: { hash: "b".repeat(64), offset: 4, length: 2 },
   })
+  expect(Handoff.MachinePlan.safeParse({ ...input, actor: plan.actor }).success).toBe(false)
+  expect(
+    Handoff.MachinePlan.safeParse({ ...input, actor: { ...input.actor, subjectID: "foreign-runtime" } }).success,
+  ).toBe(false)
+  expect(Handoff.MachinePlan.safeParse({ ...plan, actor: input.actor }).success).toBe(false)
   const reply = Handoff.MachineResult.parse({
     handoffID: input.handoffID,
     requestID: input.requestID,

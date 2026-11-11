@@ -97,4 +97,6 @@ Update [Frontend data sync](../../../docs/architecture/frontend-data-sync.md) wh
 
 For machine handoff actions, address an existing durable handoff and derive its signed plan from current stored ownership and connection authority. Keep the path separate from input/Continue admission. Test post-response revocation, finite plan tampering and explicit inspection after an unknown send with the real transport; verify that a missing native callback advertises no capability. Object reads require a completely verified package closure, not merely a hash written during an interrupted export. Exercise cold reopening, cancellation and unreachable retained bytes through the native owner before exposing range relay.
 
+For long destination copies, refresh a separate machine-signed finite proof per bounded range. Bind the full stored handoff and live destination connection, reauthorize both participants after the source response, and reject browser credentials. Native receivers verify contiguous offsets and the final frame checksum before retention. Test same-Store producer reads through real native staging; never bypass the binary owner's gate or silently replace corrupt cached bytes with remote content.
+
 Report route and operation ID, Scope ownership, schema/errors, generated method, event/snapshot behavior, consumers migrated, generated files, and tests.

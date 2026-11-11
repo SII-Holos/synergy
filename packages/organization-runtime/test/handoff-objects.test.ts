@@ -61,6 +61,7 @@ test("escaped handoff object handles reject another Store or artifact directory 
           await expect(objects.store.put(hash(foreignBytes), foreignBytes)).rejects.toThrow("storage owner")
           await expect(objects.store.get(objectHash, bytes.length)).rejects.toThrow("storage owner")
           await expect(objects.inspect()).rejects.toThrow("storage owner")
+          await expect(objects.contains(objectHash)).rejects.toThrow("storage owner")
           await expect(objects.sealSource()).rejects.toThrow("storage owner")
           await expect(
             objects.range({ manifestHash: objectHash, hash: objectHash, offset: 0, limit: 16 }),
@@ -84,6 +85,7 @@ test("escaped handoff object handles reject another Store or artifact directory 
     await otherRuntime.run(async () => {
       await expect(objects.store.put(hash(foreignBytes), foreignBytes)).rejects.toThrow("another native Runtime")
       await expect(objects.inspect()).rejects.toThrow("another native Runtime")
+      await expect(objects.contains(objectHash)).rejects.toThrow("another native Runtime")
       expect(await Storage.query({ prefix: ["organization_handoff_objects"], limit: 1 })).toEqual([])
       expect(await Storage.artifactReferences({ prefix: ["organization_handoff_objects"], limit: 1 })).toEqual([])
     })

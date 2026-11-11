@@ -126,6 +126,9 @@ import type {
   OrgHandoffGetResponses,
   OrgHandoffListErrors,
   OrgHandoffListResponses,
+  OrgHandoffObjectReadErrors,
+  OrgHandoffObjectReadResponses,
+  OrgHandoffObjectRequest,
   OrgHandoffPermitErrors,
   OrgHandoffPermitRequest,
   OrgHandoffPermitResponses,
@@ -3772,6 +3775,34 @@ export class OrgHandoff extends HeyApiClient {
   }
 }
 
+export class OrgHandoffObject extends HeyApiClient {
+  /**
+   * Relay one authorized frozen package range to its destination machine
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgHandoffObjectRequest: OrgHandoffObjectRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgHandoffObjectRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgHandoffObjectReadResponses,
+      OrgHandoffObjectReadErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/handoffs/object",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgKnowledgeExecution extends HeyApiClient {
   /**
    * Read the versions selected by accepted Session work
@@ -4344,6 +4375,8 @@ export class OrganizationClient extends HeyApiClient {
   orgCloudEnvironments = new OrgCloudEnvironments({ client: this.client })
 
   orgHandoff = new OrgHandoff({ client: this.client })
+
+  orgHandoffObject = new OrgHandoffObject({ client: this.client })
 
   orgKnowledgeExecution = new OrgKnowledgeExecution({ client: this.client })
 

@@ -71,6 +71,7 @@ export interface MemberConnectionOptions {
     authorization: Handoff.SignedMachinePlan,
     connection: Connected,
     signal: AbortSignal,
+    resources: MemberResourceClient,
   ) => Promise<Handoff.MachineExecution>
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
   interactions?: (
@@ -454,7 +455,8 @@ async function attempt(input: {
     try {
       const command = frame.command
       if (command.kind === "handoff") {
-        if (!options.handoff || !connected) throw failure("PROTOCOL_MISMATCH", "Native handoff control is unavailable")
+        if (!options.handoff || !connected || !resources)
+          throw failure("PROTOCOL_MISMATCH", "Native handoff control is unavailable")
         const { plan, signature } = command.authorization
         if (
           plan.orgID !== connected.orgID ||
@@ -468,7 +470,7 @@ async function attempt(input: {
         )
           throw failure("PERMISSION_DENIED", "Handoff machine plan is invalid for this connection")
         const execution = Handoff.MachineExecution.parse(
-          await options.handoff(command.authorization, connected, work.signal),
+          await options.handoff(command.authorization, connected, work.signal, resources.resources),
         )
         const result = Handoff.MachineResult.parse({
           ...execution,

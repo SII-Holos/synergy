@@ -2,6 +2,7 @@ import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationHandoffObjectProtocol as Objects,
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
@@ -241,7 +242,109 @@ export function createHandoffs(options: {
     await Storage.write(key(record.handoffID), Stored.parse(record))
   }
 
+  async function objectAuthority(request: Objects.Request) {
+    const proof = request.proof
+    if (proof.issuedAt > Date.now() || proof.expiresAt <= Date.now())
+      fail("PERMISSION_DENIED", "Handoff object request is outside its finite authorization window")
+    const record = await load(proof.handoffID)
+    if (bindingFields.some((field) => record[field] !== proof[field]))
+      fail("PERMISSION_DENIED", "Handoff object request belongs to another source or destination")
+    if (
+      record.cancelRequested ||
+      !record.frozen ||
+      record.manifestHash !== proof.manifestHash ||
+      ["cancelled", "completed", "retired"].includes(record.phase)
+    )
+      fail("HANDOFF_BLOCKED", "Handoff has no currently authorized frozen package")
+    const access = await eligible(record)
+    const target = options.connections.captureHandoff(record.targetRuntimeID)
+    const authority = await runtimeAuthority(proof)
+    assertRuntimeConnection(authority.runtime, target.handshake)
+    if (
+      authority.runtime.publicKey !== record.target.publicKey ||
+      !(await Objects.verify(proof, request.signature, authority.runtime.publicKey))
+    )
+      fail("PERMISSION_DENIED", "Handoff destination signature is invalid")
+    const source = options.connections.captureHandoff(record.sourceRuntimeID)
+    const sourceAuthority = await runtimeAuthority({
+      ...proof,
+      runtimeID: record.sourceRuntimeID,
+      connectionEpoch: source.handshake.connectionEpoch,
+    })
+    assertRuntimeConnection(sourceAuthority.runtime, source.handshake)
+    if (sourceAuthority.runtime.publicKey !== record.source.publicKey)
+      fail("PERMISSION_DENIED", "Handoff source identity changed")
+    access.guard()
+    target.assertCurrent()
+    source.assertCurrent()
+    return { record, current: access.current, source, target, account: authority.account }
+  }
+
   const api = {
+    async object(value: Objects.Request, input: { signal: AbortSignal }): Promise<z.infer<typeof Handoff.ObjectChunk>> {
+      const request = Objects.Request.parse(value)
+      input.signal.throwIfAborted()
+      const authorized = await Storage.snapshot(async () => {
+        const access = await objectAuthority(request)
+        const record = access.record
+        const issuedAt = Date.now()
+        const authorization = await options.signing.signHandoffMachine(
+          Handoff.MachinePlan.strip().parse({
+            ...record,
+            purpose: "handoff-machine",
+            operation: "object",
+            requestID: request.proof.requestID,
+            keyID: options.signing.identity.keyID,
+            runtimeID: record.sourceRuntimeID,
+            connectionEpoch: access.source.handshake.connectionEpoch,
+            controlRevision: access.current.controlRevision,
+            authRevision: access.account?.authRevision ?? 0,
+            sourceBinding: {
+              schemaVersion: 1,
+              orgID: record.orgID,
+              projectID: access.current.projectID,
+              creatorID: access.current.creatorID,
+              driverRuntimeID: record.sourceRuntimeID,
+              bindingEpoch: record.fromEpoch,
+            },
+            actor: {
+              kind: "system",
+              orgID: record.orgID,
+              subjectID: record.targetRuntimeID,
+              displayName: "Destination Runtime",
+              clientKind: "runtime",
+              requestID: request.proof.requestID,
+            },
+            object: request.proof.range,
+            issuedAt,
+            expiresAt: Math.min(issuedAt + timeoutMs, request.proof.expiresAt),
+          }),
+        )
+        return { ...access, authorization }
+      })
+      const reply = await authorized.source.exchange(
+        { kind: "handoff", authorization: authorized.authorization },
+        { signal: input.signal, deadline: authorized.authorization.plan.expiresAt },
+      )
+      input.signal.throwIfAborted()
+      authorized.source.assertCurrent()
+      authorized.target.assertCurrent()
+      if (reply.kind === "error") throw new OrganizationError(reply.error)
+      if (
+        reply.kind !== "handoff" ||
+        !Handoff.matchesMachine(authorized.authorization.plan, reply.result) ||
+        reply.result.state !== "complete" ||
+        reply.result.facts.length ||
+        !reply.result.object
+      )
+        fail("PROTOCOL_MISMATCH", "Handoff source returned another object range")
+      await Storage.snapshot(async () => {
+        await objectAuthority(request)
+        authorized.source.assertCurrent()
+        authorized.target.assertCurrent()
+      })
+      return reply.result.object
+    },
     async drive(
       credentials: Credentials,
       handoffID: string,
