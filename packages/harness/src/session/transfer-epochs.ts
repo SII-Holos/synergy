@@ -368,7 +368,7 @@ export namespace SessionTransferEpochs {
     )
   }
 
-  export async function beginSource(value: Binding) {
+  export async function beginSource(value: Binding, options: { publish?: () => Promise<void> } = {}) {
     const binding = Binding.parse(value)
     using control = await Lock.write(`session-control:${binding.sessionID}`)
     using transfer = await Lock.write(`session-transfer-epoch:${binding.sessionID}`)
@@ -383,6 +383,7 @@ export namespace SessionTransferEpochs {
       if (prior) {
         if (!matches(prior.binding, binding) || prior.role !== "source" || prior.phase === "cancelled")
           fail("source intent identity cannot be reused")
+        await options.publish?.()
         return prior
       }
       const intent = await optional(SourceIntent, sourceIntentKey(binding.sessionID))
@@ -399,6 +400,7 @@ export namespace SessionTransferEpochs {
       const record = State.parse({ version: 1, binding, role: "source", phase: "draining" })
       await save(record)
       await Storage.write(sourceIntentKey(binding.sessionID), SourceIntent.parse({ version: 1, binding }))
+      await options.publish?.()
       return record
     })
   }

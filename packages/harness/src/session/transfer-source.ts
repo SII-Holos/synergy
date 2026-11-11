@@ -31,10 +31,20 @@ export namespace SessionTransferSource {
     closureHash: z.string().regex(/^[a-f0-9]{64}$/),
     members: z.number().int().positive().safe(),
   })
+  const Cancelled = z.strictObject({
+    version: z.literal(1),
+    binding: Epochs.Binding,
+    manifestHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .nullable(),
+    members: z.number().int().positive().safe(),
+  })
   const prefix = (binding: Epochs.Binding) => ["session_transfer_source", binding.handoffID, binding.sessionID]
   const memberKey = (binding: Epochs.Binding, sessionID: string) => [...prefix(binding), "members", sessionID]
   const stateKey = (binding: Epochs.Binding) => [...prefix(binding), "state"]
   const candidateKey = (binding: Epochs.Binding) => [...prefix(binding), "candidate"]
+  const cancellationKey = (binding: Epochs.Binding) => [...prefix(binding), "cancelled"]
   function fail(message: string): never {
     throw new Owners.Rejected({ message })
   }
@@ -82,6 +92,90 @@ export namespace SessionTransferSource {
         fail("Source cohort member belongs to another handoff")
       yield member
     }
+  }
+
+  export async function cancellation(value: Epochs.Binding) {
+    const binding = Epochs.Binding.parse(value)
+    return Storage.snapshot(async () => {
+      const [raw] = await Storage.readMany([cancellationKey(binding)])
+      if (raw === undefined) return
+      const receipt = Cancelled.parse(raw)
+      if (!same(receipt.binding, binding)) fail("Source cancellation belongs to another immutable binding")
+      const epoch = await Epochs.inspect(binding)
+      if (epoch.role !== "source" || epoch.phase !== "cancelled")
+        fail("Source cancellation is missing its permanently cancelled root")
+      return receipt
+    })
+  }
+
+  export async function cancel(input: {
+    binding: Epochs.Binding
+    store: BlobStore
+    signal: AbortSignal
+    verify(): Promise<void>
+  }) {
+    const binding = Epochs.Binding.parse(input.binding)
+    input.signal.throwIfAborted()
+    await input.verify()
+    const retained = await cancellation(binding)
+    if (retained) return retained
+    const stopped = new Error("Source cancellation reached the complete drained cohort")
+    try {
+      await prepare({
+        ...input,
+        binding,
+        async beforeFreeze() {
+          throw stopped
+        },
+      })
+    } catch (error) {
+      if (error !== stopped) throw error
+    }
+    using lock = await Lock.writeWithSignal("session-transfer-source:" + binding.sessionID, input.signal)
+    input.signal.throwIfAborted()
+    if (!lock) fail("Source cancellation could not acquire its native lock")
+    const prepared = await status(binding)
+    return Storage.transaction(
+      async () => {
+        input.signal.throwIfAborted()
+        await input.verify()
+        const retained = await cancellation(binding)
+        if (retained) return retained
+        const root = await Session.get(binding.sessionID)
+        if (!root.paused || root.scope.id !== binding.scopeID)
+          fail("Source cancellation requires its paused native root")
+        let count = 0
+        let found = false
+        for await (const member of members(binding, input.signal)) {
+          for await (const child of Session.childIndexEntries(
+            binding.scopeID,
+            member.binding.sessionID,
+            input.signal,
+          )) {
+            const [raw] = await Storage.readMany([memberKey(binding, child.id)])
+            if (raw === undefined || !same(Member.parse(raw).binding, memberBinding(binding, child.id)))
+              fail("Source cancellation omits a canonical descendant")
+          }
+          found ||= member.binding.sessionID === binding.sessionID
+          count++
+        }
+        if (!found || !count) fail("Source cancellation requires its complete drained cohort")
+        for await (const member of members(binding, input.signal)) await Epochs.cancel(member.binding)
+        const receipt = Cancelled.parse({
+          version: 1,
+          binding,
+          manifestHash: prepared?.manifestHash ?? null,
+          members: count,
+        })
+        await Storage.write(cancellationKey(binding), receipt)
+        return receipt
+      },
+      {
+        commitGuard() {
+          input.signal.throwIfAborted()
+        },
+      },
+    )
   }
 
   async function complete(
@@ -178,8 +272,15 @@ export namespace SessionTransferSource {
         return added
       }
       await add(root.id)
+      const rootOwners = await Owners.selected(context(binding, root, input.signal), ["session-core"])
       await SessionLifecycle.pause({ sessionID: root.id, reason: "interrupted" })
-      await Epochs.beginSource(binding)
+      await Epochs.beginSource(binding, {
+        publish: () =>
+          Storage.write(
+            memberKey(binding, root.id),
+            Member.parse({ version: 1, binding, owners: Owners.versions(rootOwners) }),
+          ),
+      })
       const discover = async () => {
         let added = 0
         using pending = database.prepare<{ id: string; owners: string | null }, []>(
@@ -251,15 +352,17 @@ export namespace SessionTransferSource {
             if (!SessionInteraction.isUnattended(session.interaction) && !session.cortex) {
               await SessionLifecycle.pause({ sessionID: row.id, reason: "interrupted" })
             }
-            await Epochs.beginSource(member)
-            await Storage.write(
-              memberKey(binding, row.id),
-              Member.parse({
-                version: 1,
-                binding: member,
-                owners: Owners.versions(z.array(z.string()).parse(JSON.parse(row.owners))),
-              }),
-            )
+            await Epochs.beginSource(member, {
+              publish: () =>
+                Storage.write(
+                  memberKey(binding, row.id),
+                  Member.parse({
+                    version: 1,
+                    binding: member,
+                    owners: Owners.versions(z.array(z.string()).parse(JSON.parse(row.owners))),
+                  }),
+                ),
+            })
             held.run(row.id)
           }
         }

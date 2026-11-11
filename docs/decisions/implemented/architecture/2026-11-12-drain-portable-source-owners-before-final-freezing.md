@@ -18,6 +18,10 @@ Final member freezing follows native child-to-root order. Each epoch transaction
 
 Cohort enumeration, parent order and closure checks use bounded SQL caches and seekable rows rather than an aggregate-sized JavaScript collection. Temporary indexes are removed on success or failure. Per-member recovery records remain available after failure, while only a complete sealed source package is returned by status.
 
+New root and child intents publish their source member record through the epoch owner's transaction, after acquiring its native locks. A failed member write therefore rolls back the intent and allocation together. The callback composes record publication and cannot perform external effects.
+
+`SessionTransferSource.cancel()` first completes that same native discovery and drainage, stopping before final freezing or export when no package exists. This also repairs an older member index interrupted after its epoch intent was committed. Under the source lock, it rechecks the command barrier, canonical descendant membership and the paused root, then cancels every member epoch and writes its versioned operation receipt in one transaction. Any surrendered member or failed receipt publication rolls back that transaction. Cached receipt reads check the exact binding and permanently cancelled root without rescanning an immutable historical cohort; the receipt can only be published with the complete cancellation. Cancellation preserves native task holds and pause and never requests Continue.
+
 ## Alternatives considered
 
 **Freeze the root before processing children.** This prevents valid native child completion from updating its parent and can lose the original continuation identity if callers work around the rejection by cancellation.
@@ -30,7 +34,11 @@ Cohort enumeration, parent order and closure checks use bounded SQL caches and s
 
 **Use ordinary turn settlement as a snapshot drain.** Ordinary settlement consumes its recording failures. A second preparation could then seal incomplete evidence, and a concurrent settlement could hide a child's failure before discovery. Native capture preserves that existing error instead of adding a competing persistent error store.
 
+**Cancel only the root or the first saved member index.** A crash can leave a child's committed intent without its source index row. Repairing the native cohort before the atomic cancellation prevents a hidden hold from being stranded behind an apparently cancelled root.
+
 ## Consequences
+
+Cancellation fixtures fail a source member-index write and verify the child's intent rolls back. They then seed an older partial intent, fail the final cancellation receipt and verify rollback of all epoch changes. Successful retry and cold reopening retain the same complete result. A surrendered child prevents release of the remaining frozen root. The actual TaskTool/provider fixture also invokes cancellation directly, preserving its original task, root and hold with no package or extra provider call. See `test/session/transfer-source-cancel.test.ts` and `test/session/transfer-source-task.test.ts`.
 
 Every member's Core idle and recording tails drain before the optional external `beforeFreeze()` preparation callback runs. That callback runs outside a SQL write transaction and before any member's final epoch fence, allowing the physical owner to finish native claim drainage and immutable file capture. The command barrier is rechecked afterward; owner receipts and child-before-parent final epoch validation remain independent. A rejected preparation leaves the source held without exporting a package. Retained completed candidates reconcile through their existing path, so callers must separately revalidate their physical lease when inspecting an existing package. `test/session/transfer-source-physical.test.ts` exercises real root and child recording jobs, failed physical preparation, exact retry and the SQL boundary; it does not supply physical writer proof itself.
 
