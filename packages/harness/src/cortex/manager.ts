@@ -16,6 +16,7 @@ import { Config } from "../config/config"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { Session } from "../session"
+import { SessionCortexIndex } from "../session/cortex-index"
 import { Storage } from "../storage/storage"
 import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { lastModel } from "../session/input"
@@ -1394,7 +1395,27 @@ export namespace Cortex {
   }
 
   export function getVisibleTask(sessionID: string, taskID: string): CortexTypes.Task | undefined {
-    return getVisibleTasks(sessionID).find((task) => task.id === taskID)
+    const task = get(taskID)
+    return task?.parentSessionID === sessionID && task.visibility !== "hidden" ? task : undefined
+  }
+
+  export async function visibleSummaryPage(parentSessionID: string, input: { cursor?: string; limit?: number }) {
+    const parent = await Session.get(parentSessionID)
+    if (parent.scope.id !== ScopeContext.current.scope.id)
+      throw new Storage.NotFoundError({ message: "Cortex parent not found" })
+    await SessionCortexIndex.prepare(parent.scope.id, parent.id)
+    const page = await SessionCortexIndex.page(parent.scope.id, parent.id, input)
+    return {
+      ...page,
+      items: page.items.map((item) => {
+        const live = getVisibleTask(parent.id, item.taskID)
+        return CortexTypes.TaskSummary.parse({
+          ...item,
+          id: item.taskID,
+          progress: live?.sessionID === item.sessionID ? CortexTypes.summarize(live).progress : undefined,
+        })
+      }),
+    }
   }
 
   function taskFromDurableSession(session: import("../session/types").Info): CortexTypes.Task | undefined {
@@ -1434,16 +1455,28 @@ export namespace Cortex {
     sessionID?: string,
   ): Promise<CortexTypes.Task | undefined> {
     const scopeID = ScopeContext.current.scope.id
-    const parent = await SessionManager.getSession(parentSessionID)
+    const parent = await Session.get(parentSessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return
+      throw error
+    })
     if (!parent || parent.scope.id !== scopeID) return undefined
     const live = getVisibleTask(parentSessionID, taskID)
-    const children = sessionID
-      ? [await SessionManager.getSession(sessionID)]
-      : live
-        ? [await SessionManager.getSession(live.sessionID)]
-        : (await Session.children(parentSessionID)).filter((session) => session.cortex?.taskID === taskID)
-    if (children.length !== 1) return undefined
-    const child = children[0]
+    let childSessionID = sessionID ?? live?.sessionID
+    if (!childSessionID) {
+      await SessionCortexIndex.prepare(scopeID, parentSessionID)
+      let cursor: string | undefined
+      do {
+        const page = await SessionCortexIndex.page(scopeID, parentSessionID, { cursor, limit: 64 })
+        for (const item of page.items) {
+          if (item.taskID !== taskID) continue
+          if (childSessionID) return undefined
+          childSessionID = item.sessionID
+        }
+        cursor = page.cursor
+      } while (cursor)
+    }
+    if (!childSessionID) return undefined
+    const child = await SessionManager.getSession(childSessionID)
     if (
       !child ||
       child.scope.id !== scopeID ||

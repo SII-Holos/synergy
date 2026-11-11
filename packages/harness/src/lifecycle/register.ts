@@ -21,6 +21,7 @@ import { WorkspaceMounts } from "../workspace/mount"
 import { EnvironmentExecution } from "../environment/execution"
 import { registerSnapshotOwnershipMigrations } from "../session/snapshot-ownership-migration"
 import { registerSessionChildIndexMigrations } from "../session/child-index-migration"
+import { registerSessionCortexIndexMigrations } from "../session/cortex-index-migration"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -33,6 +34,7 @@ export function registerHarness() {
   registerSessionMigrations()
   registerSnapshotOwnershipMigrations()
   registerSessionChildIndexMigrations()
+  registerSessionCortexIndexMigrations()
   registerObservabilityMigrations()
   registerStorageMigrations()
   UsageMigration.register()

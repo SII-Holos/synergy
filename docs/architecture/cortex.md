@@ -24,6 +24,8 @@ Task list, bootstrap and task-event collections expose `TaskSummary`, containing
 
 Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. These fields let a plugin resume its own domain workflow without treating the in-memory Cortex map as durable state.
 
+`Cortex.visibleSummaryPage()` reads the Session-owned versioned Cortex projection. Native lifecycle and import writers update visible summary rows and counts atomically; cursors bind Scope and parent and remain seekable after deletion. Registered owner preparation builds old metadata outside read snapshots without rewriting private fields or adding scans to ordinary Session reads. Parent-qualified cold output lookup scans those thin pages before validating one canonical child; exact child qualifiers disambiguate imported task IDs. See [native Cortex pages](../decisions/implemented/architecture/2026-11-11-page-native-cortex-metadata-without-child-payloads.md).
+
 The Plugin Task Host can resolve the task that owns the current invocation directly from this durable child-Session metadata. Ownership is committed before child execution begins, so an internal plugin tool can bind through the correlation ID even before the original `start()` call has returned to the plugin.
 
 ## Launch and Concurrency

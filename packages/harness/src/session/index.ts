@@ -49,6 +49,7 @@ import { SessionLastExchange } from "./last-exchange"
 import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionCompat } from "./compat-import"
 import { SessionChildIndex } from "./child-index"
+import { SessionCortexIndex } from "./cortex-index"
 import { SessionTransferGate } from "./transfer-gate"
 import { StorageCompat } from "../storage/compat"
 import { Config } from "../config/config"
@@ -191,6 +192,7 @@ export namespace Session {
       "endpoint_session",
       "sessions_page_index",
       "session_child_index",
+      "session_cortex_index",
       "session_nav_v2",
     ])
       await tx.removeTree([root])
@@ -214,6 +216,8 @@ export namespace Session {
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")
           await tx.write(["session_index", session.id], index)
+          await SessionCortexIndex.initialize(scopeID, session.id, false)
+          await SessionCortexIndex.sync(session)
           if (session.endpoint)
             await tx.write(
               StoragePath.endpointSession(SessionEndpoint.toKey(session.endpoint), asSessionID(session.id)),
@@ -236,6 +240,7 @@ export namespace Session {
         updatedAt: Date.now(),
         entries: nav,
       })
+      await SessionCortexIndex.completeScope(scopeID)
     }
     await tx.remove(StoragePath.rolloutRecoveryPending())
   }
@@ -721,6 +726,8 @@ export namespace Session {
       )
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await SessionHistoryDisplay.initialize(scope.id, result.id)
+      await SessionCortexIndex.initialize(scope.id, result.id, true)
+      await SessionCortexIndex.sync(result)
       await writeEndpointIndex(result)
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
       if (result.parentID) await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
@@ -1480,6 +1487,7 @@ export namespace Session {
       }
       if (!options?.preserveActivityAt) result.time.updated = Date.now()
       await Storage.write(StoragePath.sessionInfo(scopeID, sessionID), SessionRecords.serialize(result))
+      await SessionCortexIndex.sync(result, before)
 
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
@@ -1731,6 +1739,7 @@ export namespace Session {
         await MessageV2.removeOrderIndex(scopeID, sid)
         await SessionNav.removeNavEntry(scope.id, id)
         await Storage.removeTree(StoragePath.sessionRoot(scopeID, sid))
+        await SessionCortexIndex.remove(session)
         await Storage.remove(StoragePath.sessionIndex(sid))
         await removePageIndexEntry(scope.id, id)
         if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, id)

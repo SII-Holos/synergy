@@ -21,6 +21,7 @@ import { validateLegacyRecord } from "../storage/legacy-record"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Info } from "./types"
+import { SessionCortexIndex } from "./cortex-index"
 import type { SessionEndpoint } from "./endpoint"
 import type { ScopeNavIndex } from "./nav"
 import type { Session } from "."
@@ -754,6 +755,8 @@ export namespace SessionCompat {
     const session = await projectInfo(await Storage.read(StoragePath.sessionInfo(scopeID, sessionID)))
     await Storage.transaction(async () => {
       await Storage.write(StoragePath.sessionIndex(sessionID), Session.toIndex(session))
+      await SessionCortexIndex.initialize(scopeID, session.id, false)
+      await SessionCortexIndex.sync(session)
       await Session.upsertPageIndexEntry(scopeID, Session.toPageIndexEntry(session))
       if (session.parentID)
         await Session.upsertChildIndexEntry(scopeID, session.parentID, Session.toChildIndexEntry(session))
