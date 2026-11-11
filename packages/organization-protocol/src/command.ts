@@ -7,6 +7,8 @@ import { OrganizationInteractionProtocol as Interactions } from "./interaction.j
 import { SigningPublicKey, SigningSignature, digestProtocol, signedProtocol } from "./signature.js"
 
 export namespace OrganizationCommandProtocol {
+  export const inputByteLimit = 4 * 1024 * 1024
+  export const decisionByteLimit = 512 * 1024
   export const SigningIdentity = z
     .strictObject({
       schemaVersion: z.literal(1),
@@ -78,7 +80,7 @@ export namespace OrganizationCommandProtocol {
         .max(128),
     })
     .refine(
-      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 4 * 1024 * 1024,
+      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= inputByteLimit,
       "Input payload is too large",
     )
     .meta({ ref: "OrgCommandInput" })
@@ -212,7 +214,7 @@ export namespace OrganizationCommandProtocol {
         ),
     ])
     .refine(
-      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 512 * 1024,
+      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= decisionByteLimit,
       "Decision payload exceeds its transport window",
     )
     .meta({ ref: "OrgCommandDecision" })

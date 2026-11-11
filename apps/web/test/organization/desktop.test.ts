@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test"
-import type { OrganizationDesktop as Desktop } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationCommandStream as Stream,
+  OrganizationRuntimeProtocol as Runtime,
+  type OrganizationDesktop as Desktop,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { createDesktopOrganizationClient, desktopOrganizationFetch } from "../../src/organization/desktop"
 
 const connection: Desktop.Connection = {
@@ -35,6 +39,7 @@ function fixture() {
     bindProject: async () => ({ ok: false, error: { code: "unavailable" } }),
     memberRequest: async () => ({ ok: false, error: { code: "unavailable" } }),
     downloadContent: async () => ({ ok: false, error: { code: "unavailable" } }),
+    commandStream: async () => ({ ok: false, error: { code: "unavailable" } }),
     cancel: async (input) => {
       cancelled.push(input.requestID)
       return { ok: true, value: undefined }
@@ -140,4 +145,59 @@ test("native content transfers preserve binary bytes, bounded ranges and cancell
   await expect(
     native(`${connection.issuer}/org/v1/projects`, { headers: { Range: "bytes=0-4194304" } }),
   ).rejects.toMatchObject({ code: "invalid_request" })
+})
+
+test("the generated SDK streams canonical command bodies beyond one IPC frame while keeping the original logical identity", async () => {
+  const f = fixture()
+  const frames: Stream.Frame[] = []
+  const chunks: Uint8Array[] = []
+  f.bridge.commandStream = async (frame) => {
+    frames.push(frame)
+    if (frame.type === "finish")
+      return {
+        ok: true,
+        value: {
+          kind: "response",
+          requestID: frame.requestID,
+          response: { status: 202, body: JSON.stringify({ original: true }) },
+        },
+      }
+    if (frame.type === "chunk") {
+      const bytes = new Uint8Array(Buffer.from(frame.data, "base64url"))
+      chunks.push(bytes)
+      return {
+        ok: true,
+        value: { kind: "progress", requestID: frame.requestID, nextOffset: frame.offset + bytes.byteLength },
+      }
+    }
+    return { ok: true, value: { kind: "progress", requestID: frame.requestID, nextOffset: 0 } }
+  }
+  const command = {
+    schemaVersion: 1,
+    orgID: connection.orgID,
+    requestID: "logical-one",
+    sessionID: "session-one",
+    projectID: "project-one",
+    runtimeID: "runtime-one",
+    input: { operation: "input", mode: "task", parts: [{ type: "text", text: "汉字🙂".repeat(20_000) }] },
+  } as const
+  const client = createDesktopOrganizationClient(f.bridge, connection)
+  const result = await client.orgCommands.input(
+    {
+      sessionID: command.sessionID,
+      orgCommandInputRequest: { ...command, input: { ...command.input, parts: [...command.input.parts] } },
+    },
+    { throwOnError: true },
+  )
+  const responseBody: unknown = result.data
+  expect(responseBody).toEqual({ original: true })
+  expect(frames[0]).toMatchObject({ type: "begin", header: { requestID: "logical-one" } })
+  expect(frames[0]?.requestID).not.toBe("logical-one")
+  expect(JSON.parse(Buffer.concat(chunks).toString("utf8"))).toEqual(command.input)
+  expect(
+    frames
+      .filter((frame) => frame.type === "chunk")
+      .every((frame) => Buffer.from(frame.data, "base64url").byteLength <= Runtime.commandChunkBytes),
+  ).toBe(true)
+  expect(f.requests).toHaveLength(0)
 })

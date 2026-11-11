@@ -4,8 +4,10 @@ import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationLocalProjectProtocol as LocalProject } from "./local-project.js"
 import { OrganizationReadProtocol as Read } from "./read.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
+import { OrganizationCommandStream as CommandStream } from "./command-stream.js"
 
 export namespace OrganizationDesktop {
+  export const ControlLimit = 65_536
   export const BinaryLimit = 4 * 1024 * 1024
   const Bytes = z
     .instanceof(Uint8Array)
@@ -45,7 +47,7 @@ export namespace OrganizationDesktop {
       connectionID: Identity.Token,
       method: z.enum(["GET", "POST", "PATCH", "PUT", "DELETE"]),
       path: z.string().min(1).max(8192),
-      body: z.string().max(65_536).optional(),
+      body: z.string().max(ControlLimit).optional(),
       bodyBytes: Bytes.optional(),
       contentType: z.literal("application/octet-stream").optional(),
       range: Range.optional(),
@@ -60,8 +62,13 @@ export namespace OrganizationDesktop {
         ctx.addIssue({ code: "custom", message: "Native content transfer fields are inconsistent" })
     })
   export type Request = z.infer<typeof Request>
+  export const JsonResponse = z.strictObject({
+    status: z.number().int().min(200).max(599),
+    body: z.string().max(2_097_152),
+  })
+  export type JsonResponse = z.infer<typeof JsonResponse>
   export const Response = z.union([
-    z.strictObject({ status: z.number().int().min(200).max(599), body: z.string().max(2_097_152) }),
+    JsonResponse,
     z.strictObject({
       status: z.number().int().min(200).max(299),
       bodyBytes: Bytes,
@@ -78,6 +85,11 @@ export namespace OrganizationDesktop {
     }),
   ])
   export type Response = z.infer<typeof Response>
+  export const CommandStreamReply = z.union([
+    CommandStream.Progress,
+    z.strictObject({ kind: z.literal("response"), requestID: Identity.ID, response: JsonResponse }),
+  ])
+  export type CommandStreamReply = z.infer<typeof CommandStreamReply>
   export const Start = z.strictObject({ requestID: Identity.ID, target: Connect })
   export type Start = z.infer<typeof Start>
   export const Cancel = z.strictObject({ requestID: Identity.ID })
@@ -114,15 +126,27 @@ export namespace OrganizationDesktop {
     binding: Protocol.SessionBinding,
     reference: Read.Content,
     fileName: Download.shape.fileName,
-  }).refine((value) => value.query.operation === "partContent" && value.reference.kind === "native" &&
-    value.query.offset === 0 && value.query.version === value.reference.version && value.query.field === value.reference.field,
-    "Saving requires an exact complete field reference")
+  }).refine(
+    (value) =>
+      value.query.operation === "partContent" &&
+      value.reference.kind === "native" &&
+      value.query.offset === 0 &&
+      value.query.version === value.reference.version &&
+      value.query.field === value.reference.field,
+    "Saving requires an exact complete field reference",
+  )
   export type ContentDownload = z.infer<typeof ContentDownload>
   export const ContentDownloadOutcome = z.discriminatedUnion("kind", [
-    z.strictObject({kind:z.literal("result"),result:DownloadResult,original:z.enum(["complete","partial"])}),
-    z.strictObject({kind:z.literal("preparing"),version:z.string().min(1).max(512),progress:z.strictObject({
-      phase:z.enum(["queued","materializing","busy"]),bytes:z.number().int().nonnegative().safe(),totalBytes:z.number().int().nonnegative().safe().optional(),
-    })}),
+    z.strictObject({ kind: z.literal("result"), result: DownloadResult, original: z.enum(["complete", "partial"]) }),
+    z.strictObject({
+      kind: z.literal("preparing"),
+      version: z.string().min(1).max(512),
+      progress: z.strictObject({
+        phase: z.enum(["queued", "materializing", "busy"]),
+        bytes: z.number().int().nonnegative().safe(),
+        totalBytes: z.number().int().nonnegative().safe().optional(),
+      }),
+    }),
   ])
   export type ContentDownloadOutcome = z.infer<typeof ContentDownloadOutcome>
   export const MemberReadOutcome = z.discriminatedUnion("kind", [
@@ -160,6 +184,7 @@ export namespace OrganizationDesktop {
     list(): Promise<Result<Connection[]>>
     connect(input: Start): Promise<Result<Connection>>
     request(input: Request): Promise<Result<Response>>
+    commandStream(input: CommandStream.Frame): Promise<Result<CommandStreamReply>>
     download(input: Download): Promise<Result<DownloadResult>>
     cancel(input: z.infer<typeof Cancel>): Promise<Result<void>>
     signOut(input: z.infer<typeof Account>): Promise<Result<Connection>>

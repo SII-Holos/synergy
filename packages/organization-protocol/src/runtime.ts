@@ -6,6 +6,7 @@ import { OrganizationSyncProtocol as Sync } from "./sync.js"
 import { SigningPublicKey, SigningSignature, signedProtocol } from "./signature.js"
 
 export namespace OrganizationRuntimeProtocol {
+  export const commandChunkBytes = 43 * 1024
   export const PublicKey = SigningPublicKey.meta({ ref: "OrgRuntimePublicKey" })
   export const Signature = SigningSignature
   export const MemberRegistration = z

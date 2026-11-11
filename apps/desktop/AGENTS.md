@@ -14,6 +14,7 @@ Load `change-browser-runtime` for native Browser pages/profiles/popups and `deve
 - Member profiles reuse `DesktopServerManager`; main owns device/Home, credentials and supervisors. Verify member-supervisor, member-registry and member-browsers tests.
 - Main selects folders and rechecks project execution/member identity after selection. Return strict summaries and opaque revisions; verify project-binding and organization IPC tests.
 - Private reads reuse the typed Runtime dispatcher. Recheck creator, member and binding around replies; verify member-read, content-download, transfer-deadline and organization IPC tests. Native saves retain idle deadlines, integrity and atomic publication.
+- Typed command streams reuse canonical input/reply schemas and byte limits. Bind each transfer to its document, account and connection; verify offsets, digest, cancellation and exact generated dispatch in organization IPC tests.
 - Native Browser creates one real `WebContentsView` per page and adopts native popups with their opener. Profile resources are shared by reference count; page commands never change human tab selection. The broker requires a local server.
 - Member brokers use main-owned Runtime keys and independent data contexts; keep protocol identities canonical.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.

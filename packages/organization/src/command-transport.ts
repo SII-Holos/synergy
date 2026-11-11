@@ -7,7 +7,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationError, fail } from "./error"
 
-const commandChunkBytes = 43 * 1024
+const commandChunkBytes = Runtime.commandChunkBytes
 
 export interface RuntimeConnectionLease {
   readonly handshake: Protocol.Handshake

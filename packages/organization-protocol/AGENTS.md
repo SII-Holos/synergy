@@ -10,6 +10,8 @@ API token schemas separate one-time secrets from metadata and bind explicit proj
 
 Hash the complete strict input and target. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
 
+Desktop command stream frames separate transfer nonces from canonical logical IDs. Reuse command payload limits and Runtime chunk sizes; verify strict input/reply-only envelopes in `test/command-stream.test.ts`.
+
 Decision digests bind request, source and answer. Interaction reads page pending owners and value-free winners. Bind permits to queries; verify decision-command/interaction suites.
 
 Current execution observations belong beside immutable receipts. Bind their root and observation window to acceptance; reject observation fields in durable results.

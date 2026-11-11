@@ -79,6 +79,9 @@ test("shared transcript windows and runtime availability use exact main-authenti
       ["POST", "/org/v1/sessions/session-one/read"],
       ["POST", "/org/v1/sessions/session-one/interactions/reply"],
       ["POST", "/org/v1/sessions/session-one/interactions"],
+      ["GET", "/org/v1/api-tokens?limit=50"],
+      ["POST", "/org/v1/api-tokens"],
+      ["POST", "/org/v1/api-tokens/token-one/revoke"],
       ["GET", "/org/v1/projects/project-one/knowledge/applied/releases?limit=50"],
       ["POST", "/org/v1/projects/project-one/knowledge/applied/references"],
       ["GET", "/org/v1/sessions/session-one/knowledge/releases?limit=50"],
@@ -98,7 +101,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
     })
     expect(result).toMatchObject({ ok: true, value: { status: 200 } })
   }
-  expect(calls).toBe(19)
+  expect(calls).toBe(22)
   ipc.dispose()
 })
 
@@ -133,6 +136,8 @@ test("organization IPC rejects untrusted frames and credential or arbitrary-targ
     { path: "/org/v1/invites/consume", method: "POST" },
     { path: "/org/v1/sessions/session-one/interactions", method: "GET" },
     { path: "/org/v1/sessions/session-one/interactions/credentials", method: "POST" },
+    { path: "/org/v1/api-tokens/token-one/revoke", method: "GET" },
+    { path: "/org/v1/api-tokens/token-one", method: "DELETE" },
     { path: "/org/v1/projects/project-one/knowledge/applied" },
     { path: "/org/v1/projects/project-one/knowledge/applied", method: "PUT", body: "{}" },
     { path: "/org/v1/sessions/session-one/knowledge" },
@@ -402,4 +407,228 @@ test("native responses retain structured API errors and reject redirects or over
     expect(await ipc.handle(trusted, "request", request)).toEqual({ ok: false, error: { code: "invalid_response" } })
   }
   ipc.dispose()
+})
+
+test("typed command streaming preserves a large original input and never exposes credentials to its frames", async () => {
+  const { OrganizationCommandStream: Stream, OrganizationRuntimeProtocol: Runtime } =
+    await import("@ericsanchezok/synergy-organization-protocol")
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const submitted: unknown[] = []
+  const { trusted, ipc } = bridge(
+    f,
+    Object.assign(
+      async (input: RequestInfo | URL) => {
+        const request = new Request(input)
+        expect(new URL(request.url).pathname).toBe("/org/v1/sessions/session-one/commands")
+        expect(request.headers.get("authorization")).toStartWith("Bearer ")
+        submitted.push(await request.json())
+        return Response.json({ intake: "original" }, { status: 202 })
+      },
+      { preconnect() {} },
+    ),
+  )
+  const command = {
+    schemaVersion: 1,
+    orgID: connection.orgID,
+    requestID: "logical-one",
+    sessionID: "session-one",
+    projectID: "project-one",
+    runtimeID: "runtime-one",
+    input: { operation: "input", mode: "task", parts: [{ type: "text", text: "汉字🙂".repeat(20_000) }] },
+  } as const
+  const wire = Stream.serialize({ ...command, input: { ...command.input, parts: [...command.input.parts] } })
+  const begin = {
+    type: "begin",
+    requestID: "ipc-command-one",
+    connectionID: connection.id,
+    operation: wire.operation,
+    header: wire.header,
+    bytes: wire.payload.byteLength,
+    sha256: createHash("sha256").update(wire.payload).digest("hex"),
+  } as const
+  try {
+    expect(await ipc.handle(trusted, "commandStream", begin)).toMatchObject({
+      ok: true,
+      value: { kind: "progress", nextOffset: 0 },
+    })
+    expect(submitted).toHaveLength(0)
+    for (let offset = 0; offset < wire.payload.byteLength; offset += Runtime.commandChunkBytes) {
+      const bytes = wire.payload.subarray(offset, offset + Runtime.commandChunkBytes)
+      expect(
+        await ipc.handle(trusted, "commandStream", {
+          type: "chunk",
+          requestID: begin.requestID,
+          connectionID: connection.id,
+          offset,
+          data: Stream.encodeChunk(bytes),
+        }),
+      ).toMatchObject({ ok: true, value: { kind: "progress", nextOffset: offset + bytes.byteLength } })
+    }
+    expect(
+      await ipc.handle(trusted, "commandStream", {
+        type: "finish",
+        requestID: begin.requestID,
+        connectionID: connection.id,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        kind: "response",
+        requestID: begin.requestID,
+        response: { status: 202, body: JSON.stringify({ intake: "original" }) },
+      },
+    })
+    expect(submitted).toEqual([command])
+    expect(JSON.stringify(begin)).not.toContain("accessToken")
+  } finally {
+    ipc.dispose()
+  }
+})
+test("bad offsets, content hashes and cancellation cannot dispatch a partial typed command", async () => {
+  const { OrganizationCommandStream: Stream, OrganizationRuntimeProtocol: Runtime } =
+    await import("@ericsanchezok/synergy-organization-protocol")
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  let calls = 0
+  const { trusted, ipc } = bridge(
+    f,
+    Object.assign(
+      async () => {
+        calls++
+        return Response.json({})
+      },
+      { preconnect() {} },
+    ),
+  )
+  const wire = Stream.serialize({
+    schemaVersion: 1,
+    orgID: connection.orgID,
+    requestID: "logical-question",
+    sessionID: "session-one",
+    projectID: "project-one",
+    runtimeID: "runtime-one",
+    decision: {
+      operation: "decision",
+      kind: "question",
+      requestID: "native-question",
+      reply: "answer",
+      answers: [["x".repeat(100_000)]],
+    },
+  })
+  try {
+    for (const failure of ["offset", "hash", "cancel"]) {
+      const requestID = `ipc-${failure}`
+      const begin = {
+        type: "begin",
+        requestID,
+        connectionID: connection.id,
+        operation: wire.operation,
+        header: wire.header,
+        bytes: wire.payload.byteLength,
+        sha256: failure === "hash" ? "a".repeat(64) : createHash("sha256").update(wire.payload).digest("hex"),
+      } as const
+      expect(await ipc.handle(trusted, "commandStream", begin)).toMatchObject({ ok: true })
+      if (failure === "offset")
+        expect(
+          await ipc.handle(trusted, "commandStream", {
+            type: "chunk",
+            requestID,
+            connectionID: connection.id,
+            offset: 1,
+            data: Stream.encodeChunk(wire.payload.subarray(0, Runtime.commandChunkBytes)),
+          }),
+        ).toMatchObject({ ok: false })
+      else if (failure === "cancel")
+        expect(await ipc.handle(trusted, "cancel", { requestID })).toMatchObject({ ok: true })
+      else
+        for (let offset = 0; offset < wire.payload.byteLength; offset += Runtime.commandChunkBytes)
+          await ipc.handle(trusted, "commandStream", {
+            type: "chunk",
+            requestID,
+            connectionID: connection.id,
+            offset,
+            data: Stream.encodeChunk(wire.payload.subarray(offset, offset + Runtime.commandChunkBytes)),
+          })
+      expect(
+        await ipc.handle(trusted, "commandStream", { type: "finish", requestID, connectionID: connection.id }),
+      ).toMatchObject({ ok: false })
+    }
+    expect(calls).toBe(0)
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("cancelling a streamed command ends the IPC wait even when a transport has not released its response", async () => {
+  const { OrganizationCommandStream: Stream } = await import("@ericsanchezok/synergy-organization-protocol")
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  let release!: () => void
+  let arrived!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    arrived = resolve
+  })
+  const { trusted, ipc } = bridge(
+    f,
+    Object.assign(
+      async () => {
+        arrived()
+        await held
+        return Response.json({ done: true })
+      },
+      { preconnect() {} },
+    ),
+  )
+  const wire = Stream.serialize({
+    schemaVersion: 1,
+    orgID: connection.orgID,
+    requestID: "logical-held",
+    sessionID: "session-one",
+    projectID: "project-one",
+    runtimeID: "runtime-one",
+    input: { operation: "input", mode: "task", parts: [{ type: "text", text: "Wait for the original receipt" }] },
+  })
+  const requestID = "ipc-held"
+  let finishing: Promise<unknown> | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await ipc.handle(trusted, "commandStream", {
+      type: "begin",
+      requestID,
+      connectionID: connection.id,
+      operation: wire.operation,
+      header: wire.header,
+      bytes: wire.payload.byteLength,
+      sha256: createHash("sha256").update(wire.payload).digest("hex"),
+    })
+    await ipc.handle(trusted, "commandStream", {
+      type: "chunk",
+      requestID,
+      connectionID: connection.id,
+      offset: 0,
+      data: Stream.encodeChunk(wire.payload),
+    })
+    finishing = ipc.handle(trusted, "commandStream", { type: "finish", requestID, connectionID: connection.id })
+    await started
+    expect(
+      await ipc.handle(trusted, "commandStream", { type: "finish", requestID, connectionID: connection.id }),
+    ).toEqual({ ok: false, error: { code: "request_in_progress" } })
+    await ipc.handle(trusted, "cancel", { requestID })
+    const result = await Promise.race([
+      finishing,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ waiting: true }), 2000)
+      }),
+    ])
+    expect(result).toEqual({ ok: false, error: { code: "cancelled" } })
+  } finally {
+    if (timer) clearTimeout(timer)
+    release()
+    await finishing
+    ipc.dispose()
+  }
 })

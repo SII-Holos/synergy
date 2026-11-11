@@ -27,6 +27,7 @@ const organization: OrganizationDesktop.Bridge = {
   list: () => ipcRenderer.invoke("desktop.organization.list"),
   connect: (input) => ipcRenderer.invoke("desktop.organization.connect", input),
   request: (input) => ipcRenderer.invoke("desktop.organization.request", input),
+  commandStream: (input) => ipcRenderer.invoke("desktop.organization.commandStream", input),
   cancel: (input) => ipcRenderer.invoke("desktop.organization.cancel", input),
   signOut: (input) => ipcRenderer.invoke("desktop.organization.signOut", input),
   memberStatus: (input) => ipcRenderer.invoke("desktop.organization.memberStatus", input),
