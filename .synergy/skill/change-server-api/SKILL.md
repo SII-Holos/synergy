@@ -99,4 +99,6 @@ For machine handoff actions, address an existing durable handoff and derive its 
 
 For long destination copies, refresh a separate machine-signed finite proof per bounded range. Bind the full stored handoff and live destination connection, reauthorize both participants after the source response, and reject browser credentials. Native receivers verify contiguous offsets and the final frame checksum before retention. Test same-Store producer reads through real native staging; never bypass the binary owner's gate or silently replace corrupt cached bytes with remote content.
 
+Controller fixtures must open the prepared/enrolled Homes supplying their machine keys. Another Store with copied binding metadata does not establish that machine's installed writer. Hold native work while a short HTTP observer ends, verify its distinct connection lifetime and inspect the same job; also drop an actual completion receipt and count preparation calls. Concurrent retries must join the exact owned native job; inspection cannot silently restart it. Snapshot caller objects, signals and private ports before asynchronous authorization, and mutate them while the real verifier is held.
+
 Report route and operation ID, Scope ownership, schema/errors, generated method, event/snapshot behavior, consumers migrated, generated files, and tests.

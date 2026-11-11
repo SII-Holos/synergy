@@ -604,7 +604,12 @@ export namespace SessionTransferEpochs {
     bindings: readonly Binding[]
     manifestHash: string
     publish: () => Promise<void>
+    signal?: AbortSignal
   }) {
+    const signal = input.signal
+    const manifestHash = Hash.parse(input.manifestHash)
+    const publish = input.publish
+    signal?.throwIfAborted()
     const bindings = input.bindings.map((binding) => Binding.parse(binding))
     const first = bindings[0]
     if (!first || new Set(bindings.map((binding) => binding.sessionID)).size !== bindings.length)
@@ -623,66 +628,80 @@ export namespace SessionTransferEpochs {
       )
     )
       fail("aggregate activation bindings disagree")
-    Hash.parse(input.manifestHash)
     const locks: Disposable[] = []
     try {
-      for (const id of bindings.map((binding) => binding.sessionID).sort())
-        locks.push(await Lock.write(`session-transfer-epoch:${id}`))
-      return await Storage.transaction(async () => {
-        const records: State[] = []
-        for (const binding of bindings) {
-          const record = await existing(binding)
-          if (
-            record.role !== "target" ||
-            record.manifestHash !== input.manifestHash ||
-            !["prepared", "activated"].includes(record.phase)
+      for (const id of bindings.map((binding) => binding.sessionID).sort()) {
+        const lock = signal
+          ? await Lock.writeWithSignal(`session-transfer-epoch:${id}`, signal)
+          : await Lock.write(`session-transfer-epoch:${id}`)
+        if (lock) locks.push(lock)
+        signal?.throwIfAborted()
+        if (!lock) fail("destination activation could not acquire its native lock")
+      }
+      return await Storage.transaction(
+        async () => {
+          signal?.throwIfAborted()
+          const records: State[] = []
+          for (const binding of bindings) {
+            const record = await existing(binding)
+            if (
+              record.role !== "target" ||
+              record.manifestHash !== manifestHash ||
+              !["prepared", "activated"].includes(record.phase)
+            )
+              fail("destination is retired or has different content")
+            records.push(record)
+          }
+          if (records.every((record) => record.phase === "activated")) return records
+          if (records.some((record) => record.phase !== "prepared"))
+            fail("aggregate destination has inconsistent activation proofs")
+          for (const binding of bindings) {
+            const reserved = await optional(State, reservationKey(binding.sessionID))
+            if (!reserved || !matches(reserved.binding, binding) || reserved.phase !== "prepared")
+              fail("destination reservation changed")
+          }
+          await activation.run(
+            {
+              runtime: RuntimeContext.current(),
+              bindings: new Map(bindings.map((binding) => [binding.sessionID, binding])),
+            },
+            async () => {
+              await publish()
+              signal?.throwIfAborted()
+              for (const binding of bindings) {
+                const restored = await Session.get(binding.sessionID)
+                if (internal(restored) || restored.time.archived) {
+                  const root = await aggregateRoot(binding, restored)
+                  if (!root.paused) fail("machine publication requires a paused aggregate root")
+                } else if (!restored.paused) fail("destination publication must remain paused")
+              }
+            },
           )
-            fail("destination is retired or has different content")
-          records.push(record)
-        }
-        if (records.every((record) => record.phase === "activated")) return records
-        if (records.some((record) => record.phase !== "prepared"))
-          fail("aggregate destination has inconsistent activation proofs")
-        for (const binding of bindings) {
-          const reserved = await optional(State, reservationKey(binding.sessionID))
-          if (!reserved || !matches(reserved.binding, binding) || reserved.phase !== "prepared")
-            fail("destination reservation changed")
-        }
-        await activation.run(
-          {
-            runtime: RuntimeContext.current(),
-            bindings: new Map(bindings.map((binding) => [binding.sessionID, binding])),
+          for (const record of records) {
+            const binding = record.binding
+            record.phase = "activated"
+            await save(record)
+            await Storage.write(reservationKey(binding.sessionID), record)
+            await Storage.write(
+              currentKey(binding.sessionID),
+              Pointer.parse({
+                version: 1,
+                scopeID: binding.scopeID,
+                epoch: binding.toEpoch,
+                rootSessionID: binding.rootSessionID,
+                lastHandoffID: binding.handoffID,
+                lastFromEpoch: binding.fromEpoch,
+              }),
+            )
+          }
+          return records
+        },
+        {
+          commitGuard() {
+            signal?.throwIfAborted()
           },
-          async () => {
-            await input.publish()
-            for (const binding of bindings) {
-              const restored = await Session.get(binding.sessionID)
-              if (internal(restored) || restored.time.archived) {
-                const root = await aggregateRoot(binding, restored)
-                if (!root.paused) fail("machine publication requires a paused aggregate root")
-              } else if (!restored.paused) fail("destination publication must remain paused")
-            }
-          },
-        )
-        for (const record of records) {
-          const binding = record.binding
-          record.phase = "activated"
-          await save(record)
-          await Storage.write(reservationKey(binding.sessionID), record)
-          await Storage.write(
-            currentKey(binding.sessionID),
-            Pointer.parse({
-              version: 1,
-              scopeID: binding.scopeID,
-              epoch: binding.toEpoch,
-              rootSessionID: binding.rootSessionID,
-              lastHandoffID: binding.handoffID,
-              lastFromEpoch: binding.fromEpoch,
-            }),
-          )
-        }
-        return records
-      })
+        },
+      )
     } finally {
       for (const lock of locks.reverse()) lock[Symbol.dispose]()
     }
