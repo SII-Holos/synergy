@@ -4,6 +4,7 @@ import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
 import { OrganizationReadProtocol as Read } from "./read.js"
 import { OrganizationInteractionProtocol as Interactions } from "./interaction.js"
+import { OrganizationHandoffProtocol as Handoff } from "./handoff.js"
 import { SigningPublicKey, SigningSignature, digestProtocol, signedProtocol } from "./signature.js"
 
 export namespace OrganizationCommandProtocol {
@@ -510,12 +511,18 @@ export namespace OrganizationCommandProtocol {
     z.strictObject({ kind: z.literal("skip"), authorization: SignedSkip }),
     z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit }),
     z.strictObject({ kind: z.literal("interactions"), authorization: Interactions.SignedPermit }),
+    z.strictObject({ kind: z.literal("handoff"), authorization: Handoff.SignedMachinePlan }),
   ])
   export type Delivery = z.infer<typeof Delivery>
   export const Reply = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("result"), result: Result }),
     z.strictObject({ kind: z.literal("query"), query: QueryResult }),
     z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit, result: Read.Result }),
+    z.strictObject({
+      kind: z.literal("handoff"),
+      authorization: Handoff.SignedMachinePlan,
+      result: Handoff.MachineResult,
+    }),
     z.strictObject({
       kind: z.literal("interactions"),
       authorization: Interactions.SignedPermit,

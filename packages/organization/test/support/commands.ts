@@ -114,7 +114,7 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
         input: { operation: "input", mode: "context", parts: [{ type: "text", text }] },
       }
     },
-    async connect(epoch = 1, capable = true, readable = false, interactions = false) {
+    async connect(epoch = 1, capable = true, readable = false, interactions = false, handoffs = false) {
       const socket = new WebSocket(server.url.toString().replace(/^http/, "ws"))
       sockets.push(socket)
       await new Promise<void>((resolve, reject) => {
@@ -137,6 +137,10 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
           if (interactions) {
             signed.proof.handshake.capabilities.push("interactions")
             signed.proof.handshake.schemas.interactions = 1
+          }
+          if (handoffs) {
+            signed.proof.handshake.capabilities.push("handoffs")
+            signed.proof.handshake.schemas.handoffs = 1
           }
           signed.signature = await Runtime.sign(signed.proof, key.privateKey)
         }

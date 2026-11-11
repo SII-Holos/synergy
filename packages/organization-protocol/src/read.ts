@@ -48,9 +48,18 @@ export namespace OrganizationReadProtocol {
       z.strictObject({ ...target, operation: z.literal("status") }),
       z.strictObject({
         ...target,
+        operation: z.literal("attachments"),
+        messageID: Identity.ID,
+        partID: Identity.ID,
+        cursor: cursor.optional(),
+        limit: z.number().int().min(1).max(32).default(32),
+      }),
+      z.strictObject({
+        ...target,
         operation: z.literal("attachmentContent"),
         messageID: Identity.ID,
         partID: Identity.ID,
+        ordinal: z.number().int().nonnegative().safe().optional(),
         version: z.string().min(1).max(512),
         offset: z.number().int().nonnegative().safe().default(0),
         length: z.number().int().min(1).max(65_536).default(65_536),
@@ -125,6 +134,13 @@ export namespace OrganizationReadProtocol {
     })
     .meta({ ref: "OrgPrivateAttachmentReference" })
   export type AttachmentReference = z.infer<typeof AttachmentReference>
+  export const AttachmentMetadata = AttachmentReference.pick({ filename: true, mediaType: true })
+    .extend({
+      ordinal: z.number().int().nonnegative().safe(),
+      bytes: AttachmentReference.shape.bytes.optional(),
+    })
+    .meta({ ref: "OrgPrivateAttachmentMetadata" })
+  export type AttachmentMetadata = z.infer<typeof AttachmentMetadata>
   export const Part = z.strictObject({
     partID: Identity.ID,
     messageID: Identity.ID,
@@ -153,6 +169,7 @@ export namespace OrganizationReadProtocol {
     render: z.boolean().optional(),
     status: z.string().max(256).optional(),
     tool: z.string().max(256).optional(),
+    attachmentCount: z.number().int().nonnegative().safe().optional(),
     content: z.strictObject({ version: z.string().min(1).max(512), bytes: z.number().int().nonnegative().safe() }),
   })
   const envelope = { rootSessionID: Identity.ID, sourceSessionID: Identity.ID, binding: Protocol.SessionBinding }
@@ -263,12 +280,25 @@ export namespace OrganizationReadProtocol {
         }),
       ]),
       z.strictObject({ ...envelope, operation: z.literal("status"), status: Sync.Status }),
+      z
+        .strictObject({
+          ...envelope,
+          operation: z.literal("attachments"),
+          messageID: Identity.ID,
+          partID: Identity.ID,
+          version: z.string().min(1).max(512),
+          items: z.array(AttachmentMetadata).max(32),
+          total: z.number().int().nonnegative().safe(),
+          cursor: cursor.optional(),
+        })
+        .refine((value) => value.total >= value.items.length, "Attachment counts cannot omit returned rows"),
       z.discriminatedUnion("state", [
         z.strictObject({
           ...envelope,
           operation: z.literal("attachmentContent"),
           messageID: Identity.ID,
           partID: Identity.ID,
+          ordinal: z.number().int().nonnegative().safe().optional(),
           state: z.literal("ready"),
           reference: AttachmentReference,
           chunk: AttachmentChunk,
@@ -278,6 +308,7 @@ export namespace OrganizationReadProtocol {
           operation: z.literal("attachmentContent"),
           messageID: Identity.ID,
           partID: Identity.ID,
+          ordinal: z.number().int().nonnegative().safe().optional(),
           state: z.literal("unavailable"),
           version: z.string().min(1).max(512),
           reason: z.enum(["not_retained", "partial"]),
@@ -329,8 +360,19 @@ export namespace OrganizationReadProtocol {
         result.items.length <= query.limit &&
         result.items.every((item) => item.messageID === query.messageID)
       )
+    if (query.operation === "attachments" && result.operation === "attachments")
+      return (
+        result.messageID === query.messageID &&
+        result.partID === query.partID &&
+        result.items.length <= query.limit &&
+        result.items.every((item, index) => {
+          const previous = result.items[index - 1]
+          return index === 0 || (previous !== undefined && item.ordinal > previous.ordinal)
+        })
+      )
     if (query.operation === "attachmentContent" && result.operation === "attachmentContent") {
-      if (result.messageID !== query.messageID || result.partID !== query.partID) return false
+      if (result.messageID !== query.messageID || result.partID !== query.partID || result.ordinal !== query.ordinal)
+        return false
       if (result.state === "unavailable") return result.version === query.version
       return (
         result.reference.version === query.version &&

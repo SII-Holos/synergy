@@ -143,7 +143,14 @@ test("tool attachment reads refuse foreign producer artifacts and cancellation b
             "rows",
             String(0).padStart(16, "0"),
           ],
-          { ordinal: 0, filename: "foreign.bin", mediaType: artifact.mediaType, artifact },
+          {
+            ordinal: 0,
+            filename: "foreign.bin",
+            mediaType: artifact.mediaType,
+            artifact,
+            hidden: false,
+            purpose: "evidence",
+          },
         )
         const denied = await SessionHistory.attachmentContent({
           ...value.target,
@@ -151,6 +158,7 @@ test("tool attachment reads refuse foreign producer artifacts and cancellation b
           ordinal: 0,
           length: 1,
         })
+
         expect(denied.state).toBe("unavailable")
         const controller = new AbortController()
         const reason = new Error("Cancel attachment range")
@@ -318,3 +326,120 @@ test("central owning migration prepares a historical tool once and restart pagin
     )
   }
 }, 15_000)
+
+test("owning presentation upgrade filters hidden files without losing an empty page continuation", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const value = await fixture(3)
+        const state = value.part.state
+        if (state.status !== "completed") throw new Error("Expected completed producer")
+        const files = state.attachments!.map((file, index) => ({
+          ...file,
+          presentation: { purpose: "evidence" as const, hidden: index !== 1 },
+        }))
+        await Session.updatePart({ ...value.part, state: { ...state, attachments: files } })
+        const canonical = await Storage.read(value.key)
+        const root = [...value.key.slice(0, 3), "attachment_index", value.key[4], value.key[6]]
+        const header = await Storage.read<{ revision: string }>([...root, "header"])
+        await Storage.write([...root, "header"], { version: 1, revision: header.revision, kind: "tool", count: 3 })
+        for (let ordinal = 0; ordinal < 3; ordinal++)
+          await Storage.write([...root, "rows", String(ordinal).padStart(16, "0")], {
+            ordinal,
+            filename: "old-derived.bin",
+            mediaType: "application/octet-stream",
+          })
+        await Storage.remove([
+          "sessions",
+          "home",
+          value.session.id,
+          "migrations",
+          "session",
+          "20261112-session-attachment-presentation-pages-v2",
+        ])
+        const first = await SessionHistory.attachmentPage({ ...value.target, limit: 1 })
+        expect(first.total).toBe(1)
+        expect(first.items).toEqual([])
+        expect(first.cursor).toBeDefined()
+        const retained = await SessionHistory.attachmentContent({
+          ...value.target,
+          version: first.version,
+          ordinal: 0,
+          length: 1,
+        })
+        expect(retained.state).toBe("ready")
+        const display = await SessionHistory.partPage({
+          sessionID: value.session.id,
+          messageID: value.target.messageID,
+          limit: 64,
+        })
+        expect(display.items.find((part) => part.id === value.part.id)?.attachments).toMatchObject({
+          evidence: 1,
+          deliverable: 0,
+        })
+        const versioned = StoreTransaction.prototype.versioned
+        using noBody = spyOn(StoreTransaction.prototype, "versioned").mockImplementation(async function <T>(
+          this: StoreTransaction,
+          key: string[],
+        ) {
+          if (JSON.stringify(key) === JSON.stringify(value.key))
+            throw new Error("Prepared presentation pages cannot reopen canonical Part")
+          return (versioned<T>).call(this, key)
+        })
+        const second = await SessionHistory.attachmentPage({ ...value.target, cursor: first.cursor, limit: 1 })
+        expect(second.items.map((file) => file.filename)).toEqual(["evidence-1.bin"])
+        expect(second.cursor).toBeDefined()
+        const third = await SessionHistory.attachmentPage({ ...value.target, cursor: second.cursor, limit: 1 })
+        expect(third.items).toEqual([])
+        expect(third.cursor).toBeUndefined()
+        noBody.mockRestore()
+        expect(await Storage.read(value.key)).toEqual(canonical)
+      },
+    }),
+  )
+}, 15000)
+
+test("fresh attachment projections skip canonical body migration and unknown index versions fail closed", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const value = await fixture(2)
+        const textID = Identifier.ascending("part")
+        await Session.updatePart({
+          id: textID,
+          sessionID: value.session.id,
+          messageID: value.target.messageID,
+          type: "text",
+          text: "Fresh text",
+        })
+        const receipt = ["sessions", "home", value.session.id, "migrations", "session"]
+        await Storage.remove([...receipt, "20261112-session-attachment-metadata-pages"])
+        await Storage.remove([...receipt, "20261112-session-attachment-presentation-pages-v2"])
+        const versioned = StoreTransaction.prototype.versioned
+        using noBody = spyOn(StoreTransaction.prototype, "versioned").mockImplementation(async function <T>(
+          this: StoreTransaction,
+          key: string[],
+        ) {
+          if (key.length === 7 && key[3] === "messages" && key[5] === "parts" && key[2] === value.session.id)
+            throw new Error("Fresh projections cannot reopen canonical bodies")
+          return (versioned<T>).call(this, key)
+        })
+        await prepareSessionMigrations({ scopeID: "home", sessionID: value.session.id })
+        expect((await SessionHistory.attachmentPage(value.target)).total).toBe(2)
+        const root = [...value.key.slice(0, 3), "attachment_index", value.key[4], value.key[6]]
+        const current = await Storage.read<Record<string, unknown>>([...root, "header"])
+        const future = { ...current, version: 99 }
+        await Storage.write([...root, "header"], future)
+        await Storage.remove([...receipt, "20261112-session-attachment-presentation-pages-v2"])
+        await expect(SessionHistory.attachmentPage(value.target)).rejects.toThrow("unsupported")
+        expect(await Storage.read([...root, "header"])).toEqual(future)
+      },
+    }),
+  )
+}, 15000)

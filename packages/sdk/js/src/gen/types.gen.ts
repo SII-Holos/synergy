@@ -3262,6 +3262,13 @@ export type ActorStamp =
       >
     }
 
+export type OrgPrivateAttachmentMetadata = {
+  filename: string
+  mediaType: string
+  ordinal: number
+  bytes?: number
+}
+
 export type OrgPrivateAttachmentReference = {
   kind: "attachment"
   version: string
@@ -3393,6 +3400,7 @@ export type OrgPrivateReadResult =
         render?: boolean
         status?: string
         tool?: string
+        attachmentCount?: number
         content: {
           version: string
           bytes: number
@@ -3622,9 +3630,22 @@ export type OrgPrivateReadResult =
       rootSessionID: string
       sourceSessionID: string
       binding: OrgSessionBinding
+      operation: "attachments"
+      messageID: string
+      partID: string
+      version: string
+      items: Array<OrgPrivateAttachmentMetadata>
+      total: number
+      cursor?: string
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
       operation: "attachmentContent"
       messageID: string
       partID: string
+      ordinal?: number
       state: "ready"
       reference: OrgPrivateAttachmentReference
       chunk: OrgPrivateAttachmentChunk
@@ -3636,6 +3657,7 @@ export type OrgPrivateReadResult =
       operation: "attachmentContent"
       messageID: string
       partID: string
+      ordinal?: number
       state: "unavailable"
       version: string
       reason: "not_retained" | "partial"
@@ -3688,9 +3710,19 @@ export type OrgPrivateReadQuery =
   | {
       rootSessionID: string
       sourceSessionID?: string
+      operation: "attachments"
+      messageID: string
+      partID: string
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
       operation: "attachmentContent"
       messageID: string
       partID: string
+      ordinal?: number
       version: string
       offset?: number
       length?: number

@@ -35,7 +35,7 @@ export namespace OrganizationReadContent {
     }
   }
 
-  export type AttachmentInput = Omit<Input, "reference"> & { reference: Read.AttachmentReference }
+  export type AttachmentInput = Omit<Input, "reference"> & { reference: Read.AttachmentReference; ordinal?: number }
   export type Ready = { state: "ready"; bytes: number; sha256: string; original: "complete" | "partial" }
   export type Preparing = {
     state: "preparing"
@@ -74,6 +74,7 @@ export namespace OrganizationReadContent {
           ? {
               ...target,
               operation: "attachmentContent",
+              ...("ordinal" in input && input.ordinal !== undefined ? { ordinal: input.ordinal } : {}),
               length: Math.min(65_536, Math.max(1, reference.bytes - offset)),
             }
           : {

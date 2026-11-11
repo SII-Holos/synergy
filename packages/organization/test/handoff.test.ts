@@ -13,7 +13,7 @@ import { connection, keys } from "./support/runtime"
 
 async function fixture() {
   const f = await commandFixture()
-  await f.connect()
+  await f.connect(1, true, false, false, true)
   const targetKeys = await keys()
   const target = await f.run(async () => {
     const value = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
@@ -27,8 +27,9 @@ async function fixture() {
     socket.onerror = reject
   })
   const signed = await connection(target, targetKeys.privateKey, 1)
-  signed.proof.handshake.capabilities.push("commands")
+  signed.proof.handshake.capabilities.push("commands", "handoffs")
   signed.proof.handshake.schemas.commands = 1
+  signed.proof.handshake.schemas.handoffs = 1
   signed.signature = await Runtime.sign(signed.proof, targetKeys.privateKey)
   const connected = Promise.withResolvers<unknown>()
   socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))

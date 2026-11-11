@@ -208,6 +208,9 @@ export function createSessionReader(options: {
                   render: part.render,
                   status: part.status,
                   tool: part.tool,
+                  ...(part.type === "tool"
+                    ? { attachmentCount: (part.attachments?.evidence ?? 0) + (part.attachments?.deliverable ?? 0) }
+                    : {}),
                   content: part.content,
                 })),
               ),
@@ -218,6 +221,34 @@ export function createSessionReader(options: {
           }
           case "partContent":
             return { ...envelope, operation: "partContent", ...(await options.content(query, source, signal)) }
+          case "attachments": {
+            try {
+              const page = await SessionHistory.attachmentPage({
+                sessionID: source.id,
+                messageID: query.messageID,
+                partID: query.partID,
+                cursor: query.cursor,
+                limit: query.limit,
+                signal,
+              })
+              return {
+                ...envelope,
+                operation: "attachments",
+                messageID: query.messageID,
+                partID: query.partID,
+                ...page,
+              }
+            } catch (error) {
+              if (error instanceof SessionHistory.AttachmentConflict)
+                throw new OrganizationRuntimeError({
+                  code: "REVISION_CONFLICT",
+                  message: "Native attachment metadata changed",
+                  retryable: false,
+                  outcome: "not_dispatched",
+                })
+              throw error
+            }
+          }
           case "attachmentContent":
             if (!options.attachment)
               throw new OrganizationRuntimeError({

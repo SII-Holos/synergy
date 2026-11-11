@@ -72,6 +72,7 @@ test("generated native and organization clients read one private history through
   const partID = "prt_private_original"
   const text = "Native private evidence 🌏会話\n".repeat(1200)
   const attachmentID = "prt_private_attachment"
+  const toolPartID = "prt_private_tool_attachments"
   const attachmentBytes = Uint8Array.from({ length: 90_001 }, (_, index) => index % 256)
   await runtime.run(async () => {
     const scope = (await Scope.fromID(project.projectID))!
@@ -107,6 +108,32 @@ test("generated native and organization clients read one private history through
           filename: "private-file.bin",
           mime: "application/octet-stream",
           url: "asset://not-readable-as-a-global-reference.bin",
+        })
+        await Session.updatePart({
+          id: toolPartID,
+          sessionID,
+          messageID,
+          type: "tool",
+          tool: "fixture",
+          callID: "private-tool-files",
+          state: {
+            status: "completed",
+            input: {},
+            output: "Created files",
+            title: "Evidence",
+            metadata: {},
+            time: { start: 1, end: 2 },
+            attachments: Array.from({ length: 65 }, (_, ordinal) => ({
+              id: `prt_private_tool_file_${ordinal}`,
+              sessionID,
+              messageID,
+              type: "attachment" as const,
+              artifact,
+              filename: `tool-${ordinal}.bin`,
+              mime: "application/octet-stream",
+              url: "https://unavailable.invalid/producer.bin",
+            })),
+          },
         })
         await Session.create({
           parentID: sessionID,
@@ -179,6 +206,7 @@ test("generated native and organization clients read one private history through
     ).data,
   )
   if (parts.operation !== "parts") throw new Error("Expected native message summaries")
+  expect(parts.items.find((part) => part.partID === toolPartID)?.attachmentCount).toBe(65)
   const summary = parts.items.find((part) => part.partID === attachmentID)!
   const header = Read.Result.parse(
     (
@@ -223,6 +251,80 @@ test("generated native and organization clients read one private history through
     ).data,
   )
   expect(remoteHeader).toEqual(header)
+  const toolQuery = Read.Query.parse({
+    operation: "attachments",
+    rootSessionID: sessionID,
+    messageID,
+    partID: toolPartID,
+    limit: 32,
+  })
+  const localFiles = Read.Result.parse(
+    (await client.orgLocalSession.read({ orgPrivateReadQuery: toolQuery }, { throwOnError: true })).data,
+  )
+  const remoteFiles = Read.Result.parse(
+    (
+      await service.client.orgSessionRead.read(
+        { sessionID, orgPrivateReadQuery: toolQuery },
+        { headers: service.headers, throwOnError: true },
+      )
+    ).data,
+  )
+  expect(Read.matches(toolQuery, remoteFiles, localFiles.binding)).toBe(true)
+  expect(remoteFiles).toEqual(localFiles)
+  if (localFiles.operation !== "attachments") throw new Error("Expected native tool file page")
+  expect(localFiles.items).toHaveLength(32)
+  expect(localFiles.total).toBe(65)
+  expect(localFiles.cursor).toBeDefined()
+  expect(JSON.stringify(remoteFiles)).not.toContain("unavailable.invalid")
+  const nextFiles = Read.Result.parse(
+    (
+      await service.client.orgSessionRead.read(
+        {
+          sessionID,
+          orgPrivateReadQuery: {
+            operation: "attachments",
+            rootSessionID: sessionID,
+            messageID,
+            partID: toolPartID,
+            cursor: localFiles.cursor,
+            limit: 32,
+          },
+        },
+        { headers: service.headers, throwOnError: true },
+      )
+    ).data,
+  )
+  if (nextFiles.operation !== "attachments") throw new Error("Expected next native tool file page")
+  expect(nextFiles.items[0].ordinal).toBe(32)
+  for (const ordinal of [0, 64]) {
+    const toolBytes = Read.Query.parse({
+      operation: "attachmentContent",
+      rootSessionID: sessionID,
+      messageID,
+      partID: toolPartID,
+      version: localFiles.version,
+      ordinal,
+      offset: 1,
+      length: 3,
+    })
+    const localBytes = Read.Result.parse(
+      (await client.orgLocalSession.read({ orgPrivateReadQuery: toolBytes }, { throwOnError: true })).data,
+    )
+    const remoteBytes = Read.Result.parse(
+      (
+        await service.client.orgSessionRead.read(
+          { sessionID, orgPrivateReadQuery: toolBytes },
+          { headers: service.headers, throwOnError: true },
+        )
+      ).data,
+    )
+    expect(remoteBytes).toEqual(localBytes)
+    expect(Read.matches(toolBytes, remoteBytes, localBytes.binding)).toBe(true)
+    if (remoteBytes.operation !== "attachmentContent" || remoteBytes.state !== "ready")
+      throw new Error("Expected native tool attachment bytes")
+    expect(remoteBytes.ordinal).toBe(ordinal)
+    expect(Buffer.from(remoteBytes.chunk.data, "base64url")).toEqual(Buffer.from(attachmentBytes.subarray(1, 4)))
+  }
   const field = Read.Query.parse({
     operation: "partContent",
     rootSessionID: sessionID,

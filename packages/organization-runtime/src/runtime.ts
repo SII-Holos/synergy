@@ -20,6 +20,12 @@ import { startExecutionReleaseObserver } from "./release-observer"
 import { startMemberSyncExporter } from "./sync-exporter"
 import { OrganizationLocalProjects } from "./local-project"
 import { OrganizationSessionReads } from "./session-reads"
+import { registerOrganizationTransferOwner } from "./session-transfer"
+import {
+  SessionTransferCore,
+  SessionTransferEvidence,
+  SessionTransferSnapshots,
+} from "@ericsanchezok/synergy-harness/session/transfer"
 
 export type MemberRuntimeOptions = Pick<
   AgentRuntimeOptions,
@@ -74,6 +80,10 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
         registerMemberSources(member.identity)
         OrganizationLocalProjects.register(member.identity)
         OrganizationSessionReads.register(member.identity, registration.runtimeID)
+        SessionTransferCore.register()
+        SessionTransferEvidence.register()
+        SessionTransferSnapshots.register()
+        registerOrganizationTransferOwner()
       },
       services() {
         let bridge: ReturnType<typeof startMemberBridge> | undefined

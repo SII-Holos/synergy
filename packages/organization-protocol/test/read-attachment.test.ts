@@ -29,6 +29,7 @@ function response(query: Read.Query): Read.Result {
     sourceSessionID: query.sourceSessionID ?? query.rootSessionID,
     messageID: query.messageID,
     partID: query.partID,
+    ...(query.ordinal !== undefined ? { ordinal: query.ordinal } : {}),
     binding,
     state: "ready",
     reference,
@@ -169,4 +170,38 @@ test("changed attachment metadata and invalid binary bytes cannot become a verif
       hash: { update: (bytes) => hash.update(bytes), digest: () => hash.digest("hex") },
     }),
   ).rejects.toThrow()
+})
+
+test("tool attachment streams retain one ordinal on every chunk and reject another slot before appending", async () => {
+  const queries: Read.Query[] = []
+  const hash = new Bun.CryptoHasher("sha256")
+  expect(
+    await OrganizationReadContent.stream({
+      ...target,
+      ordinal: 1000,
+      signal: new AbortController().signal,
+      read: async (query) => {
+        queries.push(query)
+        return response(query)
+      },
+      append: async () => {},
+      hash: { update: (bytes) => hash.update(bytes), digest: () => hash.digest("hex") },
+    }),
+  ).toMatchObject({ state: "ready", bytes: content.length })
+  expect(queries).toHaveLength(3)
+  expect(queries.every((query) => query.operation === "attachmentContent" && query.ordinal === 1000)).toBe(true)
+  let appends = 0
+  await expect(
+    OrganizationReadContent.stream({
+      ...target,
+      ordinal: 1000,
+      signal: new AbortController().signal,
+      read: async (query) => ({ ...response(query), ordinal: 999 }),
+      append: async () => {
+        appends++
+      },
+      hash: { update() {}, digest: () => digest },
+    }),
+  ).rejects.toThrow()
+  expect(appends).toBe(0)
 })

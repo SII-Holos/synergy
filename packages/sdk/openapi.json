@@ -50581,6 +50581,34 @@
           }
         ]
       },
+      "OrgPrivateAttachmentMetadata": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^[^/\\\\\\u0000]+$"
+          },
+          "mediaType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["filename", "mediaType", "ordinal"],
+        "additionalProperties": false
+      },
       "OrgPrivateAttachmentReference": {
         "type": "object",
         "properties": {
@@ -51142,6 +51170,11 @@
                     "tool": {
                       "type": "string",
                       "maxLength": 256
+                    },
+                    "attachmentCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     },
                     "content": {
                       "type": "object",
@@ -52083,6 +52116,76 @@
             "additionalProperties": false
           },
           {
+            "type": "object",
+            "properties": {
+              "rootSessionID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "sourceSessionID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "binding": {
+                "$ref": "#/components/schemas/OrgSessionBinding"
+              },
+              "operation": {
+                "type": "string",
+                "const": "attachments"
+              },
+              "messageID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "partID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "items": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OrgPrivateAttachmentMetadata"
+                }
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "cursor": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192
+              }
+            },
+            "required": [
+              "rootSessionID",
+              "sourceSessionID",
+              "binding",
+              "operation",
+              "messageID",
+              "partID",
+              "version",
+              "items",
+              "total"
+            ],
+            "additionalProperties": false
+          },
+          {
             "oneOf": [
               {
                 "type": "object",
@@ -52117,6 +52220,11 @@
                     "minLength": 1,
                     "maxLength": 128,
                     "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "ordinal": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   },
                   "state": {
                     "type": "string",
@@ -52175,6 +52283,11 @@
                     "minLength": 1,
                     "maxLength": 128,
                     "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "ordinal": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   },
                   "state": {
                     "type": "string",
@@ -52437,6 +52550,52 @@
               },
               "operation": {
                 "type": "string",
+                "const": "attachments"
+              },
+              "messageID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "partID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "cursor": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192
+              },
+              "limit": {
+                "default": 32,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32
+              }
+            },
+            "required": ["rootSessionID", "operation", "messageID", "partID"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "rootSessionID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "sourceSessionID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "operation": {
+                "type": "string",
                 "const": "attachmentContent"
               },
               "messageID": {
@@ -52450,6 +52609,11 @@
                 "minLength": 1,
                 "maxLength": 128,
                 "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "ordinal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               },
               "version": {
                 "type": "string",

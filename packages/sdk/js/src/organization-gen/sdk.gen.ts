@@ -119,6 +119,9 @@ import type {
   OrgHandoffCancelResponses,
   OrgHandoffCommitErrors,
   OrgHandoffCommitResponses,
+  OrgHandoffDrive,
+  OrgHandoffDriveErrors,
+  OrgHandoffDriveResponses,
   OrgHandoffGetErrors,
   OrgHandoffGetResponses,
   OrgHandoffListErrors,
@@ -3703,6 +3706,39 @@ export class OrgHandoff extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<OrgHandoffPermitResponses, OrgHandoffPermitErrors, ThrowOnError>({
       url: "/org/v1/handoffs/{handoffID}/permit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Drive or inspect one existing handoff participant without replaying input
+   */
+  public drive<ThrowOnError extends boolean = false>(
+    parameters: {
+      handoffID: string
+      orgHandoffDrive: OrgHandoffDrive
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "handoffID" },
+            { key: "orgHandoffDrive", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgHandoffDriveResponses, OrgHandoffDriveErrors, ThrowOnError>({
+      url: "/org/v1/handoffs/{handoffID}/drive",
       ...options,
       ...params,
       headers: {

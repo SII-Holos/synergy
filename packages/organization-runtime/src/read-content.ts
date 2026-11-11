@@ -22,11 +22,16 @@ export const readNativeAttachment: NativeAttachmentReader = async (query, source
       messageID: query.messageID,
       partID: query.partID,
       version: query.version,
+      ordinal: query.ordinal,
       offset: query.offset,
       length: query.length,
       signal,
     })
-    const target = { messageID: query.messageID, partID: query.partID }
+    const target = {
+      messageID: query.messageID,
+      partID: query.partID,
+      ...(query.ordinal !== undefined ? { ordinal: query.ordinal } : {}),
+    }
     if (result.state === "unavailable") return { ...target, ...result }
     return {
       ...target,
@@ -42,7 +47,7 @@ export const readNativeAttachment: NativeAttachmentReader = async (query, source
       },
     }
   } catch (error) {
-    if (error instanceof SessionHistory.PartFieldConflict)
+    if (error instanceof SessionHistory.PartFieldConflict || error instanceof SessionHistory.AttachmentConflict)
       throw new OrganizationRuntimeError({
         code: "REVISION_CONFLICT",
         message: "Native attachment content changed",

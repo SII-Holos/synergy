@@ -7,6 +7,7 @@ import {
   OrganizationSyncProtocol as Sync,
   OrganizationReadProtocol as Read,
   OrganizationInteractionProtocol as Interactions,
+  OrganizationHandoffProtocol as Handoff,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { readRuntimeHome, type RuntimeHome, type RuntimeIdentity } from "./home"
 import { readRuntimeRegistration } from "./registration"
@@ -66,6 +67,11 @@ export interface MemberConnectionOptions {
     close?(): void | Promise<void>
   }
   sync?: boolean
+  handoff?: (
+    authorization: Handoff.SignedMachinePlan,
+    connection: Connected,
+    signal: AbortSignal,
+  ) => Promise<Handoff.MachineExecution>
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
   interactions?: (
     authorization: Interactions.SignedPermit,
@@ -123,11 +129,13 @@ async function attempt(input: {
         ...(options.sync ? ["sync"] : []),
         ...(options.read ? ["reads"] : []),
         ...(options.interactions ? ["interactions"] : []),
+        ...(options.handoff ? ["handoffs"] : []),
       ],
       schemas: {
         bridge: 1,
         ...(options.commands ? { commands: 1 } : {}),
         ...(options.sync ? { sync: 1 } : {}),
+        ...(options.handoff ? { handoffs: 1 } : {}),
         ...(options.read ? { reads: 1 } : {}),
         ...(options.interactions ? { interactions: 1 } : {}),
       },
@@ -252,7 +260,8 @@ async function attempt(input: {
       const limit =
         frame.type === "sync-batch" ||
         frame.type === "blob-chunk" ||
-        (frame.type === "receipt" && (frame.reply.kind === "read" || frame.reply.kind === "interactions"))
+        (frame.type === "receipt" &&
+          (frame.reply.kind === "read" || frame.reply.kind === "interactions" || frame.reply.kind === "handoff"))
           ? syncFrameLimit
           : frameLimit
       if (Buffer.byteLength(encoded) > limit || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > limit)
@@ -273,18 +282,21 @@ async function attempt(input: {
     heartbeatTimer.unref()
   }
   function dispatchCommand(frame: Extract<Protocol.ServerFrame, { type: "command" }>, bytes: number) {
-    if (!connected || !commands || frame.connectionEpoch !== epoch)
+    if (!connected || (!commands && frame.command.kind !== "handoff") || frame.connectionEpoch !== epoch)
       throw failure("PROTOCOL_MISMATCH", "Command does not match an active intake connection")
     if (work.signal.aborted) return
     if (executing.has(frame.exchangeID)) throw failure("PROTOCOL_MISMATCH", "Duplicate active command exchange")
     const window =
       frame.command.kind === "query" || frame.command.kind === "skip"
         ? windows.reconciliation
-        : frame.command.kind === "read" || frame.command.kind === "interactions"
+        : frame.command.kind === "read" || frame.command.kind === "interactions" || frame.command.kind === "handoff"
           ? windows.read
           : windows.command
     if (
-      window.count >= (frame.command.kind === "read" || frame.command.kind === "interactions" ? 4 : 16) ||
+      window.count >=
+        (frame.command.kind === "read" || frame.command.kind === "interactions" || frame.command.kind === "handoff"
+          ? 4
+          : 16) ||
       window.bytes + bytes > frameLimit * 4
     ) {
       send({
@@ -430,10 +442,7 @@ async function attempt(input: {
     lease(connected.offlineMs)
     scheduleHeartbeat()
   }
-  async function execute(
-    frame: Extract<Protocol.ServerFrame, { type: "command" }>,
-    receiver: NonNullable<typeof commands>,
-  ) {
+  async function execute(frame: Extract<Protocol.ServerFrame, { type: "command" }>, receiver: typeof commands) {
     let replied = false
     function respond(reply: Command.Reply) {
       if (replied) return
@@ -444,6 +453,34 @@ async function attempt(input: {
     let reply: Command.Reply
     try {
       const command = frame.command
+      if (command.kind === "handoff") {
+        if (!options.handoff || !connected) throw failure("PROTOCOL_MISMATCH", "Native handoff control is unavailable")
+        const { plan, signature } = command.authorization
+        if (
+          plan.orgID !== connected.orgID ||
+          plan.deploymentIncarnation !== connected.deploymentIncarnation ||
+          plan.keyID !== connected.signingIdentity.keyID ||
+          plan.runtimeID !== connected.runtimeID ||
+          plan.connectionEpoch !== connected.connectionEpoch ||
+          plan.issuedAt > Date.now() ||
+          plan.expiresAt <= Date.now() ||
+          !(await Handoff.verifyMachinePlan(plan, signature, connected.signingIdentity.publicKey))
+        )
+          throw failure("PERMISSION_DENIED", "Handoff machine plan is invalid for this connection")
+        const execution = Handoff.MachineExecution.parse(
+          await options.handoff(command.authorization, connected, work.signal),
+        )
+        const result = Handoff.MachineResult.parse({
+          ...execution,
+          facts: await Promise.all(
+            execution.facts.map(async (proof) => ({ proof, signature: await Handoff.signProof(proof, input.key) })),
+          ),
+        })
+        if (!Handoff.matchesMachine(plan, result))
+          throw failure("PROTOCOL_MISMATCH", "Native handoff returned another operation or binding")
+        respond({ kind: "handoff", authorization: command.authorization, result })
+        return
+      }
       if (command.kind === "interactions") {
         if (!options.interactions || !connected)
           throw failure("PROTOCOL_MISMATCH", "Native interaction reads are unavailable")
@@ -461,6 +498,7 @@ async function attempt(input: {
         respond({ kind: "read", authorization: command.authorization, result })
         return
       }
+      if (!receiver) throw failure("PROTOCOL_MISMATCH", "Native command intake is unavailable")
       reply =
         command.kind === "create"
           ? { kind: "result", result: await receiver.create(command.delivery) }

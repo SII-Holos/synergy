@@ -2521,6 +2521,7 @@ export const migrations: Migration[] = [
   RolloutToolPartIndex.sessionMigration,
   RolloutToolPartIndex.operationMigration,
   SessionAttachmentIndex.migration,
+  SessionAttachmentIndex.presentationMigration,
   RolloutJournalMaintenance.migration,
   RolloutExecutionMigration.migration,
 

@@ -122,12 +122,17 @@ export function createRuntimeConnections(input: {
       fail("AUTHENTICATION_REQUIRED", "Authenticate the Runtime connection first")
     return handshake
   }
-  function captureSocket(socket: Socket, requireCommands = true): RuntimeConnectionLease {
+  function captureSocket(socket: Socket, requireCommands: boolean | "handoffs" = true): RuntimeConnectionLease {
     const handshake = structuredClone(current(socket))
-    if (requireCommands && (!handshake.capabilities.includes("commands") || handshake.schemas.commands !== 1))
+    if (requireCommands === true && (!handshake.capabilities.includes("commands") || handshake.schemas.commands !== 1))
       fail("PROTOCOL_MISMATCH", "Runtime does not support organization command intake")
-    if (!requireCommands && (!handshake.capabilities.includes("sync") || handshake.schemas.sync !== 1))
+    if (requireCommands === false && (!handshake.capabilities.includes("sync") || handshake.schemas.sync !== 1))
       fail("PROTOCOL_MISMATCH", "Runtime does not support shared Session sync")
+    if (
+      requireCommands === "handoffs" &&
+      (!handshake.capabilities.includes("handoffs") || handshake.schemas.handoffs !== 1)
+    )
+      fail("PROTOCOL_MISMATCH", "Runtime does not support the native handoff reader contract")
     Object.freeze(handshake.capabilities)
     Object.freeze(handshake.schemas)
     Object.freeze(handshake)
@@ -255,7 +260,7 @@ export function createRuntimeConnections(input: {
       return authenticate(socket, frame.data)
     }
     if (frame.data.type === "receipt") {
-      const connection = captureSocket(socket)
+      const connection = captureSocket(socket, frame.data.reply.kind === "handoff" ? "handoffs" : true)
       if (frame.data.connectionEpoch !== connection.handshake.connectionEpoch)
         stale(connection.handshake.connectionEpoch)
       const transport = transports.get(socket)!
@@ -459,6 +464,11 @@ export function createRuntimeConnections(input: {
       const socket = active.get(runtimeID)
       if (!socket) fail("RUNTIME_OFFLINE", "Runtime is not connected")
       return captureSocket(socket)
+    },
+    captureHandoff(runtimeID: string) {
+      const socket = active.get(runtimeID)
+      if (!socket) fail("RUNTIME_OFFLINE", "Runtime is not connected")
+      return captureSocket(socket, "handoffs")
     },
     socket(): RuntimeSocket {
       if (closed) fail("SERVICE_UNAVAILABLE", "Organization service is closed")

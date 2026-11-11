@@ -1020,6 +1020,13 @@ export type OrgInteractionQuery =
       }>
     }
 
+export type OrgPrivateAttachmentMetadata = {
+  filename: string
+  mediaType: string
+  ordinal: number
+  bytes?: number
+}
+
 export type OrgPrivateAttachmentReference = {
   kind: "attachment"
   version: string
@@ -1151,6 +1158,7 @@ export type OrgPrivateReadResult =
         render?: boolean
         status?: string
         tool?: string
+        attachmentCount?: number
         content: {
           version: string
           bytes: number
@@ -1380,9 +1388,22 @@ export type OrgPrivateReadResult =
       rootSessionID: string
       sourceSessionID: string
       binding: OrgSessionBinding
+      operation: "attachments"
+      messageID: string
+      partID: string
+      version: string
+      items: Array<OrgPrivateAttachmentMetadata>
+      total: number
+      cursor?: string
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
       operation: "attachmentContent"
       messageID: string
       partID: string
+      ordinal?: number
       state: "ready"
       reference: OrgPrivateAttachmentReference
       chunk: OrgPrivateAttachmentChunk
@@ -1394,6 +1415,7 @@ export type OrgPrivateReadResult =
       operation: "attachmentContent"
       messageID: string
       partID: string
+      ordinal?: number
       state: "unavailable"
       version: string
       reason: "not_retained" | "partial"
@@ -1446,9 +1468,19 @@ export type OrgPrivateReadQuery =
   | {
       rootSessionID: string
       sourceSessionID?: string
+      operation: "attachments"
+      messageID: string
+      partID: string
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
       operation: "attachmentContent"
       messageID: string
       partID: string
+      ordinal?: number
       version: string
       offset?: number
       length?: number
@@ -2194,6 +2226,70 @@ export type OrgHandoffProof =
 export type OrgHandoffSignedProof = {
   proof: OrgHandoffProof
   signature: string
+}
+
+export type OrgHandoffMachineResult = {
+  handoffID: string
+  requestID: string
+  runtimeID: string
+  operation:
+    | "inspect-source"
+    | "inspect-target"
+    | "prepare-source"
+    | "prepare-target"
+    | "surrender-source"
+    | "cancel-source"
+    | "activate-target"
+    | "retire-target"
+    | "object"
+  state: "idle" | "working" | "blocked" | "complete"
+  stage:
+    | "idle"
+    | "preparing"
+    | "source-frozen"
+    | "target-prepared"
+    | "source-surrendered"
+    | "source-cancelled"
+    | "target-activated"
+    | "target-never-activate"
+  revision: string
+  requirements: Array<{
+    code: string
+    label: string
+    recoverable: boolean
+  }>
+  requirementsCursor?: string
+  progress?: {
+    bytes: number
+    totalBytes?: number
+  }
+  readers?: {
+    [key: string]: Array<number>
+  }
+  object?: {
+    hash: string
+    offset: number
+    nextOffset: number
+    totalBytes: number
+    data: string
+    complete: boolean
+  }
+  facts: Array<OrgHandoffSignedProof>
+}
+
+export type OrgHandoffDrive = {
+  requestID: string
+  operation:
+    | "inspect-source"
+    | "inspect-target"
+    | "prepare-source"
+    | "prepare-target"
+    | "surrender-source"
+    | "cancel-source"
+    | "activate-target"
+    | "retire-target"
+  expectedRevision?: string
+  cursor?: string
 }
 
 export type OrgKnowledgeExecutionPage = {
@@ -8048,6 +8144,53 @@ export type OrgHandoffPermitResponses = {
 }
 
 export type OrgHandoffPermitResponse = OrgHandoffPermitResponses[keyof OrgHandoffPermitResponses]
+
+export type OrgHandoffDriveData = {
+  body: OrgHandoffDrive
+  path: {
+    handoffID: string
+  }
+  query?: never
+  url: "/org/v1/handoffs/{handoffID}/drive"
+}
+
+export type OrgHandoffDriveErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffDriveError = OrgHandoffDriveErrors[keyof OrgHandoffDriveErrors]
+
+export type OrgHandoffDriveResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffMachineResult
+}
+
+export type OrgHandoffDriveResponse = OrgHandoffDriveResponses[keyof OrgHandoffDriveResponses]
 
 export type OrgHandoffProofData = {
   body: OrgHandoffSignedProof

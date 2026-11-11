@@ -98,6 +98,18 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
   const identity = Object.freeze(Command.SigningIdentity.parse({ ...publicFields, schemaVersion: 1 }))
   return {
     identity,
+    async signHandoffMachine(value: Handoff.MachinePlan): Promise<Handoff.SignedMachinePlan> {
+      const plan = Handoff.MachinePlan.parse(value)
+      if (
+        plan.orgID !== identity.orgID ||
+        plan.deploymentIncarnation !== identity.deploymentIncarnation ||
+        plan.keyID !== identity.keyID ||
+        plan.issuedAt > Date.now() ||
+        plan.expiresAt <= Date.now()
+      )
+        fail("PERMISSION_DENIED", "Handoff machine plan belongs to another or expired signing authority")
+      return { plan, signature: await Handoff.signMachinePlan(plan, privateKey) }
+    },
     async signInteractions(value: Interactions.Permit): Promise<Interactions.SignedPermit> {
       const permit = Interactions.Permit.parse(value)
       if (

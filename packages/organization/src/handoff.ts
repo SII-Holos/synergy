@@ -11,7 +11,7 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationSessionResources } from "./session-resources"
 import { OrganizationSharing } from "./sharing"
-import { fail, revision } from "./error"
+import { fail, revision, OrganizationError } from "./error"
 import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
 import type { RuntimeConnections } from "./runtime-connection"
 import type { CommandSigningAuthority } from "./signing"
@@ -103,7 +103,17 @@ export function registerHandoffAuthorityHistory() {
   })
 }
 
-export function createHandoffs(options: { connections: RuntimeConnections; signing: CommandSigningAuthority }) {
+export function createHandoffs(options: {
+  connections: RuntimeConnections
+  signing: CommandSigningAuthority
+  timeoutMs?: number
+}) {
+  const timeoutMs = z
+    .number()
+    .int()
+    .min(1)
+    .max(30_000)
+    .parse(options.timeoutMs ?? 5000)
   async function load(id: string) {
     const [value] = await Storage.readMany([key(Identity.ID.parse(id))])
     if (!value) fail("NOT_FOUND", "Handoff not found")
@@ -231,7 +241,120 @@ export function createHandoffs(options: { connections: RuntimeConnections; signi
     await Storage.write(key(record.handoffID), Stored.parse(record))
   }
 
-  return {
+  const api = {
+    async drive(
+      credentials: Credentials,
+      handoffID: string,
+      value: Handoff.Drive,
+      input: { signal: AbortSignal },
+    ): Promise<Handoff.MachineResult> {
+      const request = Handoff.Drive.parse(value)
+      input.signal.throwIfAborted()
+      const authorized = await Storage.snapshot(async () => {
+        const record = await load(handoffID)
+        const access = await authorize(credentials, "session.read", { sessionID: record.sessionID })
+        await authorize(credentials, "project.execute", { projectID: access.session.projectID })
+        const role = Handoff.machineRole(request.operation)
+        const required =
+          role === "source"
+            ? record.initiator
+            : record.target.runtimeKind === "member"
+              ? record.target.accountID
+              : access.session.creatorID
+        if (access.account.accountID !== required)
+          fail("PERMISSION_DENIED", "This account cannot drive this handoff participant")
+        const inspect = request.operation.startsWith("inspect-")
+        if (!inspect) {
+          if (request.operation === "cancel-source") {
+            if (
+              !record.cancelRequested ||
+              record.surrendered ||
+              ["completed", "cancelled", "retired"].includes(record.phase)
+            )
+              fail("HANDOFF_BLOCKED", "Source cancellation is unavailable in this phase")
+          } else {
+            await eligible(record)
+            const phases: Record<string, string[]> = {
+              "prepare-source": ["preparing"],
+              "prepare-target": ["preparing", "prepared"],
+              "surrender-source": ["prepared"],
+              "activate-target": ["activation_permitted"],
+              "retire-target": ["surrendered", "committed", "activation_permitted"],
+            }
+            if (record.cancelRequested || !phases[request.operation]?.includes(record.phase))
+              fail("HANDOFF_BLOCKED", "Handoff machine operation is unavailable in this phase")
+          }
+        }
+        const runtime = role === "source" ? record.source : record.target
+        const connection = options.connections.captureHandoff(runtime.runtimeID)
+        const authority = await runtimeAuthority({
+          runtimeID: runtime.runtimeID,
+          orgID: record.orgID,
+          deploymentIncarnation: record.deploymentIncarnation,
+          connectionEpoch: connection.handshake.connectionEpoch,
+        })
+        assertRuntimeConnection(authority.runtime, connection.handshake)
+        if (authority.runtime.publicKey !== runtime.publicKey)
+          fail("PERMISSION_DENIED", "Handoff machine identity changed")
+        const issuedAt = Date.now()
+        const expiresAt = Math.min(issuedAt + timeoutMs, access.expiresAt)
+        if (expiresAt <= issuedAt) fail("AUTHENTICATION_REQUIRED", "Handoff authorization expired before dispatch")
+        const plan = Handoff.MachinePlan.strip().parse({
+          ...record,
+          ...request,
+          purpose: "handoff-machine",
+          keyID: options.signing.identity.keyID,
+          runtimeID: runtime.runtimeID,
+          connectionEpoch: connection.handshake.connectionEpoch,
+          controlRevision: access.session.controlRevision,
+          authRevision: access.account.authRevision,
+          actor: {
+            kind: "account",
+            orgID: record.orgID,
+            subjectID: access.account.accountID,
+            displayName: access.account.displayName,
+            clientKind: access.clientKind,
+            requestID: request.requestID,
+            ...("tokenID" in access ? { tokenID: access.tokenID } : {}),
+          },
+          sourceBinding: {
+            schemaVersion: 1,
+            orgID: record.orgID,
+            projectID: access.session.projectID,
+            creatorID: access.session.creatorID,
+            driverRuntimeID: record.sourceRuntimeID,
+            bindingEpoch: record.fromEpoch,
+          },
+          ...(request.operation === "surrender-source"
+            ? { authorization: record.surrenderPermit }
+            : request.operation === "activate-target"
+              ? { authorization: record.activationPermit }
+              : {}),
+          preparedHash: record.prepared ? await Handoff.proofHash(record.prepared.proof) : undefined,
+          issuedAt,
+          expiresAt,
+        })
+        const authorization = await options.signing.signHandoffMachine(plan)
+        connection.assertCurrent()
+        return { authorization, connection }
+      })
+      const reply = await authorized.connection.exchange(
+        { kind: "handoff", authorization: authorized.authorization },
+        { signal: input.signal, deadline: authorized.authorization.plan.expiresAt },
+      )
+      authorized.connection.assertCurrent()
+      if (reply.kind === "error") throw new OrganizationError(reply.error)
+      if (reply.kind !== "handoff" || !Handoff.matchesMachine(authorized.authorization.plan, reply.result))
+        fail("PROTOCOL_MISMATCH", "Handoff machine returned another operation")
+      for (const fact of reply.result.facts) await api.proof(fact)
+      await Storage.snapshot(async () => {
+        const record = await load(handoffID)
+        const access = await authorize(credentials, "session.read", { sessionID: record.sessionID })
+        await authorize(credentials, "project.execute", { projectID: access.session.projectID })
+        authorized.connection.assertCurrent()
+      })
+      return reply.result
+    },
     async prepare(credentials: Credentials, sessionID: string, value: Handoff.Prepare) {
       const request = Handoff.Prepare.parse(value)
       const guards: Array<() => void> = []
@@ -303,6 +426,7 @@ export function createHandoffs(options: { connections: RuntimeConnections; signi
             [source, sourceLease],
             [target, targetLease],
           ] as const) {
+            options.connections.captureHandoff(runtime.runtimeID).assertCurrent()
             await runtimeAuthority({
               runtimeID: runtime.runtimeID,
               orgID: current.orgID,
@@ -608,6 +732,7 @@ export function createHandoffs(options: { connections: RuntimeConnections; signi
       })
     },
   }
+  return api
 }
 
 export type Handoffs = ReturnType<typeof createHandoffs>

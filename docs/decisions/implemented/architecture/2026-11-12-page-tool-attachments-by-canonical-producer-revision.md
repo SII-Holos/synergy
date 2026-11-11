@@ -14,6 +14,10 @@ The Session owner maintains an attachment metadata header and ordinal rows in th
 
 The central Session migration builds indexes for historical producers. It reads each old Part during that owning upgrade, preserves its canonical body and writes a completion receipt. Later pages and restarted readers use only current metadata rows and revision reads. New producer replacement rolls back the canonical Part and its index together.
 
+The current index format is version 2. Rows retain the canonical hidden and purpose policy, and headers separate raw positions from visible counts. Owning projection omits hidden rows while advancing its cursor by the raw window, so an empty visible page can still lead to another file. Safe native part summaries supply visible attachment counts; those counts never authorize bytes. Hidden presentation leaves the creator's original-byte permission unchanged.
+
+A central presentation upgrade rebuilds known version-1 derived data from its canonical producer, updates the derived display summary and writes its own receipt. It never adopts an old derived artifact reference. Fresh version-2 headers at the current Part revision skip body reads, including explicit empty projections for other Part kinds. Normal readers accept version 2 only; unknown formats fail without rewriting them. Metadata cursors carry their current format version.
+
 Ordinal byte reads reuse the Session's Rollout artifact owner, bounded range reader, exact reference validation and post-I/O checks. A foreign artifact, absent evidence or partial original cannot become a downloadable file. Standalone attachment reads retain their existing native field version and omit the ordinal.
 
 Portable Core exports exclude these derived rows, and target validation rejects an injected raw index. During activation the target discards its obsolete index rows and builds current metadata beside each mapped canonical Part write. It does not adopt source SQL revisions or use an index as execution authority. Original canonical Parts, unknown retained fields and artifact evidence keep their established portability owners.
@@ -28,7 +32,7 @@ Portable Core exports exclude these derived rows, and target validation rejects 
 
 ## Consequences
 
-The index adds metadata writes to canonical Part replacement and a one-time owning upgrade for old records. Native page limits bound residency without limiting the number of files a tool can retain. They do not establish the organization wire API, renderer gallery or OS saving acceptance.
+The index adds metadata writes to canonical Part replacement and a one-time owning upgrade for old records. Native page limits bound residency without limiting the number of files a tool can retain. They do not by themselves establish a renderer gallery or OS saving acceptance.
 
 Real storage tests enumerate 1,001 files, read the final ordinal and forbid any canonical Part body read during steady paging and byte access. Additional cases cover producer replacement during a held range, foreign cursors/artifacts, cancellation, publication rollback, missing metadata, central migration and restart. The two-Home Core fixture excludes source indexes, changes the target Part revision inside its authorized activation, rejects injected index records and reads the target's original binary evidence afterward.
 
