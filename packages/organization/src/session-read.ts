@@ -5,6 +5,7 @@ import { authorize } from "./authorization"
 import type { RuntimeConnections } from "./runtime-connection"
 import type { CommandSigningAuthority } from "./signing"
 import { OrganizationError, fail } from "./error"
+import { createInteractionForwarder } from "./interaction-read"
 
 export function createSessionReadForwarder(options: {
   connections: RuntimeConnections
@@ -21,7 +22,9 @@ export function createSessionReadForwarder(options: {
       fail("PERMISSION_DENIED", "Native private reading requires the Session creator")
     return current
   }
+  const interactions = createInteractionForwarder(options)
   return {
+    interactions: interactions.read,
     async read(credentials: Credentials, input: Read.Input, signal?: AbortSignal) {
       if (active >= 32) fail("SERVICE_UNAVAILABLE", "Private read capacity is currently busy")
       active++

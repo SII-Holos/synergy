@@ -6,6 +6,7 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationSyncProtocol as Sync,
   OrganizationReadProtocol as Read,
+  OrganizationInteractionProtocol as Interactions,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { readRuntimeHome, type RuntimeHome, type RuntimeIdentity } from "./home"
 import { readRuntimeRegistration } from "./registration"
@@ -66,6 +67,11 @@ export interface MemberConnectionOptions {
   }
   sync?: boolean
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
+  interactions?: (
+    authorization: Interactions.SignedPermit,
+    connection: Connected,
+    signal: AbortSignal,
+  ) => Promise<Interactions.Result>
   onConnected?: (
     connection: MemberConnection,
     signal: AbortSignal,
@@ -116,12 +122,14 @@ async function attempt(input: {
         ...(options.commands ? ["commands"] : []),
         ...(options.sync ? ["sync"] : []),
         ...(options.read ? ["reads"] : []),
+        ...(options.interactions ? ["interactions"] : []),
       ],
       schemas: {
         bridge: 1,
         ...(options.commands ? { commands: 1 } : {}),
         ...(options.sync ? { sync: 1 } : {}),
         ...(options.read ? { reads: 1 } : {}),
+        ...(options.interactions ? { interactions: 1 } : {}),
       },
     },
     nonce: randomBytes(32).toString("hex"),
@@ -244,7 +252,7 @@ async function attempt(input: {
       const limit =
         frame.type === "sync-batch" ||
         frame.type === "blob-chunk" ||
-        (frame.type === "receipt" && frame.reply.kind === "read")
+        (frame.type === "receipt" && (frame.reply.kind === "read" || frame.reply.kind === "interactions"))
           ? syncFrameLimit
           : frameLimit
       if (Buffer.byteLength(encoded) > limit || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > limit)
@@ -272,10 +280,13 @@ async function attempt(input: {
     const window =
       frame.command.kind === "query" || frame.command.kind === "skip"
         ? windows.reconciliation
-        : frame.command.kind === "read"
+        : frame.command.kind === "read" || frame.command.kind === "interactions"
           ? windows.read
           : windows.command
-    if (window.count >= (frame.command.kind === "read" ? 4 : 16) || window.bytes + bytes > frameLimit * 4) {
+    if (
+      window.count >= (frame.command.kind === "read" || frame.command.kind === "interactions" ? 4 : 16) ||
+      window.bytes + bytes > frameLimit * 4
+    ) {
       send({
         type: "receipt",
         connectionEpoch: epoch,
@@ -433,6 +444,15 @@ async function attempt(input: {
     let reply: Command.Reply
     try {
       const command = frame.command
+      if (command.kind === "interactions") {
+        if (!options.interactions || !connected)
+          throw failure("PROTOCOL_MISMATCH", "Native interaction reads are unavailable")
+        const result = await options.interactions(command.authorization, connected, work.signal)
+        if (!Interactions.matches(command.authorization.permit.query, result, command.authorization.permit.binding))
+          throw failure("PROTOCOL_MISMATCH", "Native interaction read returned another target")
+        respond({ kind: "interactions", authorization: command.authorization, result })
+        return
+      }
       if (command.kind === "read") {
         if (!options.read || !connected) throw failure("PROTOCOL_MISMATCH", "Private native reads are unavailable")
         const result = await options.read(command.authorization, connected, work.signal)

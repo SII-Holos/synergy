@@ -39,7 +39,7 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
         const request = c.req.valid("json")
         if (request.sessionID !== c.req.valid("param").sessionID)
           fail("INVALID_REQUEST", "Decision Session does not match its route")
-        const result = await owner().decision(credentials(c), request, c.req.raw.signal)
+        const result = await owner().decision(credentials(c, "sessions.reply"), request, c.req.raw.signal)
         return c.json(result.receipt, result.existing ? 200 : 202)
       },
     )
@@ -58,7 +58,11 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
         const request = c.req.valid("json")
         if (request.sessionID !== c.req.valid("param").sessionID)
           fail("INVALID_REQUEST", "Command Session does not match its route")
-        const result = await owner().control(credentials(c), request, c.req.raw.signal)
+        const result = await owner().control(
+          credentials(c, `sessions.${request.control.operation}`),
+          request,
+          c.req.raw.signal,
+        )
         return c.json(result.receipt, result.existing || result.receipt.effect.operation === "pause" ? 200 : 202)
       },
     )
@@ -73,7 +77,7 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
       ),
       validator("json", Command.CreateRequest, validation),
       async (c) => {
-        const result = await owner().create(credentials(c), c.req.valid("json"), c.req.raw.signal)
+        const result = await owner().create(credentials(c, "sessions.create"), c.req.valid("json"), c.req.raw.signal)
         return c.json(result.receipt, result.existing ? 200 : 202)
       },
     )
@@ -86,7 +90,7 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
         const request = c.req.valid("json")
         if (request.sessionID !== c.req.valid("param").sessionID)
           fail("INVALID_REQUEST", "Command Session does not match its route")
-        const result = await owner().input(credentials(c), request, c.req.raw.signal)
+        const result = await owner().input(credentials(c, "sessions.input"), request, c.req.raw.signal)
         return c.json(result.receipt, result.existing ? 200 : 202)
       },
     )
@@ -95,7 +99,7 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
       operation("orgCommands.get", "Query the caller's receipt and current cancellation activity", Command.View),
       validator("param", z.strictObject({ sessionID: Identity.ID, requestID: Identity.ID }), validation),
       async (c) => {
-        const result = await owner().get(credentials(c), c.req.valid("param"), c.req.raw.signal)
+        const result = await owner().get(credentials(c, "sessions.read"), c.req.valid("param"), c.req.raw.signal)
         return c.json(view(result))
       },
     )
@@ -103,6 +107,7 @@ export function commandRoutes(owner: () => CommandForwarder, publicOrigin?: stri
       "/commands/:requestID",
       operation("orgCommands.lookup", "Find the caller's command receipt by its original request ID", Command.View),
       validator("param", z.strictObject({ requestID: Identity.ID }), validation),
-      async (c) => c.json(view(await owner().get(credentials(c), c.req.valid("param"), c.req.raw.signal))),
+      async (c) =>
+        c.json(view(await owner().get(credentials(c, "sessions.read"), c.req.valid("param"), c.req.raw.signal))),
     )
 }

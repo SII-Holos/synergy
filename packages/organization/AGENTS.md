@@ -10,7 +10,7 @@ Invitation management reads authorized metadata indexes, never token digests or 
 
 Page authorized creator/shared Session indexes before records. Capacity exposes counts only. Creation atomically reserves directory metadata with admission; metadata cannot grant execution. Verify `test/session-directory.test.ts` for rollback, revocation and mixed-owner pagination.
 
-Client grants bind the first-party login, exact callback and deployment. Consume authorization codes atomically with token creation. Refresh replay commits revocation before error; expired proofs may revoke their own login only. Cross-origin clients use access tokens, not cookies. Preserve generated organization contracts; verify `test/client-auth.test.ts` and Web authorization headers/HTML fallback.
+Client grants bind login, callback and deployment. Consume codes atomically; refresh replay revokes before error. API tokens bind one project, operations, expiry and current authority. Routes supply trusted purposes; receipts never redisclose secrets. Preserve signed token attribution and current stream authorization. Verify client-auth/api-tokens suites and generated contracts.
 
 Configuration/CLI components register before startup. Require an absolute Home before writes and read only the organization domain. Keep initialization secrets out of argv/stdout. Signing identity is migration-owned: damaged completed credentials require recovery, never replacement. Verify configuration, CLI, migration and signing suites.
 
@@ -22,7 +22,7 @@ Resource secrets remain separate. Atomically update grants, bind from native evi
 
 Sharing owns creator-only CAS, generation fencing, visibility indexes and checkpoint/idempotency commits. Explicit opt-in shares portable transcript DTOs and content references; private bodies remain Runtime-owned. Authorize every projection/blob read; never expose local paths, credentials or permanent asset URLs. Verify sharing/transcript suites and regenerate SDK after protocol/routes change.
 
-Creator-only reads use signed transient queries, exact bindings and post-response authorization; never persist their bodies. Shared replies use signed command admission and current collaboration roles; archived projects allow existing confirmations. Private Read cannot authorize collaborators. Verify `test/{session-read,decision-forwarding}.test.ts`.
+Creator-only history and collaborative pending reads use distinct signed transient queries, exact bindings and post-response authorization; never persist bodies. Replies use command admission and current roles; archived projects allow existing confirmations. Verify session-read, interactions and decision-forwarding suites.
 
 Publications verify immutable chunks before release. Knowledge stages pages before one authorized CAS pointer; member/project and hosted collections retain their owners. Machine reads require exact versions and grants. Shared blobs page receipts, verify before completion and restrict browser uploads to creators. Artifact lifetime follows project access independently of its source. Reuse ConfigMarkdown/SkillManifest and Storage binaries. Verify publication, knowledge, shared-blob and artifact suites.
 

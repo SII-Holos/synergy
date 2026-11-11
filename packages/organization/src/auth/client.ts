@@ -6,7 +6,7 @@ import { OrganizationStoragePath as Keys } from "../storage/path"
 import { fail } from "../error"
 import { ClientPolicy } from "./client-policy"
 import { ClientAuthenticationSettings } from "../config-schema"
-import { authenticate, authenticateClientGrant, authenticateLogin, type Credentials } from "./session"
+import { authenticateHuman, authenticateClientGrant, authenticateLogin, type Credentials } from "./session"
 import { digest, token } from "./secret"
 
 export function createClientAuthentication(options: ClientAuthenticationSettings = {}, issuer?: string) {
@@ -75,7 +75,7 @@ export function createClientAuthentication(options: ClientAuthenticationSettings
       if (credentials.kind === "access") fail("PERMISSION_DENIED", "Authorize using the organization sign-in session")
       return Storage.transaction(async () => {
         const identity = await authority(input)
-        const { login } = await authenticate(credentials)
+        const { login } = await authenticateHuman(credentials)
         const client = ClientPolicy.client(input.clientID)
         if (input.redirectUri !== client.redirectUri) fail("PERMISSION_DENIED", "The client callback is not registered")
         const code = token()

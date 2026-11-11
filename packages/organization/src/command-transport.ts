@@ -3,6 +3,7 @@ import {
   OrganizationProtocol as Protocol,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationReadProtocol as Read,
+  OrganizationInteractionProtocol as Interactions,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationError, fail } from "./error"
 
@@ -48,7 +49,7 @@ export function createCommandTransport(input: {
     })
   }
   function window(command: Command.Delivery) {
-    if (command.kind === "read") return "read"
+    if (command.kind === "read" || command.kind === "interactions") return "read"
     return command.kind === "query" || command.kind === "skip" ? "reconciliation" : "command"
   }
   function available(command: Command.Delivery) {
@@ -119,6 +120,15 @@ export function createCommandTransport(input: {
   }
   function validate(command: Command.Delivery, reply: Command.Reply) {
     if (reply.kind === "error") return
+    if (command.kind === "interactions") {
+      if (
+        reply.kind !== "interactions" ||
+        JSON.stringify(reply.authorization) !== JSON.stringify(command.authorization) ||
+        !Interactions.matches(command.authorization.permit.query, reply.result, command.authorization.permit.binding)
+      )
+        fail("PROTOCOL_MISMATCH", "Interaction response does not match its authorization")
+      return
+    }
     if (command.kind === "read") {
       if (
         reply.kind !== "read" ||

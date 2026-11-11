@@ -109,6 +109,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                 }),
                 sync: true,
                 read: context.bind(OrganizationSessionReads.remote),
+                interactions: context.bind(OrganizationSessionReads.interactions),
                 onConnected: context.bind((connection, signal) => {
                   const exporter = startMemberSyncExporter({ identity: member.identity, connection, signal })
                   void exporter.flush()

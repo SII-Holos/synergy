@@ -50310,6 +50310,11 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128
+              },
+              "tokenID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
               }
             },
             "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
@@ -50409,6 +50414,11 @@
                           "const": "account"
                         },
                         "orgID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "tokenID": {
                           "type": "string",
                           "minLength": 1,
                           "maxLength": 128

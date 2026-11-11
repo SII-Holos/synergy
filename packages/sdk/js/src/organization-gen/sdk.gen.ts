@@ -10,6 +10,14 @@ import type {
   OrgAccountsResetResponses,
   OrgAccountsUpdateErrors,
   OrgAccountsUpdateResponses,
+  OrgApiTokenCreate,
+  OrgApiTokenRevoke,
+  OrgApiTokensCreateErrors,
+  OrgApiTokensCreateResponses,
+  OrgApiTokensListErrors,
+  OrgApiTokensListResponses,
+  OrgApiTokensRevokeErrors,
+  OrgApiTokensRevokeResponses,
   OrgArtifactsContentErrors,
   OrgArtifactsContentResponses,
   OrgArtifactsGetErrors,
@@ -127,6 +135,7 @@ import type {
   OrgHealthGetErrors,
   OrgHealthGetResponses,
   OrgHostedRuntimeRegistration,
+  OrgInteractionQuery,
   OrgInviteConsume,
   OrgInviteCreate,
   OrgInviteRevoke,
@@ -265,6 +274,8 @@ import type {
   OrgRuntimeRevoke,
   OrgRuntimeRevokeErrors,
   OrgRuntimeRevokeResponses,
+  OrgSessionInteractionsListErrors,
+  OrgSessionInteractionsListResponses,
   OrgSessionInteractionsReplyErrors,
   OrgSessionInteractionsReplyResponses,
   OrgSessionReadReadErrors,
@@ -1064,6 +1075,91 @@ export class OrgProjects extends HeyApiClient {
   }
 }
 
+export class OrgApiTokens extends HeyApiClient {
+  /**
+   * Page your API token metadata without original secrets
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgApiTokensListResponses, OrgApiTokensListErrors, ThrowOnError>({
+      url: "/org/v1/api-tokens",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Issue a project and operation scoped personal API token once
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgApiTokenCreate: OrgApiTokenCreate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgApiTokenCreate", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgApiTokensCreateResponses, OrgApiTokensCreateErrors, ThrowOnError>({
+      url: "/org/v1/api-tokens",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Revoke a personal API token
+   */
+  public revoke<ThrowOnError extends boolean = false>(
+    parameters: {
+      tokenID: string
+      orgApiTokenRevoke: OrgApiTokenRevoke
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "tokenID" },
+            { key: "orgApiTokenRevoke", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgApiTokensRevokeResponses, OrgApiTokensRevokeErrors, ThrowOnError>({
+      url: "/org/v1/api-tokens/{tokenID}/revoke",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgRuntime extends HeyApiClient {
   /**
    * Issue an organization-hosted Runtime registration ticket
@@ -1792,6 +1888,82 @@ export class OrgSessionSync extends HeyApiClient {
       url: "/org/v1/sessions/{sessionID}/blobs/{hash}/content",
       ...options,
       ...params,
+    })
+  }
+}
+
+export class OrgSessionInteractions extends HeyApiClient {
+  /**
+   * Read safe pending confirmations or native winner identities without persisting their bodies
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgInteractionQuery: OrgInteractionQuery
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgInteractionQuery", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgSessionInteractionsListResponses,
+      OrgSessionInteractionsListErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/interactions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Answer an existing native permission or question through signed command admission
+   */
+  public reply<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgCommandDecisionRequest: OrgCommandDecisionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgCommandDecisionRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgSessionInteractionsReplyResponses,
+      OrgSessionInteractionsReplyErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/interactions/reply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }
@@ -3654,45 +3826,6 @@ export class OrgKnowledgeExecution extends HeyApiClient {
   }
 }
 
-export class OrgSessionInteractions extends HeyApiClient {
-  /**
-   * Answer an existing native permission or question through signed command admission
-   */
-  public reply<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      orgCommandDecisionRequest: OrgCommandDecisionRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { key: "orgCommandDecisionRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      OrgSessionInteractionsReplyResponses,
-      OrgSessionInteractionsReplyErrors,
-      ThrowOnError
-    >({
-      url: "/org/v1/sessions/{sessionID}/interactions/reply",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
 export class OrgCommands extends HeyApiClient {
   /**
    * Pause, continue or cancel work in an online Session
@@ -4100,6 +4233,8 @@ export class OrganizationClient extends HeyApiClient {
 
   orgProjects = new OrgProjects({ client: this.client })
 
+  orgApiTokens = new OrgApiTokens({ client: this.client })
+
   orgRuntime = new OrgRuntime({ client: this.client })
 
   orgSessionResources = new OrgSessionResources({ client: this.client })
@@ -4107,6 +4242,8 @@ export class OrganizationClient extends HeyApiClient {
   orgSessions = new OrgSessions({ client: this.client })
 
   orgSessionSync = new OrgSessionSync({ client: this.client })
+
+  orgSessionInteractions = new OrgSessionInteractions({ client: this.client })
 
   orgSessionRead = new OrgSessionRead({ client: this.client })
 
@@ -4129,8 +4266,6 @@ export class OrganizationClient extends HeyApiClient {
   orgHandoff = new OrgHandoff({ client: this.client })
 
   orgKnowledgeExecution = new OrgKnowledgeExecution({ client: this.client })
-
-  orgSessionInteractions = new OrgSessionInteractions({ client: this.client })
 
   orgCommands = new OrgCommands({ client: this.client })
 

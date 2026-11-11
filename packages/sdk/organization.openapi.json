@@ -1011,6 +1011,140 @@
         ]
       }
     },
+    "/org/v1/api-tokens": {
+      "post": {
+        "operationId": "orgApiTokens.create",
+        "summary": "Issue a project and operation scoped personal API token once",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgApiTokenCreate" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgApiTokenCreated" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      },
+      "get": {
+        "operationId": "orgApiTokens.list",
+        "summary": "Page your API token metadata without original secrets",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgApiTokenPage" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          }
+        ]
+      }
+    },
+    "/org/v1/api-tokens/{tokenID}/revoke": {
+      "post": {
+        "operationId": "orgApiTokens.revoke",
+        "summary": "Revoke a personal API token",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgApiTokenRevoke" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgApiTokenMetadata" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tokenID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
     "/org/v1/runtimes/hosted": {
       "post": {
         "operationId": "orgRuntime.registerHosted",
@@ -2114,6 +2248,54 @@
             "in": "query",
             "name": "shareGeneration",
             "schema": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/org/v1/sessions/{sessionID}/interactions": {
+      "post": {
+        "operationId": "orgSessionInteractions.list",
+        "summary": "Read safe pending confirmations or native winner identities without persisting their bodies",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgInteractionQuery" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgInteractionResult" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
             "required": true
           }
         ]
@@ -6534,6 +6716,112 @@
         "required": ["items", "projectRevision"],
         "additionalProperties": false
       },
+      "OrgApiTokenMetadata": {
+        "type": "object",
+        "properties": {
+          "tokenID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "accountID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "operations": {
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "sessions.read",
+                "sessions.create",
+                "sessions.input",
+                "sessions.pause",
+                "sessions.continue",
+                "sessions.cancel",
+                "sessions.reply",
+                "sessions.configure",
+                "resources.read",
+                "artifacts.read"
+              ]
+            }
+          },
+          "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "revokedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "tokenID",
+          "orgID",
+          "accountID",
+          "projectID",
+          "label",
+          "operations",
+          "revision",
+          "createdAt",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgApiTokenCreated": {
+        "type": "object",
+        "properties": {
+          "metadata": { "$ref": "#/components/schemas/OrgApiTokenMetadata" },
+          "token": { "type": "string", "pattern": "^sy_api_[a-f0-9]{64}$" },
+          "secretUnavailable": { "type": "boolean" }
+        },
+        "required": ["metadata", "secretUnavailable"],
+        "additionalProperties": false
+      },
+      "OrgApiTokenCreate": {
+        "type": "object",
+        "properties": {
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "operations": {
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "sessions.read",
+                "sessions.create",
+                "sessions.input",
+                "sessions.pause",
+                "sessions.continue",
+                "sessions.cancel",
+                "sessions.reply",
+                "sessions.configure",
+                "resources.read",
+                "artifacts.read"
+              ]
+            }
+          },
+          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["requestID", "projectID", "label", "operations", "expiresAt"],
+        "additionalProperties": false
+      },
+      "OrgApiTokenPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "maxItems": 100,
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OrgApiTokenMetadata" }
+          },
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
+      "OrgApiTokenRevoke": {
+        "type": "object",
+        "properties": { "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 } },
+        "required": ["expectedRevision"],
+        "additionalProperties": false
+      },
       "OrgRuntimePublicKey": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
       "OrgRuntimeRegistration": {
         "oneOf": [
@@ -6874,7 +7162,8 @@
               "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api", "runtime", "system"] },
               "requestID": { "type": "string", "minLength": 1, "maxLength": 128 },
               "kind": { "type": "string", "const": "account" },
-              "orgID": { "type": "string", "minLength": 1, "maxLength": 128 }
+              "orgID": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "tokenID": { "type": "string", "minLength": 1, "maxLength": 128 }
             },
             "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
             "additionalProperties": false
@@ -6917,7 +7206,8 @@
                         },
                         "requestID": { "type": "string", "minLength": 1, "maxLength": 128 },
                         "kind": { "type": "string", "const": "account" },
-                        "orgID": { "type": "string", "minLength": 1, "maxLength": 128 }
+                        "orgID": { "type": "string", "minLength": 1, "maxLength": 128 },
+                        "tokenID": { "type": "string", "minLength": 1, "maxLength": 128 }
                       },
                       "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
                       "additionalProperties": false
@@ -7673,6 +7963,290 @@
         },
         "required": ["schemaVersion", "orgID", "projectID", "creatorID", "driverRuntimeID", "bindingEpoch"],
         "additionalProperties": false
+      },
+      "OrgCommandDecisionWinner": {
+        "type": "object",
+        "properties": {
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "actor": { "$ref": "#/components/schemas/ActorStamp" },
+          "decidedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "outcome": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "permission" },
+                  "reply": { "type": "string", "enum": ["once", "session", "always", "reject"] },
+                  "causedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "reply"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "question" },
+                  "reply": { "type": "string", "enum": ["answer", "reject"] }
+                },
+                "required": ["kind", "reply"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["sessionID", "requestID", "decidedAt", "outcome"],
+        "additionalProperties": false
+      },
+      "OrgInteractionResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "rootSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "sourceSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "binding": { "$ref": "#/components/schemas/OrgSessionBinding" },
+              "runtimeKind": { "type": "string", "enum": ["member", "hosted"] },
+              "operation": { "type": "string", "const": "pending" },
+              "items": {
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": { "type": "string", "const": "permission" },
+                        "requestID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        },
+                        "sourceSessionID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        },
+                        "permission": { "type": "string" },
+                        "patterns": { "type": "array", "items": { "type": "string" } },
+                        "tool": {
+                          "type": "object",
+                          "properties": {
+                            "messageID": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[a-zA-Z0-9_-]+$"
+                            },
+                            "callID": { "type": "string", "minLength": 1 }
+                          },
+                          "required": ["messageID", "callID"],
+                          "additionalProperties": false
+                        },
+                        "alwaysScope": { "type": "string", "const": "runtime" }
+                      },
+                      "required": ["kind", "requestID", "sourceSessionID", "permission", "patterns", "alwaysScope"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": { "type": "string", "const": "question" },
+                        "requestID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        },
+                        "sourceSessionID": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        },
+                        "questions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "question": { "type": "string" },
+                              "header": { "type": "string", "maxLength": 256 },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": { "label": { "type": "string" }, "description": { "type": "string" } },
+                                  "required": ["label", "description"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "multiple": { "type": "boolean" },
+                              "allow_custom": { "type": "boolean" },
+                              "input_type": { "type": "string", "enum": ["text", "password"] }
+                            },
+                            "required": ["question", "header", "options"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "tool": {
+                          "type": "object",
+                          "properties": {
+                            "messageID": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[a-zA-Z0-9_-]+$"
+                            },
+                            "callID": { "type": "string", "minLength": 1 }
+                          },
+                          "required": ["messageID", "callID"],
+                          "additionalProperties": false
+                        },
+                        "timeout": { "type": "number", "minimum": 0 },
+                        "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                      },
+                      "required": ["kind", "requestID", "sourceSessionID", "questions"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "cursor": { "type": "string", "minLength": 1, "maxLength": 1024 },
+              "hasMore": { "type": "boolean" }
+            },
+            "required": ["rootSessionID", "sourceSessionID", "binding", "runtimeKind", "operation", "items", "hasMore"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "rootSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "sourceSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "binding": { "$ref": "#/components/schemas/OrgSessionBinding" },
+              "runtimeKind": { "type": "string", "enum": ["member", "hosted"] },
+              "operation": { "type": "string", "const": "decisions" },
+              "items": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "identity": {
+                          "type": "object",
+                          "properties": {
+                            "kind": { "type": "string", "enum": ["permission", "question"] },
+                            "requestID": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[a-zA-Z0-9_-]+$"
+                            }
+                          },
+                          "required": ["kind", "requestID"],
+                          "additionalProperties": false
+                        },
+                        "state": { "type": "string", "const": "pending" }
+                      },
+                      "required": ["identity", "state"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "identity": {
+                          "type": "object",
+                          "properties": {
+                            "kind": { "type": "string", "enum": ["permission", "question"] },
+                            "requestID": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[a-zA-Z0-9_-]+$"
+                            }
+                          },
+                          "required": ["kind", "requestID"],
+                          "additionalProperties": false
+                        },
+                        "state": { "type": "string", "const": "expired" }
+                      },
+                      "required": ["identity", "state"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "identity": {
+                          "type": "object",
+                          "properties": {
+                            "kind": { "type": "string", "enum": ["permission", "question"] },
+                            "requestID": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[a-zA-Z0-9_-]+$"
+                            }
+                          },
+                          "required": ["kind", "requestID"],
+                          "additionalProperties": false
+                        },
+                        "state": { "type": "string", "const": "resolved" },
+                        "winner": { "$ref": "#/components/schemas/OrgCommandDecisionWinner" }
+                      },
+                      "required": ["identity", "state", "winner"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["rootSessionID", "sourceSessionID", "binding", "runtimeKind", "operation", "items"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgInteractionQuery": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "rootSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "sourceSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "operation": { "type": "string", "const": "pending" },
+              "cursor": { "type": "string", "minLength": 1, "maxLength": 1024 },
+              "limit": { "default": 32, "type": "integer", "minimum": 1, "maximum": 64 }
+            },
+            "required": ["rootSessionID", "operation"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "rootSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "sourceSessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "operation": { "type": "string", "const": "decisions" },
+              "identities": {
+                "minItems": 1,
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["permission", "question"] },
+                    "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                  },
+                  "required": ["kind", "requestID"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["rootSessionID", "operation", "identities"],
+            "additionalProperties": false
+          }
+        ]
       },
       "OrgPrivateReadResult": {
         "oneOf": [
@@ -10130,7 +10704,8 @@
               "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
               "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "kind": { "type": "string", "const": "account" },
-              "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+              "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "tokenID": { "type": "string", "minLength": 1, "maxLength": 128 }
             },
             "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
             "additionalProperties": false
@@ -10413,40 +10988,6 @@
           "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
         },
         "required": ["authority", "manifestHash"],
-        "additionalProperties": false
-      },
-      "OrgCommandDecisionWinner": {
-        "type": "object",
-        "properties": {
-          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "actor": { "$ref": "#/components/schemas/ActorStamp" },
-          "decidedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "outcome": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "kind": { "type": "string", "const": "permission" },
-                  "reply": { "type": "string", "enum": ["once", "session", "always", "reject"] },
-                  "causedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                },
-                "required": ["kind", "reply"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": { "type": "string", "const": "question" },
-                  "reply": { "type": "string", "enum": ["answer", "reject"] }
-                },
-                "required": ["kind", "reply"],
-                "additionalProperties": false
-              }
-            ]
-          }
-        },
-        "required": ["sessionID", "requestID", "decidedAt", "outcome"],
         "additionalProperties": false
       },
       "OrgCommandDecisionResolution": {
@@ -11411,7 +11952,8 @@
               "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
               "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "kind": { "type": "string", "const": "account" },
-              "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+              "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "tokenID": { "type": "string", "minLength": 1, "maxLength": 128 }
             },
             "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
             "additionalProperties": false
@@ -11524,7 +12066,8 @@
                   "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
                   "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
                   "kind": { "type": "string", "const": "account" },
-                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "tokenID": { "type": "string", "minLength": 1, "maxLength": 128 }
                 },
                 "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
                 "additionalProperties": false
@@ -11607,7 +12150,8 @@
                   "clientKind": { "type": "string", "enum": ["web", "desktop", "cli", "api"] },
                   "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
                   "kind": { "type": "string", "const": "account" },
-                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                  "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "tokenID": { "type": "string", "minLength": 1, "maxLength": 128 }
                 },
                 "required": ["subjectID", "displayName", "clientKind", "requestID", "kind", "orgID"],
                 "additionalProperties": false

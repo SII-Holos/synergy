@@ -5,6 +5,7 @@ import { bodyLimit } from "hono/body-limit"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
 import { type Authentication } from "./auth"
+import { apiTokenRoutes } from "./routes/api-tokens"
 import { identityRoutes } from "./routes/identity"
 import { OrganizationError, errorStatus, fail } from "./error"
 import type { RuntimeRegistrations } from "./runtime-registration"
@@ -153,6 +154,7 @@ export function organizationApp(
         return authentication
       }, publicOrigin),
     )
+    .route("/org/v1", apiTokenRoutes(publicOrigin))
     .route("/org/v1", registrationRoutes(registry, publicOrigin))
     .route("/org/v1", sessionDirectoryRoutes(publicOrigin))
     .route("/org/v1", sharingRoutes(publicOrigin))

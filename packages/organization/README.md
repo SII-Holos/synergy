@@ -75,3 +75,30 @@ Organization administrators configure model and business resources through `orgR
 `orgProjectResources.list` returns the caller's authorized descriptors for a project, without upstream addresses or credentials. Selection also requires the current project execution role and an enabled resource. Administrators retain configuration access without gaining execution authority. Secret values are write-only, stored separately and rotated atomically with configuration. These catalog grants prepare resource selection; execution still requires a separately bound native task grant. See [resource configuration](../../docs/architecture/organization.md#resource-configuration-and-selection).
 
 Knowledge selection uses paged reference reads and staged sequence-bound changes over a complete prior collection. Commit rechecks release access and atomically replaces one revisioned pointer. Member/project collections and hosted Session collections remain independent. Shared blob headers also use paged receipts; only verified full content is complete, and browser uploads require the creator. See [published knowledge](../../docs/architecture/organization.md#published-knowledge-and-project-artifacts).
+
+External applications obtain a personal API token from the project's token settings. Choose one project, the required operations and an expiry. The original secret is displayed once; keep it in the application's secret store. A lost issuance response returns metadata on retry, so revoke that identity and issue a new token. Tokens cannot sign in, manage accounts or grant resources. See [personal API tokens](../../docs/architecture/organization.md#personal-api-tokens).
+
+```ts
+import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
+
+const client = createOrganizationClient({
+  baseUrl: process.env.SYNERGY_ORG_URL!,
+  headers: { authorization: `Bearer ${process.env.SYNERGY_ORG_API_TOKEN!}` },
+})
+const created = await client.orgSessions.create({
+  orgCommandCreateRequest: {
+    schemaVersion: 1,
+    orgID,
+    projectID,
+    runtimeID,
+    requestID,
+    creation: { operation: "create" },
+  },
+})
+if (created.data) {
+  const sessionID = created.data.effect.sessionID
+  // Save sessionID and requestID in the application's own business record.
+}
+```
+
+The example's identifiers come from the application's configured organization/project/Runtime and a persisted logical request. Supply `sessions.create` for creation, `sessions.configure` to select authorized resources before a task, `sessions.input` to submit it, `sessions.read` to query native status or the original request, and `sessions.cancel` to request task cancellation. `resources.read` discovers authorized project descriptors and `artifacts.read` reads retained published outputs. An offline Runtime returns unavailable. For `outcome=unknown`, query `orgCommands.lookup` with the original request ID before any explicit identical retry; changing a payload under that identity conflicts. A cancellation receipt proves native reception; inspect the independent execution observation for physical drainage. Never log the credential or copy the complete Session into the upper application.

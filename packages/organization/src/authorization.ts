@@ -9,6 +9,7 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
 import { z } from "zod"
+import { assertApiTokenAction } from "./auth/api-token-session"
 
 // Provenance: https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
 // Local adaptation: resolve authoritative object ownership and current roles within the caller's SQL transaction.
@@ -59,6 +60,18 @@ export async function authorize(
 ) {
   const current = await authenticate(credentials)
   const { account } = current
+  if ("apiToken" in current) {
+    assertApiTokenAction(
+      current.apiToken,
+      credentials.apiOperation,
+      action,
+      target && "projectID" in target ? target.projectID : undefined,
+    )
+    const project = await Record.read(Record.Project, Keys.project(current.apiToken.projectID))
+    if (!project) fail("NOT_FOUND", "Project not found")
+    const membership = await Record.read(Record.ProjectMember, Keys.projectMember(project.projectID, account.accountID))
+    projectView(account, project, membership, "project.read")
+  }
   if (target && "inviteID" in target) {
     const index = await Record.read(Record.InviteIndex, Keys.inviteID(account.orgID, target.inviteID))
     const invite = index ? await Record.read(Record.Invite, Keys.invite(index.tokenHash)) : undefined
@@ -108,6 +121,8 @@ export async function authorize(
       fail("NOT_FOUND", "Session not found")
     const project = await Record.read(Record.Project, Keys.project(session.projectID))
     if (!project) fail("NOT_FOUND", "Session not found")
+    if ("apiToken" in current)
+      assertApiTokenAction(current.apiToken, credentials.apiOperation, action, project.projectID)
     const membership = await Record.read(Record.ProjectMember, Keys.projectMember(project.projectID, account.accountID))
     const access = projectView(account, project, membership, "project.read")
     return { ...current, session, project, view: sessionView(account, session, access, action) }

@@ -3,6 +3,7 @@ import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
 import { OrganizationReadProtocol as Read } from "./read.js"
+import { OrganizationInteractionProtocol as Interactions } from "./interaction.js"
 import { SigningPublicKey, SigningSignature, digestProtocol, signedProtocol } from "./signature.js"
 
 export namespace OrganizationCommandProtocol {
@@ -241,22 +242,7 @@ export namespace OrganizationCommandProtocol {
       "Decisions require a matching operation permit",
     )
   export type DecisionDelivery = z.infer<typeof DecisionDelivery>
-  export const DecisionWinner = z
-    .strictObject({
-      sessionID: Identity.ID,
-      requestID: Identity.ID,
-      actor: ActorStamp.Info.optional(),
-      decidedAt: z.number().int().nonnegative(),
-      outcome: z.discriminatedUnion("kind", [
-        z.strictObject({
-          kind: z.literal("permission"),
-          reply: z.enum(["once", "session", "always", "reject"]),
-          causedBy: Identity.ID.optional(),
-        }),
-        z.strictObject({ kind: z.literal("question"), reply: z.enum(["answer", "reject"]) }),
-      ]),
-    })
-    .meta({ ref: "OrgCommandDecisionWinner" })
+  export const DecisionWinner = Interactions.Winner
   export const DecisionResolution = z
     .discriminatedUnion("status", [
       z.strictObject({ status: z.literal("resolved"), winner: DecisionWinner }),
@@ -521,12 +507,18 @@ export namespace OrganizationCommandProtocol {
     z.strictObject({ kind: z.literal("query"), authorization: SignedPermit }),
     z.strictObject({ kind: z.literal("skip"), authorization: SignedSkip }),
     z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit }),
+    z.strictObject({ kind: z.literal("interactions"), authorization: Interactions.SignedPermit }),
   ])
   export type Delivery = z.infer<typeof Delivery>
   export const Reply = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("result"), result: Result }),
     z.strictObject({ kind: z.literal("query"), query: QueryResult }),
     z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit, result: Read.Result }),
+    z.strictObject({
+      kind: z.literal("interactions"),
+      authorization: Interactions.SignedPermit,
+      result: Interactions.Result,
+    }),
     z.strictObject({ kind: z.literal("error"), error: Protocol.Error }),
   ])
   export type Reply = z.infer<typeof Reply>

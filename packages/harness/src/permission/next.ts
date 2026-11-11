@@ -9,6 +9,7 @@ import { ScopedState } from "../scope/scoped-state"
 import { ScopeContext } from "../scope/context"
 import { SessionInteraction } from "../session/interaction"
 import { SessionDecisionReceipts as Decisions } from "../session/decision-receipts"
+import { SessionPendingWindow } from "../session/pending-window"
 import { Storage } from "../storage/storage"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { RolloutExecution } from "../session/rollout/execution"
@@ -92,6 +93,8 @@ export namespace PermissionNext {
     })
 
   export type Request = z.infer<typeof Request>
+  const PendingRequest = Request.omit({ metadata: true })
+  export type PendingRequest = z.infer<typeof PendingRequest>
 
   export const Reply = z.enum(["once", "session", "always", "reject"])
   export type Reply = z.infer<typeof Reply>
@@ -117,6 +120,7 @@ export namespace PermissionNext {
       string,
       {
         info: Request
+        ordinal: number
         resolve: () => void
         reject: (e: any) => void
         cleanup?: () => void
@@ -187,7 +191,13 @@ export namespace PermissionNext {
         const ready = Decisions.read({ sessionID: info.sessionID, requestID: id, kind: "permission" }).then((prior) => {
           if (prior) throw new Error("Native permission request is already resolved")
         })
-        const entry = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
+        const entry = {
+          info,
+          ordinal: SessionPendingWindow.next(),
+          resolve: resolvePending!,
+          reject: rejectPending!,
+          cleanup,
+        }
         s.pending[id] = entry
 
         return RolloutExecution.wait(() => {
@@ -392,6 +402,25 @@ export namespace PermissionNext {
 
   export async function list() {
     return state().then((x) => Object.values(x.pending).map((x) => x.info))
+  }
+
+  export async function pendingPage(input: SessionPendingWindow.Input) {
+    const s = await state()
+    const page = SessionPendingWindow.page(
+      input,
+      (function* () {
+        for (const id in s.pending) if (Object.hasOwn(s.pending, id)) yield s.pending[id]!
+      })(),
+    )
+    return {
+      ...page,
+      items: page.items.map((entry) => ({ ordinal: entry.ordinal, info: PendingRequest.parse(entry.info) })),
+    }
+  }
+
+  export async function hasPending(input: { sessionID: string; requestID: string }) {
+    const entry = (await state()).pending[input.requestID]
+    return entry?.info.sessionID === input.sessionID
   }
 
   export async function resolveAllForSessions(sessionIDs: string[]): Promise<number> {

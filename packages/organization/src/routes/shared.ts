@@ -2,7 +2,11 @@ import type { Context } from "hono"
 import { getCookie } from "hono/cookie"
 import { describeRoute, resolver } from "hono-openapi"
 import { z } from "zod"
-import { OrganizationIdentity as Identity, OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationIdentity as Identity,
+  OrganizationProtocol,
+  type OrganizationApiTokenProtocol,
+} from "@ericsanchezok/synergy-organization-protocol"
 import type { Credentials } from "../auth/session"
 import { fail } from "../error"
 
@@ -49,9 +53,14 @@ export function browserCredentials(publicOrigin?: string) {
   }
   // Provenance: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
   // Local adaptation: revocable opaque cookies plus an exact configured Origin and session-bound CSRF token.
-  function credentials(c: Context): Credentials {
+  function credentials(c: Context, apiOperation?: OrganizationApiTokenProtocol.Operation): Credentials {
     const authorization = c.req.header("authorization")
     if (authorization) {
+      const apiToken = /^Bearer (sy_api_[a-f0-9]{64})$/.exec(authorization)?.[1]
+      if (apiToken) {
+        if (!apiOperation) fail("PERMISSION_DENIED", "API tokens cannot use this operation")
+        return { token: apiToken, kind: "api", apiOperation }
+      }
       const token = /^Bearer ([a-f0-9]{64})$/.exec(authorization)?.[1]
       if (!token) fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")
       return { token, kind: "access", origin: c.req.header("origin") }

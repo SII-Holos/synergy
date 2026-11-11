@@ -76,6 +76,12 @@ export function resourceRoutes(publicOrigin?: string) {
       validator("param", z.strictObject({ projectID: Identity.ID }), validation),
       validator("query", Identity.Page, validation),
       async (c) =>
-        c.json(await Resources.available(credentials(c), c.req.valid("param").projectID, c.req.valid("query"))),
+        c.json(
+          await Resources.available(
+            credentials(c, "resources.read"),
+            c.req.valid("param").projectID,
+            c.req.valid("query"),
+          ),
+        ),
     )
 }

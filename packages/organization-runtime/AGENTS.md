@@ -20,7 +20,7 @@ Knowledge sources verify paged releases before atomic per-Session manifest selec
 
 Shared transcript export uses portable DTOs, ordered durable outboxes, generation/hash checkpoints and authorized chunk references. Private bodies remain local. Verify exporter/transcript migrations, restart and lost-ACK tests.
 
-Private reads share a dispatcher with canonical Scope/lineage and captured binding fences. Creator-only remote permits bind queries and current machine authority. Bound headers/ranges, preparation and provenance; exclude native paths/arbitrary metadata. Verify `test/session-read*.test.ts`; regenerate both SDKs for contract changes.
+Private history and collaborative interaction reads use distinct signed permits with canonical Scope/lineage and binding fences. Reuse native pending windows and decision receipts; omit metadata/answers. Bound ranges, preparation and provenance. Verify session-read/interactions suites; regenerate SDKs after contract changes.
 
 Desktop Browser requires private managed launch data, explicit listener authentication and lazy page creation. Reject inherited native credentials and non-Desktop selection. Hosted/member machines share bridge/intake/worker composition; hosted identities have no human account. Verify desktop, hosted-home and hosted-runtime suites.
 

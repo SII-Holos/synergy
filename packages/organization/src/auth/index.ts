@@ -6,7 +6,7 @@ import { OrganizationRecord as Record } from "../storage/records"
 import { fail, revision } from "../error"
 import { createPasswordHasher } from "./password"
 import { token, digest, fingerprint, matches } from "./secret"
-import { authenticate, account, revokeAccessLogin, type Credentials } from "./session"
+import { authenticateHuman, account, revokeAccessLogin, type Credentials } from "./session"
 import { authorize, requireAdministrator } from "../authorization"
 export type { Credentials } from "./session"
 
@@ -190,7 +190,7 @@ export async function createAuthentication(
     },
     async current(credentials: Credentials) {
       return Storage.snapshot(async () => {
-        const { account, expiresAt } = await authenticate(credentials)
+        const { account, expiresAt } = await authenticateHuman(credentials)
         return {
           account: Record.publicAccount(account),
           csrfToken: fingerprint(credentials.token, ["csrf"]),
@@ -201,18 +201,18 @@ export async function createAuthentication(
     async logout(credentials: Credentials) {
       await Storage.transaction(async () => {
         if (credentials.kind === "access") return revokeAccessLogin(credentials)
-        const { login } = await authenticate(credentials)
+        const { login } = await authenticateHuman(credentials)
         await Storage.write(Keys.login(login.tokenHash), { ...login, revokedAt: Date.now() })
       })
       return { ok: true as const }
     },
     async password(credentials: Credentials, input: Identity.PasswordChange) {
-      const original = await Storage.snapshot(async () => (await authenticate(credentials)).account)
+      const original = await Storage.snapshot(async () => (await authenticateHuman(credentials)).account)
       if (!(await passwords.verify(input.currentPassword, original.passwordHash)))
         fail("AUTHENTICATION_REQUIRED", "Invalid password")
       const passwordHash = await passwords.hash(input.password)
       await Storage.transaction(async () => {
-        const { account } = await authenticate(credentials)
+        const { account } = await authenticateHuman(credentials)
         if (account.authRevision !== original.authRevision)
           fail("AUTHENTICATION_REQUIRED", "Account changed; sign in again")
         await Storage.write(Keys.account(account.accountID), {

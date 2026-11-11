@@ -8,6 +8,7 @@ import {
   OrganizationGatewayProtocol as Gateway,
   OrganizationHandoffProtocol as Handoff,
   OrganizationReadProtocol as Read,
+  OrganizationInteractionProtocol as Interactions,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
@@ -68,6 +69,18 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
   const identity = Object.freeze(Command.SigningIdentity.parse(publicFields))
   return {
     identity,
+    async signInteractions(value: Interactions.Permit): Promise<Interactions.SignedPermit> {
+      const permit = Interactions.Permit.parse(value)
+      if (
+        permit.orgID !== identity.orgID ||
+        permit.deploymentIncarnation !== identity.deploymentIncarnation ||
+        permit.keyID !== identity.keyID ||
+        permit.issuedAt > Date.now() ||
+        permit.expiresAt <= Date.now()
+      )
+        fail("PERMISSION_DENIED", "Interaction read belongs to another or expired signing authority")
+      return { permit, signature: await Interactions.sign(permit, privateKey) }
+    },
     async signRead(value: Read.Permit): Promise<Read.SignedPermit> {
       const permit = Read.Permit.parse(value)
       if (

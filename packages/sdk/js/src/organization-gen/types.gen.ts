@@ -221,6 +221,64 @@ export type OrgProjectCandidatePage = {
   cursor?: string
 }
 
+export type OrgApiTokenMetadata = {
+  tokenID: string
+  orgID: string
+  accountID: string
+  projectID: string
+  label: string
+  operations: Array<
+    | "sessions.read"
+    | "sessions.create"
+    | "sessions.input"
+    | "sessions.pause"
+    | "sessions.continue"
+    | "sessions.cancel"
+    | "sessions.reply"
+    | "sessions.configure"
+    | "resources.read"
+    | "artifacts.read"
+  >
+  revision: number
+  createdAt: number
+  expiresAt: number
+  revokedAt?: number
+}
+
+export type OrgApiTokenCreated = {
+  metadata: OrgApiTokenMetadata
+  token?: string
+  secretUnavailable: boolean
+}
+
+export type OrgApiTokenCreate = {
+  requestID: string
+  projectID: string
+  label: string
+  operations: Array<
+    | "sessions.read"
+    | "sessions.create"
+    | "sessions.input"
+    | "sessions.pause"
+    | "sessions.continue"
+    | "sessions.cancel"
+    | "sessions.reply"
+    | "sessions.configure"
+    | "resources.read"
+    | "artifacts.read"
+  >
+  expiresAt: number
+}
+
+export type OrgApiTokenPage = {
+  items: Array<OrgApiTokenMetadata>
+  cursor?: string
+}
+
+export type OrgApiTokenRevoke = {
+  expectedRevision: number
+}
+
 export type OrgRuntimePublicKey = string
 
 export type OrgRuntimeRegistration =
@@ -393,6 +451,7 @@ export type ActorStamp =
       requestID: string
       kind: "account"
       orgID: string
+      tokenID?: string
     }
   | {
       subjectID: string
@@ -416,6 +475,7 @@ export type ActorStamp =
             requestID: string
             kind: "account"
             orgID: string
+            tokenID?: string
           }
         | {
             subjectID: string
@@ -812,6 +872,119 @@ export type OrgSessionBinding = {
   driverRuntimeID: string
   bindingEpoch: number
 }
+
+export type OrgCommandDecisionWinner = {
+  sessionID: string
+  requestID: string
+  actor?: ActorStamp
+  decidedAt: number
+  outcome:
+    | {
+        kind: "permission"
+        reply: "once" | "session" | "always" | "reject"
+        causedBy?: string
+      }
+    | {
+        kind: "question"
+        reply: "answer" | "reject"
+      }
+}
+
+export type OrgInteractionResult =
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      runtimeKind: "member" | "hosted"
+      operation: "pending"
+      items: Array<
+        | {
+            kind: "permission"
+            requestID: string
+            sourceSessionID: string
+            permission: string
+            patterns: Array<string>
+            tool?: {
+              messageID: string
+              callID: string
+            }
+            alwaysScope: "runtime"
+          }
+        | {
+            kind: "question"
+            requestID: string
+            sourceSessionID: string
+            questions: Array<{
+              question: string
+              header: string
+              options: Array<{
+                label: string
+                description: string
+              }>
+              multiple?: boolean
+              allow_custom?: boolean
+              input_type?: "text" | "password"
+            }>
+            tool?: {
+              messageID: string
+              callID: string
+            }
+            timeout?: number
+            createdAt?: number
+          }
+      >
+      cursor?: string
+      hasMore: boolean
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      runtimeKind: "member" | "hosted"
+      operation: "decisions"
+      items: Array<
+        | {
+            identity: {
+              kind: "permission" | "question"
+              requestID: string
+            }
+            state: "pending"
+          }
+        | {
+            identity: {
+              kind: "permission" | "question"
+              requestID: string
+            }
+            state: "expired"
+          }
+        | {
+            identity: {
+              kind: "permission" | "question"
+              requestID: string
+            }
+            state: "resolved"
+            winner: OrgCommandDecisionWinner
+          }
+      >
+    }
+
+export type OrgInteractionQuery =
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "pending"
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "decisions"
+      identities: Array<{
+        kind: "permission" | "question"
+        requestID: string
+      }>
+    }
 
 export type OrgPrivateReadResult =
   | {
@@ -1963,6 +2136,7 @@ export type OrgCommandPermit = {
     requestID: string
     kind: "account"
     orgID: string
+    tokenID?: string
   }
   operation: "create" | "input" | "pause" | "continue" | "cancel" | "decision"
   authorizedAt: number
@@ -2105,23 +2279,6 @@ export type OrgKnowledgeActivatedQuery = {
   manifestHash: string
   limit?: number
   cursor?: string
-}
-
-export type OrgCommandDecisionWinner = {
-  sessionID: string
-  requestID: string
-  actor?: ActorStamp
-  decidedAt: number
-  outcome:
-    | {
-        kind: "permission"
-        reply: "once" | "session" | "always" | "reject"
-        causedBy?: string
-      }
-    | {
-        kind: "question"
-        reply: "answer" | "reject"
-      }
 }
 
 export type OrgCommandDecisionResolution =
@@ -2604,6 +2761,7 @@ export type OrgBoundExecutionGrant = {
     requestID: string
     kind: "account"
     orgID: string
+    tokenID?: string
   }
   admissionID: string
   attemptID: string
@@ -2650,6 +2808,7 @@ export type OrgExecutionGrant =
         requestID: string
         kind: "account"
         orgID: string
+        tokenID?: string
       }
       admissionID: string
       attemptID: string
@@ -2682,6 +2841,7 @@ export type OrgExecutionGrant =
         requestID: string
         kind: "account"
         orgID: string
+        tokenID?: string
       }
       admissionID: string
       attemptID: string
@@ -3960,6 +4120,146 @@ export type OrgProjectsCandidatesResponses = {
 
 export type OrgProjectsCandidatesResponse = OrgProjectsCandidatesResponses[keyof OrgProjectsCandidatesResponses]
 
+export type OrgApiTokensListData = {
+  body?: never
+  path?: never
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/api-tokens"
+}
+
+export type OrgApiTokensListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgApiTokensListError = OrgApiTokensListErrors[keyof OrgApiTokensListErrors]
+
+export type OrgApiTokensListResponses = {
+  /**
+   * Success
+   */
+  200: OrgApiTokenPage
+}
+
+export type OrgApiTokensListResponse = OrgApiTokensListResponses[keyof OrgApiTokensListResponses]
+
+export type OrgApiTokensCreateData = {
+  body: OrgApiTokenCreate
+  path?: never
+  query?: never
+  url: "/org/v1/api-tokens"
+}
+
+export type OrgApiTokensCreateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgApiTokensCreateError = OrgApiTokensCreateErrors[keyof OrgApiTokensCreateErrors]
+
+export type OrgApiTokensCreateResponses = {
+  /**
+   * Success
+   */
+  200: OrgApiTokenCreated
+}
+
+export type OrgApiTokensCreateResponse = OrgApiTokensCreateResponses[keyof OrgApiTokensCreateResponses]
+
+export type OrgApiTokensRevokeData = {
+  body: OrgApiTokenRevoke
+  path: {
+    tokenID: string
+  }
+  query?: never
+  url: "/org/v1/api-tokens/{tokenID}/revoke"
+}
+
+export type OrgApiTokensRevokeErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgApiTokensRevokeError = OrgApiTokensRevokeErrors[keyof OrgApiTokensRevokeErrors]
+
+export type OrgApiTokensRevokeResponses = {
+  /**
+   * Success
+   */
+  200: OrgApiTokenMetadata
+}
+
+export type OrgApiTokensRevokeResponse = OrgApiTokensRevokeResponses[keyof OrgApiTokensRevokeResponses]
+
 export type OrgRuntimeRegisterHostedData = {
   body: OrgHostedRuntimeRegistration
   path?: never
@@ -4987,6 +5287,54 @@ export type OrgSessionSyncDownloadBlobResponses = {
 
 export type OrgSessionSyncDownloadBlobResponse =
   OrgSessionSyncDownloadBlobResponses[keyof OrgSessionSyncDownloadBlobResponses]
+
+export type OrgSessionInteractionsListData = {
+  body: OrgInteractionQuery
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/interactions"
+}
+
+export type OrgSessionInteractionsListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionInteractionsListError = OrgSessionInteractionsListErrors[keyof OrgSessionInteractionsListErrors]
+
+export type OrgSessionInteractionsListResponses = {
+  /**
+   * Success
+   */
+  200: OrgInteractionResult
+}
+
+export type OrgSessionInteractionsListResponse =
+  OrgSessionInteractionsListResponses[keyof OrgSessionInteractionsListResponses]
 
 export type OrgSessionReadReadData = {
   body: OrgPrivateReadQuery

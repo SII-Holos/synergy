@@ -3199,6 +3199,7 @@ export type ActorStamp =
       requestID: string
       kind: "account"
       orgID: string
+      tokenID?: string
     }
   | {
       subjectID: string
@@ -3222,6 +3223,7 @@ export type ActorStamp =
             requestID: string
             kind: "account"
             orgID: string
+            tokenID?: string
           }
         | {
             subjectID: string

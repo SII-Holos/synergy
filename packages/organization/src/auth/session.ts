@@ -5,8 +5,16 @@ import { fail } from "../error"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import { ClientPolicy } from "./client-policy"
+import type { OrganizationApiTokenProtocol } from "@ericsanchezok/synergy-organization-protocol"
+import { authenticateApiToken } from "./api-token-session"
 
-export type Credentials = { token: string; csrf?: string; kind?: "access"; origin?: string }
+export type Credentials = {
+  token: string
+  csrf?: string
+  kind?: "access" | "api"
+  origin?: string
+  apiOperation?: OrganizationApiTokenProtocol.Operation
+}
 
 export async function revokeAccessLogin(credentials: Credentials) {
   const access = await Record.read(Record.ClientAccess, Keys.clientAccess(digest(credentials.token)))
@@ -46,6 +54,12 @@ export async function authenticateClientGrant(grantID: string, origin?: string) 
 }
 
 export async function authenticate(credentials: Credentials) {
+  if (credentials.kind === "api") return authenticateApiToken(credentials.token, credentials.apiOperation)
+  return authenticateHuman(credentials)
+}
+
+export async function authenticateHuman(credentials: Credentials) {
+  if (credentials.kind === "api") fail("PERMISSION_DENIED", "Use an organization sign-in session")
   if (credentials.kind === "access") {
     const access = await Record.read(Record.ClientAccess, Keys.clientAccess(digest(credentials.token)))
     if (!access || access.expiresAt <= Date.now()) fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")

@@ -1,29 +1,27 @@
 # local-runtime Package
 
-Own native execution/adapters.
-
-- Domain implementations own tools, routes, config and migrations.
-- Own config schemas, normalization, references and secrets in `src/config-schema.ts`; consumers use its typed reader and the host composes registration.
-- Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
-- Tests live under test/; use isolated homes from testing support.
+- Own domain tools, routes, config and migrations.
+- Own config schemas, normalization, references and secrets in `src/config-schema.ts`; use its typed reader and host-composed registration.
+- Import declared public exports; preserve cancellation, permissions and persisted data.
+- Tests use test/ and isolated testing-support Homes.
 - `Skill.snapshot` reuses canonical parsing/collision rules for host-authorized roots without resetting Scope caches; test `test/skill/snapshot.test.ts`.
-- Question owns pending requests and answers; `Question.decide/reconcile` uses native Session receipts. Restore Scope when settling after commit and redact private answers in receipts/events. Verify `test/question/decision-receipt.test.ts`.
+- Question owns pending windows and answers; decide/reconcile uses native Session receipts. Restore Scope for deferred settlement and redact private answers. Verify question decision-receipt/pending-window suites.
 
 Run typecheck, focused tests and root package/dependency checks.
 
-Harness owns lifecycle. Local Host snapshots home and environment. `createLocalClient` requires a Runtime Handle and Scope. Workers start at selected entrypoints. HTTP and in-process clients share `session-api.ts`; preserve Scope ownership, Inbox scheduling and cancellation. Do not import CLI, server or product implementations.
+Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClient` requires Runtime Handle/Scope. Workers use selected entrypoints. HTTP/in-process clients share `session-api.ts`; preserve Scope, Inbox scheduling and cancellation. Never import CLI, server or product implementations.
 
 `resources` owns telemetry-independent sampling. Register `ResourceHost` before startup; verify `test/resources` and both JIT modes.
 
 - Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
 - Image decoding uses `AttachmentImageInput`; verify `test/attachment/image-input.test.ts` and Media's attachment suite.
 - Own native/Docker Environment providers, Executor transport and receipts. Reuse `OwnedProcess` and Workspace coordination; release durable claims only after saved output and files. Validate `bun test test/environment test/workspace/coordinator.test.ts` and the Docker integration described in the package README.
-- Own native PTY, Linux process ownership, filesystem watchers, OS sandbox backends, helper Rust sources and packaging assets. Published native assets use platform optional dependencies. Build the native library with `bun script/build-pty.ts`; validate byte drainage and ownership with `bun test test/process/native-pty.test.ts test/process/pty.test.ts test/process/owned-process-linux.test.ts`. Register `SandboxHost` and `file-watcher` Scope startup explicitly; harness owns policy and wrapper contracts.
+- Own native PTY, Linux process ownership, watchers, OS sandboxes, Rust helpers and packaging. Use platform optional dependencies. Build with `bun script/build-pty.ts`; test native-pty/pty/owned-process-linux for drainage/ownership. Register `SandboxHost` and `file-watcher` Scope startup; Harness owns policy/wrappers.
 - Linux watcher assets use `script/build-watcher.ts` and its pinned source patch. Validate the compiled binding and signal recovery; an unused C++ source edit does not fix the installed watcher.
 
 Workspace removal and reclamation share the lifecycle gate and native retirement claim. Git/setup commands use the Workspace process owner; short metadata mutations cannot reserve read-only turns as writers. Preserve active users, on-disk locks and unverified commits. Run `bun test test/workspace` and Presets worktree suites.
 
-Workspace coordination owns physical overlap/process identity across Runtimes. Bind claims before commands; retain ownership through actual exit. Windows Job Objects, macOS coalitions and Linux subreaper receipts provide liveness; native workers drain streams independently. Validate `bun test test/process/owned-process.test.ts test/workspace/bash-footprint.test.ts` and Windows-owned suites on Windows.
+Workspace coordination owns physical overlap/process identity across Runtimes. Bind claims before commands and retain through exit. Windows Job Objects, macOS coalitions and Linux subreaper receipts prove liveness; native workers drain independently. Validate `bun test test/process/owned-process.test.ts test/workspace/bash-footprint.test.ts` and Windows suites on Windows.
 
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 

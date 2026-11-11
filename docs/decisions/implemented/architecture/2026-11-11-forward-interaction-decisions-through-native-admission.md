@@ -26,4 +26,4 @@ Native after-commit settlement explicitly restores its captured Scope. A committ
 
 Protocol tests cover complete target/value digests and rejected caller routing or actor fields. Native tests cover first-writer attribution, surrounding command rollback and receipt-only recovery after an actual committed transaction loses its acknowledgement. Service tests cover archived collaboration, read-only denial, private administrator exclusion, signed forwarding, immutable retries and generated API metadata. A real HTTPS/WSS member test settles both the native permission and private Question through generated clients and verifies value-free receipt queries.
 
-Safe pending-interaction pagination and its frontend decision UI remain separate integrations. This record does not declare the complete collaboration or original PRD acceptance finished.
+Safe pending reads use the separate [native interaction query](2026-11-11-read-native-interactions-without-private-history-access.md). Its frontend decision UI remains a separate integration. This record does not declare the complete collaboration or original PRD acceptance finished.

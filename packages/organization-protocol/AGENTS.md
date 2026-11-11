@@ -6,11 +6,11 @@ Tests live under `test/`. Run `bun run typecheck` and `bun run test` here; verif
 
 Machine proofs bind a strict purpose and all authority-bearing claims with a versioned canonical encoding. Preserve signature-domain separation, validate before verification, and test altered identity, epoch and capability claims with real keys. Never make build-version strings an authorization decision.
 
-Reuse the portable account actor schema from Util. Command permits bind the logical request, actor, deployment, target, epochs, sequences and finite signing window; signature validity alone does not establish current execution admission. Preserve existing proof bytes when sharing signing primitives, and verify compiled Node imports across package boundaries.
+API token schemas separate one-time secrets from metadata and bind explicit project/operation/expiry scope. Trusted routes select purposes; token scope never replaces current authorization. Reuse the portable account actor schema from Util, including optional signed token attribution. Command permits bind the logical request, actor, deployment, target, epochs, sequences and finite signing window; signature validity alone does not establish current execution admission. Preserve existing proof bytes when sharing signing primitives, and verify compiled Node imports across package boundaries.
 
 Hash the complete strict input and target. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
 
-Decision digests bind the native pending identity, source Session and answer. Accepted winners omit question answers and distinguish expired requests. Verify `test/decision-command.test.ts`.
+Decision digests bind request, source and answer. Interaction reads page pending owners and value-free winners. Bind permits to queries; verify decision-command/interaction suites.
 
 Current execution observations belong beside immutable receipts. Bind their root and observation window to acceptance; reject observation fields in durable results.
 

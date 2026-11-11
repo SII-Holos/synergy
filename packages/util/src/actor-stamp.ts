@@ -8,7 +8,7 @@ export namespace ActorStamp {
     clientKind: z.enum(["web", "desktop", "cli", "api", "runtime", "system"]),
     requestID: ID,
   }
-  export const Account = z.strictObject({ ...fields, kind: z.literal("account"), orgID: ID })
+  export const Account = z.strictObject({ ...fields, kind: z.literal("account"), orgID: ID, tokenID: ID.optional() })
   export type Account = z.infer<typeof Account>
   const local = z.strictObject({ ...fields, kind: z.literal("local") })
   const system = z.strictObject({ ...fields, kind: z.literal("system"), orgID: ID.optional() })

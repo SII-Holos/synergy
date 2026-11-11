@@ -9,6 +9,7 @@ import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 import { SessionDecisionReceipts as Decisions } from "@ericsanchezok/synergy-harness/session/decision-receipts"
+import { SessionPendingWindow } from "@ericsanchezok/synergy-harness/session/pending-window"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import z from "zod"
@@ -109,6 +110,7 @@ export namespace Question {
       string,
       {
         info: Request
+        ordinal: number
         resolve: (answers: Answer[]) => void
         reject: (e: any) => void
         decision?: { receipt: Decisions.Receipt; settle: () => Promise<void> }
@@ -149,6 +151,7 @@ export namespace Question {
 
       s.pending[id] = {
         info,
+        ordinal: SessionPendingWindow.next(),
         resolve,
         reject,
       }
@@ -364,5 +367,21 @@ export namespace Question {
 
   export async function list() {
     return state().then((x) => Object.values(x.pending).map((x) => x.info))
+  }
+
+  export async function pendingPage(input: SessionPendingWindow.Input) {
+    const s = await state()
+    const page = SessionPendingWindow.page(
+      input,
+      (function* () {
+        for (const id in s.pending) if (Object.hasOwn(s.pending, id)) yield s.pending[id]!
+      })(),
+    )
+    return { ...page, items: page.items.map((entry) => ({ ordinal: entry.ordinal, info: Request.parse(entry.info) })) }
+  }
+
+  export async function hasPending(input: { sessionID: string; requestID: string }) {
+    const entry = (await state()).pending[input.requestID]
+    return entry?.info.sessionID === input.sessionID
   }
 }

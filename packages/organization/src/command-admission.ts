@@ -133,7 +133,7 @@ export function createCommandAdmissions(options: {
         const handshake = connection.handshake
         assertRuntimeConnection(runtime, handshake)
         const authorizedAt = Date.now()
-        deadline = authorizedAt + 30_000
+        deadline = Math.min(authorizedAt + 30_000, current.expiresAt)
         const prepared = Command.Permit.parse({
           schemaVersion: 1,
           purpose: "session-command",
@@ -160,6 +160,7 @@ export function createCommandAdmissions(options: {
             subjectID: account.accountID,
             displayName: account.displayName,
             clientKind: current.clientKind,
+            ...("tokenID" in current ? { tokenID: current.tokenID } : {}),
             requestID: request.requestID,
           },
           authorizedAt,
