@@ -12,6 +12,7 @@ import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotRecords } from "./snapshot-records"
 import { StoredSnapshotContent as Content } from "./stored-snapshot-content"
+import { SnapshotSegment } from "./snapshot-segment"
 import { SnapshotCaptureAuthority as Authority } from "./snapshot-capture-authority"
 
 export namespace SnapshotCheckpoint {
@@ -22,6 +23,11 @@ export namespace SnapshotCheckpoint {
   }
   export interface Capture {
     exportArchive(input: Parameters<typeof StorageCheckpoint.exportArchive>[0]): Promise<Archive>
+    exportSnapshots(input: {
+      archive: Archive
+      directory: string
+      signal?: AbortSignal
+    }): ReturnType<typeof SnapshotSegment.exportArchive>
     owners(archive: Archive): AsyncGenerator<Owner>
     roots(owner: Owner): AsyncGenerator<string>
     describe(owner: Owner): {
@@ -40,6 +46,22 @@ export namespace SnapshotCheckpoint {
 
   function fail(message: string): never {
     throw new SnapshotStore.StorageError(message)
+  }
+
+  export async function withRestoredSegment<T>(
+    input: Omit<Parameters<typeof SnapshotSegment.withRestored>[0], "signal"> & { signal?: AbortSignal },
+    body: (prepared: SnapshotSegment.Restored) => Promise<T>,
+  ) {
+    const current = state()
+    if (current.closed) fail("Snapshot checkpoint admission is closed")
+    const signal = input.signal ? AbortSignal.any([current.controller.signal, input.signal]) : current.controller.signal
+    const task = SnapshotSegment.withRestored({ ...input, signal }, body)
+    current.pending.add(task)
+    void task.then(
+      () => current.pending.delete(task),
+      () => current.pending.delete(task),
+    )
+    return await task
   }
 
   export async function withCapture<T>(
@@ -82,6 +104,7 @@ export namespace SnapshotCheckpoint {
     const pending = new Set<Promise<unknown>>()
     const readers = new Set<{ close?: () => Promise<void> }>()
     const archives = new WeakMap<Archive, Database>()
+    const archiveKeys = new WeakMap<Archive, Parameters<typeof StorageCheckpoint.exportArchive>[0]["keys"]>()
     const indexes: { database: Database; directory: string }[] = []
     function assertCurrent() {
       if (
@@ -241,12 +264,40 @@ export namespace SnapshotCheckpoint {
         namespace: namespaceProof,
       })
       archives.set(archive, database)
+      archiveKeys.set(archive, input.keys)
       return archive
     }
     const port: Capture = {
       exportArchive(input) {
         assertCurrent()
         const task = exported(input)
+        pending.add(task)
+        void task.then(
+          () => pending.delete(task),
+          () => pending.delete(task),
+        )
+        return task
+      },
+      exportSnapshots(input) {
+        assertCurrent()
+        const keys = archiveKeys.get(input.archive)
+        if (!archives.has(input.archive) || !keys) fail("Snapshot segment requires its own exported namespace archive")
+        const signal = input.signal ? AbortSignal.any([scopeSignal, input.signal]) : scopeSignal
+        const task = SnapshotSegment.exportArchive(
+          {
+            archive: input.archive,
+            keys,
+            signal,
+            assertCurrent() {
+              assertCurrent()
+              signal.throwIfAborted()
+            },
+            owners: () => port.owners(input.archive),
+            roots: port.roots,
+            describe: port.describe,
+          },
+          { directory: input.directory },
+        )
         pending.add(task)
         void task.then(
           () => pending.delete(task),

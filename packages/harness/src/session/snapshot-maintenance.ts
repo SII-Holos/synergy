@@ -20,6 +20,7 @@ import { StoredSnapshotMaintenance } from "./stored-snapshot-maintenance"
 
 export namespace SnapshotMaintenance {
   export const withCapture = SnapshotCheckpoint.withCapture
+  export const withRestoredSegment = SnapshotCheckpoint.withRestoredSegment
   export const collectStoredPreparations = StoredSnapshotMaintenance.collect
   const Journal = z.object({
     version: z.literal(2),

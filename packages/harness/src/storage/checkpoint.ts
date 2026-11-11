@@ -53,7 +53,7 @@ async function checkedFile(
     throw new StorageIntegrityError("Checkpoint content must be an ordinary file")
   if (expected && (info.size !== expected.bytes || (await fileDigest(filename, expected.bytes)) !== expected.sha256))
     throw new StorageIntegrityError("Checkpoint content integrity mismatch")
-  return { filename, bytes: info.size }
+  return { filename, bytes: info.size, device: info.dev, inode: info.ino }
 }
 
 async function writeFile(filename: string, bytes: Uint8Array | string) {
@@ -80,6 +80,57 @@ export namespace StorageCheckpoint {
     secretEntries: Count,
   })
   export type Manifest = z.infer<typeof Manifest>
+
+  export async function* streamArtifact(input: {
+    directory: string
+    location: { sha256: string; size: number }
+    signal?: AbortSignal
+  }): AsyncGenerator<Uint8Array> {
+    if (!path.isAbsolute(input.directory)) throw new StorageIntegrityError("Checkpoint source must be absolute")
+    const expected = { sha256: Hash.parse(input.location.sha256), size: Count.parse(input.location.size) }
+    input.signal?.throwIfAborted()
+    const selected = await checkedFile(path.resolve(input.directory), "objects", `${expected.sha256}.bin`)
+    if (selected.bytes !== expected.size) throw new StorageIntegrityError("Checkpoint artifact integrity mismatch")
+    const file = await fs.open(selected.filename, "r")
+    let completed = false
+    let failed = false
+    try {
+      const opened = await file.stat()
+      if (
+        !opened.isFile() ||
+        opened.dev !== selected.device ||
+        opened.ino !== selected.inode ||
+        opened.size !== expected.size
+      )
+        throw new StorageIntegrityError("Checkpoint artifact changed during opening")
+      const hash = createHash("sha256")
+      let bytes = 0
+      for (;;) {
+        input.signal?.throwIfAborted()
+        const chunk = Buffer.allocUnsafe(Math.min(4 * 1024 * 1024, expected.size - bytes + 1))
+        const read = await file.read(chunk, 0, chunk.length, null)
+        if (!read.bytesRead) break
+        bytes += read.bytesRead
+        if (bytes > expected.size) throw new StorageIntegrityError("Checkpoint artifact integrity mismatch")
+        const value = chunk.subarray(0, read.bytesRead)
+        hash.update(value)
+        yield value
+      }
+      input.signal?.throwIfAborted()
+      if (bytes !== expected.size || hash.digest("hex") !== expected.sha256)
+        throw new StorageIntegrityError("Checkpoint artifact integrity mismatch")
+      completed = true
+    } catch (error) {
+      failed = true
+      throw error
+    } finally {
+      await file.close()
+      if (!completed && !failed) {
+        input.signal?.throwIfAborted()
+        throw new StorageIntegrityError("Checkpoint artifact scan must complete")
+      }
+    }
+  }
 
   export async function exportArchive(input: {
     directory: string

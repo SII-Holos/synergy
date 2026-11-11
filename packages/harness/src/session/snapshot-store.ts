@@ -451,7 +451,11 @@ export namespace SnapshotStore {
       throw new StorageError("Shared snapshots have an external object dependency")
   }
 
-  export async function initializeBareRepository(repo: string, durability: "durable" | "transient" = "durable") {
+  export async function initializeBareRepository(
+    repo: string,
+    durability: "durable" | "transient" = "durable",
+    options: { emptyTemplate?: boolean } = {},
+  ) {
     await fs.mkdir(path.dirname(repo), { recursive: true })
     if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) {
       // Provenance: https://git-scm.com/docs/git-init (GIT_DEFAULT_HASH).
@@ -459,12 +463,17 @@ export namespace SnapshotStore {
       // without requiring the newer --object-format command-line option.
       // An explicit git-dir avoids init's positional-path chdir before config.
       // Provenance: https://github.com/git-for-windows/git/blob/main/builtin/init-db.c
-      const init = await initializeNative(repo)
+      const init = await initializeNative(repo, options.emptyTemplate)
       if (init.exitCode !== 0)
         throw new StorageError(
           `Unable to initialize snapshot object store (exit code ${init.exitCode}): ${init.stderr.trim()}`,
           { cause: { exitCode: init.exitCode, stderr: init.stderr } },
         )
+    }
+    if (options.emptyTemplate) {
+      // Provenance: https://git-scm.com/docs/git-config#Documentation/git-config.txt-corehooksPath
+      // Private staging must not execute the receiving Host's global hooks during reference publication.
+      await command(repo, ["config", "core.hooksPath", "/dev/null"])
     }
     const hash = await command(repo, ["hash-object", "-t", "tree", "--stdin"])
     if (!OID.test(hash)) throw new StorageError("Snapshot object store must use SHA-1")
@@ -480,14 +489,20 @@ export namespace SnapshotStore {
       await command(repo, ["config", key, value])
   }
 
-  async function initializeNative(repo: string) {
+  async function initializeNative(repo: string, emptyTemplate = false) {
+    const init = [
+      ...(emptyTemplate ? ["-c", "core.hooksPath=/dev/null"] : []),
+      "init",
+      "--bare",
+      ...(emptyTemplate ? ["--template="] : []),
+    ]
     if (process.platform !== "win32" || path.resolve(repo).length < 200)
-      return SnapshotGit.run(["git", "--git-dir", repo, "init", "--bare"], path.dirname(repo), {
+      return SnapshotGit.run(["git", "--git-dir", repo, ...init], path.dirname(repo), {
         GIT_DEFAULT_HASH: "sha1",
       })
     await using temporary = await SnapshotPath.temporary()
     const stage = path.join(temporary.directory, "store.git")
-    const result = await SnapshotGit.run(["git", "--git-dir", stage, "init", "--bare"], temporary.directory, {
+    const result = await SnapshotGit.run(["git", "--git-dir", stage, ...init], temporary.directory, {
       GIT_DEFAULT_HASH: "sha1",
     })
     if (result.exitCode !== 0) return result
