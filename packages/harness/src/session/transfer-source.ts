@@ -40,11 +40,19 @@ export namespace SessionTransferSource {
       .nullable(),
     members: z.number().int().positive().safe(),
   })
+  const Surrendered = z.strictObject({
+    version: z.literal(1),
+    binding: Epochs.Binding,
+    manifestHash: z.string().regex(/^[a-f0-9]{64}$/),
+    preparedHash: z.string().regex(/^[a-f0-9]{64}$/),
+    members: z.number().int().positive().safe(),
+  })
   const prefix = (binding: Epochs.Binding) => ["session_transfer_source", binding.handoffID, binding.sessionID]
   const memberKey = (binding: Epochs.Binding, sessionID: string) => [...prefix(binding), "members", sessionID]
   const stateKey = (binding: Epochs.Binding) => [...prefix(binding), "state"]
   const candidateKey = (binding: Epochs.Binding) => [...prefix(binding), "candidate"]
   const cancellationKey = (binding: Epochs.Binding) => [...prefix(binding), "cancelled"]
+  const surrenderKey = (binding: Epochs.Binding) => [...prefix(binding), "surrendered"]
   function fail(message: string): never {
     throw new Owners.Rejected({ message })
   }
@@ -106,6 +114,98 @@ export namespace SessionTransferSource {
         fail("Source cancellation is missing its permanently cancelled root")
       return receipt
     })
+  }
+
+  export async function surrendered(value: Epochs.Binding) {
+    const binding = Epochs.Binding.parse(value)
+    return Storage.snapshot(async () => {
+      const [raw] = await Storage.readMany([surrenderKey(binding)])
+      if (raw === undefined) return
+      const receipt = Surrendered.parse(raw)
+      if (!same(receipt.binding, binding)) fail("Source surrender belongs to another immutable binding")
+      const epoch = await Epochs.inspect(binding)
+      if (
+        epoch.role !== "source" ||
+        epoch.phase !== "surrendered" ||
+        epoch.manifestHash !== receipt.manifestHash ||
+        epoch.preparedHash !== receipt.preparedHash
+      )
+        fail("Source surrender is missing its permanently surrendered root")
+      return receipt
+    })
+  }
+
+  export async function surrender(input: {
+    binding: Epochs.Binding
+    manifestHash: string
+    preparedHash: string
+    signal: AbortSignal
+    verify(): Promise<void>
+  }) {
+    const binding = Epochs.Binding.parse(input.binding)
+    const manifestHash = Surrendered.shape.manifestHash.parse(input.manifestHash)
+    const preparedHash = Surrendered.shape.preparedHash.parse(input.preparedHash)
+    const signal = input.signal
+    const verify = input.verify
+    if (binding.rootSessionID && binding.rootSessionID !== binding.sessionID)
+      fail("Source surrender requires the aggregate root")
+    signal.throwIfAborted()
+    using lock = await Lock.writeWithSignal("session-transfer-source:" + binding.sessionID, signal)
+    signal.throwIfAborted()
+    if (!lock) fail("Source surrender could not acquire its native lock")
+    return Storage.transaction(
+      async () => {
+        await verify()
+        signal.throwIfAborted()
+        const retained = await surrendered(binding)
+        if (retained) {
+          if (retained.manifestHash !== manifestHash || retained.preparedHash !== preparedHash)
+            fail("Source surrender cannot replace its immutable destination preparation")
+          return retained
+        }
+        const prepared = await status(binding)
+        if (!prepared || prepared.manifestHash !== manifestHash)
+          fail("Source surrender requires its complete immutable frozen package")
+        const root = await Session.get(binding.sessionID)
+        if (!root.paused || root.scope.id !== binding.scopeID) fail("Source surrender requires its paused native root")
+        let count = 0
+        let found = false
+        for await (const member of members(binding, signal)) {
+          const epoch = await Epochs.inspect(member.binding)
+          if (
+            epoch.role !== "source" ||
+            !["frozen", "surrendered"].includes(epoch.phase) ||
+            epoch.manifestHash !== manifestHash ||
+            (epoch.preparedHash && epoch.preparedHash !== preparedHash)
+          )
+            fail("Source surrender requires every exact frozen member")
+          for await (const child of Session.childIndexEntries(binding.scopeID, member.binding.sessionID, signal)) {
+            const [raw] = await Storage.readMany([memberKey(binding, child.id)])
+            if (raw === undefined || !same(Member.parse(raw).binding, memberBinding(binding, child.id)))
+              fail("Source surrender omits a canonical descendant")
+          }
+          found ||= member.binding.sessionID === binding.sessionID
+          count++
+        }
+        if (!found || count !== prepared.members) fail("Source surrender has incomplete frozen membership")
+        for await (const member of members(binding, signal)) await Epochs.surrender(member.binding, preparedHash)
+        const receipt = Surrendered.parse({
+          version: 1,
+          binding,
+          manifestHash,
+          preparedHash,
+          members: count,
+        })
+        await verify()
+        await Storage.write(surrenderKey(binding), receipt)
+        return receipt
+      },
+      {
+        commitGuard() {
+          signal.throwIfAborted()
+        },
+      },
+    )
   }
 
   export async function cancel(input: {

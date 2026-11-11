@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
+import path from "node:path"
+import { Database } from "bun:sqlite"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { RuntimeContext } from "../lifecycle/context"
@@ -13,6 +15,8 @@ import { SessionTransferOwners as Owners } from "./transfer-owners"
 import { SessionTransferEpochs } from "./transfer-epochs"
 import { SessionTransferAggregate as Aggregate } from "./transfer-aggregate"
 import { SessionTransferCore as Core } from "./transfer-core"
+import { Session } from "."
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
 
 export namespace SessionTransferStaging {
   export const Rejected = NamedError.create("SessionTransferStagingRejected", z.object({ message: z.string() }))
@@ -283,6 +287,116 @@ export namespace SessionTransferStaging {
       rootSessionID: input.rootSessionID,
       scopeID: input.scopeID,
     }
+  }
+
+  export function members(value: {
+    handoffID: string
+    rootSessionID: string
+    scopeID: string
+    signal: AbortSignal
+  }): AsyncGenerator<{ session: Readonly<Session.Info>; owners: Readonly<Record<string, number>> }> {
+    const input = {
+      handoffID: ID.parse(value.handoffID),
+      rootSessionID: ID.parse(value.rootSessionID),
+      scopeID: ID.parse(value.scopeID),
+      signal: value.signal,
+    }
+    const runtime = RuntimeContext.current()
+    const captured = Storage.current()
+    const storage = {
+      store: captured.store,
+      artifactDirectory: captured.artifactDirectory,
+      artifactObjects: captured.artifactObjects,
+    }
+    function assertOwner() {
+      input.signal.throwIfAborted()
+      const current = Storage.current()
+      if (
+        RuntimeContext.current() !== runtime ||
+        current.store !== storage.store ||
+        current.artifactDirectory !== storage.artifactDirectory ||
+        current.artifactObjects !== storage.artifactObjects
+      )
+        fail("Staged members belong to another Runtime or Store")
+    }
+    return (async function* () {
+      assertOwner()
+      const prepared = await prepareAggregate(input)
+      assertOwner()
+      const initial = await state(input.handoffID)
+      assertOwner()
+      await initializeSqliteEngine()
+      await fs.mkdir(Global.Path.cache, { recursive: true })
+      const directory = await fs.mkdtemp(path.join(Global.Path.cache, "session-transfer-members-"))
+      const database = new Database(path.join(directory, "members.sqlite"))
+      try {
+        database.exec(
+          "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE members(ordinal INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,parent TEXT)",
+        )
+        using insert = database.prepare("INSERT INTO members(id,parent) VALUES (?,?)")
+        using next = database.prepare<{ ordinal: number; id: string; parent: string | null }, [number]>(
+          "SELECT ordinal,id,parent FROM members WHERE ordinal>? ORDER BY ordinal LIMIT 1",
+        )
+        insert.run(input.rootSessionID, null)
+        let ordinal = 0
+        let count = 0
+        for (;;) {
+          assertOwner()
+          const row = next.get(ordinal)
+          if (!row) break
+          ordinal = row.ordinal
+          const record = await boundRecord(input.handoffID, "session-core", row.id, [
+            "sessions",
+            input.scopeID,
+            row.id,
+            "info",
+          ])
+          if (!record) fail("Staged member has no canonical Core metadata")
+          const session = Session.PersistedInfo.parse({
+            ...z.record(z.string(), z.unknown()).parse(record.value),
+            workspace: null,
+          })
+          if (session.id !== row.id || session.scope.id !== input.scopeID || (session.parentID ?? null) !== row.parent)
+            fail("Staged member metadata disagrees with its verified parent lineage")
+          const owners: Record<string, number> = {}
+          for (const [ownerID, version] of Object.entries(initial.root.owners)) {
+            const [selected] = await Storage.readMany([[...ownersKey(input.handoffID), ownerID, row.id]])
+            if (selected !== undefined) owners[ownerID] = version
+          }
+          const membership = Aggregate.portableKey(session)
+          for await (const entry of entries(input.handoffID, "session-core", row.id)) {
+            assertOwner()
+            if (
+              entry.kind !== "record" ||
+              !membership.every((segment, index) => entry.key[index] === segment) ||
+              entry.key[3] !== "edges" ||
+              entry.key[4] !== "child"
+            )
+              continue
+            const edge = Aggregate.Edge.parse((await readRecord(input.handoffID, entry)).value)
+            if (
+              entry.key.length !== 7 ||
+              edge.kind !== "child" ||
+              edge.ownerID !== "session-core" ||
+              entry.key[5] !== edge.ownerID ||
+              entry.key[6] !== edge.sessionID
+            )
+              fail("Staged canonical child edge changed")
+            insert.run(edge.sessionID, session.id)
+          }
+          assertOwner()
+          const current = await state(input.handoffID)
+          if (current.rootHash !== prepared.rootHash || current.phase !== "verified")
+            fail("Staged member preparation changed")
+          count++
+          yield { session, owners }
+        }
+        if (count !== prepared.members) fail("Staged member traversal omitted its verified native cohort")
+      } finally {
+        database.close(true)
+        await fs.rm(directory, { recursive: true, force: true })
+      }
+    })()
   }
 
   export async function verify(handoffID: string, signal?: AbortSignal) {
