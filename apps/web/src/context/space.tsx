@@ -13,7 +13,12 @@ import { z } from "zod"
 import { usePlatform } from "./platform"
 import { spaceKey } from "./space-state"
 import { createOrganizationConnections, organizationSpaceKey } from "../organization/connections"
-import { organizationRoute, parseOrganizationRoute, type OrganizationRoute } from "../organization/route"
+import {
+  organizationRoute,
+  parseOrganizationRoute,
+  type OrganizationRoute,
+  type OrganizationView,
+} from "../organization/route"
 import { assetPath, proxyPrefix } from "../utils/proxy"
 
 declare global {
@@ -57,7 +62,7 @@ function createSpace(props: { personalRuntimeID?: string }) {
     window.history.pushState(null, "", path)
     window.dispatchEvent(new PopStateEvent("popstate"))
   }
-  function open(key: string, projectID?: string) {
+  function open(key: string, projectID?: string, view?: OrganizationView, sessionID?: string) {
     const entry = connections.connections.find((item) => organizationSpaceKey(item) === key)
     if (!entry) return
     navigate(
@@ -70,6 +75,8 @@ function createSpace(props: { personalRuntimeID?: string }) {
         },
         projectID,
         proxyPrefix(),
+        view,
+        sessionID,
       ),
     )
   }
@@ -113,6 +120,10 @@ function createSpace(props: { personalRuntimeID?: string }) {
     project(projectID?: string) {
       const key = connections.selected()
       if (key) open(key, projectID)
+    },
+    page(view?: OrganizationView, projectID?: string, sessionID?: string) {
+      const key = connections.selected()
+      if (key) open(key, projectID, view, sessionID)
     },
   }
 }

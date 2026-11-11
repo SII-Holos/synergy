@@ -22,3 +22,29 @@ test("organization routes bind account and deployment and reject partial or fore
   ])
     expect(parseOrganizationRoute(path, "/synergy")).toBeUndefined()
 })
+
+test("organization work areas and conversations keep their full account and project identity", () => {
+  const identity = {
+    kind: "organization",
+    orgID: "org-a",
+    accountID: "account-a",
+    deploymentIncarnation: "deployment-a",
+  } as const
+  for (const view of ["members", "resources", "knowledge", "artifacts", "settings"] as const) {
+    expect(parseOrganizationRoute(organizationRoute(identity, undefined, "/synergy", view), "/synergy")).toEqual({
+      kind: "organization",
+      identity,
+      view,
+    })
+  }
+  expect(parseOrganizationRoute(organizationRoute(identity, "project-a", "", "sessions", "session-a"))).toEqual({
+    kind: "organization",
+    identity,
+    projectID: "project-a",
+    view: "sessions",
+    sessionID: "session-a",
+  })
+  for (const tail of ["projects/p/sessions/s/extra", "members/x", "projects/p/secrets", "projects/p/sessions/%2F"]) {
+    expect(parseOrganizationRoute(`/organization/org-a/account-a/deployment-a/${tail}`)).toBeUndefined()
+  }
+})

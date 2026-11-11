@@ -9,6 +9,7 @@ import type { OrgProjectView } from "@ericsanchezok/synergy-sdk/organization"
 import { useSpace } from "@/context/space"
 import { usePlatform } from "@/context/platform"
 import { SpaceSwitcher } from "@/components/sidebar/space-switcher"
+import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { organizationSpaceMessages as messages } from "./space-messages"
 import "./space-page.css"
 
@@ -36,6 +37,7 @@ function connectionError(error: unknown): keyof typeof messages {
 
 export function OrganizationSpace() {
   const space = useSpace()
+  const platform = usePlatform()
   const { _ } = useLingui()
   const confirm = useConfirm()
   onMount(() => window.dispatchEvent(new Event("synergy:app-surface-ready")))
@@ -54,25 +56,33 @@ export function OrganizationSpace() {
     })
   }
   return (
-    <div class="organization-space">
-      <header class="organization-space-header">
-        <div>
-          <p class="organization-space-brand">{_({ id: "app.name.synergy", message: "Synergy" })}</p>
-          <h1>{title()}</h1>
-          <Show when={space.connection()}>
-            {(entry) => (
-              <p class="organization-space-account">
-                {entry().account.displayName} · {entry().account.loginName}
-              </p>
-            )}
+    <div
+      class="organization-space"
+      classList={{
+        "organization-space--connecting": space.selected() === "connect",
+        "organization-space--desktop": platform.platform === "desktop",
+      }}
+    >
+      <Show when={space.selected() !== "connect"}>
+        <header class="organization-space-header">
+          <div>
+            <p class="organization-space-brand">{_({ id: "app.name.synergy", message: "Synergy" })}</p>
+            <h1>{title()}</h1>
+            <Show when={space.connection()}>
+              {(entry) => (
+                <p class="organization-space-account">
+                  {entry().account.displayName} · {entry().account.loginName}
+                </p>
+              )}
+            </Show>
+          </div>
+          <Show when={space.connection()?.state === "ready"}>
+            <Button variant="ghost" onClick={signOut}>
+              {_(messages.signOut)}
+            </Button>
           </Show>
-        </div>
-        <Show when={space.connection()?.state === "ready"}>
-          <Button variant="ghost" onClick={signOut}>
-            {_(messages.signOut)}
-          </Button>
-        </Show>
-      </header>
+        </header>
+      </Show>
       <main class="organization-space-content">
         <Show when={space.error()}>
           {(error) => (
@@ -146,11 +156,11 @@ function Connect() {
   const space = useSpace()
   const { _ } = useLingui()
   const [issuer, setIssuer] = createSignal(space.origins.length === 1 ? space.origins[0]! : "")
-  const [clientID, setClientID] = createSignal("")
+  const [clientID, setClientID] = createSignal(space.desktop ? "desktop" : "web")
   const [failed, setFailed] = createSignal(false)
   return (
     <form
-      class="organization-space-form"
+      class="organization-space-form organization-connect-panel"
       onSubmit={(event) => {
         event.preventDefault()
         if (space.busy()) return
@@ -160,7 +170,14 @@ function Connect() {
           .catch(() => setFailed(true))
       }}
     >
-      <h2>{_(messages.connect)}</h2>
+      <div class="organization-connect-identity">
+        <img src={brandAssetPath(BRAND_ASSETS.synergy.productIcon)} alt="" />
+        <span>{_({ id: "app.name.synergy", message: "Synergy" })}</span>
+      </div>
+      <div class="organization-connect-intro">
+        <h1>{_(messages.connect)}</h1>
+        <p>{_(messages.connectDescription)}</p>
+      </div>
       <Show when={!space.desktop && !space.origins.length}>
         <p role="alert">{_(messages.originNotAllowed)}</p>
       </Show>
@@ -173,15 +190,29 @@ function Connect() {
           value={issuer()}
           onChange={setIssuer}
           type="url"
+          placeholder="https://team.example.com"
           required
           autocomplete="url"
         />
-        <TextField label={_(messages.client)} value={clientID()} onChange={setClientID} required autocomplete="off" />
-        <p>{_(messages.clientHint)}</p>
-        <Button type="submit" disabled={!space.desktop && !space.origins.length}>
+        <details class="organization-connect-advanced">
+          <summary>{_(messages.advanced)}</summary>
+          <TextField
+            label={_(messages.client)}
+            value={clientID()}
+            onChange={setClientID}
+            required
+            autocomplete="off"
+            description={_(messages.clientHint)}
+          />
+        </details>
+        <Button type="submit" size="large" variant="primary" disabled={!space.desktop && !space.origins.length}>
           {_(space.busy() ? messages.connecting : messages.connect)}
         </Button>
+        <p class="organization-connect-hint">{_(messages.authorizationHint)}</p>
       </fieldset>
+      <Button type="button" variant="ghost" size="large" onClick={space.personal}>
+        {_(messages.personalBack)}
+      </Button>
     </form>
   )
 }

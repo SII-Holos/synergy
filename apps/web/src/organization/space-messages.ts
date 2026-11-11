@@ -1,5 +1,15 @@
 export const organizationSpaceMessages = {
   connect: { id: "organization.space.connect", message: "Connect organization" },
+  connectDescription: {
+    id: "organization.space.connectDescription",
+    message: "Bring your team's projects, conversations and shared resources into one space.",
+  },
+  advanced: { id: "organization.space.advanced", message: "Connection settings" },
+  authorizationHint: {
+    id: "organization.space.authorizationHint",
+    message: "You'll sign in securely on your organization's website. Your personal space stays separate.",
+  },
+  personalBack: { id: "organization.space.personalBack", message: "Back to personal space" },
   address: { id: "organization.space.address", message: "Organization address" },
   client: { id: "organization.space.client", message: "Client ID" },
   clientHint: {

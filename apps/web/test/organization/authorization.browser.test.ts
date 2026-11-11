@@ -308,6 +308,7 @@ test("the real Web space signs in, restores its project deep link and stays sign
     await page.getByRole("button", { name: "Current space" }).click()
     await page.getByRole("menuitem", { name: "Connect organization" }).click()
     expect(await page.getByLabel("Organization address").inputValue()).toBe(authority.issuer)
+    await page.locator(".organization-connect-advanced summary").click()
     await page.getByLabel("Client ID").fill("web")
     const opened = page.waitForEvent("popup")
     await page.getByRole("button", { name: "Connect organization", exact: true }).click()

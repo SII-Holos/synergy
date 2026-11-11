@@ -62,6 +62,30 @@ afterAll(async () => {
   if (directory) await fs.rm(directory, { recursive: true, force: true })
 })
 
+test("connecting an organization stays compact and offers a direct return while personal is offline", async () => {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  await page.exposeFunction("hostList", () => ({ ok: true, value: [] }))
+  await page.exposeFunction("hostCancel", () => ({ ok: true }))
+  try {
+    await page.goto(server.url)
+    await page.getByRole("button", { name: "Current space" }).click()
+    await page.getByRole("menuitem", { name: "Connect organization" }).click()
+    await page.getByRole("heading", { name: "Connect organization", exact: true }).first().waitFor()
+    expect(await page.getByRole("heading", { name: "Connect organization", exact: true }).count()).toBe(1)
+    const panel = await page.locator(".organization-connect-panel").boundingBox()
+    expect(panel?.width).toBeGreaterThanOrEqual(380)
+    expect(panel?.width).toBeLessThanOrEqual(480)
+    expect(Math.abs(panel!.x + panel!.width / 2 - 720)).toBeLessThanOrEqual(24)
+    expect(
+      (await page.getByRole("button", { name: "Connect organization", exact: true }).boundingBox())?.height,
+    ).toBeGreaterThanOrEqual(40)
+    await page.getByRole("button", { name: "Back to personal space" }).click()
+    await page.getByRole("heading", { name: "Can’t reach the server" }).waitFor()
+  } finally {
+    await page.close()
+  }
+}, 30_000)
+
 test("the actual app switches organizations while personal is offline and rejects a late project response", async () => {
   const page = await browser.newPage({ viewport: { width: 1100, height: 760 } })
   const started = Promise.withResolvers<void>()
@@ -212,6 +236,7 @@ test("Chinese native connection and pending logout remain operable in the narrow
     await page.getByRole("button", { name: "当前空间" }).click()
     await page.getByRole("menuitem", { name: "连接组织" }).click()
     await page.getByLabel("组织地址").fill("https://b.example")
+    await page.locator(".organization-connect-advanced summary").click()
     await page.getByLabel("客户端 ID").fill("desktop")
     await page.getByRole("button", { name: "连接组织", exact: true }).click()
     await page.getByRole("button", { name: /项目 B/ }).waitFor()

@@ -1,0 +1,23 @@
+# Decision Record: Organization connection entry
+
+Status: implemented
+
+## Problem
+
+The organization connection entry fills the application window with a small configuration form, repeats its title and renders its principal action using the compact secondary button. Joining an organization loses the workbench's visual hierarchy and leaves no adjacent return action.
+
+## Decision
+
+The independent space layer presents one compact connection panel using the product theme, typography and shared form controls. It explains the browser authorization step, offers a direct return to personal space and uses a large primary action. Registered client configuration remains available in a keyboard-accessible disclosure. Client identifiers are still checked by the organization's registered-client policy; presentation defaults do not grant or discover authorization.
+
+Organization routes retain the organization, account and deployment identity for workspace destinations and project conversations. Switching still disposes business providers from the previous space without stopping its backend work. The entry remains independent of personal Runtime readiness.
+
+## Alternatives considered
+
+**Put the form inside personal Settings.** This makes organization recovery depend on the availability of the personal Runtime and does not provide a coherent organization destination.
+
+**Apply larger global button defaults.** The compact button remains appropriate in workbench toolbars. The connection form selects its own existing large primary variant.
+
+## Consequences
+
+The connection entry gains a focused hierarchy without introducing a second component or theme system. Custom client registrations retain their explicit configuration path. Organization workspace destinations require their own authorized views; defining a route alone does not establish completion of that workflow.
