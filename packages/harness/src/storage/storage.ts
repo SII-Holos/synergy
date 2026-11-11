@@ -392,32 +392,61 @@ export namespace Storage {
       const owner = JSON.stringify(key.slice(0, ["sessions", "operations"].includes(key[0]) ? 3 : 1))
       const object = await state.objects?.prepare(bytes)
       const location = object?.location ?? (existing ? previous : await state.pack.append(bytes, owner))
-      const held = {
-        store: current().store,
-        runtime: RuntimeContext.current(),
-        key: [...key],
-        location,
-        released: false,
-        publishing: false,
-        outcome: "aborted" as "committed" | "aborted" | "unknown",
-      }
-      state.prepared.set(location.pack, (state.prepared.get(location.pack) ?? 0) + 1)
-      const token: PreparedBinary = {
-        [preparedBinaryBrand]: true,
-        [Symbol.dispose]() {
-          if (held.released || held.publishing) return
-          held.released = true
-          if (object) state.objects!.release(object, held.outcome)
-          const count = (state.prepared.get(location.pack) ?? 1) - 1
-          if (count) state.prepared.set(location.pack, count)
-          else state.prepared.delete(location.pack)
-        },
-      }
-      preparedBinaries.set(token, held)
-      if (object) preparedObjects.set(token, { backend: state.objects!, object })
-      ObservabilityResources.addWrite(content.byteLength)
-      return token
+      return retainPreparedBinary(key, state, location, object)
     })
+  }
+
+  function retainPreparedBinary(
+    key: string[],
+    state: ReturnType<typeof artifactPack>,
+    location: ArtifactLocation,
+    object?: Awaited<ReturnType<ObjectArtifacts["prepare"]>>,
+  ): PreparedBinary {
+    const held = {
+      store: current().store,
+      runtime: RuntimeContext.current(),
+      key: [...key],
+      location,
+      released: false,
+      publishing: false,
+      outcome: "aborted" as "committed" | "aborted" | "unknown",
+    }
+    state.prepared.set(location.pack, (state.prepared.get(location.pack) ?? 0) + 1)
+    const token: PreparedBinary = {
+      [preparedBinaryBrand]: true,
+      [Symbol.dispose]() {
+        if (held.released || held.publishing) return
+        held.released = true
+        if (object) state.objects!.release(object, held.outcome)
+        const count = (state.prepared.get(location.pack) ?? 1) - 1
+        if (count) state.prepared.set(location.pack, count)
+        else state.prepared.delete(location.pack)
+      },
+    }
+    preparedBinaries.set(token, held)
+    if (object) preparedObjects.set(token, { backend: state.objects!, object })
+    ObservabilityResources.addWrite(location.size)
+    return token
+  }
+
+  export async function prepareBinaryStream(
+    key: string[],
+    content: AsyncIterable<Uint8Array>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PreparedBinary> {
+    if (current().transaction)
+      throw new StorageConflictError("Artifact bytes must be flushed before the business transaction")
+    const state = artifactPack(key)
+    return state.gate.run(
+      async () => {
+        if (state.objects) {
+          const object = await state.objects.prepareStream(content, options.signal)
+          return retainPreparedBinary(key, state, object.location, object)
+        }
+        return retainPreparedBinary(key, state, await state.pack.appendStream(content, options.signal))
+      },
+      { signal: options.signal },
+    )
   }
 
   const preparedObjects = new WeakMap<
@@ -454,6 +483,28 @@ export namespace Storage {
     await transaction(() => publishPreparedBinary(prepared))
   }
 
+  export function artifactReferences(input: { prefix: string[]; after?: string[]; limit?: number }) {
+    return snapshot((transaction) => transaction.artifactPage(input))
+  }
+
+  export async function publishBinaryReference(
+    source: string[],
+    target: string[],
+    options: { replace?: boolean } = {},
+  ) {
+    const transaction = current().transaction
+    if (!transaction || !inWriteTransaction())
+      throw new StorageConflictError("Binary reference publication requires a write transaction")
+    const location = await transaction.artifact(source)
+    const previous = await transaction.artifact(target).catch((error: unknown) => {
+      if (error instanceof NotFoundError) return undefined
+      throw error
+    })
+    if (previous && (previous.sha256 !== location.sha256 || previous.size !== location.size) && !options.replace)
+      throw new StorageConflictError("Binary reference conflicts with destination data")
+    await transaction.writeArtifacts([{ key: target, location }])
+  }
+
   export async function readBinary(key: string[], options?: { maxBytes?: number }): Promise<Uint8Array> {
     const state = artifactPack(key)
     const handle = current()
@@ -466,6 +517,47 @@ export namespace Storage {
       return content
     }
     return handle.transaction ? read() : state.gate.run(read)
+  }
+
+  export function readBinaryStream(key: string[], options: { signal?: AbortSignal } = {}): AsyncGenerator<Uint8Array> {
+    const runtime = RuntimeContext.current()
+    const handle = current()
+    if (handle.transaction)
+      throw new StorageConflictError("Artifact streams must be opened outside a business transaction")
+    const stableKey = [...key]
+    const state = artifactPack(stableKey)
+    function assertOwner() {
+      if (RuntimeContext.current() !== runtime || current().store !== handle.store)
+        throw new StorageConflictError("Artifact stream belongs to another storage owner")
+    }
+    return (async function* () {
+      assertOwner()
+      const location = await state.gate.run(
+        async () => {
+          const retained = await snapshot((tx) => tx.artifact(stableKey))
+          state.prepared.set(retained.pack, (state.prepared.get(retained.pack) ?? 0) + 1)
+          return retained
+        },
+        { signal: options.signal },
+      )
+      try {
+        for await (const chunk of (state.objects ?? state.pack).stream(location, options.signal)) {
+          assertOwner()
+          ObservabilityResources.addRead(chunk.length)
+          yield chunk
+        }
+      } finally {
+        await runtime.run(() =>
+          provide(handle, () =>
+            state.gate.run(async () => {
+              const remaining = (state.prepared.get(location.pack) ?? 1) - 1
+              if (remaining) state.prepared.set(location.pack, remaining)
+              else state.prepared.delete(location.pack)
+            }),
+          ),
+        )
+      }
+    })()
   }
 
   export async function validateArtifacts(

@@ -1366,21 +1366,30 @@ export class StoreTransaction {
   async *artifacts(prefix: string[] = []): AsyncGenerator<{ key: string[]; location: ArtifactLocation }> {
     this.check()
     await this.assertAdmitted([prefix], true)
-    let after = ""
+    let after: string[] | undefined
     for (;;) {
-      const subtree = this.artifactSubtree(prefix, after)
-      const rows = await this.connection.query(
-        `SELECT key_text, location FROM storage_artifacts WHERE ${subtree.condition} ORDER BY key_text LIMIT 256`,
-        subtree.values,
-      )
+      const rows = await this.artifactPage({ prefix, after, limit: 256 })
       if (!rows.length) return
-      for (const row of rows)
-        yield {
-          key: JSON.parse(String(row.key_text)) as string[],
-          location: ArtifactLocation.parse(JSON.parse(String(row.location))),
-        }
-      after = String(rows.at(-1)!.key_text)
+      yield* rows
+      after = rows.at(-1)!.key
     }
+  }
+
+  async artifactPage(input: { prefix: string[]; after?: string[]; limit?: number }) {
+    this.check()
+    const limit = input.limit ?? 256
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256)
+      throw new StorageConflictError("Invalid artifact page size")
+    await this.assertAdmitted([input.prefix], true)
+    const subtree = this.artifactSubtree(input.prefix, input.after ? JSON.stringify(input.after) : "")
+    const rows = await this.connection.query(
+      `SELECT key_text, location FROM storage_artifacts WHERE ${subtree.condition} ORDER BY key_text LIMIT ?`,
+      [...subtree.values, limit],
+    )
+    return rows.map((row) => ({
+      key: JSON.parse(String(row.key_text)) as string[],
+      location: ArtifactLocation.parse(JSON.parse(String(row.location))),
+    }))
   }
 
   async assertNotDeleted(key: string[]) {

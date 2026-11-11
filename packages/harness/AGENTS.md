@@ -23,7 +23,7 @@ Own lifecycle, features, exports, `./host/identity`. `context` owns pure attribu
 - Environment ownership: [Environments](../../docs/architecture/environments.md).
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.
 
-`Storage.Handle` owns Agent authority; read [Agent storage](../../docs/architecture/agent-storage.md) before persistence changes. Use SQL transactions for records, indexes and outbox entries; keep files and external effects outside retryable callbacks. Central bootstrap owns historical JSON import and activation. Runtime and maintenance entry points recover registered owners before admission. Storage engine changes run `bun test test/storage`; macOS packaging changes run root `bun test --config /dev/null test/script/release/workspace-sqlite.test.ts`; PostgreSQL CI requires a real database via `SYNERGY_TEST_POSTGRES_URL`.
+`Storage.Handle` owns Agent authority; read [Agent storage](../../docs/architecture/agent-storage.md). Keep records/indexes/outboxes transactional and external effects outside retryable callbacks. Central bootstrap owns historical import/activation; Runtime and maintenance recover owners before admission. Object streams pin before uploads; object-artifacts owns v1/v2 verification/collection. Storage changes run `bun test test/storage`; macOS packaging runs root `bun test --config /dev/null test/script/release/workspace-sqlite.test.ts`; PG CI uses `SYNERGY_TEST_POSTGRES_URL`.
 
 Register PG contracts in `test/support/storage-backends.ts`; see [backend selection](../../.synergy/skill/testing-guide/SKILL.md).
 
