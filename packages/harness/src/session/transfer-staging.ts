@@ -106,6 +106,7 @@ export namespace SessionTransferStaging {
     const handoffID = ID.parse(input.handoffID)
     const root = Stream.Root.parse(input.root)
     compatible(root.owners)
+    Owners.publicationOrder(Object.keys(root.owners))
     const rootHash = Stream.digest(root)
     using lock = input.signal
       ? await Lock.writeWithSignal(`session-transfer-staging:${handoffID}`, input.signal)
@@ -245,6 +246,7 @@ export namespace SessionTransferStaging {
     if (current.phase !== "verified") fail("Portable aggregate staging is not verified")
     if ((current.root.owners["session-core"] ?? 0) < 2) fail("Aggregate preparation requires sealed Core membership")
     compatible(current.root.owners)
+    Owners.publicationOrder(Object.keys(current.root.owners))
     const runtime = RuntimeContext.current()
     for await (const row of Storage.records({ prefix: ownersKey(input.handoffID), limit: 128 })) {
       input.signal.throwIfAborted()
@@ -401,6 +403,8 @@ export namespace SessionTransferStaging {
 
   export async function verify(handoffID: string, signal?: AbortSignal) {
     const current = await state(handoffID)
+    compatible(current.root.owners)
+    Owners.publicationOrder(Object.keys(current.root.owners))
     if (current.phase === "receiving") fail("Portable staging is incomplete")
     let count = 0
     let total = 0
@@ -421,6 +425,7 @@ export namespace SessionTransferStaging {
 
   export async function context(input: Omit<Owners.TargetContext, "sourceVersion" | "staged"> & { ownerID: string }) {
     const current = await state(input.handoffID)
+    Owners.publicationOrder(Object.keys(current.root.owners))
     if (current.phase !== "verified") fail("Portable staging is not prepared for owner validation")
     if (!Object.hasOwn(current.root.owners, input.ownerID)) fail("Portable owner is absent from the manifest")
     const sourceVersion = current.root.owners[input.ownerID]
@@ -537,49 +542,53 @@ export namespace SessionTransferStaging {
     handoffID: string
     contexts: { ownerID: string; context: Owners.TargetContext }[]
   }) {
+    const handoffID = ID.parse(input.handoffID)
+    const publications = input.contexts.map(({ ownerID, context }) => ({ ownerID: ID.parse(ownerID), context }))
     if (!Storage.inWriteTransaction()) fail("Portable publication requires the activation transaction")
-    const current = await state(input.handoffID)
+    const current = await state(handoffID)
     if (current.phase !== "verified") fail("Portable staging cannot be published in this phase")
+    const publicationOrder = Owners.publicationOrder(Object.keys(current.root.owners))
     const selected = new Set<string>()
     const pairs = new Set<string>()
-    for (const { ownerID, context } of input.contexts) {
+    for (const { ownerID, context } of publications) {
       const evidence = contexts.get(context)
       const pair = JSON.stringify([ownerID, context.session.id])
       if (
         !evidence ||
         evidence.runtime !== RuntimeContext.current() ||
-        evidence.handoffID !== input.handoffID ||
+        evidence.handoffID !== handoffID ||
         evidence.rootHash !== current.rootHash ||
         evidence.ownerID !== ownerID ||
         pairs.has(pair)
       )
         fail("Portable publication requires exact prepared owner contexts")
-      SessionTransferEpochs.assertActivation({ sessionID: context.session.id, handoffID: input.handoffID })
+      SessionTransferEpochs.assertActivation({ sessionID: context.session.id, handoffID })
       selected.add(ownerID)
       pairs.add(pair)
     }
     if (Object.keys(current.root.owners).some((id) => !selected.has(id)))
       fail("Portable publication omitted a required owner")
     if ((current.root.owners["session-core"] ?? 0) >= 2) {
-      const root = input.contexts.find(
+      const root = publications.find(
         ({ ownerID, context }) => ownerID === "session-core" && context.session.id === context.rootSessionID,
       )
       const aggregate = root && aggregates.get(root.context)
       if (!aggregate || aggregate.runtime !== RuntimeContext.current() || aggregate.rootHash !== current.rootHash)
         fail("Portable publication requires an exact prepared aggregate membership proof")
       if (
-        input.contexts.some(
+        publications.some(
           ({ context }) =>
             context.rootSessionID !== aggregate.rootSessionID || context.session.scope.id !== aggregate.scopeID,
         )
       )
         fail("Portable publication contains another aggregate or Scope")
     }
-    for await (const row of Storage.records({ prefix: ownersKey(input.handoffID), limit: 128 })) {
+    for await (const row of Storage.records({ prefix: ownersKey(handoffID), limit: 128 })) {
       if (!pairs.has(JSON.stringify(row.key.slice(-2)))) fail("Portable publication omitted a required Session owner")
     }
-    for (const { ownerID, context } of input.contexts) await Owners.publish(ownerID, context)
+    for (const id of publicationOrder)
+      for (const { ownerID, context } of publications) if (ownerID === id) await Owners.publish(ownerID, context)
     const published = State.parse({ ...current, phase: "activated" })
-    await Storage.write(stateKey(input.handoffID), published)
+    await Storage.write(stateKey(handoffID), published)
   }
 }

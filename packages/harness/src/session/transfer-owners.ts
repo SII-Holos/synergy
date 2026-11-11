@@ -72,6 +72,7 @@ export namespace SessionTransferOwners {
     reads: readonly number[]
     applies(session: Readonly<Session.Info>): boolean | Promise<boolean>
     stagedDependencies?: readonly string[]
+    publicationBefore?: readonly string[]
     inspect(context: SourceContext): Promise<Inspection>
     freeze(context: SourceContext): Promise<void>
     export(context: SourceContext): AsyncIterable<SessionTransferStream.Input>
@@ -97,15 +98,60 @@ export namespace SessionTransferOwners {
       ID.parse(dependency)
       if (dependency === id) throw new Rejected({ message: "A staged dependency must name another owner" })
     }
+    const before = [...new Set(owner.publicationBefore ?? [])]
+    for (const target of before) {
+      ID.parse(target)
+      if (target === id) throw new Rejected({ message: "A publication dependency must name another owner" })
+    }
     state().set(id, {
       ...owner,
       reads: Object.freeze([...owner.reads]),
       stagedDependencies: Object.freeze(dependencies),
+      publicationBefore: Object.freeze(before),
     })
   }
 
   export function stagedDependencies(id: string) {
     return require(id).stagedDependencies ?? []
+  }
+
+  export function publicationOrder(ids: readonly string[]) {
+    const selected = [...new Set(ids)]
+    const incoming = new Map(selected.map((id) => [ID.parse(id), 0]))
+    const edges = new Map<string, readonly string[]>()
+    for (const id of selected) {
+      const before = require(id).publicationBefore ?? []
+      for (const target of before) {
+        if (!incoming.has(target) || !state().has(target))
+          throw new Rejected({
+            message: "A required publication dependency is unavailable from this package",
+            requirements: [
+              {
+                code: "owner_publication_missing",
+                owner: target,
+                label: `Include the required ${target} publication owner`,
+                recoverable: true,
+              },
+            ],
+          })
+        incoming.set(target, incoming.get(target)! + 1)
+      }
+      edges.set(id, before)
+    }
+    const ready = selected.filter((id) => incoming.get(id) === 0)
+    const ordered: string[] = []
+    for (let cursor = 0; cursor < ready.length; cursor++) {
+      const id = ready[cursor]!
+      ordered.push(id)
+      for (const target of edges.get(id) ?? []) {
+        const count = incoming.get(target)! - 1
+        incoming.set(target, count)
+        if (count === 0) ready.push(target)
+      }
+    }
+    if (ordered.length !== selected.length)
+      throw new Rejected({ message: "Native portability owners have cyclic publication dependencies" })
+    return ordered
   }
 
   export function versions(ids: readonly string[]) {
