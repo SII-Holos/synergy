@@ -152,7 +152,23 @@ test("signed source and target facts commit once and activation remains a separa
       data: { code: "HANDOFF_BLOCKED" },
     })
     const surrender = await f.handoffs.permit(f.credentials.alice, state.handoffID, { purpose: "handoff-surrender" })
+    const directory = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+    expect(surrender.permit.sourceBinding).toEqual({
+      schemaVersion: 1,
+      orgID: directory.orgID,
+      projectID: directory.projectID,
+      creatorID: directory.creatorID,
+      driverRuntimeID: tuple.sourceRuntimeID,
+      bindingEpoch: tuple.fromEpoch,
+    })
     expect(await Handoff.verifyPermit(surrender.permit, surrender.signature, f.signing.identity.publicKey)).toBe(true)
+    expect(
+      await Handoff.verifyPermit(
+        { ...surrender.permit, sourceBinding: { ...surrender.permit.sourceBinding!, creatorID: "another-creator" } },
+        surrender.signature,
+        f.signing.identity.publicKey,
+      ),
+    ).toBe(false)
     const surrendered = Handoff.Proof.parse({
       ...tuple,
       purpose: "source-surrendered",
@@ -167,6 +183,7 @@ test("signed source and target facts commit once and activation remains a separa
     expect(committed.phase).toBe("committed")
     expect(await f.handoffs.commit(f.credentials.alice, state.handoffID)).toEqual(committed)
     const activation = await f.handoffs.permit(f.credentials.bob, state.handoffID, { purpose: "handoff-activation" })
+    expect(activation.permit.sourceBinding).toEqual(surrender.permit.sourceBinding)
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.handoffID).toBe(state.handoffID)
     const activated = Handoff.Proof.parse({
       ...tuple,

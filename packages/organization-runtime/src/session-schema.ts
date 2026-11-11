@@ -3,6 +3,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { OrganizationSessionProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { SessionSchemaRegistry } from "@ericsanchezok/synergy-harness/session/schema-registry"
 import { registerSyncMigrations } from "./sync-migration"
+import { OrganizationSessionAdoption } from "./session-adoption"
 
 export const SessionBindingError = NamedError.create(
   "OrganizationSessionBindingError",
@@ -22,6 +23,16 @@ export function registerSessionSchema(member?: { orgID: string }) {
   SessionSchemaRegistry.register("organization-runtime", {
     shape: fields,
     inherit: ["organization"],
+    async adoptTransfer(input) {
+      if (input.source.organization === undefined && input.previous?.organization === undefined && !member) return {}
+      return { organization: await OrganizationSessionAdoption.binding(input) }
+    },
+    async validateTransfer(input) {
+      if (input.next.organization === undefined && input.previous?.organization === undefined && !member) return
+      const expected = await OrganizationSessionAdoption.binding(input)
+      if (JSON.stringify(fields.organization.parse(input.next.organization)) !== JSON.stringify(expected))
+        throw new SessionBindingError({ message: "Session transfer changed its authorized organization binding" })
+    },
     validateMutation({ previous, next, parent }) {
       const binding = fields.organization.parse(next.organization)
       if (previous && JSON.stringify(fields.organization.parse(previous.organization)) !== JSON.stringify(binding))

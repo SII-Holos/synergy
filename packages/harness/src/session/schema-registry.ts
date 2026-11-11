@@ -5,6 +5,14 @@ import type { SessionExtensionShape } from "./types"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 export namespace SessionSchemaRegistry {
+  export interface TransferMutation {
+    source: Readonly<Record<string, unknown>>
+    previous?: Readonly<Record<string, unknown>>
+    parent?: Readonly<Record<string, unknown>>
+    sessionID: string
+    rootSessionID: string
+    handoffID: string
+  }
   type ComposedShape<S extends z.ZodRawShape> = Omit<S, keyof SessionExtensionShape | "workflow"> &
     Omit<SessionExtensionShape, "workflow"> & { workflow: z.ZodOptional<z.ZodType<WorkflowKindRegistry.Workflow>> }
   export interface Contribution {
@@ -25,6 +33,8 @@ export namespace SessionSchemaRegistry {
      * already-parsed session. */
     navIdentity?(input: Record<string, unknown>): Record<string, unknown> | undefined
     normalizeImport?(input: Record<string, unknown>, mode: "transcript" | "archive"): void
+    adoptTransfer?(input: TransferMutation): Record<string, unknown> | Promise<Record<string, unknown>>
+    validateTransfer?(input: TransferMutation & { next: Readonly<Record<string, unknown>> }): void | Promise<void>
   }
   const state = RuntimeContext.state(() => ({
     owners: new Map<string, Contribution>(),
@@ -37,6 +47,8 @@ export namespace SessionSchemaRegistry {
     if (existing === contribution) return
     if (existing) throw new Error(`Session domain ${id} is already registered`)
     ConfigExtensions.assertRegistrationOpen(id)
+    if (!!contribution.adoptTransfer !== !!contribution.validateTransfer)
+      throw new Error(`Session domain ${id} must own both transfer adoption and validation`)
     for (const key of contribution.inherit ?? []) {
       if (!Object.hasOwn(contribution.shape, key))
         throw new Error(`Session domain ${id} cannot inherit unowned field ${key}`)
@@ -137,6 +149,33 @@ export namespace SessionSchemaRegistry {
           structuredClone(input) as Parameters<NonNullable<Contribution["validateMutation"]>>[0],
         )
     }
+  }
+
+  export async function adoptTransfer(input: TransferMutation) {
+    const { SessionTransferEpochs } = await import("./transfer-epochs")
+    const binding = SessionTransferEpochs.assertActivation({ sessionID: input.sessionID, handoffID: input.handoffID })
+    const identity = z
+      .object({ id: z.literal(input.sessionID), scope: z.object({ id: z.literal(binding.scopeID) }) })
+      .safeParse(input.source)
+    if (!identity.success || (binding.rootSessionID ?? binding.sessionID) !== input.rootSessionID)
+      throw new Error("Session transfer adoption changed its reserved identity, Scope or aggregate root")
+    const next: Record<string, unknown> = { ...structuredClone(input.source) }
+    for (const [id, owner] of state().owners) {
+      if (!owner.adoptTransfer) continue
+      const fields = await owner.adoptTransfer(structuredClone(input))
+      for (const key of Object.keys(fields))
+        if (!Object.hasOwn(owner.shape, key)) throw new Error(`Session domain ${id} cannot adopt unowned field ${key}`)
+      for (const key of Object.keys(owner.shape)) {
+        if (Object.hasOwn(fields, key)) next[key] = structuredClone(fields[key])
+        else delete next[key]
+      }
+    }
+    for (const owner of state().owners.values()) {
+      const mutation = structuredClone({ ...input, next })
+      if (owner.validateTransfer) await owner.validateTransfer(mutation)
+      else await owner.validateMutation?.(mutation)
+    }
+    return next
   }
 
   export function creationFields(input: object | undefined, parent?: object): Record<string, unknown> {

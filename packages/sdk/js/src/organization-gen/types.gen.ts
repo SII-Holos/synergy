@@ -2012,6 +2012,7 @@ export type OrgHandoffPermit = {
   purpose: "handoff-surrender" | "handoff-activation"
   permitID: string
   keyID: string
+  sourceBinding?: OrgSessionBinding
   manifestHash: string
   preparedHash: string
   createdAt: number

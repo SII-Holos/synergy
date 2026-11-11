@@ -4,7 +4,7 @@ Own strict, versioned DTOs and bridge messages for the organization service, Run
 
 Run `bun run typecheck` and `bun run test`; verify mounted OpenAPI and regenerate the SDK when a schema becomes API-visible.
 
-Machine proofs bind purpose and authority-bearing claims with versioned canonical encoding. Preserve signature domains, validate before verification and test identity, epoch and capability tampering with real keys. Build strings never authorize.
+Machine proofs bind purpose, canonical source ownership and authority-bearing claims with versioned encoding. Preserve signature domains, validate before verification and test identity, epoch and capability tampering with real keys.
 
 API token schemas separate one-time secrets from metadata and bind explicit project/operation/expiry scope. Trusted routes select purposes; token scope never replaces current authorization. Reuse the portable account actor schema from Util, including optional signed token attribution. Command permits bind the logical request, actor, deployment, target, epochs, sequences and finite signing window; signature validity alone does not establish current execution admission. Preserve existing proof bytes when sharing signing primitives, and verify compiled Node imports across package boundaries.
 

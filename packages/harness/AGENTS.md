@@ -5,7 +5,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Keep tools, routes, config and migrations with their domain.
 - `SessionExecutionOwners` gates components using references and `MessageV2` semantics. Preserve blocked records; human tasks cannot resume unavailable predecessors. Root admission and Agent selection persist independently; execution views cannot replace Session writes. Compose native receipts and observe activity/release without recovery; verify `test/session/{resume,rollout-cancel,rollout-activity}.test.ts`.
 - Session L/progress: `session/long-term-memory`, never workflows/Library. [State](../../docs/architecture/session-and-messages.md#session-long-term-summary).
-- `SessionSchemaRegistry` composes owner fields, inheritance, transactional validation and indexes; domains own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
+- `SessionSchemaRegistry` composes owner fields, inheritance, validation/indexes and epoch-only adoption; domains own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
 - `RuntimeHandle` owns Host, composition and storage; seal registration before startup. Use `run` for work, `bind` for native callbacks. Persisted Home ownership must match. Node provisioning reuses `HomeOwnershipFile`. Test isolated instances and child entrypoints; keep migration listings detached.
 - Use unsealed migration fixtures.
 
@@ -34,7 +34,7 @@ Session summaries compare checkpoints across Workspace writers. Separate tool ev
 
 Cortex holds retain task/root/input/budget/deadline/notification identity, never cancel/recreate or auto-resume. Personal transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
 
-Aggregate portability: epochs, bounded streams, private Snapshot staging, declared dependencies, permanent surrender/retirement, prepared tokens/pack pins. Verify `test/session/transfer-*.test.ts`; `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
+Aggregate portability: drained source cohorts, epochs/streams, private Snapshot staging, declared dependencies, permanent surrender/retirement, prepared tokens/pack pins. Verify `test/session/transfer-*.test.ts`; `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
 
 `SessionHistory`: bodyless; iterate children, page Cortex (`test/session/cortex-index.test.ts`).
 

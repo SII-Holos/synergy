@@ -204,7 +204,7 @@ export namespace SessionTransferCore {
     }
     if (infos !== 1) fail("Portable core metadata is missing or duplicated")
     for await (const artifact of context.staged.artifacts())
-      if (!own(context.session, artifact.key) || artifact.key[0] !== "sessions")
+      if (!own(context.session, artifact.key) || artifact.key[0] !== "sessions" || isInfo(context.session, artifact.key))
         fail("Portable core contains another owner's binary artifacts")
   }
 
@@ -322,7 +322,7 @@ export namespace SessionTransferCore {
     const source = await sourceInfo(context)
     const targetScope = await scope(source.info.scope)
     const mapped = z.record(z.string(), z.unknown()).parse(map(context, infoKey(context.session), source.raw))
-    const raw = {
+    const imported = {
       ...mapped,
       scope: targetScope,
       workspace: null,
@@ -331,18 +331,38 @@ export namespace SessionTransferCore {
       preAuthorizedActions: [],
       endpoint: undefined,
     }
-    const next = Session.PersistedInfo.parse(raw)
     const [previous] = await Storage.readMany([infoKey(context.session)])
-    const parent = next.parentID ? await Session.get(next.parentID) : undefined
-    await SessionSchemaRegistry.validateMutation({
+    const parent = source.info.parentID ? await Session.get(source.info.parentID) : undefined
+    const raw = await SessionSchemaRegistry.adoptTransfer({
+      sessionID: context.session.id,
+      rootSessionID: context.rootSessionID,
+      handoffID: context.handoffID,
       previous: previous === undefined ? undefined : z.record(z.string(), z.unknown()).parse(previous),
-      next: raw,
+      source: imported,
       parent,
     })
+    const next = Session.PersistedInfo.parse(raw)
     if (next.workspaceID) await WorkspaceCatalog.assertActive(next.workspaceID, next.scope.id)
     const { workspace: _workspace, ...persisted } = raw
-    await Storage.removeTree(["sessions", next.scope.id, next.id])
-    await Storage.removeTree(["usage", next.scope.id, `session_${next.id}`])
+    if (previous !== undefined) {
+      for await (const record of records(next))
+        if (!(await context.staged.record(record.key))) await Storage.remove(record.key)
+      let after: string[] | undefined
+      for (;;) {
+        const page = await Storage.artifactReferences({
+          prefix: ["sessions", next.scope.id, next.id],
+          after,
+          limit: 128,
+        })
+        for (const artifact of page) {
+          if (!own(next, artifact.key)) continue
+          if (!context.staged.artifact) fail("Portable replacement requires the exact binary destination index")
+          if (!(await context.staged.artifact(artifact.key))) await Storage.removeTree(artifact.key)
+        }
+        if (page.length < 128) break
+        after = page.at(-1)?.key
+      }
+    }
     await Storage.write(infoKey(context.session), persisted)
     for await (const record of context.staged.records())
       if (!isInfo(context.session, record.key) && !Aggregate.owns(context.session, record.key))

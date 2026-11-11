@@ -55,6 +55,7 @@ export namespace SessionTransferOwners {
       relatedRecords?(ownerID: string): AsyncIterable<StagedRecord>
       relatedRecord?(ownerID: string, key: string[]): Promise<StagedRecord | undefined>
       ownerVersion?(ownerID: string): Promise<number | undefined>
+      artifact?(key: string[]): Promise<StagedArtifact | undefined>
       artifacts(): AsyncIterable<StagedArtifact>
     }
   }
@@ -199,7 +200,7 @@ export namespace SessionTransferOwners {
   }
 
   export async function freeze(context: SourceContext, ids: readonly string[]) {
-    for (const id of ids) {
+    for (const id of [...ids.filter((id) => id !== "session-core"), ...ids.filter((id) => id === "session-core")]) {
       context.signal.throwIfAborted()
       await require(id).freeze(context)
     }

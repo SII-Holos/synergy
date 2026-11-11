@@ -4093,6 +4093,20 @@ export type SessionCortexDelegation = {
     maxCost?: number
     deadlineAt?: number
   }
+  maintenance?: {
+    version: 1
+    maintenanceID: string
+    purpose: "organization-backup" | "organization-restore"
+    heldAt: number
+    releasedAt?: number
+    priorStatus: "queued" | "running"
+    resumeIntentID?: string
+    rootID?: string
+    admitted: boolean
+    maxOutputTokens?: number
+    maxCost?: number
+    deadlineAt?: number
+  }
 }
 
 export type SessionWorkingInfo =

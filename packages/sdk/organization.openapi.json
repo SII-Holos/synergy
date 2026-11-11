@@ -10456,6 +10456,7 @@
           "purpose": { "type": "string", "enum": ["handoff-surrender", "handoff-activation"] },
           "permitID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "keyID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sourceBinding": { "$ref": "#/components/schemas/OrgSessionBinding" },
           "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "preparedHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "createdAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }

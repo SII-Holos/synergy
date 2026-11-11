@@ -116,6 +116,17 @@ export namespace SessionTransferEpochs {
   ): Promise<boolean> {
     if (visited.has(sessionID)) return true
     visited.add(sessionID)
+    try {
+      return await inspectFrozen(sessionID, visited, ignoreAdmissionHolds)
+    } finally {
+      visited.delete(sessionID)
+    }
+  }
+  async function inspectFrozen(
+    sessionID: string,
+    visited: Set<string>,
+    ignoreAdmissionHolds: boolean,
+  ): Promise<boolean> {
     const reserved = await optional(State, reservationKey(sessionID))
     if (reserved && reserved.phase !== "activated") return true
     const current = await pointer(sessionID)
@@ -123,6 +134,17 @@ export namespace SessionTransferEpochs {
     if (!ignoreAdmissionHolds) {
       const intent = await optional(SourceIntent, sourceIntentKey(sessionID))
       if (intent && (await existing(intent.binding)).phase === "draining") return true
+    }
+    const index = await optional(z.object({ scopeID: ID }), ["session_index", sessionID])
+    if (index) {
+      const info = await optional(z.object({ id: ID, parentID: ID.optional() }), [
+        "sessions",
+        index.scopeID,
+        sessionID,
+        "info",
+      ])
+      if (info?.id === sessionID && info.parentID && (await frozen(info.parentID, visited, ignoreAdmissionHolds)))
+        return true
     }
     if (current?.rootSessionID && !ignoreAdmissionHolds) {
       const [root] = await Storage.readMany<unknown>([["sessions", current.scopeID, current.rootSessionID, "info"]])
@@ -380,7 +402,10 @@ export namespace SessionTransferEpochs {
     })
   }
 
-  export async function freeze(value: Binding, options: { owner?: SessionTransferFreezeAuthority.Receipt } = {}) {
+  export async function freeze(
+    value: Binding,
+    options: { owner?: SessionTransferFreezeAuthority.Receipt; verify?: () => Promise<void> } = {},
+  ) {
     const binding = Binding.parse(value)
     using control = await Lock.write(`session-control:${binding.sessionID}`)
     using transfer = await Lock.write(`session-transfer-epoch:${binding.sessionID}`)
@@ -396,6 +421,7 @@ export namespace SessionTransferEpochs {
     await Session.flushPartWrites(binding.sessionID)
     return Storage.transaction(
       async () => {
+        await options.verify?.()
         const previous = await optional(State, stateKey(binding))
         if (previous) {
           if (!matches(previous.binding, binding) || previous.role !== "source" || previous.phase === "cancelled")
@@ -568,6 +594,7 @@ export namespace SessionTransferEpochs {
     const binding = active?.runtime === RuntimeContext.current() ? active.bindings.get(input.sessionID) : undefined
     if (!Storage.inWriteTransaction() || !binding || binding.handoffID !== input.handoffID)
       fail("publication requires this Session's exact destination activation authority")
+    return structuredClone(binding)
   }
 
   export async function activateMany(input: {

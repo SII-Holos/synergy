@@ -53611,6 +53611,63 @@
             },
             "required": ["version", "handoffID", "rootSessionID", "frozenAt", "priorStatus", "admitted"],
             "additionalProperties": false
+          },
+          "maintenance": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "maintenanceID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "purpose": {
+                "type": "string",
+                "enum": ["organization-backup", "organization-restore"]
+              },
+              "heldAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "releasedAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "priorStatus": {
+                "type": "string",
+                "enum": ["queued", "running"]
+              },
+              "resumeIntentID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rootID": {
+                "type": "string"
+              },
+              "admitted": {
+                "type": "boolean"
+              },
+              "maxOutputTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxCost": {
+                "type": "number",
+                "minimum": 0
+              },
+              "deadlineAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["version", "maintenanceID", "purpose", "heldAt", "priorStatus", "admitted"],
+            "additionalProperties": false
           }
         },
         "required": ["taskID", "parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]

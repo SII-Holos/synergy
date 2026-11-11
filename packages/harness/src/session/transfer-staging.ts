@@ -199,6 +199,23 @@ export namespace SessionTransferStaging {
     return readRecord(handoffID, entry)
   }
 
+  async function boundArtifact(handoffID: string, ownerID: string, sessionID: string, key: string[]) {
+    const [reference] = await Storage.readMany([destinationKey(handoffID, { kind: "artifact", key: Key.parse(key) })])
+    if (reference === undefined) return
+    const destination = Destination.parse(reference)
+    if (destination.ownerID !== ownerID || destination.sessionID !== sessionID) return
+    const entry = Entry.parse(await Storage.read(entryKey(handoffID, destination)))
+    if (
+      entry.ownerID !== ownerID ||
+      entry.sessionID !== sessionID ||
+      entry.kind === "record" ||
+      JSON.stringify(entry.key) !== JSON.stringify(key) ||
+      entry.id !== destination.id
+    )
+      fail("Staged portable binary destination index changed")
+    return entry
+  }
+
   async function* boundRecords(handoffID: string, ownerID: string, sessionID: string, signal: AbortSignal) {
     for await (const entry of entries(handoffID, ownerID, sessionID)) {
       signal.throwIfAborted()
@@ -303,6 +320,21 @@ export namespace SessionTransferStaging {
         fail("Declared staged dependency is absent from the verified manifest")
       compatible({ [dependency]: current.root.owners[dependency] })
     }
+    function artifact(entry: Entry): Owners.StagedArtifact {
+      return {
+        key: [...entry.key],
+        bytes: entry.bytes,
+        sha256: entry.sha256,
+        read() {
+          assertOwner()
+          return Storage.readBinaryStream(bytesKey(input.handoffID, entry), { signal: input.signal })
+        },
+        async publish(target, options) {
+          assertOwner()
+          await Storage.publishBinaryReference(bytesKey(input.handoffID, entry), Key.parse(target), options)
+        },
+      }
+    }
     async function readBoundRecord(boundOwner: string, key: string[]) {
       assertOwner()
       const record = await boundRecord(input.handoffID, boundOwner, input.session.id, key)
@@ -322,6 +354,12 @@ export namespace SessionTransferStaging {
         },
         async record(key) {
           return readBoundRecord(ownerID, key)
+        },
+        async artifact(key) {
+          assertOwner()
+          const entry = await boundArtifact(input.handoffID, ownerID, input.session.id, key)
+          assertOwner()
+          return entry && artifact(entry)
         },
         async relatedRecord(dependency, key) {
           assertDependency(dependency)
@@ -352,19 +390,7 @@ export namespace SessionTransferStaging {
           for await (const entry of entries(input.handoffID, ownerID, input.session.id)) {
             assertOwner()
             if (entry.kind === "record") continue
-            yield {
-              key: [...entry.key],
-              bytes: entry.bytes,
-              sha256: entry.sha256,
-              read() {
-                assertOwner()
-                return Storage.readBinaryStream(bytesKey(input.handoffID, entry), { signal: input.signal })
-              },
-              async publish(target, options) {
-                assertOwner()
-                await Storage.publishBinaryReference(bytesKey(input.handoffID, entry), Key.parse(target), options)
-              },
-            }
+            yield artifact(entry)
           }
         },
       },
