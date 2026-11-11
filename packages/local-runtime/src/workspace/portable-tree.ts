@@ -7,6 +7,7 @@ import { initializeSqliteEngine } from "@ericsanchezok/synergy-harness/storage/s
 import { WorkspacePortableTree as Portable } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
 import type { BlobStore } from "@ericsanchezok/synergy-harness/storage/blobs"
 import { SensitivePathPolicy } from "@ericsanchezok/synergy-harness/enforcement/sensitive-path"
+import { NativePortableGit } from "./portable-git"
 
 export namespace NativeWorkspacePortableTree {
   interface Options {
@@ -17,6 +18,7 @@ export namespace NativeWorkspacePortableTree {
   }
   interface Row {
     path: string
+    native: string
     identity: string
     metadata: string
     visited: number
@@ -93,36 +95,40 @@ export namespace NativeWorkspacePortableTree {
     }
     let database: Database | undefined
     try {
+      const repository = await NativePortableGit.discover({ directory: root, signal })
+      await using git = repository
+        ? await NativePortableGit.prepare({ source: repository, directory: cache, signal })
+        : undefined
       database = new Database(path.join(cache, "inventory.sqlite"))
       const inventory = database
       database.exec(
-        "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE entries(path TEXT PRIMARY KEY,identity TEXT NOT NULL,metadata TEXT NOT NULL,visited INTEGER NOT NULL)",
+        "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE entries(path TEXT PRIMARY KEY,native TEXT NOT NULL,identity TEXT NOT NULL,metadata TEXT NOT NULL,visited INTEGER NOT NULL)",
       )
-      using insert = database.prepare("INSERT INTO entries VALUES(?,?,?,?)")
+      using insert = database.prepare("INSERT INTO entries VALUES(?,?,?,?,?)")
       using next = database.prepare<Row, []>("SELECT * FROM entries WHERE visited=0 ORDER BY path LIMIT 1")
       using visit = database.prepare("UPDATE entries SET visited=1 WHERE path=?")
-      insert.run("", identity(initial), JSON.stringify(await metadata(root, initial)), 0)
+      insert.run("", root, identity(initial), JSON.stringify(await metadata(root, initial)), 0)
       for (;;) {
         signal?.throwIfAborted()
         const row = next.get()
         if (!row) break
-        const current = filename(root, row.path)
-        const children = await fs.opendir(current)
+        const children = await fs.opendir(row.native)
         for await (const child of children) {
           signal?.throwIfAborted()
           const relative = row.path ? row.path + "/" + child.name : child.name
-          const selected = filename(root, relative)
+          const selected = relative === ".git" && git ? git.gitDirectory : path.join(row.native, child.name)
           const stat = await fs.lstat(selected, { bigint: true })
           const value = await metadata(selected, stat)
           Portable.path(relative, value)
           const sensitive = SensitivePathPolicy.classifyRelative(relative)
-          if (sensitive.matched && !sensitive.smartAllowEligible)
+          const nativeGit = git && (relative === ".git" || relative.startsWith(".git/"))
+          if (!nativeGit && sensitive.matched && !sensitive.smartAllowEligible)
             throw new Error(
               sensitive.kind === "vcs"
                 ? "Portable Workspace requires its Git adapter"
                 : "Portable Workspace contains a credential or control path",
             )
-          insert.run(relative, identity(stat), JSON.stringify(value), value.kind === "directory" ? 0 : 1)
+          insert.run(relative, selected, identity(stat), JSON.stringify(value), value.kind === "directory" ? 0 : 1)
         }
         visit.run(row.path)
       }
@@ -139,7 +145,7 @@ export namespace NativeWorkspacePortableTree {
             id: row.path,
             kind: value.kind === "file" ? "file" : "record",
             metadata: value,
-            content: value.kind === "file" ? content(filename(root, row.path), row.identity, signal) : empty(),
+            content: value.kind === "file" ? content(row.native, row.identity, signal) : empty(),
           }
         }
       }
@@ -147,9 +153,10 @@ export namespace NativeWorkspacePortableTree {
         using rows = inventory.prepare<Row, []>("SELECT * FROM entries ORDER BY path")
         for (const row of rows.iterate()) {
           signal?.throwIfAborted()
-          if (identity(await fs.lstat(filename(root, row.path), { bigint: true })) !== row.identity)
+          if (identity(await fs.lstat(row.native, { bigint: true })) !== row.identity)
             throw new Error("Workspace changed during capture")
         }
+        await git?.verify()
       }
       await verify()
       const tree = await Stream.write({ store, entries: entries(), owners: { "workspace-files": 1 }, signal })
