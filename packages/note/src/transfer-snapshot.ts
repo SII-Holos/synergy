@@ -13,6 +13,7 @@ import { NoteStore } from "./store"
 import { NoteVersions } from "./version-store"
 
 export namespace NoteTransferSnapshots {
+  export type Context = Owners.SourceContext & { ownerID?: string }
   const Hash = z.string().regex(/^[a-f0-9]{64}$/)
   const Selection = z.strictObject({ noteID: z.string().min(1), version: z.number().int().positive().optional() })
   export type Selection = z.infer<typeof Selection>
@@ -39,36 +40,34 @@ export namespace NoteTransferSnapshots {
     selectedVersion: z.number().int().positive(),
   })
   export const Blocked = NamedError.create("NoteTransferSnapshotBlocked", z.object({ message: z.string() }))
-  const root = (context: Owners.SourceContext) => [
+  const root = (context: Context) => [
     "note_transfer_snapshots",
     context.session.scope.id,
     context.session.id,
     context.handoffID,
+    ...(context.ownerID === undefined ? [] : ["owners", z.string().min(1).parse(context.ownerID)]),
   ]
-  const stateKey = (context: Owners.SourceContext) => [...root(context), "state"]
-  const refKey = (context: Owners.SourceContext, ordinal: number) => [
-    ...root(context),
-    "refs",
-    String(ordinal).padStart(16, "0"),
-  ]
-  const selectionKey = (context: Owners.SourceContext, selection: Selection) => [
+  const stateKey = (context: Context) => [...root(context), "state"]
+  const refKey = (context: Context, ordinal: number) => [...root(context), "refs", String(ordinal).padStart(16, "0")]
+  const selectionKey = (context: Context, selection: Selection) => [
     ...root(context),
     "selections",
     selection.noteID,
     selection.version === undefined ? "current" : String(selection.version),
   ]
-  const pinKey = (context: Owners.SourceContext, selection: Selection) => [
+  const pinKey = (context: Context, selection: Selection) => [
     "note_transfer_pins",
     context.session.scope.id,
     selection.noteID,
     context.session.id,
     context.handoffID,
+    ...(context.ownerID === undefined ? [] : ["owners", z.string().min(1).parse(context.ownerID)]),
     selection.version === undefined ? "current" : String(selection.version),
   ]
   const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
   export const documentLock = (scopeID: string, noteID: string) => `note-transfer-document:${scopeID}:${noteID}`
 
-  async function binding(context: Owners.SourceContext) {
+  async function binding(context: Context) {
     context.signal.throwIfAborted()
     const current = await Epochs.ownerPreparationBinding({
       sessionID: context.session.id,
@@ -81,7 +80,7 @@ export namespace NoteTransferSnapshots {
       throw new Blocked({ message: "Note transfer context is outside its exact source binding" })
     return current
   }
-  async function state(context: Owners.SourceContext) {
+  async function state(context: Context) {
     const current = await binding(context)
     const stored = State.parse(await Storage.read(stateKey(context)))
     if (JSON.stringify(stored.binding) !== JSON.stringify(current) || stored.rootSessionID !== context.rootSessionID)
@@ -89,7 +88,7 @@ export namespace NoteTransferSnapshots {
     return stored
   }
 
-  export async function seal(context: Owners.SourceContext, selections: AsyncIterable<Selection>) {
+  export async function seal(context: Context, selections: AsyncIterable<Selection>) {
     const current = await binding(context)
     await Storage.transaction(async () => {
       const [existing] = await Storage.readMany([stateKey(context)])
@@ -169,7 +168,7 @@ export namespace NoteTransferSnapshots {
     })
   }
 
-  export async function* read(context: Owners.SourceContext) {
+  export async function* read(context: Context) {
     const status = await state(context)
     if (!status.sealed) throw new Blocked({ message: "Note transfer versions are not sealed" })
     let count = 0
@@ -204,9 +203,7 @@ export namespace NoteTransferSnapshots {
     }
   }
 
-  export async function* dependencies(
-    context: Owners.SourceContext,
-  ): AsyncGenerator<{ kind: "asset"; reference: string }> {
+  export async function* dependencies(context: Context): AsyncGenerator<{ kind: "asset"; reference: string }> {
     for await (const selected of read(context)) {
       const frames: Iterator<unknown>[] = [[selected.note][Symbol.iterator]()]
       while (frames.length) {

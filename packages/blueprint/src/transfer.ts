@@ -173,7 +173,10 @@ export function registerBlueprintTransferOwner() {
       for await (const entry of Records.native(context.session))
         if (entry.key[0] === "blueprint_loops")
           await BlueprintLoopStore.suspendForTransfer(context.session.scope.id, String(entry.value.id))
-      await NoteTransferSnapshots.seal(context, Index.notes(context.session.scope.id, context.session.id))
+      await NoteTransferSnapshots.seal(
+        { ...context, ownerID: "blueprint" },
+        Index.notes(context.session.scope.id, context.session.id),
+      )
     },
     async *export(context) {
       const session = await Session.get(context.session.id)
@@ -204,7 +207,7 @@ export function registerBlueprintTransferOwner() {
         })(),
       }
     },
-    dependencies: (context) => NoteTransferSnapshots.dependencies(context),
+    dependencies: (context) => NoteTransferSnapshots.dependencies({ ...context, ownerID: "blueprint" }),
     validate,
     async publish(context) {
       await validate(context)

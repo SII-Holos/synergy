@@ -1,3 +1,5 @@
+import { SessionTransferGate as Gate } from "@ericsanchezok/synergy-harness/session/transfer"
+import { LatticeTransferIndex } from "../transfer-index"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
@@ -63,6 +65,7 @@ export namespace LatticeStore {
   export async function create(input: CreateInput): Promise<LatticeTypes.Run> {
     return Storage.transaction(async () => {
       const scopeID = ScopeContext.current.scope.id
+      await Gate.assert(input.sessionID)
       const sid = Identifier.asScopeID(scopeID)
       let run!: LatticeTypes.Run
       {
@@ -98,6 +101,7 @@ export namespace LatticeStore {
         })
         if (input.promptOnCreate) run = LatticeMachine.setPromptEffect(run, { promptType: "state_entry" }, now)
         await Storage.write(StoragePath.latticeRun(sid, run.id), run)
+        await LatticeTransferIndex.index(run)
         await writePointer(scopeID, input.sessionID, run.id, now)
       }
 
@@ -220,7 +224,9 @@ export namespace LatticeStore {
       replaceRecord(stored, parsed)
       changed = true
     })
-    return { run: LatticeTypes.Run.parse(updated), changed }
+    const run = LatticeTypes.Run.parse(updated)
+    if (changed) await LatticeTransferIndex.index(run)
+    return { run, changed }
   }
 
   export async function updateByRunID(scopeID: string, runID: string, editor: Editor): Promise<LatticeTypes.Run> {

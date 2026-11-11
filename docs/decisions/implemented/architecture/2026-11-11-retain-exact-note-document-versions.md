@@ -8,6 +8,8 @@ Blueprint execution and review records refer to a Note version, but a current-on
 
 ## Decision
 
+Preparation namespaces include an optional contributing owner. Blueprint and Lattice may seal independent exact selections for the same Session and handoff; each retains its own pins over the shared Note version store. Omitted owner IDs preserve existing preparation records. The behavioral regression uses two native owners selecting different documents and verifies that both remain independently retained.
+
 The Note owner retains immutable version records beside the current canonical document. Creation, content edits, owner metadata edits and archive changes capture the exact document in the same Storage transaction. Conflicting bytes under the same Scope, document and version are rejected. `NoteStore.getVersion` reads an exact Scope and version and retains the document-kind availability gate.
 
 Handoff preparation seals only version references and content hashes, while the canonical Note version store owns bytes. Retention pins protect those versions until source cancellation or surrender. Authoring changes cannot change a sealed selection or its attachment dependencies. Stored snapshots use the base persisted schema and preserve nested opaque owner fields; the selected kind schema validates public semantics without rewriting those bytes.

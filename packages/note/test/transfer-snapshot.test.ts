@@ -66,3 +66,52 @@ test("handoff Note snapshots seal exact versions across edits and retain bytes u
     }),
   )
 }, 20000)
+
+test("independent native owners seal their own exact version selections for the same Session handoff", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ workspace: null })
+        const first = await NoteStore.create({ title: "Blueprint document" })
+        const second = await NoteStore.create({ title: "Lattice document" })
+        await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })
+        const binding = {
+          sessionID: session.id,
+          scopeID: "home",
+          handoffID: "shared-owners",
+          sourceID: "A",
+          targetID: "B",
+          fromEpoch: 1,
+          toEpoch: 2,
+        }
+        await Epochs.beginSource(binding)
+        const context = {
+          session: await Session.get(session.id),
+          rootSessionID: session.id,
+          handoffID: binding.handoffID,
+          signal: new AbortController().signal,
+        }
+        const select = (noteID: string) =>
+          (async function* () {
+            yield { noteID }
+          })()
+        const blueprint = { ...context, ownerID: "blueprint" }
+        const lattice = { ...context, ownerID: "lattice" }
+        await NoteTransferSnapshots.seal(blueprint, select(first.id))
+        await NoteTransferSnapshots.seal(lattice, select(second.id))
+        const firstSelection = []
+        for await (const item of NoteTransferSnapshots.read(blueprint)) firstSelection.push(item.note.id)
+        const secondSelection = []
+        for await (const item of NoteTransferSnapshots.read(lattice)) secondSelection.push(item.note.id)
+        expect(firstSelection).toEqual([first.id])
+        expect(secondSelection).toEqual([second.id])
+        await NoteStore.archive("home", [first.id, second.id])
+        await expect(NoteStore.remove("home", first.id)).rejects.toThrow("transfer")
+        await expect(NoteStore.remove("home", second.id)).rejects.toThrow("transfer")
+      },
+    }),
+  )
+}, 20000)

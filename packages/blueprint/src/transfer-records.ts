@@ -89,7 +89,7 @@ export namespace BlueprintTransferRecords {
           yield { key: event.key, value: z.record(z.string(), z.unknown()).parse(event.value) }
       }
     }
-    for await (const selected of NoteTransferSnapshots.read(context)) {
+    for await (const selected of NoteTransferSnapshots.read({ ...context, ownerID: "blueprint" })) {
       yield { key: noteKey(session, selected.note.id, selected.selection.version), value: selected.note }
     }
   }

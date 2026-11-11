@@ -7,7 +7,21 @@ import { WorkflowInfo } from "../session-schema"
 import { WorkflowSessionService, WorkflowConflictError } from "./workflow"
 import { SessionModePolicy as OwnerModePolicy } from "./tool-mode-policy"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
+import { LatticeStore } from "../lattice/store"
 export function registerSessions() {
+  SessionExecutionOwners.register("lattice", {
+    async allowsSession(session) {
+      if (session.workflow?.kind !== "lattice") return true
+      try {
+        const run = await LatticeStore.getByRunID(session.scope.id, session.workflow.runID)
+        return run?.sessionID === session.id
+      } catch (error) {
+        if (error instanceof z.ZodError) return false
+        throw error
+      }
+    },
+  })
   WorkflowKindRegistry.register({
     id: "lattice",
     schema: WorkflowInfo,

@@ -6,7 +6,7 @@ import { lattice } from "../../src/component"
 import { note } from "@ericsanchezok/synergy-note/component"
 import { blueprint } from "@ericsanchezok/synergy-blueprint/component"
 import { registerWorker } from "../../src/worker"
-export function testRuntime(env?: Record<string, string | undefined>) {
+export function testRuntime(env?: Record<string, string | undefined>, register?: () => void, home?: string) {
   const components = [
     localRuntime({ workers: false, environment: false }),
     note(),
@@ -19,9 +19,11 @@ export function testRuntime(env?: Record<string, string | undefined>) {
   )
   return harnessRuntime({
     env,
+    home,
     composition: {
       register() {
         composition.register()
+        register?.()
       },
     },
   })
