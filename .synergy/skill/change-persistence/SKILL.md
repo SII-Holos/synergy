@@ -82,6 +82,8 @@ For namespace backups, capture an MVCC metadata snapshot and stream its fixed im
 
 Capture consumers read protected logical entries through the canonical checkpoint owner, with the actual exporter's returned manifest as the expected identity. Consume and validate the complete footer, recovery keys and reference inventory before sealing a derived capture index. Test a replacement by another valid archive, incomplete iteration and cancellation; reading a later current manifest or adding an independent decryption/parser path cannot prove the captured checkpoint.
 
+Native Runtime maintenance needs one explicit purpose/cohort operation and real suspension/drainage/inspection owners. Verify a trailing canonical writer, rollback, a changed post-drain revision, commit-unknown retry, failed release and cold-cohort refusal with actual storage. Do not substitute bridge shutdown, Runtime cancellation, unattended pause flags or invented transfer IDs for a writer proof. Wiring the primitive and registering an empty inspector do not establish production maintenance or physical-writer reconciliation.
+
 Recovery authority-change evidence must join the real policy writer's native transaction. Select domain-owned redacted projections before composition seals, initialize their baseline through a central owning migration, and test rollback, missing coverage, unhooked mutations and retained credentials across upgrade. Current authorization remains canonical; hashes or history entries cannot grant access. A restored journal cannot certify its missing later interval or another writer cohort. Missing history requires current authorization re-establishment, not a replacement baseline that claims continuity.
 
 ## Migrate Existing Data

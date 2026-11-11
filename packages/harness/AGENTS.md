@@ -22,7 +22,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Environment ownership: [Environments](../../docs/architecture/environments.md).
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.
 
-`Storage.Handle` owns [Agent authority](../../docs/architecture/agent-storage.md), transactions and content lifetimes. External effects precede references. Checkpoints pin locations; logical scans require captured manifests and complete verification. Restores require owner fences. Archives require Host authority; history grants no access. Retain object v1/v2 compatibility. Verify focused storage/secrets suites; SQLite packaging uses root workspace-sqlite tests; PG uses `SYNERGY_TEST_POSTGRES_URL`.
+`Storage.Handle` owns [Agent authority](../../docs/architecture/agent-storage.md), transactions and content lifetimes. External effects precede references. Pin checkpoint locations; verify complete logical scans against captured manifests. Fence restores. Archives require Host authority; history cannot authorize. Read object v1/v2. Maintenance requires native drainage; preserve purpose/cohort holds. Test storage/secrets locally. SQLite packaging: root workspace-sqlite tests; PG: `SYNERGY_TEST_POSTGRES_URL`.
 
 Register PG contracts in `test/support/storage-backends.ts`; see [backend selection](../../.synergy/skill/testing-guide/SKILL.md).
 

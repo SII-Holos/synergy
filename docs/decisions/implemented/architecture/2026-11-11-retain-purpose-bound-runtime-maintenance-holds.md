@@ -1,0 +1,43 @@
+# Decision Record: Retain purpose-bound Runtime maintenance holds
+
+Status: implemented
+
+## Problem
+
+Connection closure does not prove Agent, tool, process or Environment writers stopped. Runtime shutdown also cancels Cortex descendants, so it cannot serve as a backup pause that preserves their continuation identity. A lost acknowledgement or Runtime restart must not silently discard a maintenance operation and reopen execution.
+
+## Decision
+
+Harness owns one purpose-bound Runtime maintenance operation over its current native Storage Handle. This differs from the existing offline `StorageMaintenance` owner for opening, compacting and repairing storage formats. The operation records its backup/restore purpose, logical request, Host actor, writer-cohort contract, Runtime identity, phase and native tail revision. It never changes Session driver epochs or uses a handoff ID.
+
+Selected native owners contribute ordered suspension, drainage, inspection and release methods before composition seals. Required missing owners or reported reconciliation requirements block progress. The maintenance owner issues opaque leases and drain receipts bound to the actual Runtime, Handle, operation and cohort. Callers cannot replace those proofs with booleans, copied objects or another Runtime's handle.
+
+Draining admits native tail mutations while new admission remains held. Their tail revision commits with the actual canonical write. A mutation after owner drainage invalidates the old freeze receipt; a rolled-back mutation does not. Frozen operations reject ordinary canonical mutations. Only the maintenance owner can update its reserved records. Release keeps admission closed while owners finish and while any inspector reports unknown state. The operation retains its durable history after release.
+
+Begin uses a stable native request/receipt identity. A committed operation with a lost acknowledgement remains held and reconciles the original operation on exact retry. Duplicate completed requests do not create a new hold. A cold Runtime cannot reuse the prior cohort's opaque lease or treat a repeated request as physical-writer reconciliation. Restore-purpose holds cannot use the source-backup release path.
+
+## Alternatives considered
+
+**Close the bridge or Runtime.** Bridge drainage only covers connection callbacks. Full Runtime close follows cancellation paths and can change delegated work instead of retaining a suspension.
+
+**Reuse handoff IDs or set unattended Sessions paused.** These fabricate transfer authority or violate the canonical machine Session lifecycle. Maintenance has its own operation purpose and does not grant execution ownership.
+
+**Accept a caller's ready flag.** It cannot prove actual owner drainage, detect a later native writer or survive uncertain commits and restart. Native operation participation and opaque receipts retain those boundaries.
+
+## Consequences
+
+This is the operation and storage-protection primitive. It does not itself suspend an Agent, revoke a physical writer or implement whole deployment recovery. Production availability requires the actual Session/Cortex/tool/process/Workspace/Environment owners, every admission path, a hosted reader/cohort fence, controlled capture and native restore publication integration. A registered callback is not evidence that those production adapters are implemented. Unknown/cold operations remain held until their real owners reconcile them.
+
+The primitive has no ordinary organization account route or administrator export permission. Runtime and resource authorization remain with their canonical owners; maintenance release cannot release a transfer hold or manufacture a current driver.
+
+## Verification
+
+Harness `test/storage/runtime-maintenance.test.ts` uses temporary SQLite and a real asynchronous canonical tail writer. It verifies admission/freeze boundaries, native mutation rollback, changed tail revisions, forged/cross-Runtime receipts, unknown writer requirements, failed release, a SQL commit whose acknowledgement is lost, exact retries, pre-cancellation and cold-cohort refusal. The existing offline `test/storage/maintenance.test.ts` remains unchanged and passes its original backup/worker-loss/progress contracts. These tests do not establish complete production writer drainage.
+
+`test/storage/runtime-maintenance-restore.test.ts` captures a frozen source namespace and restores it into independent empty SQLite through the existing trusted portable importer. Finalization failure rolls back ordinary records and the retained operation together; retry restores protected records and binary content while ordinary writes and admission remain denied. The prior source lease cannot release the restored hold. This uses the native importer without disabling mutation guards or adding a new account-visible restoration privilege.
+
+## Related
+
+- [Agent storage](../../../architecture/agent-storage.md)
+- [Namespace checkpoints](2026-11-11-pin-portable-namespace-checkpoints-and-fence-restoration.md)
+- [Organization recovery containers](2026-11-11-encrypt-organization-recovery-containers.md)

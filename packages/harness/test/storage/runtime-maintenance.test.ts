@@ -1,0 +1,273 @@
+import { expect, spyOn, test } from "bun:test"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { RuntimeMaintenance } from "../../src/storage/runtime-maintenance"
+import { Storage } from "../../src/storage/storage"
+import {
+  TransactionalStore,
+  type StoreTransaction,
+  type TransactionOptions,
+} from "../../src/storage/transactional-store"
+import { StorageCommitUnknownError } from "../../src/storage/errors"
+import { storageTestRuntime } from "../support/storage-runtime"
+import { storageTestOptions } from "../support/storage-backends"
+
+async function fixture() {
+  let runtime = await storageTestRuntime()
+  const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "runtime-maintenance-"))
+  const store = await TransactionalStore.open(
+    storageTestOptions({ namespace: crypto.randomUUID(), filename: path.join(root, "db") }),
+  )
+  const run = <T>(body: () => T | Promise<T>) =>
+    runtime.run(() => Storage.provide({ store, artifactDirectory: path.join(root, "content") }, body))
+  return {
+    run,
+    store,
+    async restart() {
+      await runtime.close()
+      runtime = await storageTestRuntime()
+    },
+    async [Symbol.asyncDispose]() {
+      await store.close()
+      await runtime.close()
+      await fs.rm(root, { recursive: true, force: true })
+    },
+  }
+}
+const actor = {
+  kind: "system" as const,
+  subjectID: "host-operator",
+  displayName: "Host operator",
+  clientKind: "system" as const,
+  requestID: "maintenance-one",
+}
+
+test("native maintenance stops new admission, drains a real trailing writer and freezes ordinary canonical changes", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    const stop = Promise.withResolvers<void>()
+    let finished = false
+    const tail = (async () => {
+      await stop.promise
+      await Storage.write(["canonical", "tail"], { retained: true })
+      finished = true
+    })()
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {
+        stop.resolve()
+      },
+      async drain() {
+        await tail
+      },
+      async inspect() {
+        return finished
+          ? []
+          : [{ code: "writer_running", owner: "writer", label: "Writer is still running", recoverable: true }]
+      },
+      async release() {},
+    })
+    await RuntimeMaintenance.assertAdmission()
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+    const receipt = await RuntimeMaintenance.drain(lease)
+    expect(await Storage.read(["canonical", "tail"])).toEqual({ retained: true })
+    await RuntimeMaintenance.freeze(lease, receipt)
+    await expect(Storage.write(["canonical", "late"], { unsafe: true })).rejects.toThrow()
+    await expect(Storage.removeTree(["canonical"])).rejects.toThrow()
+    expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
+    await RuntimeMaintenance.release(lease)
+    await RuntimeMaintenance.assertAdmission()
+    await Storage.write(["canonical", "after"], { allowed: true })
+    expect((await RuntimeMaintenance.status())?.phase).toBe("released")
+  })
+})
+
+test("a changed writer revision, forged receipt or foreign Runtime cannot freeze or release another maintenance hold", async () => {
+  await using f = await fixture()
+  await using other = await fixture()
+  const hold = await f.run(async () => {
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release() {},
+    })
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    const receipt = await RuntimeMaintenance.drain(lease)
+    await Storage.write(["canonical", "after-drain"], { intervening: true })
+    await expect(RuntimeMaintenance.freeze(lease, receipt)).rejects.toThrow()
+    await expect(RuntimeMaintenance.freeze(lease, { ...receipt })).rejects.toThrow()
+    const current = await RuntimeMaintenance.drain(lease)
+    await expect(
+      Storage.transaction(async () => {
+        await Storage.write(["canonical", "rolled-back"], { temporary: true })
+        throw new Error("Fixture trailing writer rolled back")
+      }),
+    ).rejects.toThrow("rolled back")
+    return { lease, receipt: current }
+  })
+  await other.run(async () => {
+    await expect(RuntimeMaintenance.freeze(hold.lease, hold.receipt)).rejects.toThrow()
+    await expect(RuntimeMaintenance.release(hold.lease)).rejects.toThrow()
+  })
+  await f.run(async () => {
+    await RuntimeMaintenance.freeze(hold.lease, hold.receipt)
+    await expect(Storage.write(["runtime_maintenance", "current"], { maintenanceID: "forged" })).rejects.toThrow()
+    await RuntimeMaintenance.release(hold.lease)
+  })
+})
+
+test("unknown native writers and failed owner release keep the durable operation held", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    let unknown = true
+    let releaseFails = true
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return unknown
+          ? [
+              {
+                code: "physical_writer_unknown",
+                owner: "writer",
+                label: "Reconcile the physical writer",
+                recoverable: true,
+              },
+            ]
+          : []
+      },
+      async release() {
+        if (releaseFails) throw new Error("Fixture release incomplete")
+      },
+    })
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    await expect(RuntimeMaintenance.drain(lease)).rejects.toThrow()
+    expect((await RuntimeMaintenance.status())?.phase).toBe("draining")
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+    unknown = false
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    await expect(RuntimeMaintenance.release(lease)).rejects.toThrow("release incomplete")
+    expect((await RuntimeMaintenance.status())?.phase).toBe("releasing")
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+    releaseFails = false
+    await RuntimeMaintenance.release(lease)
+    expect((await RuntimeMaintenance.status())?.phase).toBe("released")
+  })
+})
+
+test("a committed begin with a lost SQL acknowledgement reconciles the original identity without reopening admission", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release() {},
+    })
+    const original = f.store.transaction.bind(f.store)
+    let lost = false
+    using fault = spyOn(f.store, "transaction").mockImplementation(
+      async <T>(body: (tx: StoreTransaction) => Promise<T>, options?: TransactionOptions) => {
+        const result = await original(body, options)
+        if (!lost && options?.operationID?.startsWith("runtime-maintenance-begin:")) {
+          lost = true
+          throw new StorageCommitUnknownError(options.operationID, new Error("Fixture commit acknowledgement lost"))
+        }
+        return result
+      },
+    )
+    const input = { purpose: "organization-backup" as const, requestID: actor.requestID, actor }
+    await expect(RuntimeMaintenance.begin(input)).rejects.toThrow("did not confirm")
+    const retained = await RuntimeMaintenance.status()
+    if (!retained) throw new Error("Expected the actual committed maintenance operation")
+    expect(retained.phase).toBe("draining")
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+    const lease = await RuntimeMaintenance.begin(input)
+    expect(lease.maintenanceID).toBe(retained.maintenanceID)
+    expect(await Storage.count({ prefix: ["runtime_maintenance", "operations"] })).toBe(1)
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    await RuntimeMaintenance.release(lease)
+    expect((await RuntimeMaintenance.begin(input)).maintenanceID).toBe(lease.maintenanceID)
+    await RuntimeMaintenance.assertAdmission()
+    await expect(RuntimeMaintenance.begin({ ...input, purpose: "organization-restore" })).rejects.toThrow()
+    await RuntimeMaintenance.assertAdmission()
+  })
+})
+
+test("a pre-cancelled maintenance request leaves ordinary admission and canonical state unchanged", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release() {},
+    })
+    await expect(
+      RuntimeMaintenance.begin({
+        purpose: "organization-backup",
+        requestID: actor.requestID,
+        actor,
+        signal: AbortSignal.abort(new Error("Fixture pre-cancelled")),
+      }),
+    ).rejects.toThrow("pre-cancelled")
+    await RuntimeMaintenance.assertAdmission()
+    expect(await RuntimeMaintenance.status()).toBeUndefined()
+  })
+})
+
+test("a cold Runtime retains a previous cohort's hold and cannot reuse its old lease or idempotent request as reconciliation", async () => {
+  await using f = await fixture()
+  const prior = await f.run(async () => {
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release() {},
+    })
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    return lease
+  })
+  await f.restart()
+  await f.run(async () => {
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release() {},
+    })
+    expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+    await expect(RuntimeMaintenance.release(prior)).rejects.toThrow()
+    await expect(
+      RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor }),
+    ).rejects.toThrow("reconciliation")
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+  })
+})
