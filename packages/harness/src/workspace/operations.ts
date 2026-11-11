@@ -13,6 +13,8 @@ import { WorkspaceCheckpoints } from "./checkpoint"
 import { WorkspaceMounts } from "./mount"
 import { Log } from "../util/log"
 import { WorkspaceEvidence } from "./evidence"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
+import { addAbortListener } from "node:events"
 
 export namespace WorkspaceOperations {
   const ObjectWrite = WorkspaceProtocol.WriteInput.omit({ mount: true }).extend({ kind: z.literal("objects-write") })
@@ -65,6 +67,50 @@ export namespace WorkspaceOperations {
 
   export function register() {
     StorageRecovery.register("workspace-operations", recover)
+    RuntimeMaintenance.register("workspace-operations", {
+      version: 1,
+      order: 225,
+      async suspend(context) { await RuntimeMaintenance.assertDraining(context.lease) },
+      async drain(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+        while (pending().size) {
+          context.signal.throwIfAborted()
+          const aborted = Promise.withResolvers<never>()
+          using listener = addAbortListener(context.signal, () => aborted.reject(context.signal.reason))
+          await Promise.race([Promise.allSettled([...pending().values()]), aborted.promise])
+        }
+        for await (const row of Storage.records({ prefix: StoragePath.workspaceOperationActive(), limit: 128 })) {
+          context.signal.throwIfAborted()
+          const info = await indexedOperation(row)
+          await reconcile(info.id, info.scopeID)
+        }
+        const requirements = await inspectMaintenance(context.signal)
+        if (requirements.length) throw new RuntimeMaintenance.Blocked({ message: "Workspace operations require native save reconciliation", requirements })
+      },
+      inspect: (context) => inspectMaintenance(context.signal),
+      async release(context) { context.signal.throwIfAborted() },
+    })
+  }
+
+  async function indexedOperation(row: { key: string[]; value: unknown }) {
+    if (row.key.length !== 3 || row.value !== true) throw new Error("Workspace maintenance found an invalid operation index")
+    const info = await get(row.key[2], row.key[1])
+    if (info.scopeID !== row.key[1] || info.id !== row.key[2]) throw new Error("Workspace maintenance found another operation identity")
+    return info
+  }
+
+  async function inspectMaintenance(signal: AbortSignal): Promise<RuntimeMaintenance.Requirement[]> {
+    signal.throwIfAborted()
+    const requirements = new Map<string, RuntimeMaintenance.Requirement>()
+    const add = (code: string, label: string) => requirements.set(code, { owner: "workspace-operations", code, label, recoverable: true })
+    if (pending().size) add("workspace_request_active", "Wait for accepted Workspace requests and their original saves")
+    for await (const row of Storage.records({ prefix: StoragePath.workspaceOperationActive(), limit: 128 })) {
+      signal.throwIfAborted()
+      const info = await indexedOperation(row)
+      if (info.state !== "completed" && info.state !== "failed")
+        add("workspace_save_unsettled", "Confirm the original Workspace mutation receipt, checkpoint and use release")
+    }
+    return [...requirements.values()]
   }
 
   export async function get(id: string, scopeID: string): Promise<Info> {
@@ -144,6 +190,7 @@ export namespace WorkspaceOperations {
         return completed(await resume(existing))
       }
       input.signal?.throwIfAborted()
+      await RuntimeMaintenance.assertAdmission()
       const workspace = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
       if (input.generation !== undefined && input.generation !== workspace.binding.generation)
         throw new WorkspaceCatalog.BindingChanged({ workspaceID: workspace.id, message: "Workspace binding changed" })
@@ -158,6 +205,7 @@ export namespace WorkspaceOperations {
             : await WorkspaceContent.prepareWrite(input, { ...change, data: Buffer.from(change.data, "base64") })
         input.signal?.throwIfAborted()
         const info = await Storage.transaction(async () => {
+          await RuntimeMaintenance.assertAdmission()
           await WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
           const evidence = await WorkspaceEvidence.begin(prepared.info)
           return persist(
@@ -199,6 +247,7 @@ export namespace WorkspaceOperations {
       let recorded = false
       try {
         const info = await Storage.transaction(async () => {
+          await RuntimeMaintenance.assertAdmission()
           const latest = await WorkspaceCatalog.get(workspace.id, input.scopeID)
           if (
             latest.activeMount?.id !== workspace.activeMount!.id ||
