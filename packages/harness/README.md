@@ -10,6 +10,8 @@ Custom SDK factories belong to each Runtime instance. Research hosts using agent
 
 The harness owns permission policy and the `SandboxHost` execution contract. OS sandbox implementations, native PTYs and filesystem watchers belong to `local-runtime`. Sandboxed tool execution without a registered host fails explicitly; a bare research harness starts no native file watcher.
 
+`PermissionNext.decide` records one native winner through `session/decision-receipts`. Runtime rules, attribution and receipts share the caller's Storage transaction; promise settlement, rule caches and notifications follow commit. This store retains historical decisions without restoring pending approvals after restart.
+
 Embedded tool admission uses `tool/policy-source`: a host can narrow visible and deferred identities and authorize exact calls before execution resources are acquired. The source cannot widen the registry or replace permission and sandbox decisions. The public `cortex/tools` entry exposes the complete suite for explicit registration.
 
 Initialized tools may declare `resourceNeeds(args)` for input-dependent Workspace or execution requirements. Those requirements augment static declarations and use the same resource admission, capability gate and release path. Directory-independent actions remain usable without allocating a Workspace; precise file operations retain their resolved-path permission requests.

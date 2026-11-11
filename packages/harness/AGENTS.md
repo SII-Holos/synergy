@@ -2,7 +2,7 @@
 
 Own lifecycle, features and `./host/identity`; `context` owns attribution and `agent/primary-identity` primary names. See: [Host connections](../../docs/architecture/host-connections.md).
 
-- Keep domain tools, routes, configuration and migrations with their implementation.
+- Keep tools, routes, config and migrations with their domain.
 - `SessionExecutionOwners` gates components using references and `MessageV2` semantics. Preserve blocked records; human tasks cannot resume unavailable predecessors. Root admission and Agent selection persist independently; execution views cannot replace Session writes. Compose native receipts and observe activity/release without recovery; verify `test/session/{resume,rollout-cancel,rollout-activity}.test.ts`.
 - Session L/progress: `session/long-term-memory`, never workflows/Library. [State](../../docs/architecture/session-and-messages.md#session-long-term-summary).
 - `SessionSchemaRegistry` composes owner fields, inheritance, transactional validation and indexes; domains own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
@@ -34,8 +34,8 @@ Session summaries compare Workspace checkpoints across all writers. Keep tool ev
 
 Cortex holds retain native task/root/input/budget/deadline/notification identity; never cancel/recreate work. Personal transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
 
-Portability: permanent epochs, bounded streams, private staging, retained surrender/retirement history and complete verification. Streams retain prepared tokens/pack pins. Verify `test/session/transfer-*.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
+Portability: epochs, bounded streams, private staging, dependency verification, permanent surrender/retirement, prepared tokens/pack pins. Verify `test/session/transfer-*.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
 
 Native fields: `SessionHistory` bodyless headers and bounded UTF8 ranges. Verify `test/session/{part-field,part-field-cache,rollout-tool-part-index}.test.ts`.
 
-Asset installation precedes Session activation; verify `test/asset/portable.test.ts`.
+Install Assets before Session activation; verify `test/asset/portable.test.ts`. Native decisions use `session/decision-receipts`; test `test/permission/decision-receipt.test.ts`.

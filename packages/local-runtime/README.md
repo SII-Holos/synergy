@@ -6,6 +6,8 @@
 
 `createLocalClient(handle, { scopeID })` (or an explicit directory selector) provides the session, event, permission and question operations used by the CLI. The client enters its supplied Runtime and resolves its Scope for each operation. HTTP routes delegate session creation, input and command submission to the same `session-api` functions; remote CLI calls continue to use the SDK.
 
+Question keeps native pending requests and resolves them through `Question.decide`. The first committed answer retains its actor in Session-owned decision receipts; private answers are redacted there and in lifecycle events while the native caller receives the original. An outer admission rollback preserves the pending request.
+
 Run `bun test test/client.test.ts` for the in-process Scope/event contract and `bun run typecheck`. Tests use the isolated home preload declared in `bunfig.toml`.
 
 Package entrypoint contracts are verified by `bun test test/component.test.ts test/cli/scope.test.ts test/skill/summary.test.ts test/workspace/relocation.test.ts`: selected worker registration, Home reload wiring, CLI Scope cleanup, discovered skill summaries and copied Git metadata independence.

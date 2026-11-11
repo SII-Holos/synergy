@@ -91,6 +91,7 @@
     "./session": "./src/session/index.ts",
     "./session/invoke": "./src/session/invoke.ts",
     "./session/interaction": "./src/session/interaction.ts",
+    "./session/decision-receipts": "./src/session/decision-receipts.ts",
     "./session/lifecycle": "./src/session/lifecycle.ts",
     "./bus": "./src/bus/index.ts",
     "./session/event": "./src/session/event.ts",

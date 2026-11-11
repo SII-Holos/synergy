@@ -35,6 +35,7 @@ export namespace Storage {
   export const NotFoundError = MissingRecord
   export const BusyError = BusyStorage
   export const UnavailableError = UnavailableStorage
+  export const CommitUnknownError = StorageCommitUnknownError
   export const writeJsonAtomic = AtomicFile.writeJsonAtomic
   export interface Handle {
     store: TransactionalStore

@@ -15175,6 +15175,7 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "session" | "always" | "reject"
+    actor?: ActorStamp
   }
 }
 
@@ -15379,6 +15380,7 @@ export type EventQuestionReplied = {
     sessionID: string
     requestID: string
     answers: Array<QuestionAnswer>
+    actor?: ActorStamp
   }
 }
 
@@ -15387,6 +15389,7 @@ export type EventQuestionRejected = {
   properties: {
     sessionID: string
     requestID: string
+    actor?: ActorStamp
   }
 }
 

@@ -84609,6 +84609,9 @@
               "reply": {
                 "type": "string",
                 "enum": ["once", "session", "always", "reject"]
+              },
+              "actor": {
+                "$ref": "#/components/schemas/ActorStamp"
               }
             },
             "required": ["sessionID", "requestID", "reply"]
@@ -85279,6 +85282,9 @@
                 "items": {
                   "$ref": "#/components/schemas/QuestionAnswer"
                 }
+              },
+              "actor": {
+                "$ref": "#/components/schemas/ActorStamp"
               }
             },
             "required": ["sessionID", "requestID", "answers"]
@@ -85301,6 +85307,9 @@
               },
               "requestID": {
                 "type": "string"
+              },
+              "actor": {
+                "$ref": "#/components/schemas/ActorStamp"
               }
             },
             "required": ["sessionID", "requestID"]

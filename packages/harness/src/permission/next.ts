@@ -7,8 +7,10 @@ import { Identifier } from "../id/id"
 import { PermissionRules } from "./rules"
 import { ScopedState } from "../scope/scoped-state"
 import { SessionInteraction } from "../session/interaction"
+import { SessionDecisionReceipts as Decisions } from "../session/decision-receipts"
+import { Storage } from "../storage/storage"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { RolloutExecution } from "../session/rollout/execution"
-import { Lock } from "../util/lock"
 import { fn } from "../util/fn"
 import { Log } from "../util/log"
 import { Wildcard } from "../util/wildcard"
@@ -101,6 +103,7 @@ export namespace PermissionNext {
         sessionID: z.string(),
         requestID: z.string(),
         reply: Reply,
+        actor: ActorStamp.Info.optional(),
       }),
     ),
   }
@@ -116,6 +119,7 @@ export namespace PermissionNext {
         resolve: () => void
         reject: (e: any) => void
         cleanup?: () => void
+        decision?: { receipt: Decisions.Receipt; settle: () => void }
       }
     > = {}
 
@@ -145,6 +149,7 @@ export namespace PermissionNext {
         )
       if (decisions.some((rule) => rule.action === "ask" || (rule.action === "allow" && isNonBypassable(request)))) {
         const id = input.id ?? Identifier.ascending("permission")
+        if (s.pending[id]) throw new Error("Native permission request identity is already pending")
         const info: Request = { id, ...request }
         let resolvePending: (() => void) | undefined
         let rejectPending: ((e: any) => void) | undefined
@@ -178,10 +183,23 @@ export namespace PermissionNext {
             cleanup = () => signal.removeEventListener("abort", onAbort)
           }
         })
-        s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
+        const ready = Decisions.read({ sessionID: info.sessionID, requestID: id, kind: "permission" }).then((prior) => {
+          if (prior) throw new Error("Native permission request is already resolved")
+        })
+        const entry = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
+        s.pending[id] = entry
 
         return RolloutExecution.wait(() => {
-          Bus.publish(Event.Asked, info)
+          void ready.then(
+            () => {
+              if (s.pending[id] === entry) Bus.publish(Event.Asked, info)
+            },
+            (error) => {
+              if (s.pending[id] !== entry) return
+              delete s.pending[id]
+              entry.reject(error)
+            },
+          )
           return pendingPromise
         })
       }
@@ -198,10 +216,39 @@ export namespace PermissionNext {
       const s = await state()
       const first = s.pending[input.requestID]
       if (!first) return
-      using lock = await Lock.write(`permission-reply:${first.info.sessionID}`)
+      await decide({ ...input, sessionID: first.info.sessionID })
+    },
+  )
+
+  export async function decide(input: {
+    sessionID: string
+    requestID: string
+    reply: Reply
+    message?: string
+    actor?: ActorStamp.Info
+  }): Promise<Decisions.Result> {
+    const s = await state()
+    const target = { sessionID: input.sessionID, requestID: input.requestID, kind: "permission" as const }
+    return Storage.transaction(async () => {
+      const prior = await Decisions.read(target)
+      if (prior) {
+        const candidate = s.pending[input.requestID]?.decision
+        if (candidate && JSON.stringify(candidate.receipt) === JSON.stringify(prior)) {
+          Storage.afterCommit(() => {
+            if (prior.outcome.kind === "permission" && prior.outcome.reply === "always")
+              PermissionRules.invalidateUserRules()
+            candidate.settle()
+          })
+        }
+        return { status: "already_resolved", receipt: prior }
+      }
       const existing = s.pending[input.requestID]
-      if (!existing) return
-      if (input.reply === "always") {
+      if (!existing || existing.info.sessionID !== input.sessionID) return { status: "expired" }
+      const selected =
+        input.reply === "reject"
+          ? Object.values(s.pending).filter((pending) => pending.info.sessionID === input.sessionID)
+          : [existing]
+      if (input.reply === "always")
         await PermissionRules.addUserRules(
           existing.info.patterns.map((pattern) => ({
             permission: existing.info.permission,
@@ -209,51 +256,64 @@ export namespace PermissionNext {
             action: "allow",
           })),
         )
-        if (s.pending[input.requestID] !== existing) return
-      }
-      delete s.pending[input.requestID]
-      Bus.publish(Event.Replied, {
-        sessionID: existing.info.sessionID,
-        requestID: existing.info.id,
-        reply: input.reply,
+      const receipt = await Decisions.record({
+        sessionID: input.sessionID,
+        requestID: input.requestID,
+        actor: input.actor,
+        outcome: { kind: "permission", reply: input.reply },
       })
-      if (input.reply === "reject") {
-        existing.reject(input.message ? new CorrectedError(input.message) : new RejectedError())
-        // Reject all other pending permissions for this session
-        const sessionID = existing.info.sessionID
-        for (const [id, pending] of Object.entries(s.pending)) {
-          if (pending.info.sessionID === sessionID) {
-            delete s.pending[id]
-            Bus.publish(Event.Replied, {
-              sessionID: pending.info.sessionID,
+      const decisions = [{ pending: existing, receipt }]
+      for (const pending of selected) {
+        if (pending !== existing)
+          decisions.push({
+            pending,
+            receipt: await Decisions.record({
+              sessionID: input.sessionID,
               requestID: pending.info.id,
-              reply: "reject",
+              actor: input.actor,
+              outcome: { kind: "permission", reply: "reject", causedBy: input.requestID },
+            }),
+          })
+      }
+      const settle = () => {
+        if (input.reply === "session" && s.pending[input.requestID] === existing)
+          for (const pattern of existing.info.patterns)
+            PermissionRules.addSessionRule(input.sessionID, {
+              permission: existing.info.permission,
+              pattern,
+              action: "allow",
             })
-            pending.reject(new RejectedError())
-          }
+        for (const pending of selected) {
+          if (s.pending[pending.info.id] !== pending) continue
+          delete s.pending[pending.info.id]
+          if (input.reply === "reject")
+            pending.reject(
+              pending === existing && input.message ? new CorrectedError(input.message) : new RejectedError(),
+            )
+          else pending.resolve()
+          Bus.publish(Event.Replied, {
+            sessionID: input.sessionID,
+            requestID: pending.info.id,
+            reply: pending === existing ? input.reply : "reject",
+            actor: input.actor,
+          })
         }
-        return
       }
-      if (input.reply === "session" || input.reply === "always") {
-        for (const pattern of existing.info.patterns) {
-          const rule = {
-            permission: existing.info.permission,
-            pattern,
-            action: "allow" as const,
-          }
-          if (input.reply === "session") {
-            PermissionRules.addSessionRule(existing.info.sessionID, rule)
-          }
-        }
-        existing.resolve()
-        return
-      }
-      if (input.reply === "once") {
-        existing.resolve()
-        return
-      }
-    },
-  )
+      for (const { pending, receipt } of decisions) pending.decision = { receipt, settle }
+      await Storage.transaction(
+        async () => {
+          Storage.afterCommit(settle)
+        },
+        {
+          commitGuard() {
+            if (selected.some((pending) => s.pending[pending.info.id] !== pending))
+              throw new DOMException("Native permission request expired before commit", "AbortError")
+          },
+        },
+      )
+      return { status: "resolved", receipt }
+    })
+  }
 
   export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
     const merged = merge(...rulesets)

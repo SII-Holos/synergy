@@ -110,7 +110,7 @@ Network activity is likewise decided from the resolved operation rather than fro
 
 This separation lets one profile make consistent decisions across built-in tools, plugins, MCP servers, and future execution surfaces.
 
-Permission replies serialize by Session so a rejection cannot race a sibling persistent approval. An Always allow reply writes its complete rule set atomically before removing the pending request or publishing completion. Failed storage leaves the request pending and grants no cached rule; runtime rule caches update only after commit. The HTTP reply paths await this result.
+Permission decisions serialize through the native Storage writer so a rejection cannot race a sibling persistent approval. `PermissionNext.decide` commits the winner, actor, same-Session rejection cascade and complete Always allow rule set atomically with its caller's admission. `Question.decide` retains the equivalent answer or rejection receipt and redacts private answers. Pending promises, rule caches and lifecycle notifications change only after commit; a final pending-identity guard rejects cancellation during persistence. Failed writes or outer admission rollback leave unresolved requests pending. Receipts are retained with native Session history, while process restart creates new pending identities instead of restoring one-time approvals. Always allow retains Runtime-wide scope and cannot bypass organization authorization or non-bypassable execution constraints. See the [native decision receipt record](../decisions/implemented/architecture/2026-11-11-commit-native-interaction-winners-with-admission.md).
 
 ## Control Profiles
 
