@@ -146,6 +146,10 @@ beforeAll(async () => {
 
         if (new URLSearchParams(location.search).has("multiple")) questionRequest.questions[0].multiple = true
         if (new URLSearchParams(location.search).has("multi")) questionRequest.questions.push({ ...questionRequest.questions[0], header: "Second question" })
+        if (new URLSearchParams(location.search).has("password")) {
+          questionRequest.questions[0].input_type = "password"
+          questionRequest.questions[0].options = []
+        }
         const [currentQuestion, setQuestion] = createSignal(questionRequest)
         window.currentQuestion = questionRequest
         window.setQuestion = (id) => {
@@ -594,6 +598,18 @@ test("draft survives refresh, isolates server and Scope, and waits for an author
   await page.evaluate(() => (window as unknown as DecisionWindow).confirmSnapshot())
   await page.reload()
   expect(await page.getByRole("textbox").inputValue()).toBe("")
+})
+
+test("password drafts remain volatile while an ordinary step restores across refresh", async () => {
+  await page.goto(`${baseUrl}?mode=question&outlet&multi&password`)
+  await page.locator('input[type="password"]').fill("Never persist this password", { timeout: 1500 })
+  await page.getByRole("button", { name: "Next", exact: true }).click()
+  await page.getByRole("textbox").fill("Keep the ordinary answer")
+  expect(await page.evaluate(() => Object.values(localStorage).join(" "))).not.toContain("Never persist this password")
+  await page.reload()
+  expect(await page.getByRole("textbox").inputValue()).toBe("Keep the ordinary answer")
+  await page.getByRole("button", { name: "Previous", exact: true }).click()
+  expect(await page.locator('input[type="password"]').inputValue()).toBe("")
 })
 
 test("new requests preserve the active draft and its focus", async () => {

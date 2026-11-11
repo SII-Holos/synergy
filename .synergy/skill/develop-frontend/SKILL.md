@@ -70,6 +70,8 @@ Read [the domain guidance](references/state-and-recovery.md#preserve-state-and-a
 
 Keep organization authorization and callback pages independent of personal Runtime readiness and subscriptions. Exercise the real organization service across separate HTTPS origins: first-party login, exact-window callback, cookie-based recovery after reload, explicit logout, isolated opener and late cancellation. Use strict randomness for state/verifier and clear callback fragments before rendering. Do not infer popup compatibility from CORS headers; test the served opener policy in Chromium. Authentication state machines remain directly measured while rendered pages use the owning browser fixture.
 
+For organization decisions, test finite pending pages separately from explicit native winner queries and the client's own logical receipt. Do not use a partial page to clear unseen drafts or infer successful submission. Password input steps and original sensitive command payloads remain volatile: exercise storage inspection and reload recovery without reconstructing an answer under an old logical ID. See the [decision recovery record](../../../docs/decisions/implemented/architecture/2026-11-11-reconcile-organization-decisions-with-native-winners.md).
+
 ## Localize Product UI
 
 Read [the domain guidance](references/presentation.md#localize-product-ui) when this area is affected.

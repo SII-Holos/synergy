@@ -78,6 +78,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
       ["POST", "/org/v1/organization/leave"],
       ["POST", "/org/v1/sessions/session-one/read"],
       ["POST", "/org/v1/sessions/session-one/interactions/reply"],
+      ["POST", "/org/v1/sessions/session-one/interactions"],
       ["GET", "/org/v1/projects/project-one/knowledge/applied/releases?limit=50"],
       ["POST", "/org/v1/projects/project-one/knowledge/applied/references"],
       ["GET", "/org/v1/sessions/session-one/knowledge/releases?limit=50"],
@@ -97,7 +98,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
     })
     expect(result).toMatchObject({ ok: true, value: { status: 200 } })
   }
-  expect(calls).toBe(18)
+  expect(calls).toBe(19)
   ipc.dispose()
 })
 
@@ -130,6 +131,8 @@ test("organization IPC rejects untrusted frames and credential or arbitrary-targ
     { path: "/runtime/v1/register", method: "POST" },
     { path: "/org/v1/runtimes/member", method: "POST" },
     { path: "/org/v1/invites/consume", method: "POST" },
+    { path: "/org/v1/sessions/session-one/interactions", method: "GET" },
+    { path: "/org/v1/sessions/session-one/interactions/credentials", method: "POST" },
     { path: "/org/v1/projects/project-one/knowledge/applied" },
     { path: "/org/v1/projects/project-one/knowledge/applied", method: "PUT", body: "{}" },
     { path: "/org/v1/sessions/session-one/knowledge" },

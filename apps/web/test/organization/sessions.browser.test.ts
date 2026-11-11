@@ -22,7 +22,7 @@ const entry: Desktop.Connection = {
     accountID: "account-a",
     orgID: "org-a",
     loginName: "reader",
-    displayName: "Reader",
+    displayName: "Member",
     role: "member",
     state: "active",
     revision: 1,
@@ -85,7 +85,11 @@ test("the project conversation route shows the private title and keeps send cont
     { width: 1100, height: 760, scheme: "dark" as const },
     { width: 375, height: 740, scheme: "light" as const },
     { width: 375, height: 667, scheme: "light" as const },
+    { width: 375, height: 667, scheme: "light" as const, pending: true },
+    { width: 1100, height: 760, scheme: "light" as const, readOnly: true },
   ]) {
+    const readOnly = "readOnly" in variant
+    const hasPending = "pending" in variant
     const viewport = { width: variant.width, height: variant.height }
     const page = await browser.newPage({ viewport, colorScheme: variant.scheme })
     await page.route("**/brand/synergy-product-icon.png", async (route) =>
@@ -106,6 +110,37 @@ test("the project conversation route shows the private title and keeps send cont
         driverRuntimeID: "runtime-a",
         bindingEpoch: 1,
       }
+      if (url.pathname.endsWith("/interactions"))
+        return {
+          ok: true,
+          value: {
+            status: 200,
+            body: JSON.stringify({
+              rootSessionID: "session-a",
+              sourceSessionID: "session-a",
+              binding,
+              runtimeKind: "member",
+              operation: query.operation,
+              ...(query.operation === "pending"
+                ? {
+                    items: hasPending
+                      ? [
+                          {
+                            kind: "permission",
+                            requestID: "permission-a",
+                            sourceSessionID: "session-a",
+                            permission: "bash",
+                            patterns: ["/approved/project/**"],
+                            alwaysScope: "runtime",
+                          },
+                        ]
+                      : [],
+                    hasMore: false,
+                  }
+                : { items: [{ identity: { kind: "permission", requestID: "permission-a" }, state: "pending" }] }),
+            }),
+          },
+        }
       const body =
         url.pathname === "/org/v1/organization"
           ? { orgID: "org-a", name: "Research team", revision: 1 }
@@ -119,11 +154,12 @@ test("the project conversation route shows the private title and keeps send cont
                 revision: 1,
                 createdAt: 1,
                 role: "maintainer",
-                permissions: { read: true, execute: true, manage: false },
+                permissions: { read: true, execute: !readOnly, manage: false },
               }
             : url.pathname === "/org/v1/sessions/session-a"
               ? {
                   ...session,
+                  permissions: { read: true, execute: !readOnly, stop: !readOnly },
                   runtime: {
                     runtimeID: "runtime-a",
                     runtimeKind: "member",
@@ -185,26 +221,34 @@ test("the project conversation route shows the private title and keeps send cont
         ).href,
       )
       await page.getByRole("heading", { name: "Private research", exact: true }).waitFor()
-      await page.getByRole("textbox", { name: "Message", exact: true }).fill("A retained draft")
-      await page.waitForFunction(
-        () =>
-          [...document.querySelectorAll("button")].some(
-            (button) => button.textContent?.trim() === "Send" && !button.disabled,
-          ),
-        undefined,
-        { timeout: 5000 },
-      )
-      expect(await page.getByRole("button", { name: "Cancel work", exact: true }).count()).toBe(1)
+      if (!readOnly) {
+        await page.getByRole("textbox", { name: "Message", exact: true }).fill("A retained draft")
+        await page.waitForFunction(
+          () =>
+            [...document.querySelectorAll("button")].some(
+              (button) => button.textContent?.trim() === "Send" && !button.disabled,
+            ),
+          undefined,
+          { timeout: 5000 },
+        )
+      }
+      if (hasPending) await page.getByRole("button", { name: "Expand request", exact: true }).waitFor()
+      expect(await page.getByRole("button", { name: "Cancel work", exact: true }).count()).toBe(readOnly ? 0 : 1)
       if (process.env.SYNERGY_UI_SCREENSHOT_DIR)
         await page.screenshot({
           path: path.join(
             process.env.SYNERGY_UI_SCREENSHOT_DIR,
-            `session-${viewport.width}-${viewport.height}-${variant.scheme}.png`,
+            `session-${viewport.width}-${viewport.height}-${variant.scheme}${hasPending ? "-pending" : readOnly ? "-read-only" : ""}.png`,
           ),
         })
-      const send = await page.getByRole("button", { name: "Send", exact: true }).boundingBox()
-      expect(send && send.y >= 0 && send.y + send.height <= viewport.height).toBe(true)
-      for (const name of ["Send", "Pause", "Cancel work", "Share with project"]) {
+      if (readOnly) {
+        expect(await page.getByRole("textbox", { name: "Message", exact: true }).count()).toBe(0)
+        expect(await page.getByRole("button", { name: "Pause", exact: true }).count()).toBe(0)
+      } else {
+        const send = await page.getByRole("button", { name: "Send", exact: true }).boundingBox()
+        expect(send && send.y >= 0 && send.y + send.height <= viewport.height).toBe(true)
+      }
+      for (const name of readOnly ? ["Share with project"] : ["Send", "Pause", "Cancel work", "Share with project"]) {
         const bounds = await page.getByRole("button", { name, exact: true }).boundingBox()
         expect(
           bounds &&
@@ -216,6 +260,17 @@ test("the project conversation route shows the private title and keeps send cont
       }
       const transcript = await page.locator(".organization-transcript-viewport").boundingBox()
       expect(transcript && transcript.height >= 64).toBe(true)
+      if (hasPending) {
+        await page.getByRole("button", { name: "Expand request", exact: true }).click()
+        const allow = page.getByRole("button", { name: "Allow once", exact: true })
+        await allow.scrollIntoViewIfNeeded()
+        const bounds = await allow.boundingBox()
+        expect(bounds && bounds.y >= 0 && bounds.y + bounds.height <= viewport.height).toBe(true)
+        const send = await page.getByRole("button", { name: "Send", exact: true }).boundingBox()
+        expect(send && send.y >= 0 && send.y + send.height <= viewport.height).toBe(true)
+        const reading = await page.locator(".organization-transcript-viewport").boundingBox()
+        expect(reading && reading.height >= 64).toBe(true)
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     } finally {
       await page.close()

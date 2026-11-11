@@ -39,6 +39,7 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
   const operations = new Map<string, Operation>()
   const tracked = new Map<string, { request: RequestIdentity; kind: Kind }>()
   const [selected, setSelected] = createStore<Record<string, string>>({})
+  const [sensitive, setSensitive] = createStore<Record<string, QuestionDraft>>({})
   const initial = createStore<Drafts>({ version: 1, entries: {} })
   const [drafts, setDrafts, , draftsReady] = (() => {
     try {
@@ -71,6 +72,11 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
     })
   const clearDraft = (request: RequestIdentity) => {
     if (!alive) return
+    setSensitive(
+      produce((entries) => {
+        delete entries[draftKey(request)]
+      }),
+    )
     setDrafts(
       "entries",
       produce((entries) => {
@@ -78,15 +84,45 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
       }),
     )
   }
-  const draft = (request: QuestionRequest) => sanitizeQuestionDraft(request, drafts.entries[draftKey(request)])
+  const redactedDraft = (request: QuestionRequest, value: QuestionDraft): QuestionDraft => ({
+    ...value,
+    custom: value.custom.map((answer, index) => (request.questions[index]?.input_type === "password" ? "" : answer)),
+    selections: value.selections.map((answer, index) =>
+      request.questions[index]?.input_type === "password" ? [] : answer,
+    ),
+    source: value.source.map((source, index) =>
+      request.questions[index]?.input_type === "password" ? "custom" : source,
+    ),
+  })
+  const hasPassword = (request: QuestionRequest) =>
+    request.questions.some((question) => question.input_type === "password")
+  const draft = (request: QuestionRequest) => {
+    const value = sanitizeQuestionDraft(request, drafts.entries[draftKey(request)])
+    return hasPassword(request) ? (sensitive[draftKey(request)] ?? redactedDraft(request, value)) : value
+  }
   const updateDraft = (request: QuestionRequest, update: (previous: QuestionDraft) => QuestionDraft) => {
     if (!alive || !draftsReady()) return
     const next = sanitizeQuestionDraft(
       request,
       untrack(() => update(draft(request))),
     )
-    setDrafts("entries", draftKey(request), reconcile(next))
+    if (hasPassword(request)) setSensitive(draftKey(request), reconcile(next))
+    setDrafts("entries", draftKey(request), reconcile(redactedDraft(request, next)))
   }
+
+  createEffect(() => {
+    const questions = runtime.questions()
+    if (!draftsReady()) return
+    untrack(() => {
+      for (const request of questions) {
+        const stored = drafts.entries[draftKey(request)]
+        if (!stored || !hasPassword(request)) continue
+        const redacted = redactedDraft(request, sanitizeQuestionDraft(request, stored))
+        if (JSON.stringify(stored) !== JSON.stringify(redacted))
+          setDrafts("entries", draftKey(request), reconcile(redacted))
+      }
+    })
+  })
 
   createEffect(() => {
     const confirmed = runtime.questionSnapshot()
@@ -96,6 +132,11 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
     untrack(() => {
       setDrafts(
         "entries",
+        produce((entries) => {
+          for (const id of Object.keys(entries)) if (!pendingQuestions.has(id)) delete entries[id]
+        }),
+      )
+      setSensitive(
         produce((entries) => {
           for (const id of Object.keys(entries)) if (!pendingQuestions.has(id)) delete entries[id]
         }),

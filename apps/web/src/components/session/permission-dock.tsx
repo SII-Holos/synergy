@@ -59,7 +59,11 @@ export function permissionInfo(request: PermissionRequest, view: SessionDataView
   return getToolInfo(part?.tool ?? request.permission, part?.state.input ?? {}, request.metadata)
 }
 
-export function PermissionDock(props: { request: PermissionRequest; view?: Accessor<SessionDataView> }) {
+export function PermissionDock(props: {
+  request: PermissionRequest
+  view?: Accessor<SessionDataView>
+  persistentScope?: MessageDescriptor
+}) {
   const view = props.view ?? useSessionDataView()
   const decisions = useSessionDecision()
   const { _ } = useLingui()
@@ -192,7 +196,7 @@ export function PermissionDock(props: { request: PermissionRequest; view?: Acces
           </button>
           <button type="button" class="decision-menu-row" disabled={locked()} onClick={() => respond("always")}>
             <span>{_(copy.always)}</span>
-            <span class="decision-secondary">{_(copy.persistentScope)}</span>
+            <span class="decision-secondary">{_(props.persistentScope ?? copy.persistentScope)}</span>
           </button>
         </Popover>
         <Button

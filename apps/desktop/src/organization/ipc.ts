@@ -38,7 +38,7 @@ const routes: [string, RegExp][] = [
   ["POST", /^\/org\/v1\/(projects|invites|sessions|resources|organization\/(transfer-owner|leave)|auth\/password)$/],
   ["POST", new RegExp(`^/org/v1/invites/${id}/revoke$`)],
   ["POST", new RegExp(`^/org/v1/sessions/${id}/(commands|control|read)$`)],
-  ["POST", new RegExp(`^/org/v1/sessions/${id}/interactions/reply$`)],
+  ["POST", new RegExp(`^/org/v1/sessions/${id}/interactions(?:/reply)?$`)],
   ["DELETE", new RegExp(`^/org/v1/sessions/${id}/share$`)],
   ["POST", new RegExp(`^/org/v1/accounts/${id}/reset$`)],
   ["POST", new RegExp(`^/org/v1/runtimes/${id}/revoke$`)],

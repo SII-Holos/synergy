@@ -13,6 +13,7 @@ import { WorkspaceError } from "./workspace-error"
 import { OrganizationSessionCreate } from "./session-create"
 import { OrganizationSessionComposer } from "./session-composer"
 import { OrganizationSessionResources } from "./session-resources"
+import { OrganizationSessionInteractions } from "./interactions"
 import { OrganizationKnowledge } from "./knowledge"
 import { OrganizationArtifacts } from "./artifacts"
 import { SharedOrganizationTranscript } from "./shared-transcript"
@@ -333,6 +334,15 @@ function OrganizationSessionPage(props: {
                         binding={binding()!}
                         title={setNativeTitle}
                         observed={setNativeStatus}
+                      />
+                    )}
+                  </Show>
+                  <Show when={session().permissions.stop && bindingKey()} keyed>
+                    {(_binding) => (
+                      <OrganizationSessionInteractions
+                        sessionID={props.sessionID}
+                        binding={binding()!}
+                        online={session().runtime?.state === "online"}
                       />
                     )}
                   </Show>

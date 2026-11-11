@@ -4,7 +4,7 @@ The web client for [Synergy](https://github.com/SII-Holos/synergy) — a browser
 
 ## Development
 
-The web client connects to a running Synergy server. From the monorepo root:
+Personal space connects to a running Synergy Runtime. Organization spaces connect independently to their organization service; their execution and sharing model is documented in [Organization architecture](../../docs/architecture/organization.md). From the monorepo root:
 
 ```bash
 # Start the server plus Vite web client

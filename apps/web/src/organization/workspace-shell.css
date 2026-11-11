@@ -175,6 +175,9 @@
   }
 }
 @media (max-width: 600px) {
+  .organization-workspace-pane--conversation {
+    padding-block: 8px 12px;
+  }
   .organization-workspace-shell--conversation .organization-workspace-sidebar {
     padding-block: 8px 4px;
   }

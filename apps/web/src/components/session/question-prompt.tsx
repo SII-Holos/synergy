@@ -184,7 +184,9 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
           </label>
         </Show>
         <TextField
-          multiline
+          multiline={question()?.input_type !== "password"}
+          type={question()?.input_type === "password" ? "password" : undefined}
+          autocomplete={question()?.input_type === "password" ? "off" : undefined}
           label={i18n._(question()?.multiple ? copy.supplement : copy.other)}
           hideLabel={!direct() && !question()?.multiple}
           value={draft().custom[draft().step] ?? ""}

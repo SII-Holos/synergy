@@ -63,3 +63,41 @@ test("only an acceptance for the exact immutable command and account can confirm
   ])
     expect(() => organizationCommandAccepted(request, value, "account")).toThrow()
 })
+test("a decision acknowledgement cannot substitute a different native question or permission outcome", () => {
+  const decision: Command.DecisionRequest = {
+    schemaVersion: 1,
+    orgID: "org",
+    requestID: "request",
+    sessionID: "session",
+    projectID: "project",
+    runtimeID: "runtime",
+    decision: {
+      operation: "decision",
+      kind: "question",
+      requestID: "native",
+      reply: "answer",
+      answers: [["selected"]],
+    },
+  }
+  const value = {
+    schemaVersion: 1,
+    permit: { ...permit, operation: "decision" },
+    acceptedAt: 2,
+    intakeSeq: 1,
+    effect: {
+      kind: "decision",
+      sourceSessionID: "session",
+      requestID: "native",
+      decision: {
+        status: "already_resolved",
+        winner: {
+          sessionID: "session",
+          requestID: "native",
+          decidedAt: 2,
+          outcome: { kind: "permission", reply: "once" },
+        },
+      },
+    },
+  }
+  expect(() => organizationCommandAccepted(decision, value, "account")).toThrow()
+})

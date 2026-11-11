@@ -41,7 +41,9 @@ export function organizationCommandAccepted(
     "decision" in request &&
     accepted.effect.kind === "decision" &&
     accepted.effect.requestID === request.decision.requestID &&
-    accepted.effect.sourceSessionID === (request.decision.sourceSessionID ?? request.sessionID)
+    accepted.effect.sourceSessionID === (request.decision.sourceSessionID ?? request.sessionID) &&
+    (accepted.effect.decision.status === "expired" ||
+      accepted.effect.decision.winner.outcome.kind === request.decision.kind)
   )
     return accepted
   throw new OrganizationCommandReceiptError()
