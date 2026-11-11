@@ -73,6 +73,23 @@ export namespace OrganizationIdentity {
   export type PasswordChange = z.infer<typeof PasswordChange>
   export const InviteCreate = z.strictObject({ role: z.enum(["admin", "member"]) }).meta({ ref: "OrgInviteCreate" })
   export type InviteCreate = z.infer<typeof InviteCreate>
+  export const Invite = z
+    .strictObject({
+      inviteID: ID,
+      createdBy: ID,
+      createdAt: z.number().int().nonnegative().optional(),
+      expiresAt: z.number().int(),
+      role: z.enum(["admin", "member"]),
+      revision: Revision,
+      state: z.enum(["open", "consumed", "revoked", "expired", "invalidated"]),
+    })
+    .meta({ ref: "OrgInvite" })
+  export type Invite = z.infer<typeof Invite>
+  export const InvitePage = z
+    .strictObject({ items: z.array(Invite), cursor: ID.optional() })
+    .meta({ ref: "OrgInvitePage" })
+  export const InviteRevoke = z.strictObject({ expectedRevision: Revision }).meta({ ref: "OrgInviteRevoke" })
+  export const Leave = z.strictObject({ expectedRevision: Revision }).meta({ ref: "OrgLeave" })
   export const TokenResult = z
     .strictObject({ token: Token, expiresAt: z.number().int() })
     .meta({ ref: "OrgTokenResult" })
@@ -151,13 +168,26 @@ export namespace OrganizationIdentity {
     .strictObject({ expectedRevision: Revision, role: ProjectRole.nullable() })
     .meta({ ref: "OrgProjectMemberChange" })
   export type ProjectMemberChange = z.infer<typeof ProjectMemberChange>
-  export const ProjectMemberIdentity = Account.pick({ accountID: true, displayName: true, loginName: true, state: true })
+  export const ProjectMemberIdentity = Account.pick({
+    accountID: true,
+    displayName: true,
+    loginName: true,
+    state: true,
+  })
   export const ProjectMemberView = ProjectMemberIdentity.extend({ role: ProjectRole })
-  export const ProjectMemberPage = z.strictObject({
-    items: z.array(ProjectMemberView).max(100), projectRevision: Revision, cursor: ID.optional(),
-  }).meta({ ref: "OrgProjectMemberPage" })
+  export const ProjectMemberPage = z
+    .strictObject({
+      items: z.array(ProjectMemberView).max(100),
+      projectRevision: Revision,
+      cursor: ID.optional(),
+    })
+    .meta({ ref: "OrgProjectMemberPage" })
   export const CandidateQuery = Page.extend({ q: z.string().trim().max(128).default("") })
-  export const ProjectCandidatePage = z.strictObject({
-    items: z.array(ProjectMemberIdentity).max(100), projectRevision: Revision, cursor: ID.optional(),
-  }).meta({ ref: "OrgProjectCandidatePage" })
+  export const ProjectCandidatePage = z
+    .strictObject({
+      items: z.array(ProjectMemberIdentity).max(100),
+      projectRevision: Revision,
+      cursor: ID.optional(),
+    })
+    .meta({ ref: "OrgProjectCandidatePage" })
 }

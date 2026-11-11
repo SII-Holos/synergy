@@ -9,7 +9,7 @@ import {
 import type { RuntimeIdentity } from "../home"
 import { denied, withMemberExecution } from "../execution-source"
 import { knowledgeTransport } from "../knowledge-source"
-import { knowledgeFiles, stageKnowledgeSelection, type ActiveKnowledge, type KnowledgeTransport } from "../knowledge"
+import { knowledgeFiles, syncKnowledgeSelection, type ActiveKnowledge, type KnowledgeTransport } from "../knowledge"
 
 const Parameters = z.strictObject({
   input: z.discriminatedUnion("operation", [
@@ -143,8 +143,8 @@ export function createMemberKnowledgeTool(identity: RuntimeIdentity): Tool.Info 
           identity,
           { sessionID: ctx.sessionID, signal: ctx.abort },
           async (resolution, signal) => {
-            const transport = knowledgeTransport(resolution)
-            const active = await stageKnowledgeSelection({
+            let transport = knowledgeTransport(resolution)
+            const active = await syncKnowledgeSelection({
               root: RuntimeContext.current().host.root,
               orgID: identity.orgID,
               projectID: resolution.session.organization!.projectID,
@@ -153,6 +153,7 @@ export function createMemberKnowledgeTool(identity: RuntimeIdentity): Tool.Info 
               transport,
               signal,
             })
+            if (active.updateError) transport = knowledgeTransport(resolution, active.selection.manifestHash)
             if (input.operation === "list") {
               const result = await transport.selection(
                 { cursor: input.cursor, manifestHash: active.selection.manifestHash },
@@ -160,7 +161,7 @@ export function createMemberKnowledgeTool(identity: RuntimeIdentity): Tool.Info 
               )
               return {
                 title: "Organization knowledge · list",
-                output: JSON.stringify(result),
+                output: JSON.stringify({ ...result, updateError: active.updateError }),
                 metadata: { operation: input.operation, cursor: result.cursor },
               }
             }
@@ -174,7 +175,7 @@ export function createMemberKnowledgeTool(identity: RuntimeIdentity): Tool.Info 
               })
               return {
                 title: "Organization knowledge · search",
-                output: JSON.stringify(result),
+                output: JSON.stringify({ ...result, updateError: active.updateError }),
                 metadata: { operation: input.operation, cursor: result.cursor, truncated: !!result.cursor },
               }
             }
@@ -194,7 +195,7 @@ export function createMemberKnowledgeTool(identity: RuntimeIdentity): Tool.Info 
               const result = await transport.files(reference, { cursor: input.cursor }, signal)
               return {
                 title: "Organization knowledge · files",
-                output: JSON.stringify(result),
+                output: JSON.stringify({ ...result, updateError: active.updateError }),
                 metadata: {
                   operation: input.operation,
                   title: selected.release.title,
@@ -209,6 +210,7 @@ export function createMemberKnowledgeTool(identity: RuntimeIdentity): Tool.Info 
             const bytes = Buffer.from(chunk.data, "base64url")
             const textual = file.mediaType.startsWith("text/") || /(?:json|xml|yaml)/.test(file.mediaType)
             const observation = {
+              updateError: active.updateError,
               reference,
               path: file.path,
               fileID: file.fileID,

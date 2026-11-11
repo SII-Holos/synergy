@@ -128,16 +128,27 @@ import type {
   OrgHostedRuntimeRegistration,
   OrgInviteConsume,
   OrgInviteCreate,
+  OrgInviteRevoke,
   OrgInvitesConsumeErrors,
   OrgInvitesConsumeResponses,
   OrgInvitesCreateErrors,
   OrgInvitesCreateResponses,
+  OrgInvitesListErrors,
+  OrgInvitesListResponses,
+  OrgInvitesRevokeErrors,
+  OrgInvitesRevokeResponses,
+  OrgKnowledgeActivatedQuery,
+  OrgKnowledgeActivationRequest,
   OrgKnowledgeAppliedErrors,
   OrgKnowledgeAppliedResponses,
   OrgKnowledgeApplyErrors,
   OrgKnowledgeApplyResponses,
   OrgKnowledgeContentErrors,
   OrgKnowledgeContentResponses,
+  OrgKnowledgeExecutionActivatedErrors,
+  OrgKnowledgeExecutionActivatedResponses,
+  OrgKnowledgeExecutionActivateErrors,
+  OrgKnowledgeExecutionActivateResponses,
   OrgKnowledgeExecutionContent,
   OrgKnowledgeExecutionContentErrors,
   OrgKnowledgeExecutionContentResponses,
@@ -161,16 +172,21 @@ import type {
   OrgKnowledgeSessionSelectionResponses,
   OrgKnowledgeSetSessionSelectionErrors,
   OrgKnowledgeSetSessionSelectionResponses,
+  OrgKnowledgeStatusErrors,
+  OrgKnowledgeStatusResponses,
   OrgKnowledgeVersionErrors,
   OrgKnowledgeVersionResponses,
   OrgKnowledgeVersionsErrors,
   OrgKnowledgeVersionsResponses,
   OrgKnowledgeWithdrawErrors,
   OrgKnowledgeWithdrawResponses,
+  OrgLeave,
   OrgLoginInput,
   OrgMemberRuntimeRegistration,
   OrgOrganizationGetErrors,
   OrgOrganizationGetResponses,
+  OrgOrganizationLeaveErrors,
+  OrgOrganizationLeaveResponses,
   OrgOrganizationSessionCapacityErrors,
   OrgOrganizationSessionCapacityResponses,
   OrgOrganizationTransferOwnerErrors,
@@ -264,6 +280,10 @@ import type {
   OrgSessionSyncDownloadBlobResponses,
   OrgSessionSyncEventsErrors,
   OrgSessionSyncEventsResponses,
+  OrgSessionSyncMessagesErrors,
+  OrgSessionSyncMessagesResponses,
+  OrgSessionSyncPartsErrors,
+  OrgSessionSyncPartsResponses,
   OrgSessionSyncSearchErrors,
   OrgSessionSyncSearchResponses,
   OrgSessionSyncSnapshotErrors,
@@ -551,6 +571,34 @@ export class OrgAuth extends HeyApiClient {
 
 export class OrgInvites extends HeyApiClient {
   /**
+   * List safe invitation metadata for current administrators or issuers
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgInvitesListResponses, OrgInvitesListErrors, ThrowOnError>({
+      url: "/org/v1/invites",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Create a one-time invitation
    */
   public create<ThrowOnError extends boolean = false>(
@@ -593,6 +641,39 @@ export class OrgInvites extends HeyApiClient {
       },
     })
   }
+
+  /**
+   * Revoke an unconsumed invitation with its current revision
+   */
+  public revoke<ThrowOnError extends boolean = false>(
+    parameters: {
+      inviteID: string
+      orgInviteRevoke: OrgInviteRevoke
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "inviteID" },
+            { key: "orgInviteRevoke", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgInvitesRevokeResponses, OrgInvitesRevokeErrors, ThrowOnError>({
+      url: "/org/v1/invites/{inviteID}/revoke",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
 }
 
 export class OrgOrganization extends HeyApiClient {
@@ -622,6 +703,32 @@ export class OrgOrganization extends HeyApiClient {
       ThrowOnError
     >({
       url: "/org/v1/organization/transfer-owner",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Leave the organization as the current account, retaining its last owner
+   */
+  public leave<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgLeave: OrgLeave
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgLeave", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgOrganizationLeaveResponses,
+      OrgOrganizationLeaveErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/organization/leave",
       ...options,
       ...params,
       headers: {
@@ -1411,6 +1518,80 @@ export class OrgSessionSync extends HeyApiClient {
       ThrowOnError
     >({
       url: "/org/v1/sessions/{sessionID}/sync/snapshot",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a chronological shared message window with a replay watermark
+   */
+  public messages<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      sourceSessionID?: string
+      limit?: number
+      cursor?: string
+      watermark?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "sourceSessionID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "watermark" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgSessionSyncMessagesResponses,
+      OrgSessionSyncMessagesErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/sessions/{sessionID}/sync/messages",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a bounded canonical part page for a shared message
+   */
+  public parts<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      sourceSessionID?: string
+      limit?: number
+      cursor?: string
+      watermark?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "sourceSessionID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "watermark" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgSessionSyncPartsResponses, OrgSessionSyncPartsErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/sync/messages/{messageID}/parts",
       ...options,
       ...params,
     })
@@ -2446,6 +2627,23 @@ export class OrgKnowledge extends HeyApiClient {
       },
     })
   }
+
+  /**
+   * Read desired and activated knowledge summaries without material contents
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<OrgKnowledgeStatusResponses, OrgKnowledgeStatusErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/knowledge/status",
+      ...options,
+      ...params,
+    })
+  }
 }
 
 export class OrgArtifacts extends HeyApiClient {
@@ -3159,6 +3357,58 @@ export class OrgKnowledgeExecution extends HeyApiClient {
       ThrowOnError
     >({
       url: "/runtime/v1/knowledge/content",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Acknowledge a complete locally activated knowledge manifest
+   */
+  public activate<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgKnowledgeActivationRequest: OrgKnowledgeActivationRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgKnowledgeActivationRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeExecutionActivateResponses,
+      OrgKnowledgeExecutionActivateErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/knowledge/activate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Reauthorize an exact previously activated manifest after a failed update
+   */
+  public activated<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgKnowledgeActivatedQuery: OrgKnowledgeActivatedQuery
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgKnowledgeActivatedQuery", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgKnowledgeExecutionActivatedResponses,
+      OrgKnowledgeExecutionActivatedErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/knowledge/activated",
       ...options,
       ...params,
       headers: {

@@ -5,49 +5,87 @@ import { OrganizationProtocol as Protocol } from "./core.js"
 
 export namespace OrganizationSyncProtocol {
   export const Sequence = z.number().int().positive()
+  export const TokenUsage = z.strictObject({
+    input: z.number(),
+    output: z.number(),
+    reasoning: z.number(),
+    cache: z.strictObject({ read: z.number(), write: z.number() }),
+  })
+  export const KnowledgeToolMetadata = z.strictObject({
+    operation: z.enum(["list", "files", "read", "search"]).optional(),
+    itemID: Identity.ID.optional(),
+    version: Identity.Revision.optional(),
+    manifestHash: Protocol.Digest.optional(),
+    fileID: Identity.ID.optional(),
+    path: z.string().max(2048).optional(),
+    title: z.string().max(1024).optional(),
+    offset: Identity.Revision.optional(),
+    bytes: Identity.Revision.optional(),
+    truncated: z.boolean().optional(),
+    cursor: z.string().max(2048).optional(),
+  })
 
-  export const Content = z.discriminatedUnion("kind", [
-    z.strictObject({
-      kind: z.literal("inline"),
-      text: z.string().refine((value) => new TextEncoder().encode(value).byteLength <= 64 * 1024, "Inline content exceeds its transport window"),
-    }),
-    z.strictObject({
-      kind: z.literal("blob"),
-      blobID: Identity.ID,
-      hash: Protocol.Digest,
-      bytes: z.number().int().nonnegative().safe(),
-      mediaType: z.string().min(1).max(256),
-    }),
-  ]).meta({ ref: "OrgTranscriptContent" })
+  export const Content = z
+    .discriminatedUnion("kind", [
+      z.strictObject({
+        kind: z.literal("inline"),
+        text: z
+          .string()
+          .refine(
+            (value) => new TextEncoder().encode(value).byteLength <= 64 * 1024,
+            "Inline content exceeds its transport window",
+          ),
+      }),
+      z.strictObject({
+        kind: z.literal("blob"),
+        blobID: Identity.ID,
+        hash: Protocol.Digest,
+        bytes: z.number().int().nonnegative().safe(),
+        mediaType: z.string().min(1).max(256),
+      }),
+    ])
+    .meta({ ref: "OrgTranscriptContent" })
   export type Content = z.infer<typeof Content>
 
-  export const TranscriptPart = z.discriminatedUnion("type", [
-    z.strictObject({ type: z.literal("text"), content: Content, origin: z.enum(["user", "system"]).optional() }),
-    z.strictObject({ type: z.literal("reasoning"), content: Content }),
-    z.strictObject({
-      type: z.literal("tool"),
-      callID: Identity.ID,
-      tool: z.string().min(1).max(256),
-      status: z.enum(["pending", "generating", "running", "completed", "error"]),
-      input: Content,
-      output: Content.optional(),
-      error: Content.optional(),
-      title: z.string().max(1024).optional(),
-      startedAt: z.number().nonnegative().optional(),
-      completedAt: z.number().nonnegative().optional(),
-    }),
-    z.strictObject({
-      type: z.literal("attachment"),
-      filename: z.string().min(1).max(512),
-      mediaType: z.string().min(1).max(256),
-      hash: Protocol.Digest.optional(),
-      bytes: z.number().int().nonnegative().optional(),
-    }),
-    z.strictObject({ type: z.literal("step-start") }),
-    z.strictObject({ type: z.literal("step-finish"), reason: z.string().max(256), cost: z.number().nonnegative() }),
-    z.strictObject({ type: z.literal("compaction"), auto: z.boolean() }),
-    z.strictObject({ type: z.literal("notice"), kind: z.string().min(1).max(256), content: Content }),
-  ]).meta({ ref: "OrgTranscriptPart" })
+  export const TranscriptPart = z
+    .discriminatedUnion("type", [
+      z.strictObject({ type: z.literal("text"), content: Content, origin: z.enum(["user", "system"]).optional() }),
+      z.strictObject({
+        type: z.literal("reasoning"),
+        content: Content,
+        time: z.strictObject({ start: z.number(), end: z.number().optional() }).optional(),
+      }),
+      z.strictObject({
+        type: z.literal("tool"),
+        callID: Identity.ID,
+        tool: z.string().min(1).max(256),
+        status: z.enum(["pending", "generating", "running", "completed", "error"]),
+        input: Content,
+        output: Content.optional(),
+        error: Content.optional(),
+        title: z.string().max(1024).optional(),
+        startedAt: z.number().nonnegative().optional(),
+        completedAt: z.number().nonnegative().optional(),
+        metadata: KnowledgeToolMetadata.optional(),
+      }),
+      z.strictObject({
+        type: z.literal("attachment"),
+        filename: z.string().min(1).max(512),
+        mediaType: z.string().min(1).max(256),
+        hash: Protocol.Digest.optional(),
+        bytes: z.number().int().nonnegative().optional(),
+      }),
+      z.strictObject({ type: z.literal("step-start") }),
+      z.strictObject({
+        type: z.literal("step-finish"),
+        reason: z.string().max(256),
+        cost: z.number(),
+        tokens: TokenUsage.optional(),
+      }),
+      z.strictObject({ type: z.literal("compaction"), auto: z.boolean() }),
+      z.strictObject({ type: z.literal("notice"), kind: z.string().min(1).max(256), content: Content }),
+    ])
+    .meta({ ref: "OrgTranscriptPart" })
   export type TranscriptPart = z.infer<typeof TranscriptPart>
 
   export const ShareChange = z
@@ -58,6 +96,24 @@ export namespace OrganizationSyncProtocol {
   export const SyncState = z.enum(["pending", "syncing", "synced", "blocked", "failed"])
 
   export const CortexStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
+  const statusObservation = { observedAt: z.number().int().nonnegative(), controlVersion: Identity.Revision }
+  export const Status = z.discriminatedUnion("type", [
+    z.strictObject({ ...statusObservation, type: z.literal("idle") }),
+    z.strictObject({ ...statusObservation, type: z.literal("busy") }),
+    z.strictObject({
+      ...statusObservation,
+      type: z.literal("paused"),
+      since: z.number(),
+      reason: z.enum(["aborted", "failed", "interrupted", "workflow"]),
+    }),
+    z.strictObject({
+      ...statusObservation,
+      type: z.literal("retry"),
+      attempt: z.number(),
+      next: z.number().optional(),
+    }),
+  ])
+  export type Status = z.infer<typeof Status>
 
   export const CortexProjection = z.strictObject({
     taskID: Identity.ID,
@@ -80,6 +136,8 @@ export namespace OrganizationSyncProtocol {
     bindingEpoch: Protocol.Epoch,
     createdAt: z.number().int().nonnegative(),
     shareGeneration: Identity.Revision,
+    title: z.string().max(512).optional(),
+    status: Status.optional(),
     rootSessionID: Identity.ID.optional(),
     parentSessionID: Identity.ID.optional(),
     cortex: CortexProjection.optional(),
@@ -91,7 +149,7 @@ export namespace OrganizationSyncProtocol {
     sequence: Sequence,
     session: SessionProjection,
   })
-  const MessageEvent = z.strictObject({
+  export const MessageEvent = z.strictObject({
     type: z.literal("message"),
     sequence: Sequence,
     sessionID: Identity.ID.optional(),
@@ -108,21 +166,26 @@ export namespace OrganizationSyncProtocol {
     model: z.strictObject({ providerID: z.string().max(256), modelID: z.string().max(512) }).optional(),
     mode: z.string().max(256).optional(),
     cost: z.number().finite().optional(),
-    tokens: z.strictObject({ input: z.number(), output: z.number(), reasoning: z.number(), cache: z.strictObject({ read: z.number(), write: z.number() }) }).optional(),
+    tokens: TokenUsage.optional(),
     error: z.strictObject({ code: z.string().max(256), message: z.string().max(32 * 1024) }).optional(),
     removed: z.literal(true).optional(),
     integrity: Protocol.Digest,
   })
-  const PartEvent = z.strictObject({
-    type: z.literal("part"),
-    sequence: Sequence,
-    sessionID: Identity.ID.optional(),
-    messageID: Identity.ID,
-    partID: Identity.ID,
-    part: TranscriptPart.optional(),
-    removed: z.literal(true).optional(),
-    integrity: Protocol.Digest,
-  }).refine((value) => value.removed ? value.part === undefined : value.part !== undefined, "A transcript part must contain content or a deletion")
+  export const PartEvent = z
+    .strictObject({
+      type: z.literal("part"),
+      sequence: Sequence,
+      sessionID: Identity.ID.optional(),
+      messageID: Identity.ID,
+      partID: Identity.ID,
+      part: TranscriptPart.optional(),
+      removed: z.literal(true).optional(),
+      integrity: Protocol.Digest,
+    })
+    .refine(
+      (value) => (value.removed ? value.part === undefined : value.part !== undefined),
+      "A transcript part must contain content or a deletion",
+    )
   const ToolEvent = z.strictObject({
     type: z.literal("tool"),
     sequence: Sequence,
@@ -197,6 +260,36 @@ export namespace OrganizationSyncProtocol {
     ])
     .meta({ ref: "OrgSyncEvent" })
   export type Event = z.infer<typeof Event>
+  export const WindowCursor = z
+    .string()
+    .min(1)
+    .max(2048)
+    .regex(/^[a-zA-Z0-9_-]+$/)
+  export const MessageQuery = z.strictObject({
+    sourceSessionID: Identity.ID.optional(),
+    limit: z.coerce.number().int().min(1).max(64).default(32),
+    cursor: WindowCursor.optional(),
+    watermark: Identity.Revision.optional(),
+  })
+  export type MessageQuery = z.input<typeof MessageQuery>
+  export const PartQuery = MessageQuery.extend({
+    messageID: Identity.ID,
+    limit: z.coerce.number().int().min(1).max(128).default(64),
+  })
+  export type PartQuery = z.input<typeof PartQuery>
+  const window = {
+    sessionID: Identity.ID,
+    sourceSessionID: Identity.ID,
+    shareGeneration: Identity.Revision,
+    watermark: Identity.Revision,
+    cursor: WindowCursor.optional(),
+  }
+  export const MessagePage = z
+    .strictObject({ ...window, items: z.array(MessageEvent).max(64) })
+    .meta({ ref: "OrgSharedMessagePage" })
+  export const PartPage = z
+    .strictObject({ ...window, messageID: Identity.ID, items: z.array(PartEvent).max(128), complete: z.boolean() })
+    .meta({ ref: "OrgSharedPartPage" })
 
   export const Batch = z
     .strictObject({
@@ -267,13 +360,15 @@ export namespace OrganizationSyncProtocol {
     watermark: Identity.Revision.optional(),
   })
   export type SnapshotQuery = z.infer<typeof SnapshotQuery>
-  export const SnapshotPage = z.strictObject({
-    sessionID: Identity.ID,
-    shareGeneration: Identity.Revision,
-    watermark: Identity.Revision,
-    items: z.array(Event).max(256),
-    cursor: Identity.ID.optional(),
-  }).meta({ ref: "OrgTranscriptSnapshotPage" })
+  export const SnapshotPage = z
+    .strictObject({
+      sessionID: Identity.ID,
+      shareGeneration: Identity.Revision,
+      watermark: Identity.Revision,
+      items: z.array(Event).max(256),
+      cursor: Identity.ID.optional(),
+    })
+    .meta({ ref: "OrgTranscriptSnapshotPage" })
   export type SnapshotPage = z.infer<typeof SnapshotPage>
 
   export const SearchQuery = z.strictObject({

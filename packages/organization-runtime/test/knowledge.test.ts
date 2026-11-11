@@ -13,7 +13,12 @@ import {
   type OrganizationKnowledgeProtocol as Knowledge,
   OrganizationPublicationProtocol as Publication,
 } from "@ericsanchezok/synergy-organization-protocol"
-import { stageKnowledgeSelection, activeKnowledge, type KnowledgeTransport } from "../src/knowledge"
+import {
+  stageKnowledgeSelection,
+  syncKnowledgeSelection,
+  activeKnowledge,
+  type KnowledgeTransport,
+} from "../src/knowledge"
 import { registerOrganizationKnowledge } from "../src/knowledge-source"
 
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
@@ -213,6 +218,37 @@ test("another project or Session cannot be admitted by a mismatched manifest", a
       }),
     ).rejects.toThrow()
     expect(await activeKnowledge("different-session")).toBeUndefined()
+  })
+})
+
+test("a failed update keeps a previously activated version usable only after current reauthorization", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    let authorized = true
+    const activated = new Set<string>()
+    function transport(version: number, fail = false): KnowledgeTransport {
+      return {
+        ...source("one", version, version === 1 ? "Previous usable version" : "Next version", { fail }),
+        async activate(selection) {
+          activated.add(selection.manifestHash)
+          return { orgID: "org", projectID: "project", sessionID: "one", ...selection }
+        },
+        retained(manifestHash) {
+          if (!authorized || !activated.has(manifestHash)) throw new Error("Current access revoked")
+          return source("one", 1, "Previous usable version")
+        },
+      }
+    }
+    const input = { root: runtime.host.root, orgID: "org", projectID: "project", sessionID: "one" }
+    const first = await syncKnowledgeSelection({ ...input, transport: transport(1) })
+    const retained = await syncKnowledgeSelection({ ...input, transport: transport(2, true) })
+    expect(retained.selection).toEqual(first.selection)
+    expect(retained.updateError).toContain("previous complete version remains active")
+    authorized = false
+    await expect(syncKnowledgeSelection({ ...input, transport: transport(2, true) })).rejects.toThrow(
+      "Current access revoked",
+    )
+    expect((await activeKnowledge("one"))?.selection).toEqual(first.selection)
   })
 })
 

@@ -3,26 +3,84 @@ import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
-import { OrganizationIdentity as Identity, OrganizationPublicationProtocol as Publication } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationIdentity as Identity,
+  OrganizationPublicationProtocol as Publication,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { authorize } from "./authorization"
 import type { Credentials } from "./auth/session"
 import { authorizePublicationScope } from "./publication-access"
 import { fail } from "./error"
+import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 
-const Upload = Publication.Upload.extend({ schemaVersion: z.literal(1), requestHash: z.string(), seal: Publication.Seal.optional() })
+const Upload = Publication.Upload.extend({
+  schemaVersion: z.literal(1),
+  requestHash: z.string(),
+  seal: Publication.Seal.optional(),
+})
 type Upload = z.infer<typeof Upload>
-const File = Publication.File.extend({ schemaVersion: z.literal(1), receivedBytes: z.number().int().nonnegative().safe() })
+const File = Publication.File.extend({
+  schemaVersion: z.literal(1),
+  receivedBytes: z.number().int().nonnegative().safe(),
+})
 const Chunk = z.strictObject({ bytes: z.number().int().positive(), sha256: z.string() })
 const keys = {
   upload: (id: string) => ["organization-publications", "uploads", id],
-  request: (orgID: string, accountID: string, id: string) => ["organization-publications", "requests", orgID, accountID, id],
+  request: (orgID: string, accountID: string, id: string) => [
+    "organization-publications",
+    "requests",
+    orgID,
+    accountID,
+    id,
+  ],
   files: (id: string) => ["organization-publications", "files", id],
   file: (id: string, fileID: string) => ["organization-publications", "files", id, fileID],
   path: (id: string, hash: string) => ["organization-publications", "paths", id, hash],
-  chunk: (id: string, fileID: string, offset: number) => ["organization-publications", "chunks", id, fileID, String(offset)],
-  bytes: (id: string, fileID: string, offset: number) => ["organization-publications", "bytes", id, fileID, String(offset)],
+  directory: (id: string, hash: string) => ["organization-publications", "directories", id, hash],
+  chunk: (id: string, fileID: string, offset: number) => [
+    "organization-publications",
+    "chunks",
+    id,
+    fileID,
+    String(offset),
+  ],
+  bytes: (id: string, fileID: string, offset: number) => [
+    "organization-publications",
+    "bytes",
+    id,
+    fileID,
+    String(offset),
+  ],
 }
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
+const portable = (value: string) => value.normalize("NFC").toLocaleLowerCase("en-US")
+const parentPaths = (value: string) =>
+  value
+    .split("/")
+    .slice(0, -1)
+    .map((_, index, segments) => segments.slice(0, index + 1).join("/"))
+
+export const publicationMigration: Migration = {
+  id: "20261111-organization-publication-paths",
+  description: "Index immutable publication directories to reject portable file and directory conflicts",
+  scope: "global",
+  execution: "startup",
+  async up(progress) {
+    let after: string[] | undefined
+    while (true) {
+      const rows = await Storage.query({ prefix: ["organization-publications", "files"], after, limit: 100 })
+      for (const row of rows) {
+        const file = File.parse(row.value)
+        const uploadID = Identity.ID.parse(row.key.at(-2))
+        for (const directory of parentPaths(portable(file.path)))
+          await Storage.write(keys.directory(uploadID, hash(directory)), { schemaVersion: 1 })
+      }
+      if (rows.length < 100) break
+      after = rows.at(-1)!.key
+    }
+    progress(1, 1)
+  },
+}
 
 async function read<T>(schema: z.ZodType<T>, key: string[]) {
   const [value] = await Storage.readMany<unknown>([key])
@@ -69,10 +127,18 @@ export namespace OrganizationPublications {
         return view(await access(credentials, prior.uploadID, true))
       }
       const upload = Upload.parse({
-        schemaVersion: 1, uploadID: crypto.randomUUID(), orgID: account.orgID,
-        purpose: input.purpose, scope: input.scope, sourceSessionID: input.sourceSessionID,
-        authorID: account.accountID, state: "open", fileCount: 0, totalBytes: 0,
-        createdAt: Date.now(), requestHash,
+        schemaVersion: 1,
+        uploadID: crypto.randomUUID(),
+        orgID: account.orgID,
+        purpose: input.purpose,
+        scope: input.scope,
+        sourceSessionID: input.sourceSessionID,
+        authorID: account.accountID,
+        state: "open",
+        fileCount: 0,
+        totalBytes: 0,
+        createdAt: Date.now(),
+        requestHash,
       })
       await Storage.write(keys.upload(upload.uploadID), upload)
       await Storage.write(requestKey, { uploadID: upload.uploadID, requestHash })
@@ -84,7 +150,11 @@ export namespace OrganizationPublications {
     return Storage.snapshot(async () => view(await access(credentials, uploadID)))
   }
 
-  export async function putFile(credentials: Credentials, uploadID: string, value: z.infer<typeof Publication.FileInput>) {
+  export async function putFile(
+    credentials: Credentials,
+    uploadID: string,
+    value: z.infer<typeof Publication.FileInput>,
+  ) {
     const input = Publication.FileInput.parse(value)
     return Storage.transaction(async () => {
       const upload = await access(credentials, uploadID, true)
@@ -96,24 +166,44 @@ export namespace OrganizationPublications {
           fail("REVISION_CONFLICT", "A publication file cannot change after declaration")
         return publicFile(previous)
       }
-      const pathKey = keys.path(uploadID, hash(input.path.normalize("NFC").toLocaleLowerCase("en-US")))
+      const canonical = portable(input.path)
+      const pathKey = keys.path(uploadID, hash(canonical))
       const collision = await read(z.strictObject({ fileID: z.string() }), pathKey)
       if (collision && collision.fileID !== fileID)
         fail("REVISION_CONFLICT", "Publication paths collide on a supported filesystem")
+      if (await read(z.strictObject({ schemaVersion: z.literal(1) }), keys.directory(uploadID, hash(canonical))))
+        fail("REVISION_CONFLICT", "Publication file conflicts with an existing directory")
+      for (const parent of parentPaths(canonical))
+        if (await read(z.strictObject({ fileID: z.string() }), keys.path(uploadID, hash(parent))))
+          fail("REVISION_CONFLICT", "Publication directory conflicts with an existing file")
       const file = File.parse({ ...input, fileID, schemaVersion: 1, receivedBytes: 0 })
       const totalBytes = upload.totalBytes + input.bytes
       if (!Number.isSafeInteger(totalBytes)) fail("INVALID_REQUEST", "Publication byte count is not representable")
       await Storage.write(keys.file(uploadID, fileID), file)
       await Storage.write(pathKey, { fileID })
+      for (const parent of parentPaths(canonical))
+        await Storage.write(keys.directory(uploadID, hash(parent)), { schemaVersion: 1 })
       await Storage.write(keys.upload(uploadID), { ...upload, fileCount: upload.fileCount + 1, totalBytes })
       return publicFile(file)
     })
   }
 
-  export async function putChunk(credentials: Credentials, uploadID: string, fileID: string, offset: number, value: Uint8Array) {
+  export async function putChunk(
+    credentials: Credentials,
+    uploadID: string,
+    fileID: string,
+    offset: number,
+    value: Uint8Array,
+  ) {
     Identity.ID.parse(uploadID)
     const bytes = new Uint8Array(value)
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset % Publication.chunkBytes || !bytes.byteLength || bytes.byteLength > Publication.chunkBytes)
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      offset % Publication.chunkBytes ||
+      !bytes.byteLength ||
+      bytes.byteLength > Publication.chunkBytes
+    )
       fail("INVALID_REQUEST", "Publication chunks require an aligned offset and at most 4 MiB")
     await Storage.snapshot(() => access(credentials, uploadID, true))
     const chunk = Chunk.parse({ bytes: bytes.byteLength, sha256: hash(bytes) })
@@ -134,14 +224,24 @@ export namespace OrganizationPublications {
         await Storage.write(keys.chunk(uploadID, fileID, offset), chunk)
         await Storage.write(keys.file(uploadID, fileID), { ...file, receivedBytes: file.receivedBytes + bytes.length })
       }
-      return Publication.ChunkStatus.parse({ uploadID, fileID, receivedBytes: file.receivedBytes + (previous ? 0 : bytes.length), bytes: file.bytes, chunkBytes: Publication.chunkBytes })
+      return Publication.ChunkStatus.parse({
+        uploadID,
+        fileID,
+        receivedBytes: file.receivedBytes + (previous ? 0 : bytes.length),
+        bytes: file.bytes,
+        chunkBytes: Publication.chunkBytes,
+      })
     })
   }
 
   export async function page(uploadID: string, value: z.input<typeof Publication.PageQuery>) {
     const input = Publication.PageQuery.parse(value)
     const prefix = keys.files(uploadID)
-    const rows = await Storage.query({ prefix, after: input.cursor ? [...prefix, input.cursor] : undefined, limit: input.limit + 1 })
+    const rows = await Storage.query({
+      prefix,
+      after: input.cursor ? [...prefix, input.cursor] : undefined,
+      limit: input.limit + 1,
+    })
     const items = rows.slice(0, input.limit).map((row) => publicFile(File.parse(row.value)))
     return { items, cursor: rows.length > input.limit ? items.at(-1)?.fileID : undefined }
   }
@@ -155,7 +255,11 @@ export namespace OrganizationPublications {
     } while (cursor)
   }
 
-  export async function files(credentials: Credentials, uploadID: string, value: z.input<typeof Publication.PageQuery>) {
+  export async function files(
+    credentials: Credentials,
+    uploadID: string,
+    value: z.input<typeof Publication.PageQuery>,
+  ) {
     return Storage.snapshot(async () => {
       await access(credentials, uploadID)
       return page(uploadID, value)
@@ -195,7 +299,11 @@ export namespace OrganizationPublications {
         totalBytes += file.bytes
       }
       const manifestHash = manifest.digest("hex")
-      if (fileCount !== input.fileCount || totalBytes !== input.totalBytes || (input.manifestHash && input.manifestHash !== manifestHash))
+      if (
+        fileCount !== input.fileCount ||
+        totalBytes !== input.totalBytes ||
+        (input.manifestHash && input.manifestHash !== manifestHash)
+      )
         fail("INVALID_REQUEST", "Publication manifest does not match its declared contents")
       return await Storage.transaction(async () => {
         const current = await access(credentials, uploadID, true)
@@ -207,7 +315,8 @@ export namespace OrganizationPublications {
     } catch (error) {
       await Storage.transaction(async () => {
         const current = await read(Upload, keys.upload(uploadID))
-        if (current?.state === "sealing") await Storage.write(keys.upload(uploadID), { ...current, state: "open", seal: undefined })
+        if (current?.state === "sealing")
+          await Storage.write(keys.upload(uploadID), { ...current, state: "open", seal: undefined })
       })
       if (error instanceof Storage.NotFoundError) fail("INVALID_REQUEST", "Publication file has a missing chunk")
       throw error
@@ -232,7 +341,13 @@ export namespace OrganizationPublications {
   }
 
   export async function readRange(uploadID: string, file: Publication.File, offset: number, length: number) {
-    if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0 || offset + length > file.bytes)
+    if (
+      !Number.isSafeInteger(offset) ||
+      !Number.isSafeInteger(length) ||
+      offset < 0 ||
+      length < 0 ||
+      offset + length > file.bytes
+    )
       fail("INVALID_REQUEST", "Published file range is invalid")
     const output = new Uint8Array(length)
     let copied = 0
@@ -250,7 +365,11 @@ export namespace OrganizationPublications {
   }
 
   export async function content(input: {
-    uploadID: string; fileID: string; range?: string; signal?: AbortSignal; authorize(): Promise<unknown>
+    uploadID: string
+    fileID: string
+    range?: string
+    signal?: AbortSignal
+    authorize(): Promise<unknown>
   }) {
     await input.authorize()
     const descriptor = await file(input.uploadID, input.fileID)
@@ -262,7 +381,10 @@ export namespace OrganizationPublications {
       pull: bind(async (controller) => {
         input.signal?.throwIfAborted()
         await input.authorize()
-        if (offset > range.end) { controller.close(); return }
+        if (offset > range.end) {
+          controller.close()
+          return
+        }
         const size = Math.min(Publication.chunkBytes, range.end - offset + 1)
         controller.enqueue(await readRange(input.uploadID, descriptor, offset, size))
         offset += size
@@ -271,9 +393,12 @@ export namespace OrganizationPublications {
     return new Response(body, {
       status: input.range ? 206 : 200,
       headers: {
-        "Content-Type": descriptor.mediaType, "Content-Length": String(Math.max(0, range.end - range.start + 1)),
+        "Content-Type": descriptor.mediaType,
+        "Content-Length": String(Math.max(0, range.end - range.start + 1)),
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(descriptor.path.split("/").at(-1)!)}`,
-        ETag: `"${descriptor.sha256}"`, "Accept-Ranges": "bytes", "Cache-Control": "private, no-store",
+        ETag: `"${descriptor.sha256}"`,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, no-store",
         ...(input.range ? { "Content-Range": `bytes ${range.start}-${range.end}/${descriptor.bytes}` } : {}),
       },
     })

@@ -27,6 +27,11 @@ export function authorize(credentials: Credentials, action: string): Promise<Aut
 export function authorize(
   credentials: Credentials,
   action: string,
+  target: { inviteID: string },
+): Promise<Authenticated & { invite: Record.Invite }>
+export function authorize(
+  credentials: Credentials,
+  action: string,
   target: { resourceID: string; projectID?: string },
 ): Promise<Authenticated & { resource: Record.Resource; view?: Resource.View }>
 export function authorize(
@@ -47,12 +52,26 @@ export async function authorize(
   target?:
     | { projectID: string }
     | { accountID: string }
+    | { inviteID: string }
     | { runtimeID: string }
     | { sessionID: string }
     | { resourceID: string; projectID?: string },
 ) {
   const current = await authenticate(credentials)
   const { account } = current
+  if (target && "inviteID" in target) {
+    const index = await Record.read(Record.InviteIndex, Keys.inviteID(account.orgID, target.inviteID))
+    const invite = index ? await Record.read(Record.Invite, Keys.invite(index.tokenHash)) : undefined
+    if (
+      !invite ||
+      invite.orgID !== account.orgID ||
+      invite.inviteID !== target.inviteID ||
+      (account.role === "member" && invite.createdBy !== account.accountID)
+    )
+      fail("NOT_FOUND", "Invitation not found")
+    if (action !== "invite.revoke") fail("PERMISSION_DENIED", "This action is not allowed")
+    return { ...current, invite }
+  }
   if (target && "resourceID" in target) {
     if (action === "resource.manage") requireAdministrator(account)
     const resource = await Record.read(Record.Resource, Keys.resource(account.orgID, target.resourceID))
@@ -118,10 +137,22 @@ export async function authorize(
     if (!allowed) fail("PERMISSION_DENIED", "This action is not allowed")
     return { ...current, target: subject }
   }
-  if (["accounts.list", "invites.create", "sessions.capacity", "resources.manage", "runtimes.hosted.register"].includes(action))
+  if (
+    ["accounts.list", "invites.create", "sessions.capacity", "resources.manage", "runtimes.hosted.register"].includes(
+      action,
+    )
+  )
     requireAdministrator(account)
   else if (
-    !["organization.read", "project.create", "project.list", "runtimes.register", "runtimes.list"].includes(action)
+    ![
+      "organization.read",
+      "organization.leave",
+      "invites.list",
+      "project.create",
+      "project.list",
+      "runtimes.register",
+      "runtimes.list",
+    ].includes(action)
   )
     fail("PERMISSION_DENIED", "This action is not allowed")
   return current

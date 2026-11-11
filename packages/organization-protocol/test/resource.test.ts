@@ -49,6 +49,7 @@ test("resource configuration is explicit and rejects unsupported protocols and c
 test("public resource definitions exclude endpoints, credentials and arbitrary runtime options", () => {
   const parsed = Resource.Create.parse(input)
   expect(Resource.Definition.safeParse(parsed.configuration).success).toBeFalse()
+  if (!("endpoint" in parsed.configuration)) throw new Error("Expected the explicit endpoint fixture")
   const { endpoint: _, ...definition } = parsed.configuration
   expect(Resource.Definition.safeParse(definition).success).toBeTrue()
   expect(Resource.CredentialInfo.safeParse(parsed.credential).success).toBeFalse()

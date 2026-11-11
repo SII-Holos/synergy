@@ -29,12 +29,59 @@ function checkConsumption(
   if (value.expiresAt <= Date.now()) fail("AUTHENTICATION_REQUIRED", "This link has expired")
 }
 
+async function inviteView(invite: Record.Invite): Promise<Identity.Invite> {
+  const issuer = await Record.read(Record.Account, Keys.account(invite.createdBy))
+  const valid =
+    issuer?.orgID === invite.orgID &&
+    issuer.state === "active" &&
+    issuer.role !== "member" &&
+    issuer.authRevision === invite.issuerAuthRevision
+  return Identity.Invite.parse({
+    inviteID: invite.inviteID,
+    createdBy: invite.createdBy,
+    createdAt: invite.createdAt,
+    expiresAt: invite.expiresAt,
+    role: invite.role,
+    revision: invite.revision,
+    state: invite.consumed
+      ? "consumed"
+      : invite.revokedAt !== undefined
+        ? "revoked"
+        : invite.expiresAt <= Date.now()
+          ? "expired"
+          : valid
+            ? "open"
+            : "invalidated",
+  })
+}
+
 export async function createAuthentication(
   options: AuthenticationSettings = {},
   onAccountRemoved?: (accountID: string) => void,
 ) {
   const settings = AuthenticationSettings.parse(options)
   const passwords = await createPasswordHasher(settings.hashConcurrency)
+  async function changeAccount(target: Record.Account, input: Identity.AccountChange) {
+    revision(input.expectedRevision, target.revision)
+    if (target.state !== "active") fail("REVISION_CONFLICT", "Removed accounts cannot be changed", target.revision)
+    const managing = input.role !== undefined || input.state !== undefined
+    const changed = Record.Account.parse({
+      ...target,
+      role: input.role ?? target.role,
+      state: input.state ?? target.state,
+      displayName: input.displayName ?? target.displayName,
+      revision: target.revision + 1,
+      authRevision: target.authRevision + (managing ? 1 : 0),
+    })
+    const organization = await info()
+    const owners = organization.owners.filter((owner) => owner !== target.accountID)
+    if (changed.role === "owner" && changed.state === "active") owners.push(target.accountID)
+    if (!owners.length) fail("LAST_OWNER", "The last owner cannot leave, be removed or lose ownership")
+    await Storage.write(Keys.account(target.accountID), changed)
+    if (changed.state === "removed") Storage.afterCommit(() => onAccountRemoved?.(target.accountID))
+    await Storage.write(Keys.info(), { ...organization, owners, revision: organization.revision + 1 })
+    return Record.publicAccount(changed)
+  }
   async function createAccount(
     input: { loginName: string; displayName: string },
     passwordHash: string,
@@ -182,7 +229,11 @@ export async function createAuthentication(
         const { account } = await authorize(credentials, "invites.create")
         const secret = token()
         const invite = Record.Invite.parse({
-          schemaVersion: 1,
+          schemaVersion: 2,
+          inviteID: crypto.randomUUID(),
+          orgID: account.orgID,
+          revision: 1,
+          createdAt: Date.now(),
           tokenHash: digest(secret),
           createdBy: account.accountID,
           issuerAuthRevision: account.authRevision,
@@ -190,7 +241,50 @@ export async function createAuthentication(
           expiresAt: Date.now() + settings.inviteMs,
         })
         await Storage.write(Keys.invite(invite.tokenHash), invite)
+        const indexed = { tokenHash: invite.tokenHash }
+        await Storage.write(Keys.inviteID(invite.orgID, invite.inviteID), indexed)
+        await Storage.write(Keys.issuedInvite(invite.orgID, invite.createdBy, invite.inviteID), indexed)
         return { token: secret, expiresAt: invite.expiresAt }
+      })
+    },
+    async invites(credentials: Credentials, page: Identity.Page) {
+      return Storage.snapshot(async () => {
+        const { account } = await authorize(credentials, "invites.list")
+        const prefix =
+          account.role === "member"
+            ? Keys.issuedInvites(account.orgID, account.accountID)
+            : Keys.inviteCatalog(account.orgID)
+        const entries = await Storage.query({
+          prefix,
+          after: page.cursor ? [...prefix, page.cursor] : undefined,
+          limit: page.limit + 1,
+        })
+        const items = await Promise.all(
+          entries.slice(0, page.limit).map(async (entry) => {
+            const index = Record.InviteIndex.parse(entry.value)
+            const invite = await Record.read(Record.Invite, Keys.invite(index.tokenHash))
+            if (
+              !invite ||
+              invite.orgID !== account.orgID ||
+              invite.inviteID !== entry.key.at(-1) ||
+              (account.role === "member" && invite.createdBy !== account.accountID)
+            )
+              fail("NOT_FOUND", "Invitation not found")
+            return inviteView(invite)
+          }),
+        )
+        return { items, cursor: entries.length > page.limit ? items.at(-1)?.inviteID : undefined }
+      })
+    },
+    async revokeInvite(credentials: Credentials, inviteID: string, expectedRevision: number) {
+      return Storage.transaction(async () => {
+        const { invite } = await authorize(credentials, "invite.revoke", { inviteID })
+        revision(expectedRevision, invite.revision)
+        if (invite.consumed) fail("TOKEN_CONSUMED", "This invitation has already been used")
+        if (invite.revokedAt !== undefined) return inviteView(invite)
+        const changed = { ...invite, revokedAt: Date.now(), revision: invite.revision + 1 }
+        await Storage.write(Keys.invite(invite.tokenHash), changed)
+        return inviteView(changed)
       })
     },
     async consumeInvite(input: Identity.InviteConsume) {
@@ -198,16 +292,18 @@ export async function createAuthentication(
       const passwordHash = await passwords.hash(input.password)
       return Storage.transaction(async () => {
         const invite = await Record.read(Record.Invite, Keys.invite(digest(input.token)))
-        if (!invite || invite.revokedAt) fail("AUTHENTICATION_REQUIRED", "Invalid invitation")
+        if (!invite || invite.revokedAt !== undefined) fail("AUTHENTICATION_REQUIRED", "Invalid invitation")
         const previous = checkConsumption(invite, input.requestID, hash)
         if (previous) return invite.consumed!.result
         const issuer = await account(invite.createdBy)
+        if (issuer.orgID !== invite.orgID) fail("AUTHENTICATION_REQUIRED", "Invalid invitation")
         requireAdministrator(issuer)
         if (issuer.authRevision !== invite.issuerAuthRevision)
           fail("AUTHENTICATION_REQUIRED", "Invitation is no longer valid")
         const joined = await createAccount(input, passwordHash, invite.role)
         await Storage.write(Keys.invite(invite.tokenHash), {
           ...invite,
+          revision: invite.revision + 1,
           consumed: { requestID: input.requestID, fingerprint: hash, accountID: joined.accountID, result: joined },
         })
         return joined
@@ -240,24 +336,14 @@ export async function createAuthentication(
         const action =
           input.role === "owner" ? "account.promote-owner" : managing ? "account.manage" : "account.profile"
         const { target } = await authorize(credentials, action, { accountID: id })
-        revision(input.expectedRevision, target.revision)
-        if (target.state !== "active") fail("REVISION_CONFLICT", "Removed accounts cannot be changed", target.revision)
-        const changed = Record.Account.parse({
-          ...target,
-          role: input.role ?? target.role,
-          state: input.state ?? target.state,
-          displayName: input.displayName ?? target.displayName,
-          revision: target.revision + 1,
-          authRevision: target.authRevision + (managing ? 1 : 0),
-        })
-        const organization = await info()
-        const owners = organization.owners.filter((owner) => owner !== id)
-        if (changed.role === "owner" && changed.state === "active") owners.push(id)
-        if (!owners.length) fail("LAST_OWNER", "The last owner cannot leave, be removed or lose ownership")
-        await Storage.write(Keys.account(id), changed)
-        if (changed.state === "removed") Storage.afterCommit(() => onAccountRemoved?.(id))
-        await Storage.write(Keys.info(), { ...organization, owners, revision: organization.revision + 1 })
-        return Record.publicAccount(changed)
+        return changeAccount(target, input)
+      })
+    },
+    async leave(credentials: Credentials, expectedRevision: number) {
+      return Storage.transaction(async () => {
+        const { account } = await authorize(credentials, "organization.leave")
+        await changeAccount(account, { expectedRevision, state: "removed" })
+        return { ok: true as const }
       })
     },
     async transferOwner(credentials: Credentials, input: Identity.TransferOwner) {

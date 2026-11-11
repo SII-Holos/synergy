@@ -1,8 +1,10 @@
 import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import {
   OrganizationIdentity as Identity,
   OrganizationSessionProtocol as Protocol,
+  OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
 import type { Credentials } from "./auth/session"
 import { authorize, sessionView } from "./authorization"
@@ -10,10 +12,55 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
 import { OrganizationKnowledge } from "./knowledge"
+import { OrganizationSharing } from "./sharing"
 
 const Reservation = z.strictObject({ sessionID: Identity.ID, projectID: Identity.ID, runtimeID: Identity.ID })
+type RuntimeStatusReader = (runtimeID: string) => Promise<z.infer<typeof Runtime.ConnectionStatus>>
+const presentation = RuntimeContext.state(() => ({ runtimeStatus: undefined as RuntimeStatusReader | undefined }))
+
+async function present(session: Record.SessionDirectory, view: Protocol.View) {
+  const [runtime, shared, sync] = await Promise.all([
+    Record.read(Record.RuntimeRegistration, Keys.runtime(session.driverRuntimeID)),
+    session.shareState === "shared"
+      ? Record.read(
+          Record.SharedSession,
+          Keys.sharedSession(session.sessionID, session.shareGeneration, session.sessionID),
+        )
+      : undefined,
+    OrganizationSharing.describe(session),
+  ])
+  const availability =
+    runtime && runtime.orgID === session.orgID
+      ? ((await presentation().runtimeStatus?.(runtime.runtimeID)) ?? {
+          runtimeID: runtime.runtimeID,
+          state: "offline" as const,
+          connectionEpoch: runtime.connectionEpoch,
+          ...(runtime.lastSeen === undefined ? {} : { lastSeen: runtime.lastSeen }),
+        })
+      : undefined
+  return Protocol.View.parse({
+    ...view,
+    sync,
+    ...(shared?.projection.title === undefined ? {} : { title: shared.projection.title }),
+    ...(shared?.projection.status === undefined ? {} : { status: shared.projection.status }),
+    ...(availability && runtime
+      ? {
+          runtime: {
+            ...availability,
+            runtimeKind: runtime.runtimeKind,
+            ...(runtime.runtimeKind === "member" ? { ownerID: runtime.accountID } : { name: runtime.name }),
+          },
+        }
+      : {}),
+  })
+}
 
 export namespace OrganizationSessionDirectory {
+  export function registerRuntimeStatus(reader: RuntimeStatusReader) {
+    RuntimeContext.assertCompositionOpen("Organization Session runtime presence")
+    if (presentation().runtimeStatus) throw new Error("Organization Session runtime presence is already registered")
+    presentation().runtimeStatus = reader
+  }
   export async function reservePrivate(credentials: Credentials, input: z.infer<typeof Reservation>) {
     const request = Reservation.parse(input)
     return Storage.transaction(async () => {
@@ -56,7 +103,10 @@ export namespace OrganizationSessionDirectory {
   }
 
   export async function get(credentials: Credentials, sessionID: string) {
-    return Storage.snapshot(async () => (await authorize(credentials, "session.read", { sessionID })).view)
+    return Storage.snapshot(async () => {
+      const current = await authorize(credentials, "session.read", { sessionID })
+      return present(current.session, current.view)
+    })
   }
 
   export async function list(credentials: Credentials, projectID: string, page: Identity.Page) {
@@ -86,12 +136,14 @@ export namespace OrganizationSessionDirectory {
       ].sort()
       const selected = ids.slice(0, page.limit)
       const rows = await Storage.readMany(selected.map(Keys.session))
-      const items = rows.map((raw, index) => {
-        const row = Record.parse(Record.SessionDirectory, Keys.session(selected[index]!), raw)
-        if (row.sessionID !== selected[index] || row.projectID !== projectID)
-          fail("SERVICE_UNAVAILABLE", "Session directory index is inconsistent")
-        return sessionView(account, row, project, "session.read")
-      })
+      const items = await Promise.all(
+        rows.map(async (raw, index) => {
+          const row = Record.parse(Record.SessionDirectory, Keys.session(selected[index]!), raw)
+          if (row.sessionID !== selected[index] || row.projectID !== projectID)
+            fail("SERVICE_UNAVAILABLE", "Session directory index is inconsistent")
+          return present(row, sessionView(account, row, project, "session.read"))
+        }),
+      )
       return Protocol.Page.parse({ items, cursor: ids.length > page.limit ? selected.at(-1) : undefined })
     })
   }

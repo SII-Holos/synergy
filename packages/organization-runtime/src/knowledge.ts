@@ -28,6 +28,12 @@ export interface KnowledgeTransport {
     length: number,
     signal?: AbortSignal,
   ): Promise<Knowledge.ContentChunk>
+  activate?(
+    selection: { manifestHash: string; revision: number },
+    signal?: AbortSignal,
+  ): Promise<Knowledge.ActivationReceipt>
+  retained?(manifestHash: string): KnowledgeTransport
+  failed?(signal?: AbortSignal): Promise<void>
 }
 
 const CachedRelease = z.strictObject({ release: Knowledge.Release, directory: z.string() })
@@ -39,7 +45,7 @@ const Active = z.strictObject({
   selection: Knowledge.Selection,
   releases: z.array(CachedRelease),
 })
-export type ActiveKnowledge = z.infer<typeof Active>
+export type ActiveKnowledge = z.infer<typeof Active> & { updateError?: string }
 const key = {
   active: (sessionID: string) => ["organization-knowledge", "active", sessionID],
   release: (cacheID: string) => ["organization-knowledge", "cache", cacheID],
@@ -259,6 +265,50 @@ async function prepareRelease(input: {
 
 export async function activeKnowledge(sessionID: string): Promise<ActiveKnowledge | undefined> {
   return read(Active, key.active(Identity.ID.parse(sessionID)))
+}
+
+export async function syncKnowledgeSelection(
+  input: Parameters<typeof stageKnowledgeSelection>[0],
+): Promise<ActiveKnowledge> {
+  const previous = await activeKnowledge(input.sessionID)
+  let next: ActiveKnowledge | undefined
+  try {
+    next = await stageKnowledgeSelection(input)
+    await input.transport.activate?.(next.selection, input.signal)
+    return next
+  } catch (error) {
+    input.signal?.throwIfAborted()
+    if (
+      !previous ||
+      previous.orgID !== input.orgID ||
+      previous.projectID !== input.projectID ||
+      !input.transport.retained
+    )
+      throw error
+    if (next) {
+      const attempted = next
+      using held = await Lock.write(`organization-knowledge-session:${input.sessionID}`)
+      await Storage.transaction(async () => {
+        const current = await activeKnowledge(input.sessionID)
+        if (
+          current?.selection.manifestHash !== attempted.selection.manifestHash ||
+          current.selection.revision !== attempted.selection.revision
+        )
+          throw error
+        await Storage.write(key.active(input.sessionID), previous)
+      })
+    }
+    const retained = await stageKnowledgeSelection({
+      ...input,
+      transport: input.transport.retained(previous.selection.manifestHash),
+    })
+    await input.transport.failed?.(input.signal)
+    return {
+      ...retained,
+      updateError:
+        "Knowledge update failed; the previous complete version remains active. Retry the explicit update after resolving the download or storage error.",
+    }
+  }
 }
 
 export async function knowledgeFiles(

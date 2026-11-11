@@ -36,6 +36,7 @@ import { createGatewayCalls } from "./gateway-calls"
 import { createConnectionGateway, createModelGateway, type ConnectionGateway, type ModelGateway } from "./gateway"
 import { OrganizationSharing } from "./sharing"
 import { OrganizationCloud, type OrganizationCloudOptions } from "./cloud"
+import { OrganizationSessionDirectory } from "./session-directory"
 import { createHandoffs } from "./handoff"
 
 export interface OrganizationServiceOptions {
@@ -153,6 +154,10 @@ export async function openOrganizationService(options: OrganizationServiceOption
       context.storage = { store, artifactDirectory: path.join(root, "data", "artifacts") }
       registerOrganizationMigrations()
       OrganizationCloud.register(options.cloud)
+      OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
+        if (!connections) throw new Error("Organization Runtime presence is unavailable")
+        return connections.availability(runtimeID)
+      })
       MigrationRegistry.lock()
       RuntimeContext.sealComposition()
       await ensureMigrations({ output: "silent" })

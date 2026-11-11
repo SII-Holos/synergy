@@ -30,7 +30,7 @@ export interface MemberResourceClient {
   knowledgeFiles(
     proof: Execution.DescriptionProof,
     reference: Knowledge.Reference,
-    query?: { cursor?: string },
+    query?: { cursor?: string; activatedManifestHash?: string },
     signal?: AbortSignal,
   ): Promise<z.infer<typeof Publication.FilePage>>
   knowledgeContent(
@@ -40,7 +40,18 @@ export interface MemberResourceClient {
     offset: number,
     length: number,
     signal?: AbortSignal,
+    activatedManifestHash?: string,
   ): Promise<Knowledge.ContentChunk>
+  activateKnowledge(
+    proof: Execution.DescriptionProof,
+    selection: { manifestHash: string; revision: number; outcome?: "activated" | "failed" },
+    signal?: AbortSignal,
+  ): Promise<Knowledge.ActivationReceipt>
+  activatedKnowledge(
+    proof: Execution.DescriptionProof,
+    query: { manifestHash: string; cursor?: string },
+    signal?: AbortSignal,
+  ): Promise<Knowledge.ExecutionPage>
 }
 
 type Proof = Execution.DescriptionProof | Execution.BindingProof | Execution.ReleaseProof | Gateway.Proof
@@ -262,6 +273,66 @@ export function createMemberResourceClient(options: {
     return permit
   }
   const resources: MemberResourceClient = {
+    async activateKnowledge(value, selection, signal) {
+      const proof = Execution.DescriptionProof.parse(value)
+      return invoke(
+        proof,
+        Knowledge.ActivationReceipt,
+        async (signal) =>
+          client.orgKnowledgeExecution.activate(
+            {
+              orgKnowledgeActivationRequest: {
+                authority: { proof, signature: await Execution.signDescription(proof, options.key) },
+                manifestHash: selection.manifestHash,
+                revision: selection.revision,
+                outcome: selection.outcome,
+              },
+            },
+            { signal },
+          ),
+        (result) => {
+          const target = proof.receipt.accepted!.permit
+          if (
+            result.orgID !== proof.orgID ||
+            result.projectID !== target.projectID ||
+            result.sessionID !== target.sessionID ||
+            result.manifestHash !== selection.manifestHash ||
+            result.revision !== selection.revision
+          )
+            throw failure("PROTOCOL_MISMATCH", "Knowledge activation does not match this Session selection")
+        },
+        signal,
+      )
+    },
+    async activatedKnowledge(value, query, signal) {
+      const proof = Execution.DescriptionProof.parse(value)
+      return invoke(
+        proof,
+        Knowledge.ExecutionPage,
+        async (signal) =>
+          client.orgKnowledgeExecution.activated(
+            {
+              orgKnowledgeActivatedQuery: {
+                authority: { proof, signature: await Execution.signDescription(proof, options.key) },
+                limit: 50,
+                ...query,
+              },
+            },
+            { signal },
+          ),
+        (result) => {
+          const target = proof.receipt.accepted!.permit
+          if (
+            result.orgID !== proof.orgID ||
+            result.projectID !== target.projectID ||
+            result.sessionID !== target.sessionID ||
+            result.selection.manifestHash !== query.manifestHash
+          )
+            throw failure("PROTOCOL_MISMATCH", "Activated knowledge manifest does not match this Session")
+        },
+        signal,
+      )
+    },
     async knowledge(value, query = {}, signal) {
       const proof = Execution.DescriptionProof.parse(value)
       return invoke(
@@ -311,7 +382,7 @@ export function createMemberResourceClient(options: {
         signal,
       )
     },
-    async knowledgeContent(value, reference, fileID, offset, length, signal) {
+    async knowledgeContent(value, reference, fileID, offset, length, signal, activatedManifestHash) {
       const proof = Execution.DescriptionProof.parse(value)
       return invoke(
         proof,
@@ -322,6 +393,7 @@ export function createMemberResourceClient(options: {
               orgKnowledgeExecutionContent: {
                 authority: { proof, signature: await Execution.signDescription(proof, options.key) },
                 reference,
+                activatedManifestHash,
                 fileID,
                 offset,
                 length,

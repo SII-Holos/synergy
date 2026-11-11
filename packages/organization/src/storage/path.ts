@@ -86,6 +86,19 @@ export namespace OrganizationStoragePath {
   export const clientAccess = (hash: string) => ["organization", "client-access", hash]
   export const clientRefresh = (hash: string) => ["organization", "client-refresh", hash]
   export const invite = (hash: string) => ["organization", "invites", hash]
+  export const invites = () => ["organization", "invites"]
+  export const inviteCatalog = (orgID: string) => ["organization", "invite-catalog", orgID]
+  export const inviteID = (orgID: string, inviteID: string) => [...inviteCatalog(orgID), inviteID]
+  export const issuedInvites = (orgID: string, accountID: string) => [
+    "organization",
+    "issued-invites",
+    orgID,
+    accountID,
+  ]
+  export const issuedInvite = (orgID: string, accountID: string, inviteID: string) => [
+    ...issuedInvites(orgID, accountID),
+    inviteID,
+  ]
   export const reset = (hash: string) => ["organization", "resets", hash]
   export const runtimes = () => ["organization", "runtimes"]
   export const runtime = (id: string) => [...runtimes(), id]
@@ -101,11 +114,7 @@ export namespace OrganizationStoragePath {
   export const runtimeTicket = (hash: string) => ["organization", "runtime-tickets", hash]
   export const projects = () => ["organization", "projects"]
   export const project = (id: string) => [...projects(), id]
-  export const projectMembers = (projectID: string) => [
-    "organization",
-    "project-members",
-    projectID,
-  ]
+  export const projectMembers = (projectID: string) => ["organization", "project-members", projectID]
   export const projectMember = (projectID: string, accountID: string) => [...projectMembers(projectID), accountID]
   export const accessibleProjects = (accountID: string) => ["organization", "project-access", accountID]
   export const projectAccess = (accountID: string, projectID: string) => [...accessibleProjects(accountID), projectID]

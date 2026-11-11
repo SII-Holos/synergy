@@ -168,14 +168,21 @@ export function createRuntimeConnections(input: {
           handshake.deploymentIncarnation !== deployment.deploymentIncarnation ||
           runtime.orgID !== deployment.orgID ||
           runtime.deploymentIncarnation !== deployment.deploymentIncarnation ||
-          (handshake.runtimeKind === "member" && runtime.runtimeKind === "member" &&
+          (handshake.runtimeKind === "member" &&
+            runtime.runtimeKind === "member" &&
             (handshake.accountID !== runtime.accountID || handshake.deviceID !== runtime.deviceID)) ||
           Math.abs(Date.now() - frame.proof.issuedAt) > settings.proofAgeMs ||
           !(await Runtime.verify(frame.proof, frame.signature, runtime.publicKey))
         )
           fail("AUTHENTICATION_REQUIRED", "Invalid Runtime connection proof")
-        const member = runtime.runtimeKind === "member" ? await Record.read(Record.Account, Keys.account(runtime.accountID)) : undefined
-        if (runtime.state !== "active" || (runtime.runtimeKind === "member" && (!member || member.state !== "active" || member.orgID !== runtime.orgID)))
+        const member =
+          runtime.runtimeKind === "member"
+            ? await Record.read(Record.Account, Keys.account(runtime.accountID))
+            : undefined
+        if (
+          runtime.state !== "active" ||
+          (runtime.runtimeKind === "member" && (!member || member.state !== "active" || member.orgID !== runtime.orgID))
+        )
           fail("PERMISSION_DENIED", "Runtime registration is not active")
         if (handshake.schemas.bridge !== 1 || !handshake.capabilities.includes("bridge"))
           fail("PROTOCOL_MISMATCH", "This Runtime does not support the organization bridge protocol")
@@ -420,8 +427,34 @@ export function createRuntimeConnections(input: {
         })
     },
   }
+  async function availability(runtime: Record.RuntimeRegistration) {
+    const member =
+      runtime.runtimeKind === "member" ? await Record.read(Record.Account, Keys.account(runtime.accountID)) : undefined
+    const socket = active.get(runtime.runtimeID)
+    const online =
+      !closed &&
+      runtime.state === "active" &&
+      (runtime.runtimeKind === "hosted" || member?.state === "active") &&
+      socket &&
+      socket.readyState === 1 &&
+      !socket.data.closed &&
+      socket.data.deadline > Date.now() &&
+      socket.data.handshake?.connectionEpoch === runtime.connectionEpoch
+    return Runtime.ConnectionStatus.parse({
+      runtimeID: runtime.runtimeID,
+      state: online ? "online" : "offline",
+      connectionEpoch: runtime.connectionEpoch,
+      lastSeen: runtime.lastSeen,
+    })
+  }
+
   return {
     websocket,
+    async availability(runtimeID: string) {
+      const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(runtimeID))
+      if (!runtime) fail("NOT_FOUND", "Runtime not found")
+      return availability(runtime)
+    },
     capture(runtimeID: string) {
       const socket = active.get(runtimeID)
       if (!socket) fail("RUNTIME_OFFLINE", "Runtime is not connected")
@@ -440,21 +473,7 @@ export function createRuntimeConnections(input: {
     async status(credentials: Credentials, runtimeID: string) {
       return Storage.snapshot(async () => {
         const { runtime } = await authorize(credentials, "runtime.read", { runtimeID })
-        const member = runtime.runtimeKind === "member" ? await Record.read(Record.Account, Keys.account(runtime.accountID)) : undefined
-        const socket = active.get(runtimeID)
-        const online =
-          runtime.state === "active" &&
-          (runtime.runtimeKind === "hosted" || member?.state === "active") &&
-          socket &&
-          !socket.data.closed &&
-          socket.data.deadline > Date.now() &&
-          socket.data.handshake?.connectionEpoch === runtime.connectionEpoch
-        return Runtime.ConnectionStatus.parse({
-          runtimeID,
-          state: online ? "online" : "offline",
-          connectionEpoch: runtime.connectionEpoch,
-          lastSeen: runtime.lastSeen,
-        })
+        return availability(runtime)
       })
     },
     revoke(runtimeID: string) {

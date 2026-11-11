@@ -10,21 +10,57 @@ import { Skill } from "@ericsanchezok/synergy-local-runtime/skill/skill"
 import { skillEntry } from "@ericsanchezok/synergy-local-runtime/skill/register"
 import type { RuntimeIdentity } from "./home"
 import { denied, withMemberExecution, type MemberExecutionResolution } from "./execution-source"
-import { stageKnowledgeSelection, knowledgeSkills, type ActiveKnowledge, type KnowledgeTransport } from "./knowledge"
+import { syncKnowledgeSelection, knowledgeSkills, type ActiveKnowledge, type KnowledgeTransport } from "./knowledge"
 
-export function knowledgeTransport({ source, accepted }: MemberExecutionResolution): KnowledgeTransport {
+export function knowledgeTransport(
+  resolution: MemberExecutionResolution,
+  activatedManifestHash?: string,
+): KnowledgeTransport {
+  const { source, accepted } = resolution
   const proof = () => source.intake.descriptionProof(accepted.actor)
+  let desired: { manifestHash: string; revision: number } | undefined
   return {
-    selection: async (query, signal) => source.resources.knowledge(await proof(), query, signal),
-    files: async (reference, query, signal) => source.resources.knowledgeFiles(await proof(), reference, query, signal),
+    selection: async (query, signal) => {
+      const result = activatedManifestHash
+        ? await source.resources.activatedKnowledge(
+            await proof(),
+            { cursor: query?.cursor, manifestHash: activatedManifestHash },
+            signal,
+          )
+        : await source.resources.knowledge(await proof(), query, signal)
+      if (!activatedManifestHash)
+        desired = { manifestHash: result.selection.manifestHash, revision: result.selection.revision }
+      return result
+    },
+    files: async (reference, query, signal) =>
+      source.resources.knowledgeFiles(await proof(), reference, { ...query, activatedManifestHash }, signal),
     content: async (reference, fileID, offset, length, signal) =>
-      source.resources.knowledgeContent(await proof(), reference, fileID, offset, length, signal),
+      source.resources.knowledgeContent(
+        await proof(),
+        reference,
+        fileID,
+        offset,
+        length,
+        signal,
+        activatedManifestHash,
+      ),
+    ...(!activatedManifestHash
+      ? {
+          activate: async (selection: { manifestHash: string; revision: number }, signal?: AbortSignal) =>
+            source.resources.activateKnowledge(await proof(), selection, signal),
+          retained: (manifestHash: string) => knowledgeTransport(resolution, manifestHash),
+          failed: async (signal?: AbortSignal) => {
+            if (desired)
+              await source.resources.activateKnowledge(await proof(), { ...desired, outcome: "failed" }, signal)
+          },
+        }
+      : {}),
   }
 }
 
 export function loadOrganizationKnowledge(identity: RuntimeIdentity, sessionID: string, signal?: AbortSignal) {
   return withMemberExecution(identity, { sessionID, signal }, async (resolution, signal) =>
-    stageKnowledgeSelection({
+    syncKnowledgeSelection({
       root: RuntimeContext.current().host.root,
       orgID: identity.orgID,
       projectID: resolution.session.organization!.projectID,
@@ -160,6 +196,7 @@ export function registerOrganizationKnowledge(
       return {
         context: [
           "Current organization knowledge selection (explicit immutable versions):",
+          ...(active.updateError ? [active.updateError] : []),
           ...active.releases.map(
             ({ release }) =>
               `${release.kind}: ${release.title} itemID=${release.itemID} version=${release.version} manifestHash=${release.manifestHash}`,

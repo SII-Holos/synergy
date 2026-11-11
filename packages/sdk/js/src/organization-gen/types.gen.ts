@@ -103,6 +103,25 @@ export type OrgInviteConsume = {
   password: string
 }
 
+export type OrgInvite = {
+  inviteID: string
+  createdBy: string
+  createdAt?: number
+  expiresAt: number
+  role: "admin" | "member"
+  revision: number
+  state: "open" | "consumed" | "revoked" | "expired" | "invalidated"
+}
+
+export type OrgInvitePage = {
+  items: Array<OrgInvite>
+  cursor?: string
+}
+
+export type OrgInviteRevoke = {
+  expectedRevision: number
+}
+
 export type OrgOrganization = {
   orgID: string
   name: string
@@ -113,6 +132,10 @@ export type OrgTransferOwner = {
   accountID: string
   expectedRevision: number
   targetRevision: number
+}
+
+export type OrgLeave = {
+  expectedRevision: number
 }
 
 export type OrgAccountPage = {
@@ -272,6 +295,26 @@ export type OrgSessionResourceChange = {
   }
 }
 
+export type OrgShareView = {
+  sessionID: string
+  shareState: "private" | "shared"
+  shareGeneration: number
+  bindingEpoch: number
+  nextSeq: number
+  syncState: "pending" | "syncing" | "synced" | "blocked" | "failed"
+  updatedAt: number
+}
+
+export type OrgSessionRuntimeSummary = {
+  runtimeID: string
+  state: "online" | "offline"
+  connectionEpoch: number
+  lastSeen?: number
+  runtimeKind: "member" | "hosted"
+  ownerID?: string
+  name?: string
+}
+
 export type OrgSessionDirectoryView = {
   sessionID: string
   projectID: string
@@ -286,6 +329,34 @@ export type OrgSessionDirectoryView = {
     execute: boolean
     stop: boolean
   }
+  title?: string
+  status?:
+    | {
+        observedAt: number
+        controlVersion: number
+        type: "idle"
+      }
+    | {
+        observedAt: number
+        controlVersion: number
+        type: "busy"
+      }
+    | {
+        observedAt: number
+        controlVersion: number
+        type: "paused"
+        since: number
+        reason: "aborted" | "failed" | "interrupted" | "workflow"
+      }
+    | {
+        observedAt: number
+        controlVersion: number
+        type: "retry"
+        attempt: number
+        next?: number
+      }
+  sync?: OrgShareView
+  runtime?: OrgSessionRuntimeSummary
 }
 
 export type OrgSessionDirectoryPage = {
@@ -296,16 +367,6 @@ export type OrgSessionDirectoryPage = {
 export type OrgSessionCapacity = {
   privateSessions: number
   sharedSessions: number
-}
-
-export type OrgShareView = {
-  sessionID: string
-  shareState: "private" | "shared"
-  shareGeneration: number
-  bindingEpoch: number
-  nextSeq: number
-  syncState: "pending" | "syncing" | "synced" | "blocked" | "failed"
-  updatedAt: number
 }
 
 export type OrgShareChange = {
@@ -392,6 +453,10 @@ export type OrgTranscriptPart =
   | {
       type: "reasoning"
       content: OrgTranscriptContent
+      time?: {
+        start: number
+        end?: number
+      }
     }
   | {
       type: "tool"
@@ -404,6 +469,19 @@ export type OrgTranscriptPart =
       title?: string
       startedAt?: number
       completedAt?: number
+      metadata?: {
+        operation?: "list" | "files" | "read" | "search"
+        itemID?: string
+        version?: number
+        manifestHash?: string
+        fileID?: string
+        path?: string
+        title?: string
+        offset?: number
+        bytes?: number
+        truncated?: boolean
+        cursor?: string
+      }
     }
   | {
       type: "attachment"
@@ -419,6 +497,15 @@ export type OrgTranscriptPart =
       type: "step-finish"
       reason: string
       cost: number
+      tokens?: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
     }
   | {
       type: "compaction"
@@ -442,6 +529,32 @@ export type OrgSyncEvent =
         bindingEpoch: number
         createdAt: number
         shareGeneration: number
+        title?: string
+        status?:
+          | {
+              observedAt: number
+              controlVersion: number
+              type: "idle"
+            }
+          | {
+              observedAt: number
+              controlVersion: number
+              type: "busy"
+            }
+          | {
+              observedAt: number
+              controlVersion: number
+              type: "paused"
+              since: number
+              reason: "aborted" | "failed" | "interrupted" | "workflow"
+            }
+          | {
+              observedAt: number
+              controlVersion: number
+              type: "retry"
+              attempt: number
+              next?: number
+            }
         rootSessionID?: string
         parentSessionID?: string
         cortex?: {
@@ -583,6 +696,70 @@ export type OrgTranscriptSnapshotPage = {
   watermark: number
   items: Array<OrgSyncEvent>
   cursor?: string
+}
+
+export type OrgSharedMessagePage = {
+  sessionID: string
+  sourceSessionID: string
+  shareGeneration: number
+  watermark: number
+  cursor?: string
+  items: Array<{
+    type: "message"
+    sequence: number
+    sessionID?: string
+    messageID: string
+    role: "user" | "assistant"
+    createdAt: number
+    summary: string
+    actor?: ActorStamp
+    agent?: string
+    parentID?: string
+    rootID?: string
+    completedAt?: number
+    finish?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    mode?: string
+    cost?: number
+    tokens?: {
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+    error?: {
+      code: string
+      message: string
+    }
+    removed?: true
+    integrity: string
+  }>
+}
+
+export type OrgSharedPartPage = {
+  sessionID: string
+  sourceSessionID: string
+  shareGeneration: number
+  watermark: number
+  cursor?: string
+  messageID: string
+  items: Array<{
+    type: "part"
+    sequence: number
+    sessionID?: string
+    messageID: string
+    partID: string
+    part?: OrgTranscriptPart
+    removed?: true
+    integrity: string
+  }>
+  complete: boolean
 }
 
 export type OrgSyncEventPage = {
@@ -986,6 +1163,11 @@ export type OrgKnowledgeRelease = {
   title: string
   version: number
   authorID: string
+  author?: {
+    accountID: string
+    displayName: string
+    loginName: string
+  }
   publishedAt: number
   manifestHash: string
   fileCount: number
@@ -1015,6 +1197,28 @@ export type OrgKnowledgeSelection = {
   updatedAt: number
 }
 
+export type OrgKnowledgeStatus = {
+  orgID: string
+  projectID: string
+  sessionID: string
+  desired: {
+    revision: number
+    manifestHash: string
+    updatedBy: string
+    updatedAt: number
+    releaseCount: number
+  }
+  activated?: {
+    revision: number
+    manifestHash: string
+    updatedBy: string
+    updatedAt: number
+    releaseCount: number
+  }
+  state: "pending" | "active" | "failed"
+  error?: "update_failed"
+}
+
 export type OrgArtifactVersion = {
   artifactID: string
   orgID: string
@@ -1023,6 +1227,11 @@ export type OrgArtifactVersion = {
   version: number
   revision: number
   authorID: string
+  author?: {
+    accountID: string
+    displayName: string
+    loginName: string
+  }
   publishedAt: number
   manifestHash: string
   fileCount: number
@@ -1454,6 +1663,7 @@ export type OrgKnowledgeExecutionFiles = {
     version: number
     manifestHash: string
   }
+  activatedManifestHash?: string
   limit?: number
   cursor?: string
 }
@@ -1474,8 +1684,31 @@ export type OrgKnowledgeExecutionContent = {
     manifestHash: string
   }
   fileID: string
+  activatedManifestHash?: string
   offset: number
   length: number
+}
+
+export type OrgKnowledgeActivationReceipt = {
+  orgID: string
+  projectID: string
+  sessionID: string
+  manifestHash: string
+  revision: number
+}
+
+export type OrgKnowledgeActivationRequest = {
+  authority: OrgExecutionDescriptionRequest
+  manifestHash: string
+  revision: number
+  outcome?: "activated" | "failed"
+}
+
+export type OrgKnowledgeActivatedQuery = {
+  authority: OrgExecutionDescriptionRequest
+  manifestHash: string
+  limit?: number
+  cursor?: string
 }
 
 export type OrgCommandControlAccepted = {
@@ -2414,6 +2647,54 @@ export type OrgAuthPasswordResponses = {
 
 export type OrgAuthPasswordResponse = OrgAuthPasswordResponses[keyof OrgAuthPasswordResponses]
 
+export type OrgInvitesListData = {
+  body?: never
+  path?: never
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/invites"
+}
+
+export type OrgInvitesListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgInvitesListError = OrgInvitesListErrors[keyof OrgInvitesListErrors]
+
+export type OrgInvitesListResponses = {
+  /**
+   * Success
+   */
+  200: OrgInvitePage
+}
+
+export type OrgInvitesListResponse = OrgInvitesListResponses[keyof OrgInvitesListResponses]
+
 export type OrgInvitesCreateData = {
   body: OrgInviteCreate
   path?: never
@@ -2503,6 +2784,53 @@ export type OrgInvitesConsumeResponses = {
 }
 
 export type OrgInvitesConsumeResponse = OrgInvitesConsumeResponses[keyof OrgInvitesConsumeResponses]
+
+export type OrgInvitesRevokeData = {
+  body: OrgInviteRevoke
+  path: {
+    inviteID: string
+  }
+  query?: never
+  url: "/org/v1/invites/{inviteID}/revoke"
+}
+
+export type OrgInvitesRevokeErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgInvitesRevokeError = OrgInvitesRevokeErrors[keyof OrgInvitesRevokeErrors]
+
+export type OrgInvitesRevokeResponses = {
+  /**
+   * Success
+   */
+  200: OrgInvite
+}
+
+export type OrgInvitesRevokeResponse = OrgInvitesRevokeResponses[keyof OrgInvitesRevokeResponses]
 
 export type OrgOrganizationGetData = {
   body?: never
@@ -2595,6 +2923,51 @@ export type OrgOrganizationTransferOwnerResponses = {
 
 export type OrgOrganizationTransferOwnerResponse =
   OrgOrganizationTransferOwnerResponses[keyof OrgOrganizationTransferOwnerResponses]
+
+export type OrgOrganizationLeaveData = {
+  body: OrgLeave
+  path?: never
+  query?: never
+  url: "/org/v1/organization/leave"
+}
+
+export type OrgOrganizationLeaveErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgOrganizationLeaveError = OrgOrganizationLeaveErrors[keyof OrgOrganizationLeaveErrors]
+
+export type OrgOrganizationLeaveResponses = {
+  /**
+   * Success
+   */
+  200: OrgSuccess
+}
+
+export type OrgOrganizationLeaveResponse = OrgOrganizationLeaveResponses[keyof OrgOrganizationLeaveResponses]
 
 export type OrgAccountsListData = {
   body?: never
@@ -3830,6 +4203,111 @@ export type OrgSessionSyncSnapshotResponses = {
 }
 
 export type OrgSessionSyncSnapshotResponse = OrgSessionSyncSnapshotResponses[keyof OrgSessionSyncSnapshotResponses]
+
+export type OrgSessionSyncMessagesData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    sourceSessionID?: string
+    limit?: number
+    cursor?: string
+    watermark?: number
+  }
+  url: "/org/v1/sessions/{sessionID}/sync/messages"
+}
+
+export type OrgSessionSyncMessagesErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionSyncMessagesError = OrgSessionSyncMessagesErrors[keyof OrgSessionSyncMessagesErrors]
+
+export type OrgSessionSyncMessagesResponses = {
+  /**
+   * Success
+   */
+  200: OrgSharedMessagePage
+}
+
+export type OrgSessionSyncMessagesResponse = OrgSessionSyncMessagesResponses[keyof OrgSessionSyncMessagesResponses]
+
+export type OrgSessionSyncPartsData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    sourceSessionID?: string
+    limit?: number
+    cursor?: string
+    watermark?: number
+  }
+  url: "/org/v1/sessions/{sessionID}/sync/messages/{messageID}/parts"
+}
+
+export type OrgSessionSyncPartsErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionSyncPartsError = OrgSessionSyncPartsErrors[keyof OrgSessionSyncPartsErrors]
+
+export type OrgSessionSyncPartsResponses = {
+  /**
+   * Success
+   */
+  200: OrgSharedPartPage
+}
+
+export type OrgSessionSyncPartsResponse = OrgSessionSyncPartsResponses[keyof OrgSessionSyncPartsResponses]
 
 export type OrgSessionSyncEventsData = {
   body?: never
@@ -5294,6 +5772,53 @@ export type OrgKnowledgeSetSessionSelectionResponses = {
 export type OrgKnowledgeSetSessionSelectionResponse =
   OrgKnowledgeSetSessionSelectionResponses[keyof OrgKnowledgeSetSessionSelectionResponses]
 
+export type OrgKnowledgeStatusData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/org/v1/sessions/{sessionID}/knowledge/status"
+}
+
+export type OrgKnowledgeStatusErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeStatusError = OrgKnowledgeStatusErrors[keyof OrgKnowledgeStatusErrors]
+
+export type OrgKnowledgeStatusResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeStatus
+}
+
+export type OrgKnowledgeStatusResponse = OrgKnowledgeStatusResponses[keyof OrgKnowledgeStatusResponses]
+
 export type OrgArtifactsPublishData = {
   body: {
     requestID: string
@@ -6469,6 +6994,100 @@ export type OrgKnowledgeExecutionContentResponses = {
 
 export type OrgKnowledgeExecutionContentResponse =
   OrgKnowledgeExecutionContentResponses[keyof OrgKnowledgeExecutionContentResponses]
+
+export type OrgKnowledgeExecutionActivateData = {
+  body: OrgKnowledgeActivationRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/knowledge/activate"
+}
+
+export type OrgKnowledgeExecutionActivateErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeExecutionActivateError =
+  OrgKnowledgeExecutionActivateErrors[keyof OrgKnowledgeExecutionActivateErrors]
+
+export type OrgKnowledgeExecutionActivateResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeActivationReceipt
+}
+
+export type OrgKnowledgeExecutionActivateResponse =
+  OrgKnowledgeExecutionActivateResponses[keyof OrgKnowledgeExecutionActivateResponses]
+
+export type OrgKnowledgeExecutionActivatedData = {
+  body: OrgKnowledgeActivatedQuery
+  path?: never
+  query?: never
+  url: "/runtime/v1/knowledge/activated"
+}
+
+export type OrgKnowledgeExecutionActivatedErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgeExecutionActivatedError =
+  OrgKnowledgeExecutionActivatedErrors[keyof OrgKnowledgeExecutionActivatedErrors]
+
+export type OrgKnowledgeExecutionActivatedResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgeExecutionPage
+}
+
+export type OrgKnowledgeExecutionActivatedResponse =
+  OrgKnowledgeExecutionActivatedResponses[keyof OrgKnowledgeExecutionActivatedResponses]
 
 export type OrgCommandsControlData = {
   body: OrgCommandControlRequest

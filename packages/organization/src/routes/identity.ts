@@ -8,6 +8,7 @@ import { OrganizationProjects as Projects } from "../projects"
 import { cookie, cookieOptions, operation, validation, browserCredentials } from "./shared"
 
 const accountParam = z.strictObject({ accountID: Identity.ID })
+const inviteParam = z.strictObject({ inviteID: Identity.ID })
 const projectParam = z.strictObject({ projectID: Identity.ID })
 const memberParam = projectParam.extend({ accountID: Identity.ID })
 
@@ -71,6 +72,35 @@ export function identityRoutes(authentication: () => Authentication, publicOrigi
       },
     )
     .get(
+      "/invites",
+      operation(
+        "orgInvites.list",
+        "List safe invitation metadata for current administrators or issuers",
+        Identity.InvitePage,
+      ),
+      validator("query", Identity.Page, validation),
+      async (c) => c.json(await authentication().invites(credentials(c), c.req.valid("query"))),
+    )
+    .post(
+      "/invites/:inviteID/revoke",
+      operation(
+        "orgInvites.revoke",
+        "Revoke an unconsumed invitation with its current revision",
+        Identity.Invite,
+        true,
+      ),
+      validator("param", inviteParam, validation),
+      validator("json", Identity.InviteRevoke, validation),
+      async (c) =>
+        c.json(
+          await authentication().revokeInvite(
+            credentials(c),
+            c.req.valid("param").inviteID,
+            c.req.valid("json").expectedRevision,
+          ),
+        ),
+    )
+    .get(
       "/organization",
       operation("orgOrganization.get", "Read organization identity", Identity.Organization),
       async (c) => c.json(await authentication().organization(credentials(c))),
@@ -80,6 +110,21 @@ export function identityRoutes(authentication: () => Authentication, publicOrigi
       operation("orgOrganization.transferOwner", "Atomically transfer ownership", Identity.Success, true),
       validator("json", Identity.TransferOwner, validation),
       async (c) => c.json(await authentication().transferOwner(credentials(c), c.req.valid("json"))),
+    )
+    .post(
+      "/organization/leave",
+      operation(
+        "orgOrganization.leave",
+        "Leave the organization as the current account, retaining its last owner",
+        Identity.Success,
+        true,
+      ),
+      validator("json", Identity.Leave, validation),
+      async (c) => {
+        const result = await authentication().leave(credentials(c), c.req.valid("json").expectedRevision)
+        deleteCookie(c, cookie, cookieOptions)
+        return c.json(result)
+      },
     )
     .get(
       "/accounts",
@@ -169,9 +214,14 @@ export function identityRoutes(authentication: () => Authentication, publicOrigi
     )
     .get(
       "/projects/:projectID/member-candidates",
-      operation("orgProjects.candidates", "Find current accounts for project membership management", Identity.ProjectCandidatePage),
+      operation(
+        "orgProjects.candidates",
+        "Find current accounts for project membership management",
+        Identity.ProjectCandidatePage,
+      ),
       validator("param", projectParam, validation),
       validator("query", Identity.CandidateQuery, validation),
-      async (c) => c.json(await Projects.candidates(credentials(c), c.req.valid("param").projectID, c.req.valid("query"))),
+      async (c) =>
+        c.json(await Projects.candidates(credentials(c), c.req.valid("param").projectID, c.req.valid("query"))),
     )
 }

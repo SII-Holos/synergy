@@ -61,6 +61,19 @@ export function sharingRoutes(publicOrigin?: string) {
       async (c) => c.json(await Sharing.snapshot(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"))),
     )
     .get(
+      "/sessions/:sessionID/sync/messages",
+      operation("orgSessionSync.messages", "Read a chronological shared message window with a replay watermark", Sync.MessagePage),
+      validator("param", target, validation), validator("query", Sync.MessageQuery, validation),
+      async (c) => c.json(await Sharing.messages(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"))),
+    )
+    .get(
+      "/sessions/:sessionID/sync/messages/:messageID/parts",
+      operation("orgSessionSync.parts", "Read a bounded canonical part page for a shared message", Sync.PartPage),
+      validator("param", target.extend({ messageID: Identity.ID }), validation),
+      validator("query", Sync.PartQuery.omit({ messageID: true }), validation),
+      async (c) => c.json(await Sharing.parts(credentials(c), c.req.valid("param").sessionID, { ...c.req.valid("query"), messageID: c.req.valid("param").messageID })),
+    )
+    .get(
       "/sessions/:sessionID/sync/events",
       operation("orgSessionSync.events", "Read committed safe Session projection events", Sync.EventPage),
       validator("param", target, validation),

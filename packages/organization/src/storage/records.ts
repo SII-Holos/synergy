@@ -112,11 +112,18 @@ export namespace OrganizationRecord {
   })
   export const Bootstrap = tokenState.extend({ consumed: consumed.extend({ result: Identity.Account }).optional() })
   export const Invite = Bootstrap.extend({
+    schemaVersion: z.literal(2),
+    inviteID: Identity.ID,
+    orgID: Identity.ID,
+    revision: Identity.Revision,
+    createdAt: z.number().int().nonnegative().optional(),
     createdBy: Identity.ID,
     issuerAuthRevision: Identity.Revision,
     role: z.enum(["admin", "member"]),
     revokedAt: z.number().int().optional(),
   })
+  export type Invite = z.infer<typeof Invite>
+  export const InviteIndex = z.strictObject({ tokenHash: Identity.Token })
   export const Reset = tokenState.extend({
     consumed: consumed.optional(),
     createdBy: Identity.ID,

@@ -6,6 +6,8 @@ Use an isolated Storage Handle, central migrations and owner-local keys. Keep au
 
 Route actions through `authorization.ts`, resolving stored ownership before roles; deny unknown actions. Archived projects allow stopping, not new execution. Authentication and one-time token consumption belong to `auth/`. Do not duplicate role matrices in routes or Runtime adapters.
 
+Invitation management reads authorized metadata indexes, never token digests or consumption receipts. Keep consume/revoke CAS atomic and upgrade indexes through the central migration runner. Self leave uses the account removal owner and last-owner guard; verify `test/invites.test.ts` with `test/auth.test.ts`.
+
 Page authorized creator/shared Session indexes before records. Capacity exposes counts only. Creation atomically reserves directory metadata with admission; metadata cannot grant execution. Verify `test/session-directory.test.ts` for rollback, revocation and mixed-owner pagination.
 
 Client grants bind the first-party login, exact callback and deployment. Consume authorization codes atomically with token creation. Refresh replay commits revocation before error; expired proofs may revoke their own login only. Cross-origin clients use access tokens, not cookies. Preserve generated organization contracts; verify `test/client-auth.test.ts` and Web authorization headers/HTML fallback.

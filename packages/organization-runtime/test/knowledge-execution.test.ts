@@ -13,17 +13,19 @@ import { executionFixture } from "./support/execution"
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 
-test("signed machine knowledge reads selected versions and fences removed selections", async () => {
-  await using f = await executionFixture({ execution: true, knowledge: true })
+async function publish(
+  f: Awaited<ReturnType<typeof executionFixture>>,
+  projectID: string,
+  body: string,
+  expectedRevision: number,
+) {
   const options = { headers: f.headers, throwOnError: true as const }
-  const session = await f.runtime.run(() => Session.get(f.sessionID))
   const upload = (
     await f.client.orgPublications.createUpload(
-      { requestID: "skill-upload", purpose: "knowledge", scope: { kind: "project", projectID: session.scope.id } },
+      { requestID: crypto.randomUUID(), purpose: "knowledge", scope: { kind: "project", projectID } },
       options,
     )
   ).data
-  const body = "---\nname: team-work\ndescription: Team work\n---\nSigned selected instructions"
   const file = (
     await f.client.orgPublications.putFile(
       {
@@ -47,9 +49,9 @@ test("signed machine knowledge reads selected versions and fences removed select
   const release = (
     await f.client.orgKnowledge.publish(
       {
-        requestID: "publish-skill",
+        requestID: crypto.randomUUID(),
         itemID: "team",
-        expectedRevision: 0,
+        expectedRevision,
         uploadID: upload.uploadID,
         title: "Team",
         kind: "skill",
@@ -62,8 +64,17 @@ test("signed machine knowledge reads selected versions and fences removed select
     version: release.version,
     manifestHash: release.manifestHash,
   })
-  await f.client.orgKnowledge.setSessionSelection(
-    { sessionID: f.sessionID, expectedRevision: 0, releases: [reference] },
+  return { release, reference, file }
+}
+
+test("signed machine knowledge reads selected versions and fences removed selections", async () => {
+  await using f = await executionFixture({ execution: true, knowledge: true })
+  const options = { headers: f.headers, throwOnError: true as const }
+  const session = await f.runtime.run(() => Session.get(f.sessionID))
+  const body = "---\nname: team-work\ndescription: Team work\n---\nSigned selected instructions"
+  const { release, reference, file } = await publish(f, session.scope.id, body, 0)
+  await f.client.orgKnowledge.apply(
+    { projectID: session.scope.id, expectedRevision: 0, releases: [reference] },
     options,
   )
   const proof = await f.description()
@@ -90,8 +101,11 @@ test("signed machine knowledge reads selected versions and fences removed select
           metadata() {},
           async ask() {},
         }
-      const context = await SessionContextContributions.collect({ sessionID: f.sessionID, scopeID: session.scope.id, messages: [], isTopSession: true, signal: ctx.abort }, "model")
-      expect(context?.context).toContain("team-work: Team work [v1]")
+        const context = await SessionContextContributions.collect(
+          { sessionID: f.sessionID, scopeID: session.scope.id, messages: [], isTopSession: true, signal: ctx.abort },
+          "model",
+        )
+        expect(context?.context).toContain("team-work: Team work [v1]")
         expect((await (await SkillTool.init()).execute({ name: "team-work" }, ctx)).output).toContain(
           "Signed selected instructions",
         )
@@ -114,12 +128,61 @@ test("signed machine knowledge reads selected versions and fences removed select
             { ...ctx, abort: AbortSignal.abort(new Error("Cancelled knowledge read")) },
           ),
         ).rejects.toThrow("Cancelled knowledge read")
-        await f.client.orgKnowledge.setSessionSelection(
-          { sessionID: f.sessionID, expectedRevision: 1, releases: [] },
+        const second = await publish(
+          f,
+          session.scope.id,
+          body.replace("Signed selected instructions", "Updated selected instructions"),
+          1,
+        )
+        await f.client.orgKnowledge.apply(
+          { projectID: session.scope.id, expectedRevision: 1, releases: [second.reference] },
           options,
         )
-      const updated = await SessionContextContributions.collect({ sessionID: f.sessionID, scopeID: session.scope.id, messages: [], isTopSession: true, signal: ctx.abort }, "model")
-      expect(updated?.context).not.toContain("team-work:")
+        f.interceptHTTP(async (request) => {
+          if (!request.url.endsWith("/knowledge/content")) return
+          const input = (await request.clone().json()) as { reference?: { version?: number } }
+          if (input.reference?.version === 2)
+            return Response.json(
+              {
+                code: "SERVICE_UNAVAILABLE",
+                message: "Controlled publication download failure",
+                retryable: true,
+                outcome: "not_dispatched",
+              },
+              { status: 503 },
+            )
+        })
+        const retained = await loadOrganizationKnowledge(f.member.identity, f.sessionID)
+        expect(retained.selection.releases).toEqual([reference])
+        expect(retained.updateError).toContain("previous complete version remains active")
+        expect((await f.client.orgKnowledge.status({ sessionID: f.sessionID }, options)).data).toMatchObject({
+          state: "failed",
+          error: "update_failed",
+          desired: { manifestHash: hash(JSON.stringify([second.reference])) },
+          activated: { manifestHash: hash(JSON.stringify([reference])) },
+        })
+        expect((await (await SkillTool.init()).execute({ name: "team-work" }, ctx)).output).toContain(
+          "Signed selected instructions",
+        )
+        expect(
+          (
+            await tool.execute(
+              { input: { operation: "read", ...reference, fileID: file.fileID, offset: 0, length: 1024 } },
+              ctx,
+            )
+          ).output,
+        ).toContain("Signed selected instructions")
+        f.interceptHTTP(undefined)
+        expect((await (await SkillTool.init()).execute({ name: "team-work" }, ctx)).output).toContain(
+          "Updated selected instructions",
+        )
+        expect((await f.client.orgKnowledge.status({ sessionID: f.sessionID }, options)).data.state).toBe("active")
+        await f.client.orgKnowledge.apply({ projectID: session.scope.id, expectedRevision: 2, releases: [] }, options)
+        const updated = await SessionContextContributions.collect(
+          { sessionID: f.sessionID, scopeID: session.scope.id, messages: [], isTopSession: true, signal: ctx.abort },
+          "model",
+        )
+        expect(updated?.context).not.toContain("team-work:")
         await expect(
           tool.execute(
             { input: { operation: "read", ...reference, fileID: file.fileID, offset: 0, length: 1024 } },

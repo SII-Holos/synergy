@@ -2,6 +2,7 @@ import { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-organiz
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
+import { z } from "zod"
 
 export async function projectSharedPart(part: MessageV2.Part, owner: RolloutArtifact.Owner) {
   const blobs: RolloutArtifact.Ref[] = []
@@ -11,19 +12,42 @@ export async function projectSharedPart(part: MessageV2.Part, owner: RolloutArti
     const artifact = await RolloutArtifact.writeText(owner, text)
     if (!artifact.sha256) throw new Error("Shared content is missing its immutable digest")
     blobs.push(artifact)
-    return { kind: "blob", blobID: artifact.id, hash: artifact.sha256, bytes: artifact.bytes, mediaType: artifact.mediaType }
+    return {
+      kind: "blob",
+      blobID: artifact.id,
+      hash: artifact.sha256,
+      bytes: artifact.bytes,
+      mediaType: artifact.mediaType,
+    }
   }
   let projected: Sync.TranscriptPart | undefined
   switch (part.type) {
     case "text":
-      projected = { type: "text", content: await content(part.text), origin: MessageV2.isSystemPart(part) ? "system" : "user" }
+      projected = {
+        type: "text",
+        content: await content(part.text),
+        origin: MessageV2.isSystemPart(part) ? "system" : "user",
+      }
       break
     case "reasoning":
-      projected = { type: "reasoning", content: await content(part.text) }
+      projected = { type: "reasoning", content: await content(part.text), time: part.time }
       break
     case "tool": {
       const state = part.state
-      const input = state.status === "pending" || state.status === "generating" ? state.raw : JSON.stringify(state.input)
+      const input =
+        state.status === "pending" || state.status === "generating" ? state.raw : JSON.stringify(state.input)
+      let metadata: z.infer<typeof Sync.KnowledgeToolMetadata> | undefined
+      if (part.tool === "organization_knowledge" && "metadata" in state && state.metadata) {
+        const fields = Object.fromEntries(
+          await Promise.all(
+            Object.entries(state.metadata)
+              .filter(([key]) => Object.hasOwn(Sync.KnowledgeToolMetadata.shape, key))
+              .map(async ([key, value]) => [key, typeof value === "string" ? await SecretMask.apply(value) : value]),
+          ),
+        )
+        const parsed = Sync.KnowledgeToolMetadata.safeParse(fields)
+        if (parsed.success) metadata = parsed.data
+      }
       projected = {
         type: "tool",
         callID: part.callID,
@@ -35,6 +59,7 @@ export async function projectSharedPart(part: MessageV2.Part, owner: RolloutArti
         ...("title" in state && state.title ? { title: (await SecretMask.apply(state.title)).slice(0, 1024) } : {}),
         ...("time" in state ? { startedAt: state.time.start } : {}),
         ...("time" in state && "end" in state.time ? { completedAt: state.time.end } : {}),
+        ...(metadata ? { metadata } : {}),
       }
       break
     }
@@ -50,7 +75,7 @@ export async function projectSharedPart(part: MessageV2.Part, owner: RolloutArti
       projected = { type: "step-start" }
       break
     case "step-finish":
-      projected = { type: "step-finish", reason: part.reason, cost: part.cost }
+      projected = { type: "step-finish", reason: part.reason, cost: part.cost, tokens: part.tokens }
       break
     case "compaction":
       projected = { type: "compaction", auto: part.auto }
