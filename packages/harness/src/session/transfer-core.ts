@@ -23,6 +23,7 @@ import { RolloutArtifact } from "./rollout/artifact"
 import { SnapshotRecords } from "./snapshot-records"
 import { RolloutSchema } from "./rollout/schema"
 import { RolloutEvidence } from "./rollout/evidence"
+import { SnapshotEvidence } from "./snapshot-evidence"
 
 export namespace SessionTransferCore {
   const Mapping = z.object({
@@ -69,6 +70,22 @@ export namespace SessionTransferCore {
       for await (const row of Storage.records({ prefix, limit: 128 })) if (own(session, row.key)) yield row
   }
 
+  export async function* snapshotRoots(session: Readonly<Session.Info>, records: AsyncIterable<Owners.StagedRecord>) {
+    let infos = 0
+    for await (const record of records) {
+      if (!own(session, record.key)) fail("Snapshot root evidence belongs to another core Session")
+      if (isInfo(session, record.key)) {
+        parseInfo(session, record.value)
+        infos++
+      }
+      if (record.key.length === 7 && record.key[3] === "messages" && record.key[5] === "parts") {
+        if (infos !== 1) fail("Snapshot roots require prior canonical Session metadata")
+        yield* SnapshotRecords.partRoots(record.value)
+      }
+    }
+    if (infos !== 1) fail("Snapshot root evidence requires one canonical core Session record")
+  }
+
   async function inspect(context: Owners.SourceContext): Promise<Owners.Inspection> {
     const requirements: Owners.Requirement[] = []
     for await (const row of records(context.session)) {
@@ -95,23 +112,23 @@ export namespace SessionTransferCore {
     return { requirements, children: children(context.session) }
   }
 
-  async function sourceInfo(context: Owners.TargetContext) {
-    const record = await context.staged.record(infoKey(context.session))
-    if (!record) fail("Portable Session metadata is absent")
-    const raw = z.record(z.string(), z.unknown()).parse(record.value)
+  function parseInfo(session: Readonly<Session.Info>, value: unknown) {
+    const raw = z.record(z.string(), z.unknown()).parse(value)
     const info = Session.PersistedInfo.parse({ ...raw, workspace: null })
-    if (
-      info.id !== context.session.id ||
-      info.scope.id !== context.session.scope.id ||
-      info.parentID !== context.session.parentID
-    )
+    if (info.id !== session.id || info.scope.id !== session.scope.id || info.parentID !== session.parentID)
       fail("Portable Session metadata belongs to another owner")
     return { raw, info }
   }
 
+  async function sourceInfo(context: Owners.TargetContext) {
+    const record = await context.staged.record(infoKey(context.session))
+    if (!record) fail("Portable Session metadata is absent")
+    return parseInfo(context.session, record.value)
+  }
+
   function map(context: Owners.TargetContext, key: string[], value: unknown) {
     const mapping = Mapping.parse(context.mapping)
-    return WorkspaceTransfer.record(key, value, (reference) => {
+    const mapped = WorkspaceTransfer.record(key, value, (reference) => {
       const workspaceID = Object.hasOwn(mapping.workspaceIDs, reference.id)
         ? mapping.workspaceIDs[reference.id]
         : undefined
@@ -119,6 +136,9 @@ export namespace SessionTransferCore {
         fail("Portable history requires an explicit destination mapping for every Workspace")
       return workspaceID
     })
+    return key.length === 6 && key[0] === "sessions" && key[3] === "messages" && key[5] === "info"
+      ? SnapshotEvidence.portable(mapped)
+      : mapped
   }
 
   async function validate(context: Owners.TargetContext) {

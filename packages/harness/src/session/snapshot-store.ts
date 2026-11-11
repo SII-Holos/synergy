@@ -20,6 +20,7 @@ import { upgradeAccessRecord } from "../migration/import"
 
 export namespace SnapshotStore {
   export interface Persistence {
+    roots?(scopeID: string, retentionID: string, signal?: AbortSignal): AsyncIterable<string>
     retain(scopeID: string, sessionID: string, root: string, repository: string, signal?: AbortSignal): Promise<void>
     restore(
       scopeID: string,
@@ -149,6 +150,39 @@ export namespace SnapshotStore {
 
   export async function releaseContent(scopeID: string, retentionID: string) {
     await state().backend?.release?.(scopeID, component(retentionID))
+  }
+
+  export async function* roots(scopeID: string, sessionID: string, signal?: AbortSignal): AsyncGenerator<string> {
+    signal?.throwIfAborted()
+    const record = await owner(scopeID, sessionID)
+    if (!record || record.backend === "deleted") return
+    await assertStorageMode(scopeID)
+    if (record.backend === "legacy")
+      throw new StorageError("Migrate legacy Snapshot ownership before enumerating retained roots")
+    const backend = state().backend
+    if (backend) {
+      if (!backend.roots) throw new StorageError("The selected Snapshot backend cannot enumerate retained roots")
+      for await (const root of backend.roots(scopeID, record.retentionID, signal)) {
+        signal?.throwIfAborted()
+        if (!OID.test(root)) throw new StorageError("Retained Snapshot root identity is invalid")
+        yield root
+      }
+      return
+    }
+    const repositoryPath = repository(scopeID)
+    if (!(await SnapshotPath.exists(path.join(repositoryPath, "HEAD"))))
+      throw new StorageError("Snapshot object store is missing")
+    const prefix = `refs/synergy/snapshots/${component(record.retentionID)}/`
+    for await (const line of SnapshotGit.lines(
+      repositoryPath,
+      ["for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", prefix],
+      { signal },
+    )) {
+      const [ref, root, type] = line.split(" ")
+      if (!OID.test(root) || type !== "tree" || ref !== reference(record.retentionID, root))
+        throw new StorageError("Retained Snapshot root reference is invalid")
+      yield root
+    }
   }
 
   export async function resolveRepository(scopeID: string, sessionID: string) {

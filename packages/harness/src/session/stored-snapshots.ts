@@ -68,6 +68,26 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
     }
   }
   return {
+    async *roots(scopeID, sessionID, signal) {
+      const prefix = [
+        "sessions",
+        SnapshotStore.component(scopeID),
+        SnapshotStore.component(sessionID),
+        "snapshot_content",
+      ]
+      let after: string[] | undefined
+      for (;;) {
+        signal?.throwIfAborted()
+        const page = await Storage.queryKeys({ prefix, after, limit: 128 })
+        for (const key of page) {
+          if (key.length !== 6 || key[5] !== "manifest" || !SnapshotStore.OID.test(key[4]))
+            throw new Error("Durable Snapshot inventory contains an unrelated record")
+          yield key[4]
+        }
+        if (page.length < 128) return
+        after = page.at(-1)
+      }
+    },
     async release(scopeID, sessionID) {
       await Storage.removeTree([
         "sessions",

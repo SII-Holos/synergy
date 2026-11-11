@@ -128,7 +128,8 @@ export namespace SessionTransferStaging {
         destinationKey(handoffID, entry),
         entryKey(handoffID, entry),
       ])
-      if (destination !== undefined && Destination.parse(destination).id !== entry.id) fail("Duplicate portable destination key")
+      if (destination !== undefined && Destination.parse(destination).id !== entry.id)
+        fail("Duplicate portable destination key")
       if (retained !== undefined && digest(Entry.parse(retained)) !== digest(entry))
         fail("A staged entry changed during retry")
       using prepared = await Storage.prepareBinaryStream(bytesKey(handoffID, entry), source.content, {
@@ -138,7 +139,16 @@ export namespace SessionTransferStaging {
         await Storage.publishPreparedBinary(prepared)
         await Storage.write(entryKey(handoffID, entry), entry)
         await Storage.write([...ownersKey(handoffID), ownerID, entry.sessionID], { version: 1 })
-        await Storage.write(destinationKey(handoffID, entry), Destination.parse({ version: 1, id: entry.id, ownerID: entry.ownerID, sessionID: entry.sessionID, ordinal: entry.ordinal }))
+        await Storage.write(
+          destinationKey(handoffID, entry),
+          Destination.parse({
+            version: 1,
+            id: entry.id,
+            ownerID: entry.ownerID,
+            sessionID: entry.sessionID,
+            ordinal: entry.ordinal,
+          }),
+        )
       })
     }
     if (!reader.verified()) fail("Portable staging did not verify the complete manifest")
@@ -156,7 +166,10 @@ export namespace SessionTransferStaging {
     const bytes = await Storage.readBinary(bytesKey(handoffID, entry))
     if (bytes.length !== entry.bytes || createHash("sha256").update(bytes).digest("hex") !== entry.sha256)
       fail("Staged portable record changed")
-    return { key: [...entry.key], value: JsonValue.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))) }
+    return {
+      key: [...entry.key],
+      value: JsonValue.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))),
+    }
   }
 
   export async function verify(handoffID: string, signal?: AbortSignal) {
@@ -196,12 +209,19 @@ export namespace SessionTransferStaging {
       staged: {
         async record(key) {
           assertOwner()
-          const [reference] = await Storage.readMany([destinationKey(input.handoffID, { kind: "record", key: Key.parse(key) })])
+          const [reference] = await Storage.readMany([
+            destinationKey(input.handoffID, { kind: "record", key: Key.parse(key) }),
+          ])
           if (reference === undefined) return
           const destination = Destination.parse(reference)
           if (destination.ownerID !== ownerID || destination.sessionID !== input.session.id) return
           const entry = Entry.parse(await Storage.read(entryKey(input.handoffID, destination)))
-          if (entry.kind !== "record" || JSON.stringify(entry.key) !== JSON.stringify(key) || entry.id !== destination.id) fail("Staged portable destination index changed")
+          if (
+            entry.kind !== "record" ||
+            JSON.stringify(entry.key) !== JSON.stringify(key) ||
+            entry.id !== destination.id
+          )
+            fail("Staged portable destination index changed")
           return readRecord(input.handoffID, entry)
         },
         async *records() {
@@ -210,6 +230,22 @@ export namespace SessionTransferStaging {
             assertOwner()
             if (entry.kind !== "record") continue
             yield await readRecord(input.handoffID, entry)
+          }
+        },
+        async *relatedRecords(dependency) {
+          assertOwner()
+          if (!Owners.stagedDependencies(ownerID).includes(dependency))
+            fail("Portable owner has not declared this staged dependency")
+          if (!Object.hasOwn(current.root.owners, dependency))
+            fail("Declared staged dependency is absent from the verified manifest")
+          for await (const entry of entries(input.handoffID, dependency, input.session.id)) {
+            assertOwner()
+            if (entry.ownerID !== dependency || entry.sessionID !== input.session.id)
+              fail("Staged dependency partition belongs to another owner or Session")
+            if (entry.kind !== "record") continue
+            const record = await readRecord(input.handoffID, entry)
+            assertOwner()
+            yield record
           }
         },
         async *artifacts() {
@@ -221,7 +257,10 @@ export namespace SessionTransferStaging {
               key: [...entry.key],
               bytes: entry.bytes,
               sha256: entry.sha256,
-              read() { assertOwner(); return Storage.readBinaryStream(bytesKey(input.handoffID, entry), { signal: input.signal }) },
+              read() {
+                assertOwner()
+                return Storage.readBinaryStream(bytesKey(input.handoffID, entry), { signal: input.signal })
+              },
               async publish(target, options) {
                 assertOwner()
                 await Storage.publishBinaryReference(bytesKey(input.handoffID, entry), Key.parse(target), options)

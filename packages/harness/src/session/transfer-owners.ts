@@ -52,6 +52,7 @@ export namespace SessionTransferOwners {
     staged: {
       record(key: string[]): Promise<StagedRecord | undefined>
       records(): AsyncIterable<StagedRecord>
+      relatedRecords?(ownerID: string): AsyncIterable<StagedRecord>
       artifacts(): AsyncIterable<StagedArtifact>
     }
   }
@@ -66,6 +67,7 @@ export namespace SessionTransferOwners {
     version: number
     reads: readonly number[]
     applies(session: Readonly<Session.Info>): boolean | Promise<boolean>
+    stagedDependencies?: readonly string[]
     inspect(context: SourceContext): Promise<Inspection>
     freeze(context: SourceContext): Promise<void>
     export(context: SourceContext): AsyncIterable<SessionTransferStream.Input>
@@ -86,7 +88,20 @@ export namespace SessionTransferOwners {
     if (!owner.reads.includes(owner.version))
       throw new Rejected({ message: "A portability owner must read its own current schema" })
     if (state().has(id)) throw new Rejected({ message: `Duplicate portability owner: ${id}` })
-    state().set(id, owner)
+    const dependencies = [...new Set(owner.stagedDependencies ?? [])]
+    for (const dependency of dependencies) {
+      ID.parse(dependency)
+      if (dependency === id) throw new Rejected({ message: "A staged dependency must name another owner" })
+    }
+    state().set(id, {
+      ...owner,
+      reads: Object.freeze([...owner.reads]),
+      stagedDependencies: Object.freeze(dependencies),
+    })
+  }
+
+  export function stagedDependencies(id: string) {
+    return require(id).stagedDependencies ?? []
   }
 
   export function versions(ids: readonly string[]) {

@@ -45,6 +45,20 @@ test("the native core owner preserves message, Inbox, binary and unknown retaine
           agent: "general",
           model: { providerID: "fixture", modelID: "fixture" },
         })
+        await Storage.update<Record<string, unknown>>(
+          ["sessions", "home", session.id, "messages", messageID, "info"],
+          (draft) => {
+            draft.retainedFutureMessage = { unchanged: true }
+            draft.summary = {
+              diffs: [{ file: "history.txt", additions: 1, deletions: 0 }],
+              diffRevision: "source-runtime-local-diff",
+              diffTotals: { files: 1, additions: 1, deletions: 0 },
+              diffObservedAt: 42,
+              diffHasChanges: true,
+              retainedFutureSummary: { unchanged: true },
+            }
+          },
+        )
         await Session.updatePart({
           id: Identifier.ascending("part"),
           sessionID: session.id,
@@ -131,6 +145,20 @@ test("the native core owner preserves message, Inbox, binary and unknown retaine
           (await SessionInbox.list(evidence.session.id)).find((item) => item.id === evidence.delivery.itemID)?.mode,
         ).toBe("context")
         expect(await Storage.readBinary(evidence.artifact)).toEqual(new Uint8Array([0, 255, 21]))
+        const message = await Storage.read<Record<string, unknown>>([
+          "sessions",
+          "home",
+          evidence.session.id,
+          "messages",
+          evidence.messageID,
+          "info",
+        ])
+        expect(message.retainedFutureMessage).toEqual({ unchanged: true })
+        expect(message.summary).toEqual({
+          diffs: [],
+          diffState: { status: "error", code: "incomplete" },
+          retainedFutureSummary: { unchanged: true },
+        })
         expect((await Session.list()).data.some((session) => session.id === evidence.session.id)).toBe(true)
       },
     }),
