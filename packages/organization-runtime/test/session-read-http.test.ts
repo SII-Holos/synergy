@@ -5,7 +5,6 @@ import { OrganizationReadProtocol as Read } from "@ericsanchezok/synergy-organiz
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
@@ -74,7 +73,6 @@ test("generated native and organization clients read one private history through
   const text = "Native private evidence 🌏会話\n".repeat(1200)
   const attachmentID = "prt_private_attachment"
   const attachmentBytes = Uint8Array.from({ length: 90_001 }, (_, index) => index % 256)
-  let attachmentVersion = ""
   await runtime.run(async () => {
     const scope = (await Scope.fromID(project.projectID))!
     await ScopeContext.provide({
@@ -110,8 +108,6 @@ test("generated native and organization clients read one private history through
           mime: "application/octet-stream",
           url: "asset://not-readable-as-a-global-reference.bin",
         })
-        attachmentVersion = (await SessionHistory.partFieldDescriptor({ sessionID, messageID, partID: attachmentID }))
-          .version
         await Session.create({
           parentID: sessionID,
           workspaceID: null,
@@ -167,6 +163,66 @@ test("generated native and organization clients read one private history through
     localTasks.operation === "tasks" && localTasks.items,
   )
   expect(JSON.stringify(remoteTasks)).not.toContain("Private delegation")
+  const parts = Read.Result.parse(
+    (
+      await client.orgLocalSession.read(
+        {
+          orgPrivateReadQuery: {
+            operation: "parts",
+            rootSessionID: sessionID,
+            messageID,
+            limit: 64,
+          },
+        },
+        { throwOnError: true },
+      )
+    ).data,
+  )
+  if (parts.operation !== "parts") throw new Error("Expected native message summaries")
+  const summary = parts.items.find((part) => part.partID === attachmentID)!
+  const header = Read.Result.parse(
+    (
+      await client.orgLocalSession.read(
+        {
+          orgPrivateReadQuery: {
+            operation: "partContent",
+            rootSessionID: sessionID,
+            messageID,
+            partID: summary.partID,
+            field: "text",
+            offset: 0,
+            length: 1,
+          },
+        },
+        { throwOnError: true },
+      )
+    ).data,
+  )
+  if (header.operation !== "partContent" || header.state !== "ready")
+    throw new Error("Expected native attachment header")
+  const attachmentVersion = header.value.version
+  expect(attachmentVersion).not.toBe(summary.content.version)
+  expect(header.value.part).toMatchObject({ type: "attachment", filename: "private-file.bin" })
+  const remoteHeader = Read.Result.parse(
+    (
+      await service.client.orgSessionRead.read(
+        {
+          sessionID,
+          orgPrivateReadQuery: {
+            operation: "partContent",
+            rootSessionID: sessionID,
+            messageID,
+            partID: summary.partID,
+            field: "text",
+            offset: 0,
+            length: 1,
+          },
+        },
+        { headers: service.headers, throwOnError: true },
+      )
+    ).data,
+  )
+  expect(remoteHeader).toEqual(header)
   const field = Read.Query.parse({
     operation: "partContent",
     rootSessionID: sessionID,

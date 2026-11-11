@@ -62,7 +62,7 @@ beforeAll(async () => {
     import { OrganizationSessionResources } from ${JSON.stringify(`/@fs/${source}/organization/session-resources.tsx`)}
     import { PrivateOrganizationTranscript } from ${JSON.stringify(`/@fs/${source}/organization/private-transcript.tsx`)}
     ${organizationCommandFixtureSource}
-    const platform = { platform: "web", openLink() {}, organization: { list: () => window.hostList(), request: value => window.hostRequest(value), commandStream, memberStatus: value => window.hostMemberStatus ? window.hostMemberStatus(value) : Promise.resolve({ok:true,value:{connectionID:"${entry.id}",state:"stopped"}}),memberRequest:value => window.hostMemberRequest(value),startMember:value => window.hostStartMember(value),downloadContent:value=>window.hostDownloadContent(value),projectBinding:value => window.hostProjectBinding(value),bindProject:value => window.hostBindProject(value), cancel: value => {commandTransfers.delete(value.requestID);return Promise.resolve({ok:true})} }, fetch: async () => Response.json({ healthy: false }) }
+    const platform = { platform: "web", openLink() {}, organization: { list: () => window.hostList(), request: value => window.hostRequest(value), commandStream, memberStatus: value => window.hostMemberStatus ? window.hostMemberStatus(value) : Promise.resolve({ok:true,value:{connectionID:"${entry.id}",state:"stopped"}}),memberRequest:value => window.hostMemberRequest(value),startMember:value => window.hostStartMember(value),downloadContent:value=>window.hostDownloadContent(value),downloadAttachment:value=>window.hostDownloadAttachment(value),projectBinding:value => window.hostProjectBinding(value),bindProject:value => window.hostBindProject(value), cancel: value => {commandTransfers.delete(value.requestID);return Promise.resolve({ok:true})} }, fetch: async () => Response.json({ healthy: false }) }
     function Fixture() { const space = useSpace(); const mode = new URLSearchParams(location.search).get("fixture"); return <Show when={space.current()?.identity.kind === "organization"}>{mode === "private" ? <PrivateOrganizationTranscript sessionID="session-a" binding={{schemaVersion:1,orgID:"org-a",projectID:"project-a",creatorID:"account-a",driverRuntimeID:"runtime-a",bindingEpoch:1}} /> : mode === "resources" ? <OrganizationSessionResources projectID="project-a" sessionID="session-a" canExecute={true} /> : <OrganizationSessionComposer session={${JSON.stringify(session)}} online={true} modelReady={true} control={{runID:"run-a",controlVersion:7,pausedSince:42}} accepted={() => {}} />}</Show> }
     render(() => <PlatformProvider value={platform}><AppBaseProviders>{new URLSearchParams(location.search).get("fixture") === "app" ? <AppInterface /> : <SpaceProvider><Fixture /></SpaceProvider>}</AppBaseProviders></PlatformProvider>, document.getElementById("root"))
   `,
@@ -318,7 +318,7 @@ test("private conversation projects verified native field bytes through the ordi
       downloads++
       return { ok: false, error: { code: "permission_denied" } }
     })
-    const requests: { operation: string; limit?: number; offset?: number; length?: number }[] = []
+    const requests: { operation: string; limit?: number; offset?: number; length?: number; version?: string }[] = []
     const bytes = new TextEncoder().encode("Actual private content 你好")
     const sha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
     const binding = {
@@ -333,6 +333,19 @@ test("private conversation projects verified native field bytes through the ordi
     await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
       const query = JSON.parse(request.body!)
       requests.push(query)
+      if (query.operation === "partContent" && query.version !== undefined && query.version !== "part-v1")
+        return {
+          ok: true,
+          value: {
+            status: 409,
+            body: JSON.stringify({
+              code: "REVISION_CONFLICT",
+              message: "Native part content changed",
+              retryable: false,
+              outcome: "not_dispatched",
+            }),
+          },
+        }
       const base = { operation: query.operation, rootSessionID: "session-a", sourceSessionID: "session-a", binding }
       const body =
         query.operation === "timeline"
@@ -366,7 +379,7 @@ test("private conversation projects verified native field bytes through the ordi
                     partID: "part-a",
                     type: "text",
                     preview: "Safe preview",
-                    content: { version: "part-v1", bytes: bytes.length },
+                    content: { version: "display-part-v1", bytes: bytes.length },
                   },
                 ],
               }
@@ -413,6 +426,12 @@ test("private conversation projects verified native field bytes through the ordi
       expect(await page.getByText("Only safe metadata", { exact: true }).count()).toBe(0)
       expect(requests.find((request) => request.operation === "timeline")?.limit).toBe(32)
       expect(requests.find((request) => request.operation === "parts")?.limit).toBe(64)
+      expect(requests.find((request) => request.operation === "partContent")?.version).toBeUndefined()
+      expect(
+        requests
+          .filter((request) => request.operation === "partContent" && request.length! > 1)
+          .every((request) => request.version === "part-v1"),
+      ).toBe(true)
       expect(
         requests.filter((request) => request.operation === "partContent").every((request) => request.length! <= 131072),
       ).toBe(true)
@@ -422,6 +441,204 @@ test("private conversation projects verified native field bytes through the ordi
         expect(downloads).toBe(1)
         expect(await page.getByText("Actual private content 你好", { exact: true }).count()).toBe(0)
       }
+    } finally {
+      await page.close()
+    }
+  }
+})
+
+test("private attachments expose verified previews and target-only native saves without asset URLs", async () => {
+  for (const variant of [
+    { outcome: "saved", width: 375, scheme: "light" },
+    { outcome: "saved", width: 1100, scheme: "dark" },
+    { outcome: "unavailable", width: 375, scheme: "light" },
+    { outcome: "denied", width: 375, scheme: "light" },
+  ] as const) {
+    const { outcome, width, scheme } = variant
+    const page = await browser.newPage({ viewport: { width, height: 667 }, colorScheme: scheme })
+    const bytes = Buffer.from("Verified private attachment 你好")
+    const sha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+    const binding = {
+      schemaVersion: 1,
+      orgID: "org-a",
+      projectID: "project-a",
+      creatorID: "account-a",
+      driverRuntimeID: "runtime-a",
+      bindingEpoch: 1,
+    }
+    const downloads: unknown[] = []
+    const queries: { operation: string; offset?: number; length?: number }[] = []
+    let assetRequests = 0
+    await page.route("**/asset/**", async (route) => {
+      assetRequests++
+      await route.abort()
+    })
+    await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
+    await page.exposeFunction("hostDownloadAttachment", (request: unknown) => {
+      downloads.push(request)
+      return outcome === "denied"
+        ? { ok: false, error: { code: "permission_denied" } }
+        : outcome === "unavailable"
+          ? { ok: true, value: { kind: "unavailable", version: "attachment-v1", reason: "partial" } }
+          : { ok: true, value: { kind: "result", result: { saved: true, bytes: bytes.length } } }
+    })
+    await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+      const query = JSON.parse(request.body!)
+      queries.push(query)
+      if (query.operation === "partContent" && query.version !== undefined && query.version !== "attachment-v1")
+        return {
+          ok: true,
+          value: {
+            status: 409,
+            body: JSON.stringify({
+              code: "REVISION_CONFLICT",
+              message: "Native part content changed",
+              retryable: false,
+              outcome: "not_dispatched",
+            }),
+          },
+        }
+      const base = { operation: query.operation, rootSessionID: "session-a", sourceSessionID: "session-a", binding }
+      const body =
+        query.operation === "timeline"
+          ? {
+              ...base,
+              items: [
+                {
+                  messageID: "message-a",
+                  role: "user",
+                  createdAt: 1,
+                  agent: "general",
+                  model: { providerID: "team", modelID: "model" },
+                  summary: "Safe attachment metadata",
+                  version: "message-v1",
+                  order: "1",
+                },
+              ],
+              referencedRoots: [],
+              hasMore: false,
+              total: 1,
+              generation: 1,
+            }
+          : query.operation === "parts"
+            ? {
+                ...base,
+                messageID: "message-a",
+                hasMore: false,
+                items: ["attachment-a", "attachment-b"].map((partID) => ({
+                  messageID: "message-a",
+                  partID,
+                  type: "attachment",
+                  preview: "Safe attachment metadata",
+                  content: { version: "display-attachment-v1", bytes: 0 },
+                })),
+              }
+            : query.operation === "partContent"
+              ? {
+                  ...base,
+                  state: "ready",
+                  value: {
+                    messageID: "message-a",
+                    partID: query.partID,
+                    version: "attachment-v1",
+                    part: {
+                      type: "attachment",
+                      filename: query.partID === "attachment-a" ? "evidence.txt" : "second.txt",
+                      mediaType: "text/plain",
+                      hash: sha256,
+                      bytes: bytes.length,
+                    },
+                  },
+                }
+              : query.operation === "attachmentContent"
+                ? {
+                    ...base,
+                    state: "ready",
+                    messageID: "message-a",
+                    partID: query.partID,
+                    reference: {
+                      kind: "attachment",
+                      version: "attachment-v1",
+                      filename: query.partID === "attachment-a" ? "evidence.txt" : "second.txt",
+                      mediaType: "text/plain",
+                      bytes: bytes.length,
+                      sha256,
+                    },
+                    chunk: {
+                      offset: query.offset,
+                      nextOffset: Math.min(bytes.length, query.offset + query.length),
+                      totalBytes: bytes.length,
+                      sha256,
+                      data: bytes.subarray(query.offset, query.offset + query.length).toString("base64url"),
+                      complete: query.offset + query.length >= bytes.length,
+                    },
+                  }
+                : query.operation === "session"
+                  ? { ...base, session: { sessionID: "session-a", title: "Private title", createdAt: 1, updatedAt: 2 } }
+                  : { ...base, status: { type: "idle", observedAt: 1, controlVersion: 0 } }
+      return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
+    })
+    try {
+      await page.goto(new URL("/organization/org-a/account-a/deployment-a?fixture=private", server.url).href)
+      const card = page.getByRole("region", { name: "evidence.txt", exact: true })
+      await card.waitFor()
+      expect(await card.getByText("text/plain", { exact: false }).count()).toBe(1)
+      expect(queries.some((query) => query.operation === "attachmentContent")).toBe(false)
+      if (outcome !== "unavailable") {
+        await card.getByRole("button", { name: "Preview", exact: true }).click()
+        await card.getByText("Verified private attachment 你好", { exact: true }).waitFor()
+        const second = page.getByRole("region", { name: "second.txt", exact: true })
+        await second.getByRole("button", { name: "Preview", exact: true }).click()
+        await second.getByText("Verified private attachment 你好", { exact: true }).waitFor()
+        expect(await card.getByText("Verified private attachment 你好", { exact: true }).count()).toBe(0)
+        await card.getByRole("button", { name: "Preview", exact: true }).click()
+        await card.getByText("Verified private attachment 你好", { exact: true }).waitFor()
+        expect(await second.getByText("Verified private attachment 你好", { exact: true }).count()).toBe(0)
+        expect(
+          queries.filter((query) => query.operation === "attachmentContent").every((query) => query.length! <= 65_536),
+        ).toBe(true)
+      }
+      await card.getByRole("button", { name: "Download", exact: true }).click()
+      if (outcome === "denied") {
+        await page.getByRole("alert").waitFor()
+        expect(await page.getByText("Verified private attachment 你好", { exact: true }).count()).toBe(0)
+        expect(await card.count()).toBe(0)
+      } else {
+        await card
+          .getByText(
+            outcome === "saved"
+              ? "File saved"
+              : "The original attachment is not retained in full and cannot be downloaded.",
+            { exact: true },
+          )
+          .waitFor()
+        const bounds = await card.boundingBox()
+        expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width).toBe(true)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        if (outcome === "saved" && process.env.SYNERGY_UI_SCREENSHOT_DIR) {
+          await fs.mkdir(process.env.SYNERGY_UI_SCREENSHOT_DIR, { recursive: true })
+          await page.waitForFunction((scheme) => document.documentElement.dataset.colorScheme === scheme, scheme)
+          await page.screenshot({
+            path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, `attachment-${width}-667-${scheme}.png`),
+          })
+        }
+      }
+      expect(downloads).toHaveLength(1)
+      expect(downloads[0]).toMatchObject({
+        connectionID: entry.id,
+        binding,
+        query: {
+          operation: "attachmentContent",
+          rootSessionID: "session-a",
+          messageID: "message-a",
+          partID: "attachment-a",
+          version: "attachment-v1",
+          offset: 0,
+          length: 65_536,
+        },
+      })
+      expect(Object.keys(downloads[0] as object).sort()).toEqual(["binding", "connectionID", "query", "requestID"])
+      expect(assetRequests).toBe(0)
     } finally {
       await page.close()
     }

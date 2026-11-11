@@ -16,6 +16,8 @@ Desktop exposes `memberRequest` with that same strict query. Main captures its s
 
 Project native timeline and part metadata through explicit safe fields. Reuse canonical history windows and bodyless headers, preserving actual model, token and timing observations. Large fields use exact native version, field, byte count, checksum and original-content provenance. Retained partial output remains partial even after its available bytes are fully read. Native preparation returns explicit progress before its complete immutable descriptor is ready, keeping long materialization outside finite RPC duration.
 
+Display summary tokens and native field versions identify different owners. Initial private header reads omit a native version and receive the current canonical descriptor. Subsequent field and attachment byte reads fix the version returned by that descriptor; a summary JSON hash or streaming-content token cannot substitute for it. Generated-client tests start from public part summaries, obtain the same header locally and remotely, and use its returned version without a private native prefetch.
+
 `Read.matches` validates response identity, binding, version and byte windows. One stateless stream consumer awaits the append/hash ports, honors cancellation, preserves pending offsets and verifies the final digest before publication. It neither chooses transports nor buffers an entire file. Replay observations and current native Run identity are presentation; command admission remains authoritative.
 
 ## Alternatives considered

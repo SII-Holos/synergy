@@ -23,6 +23,7 @@ import { organizationOwnerFailure } from "./owner-error"
 import { organizationSessionMessages as messages } from "./session-messages"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
 import { PrivateContentDownload } from "./private-content"
+import { PrivateAttachment } from "./private-attachment"
 import "./session.css"
 
 type Native = Extract<Read.Content, { kind: "native" }>
@@ -85,6 +86,7 @@ export function PrivateOrganizationTranscript(props: {
   const [shift, setShift] = createSignal(false)
   const [epoch, setEpoch] = createSignal(0)
   const [protectedIDs, setProtectedIDs] = createSignal<string[]>([])
+  const [attachmentPreview, setAttachmentPreview] = createSignal<string>()
   const protectedRows = createMemo(() =>
     protectedIDs()
       .map((id) => state.order.indexOf(id))
@@ -142,6 +144,7 @@ export function PrivateOrganizationTranscript(props: {
   function fail(error: unknown) {
     if (signal.aborted) return
     if (organizationOwnerFailure(error)) {
+      setAttachmentPreview(undefined)
       for (const id of state.order) release(id)
       setState(reconcile({ order: [], messages: {}, records: {}, bodies: {} }))
       setData(reconcile({ session: [], session_diff: {}, message: { [sourceID]: [] }, part: {} }))
@@ -350,6 +353,8 @@ export function PrivateOrganizationTranscript(props: {
                     binding={props.binding}
                     parts={data.part[id] ?? []}
                     records={state.records[id] ?? []}
+                    attachmentPreview={attachmentPreview()}
+                    selectAttachmentPreview={setAttachmentPreview}
                     store={(records) => {
                       setState("records", id, reconcile(records, { key: "partID" }))
                       const kept = new Set(
@@ -380,6 +385,8 @@ function PrivateMessageRow(props: {
   message?: import("@ericsanchezok/synergy-sdk").Message
   parts: import("@ericsanchezok/synergy-sdk").Part[]
   records: Read.Part[]
+  attachmentPreview?: string
+  selectAttachmentPreview: (id?: string) => void
   epoch: number
   sessionID: string
   sourceSessionID?: string
@@ -445,7 +452,6 @@ function PrivateMessageRow(props: {
                 sourceSessionID: props.sourceSessionID,
                 messageID: props.event.messageID,
                 partID: summary.partID,
-                version: summary.content.version,
                 field: "text",
                 offset: 0,
                 length: 1,
@@ -508,6 +514,32 @@ function PrivateMessageRow(props: {
     controller.abort()
     props.release()
   })
+  function attachment(record: Read.Part) {
+    const value = () => (record.part.type === "attachment" ? { ...record, part: record.part } : undefined)
+    const identity = () =>
+      JSON.stringify([props.sourceSessionID ?? props.sessionID, props.event.messageID, record.partID, record.version])
+    return (
+      <Show when={value()}>
+        {(value) => (
+          <Show when={value().version} keyed>
+            {(version) => (
+              <PrivateAttachment
+                rootSessionID={props.sessionID}
+                sourceSessionID={props.sourceSessionID}
+                record={{ ...value(), version }}
+                binding={props.binding}
+                read={props.read}
+                invalidated={props.fail}
+                previewActive={props.attachmentPreview === identity()}
+                openPreview={() => props.selectAttachmentPreview(identity())}
+                closePreview={() => props.selectAttachmentPreview(undefined)}
+              />
+            )}
+          </Show>
+        )}
+      </Show>
+    )
+  }
   return (
     <article class="organization-transcript-message" data-organization-message={props.event.messageID}>
       <WorkspaceError error={error()} retry={() => void load()} />
@@ -516,15 +548,25 @@ function PrivateMessageRow(props: {
           <Show when={message().role === "assistant"} fallback={<Message message={message()} parts={props.parts} />}>
             <For each={props.records}>
               {(record) => (
-                <OrganizationTranscriptPart
-                  record={record}
-                  part={props.parts.find((part) => part.id === record.partID)}
-                  message={message()}
-                />
+                <Show
+                  when={record.part.type === "attachment"}
+                  fallback={
+                    <OrganizationTranscriptPart
+                      record={record}
+                      part={props.parts.find((part) => part.id === record.partID)}
+                      message={message()}
+                    />
+                  }
+                >
+                  {attachment(record)}
+                </Show>
               )}
             </For>
           </Show>
         )}
+      </Show>
+      <Show when={props.message?.role !== "assistant"}>
+        <For each={props.records}>{(record) => attachment(record)}</For>
       </Show>
       <For
         each={state.summaries.filter(

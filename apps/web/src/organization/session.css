@@ -158,6 +158,79 @@
   color: var(--text-weak);
   font-size: 12px;
 }
+.organization-private-attachment {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 8px;
+  background: var(--background-base);
+}
+.organization-private-attachment-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.organization-private-attachment-header > svg {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+}
+.organization-private-attachment-header > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.organization-private-attachment-header strong {
+  display: flex;
+  min-width: 0;
+  color: var(--text-base);
+  font-size: 14px;
+  font-weight: 500;
+}
+.organization-private-attachment-header strong > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.organization-private-attachment-header strong > span:last-child {
+  flex-shrink: 0;
+  max-width: 40%;
+}
+.organization-private-attachment-header > div > span,
+.organization-private-attachment > p {
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.organization-private-attachment-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.organization-private-attachment-actions > button {
+  min-height: 44px;
+}
+.organization-private-attachment-preview {
+  min-width: 0;
+}
+.organization-private-attachment-preview pre {
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.organization-private-attachment-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 16rem;
+  object-fit: contain;
+}
 .organization-session-cancel-icon {
   display: none;
 }
