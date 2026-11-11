@@ -98,11 +98,16 @@ export namespace SessionTransferStaging {
     store: BlobStore
     signal?: AbortSignal
   }) {
+    input.signal?.throwIfAborted()
     const handoffID = ID.parse(input.handoffID)
     const root = Stream.Root.parse(input.root)
     compatible(root.owners)
     const rootHash = Stream.digest(root)
-    using lock = await Lock.write(`session-transfer-staging:${handoffID}`)
+    using lock = input.signal
+      ? await Lock.writeWithSignal(`session-transfer-staging:${handoffID}`, input.signal)
+      : await Lock.write(`session-transfer-staging:${handoffID}`)
+    input.signal?.throwIfAborted()
+    if (!lock) fail("Destination receive could not acquire its native lock")
     const [stored] = await Storage.readMany([stateKey(handoffID)])
     if (stored !== undefined) {
       const previous = State.parse(stored)

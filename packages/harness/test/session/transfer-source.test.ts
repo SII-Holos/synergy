@@ -365,14 +365,16 @@ test("source reconciles a complete candidate after interruption without exportin
             fromEpoch: 1,
             toEpoch: 2,
           }
-          let barriers = 0
           await expect(
             Source.prepare({
               binding,
               store,
               signal: new AbortController().signal,
               async verify() {
-                if (++barriers === 4) throw new Error("Connection lost after capture")
+                const [candidate] = await Storage.readMany([
+                  ["session_transfer_source", binding.handoffID, binding.sessionID, "candidate"],
+                ])
+                if (candidate !== undefined) throw new Error("Connection lost after capture")
               },
             }),
           ).rejects.toThrow("Connection lost after capture")

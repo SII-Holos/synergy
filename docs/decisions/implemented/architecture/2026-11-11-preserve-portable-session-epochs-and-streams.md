@@ -18,6 +18,8 @@ Portable v2 streams contain bounded content chunks and hash-linked manifest page
 
 Destination staging stores independently addressable private records and binary references. Owners receive only their declared Session partition. Canonical records, indexes and binary aliases publish under all exact aggregate reservations in one activation transaction; a missing child owner or failed publication rolls back the whole aggregate. A normal write transaction cannot substitute for activation authority.
 
+Signal-bound receive operations abandon the native per-handoff lock queue when cancelled and recheck cancellation immediately after admission. An abandoned caller writes no receiving marker or bytes and preserves the original abort reason; another receive retains its existing lock and work.
+
 Native artifact streaming reuses the existing immutable artifact location and prepared-publication owner. Large raw streams append without collecting their full bytes. Existing compressed blocks stream through their declared bounds. Binary read streams pin their pack until consumption ends, including when the canonical reference is deleted concurrently.
 
 ## Alternatives considered

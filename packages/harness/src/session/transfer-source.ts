@@ -116,6 +116,7 @@ export namespace SessionTransferSource {
     store: BlobStore
     signal: AbortSignal
     verify(): Promise<void>
+    beforeFreeze?(): Promise<void>
   }) {
     const binding = Epochs.Binding.parse(input.binding)
     input.signal.throwIfAborted()
@@ -302,6 +303,17 @@ export namespace SessionTransferSource {
       using ordered = database.prepare<{ id: string; owners: string }, []>(
         "SELECT id,owners FROM members ORDER BY depth DESC,id",
       )
+      for (const row of ordered.iterate()) {
+        input.signal.throwIfAborted()
+        const member = memberBinding(binding, row.id)
+        if ((await Epochs.inspect(member)).phase !== "draining") continue
+        await Owners.freeze(context(binding, await Session.get(row.id), input.signal), ["session-core"])
+      }
+      if (input.beforeFreeze) {
+        await input.beforeFreeze()
+        input.signal.throwIfAborted()
+        await input.verify()
+      }
       const union = new Set<string>()
       let count = 0
       for (const row of ordered.iterate()) {

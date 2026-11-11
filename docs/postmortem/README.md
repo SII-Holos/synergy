@@ -14,10 +14,12 @@
 - **Summary**.
 - **Timeline** — observations.
 - **Root cause**.
-- **Guardrails** — tests, docs, gates. A memory-residency failure also includes a checked machine check, `- [x] Machine check: <lint selector or contract test name>`, naming one item. See [Memory residency scope](../operations/memory-residency-scope.md).
+- **Guardrails** — tests, docs, gates. Residency failures require `- [x] Machine check: <lint selector or contract test name>` naming one checked item. See [Memory residency scope](../operations/memory-residency-scope.md).
 - **Lessons**.
 
 ## Index
+
+- [0104](0104-cancelled-target-receive-waited-for-native-lock.md)
 
 - [0103](0103-task-retry-replaced-original-release-identity.md)
 
