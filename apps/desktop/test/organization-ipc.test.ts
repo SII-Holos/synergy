@@ -50,6 +50,42 @@ function bridge(f: Awaited<ReturnType<typeof organizationFixture>>, fetcher = f.
   return { trusted, ipc }
 }
 
+test("shared transcript windows and runtime availability use exact main-authenticated read paths", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  let calls = 0
+  const { trusted, ipc } = bridge(
+    f,
+    Object.assign(
+      async (input: RequestInfo | URL) => {
+        const request = new Request(input)
+        expect(request.headers.get("authorization")).toStartWith("Bearer ")
+        calls++
+        return Response.json({ items: [] })
+      },
+      { preconnect() {} },
+    ),
+  )
+  for (const [index, [method, path]] of ([
+    ["GET", "/org/v1/sessions/session-one/sync/messages?limit=32"],
+    ["GET", "/org/v1/sessions/session-one/sync/messages/message-one/parts?limit=64"],
+    ["GET", "/org/v1/runtimes/runtime-one/connection"],
+    ["GET", "/org/v1/sessions/session-one/knowledge/status"],
+    ["PUT", "/org/v1/sessions/session-one/share"],
+  ] as const).entries()) {
+    const result = await ipc.handle(trusted, "request", {
+      requestID: `read-${index}`,
+      connectionID: connection.id,
+      method,
+      path,
+      ...(method === "PUT" ? { body: '{"expectedShareGeneration":0}' } : {}),
+    })
+    expect(result).toMatchObject({ ok: true, value: { status: 200 } })
+  }
+  expect(calls).toBe(5)
+  ipc.dispose()
+})
+
 test("organization IPC rejects untrusted frames and credential or arbitrary-target requests", async () => {
   await using f = await organizationFixture()
   const connection = await authorized(f)
@@ -200,6 +236,7 @@ test("native downloads stream only authorized immutable content and verify its d
   const connection = await authorized(f)
   const bytes = new Uint8Array([0, 255, 128, 10])
   const chunks: Uint8Array[] = []
+  let empty = false
   const trusted = {}
   const ipc = new DesktopOrganizationIPC({
     accounts: f.accounts,
@@ -210,8 +247,8 @@ test("native downloads stream only authorized immutable content and verify its d
     }),
     trusted: (event) => event === trusted,
     fetch: (async () =>
-      new Response(bytes, {
-        headers: { "content-type": "application/octet-stream", "content-length": "4" },
+      new Response(empty ? null : bytes, {
+        headers: { "content-type": "application/octet-stream", "content-length": empty ? "0" : "4" },
       })) as typeof fetch,
     saveFile: async (_name, write) => ({
       saved: true,
@@ -238,6 +275,8 @@ test("native downloads stream only authorized immutable content and verify its d
       ok: false,
       error: { code: "invalid_request" },
     })
+    empty = true
+    expect(await ipc.handle(trusted, "download", { ...request, requestID: "empty", bytes: 0, sha256: createHash("sha256").digest("hex") })).toEqual({ ok: true, value: { saved: true, bytes: 0 } })
   } finally {
     ipc.dispose()
   }

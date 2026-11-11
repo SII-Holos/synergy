@@ -16,6 +16,8 @@ Publication paths reject portable filesystem aliases and file/directory ancestry
 
 Project artifacts publish independent immutable versions. Authorization follows the publication's project, while source links are returned only when the reader can currently see the source Session. Source deletion, unsharing or loss of source visibility does not delete published bytes. Downloads authorize every bounded read and support authenticated HTTP Range requests; references contain hashes and identities rather than permanent download credentials.
 
+The organization workspace presents paged catalogs, historical immutable versions, publisher attribution and bounded file previews. Selecting a version preserves other selections through the owning manifest CAS. Member applied selections and hosted Session selections retain their distinct ownership; the interface exposes desired and activated state, including retained versions after failed updates. Uploads and downloads preserve binary bytes through the generated client and the native Desktop file bridge. Artifact browsing never probes a hidden source Session to render a source link.
+
 ## Alternatives considered
 
 **Share member directories directly.** Mutable files cannot preserve published versions and may contain private state.

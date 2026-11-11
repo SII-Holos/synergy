@@ -13,25 +13,27 @@ const routes: [string, RegExp][] = [
   ["GET", new RegExp(`^/org/v1/(projects|runtimes|resources|sessions)/${id}$`)],
   ["GET", new RegExp(`^/org/v1/projects/${id}/(members|member-candidates|sessions|resources)$`)],
   ["GET", new RegExp(`^/org/v1/sessions/${id}/(resources|share|sync/events|sync/search|sync/snapshot)$`)],
+  ["GET", new RegExp(`^/org/v1/sessions/${id}/sync/messages(?:/${id}/parts)?$`)],
+  ["GET", new RegExp(`^/org/v1/runtimes/${id}/connection$`)],
   ["GET", new RegExp(`^/org/v1/sessions/${id}/commands/${id}$`)],
   ["GET", new RegExp(`^/org/v1/commands/${id}$`)],
   ["GET", new RegExp(`^/org/v1/resources/${id}/grants/(account|project)$`)],
   ["POST", /^\/org\/v1\/(projects|invites|sessions|resources|organization\/transfer-owner|auth\/password)$/],
-  ["POST", new RegExp(`^/org/v1/sessions/${id}/(commands|control|share)$`)],
+  ["POST", new RegExp(`^/org/v1/sessions/${id}/(commands|control)$`)],
   ["DELETE", new RegExp(`^/org/v1/sessions/${id}/share$`)],
   ["POST", new RegExp(`^/org/v1/accounts/${id}/reset$`)],
   ["POST", new RegExp(`^/org/v1/runtimes/${id}/revoke$`)],
   ["PATCH", new RegExp(`^/org/v1/(accounts|projects|resources)/${id}$`)],
   ["PUT", new RegExp(`^/org/v1/projects/${id}/members/${id}$`)],
   ["PUT", new RegExp(`^/org/v1/resources/${id}/grants/(account|project)/${id}$`)],
-  ["PUT", new RegExp(`^/org/v1/sessions/${id}/resources$`)],
+  ["PUT", new RegExp(`^/org/v1/sessions/${id}/(resources|share)$`)],
   ["GET", /^\/org\/v1\/knowledge(?:\/search)?$/],
   ["POST", /^\/org\/v1\/(knowledge|artifacts|publications\/uploads)$/],
   ["GET", new RegExp(`^/org/v1/(knowledge|artifacts)/${id}(?:/versions(?:/[1-9][0-9]*(?:/(?:files|reference))?)?)?$`)],
   ["DELETE", new RegExp(`^/org/v1/knowledge/${id}$`)],
   ["GET", new RegExp(`^/org/v1/projects/${id}/(knowledge/applied|artifacts)$`)],
   ["PUT", new RegExp(`^/org/v1/projects/${id}/knowledge/applied$`)],
-  ["GET", new RegExp(`^/org/v1/sessions/${id}/knowledge$`)],
+  ["GET", new RegExp(`^/org/v1/sessions/${id}/knowledge(?:/status)?$`)],
   ["PUT", new RegExp(`^/org/v1/sessions/${id}/knowledge$`)],
   ["GET", new RegExp(`^/org/v1/publications/uploads/${id}(?:/files)?$`)],
   ["PUT", new RegExp(`^/org/v1/publications/uploads/${id}/files$`)],
@@ -334,19 +336,20 @@ export class DesktopOrganizationIPC<Event = unknown> {
                   referrerPolicy: "no-referrer",
                 }),
               )
-              if (!response.ok || response.redirected || !response.body) {
+              const length = response.headers.get("content-length")
+              if (response.status !== 200 || response.redirected || (!response.body && request.bytes !== 0) || (length !== null && (!/^\d+$/.test(length) || Number(length) !== request.bytes))) {
                 await response.body?.cancel().catch(() => {})
                 throw new Failure(response.status === 401 ? "reauthorization_required" : "invalid_response")
               }
-              const reader = response.body.getReader()
+              const reader = response.body?.getReader()
               const cancel = () => {
-                void reader.cancel().catch(() => {})
+                void reader?.cancel().catch(() => {})
               }
               signal.addEventListener("abort", cancel, { once: true })
               const digest = createHash("sha256")
               let size = 0
               try {
-                for (;;) {
+                while (reader) {
                   if (!current() || signal.aborted) throw new Failure("cancelled")
                   const next = await reader.read()
                   if (next.done) break
@@ -361,8 +364,8 @@ export class DesktopOrganizationIPC<Event = unknown> {
                 return size
               } finally {
                 signal.removeEventListener("abort", cancel)
-                await reader.cancel().catch(() => {})
-                reader.releaseLock()
+                await reader?.cancel().catch(() => {})
+                reader?.releaseLock()
               }
             },
             signal,

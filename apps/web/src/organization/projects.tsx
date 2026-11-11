@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show } from "solid-js"
+import { createSignal, For, onMount, Show, Switch, Match } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -10,6 +10,9 @@ import { useSpace } from "@/context/space"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { WorkspaceError } from "./workspace-error"
 import { organizationWorkspaceMessages as messages } from "./workspace-messages"
+import { OrganizationKnowledge } from "./knowledge"
+import { OrganizationArtifacts } from "./artifacts"
+import { OrganizationProjectMembers } from "./project-members"
 
 export function OrganizationProjects() {
   const space = useSpace()
@@ -19,6 +22,7 @@ export function OrganizationProjects() {
   const view = space.current()!
   const route = space.route()
   const projectID = route?.kind === "organization" ? route.projectID : undefined
+  const projectView = route?.kind === "organization" ? route.view : undefined
   const [state, setState] = createStore<{ projects: OrgProjectView[]; project?: OrgProjectView }>({ projects: [] })
   const [cursor, setCursor] = createSignal<string>()
   const [loading, setLoading] = createSignal(false)
@@ -131,7 +135,7 @@ export function OrganizationProjects() {
         value={description()}
         onChange={setDescription}
         multiline
-        maxLength={10_000}
+        maxLength={4000}
       />
       <div class="organization-actions">
         <Button variant="primary" size="large" type="submit" disabled={busy() || !name().trim()}>
@@ -256,6 +260,52 @@ export function OrganizationProjects() {
               <Show when={editing()} fallback={<p class="organization-project-description">{project().description}</p>}>
                 {form()}
               </Show>
+              <nav
+                class="organization-workspace-nav"
+                aria-label={_({ id: "organization.workspace.projectNavigation", message: "Project navigation" })}
+              >
+                <Button variant="ghost" data-selected={!projectView} onClick={() => space.project(projectID)}>
+                  {_({ id: "organization.workspace.overview", message: "Overview" })}
+                </Button>
+                <Button
+                  variant="ghost"
+                  data-selected={projectView === "knowledge"}
+                  onClick={() => space.page("knowledge", projectID)}
+                >
+                  {_(messages.knowledge)}
+                </Button>
+                <Button
+                  variant="ghost"
+                  data-selected={projectView === "artifacts"}
+                  onClick={() => space.page("artifacts", projectID)}
+                >
+                  {_(messages.artifacts)}
+                </Button>
+                <Show when={project().permissions.manage}>
+                  <Button
+                    variant="ghost"
+                    data-selected={projectView === "members"}
+                    onClick={() => space.page("members", projectID)}
+                  >
+                    {_(messages.members)}
+                  </Button>
+                </Show>
+              </nav>
+              <Switch>
+                <Match when={projectView === "knowledge"}>
+                  <OrganizationKnowledge
+                    projectID={projectID}
+                    canManage={project().permissions.manage}
+                    canExecute={project().permissions.execute}
+                  />
+                </Match>
+                <Match when={projectView === "artifacts"}>
+                  <OrganizationArtifacts projectID={projectID!} />
+                </Match>
+                <Match when={projectView === "members" && project().permissions.manage}>
+                  <OrganizationProjectMembers projectID={projectID!} changed={() => void load()} />
+                </Match>
+              </Switch>
             </>
           )}
         </Show>
