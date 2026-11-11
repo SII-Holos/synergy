@@ -34,6 +34,6 @@ Harness owns manual paused Session migration through `session/transfer` and the 
 
 Trusted hosts compose continuation authorization and receipts through `SessionResume.request()` admission hooks, with a separate actor and cancellation signal. `RolloutLifecycle.cancel()` composes cancellation receipts before physical drainage. `RolloutQuery.activity()` separately observes bounded recorded descendants and process evidence without execution recovery. See [Session controls](../../docs/architecture/session-and-messages.md#one-active-loop) for transaction ownership, control serialization and retained identity.
 
-Native binary streams share the canonical Storage prepared-token and artifact-pack pin lifetime.
+The public `session/transfer` entry also exposes `SessionTransferEpochs` and `SessionTransferStream` for trusted portability owners. Epoch transitions retain prior surrender/retirement evidence; stream verification never grants execution authority. Native binary streams share the Storage prepared-token and pack-pin lifetime. See [Session transfer](../../docs/architecture/session-transfer.md).
 
 Object artifact deployments also use the canonical binary stream APIs. New writes use checksum-pinned format 2 manifest pages; historical format 1 artifacts remain readable. Upload intents protect each chunk/page before external writes, while SQL-paged validation and garbage collection preserve backup pins and shared content. See [Agent storage](../../docs/architecture/agent-storage.md) and `test/storage/object-artifacts.test.ts`.

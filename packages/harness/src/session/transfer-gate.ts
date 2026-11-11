@@ -3,6 +3,7 @@ import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Storage } from "../storage/storage"
 import { StorageMutationGuard } from "../storage/mutation-guard"
+import { SessionTransferEpochs } from "./transfer-epochs"
 
 export namespace SessionTransferGate {
   export const Blocked = NamedError.create(
@@ -27,7 +28,7 @@ export namespace SessionTransferGate {
 
   export async function isFrozen(sessionID: string) {
     const [gate] = await Storage.readMany([key(sessionID)])
-    return !!gate
+    return !!gate || (await SessionTransferEpochs.isFrozen(sessionID))
   }
 
   export async function assert(sessionID: string) {
@@ -38,9 +39,16 @@ export namespace SessionTransferGate {
         migrationID: gate.migrationID,
         message: "Session transfer owns this Session; resume it on the destination or cancel before cutover",
       })
+    if (await SessionTransferEpochs.isFrozen(sessionID))
+      throw new Blocked({
+        sessionID,
+        migrationID: "binding-epoch",
+        message: "Session transfer freezes this execution binding",
+      })
   }
 
   export function register() {
+    SessionTransferEpochs.register()
     StorageMutationGuard.register("session-transfer", async (tx, keys, tree) => {
       const owners = [
         ...new Set(
