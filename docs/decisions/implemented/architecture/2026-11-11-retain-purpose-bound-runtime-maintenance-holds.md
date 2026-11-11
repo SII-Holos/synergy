@@ -16,6 +16,8 @@ Draining admits native tail mutations while new admission remains held. Their ta
 
 Base Harness registration always installs the retained-operation mutation guard, even without a selected maintenance cohort. Native execution gates reject held operations; automatic and forced Session driving report no admission. New user Inbox writes recheck inside their canonical transaction while exact accepted-input retries remain readable. Continue checks before drainage and again in the recovery transaction, so a hold established during its wait cannot remove the original pause or reopen the root. Internal completion mail remains a native tail write during drainage.
 
+The registered Session owner closes native scheduling admission after domain-specific suspension owners. It signals active leases with the existing paused-turn abort, then waits for their actual completion and lease release, including tail saves. It neither cancels the accepted root nor invents a pause latch for unattended Sessions. Inspection rejects remaining native leases. Release reopens scheduling only while the Runtime remains ready and never calls Continue or replays queued input. Process, Workspace and Environment drainage require their own native owners.
+
 Begin uses a stable native request/receipt identity. A committed operation with a lost acknowledgement remains held and reconciles the original operation on exact retry. Duplicate completed requests do not create a new hold. A cold Runtime cannot reuse the prior cohort's opaque lease or treat a repeated request as physical-writer reconciliation. Restore-purpose holds cannot use the source-backup release path.
 
 ## Alternatives considered
@@ -28,7 +30,7 @@ Begin uses a stable native request/receipt identity. A committed operation with 
 
 ## Consequences
 
-The operation and native admission guards do not themselves suspend an Agent, revoke a physical writer or implement whole deployment recovery. Production availability also requires actual Session/Cortex/tool/process/Workspace/Environment owners, other physical admission paths, a hosted reader/cohort fence, controlled capture and native restore publication integration. A registered callback is not evidence that those production adapters are implemented. Unknown/cold operations remain held until their real owners reconcile them.
+The operation, admission guards and native Session owner do not themselves revoke every physical writer or implement whole deployment recovery. Production availability also requires actual Cortex/tool/process/Workspace/Environment owners, other physical admission paths, a hosted reader/cohort fence, controlled capture and native restore publication integration. A registered callback is not evidence that those production adapters are implemented. Unknown/cold operations remain held until their real owners reconcile them.
 
 The primitive has no ordinary organization account route or administrator export permission. Runtime and resource authorization remain with their canonical owners; maintenance release cannot release a transfer hold or manufacture a current driver.
 
@@ -39,6 +41,8 @@ Harness `test/storage/runtime-maintenance.test.ts` uses temporary SQLite and a r
 `test/storage/runtime-maintenance-restore.test.ts` captures a frozen source namespace and restores it into independent empty SQLite through the existing trusted portable importer. Finalization failure rolls back ordinary records and the retained operation together; retry restores protected records and binary content while ordinary writes and admission remain denied. The prior source lease cannot release the restored hold. This uses the native importer without disabling mutation guards or adding a new account-visible restoration privilege.
 
 `test/session/runtime-maintenance.test.ts` exercises real Scope, Session, Inbox and continuation state. Held operations deny machine/forced execution and new input without losing accepted input. An explicit native-idle barrier admits maintenance after Continue starts; the publishing transaction retains the original paused root and no resume receipt. A separate Runtime registers only base Harness and refuses ordinary writes through the retained frozen operation. Neighboring Inbox, pause and recovery suites cover behavior when no maintenance operation is held.
+
+`test/session/maintenance-owner.test.ts` runs a real native lease in an unattended Session with a materialized root. A paused-turn signal reaches the running lease; a tail-save barrier keeps maintenance draining until canonical storage commits and the lease releases. Freeze retains the same user root and no unattended pause latch. Releasing maintenance admits no new callback or deferred wake.
 
 ## Related
 
