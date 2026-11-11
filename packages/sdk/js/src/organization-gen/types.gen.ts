@@ -4210,6 +4210,7 @@ export type OrgSessionSyncMessagesData = {
     sessionID: string
   }
   query?: {
+    latest?: boolean | "true" | "false"
     sourceSessionID?: string
     limit?: number
     cursor?: string
@@ -4263,6 +4264,7 @@ export type OrgSessionSyncPartsData = {
     messageID: string
   }
   query?: {
+    latest?: boolean | "true" | "false"
     sourceSessionID?: string
     limit?: number
     cursor?: string

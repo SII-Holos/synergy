@@ -24,6 +24,22 @@ import { registerSessionSchema } from "../src/session-schema"
 import { OrganizationIntakePath as Keys } from "../src/storage/path"
 import { OrganizationRuntimeError } from "../src/error"
 
+test("handoff barriers require every authorized command slot to be durably reconciled", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const native = await session()
+    const receiver = service.receiver()
+    await receiver.input(await service.input(native.id))
+    expect(await receiver.barrier(native.id, 1, 1)).toBe(1)
+    await expect(receiver.barrier(native.id, 1, 2)).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    const second = await service.input(native.id, { commandSeq: 2, requestID: "barrier-skip", attemptID: "barrier-skip", admissionID: "barrier-skip" })
+    await receiver.skip(await service.skip(second.authorization.permit))
+    expect(await receiver.barrier(native.id, 1, 2)).toBe(2)
+    await expect(receiver.barrier(native.id, 2, 2)).rejects.toMatchObject({ data: { code: "STALE_BINDING" } })
+  })
+})
+
 const binding: Sessions.Binding = {
   schemaVersion: 1,
   orgID: "org-intake",

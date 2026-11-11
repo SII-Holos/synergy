@@ -7,7 +7,7 @@ import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-own
 import { initializeSigningIdentity } from "./signing"
 import { executionMigration } from "./execution-migration"
 import { executionRetentionMigration } from "./execution-retention-migration"
-import { sharedProjectionMigration, sharedWindowMigration } from "./shared-projection"
+import { sharedProjectionMigration, sharedWindowMigration, sharedWindowHistoryMigration } from "./shared-projection"
 import { publicationMigration } from "./publications"
 import { inviteCatalogMigration } from "./auth/invite-migration"
 
@@ -16,6 +16,7 @@ const migrations: Migration[] = [
   executionRetentionMigration,
   sharedProjectionMigration,
   sharedWindowMigration,
+  sharedWindowHistoryMigration,
   publicationMigration,
   inviteCatalogMigration,
   {

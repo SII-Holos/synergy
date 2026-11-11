@@ -675,7 +675,7 @@ test("personal and two organization Runtimes keep configuration, instructions, S
         expect(host.env[key]).toBeUndefined()
       expect(JSON.stringify(host.env)).not.toContain("pkcs8")
       expect((await HomeOwnership.assert({ required: true }))?.owner).toBe("organization-runtime")
-      expect(EnvironmentProviders.list()).toEqual([])
+      expect(EnvironmentProviders.list()).toEqual([{ id: "native", ownership: "borrowed" }])
       const scope = await Scope.registerProject({
         type: "project",
         id: `${member.identity.orgID}:project`,

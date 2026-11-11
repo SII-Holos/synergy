@@ -18,6 +18,7 @@ import { createCommandIntake } from "./command-intake"
 import { attachMemberExecution } from "./execution-source"
 import { startExecutionReleaseObserver } from "./release-observer"
 import { startMemberSyncExporter } from "./sync-exporter"
+import { OrganizationLocalProjects } from "./local-project"
 
 export type MemberRuntimeOptions = Pick<
   AgentRuntimeOptions,
@@ -43,7 +44,9 @@ export async function openMemberRuntime(input: MemberRuntimeOptions) {
   return openOrganizationRuntime({ ...input, identity: MemberIdentity.parse(input.identity) })
 }
 
-export async function openHostedRuntime(input: Omit<MemberRuntimeOptions, "identity" | "desktop"> & { identity: HostedIdentity }) {
+export async function openHostedRuntime(
+  input: Omit<MemberRuntimeOptions, "identity" | "desktop"> & { identity: HostedIdentity },
+) {
   return openOrganizationRuntime({ ...input, identity: HostedIdentity.parse(input.identity) })
 }
 
@@ -60,13 +63,16 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
   if (!registration || registration.state !== "active")
     throw new MemberHomeError("Member Runtime must be enrolled before startup")
   const components = [
-    localRuntime({ workers: false, environment: false }),
+    localRuntime({ workers: false, environment: "accountID" in member.identity ? "native" : false }),
     ...(listener.data ? [(await import("@ericsanchezok/synergy-server/component")).server()] : []),
     ...(desktop.data ? [(await import("@ericsanchezok/synergy-browser-runtime/component")).browser()] : []),
     {
       ...organizationRuntime(),
       workers: { agent: new URL("./worker.ts", import.meta.url), policy: new URL("./worker.ts", import.meta.url) },
-      register: () => registerMemberSources(member.identity),
+      register() {
+        registerMemberSources(member.identity)
+        OrganizationLocalProjects.register(member.identity)
+      },
       services() {
         let bridge: ReturnType<typeof startMemberBridge> | undefined
         return {
@@ -88,19 +94,21 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                     signal,
                   })
                   attachMemberExecution({ connection, signal, resources, intake, origin: member.origin, ca: input.ca })
-                  startExecutionReleaseObserver({ connection, intake, resources, signal })
+                  const closeReleaseObserver = startExecutionReleaseObserver({ connection, intake, resources, signal })
                   return {
                     create: context.bind(intake.create),
                     control: context.bind(intake.control),
                     input: context.bind(intake.input),
                     query: context.bind(intake.query),
                     skip: context.bind(intake.skip),
+                    close: context.bind(closeReleaseObserver),
                   }
                 }),
                 sync: true,
                 onConnected: context.bind((connection, signal) => {
                   const exporter = startMemberSyncExporter({ identity: member.identity, connection, signal })
                   void exporter.flush()
+                  return () => exporter.close()
                 }),
               })
               void bridge.closed.then((result) => {

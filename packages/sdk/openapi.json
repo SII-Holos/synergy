@@ -3461,6 +3461,137 @@
         ]
       }
     },
+    "/organization-local-project/{projectID}": {
+      "get": {
+        "operationId": "orgLocalProject.get",
+        "summary": "Read this member machine's project directory binding",
+        "responses": {
+          "200": {
+            "description": "Safe local Workspace summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgLocalProjectSummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Member Runtime required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Binding unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.orgLocalProject.get({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "orgLocalProject.bind",
+        "summary": "Bind a native directory selected on this member machine",
+        "responses": {
+          "200": {
+            "description": "Safe committed local Workspace summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgLocalProjectSummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Member Runtime required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Binding or request changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Directory unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgLocalProjectBind"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.orgLocalProject.bind({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/push/vapid-key": {
       "get": {
         "operationId": "push.getVapidKey",
@@ -49909,6 +50040,140 @@
         },
         "required": ["id", "status", "title", "prompt", "origin", "createdBy", "time"]
       },
+      "OrgLocalProjectSummary": {
+        "type": "object",
+        "properties": {
+          "projectID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "binding": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "workspaceID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "generation": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["label", "workspaceID", "generation"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["projectID", "revision", "binding"],
+        "additionalProperties": false
+      },
+      "OrgError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_REQUEST",
+              "AUTHENTICATION_REQUIRED",
+              "PERMISSION_DENIED",
+              "NOT_FOUND",
+              "RUNTIME_OFFLINE",
+              "COMMAND_OUTCOME_UNKNOWN",
+              "REVISION_CONFLICT",
+              "STALE_BINDING",
+              "STALE_CONNECTION",
+              "SHARE_REVOKED",
+              "HANDOFF_BLOCKED",
+              "RESOURCE_UNAVAILABLE",
+              "BLOB_INCOMPLETE",
+              "PROTOCOL_MISMATCH",
+              "SERVICE_UNAVAILABLE",
+              "ALREADY_INITIALIZED",
+              "LAST_OWNER",
+              "TOKEN_CONSUMED",
+              "LOGIN_NAME_TAKEN"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["not_dispatched", "rejected", "unknown"]
+          },
+          "currentRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "currentConnectionEpoch": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "missingRequirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "retryAfter": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": ["code", "message", "retryable", "outcome"],
+        "additionalProperties": false
+      },
+      "OrgLocalProjectBind": {
+        "type": "object",
+        "properties": {
+          "requestID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "expectedRevision": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "directory": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32768
+          }
+        },
+        "required": ["requestID", "expectedRevision", "directory"],
+        "additionalProperties": false
+      },
       "PushVapidKey": {
         "type": "object",
         "properties": {
@@ -51183,6 +51448,43 @@
           "taskID": {
             "type": "string"
           },
+          "rootID": {
+            "type": "string"
+          },
+          "repairTurns": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "pendingInput": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "initial"
+                  }
+                },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "repair"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "text"],
+                "additionalProperties": false
+              }
+            ]
+          },
           "parentSessionID": {
             "type": "string"
           },
@@ -51415,6 +51717,58 @@
               "cacheWriteTokens",
               "cost"
             ]
+          },
+          "transfer": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "handoffID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rootSessionID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "frozenAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "priorStatus": {
+                "type": "string",
+                "enum": ["queued", "running"]
+              },
+              "resumeIntentID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rootID": {
+                "type": "string"
+              },
+              "admitted": {
+                "type": "boolean"
+              },
+              "maxOutputTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxCost": {
+                "type": "number",
+                "minimum": 0
+              },
+              "deadlineAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["version", "handoffID", "rootSessionID", "frozenAt", "priorStatus", "admitted"],
+            "additionalProperties": false
           }
         },
         "required": ["taskID", "parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]

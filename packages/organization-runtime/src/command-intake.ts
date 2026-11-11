@@ -23,6 +23,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { OrganizationRuntimeError } from "./error"
 import { OrganizationIntakePath as Keys } from "./storage/path"
+import { OrganizationLocalProjects } from "./local-project"
 
 const RequestIdentity = z.strictObject({
   schemaVersion: z.literal(1),
@@ -54,6 +55,9 @@ const Slot = z.strictObject({ schemaVersion: z.literal(1), attemptID: Identity.I
 const Counter = z.strictObject({ schemaVersion: z.literal(1), intakeSeq: Identity.Revision })
 const Lookup = z.strictObject({ subjectID: Identity.ID, requestID: Identity.ID })
 const ControlState = z.strictObject({ schemaVersion: z.literal(1), controlVersion: Command.ControlVersion })
+export async function readCommandControlVersion(orgID: string, sessionID: string) {
+  return (await read(ControlState, Keys.control(orgID, sessionID)))?.controlVersion ?? 0
+}
 const Release = z.strictObject({
   schemaVersion: z.literal(1),
   orgID: Identity.ID,
@@ -313,7 +317,7 @@ export function createCommandIntake(options: {
     return (await digest()) === permit.payloadHash
   }
   async function controlVersion(permit: Command.Permit) {
-    return (await read(ControlState, Keys.control(permit.orgID, permit.sessionID)))?.controlVersion ?? 0
+    return readCommandControlVersion(permit.orgID, permit.sessionID)
   }
   async function advanceControl(permit: Command.Permit) {
     const next = Command.ControlVersion.parse((await controlVersion(permit)) + 1)
@@ -360,7 +364,8 @@ export function createCommandIntake(options: {
     const bindingReason = await binding(permit)
     let reason: Command.Rejection | undefined
     if (!current.matches) reason = "REQUEST_CONFLICT"
-    else if (permit.operation === "create" && accountID !== undefined && permit.actor.subjectID !== accountID) reason = "REQUEST_CONFLICT"
+    else if (permit.operation === "create" && accountID !== undefined && permit.actor.subjectID !== accountID)
+      reason = "REQUEST_CONFLICT"
     else if (!payloadMatches) reason = "PAYLOAD_MISMATCH"
     else if (permit.connectionEpoch !== connectionEpoch) reason = "STALE_CONNECTION"
     else if (expired(permit)) reason = "EXPIRED_PERMIT"
@@ -435,9 +440,22 @@ export function createCommandIntake(options: {
     authorization: Command.SignedPermit,
     digest: () => Promise<string>,
     effect: () => Promise<Command.Accepted["effect"]>,
+    prepare?: () => Promise<void>,
   ): Promise<Command.Result> {
     const payloadMatches = await verify(authorization, digest)
     const { permit } = authorization
+    if (prepare) {
+      const retained = await Storage.transaction(
+        async () => {
+          const checked = await inspect(permit, payloadMatches)
+          if (checked.current.attempt || checked.reason || checked.current.request?.accepted)
+            return settle(permit, checked)
+        },
+        { commitGuard: assertActive },
+      )
+      if (retained) return retained
+      await prepare()
+    }
     const commit = () => {
       let accepting = false
       return Storage.transaction(
@@ -792,6 +810,7 @@ export function createCommandIntake(options: {
     async create(value: Command.CreateDelivery): Promise<Command.CreatedResult> {
       const delivery = parse(Command.CreateDelivery, value)
       const { permit } = delivery.authorization
+      let prepared: OrganizationLocalProjects.Creation
       return Command.CreatedResult.parse(
         await receive(
           delivery.authorization,
@@ -804,16 +823,18 @@ export function createCommandIntake(options: {
               local: null,
               time: { created: now, updated: now },
             })
+            await OrganizationLocalProjects.assertCreation(scope, prepared)
             const created = await ScopeContext.provide({
               scope,
-              workspace: null,
+              workspace: prepared.workspace,
               fn: () =>
                 Session.create({
                   id: permit.sessionID,
                   scope,
                   title: delivery.creation.title,
-                  workspaceID: null,
-                  environmentID: null,
+                  workspaceID: prepared.workspaceID,
+                  environmentID: prepared.environmentID,
+                  environmentSelection: prepared.environmentSelection,
                   organization: {
                     schemaVersion: 1,
                     orgID: permit.orgID,
@@ -825,6 +846,9 @@ export function createCommandIntake(options: {
                 }),
             })
             return { kind: "session", sessionID: created.id }
+          },
+          async () => {
+            prepared = await OrganizationLocalProjects.prepareCreation(permit.projectID)
           },
         ),
       )
@@ -872,5 +896,34 @@ export function createCommandIntake(options: {
     },
     releaseEntries,
     markRelease,
+    async barrier(sessionID: string, bindingEpoch: number, commandSeq: number) {
+      sessionID = Identity.ID.parse(sessionID)
+      bindingEpoch = OrganizationProtocol.Epoch.parse(bindingEpoch)
+      commandSeq = Identity.Revision.parse(commandSeq)
+      return Storage.snapshot(async () => {
+        const info = await Session.get(sessionID)
+        const binding = info.organization
+        if (
+          !binding ||
+          binding.orgID !== authority.orgID ||
+          binding.driverRuntimeID !== runtimeID ||
+          binding.bindingEpoch !== bindingEpoch
+        )
+          throw failure("STALE_BINDING", "Handoff barrier belongs to another execution binding")
+        const state = await read(State, Keys.state(authority.orgID, sessionID))
+        if (
+          state &&
+          (state.orgID !== authority.orgID ||
+            state.sessionID !== sessionID ||
+            state.projectID !== binding.projectID ||
+            state.runtimeID !== runtimeID ||
+            state.bindingEpoch !== bindingEpoch)
+        )
+          throw failure("STALE_BINDING", "Handoff command checkpoint belongs to another execution binding")
+        if ((state?.commandSeq ?? 0) !== commandSeq)
+          throw failure("HANDOFF_BLOCKED", "Handoff must reconcile every authorized command slot before freezing")
+        return commandSeq
+      })
+    },
   }
 }

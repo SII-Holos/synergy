@@ -214,8 +214,14 @@ const WindowPosition = z.strictObject({
 })
 type WindowBinding = Omit<z.infer<typeof WindowPosition>, "position">
 
-function checkWindowCursor(cursor: z.infer<typeof WindowPosition> | undefined, binding: WindowBinding) {
-  if (cursor && !equal({ ...cursor, position: undefined }, { ...binding, position: undefined }))
+function checkWindowCursor(cursor: z.infer<typeof WindowPosition> | undefined, binding: WindowBinding, latest = false) {
+  if (
+    cursor &&
+    !equal(
+      { ...cursor, ...(latest ? { watermark: binding.watermark } : {}), position: undefined },
+      { ...binding, position: undefined },
+    )
+  )
     fail("REVISION_CONFLICT", "Transcript cursor belongs to another window or sharing generation")
 }
 
@@ -223,13 +229,29 @@ function encodeWindowCursor(key: string[], prefix: string[], binding: WindowBind
   return Buffer.from(JSON.stringify({ ...binding, position: key.slice(prefix.length) })).toString("base64url")
 }
 
-async function indexedEvents(sessionID: string, generation: number, rows: Array<{ key: string[]; value: unknown }>) {
-  const keys = rows.map((row) => [
-    ...Projection.root(sessionID, generation),
-    z.strictObject({ objectID: Protocol.Digest }).parse(row.value).objectID,
-  ])
-  const values = await Storage.readMany(keys)
-  return values.map((value, index) => Record.parse(Record.SharedEvent, keys[index]!, value).event)
+async function indexedEvents(
+  sessionID: string,
+  generation: number,
+  rows: Array<{ key: string[]; value: unknown }>,
+  watermark: number,
+) {
+  const values = await Promise.all(
+    rows.map((row) =>
+      Projection.at(
+        sessionID,
+        generation,
+        z.strictObject({ objectID: Protocol.Digest }).parse(row.value).objectID,
+        watermark,
+      ),
+    ),
+  )
+  return values.flatMap((value, index) =>
+    value &&
+    !((value.event.type === "message" || value.event.type === "part") && value.event.removed) &&
+    Projection.matchesIndex(sessionID, generation, value.event, rows[index]!.key)
+      ? [value.event]
+      : [],
+  )
 }
 
 async function view(session: Record.SessionDirectory): Promise<Sync.Share> {
@@ -566,7 +588,7 @@ export namespace OrganizationSharing {
       credentials,
       sessionID,
       query.sourceSessionID,
-      query.watermark ?? cursor?.watermark,
+      query.latest ? undefined : (query.watermark ?? cursor?.watermark),
       async ({ session, sourceSessionID, watermark }) => {
         const binding: WindowBinding = {
           sessionID,
@@ -575,7 +597,7 @@ export namespace OrganizationSharing {
           watermark,
           kind: "messages",
         }
-        checkWindowCursor(cursor, binding)
+        checkWindowCursor(cursor, binding, query.latest)
         const prefix = Projection.messages(sessionID, session.shareGeneration, sourceSessionID)
         const rows = await Storage.query({
           prefix,
@@ -584,7 +606,7 @@ export namespace OrganizationSharing {
           limit: query.limit + 1,
         })
         const selected = rows.slice(0, query.limit)
-        const items = (await indexedEvents(sessionID, session.shareGeneration, selected))
+        const items = (await indexedEvents(sessionID, session.shareGeneration, selected, watermark))
           .map((event) => Sync.MessageEvent.parse(event))
           .filter((event) => event.sequence <= watermark)
           .reverse()
@@ -608,7 +630,7 @@ export namespace OrganizationSharing {
       credentials,
       sessionID,
       query.sourceSessionID,
-      query.watermark ?? cursor?.watermark,
+      query.latest ? undefined : (query.watermark ?? cursor?.watermark),
       async ({ session, sourceSessionID, watermark }) => {
         const binding: WindowBinding = {
           sessionID,
@@ -618,8 +640,14 @@ export namespace OrganizationSharing {
           kind: "parts",
           messageID: query.messageID,
         }
-        checkWindowCursor(cursor, binding)
-        const message = await Projection.message(sessionID, session.shareGeneration, sourceSessionID, query.messageID)
+        checkWindowCursor(cursor, binding, query.latest)
+        const message = await Projection.message(
+          sessionID,
+          session.shareGeneration,
+          sourceSessionID,
+          query.messageID,
+          watermark,
+        )
         if (!message || message.event.type !== "message" || message.event.removed)
           fail("NOT_FOUND", "Shared message not found")
         const prefix = Projection.parts(sessionID, session.shareGeneration, sourceSessionID, query.messageID)
@@ -629,7 +657,7 @@ export namespace OrganizationSharing {
           limit: query.limit + 1,
         })
         const selected = rows.slice(0, query.limit)
-        const items = (await indexedEvents(sessionID, session.shareGeneration, selected))
+        const items = (await indexedEvents(sessionID, session.shareGeneration, selected, watermark))
           .map((event) => Sync.PartEvent.parse(event))
           .filter((event) => event.sequence <= watermark)
         return Sync.PartPage.parse({

@@ -1757,6 +1757,17 @@
           },
           {
             "in": "query",
+            "name": "latest",
+            "schema": {
+              "anyOf": [
+                { "type": "boolean" },
+                { "type": "string", "const": "true" },
+                { "type": "string", "const": "false" }
+              ]
+            }
+          },
+          {
+            "in": "query",
             "name": "sourceSessionID",
             "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
           },
@@ -1824,6 +1835,17 @@
             "name": "messageID",
             "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "latest",
+            "schema": {
+              "anyOf": [
+                { "type": "boolean" },
+                { "type": "string", "const": "true" },
+                { "type": "string", "const": "false" }
+              ]
+            }
           },
           {
             "in": "query",

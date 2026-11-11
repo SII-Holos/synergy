@@ -10,7 +10,7 @@ export function organizationRuntime(): RuntimeComponent {
     apiVersion: 1,
     features: componentFeatures,
     requires: { "local-runtime": version },
-    adapters: { cli: new URL("./cli-adapter.ts", import.meta.url) },
+    adapters: { cli: new URL("./cli-adapter.ts", import.meta.url), http: new URL("./http.ts", import.meta.url) },
     register: registerSessionSchema,
   }
 }

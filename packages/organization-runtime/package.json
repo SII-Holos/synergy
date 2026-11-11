@@ -32,6 +32,8 @@
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-server": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

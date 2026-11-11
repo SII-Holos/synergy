@@ -18,6 +18,9 @@ import type { MemberConnection } from "./connection"
 import { OrganizationSyncPath as Keys } from "./storage/path"
 import { projectSharedPart } from "./transcript"
 import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import type { StatusInfo } from "@ericsanchezok/synergy-harness/session/types"
+import { readCommandControlVersion } from "./command-intake"
 
 const State = z.strictObject({
   schemaVersion: z.literal(1),
@@ -25,6 +28,7 @@ const State = z.strictObject({
   sessionID: Identity.ID,
   nextDraft: Identity.Revision,
   shareGeneration: Identity.Revision.optional(),
+  projectionVersion: z.literal(2).optional(),
   syncState: Sync.SyncState,
   updatedAt: z.number().int().nonnegative(),
 })
@@ -100,7 +104,7 @@ function errorState(error: unknown) {
 
 export interface MemberSyncExporter {
   flush(): Promise<void>
-  close(): void
+  close(): Promise<void>
 }
 
 export function startMemberSyncExporter(input: {
@@ -121,8 +125,10 @@ export function startMemberSyncExporter(input: {
   retryTimer.unref()
   let closed = false
   let running: Promise<void> | undefined
+  let closing: Promise<void> | undefined
 
   function queue(sessionID: string, work: () => Promise<void>) {
+    if (closed || signal.aborted) return
     const previous = tails.get(sessionID) ?? Promise.resolve()
     const next = previous
       .catch(() => {})
@@ -230,6 +236,7 @@ export function startMemberSyncExporter(input: {
           sessionID: rootSessionID,
           nextDraft,
           shareGeneration: current?.shareGeneration,
+          projectionVersion: current?.projectionVersion,
           syncState: current?.syncState === "failed" ? "pending" : (current?.syncState ?? "pending"),
           updatedAt: Date.now(),
         }),
@@ -241,13 +248,32 @@ export function startMemberSyncExporter(input: {
     schedule()
   }
 
-  async function ensureSession(sessionID: string) {
+  async function ensureSession(sessionID: string, observed?: StatusInfo) {
     const bound = await sessionBinding(sessionID)
     if (!bound) return
     if (bound.parentSessionID) await ensureSession(bound.parentSessionID)
     if (bound.rootSessionID !== sessionID) await ensureSession(bound.rootSessionID)
     const { session, binding, rootSessionID, parentSessionID } = bound
     const draftID = digest({ type: "session", sessionID }).slice(0, 32)
+    const previous = await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, draftID))
+    let status = previous?.event.type === "session" ? previous.event.session.status : undefined
+    const controlVersion = await readCommandControlVersion(identity.orgID, rootSessionID)
+    if (!status || observed || status.controlVersion !== controlVersion) {
+      const native = observed ?? (await SessionManager.statusesFor([session]))[sessionID] ?? { type: "idle" }
+      const observation = { observedAt: Date.now(), controlVersion }
+      status = Sync.Status.parse(
+        native.type === "paused"
+          ? { ...observation, type: native.type, since: native.since, reason: native.reason }
+          : native.type === "retry"
+            ? {
+                ...observation,
+                type: native.type,
+                attempt: native.attempt,
+                ...(native.next === undefined ? {} : { next: native.next }),
+              }
+            : { ...observation, type: native.type },
+      )
+    }
     await putDraft(
       rootSessionID,
       draftID,
@@ -262,6 +288,8 @@ export function startMemberSyncExporter(input: {
           bindingEpoch: binding.bindingEpoch,
           createdAt: session.time.created,
           shareGeneration: 0,
+          title: (await SecretMask.apply(session.title)).slice(0, 512),
+          status,
           ...(rootSessionID === sessionID
             ? {}
             : {
@@ -357,15 +385,35 @@ export function startMemberSyncExporter(input: {
     if (!projected.part) return
     for (const artifact of projected.blobs) {
       await rememberBlob(part.sessionID, owner, artifact)
-      await putDraft(bound.rootSessionID, digest({ type: "blob", sessionID: part.sessionID, blobID: artifact.id }).slice(0, 32), Sync.Event.parse({
-        type: "blob", sequence: 1, sessionID: part.sessionID, blobID: artifact.id, kind: "message-content",
-        mediaType: artifact.mediaType, bytes: artifact.bytes, hash: artifact.sha256, state: "available",
-      }))
+      await putDraft(
+        bound.rootSessionID,
+        digest({ type: "blob", sessionID: part.sessionID, blobID: artifact.id }).slice(0, 32),
+        Sync.Event.parse({
+          type: "blob",
+          sequence: 1,
+          sessionID: part.sessionID,
+          blobID: artifact.id,
+          kind: "message-content",
+          mediaType: artifact.mediaType,
+          bytes: artifact.bytes,
+          hash: artifact.sha256,
+          state: "available",
+        }),
+      )
     }
-    await putDraft(bound.rootSessionID, digest({ type: "part", sessionID: part.sessionID, partID: part.id }).slice(0, 32), Sync.Event.parse({
-      type: "part", sequence: 1, sessionID: part.sessionID, messageID: part.messageID, partID: part.id,
-      part: projected.part, integrity: digest(projected.part),
-    }))
+    await putDraft(
+      bound.rootSessionID,
+      digest({ type: "part", sessionID: part.sessionID, partID: part.id }).slice(0, 32),
+      Sync.Event.parse({
+        type: "part",
+        sequence: 1,
+        sessionID: part.sessionID,
+        messageID: part.messageID,
+        partID: part.id,
+        part: projected.part,
+        integrity: digest(projected.part),
+      }),
+    )
   }
 
   function observePart(part: MessageV2.Part) {
@@ -380,7 +428,9 @@ export function startMemberSyncExporter(input: {
           pendingParts.delete(key)
           await projectPart(latest)
         }
-      } finally { partWorkers.delete(key) }
+      } finally {
+        partWorkers.delete(key)
+      }
     })
   }
 
@@ -409,10 +459,26 @@ export function startMemberSyncExporter(input: {
           agent: info.agent,
           rootID: info.rootID,
           model: info.role === "user" ? info.model : { providerID: info.providerID, modelID: info.modelID },
-          ...(info.role === "assistant" ? { mode: info.mode, cost: info.cost, tokens: info.tokens,
-            error: info.error && { code: info.error.name, message: (await SecretMask.apply("message" in info.error.data && typeof info.error.data.message === "string" ? info.error.data.message : info.error.name)).slice(0, 32 * 1024) },
-          } : {}),
-          ...(info.role === "assistant" ? { parentID: info.parentID, completedAt: info.time.completed, finish: info.finish } : {}),
+          ...(info.role === "assistant"
+            ? {
+                mode: info.mode,
+                cost: info.cost,
+                tokens: info.tokens,
+                error: info.error && {
+                  code: info.error.name,
+                  message: (
+                    await SecretMask.apply(
+                      "message" in info.error.data && typeof info.error.data.message === "string"
+                        ? info.error.data.message
+                        : info.error.name,
+                    )
+                  ).slice(0, 32 * 1024),
+                },
+              }
+            : {}),
+          ...(info.role === "assistant"
+            ? { parentID: info.parentID, completedAt: info.time.completed, finish: info.finish }
+            : {}),
           integrity: digest(safe),
         }),
       )
@@ -594,17 +660,19 @@ export function startMemberSyncExporter(input: {
 
   async function prepareGeneration(rootSessionID: string, share: Sync.Share) {
     const current = await read(State, Keys.state(identity.orgID, rootSessionID))
-    if (current?.shareGeneration === share.shareGeneration) return
+    if (current?.shareGeneration === share.shareGeneration && current.projectionVersion === 2) return
     const bound = await sessionBinding(rootSessionID)
     if (!bound) return
     const pending = [rootSessionID]
     const visited = new Set<string>()
     while (pending.length) {
+      if (closed || signal.aborted) return
       signal.throwIfAborted()
       const sessionID = pending.shift()!
-      if (!visited.add(sessionID) || !await sessionBinding(sessionID)) continue
+      if (!visited.add(sessionID) || !(await sessionBinding(sessionID))) continue
       await ensureSession(sessionID)
       for await (const message of MessageV2.stream({ sessionID })) {
+        if (closed || signal.aborted) return
         observeMessage(message.info)
         await tails.get(sessionID)
         for (const part of message.parts) {
@@ -642,7 +710,9 @@ export function startMemberSyncExporter(input: {
             bytes: Buffer.byteLength(JSON.stringify(event)),
           }),
         )
-        await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), { draftID: projection.draftID })
+        await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), {
+          draftID: projection.draftID,
+        })
       })
     }
     await Storage.transaction(async () => {
@@ -656,6 +726,7 @@ export function startMemberSyncExporter(input: {
           nextDraft: latest?.nextDraft ?? 1,
           shareGeneration: share.shareGeneration,
           syncState: "pending",
+          projectionVersion: 2,
           updatedAt: Date.now(),
         }),
       )
@@ -684,12 +755,14 @@ export function startMemberSyncExporter(input: {
     }
     if (stored) await Storage.remove(batchKey)
     const rows = await Storage.query({ prefix: Keys.orderedDrafts(identity.orgID, sessionID), limit: 256 })
-    const candidates = await Promise.all(rows.map(async (row) => {
-      const index = z.strictObject({ draftID: Identity.ID }).parse(row.value)
-      const draft = await read(Draft, Keys.draft(identity.orgID, sessionID, index.draftID))
-      if (!draft) throw new Error("Pending sync order has no matching draft")
-      return draft
-    }))
+    const candidates = await Promise.all(
+      rows.map(async (row) => {
+        const index = z.strictObject({ draftID: Identity.ID }).parse(row.value)
+        const draft = await read(Draft, Keys.draft(identity.orgID, sessionID, index.draftID))
+        if (!draft) throw new Error("Pending sync order has no matching draft")
+        return draft
+      }),
+    )
     const drafts: Draft[] = []
     let bytes = 1024
     for (const candidate of candidates) {
@@ -738,6 +811,7 @@ export function startMemberSyncExporter(input: {
     const share = await connection.syncState(sessionID, signal)
     if (share.shareState !== "shared" || share.syncState === "blocked") return
     await prepareGeneration(sessionID, share)
+    if (closed || signal.aborted) return
     const batch = await prepare(sessionID, share)
     if (!batch) return
     await uploadBatchBlobs(sessionID, share, batch)
@@ -770,6 +844,7 @@ export function startMemberSyncExporter(input: {
           nextDraft: current?.nextDraft ?? 1,
           shareGeneration: current?.shareGeneration,
           syncState: ack.syncState,
+          projectionVersion: current?.projectionVersion,
           updatedAt: Date.now(),
         }),
       )
@@ -786,6 +861,7 @@ export function startMemberSyncExporter(input: {
         try {
           await flushSession(sessionID)
         } catch {
+          if (closed || signal.aborted) return
           const current = await read(State, Keys.state(identity.orgID, sessionID))
           await Storage.write(
             Keys.state(identity.orgID, sessionID),
@@ -796,6 +872,7 @@ export function startMemberSyncExporter(input: {
               nextDraft: current?.nextDraft ?? 1,
               shareGeneration: current?.shareGeneration,
               syncState: "failed",
+              projectionVersion: current?.projectionVersion,
               updatedAt: Date.now(),
             }),
           ).catch(() => {})
@@ -808,6 +885,13 @@ export function startMemberSyncExporter(input: {
   }
 
   unsubs.push(Bus.subscribeGlobal(SessionEvent.Updated, (event) => observeSession(event.properties.info.id)))
+  unsubs.push(
+    Bus.subscribeGlobal(SessionEvent.Status, (event) =>
+      queue(event.properties.sessionID, async () => {
+        await ensureSession(event.properties.sessionID, event.properties.status)
+      }),
+    ),
+  )
   unsubs.push(Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => observeMessage(event.properties.info)))
   unsubs.push(
     Bus.subscribeGlobal(MessageV2.Event.PartUpdated, (event) => {
@@ -818,16 +902,22 @@ export function startMemberSyncExporter(input: {
         for (const attachment of part.state.attachments ?? []) observeAttachment(attachment)
     }),
   )
-  unsubs.push(Bus.subscribeGlobal(MessageV2.Event.PartRemoved, (event) => {
-    const { sessionID, messageID, partID } = event.properties
-    pendingParts.delete(`${sessionID}:${partID}`)
-    queue(sessionID, async () => {
-      const bound = await sessionBinding(sessionID)
-      if (!bound) return
-      const removed = { type: "part", sequence: 1, sessionID, messageID, partID, removed: true }
-      await putDraft(bound.rootSessionID, digest({ type: "part", sessionID, partID }).slice(0, 32), Sync.Event.parse({ ...removed, integrity: digest(removed) }))
-    })
-  }))
+  unsubs.push(
+    Bus.subscribeGlobal(MessageV2.Event.PartRemoved, (event) => {
+      const { sessionID, messageID, partID } = event.properties
+      pendingParts.delete(`${sessionID}:${partID}`)
+      queue(sessionID, async () => {
+        const bound = await sessionBinding(sessionID)
+        if (!bound) return
+        const removed = { type: "part", sequence: 1, sessionID, messageID, partID, removed: true }
+        await putDraft(
+          bound.rootSessionID,
+          digest({ type: "part", sessionID, partID }).slice(0, 32),
+          Sync.Event.parse({ ...removed, integrity: digest(removed) }),
+        )
+      })
+    }),
+  )
   unsubs.push(
     Bus.subscribeGlobal(RolloutEvents.Updated, (event) => {
       if (event.properties.owner.kind !== "session") return
@@ -839,21 +929,37 @@ export function startMemberSyncExporter(input: {
       void observeNotification(event.properties.sessionID, event.properties.items)
     }),
   )
-  signal.addEventListener("abort", close, { once: true })
   const startup = (async () => {
-    for await (const row of Storage.records<unknown>({ prefix: Keys.roots(identity.orgID), limit: 256 }))
+    for await (const row of Storage.records<unknown>({ prefix: Keys.roots(identity.orgID), limit: 256 })) {
+      if (closed || signal.aborted) return
       sessions.add(z.strictObject({ sessionID: Identity.ID }).parse(row.value).sessionID)
+    }
     schedule()
   })()
+  signal.addEventListener("abort", onAbort, { once: true })
+  if (signal.aborted) onAbort()
 
-  function close() {
-    if (closed) return
+  function onAbort() {
+    void close().catch(() => {})
+  }
+
+  function close(): Promise<void> {
+    if (closing) return closing
     closed = true
     clearTimeout(timer)
     clearInterval(retryTimer)
     pendingParts.clear()
     for (const unsubscribe of unsubs) unsubscribe()
-    signal.removeEventListener("abort", close)
+    signal.removeEventListener("abort", onAbort)
+    closing = (async () => {
+      const settled = await Promise.allSettled([startup, ...tails.values(), ...(running ? [running] : [])])
+      partWorkers.clear()
+      tails.clear()
+      sessions.clear()
+      const errors = settled.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+      if (errors.length) throw new AggregateError(errors, "Shared transcript exporter cleanup failed")
+    })()
+    return closing
   }
 
   return {

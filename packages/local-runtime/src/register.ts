@@ -30,7 +30,7 @@ import { registerImageInput } from "./attachment/image-input"
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
 export function registerLocalRuntime(
-  options: { workers?: boolean; environment?: boolean; workspaceCoordinator?: WorkspaceCoordinator } = {},
+  options: { workers?: boolean; environment?: boolean | "native"; workspaceCoordinator?: WorkspaceCoordinator } = {},
 ) {
   const state = registration()
   if (state.complete) return
@@ -54,7 +54,7 @@ export function registerLocalRuntime(
     registerNativeEnvironment({ coordinator })
     EnvironmentProviders.setDefault({ provider: "native", spec: {}, reuse: "scope" })
   }
-  ResourceProfiles.register({ environment: options.environment })
+  ResourceProfiles.register({ environment: options.environment === "native" ? false : options.environment })
   registerSkillDomain()
   registerCommandDomain()
   Command.registerActions()

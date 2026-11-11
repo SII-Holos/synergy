@@ -10,7 +10,7 @@ import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { registerLocalRuntime } from "./register"
 
-export function localRuntime(options: { workers?: boolean; environment?: boolean } = {}): RuntimeComponent {
+export function localRuntime(options: { workers?: boolean; environment?: boolean | "native" } = {}): RuntimeComponent {
   return {
     id: "local-runtime",
     features: componentFeatures,

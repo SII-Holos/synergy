@@ -20,6 +20,7 @@ export interface MemberConnectionClosed {
   error?: OrganizationProtocol.Error
 }
 export interface MemberConnection {
+  readonly signal: AbortSignal
   connected: Connected
   resources: MemberResourceClient
   closed: Promise<MemberConnectionClosed>
@@ -59,9 +60,13 @@ export interface MemberConnectionOptions {
     input(delivery: Command.InputDelivery): Promise<Command.Result>
     query(authorization: Command.SignedPermit): Promise<Command.QueryResult>
     skip(authorization: Command.SignedSkip): Promise<Command.Result>
+    close?(): void | Promise<void>
   }
   sync?: boolean
-  onConnected?: (connection: MemberConnection, signal: AbortSignal) => void | Promise<void>
+  onConnected?: (
+    connection: MemberConnection,
+    signal: AbortSignal,
+  ) => void | (() => void | Promise<void>) | Promise<void | (() => void | Promise<void>)>
 }
 const frameLimit = 64 * 1024
 const syncFrameLimit = 1024 * 1024
@@ -98,7 +103,9 @@ async function attempt(input: {
       deploymentIncarnation: registration.deploymentIncarnation,
       runtimeID: registration.runtimeID,
       runtimeKind: registration.runtimeKind,
-      ...(registration.runtimeKind === "member" ? { accountID: registration.accountID, deviceID: registration.deviceID } : {}),
+      ...(registration.runtimeKind === "member"
+        ? { accountID: registration.accountID, deviceID: registration.deviceID }
+        : {}),
       connectionEpoch: epoch,
       buildVersion: options.buildVersion,
       capabilities: ["bridge", ...(options.commands ? ["commands"] : []), ...(options.sync ? ["sync"] : [])],
@@ -436,10 +443,24 @@ async function attempt(input: {
     }
     respond(reply)
   }
-  async function drain() {
-    await pending
-    await Promise.all(executing.values())
-    await resources?.close()
+  let draining: Promise<void> | undefined
+  function drain() {
+    return (draining ??= (async () => {
+      const errors: unknown[] = []
+      for (const task of [
+        () => pending,
+        () => Promise.all(executing.values()),
+        () => commands?.close?.(),
+        () => resources?.close(),
+      ]) {
+        try {
+          await task()
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      if (errors.length) throw new AggregateError(errors, "Member connection owners could not drain")
+    })())
   }
   function syncRequest<T extends "state" | "batch">(
     kind: T,
@@ -590,6 +611,7 @@ async function attempt(input: {
       await drain()
     }
     return {
+      signal: work.signal,
       connected: handshake,
       resources: resources!.resources,
       closed: closed.promise.then(async (result) => {

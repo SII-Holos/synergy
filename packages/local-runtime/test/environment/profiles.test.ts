@@ -8,6 +8,28 @@ import { DockerProfileSpec } from "../../src/environment/profile-schema"
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+
+test("explicit native composition ignores personal resource profiles and allocates no compute", async () => {
+  const { testRuntime: harnessRuntime } = await import("@ericsanchezok/synergy-harness/test/support/runtime")
+  const { registerLocalRuntime } = await import("../../src/register")
+  const { testWorkspaceCoordinator } = await import("../support/runtime")
+  await using runtime = await harnessRuntime({
+    composition: {
+      register: () => registerLocalRuntime({ environment: "native", workspaceCoordinator: testWorkspaceCoordinator() }),
+    },
+  })
+  await runtime.run(async () => {
+    await Config.updateGlobal({ resources: { defaultEnvironment: null } })
+    expect(EnvironmentProviders.list()).toEqual([{ id: "native", ownership: "borrowed" }])
+    expect(await EnvironmentProviders.resolveDefault()).toEqual({ provider: "native", spec: {}, reuse: "scope" })
+    expect(await Environment.select({ scopeID: "home", ownerID: "member" })).toMatchObject({
+      provider: "native",
+      state: "idle",
+      generation: 0,
+    })
+  })
+})
 
 test("API-only composition retains stored Workspaces and advertises no execution profiles", async () => {
   const { testRuntime: harnessRuntime } = await import("@ericsanchezok/synergy-harness/test/support/runtime")

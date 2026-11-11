@@ -142,7 +142,9 @@ Explicit Observability resource snapshots cancel superseded queries. Periodic sa
 - Discovery-only resolution may use a transient Scope without registering the directory, writing Git identity cache files or emitting Scope events.
 - When both `scopeID` and a directory are supplied, the stable Scope ID owns resolution. No selector means Home; there is no implicit current-directory lookup.
 
-The user therefore chooses the project boundary. Code must not reintroduce implicit upward repository discovery.
+The user therefore chooses the project boundary. Code must not reintroduce implicit upward repository discovery. For an externally assigned project ID, trusted adapters use `Scope.bindLocal` to compare-and-set that existing Scope's explicit local metadata; directory discovery must not replace its identity. Workspace physical ownership remains with WorkspaceBinding. See the [local binding decision](../decisions/implemented/architecture/2026-11-11-bind-local-roots-without-changing-project-identity.md).
+
+Organization member Runtimes expose the local binding through authenticated `orgLocalProject.get/bind`. A stable request receipt and Scope-local digest protect retries and concurrent changes. Public summaries carry only a label, Workspace ID and generation. Signed Session creation validates the native default outside the receipt transaction and rechecks its Scope/catalog revision before binding that Workspace and the explicit native Environment. Existing Sessions retain their stored selections.
 
 ### Project folders and Workspace write authority
 

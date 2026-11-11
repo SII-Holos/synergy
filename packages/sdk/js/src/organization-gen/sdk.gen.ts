@@ -1529,6 +1529,7 @@ export class OrgSessionSync extends HeyApiClient {
   public messages<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
+      latest?: boolean | "true" | "false"
       sourceSessionID?: string
       limit?: number
       cursor?: string
@@ -1542,6 +1543,7 @@ export class OrgSessionSync extends HeyApiClient {
         {
           args: [
             { in: "path", key: "sessionID" },
+            { in: "query", key: "latest" },
             { in: "query", key: "sourceSessionID" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursor" },
@@ -1568,6 +1570,7 @@ export class OrgSessionSync extends HeyApiClient {
     parameters: {
       sessionID: string
       messageID: string
+      latest?: boolean | "true" | "false"
       sourceSessionID?: string
       limit?: number
       cursor?: string
@@ -1582,6 +1585,7 @@ export class OrgSessionSync extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "path", key: "messageID" },
+            { in: "query", key: "latest" },
             { in: "query", key: "sourceSessionID" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursor" },

@@ -19,6 +19,10 @@
 
 ## Index
 
+- [0100](0100-shared-window-current-version-loss.md)
+
+- [0099](0099-member-connection-observer-lifetime.md)
+
 - [0098](0098-member-command-blocked-control-traffic.md)
 
 - [0097](0097-rejected-command-blocked-new-control.md)

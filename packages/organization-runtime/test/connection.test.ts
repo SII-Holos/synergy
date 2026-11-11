@@ -564,6 +564,123 @@ test("the resident bridge stops after replacement or revocation without competin
   }
 })
 
+test("resident reconnect aborts and drains the old connection's subscriptions before opening the next one", async () => {
+  await using f = await enrolled()
+  const connected = Promise.withResolvers<void>()
+  const reconnected = Promise.withResolvers<void>()
+  const heartbeat = Promise.withResolvers<void>()
+  const firstHeartbeat = Promise.withResolvers<void>()
+  const events = new EventTarget()
+  const signals: AbortSignal[] = []
+  const writes: number[] = []
+  const cleaned: number[] = []
+  let disconnectFirst: (() => void) | undefined
+  f.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "heartbeat" && frame.connectionEpoch === 1) {
+      disconnectFirst = () => socket.close(1011, "fixture reconnect")
+      firstHeartbeat.resolve()
+    }
+    if (frame.type === "heartbeat" && frame.connectionEpoch === 2) heartbeat.resolve()
+    return false
+  })
+  await using bridge = startMemberBridge({
+    ...f.options,
+    onConnected(connection, signal) {
+      signals.push(signal)
+      const epoch = connection.connected.connectionEpoch
+      const write = () => {
+        if (!signal.aborted) writes.push(epoch)
+      }
+      events.addEventListener("write", write)
+      if (epoch === 1) connected.resolve()
+      else {
+        expect(cleaned).toEqual([1])
+        reconnected.resolve()
+      }
+      return async () => {
+        events.removeEventListener("write", write)
+        await Promise.resolve()
+        cleaned.push(epoch)
+      }
+    },
+  })
+  await within(connected.promise)
+  await within(firstHeartbeat.promise)
+  if (!disconnectFirst) throw new Error("The first connection never heartbeated")
+  disconnectFirst()
+  await within(reconnected.promise)
+  expect(signals[0]?.aborted).toBe(true)
+  expect(signals[1]?.aborted).toBe(false)
+  events.dispatchEvent(new Event("write"))
+  expect(writes).toEqual([2])
+  await within(heartbeat.promise)
+  await bridge.close()
+  expect(signals.every((signal) => signal.aborted)).toBe(true)
+  expect(cleaned).toEqual([1, 2])
+  events.dispatchEvent(new Event("write"))
+  expect(writes).toEqual([2])
+})
+
+test("resident shutdown awaits asynchronous connection cleanup and treats cleanup failure as terminal", async () => {
+  await using f = await enrolled()
+  const connected = Promise.withResolvers<void>()
+  const cleaning = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  let stopped = false
+  const bridge = startMemberBridge({
+    ...f.options,
+    onConnected(_connection, signal) {
+      expect(signal.aborted).toBe(false)
+      connected.resolve()
+      return async () => {
+        cleaning.resolve()
+        await release.promise
+        stopped = true
+      }
+    },
+  })
+  try {
+    await within(connected.promise)
+    const closing = bridge.close()
+    await within(cleaning.promise)
+    expect(stopped).toBe(false)
+    release.resolve()
+    await within(closing)
+    expect(stopped).toBe(true)
+  } finally {
+    release.resolve()
+    await bridge.close()
+  }
+  const ready = Promise.withResolvers<void>()
+  const failed = startMemberBridge({
+    ...f.options,
+    onConnected() {
+      ready.resolve()
+      return () => {
+        throw new OrganizationRuntimeError({
+          code: "PROTOCOL_MISMATCH",
+          message: "The connection owner could not drain",
+          outcome: "unknown",
+          retryable: false,
+        })
+      }
+    },
+  })
+  try {
+    await within(ready.promise)
+    const closing = failed.close()
+    const rejected = expect(closing).rejects.toBeInstanceOf(OrganizationRuntimeError)
+    expect(await within(failed.closed)).toMatchObject({
+      kind: "rejected",
+      error: { code: "PROTOCOL_MISMATCH", outcome: "unknown" },
+    })
+    await rejected
+  } finally {
+    await failed.close().catch(() => {})
+  }
+})
+
 test("resident retry handles transient service errors while cancellation ends the owned lifecycle", async () => {
   await using f = await enrolled()
   const heartbeat = Promise.withResolvers<number>()

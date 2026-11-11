@@ -40,29 +40,35 @@ export function startExecutionReleaseObserver(input: {
   resources: MemberConnection["resources"]
   signal: AbortSignal
 }) {
+  const controller = new AbortController()
+  const signal = AbortSignal.any([input.signal, controller.signal])
   const pending = new Map<string, Promise<void>>()
+  const scans = new Set<Promise<void>>()
+  const failures: unknown[] = []
+  let closing: Promise<void> | undefined
   let stopped = false
 
   async function settle(entry: Awaited<ReturnType<Intake["releaseEntries"]>>[number]) {
     let delay = 100
     while (!stopped) {
-      input.signal.throwIfAborted()
+      signal.throwIfAborted()
       try {
-        await SessionManager.waitForIdle(entry.sessionID, input.signal)
+        await SessionManager.waitForIdle(entry.sessionID, signal)
         let evidence: Awaited<ReturnType<typeof RolloutQuery.releaseEvidence>>
         {
-          using fence = await Lock.writeWithSignal(`organization-execution:${entry.sessionID}`, input.signal)
-          evidence = await RolloutQuery.releaseEvidence(entry.sessionID, entry.rootID, input.signal)
+          using fence = await Lock.writeWithSignal(`organization-execution:${entry.sessionID}`, signal)
+          evidence = await RolloutQuery.releaseEvidence(entry.sessionID, entry.rootID, signal)
           if (evidence) {
             const lookup = entry.actor
             const description = await input.intake.retentionProof({
               subjectID: lookup.subjectID,
               requestID: lookup.requestID,
             })
-            const grant = await input.resources.retention(description, input.signal)
+            const grant = await input.resources.retention(description, signal)
             if (grant.grantID !== entry.grantID) throw new Error("Execution release grant changed")
             const result = outcome(evidence.status)
             if (grant.state === "closed" || (grant.state === "bound" && grant.retention.state === "released")) {
+              signal.throwIfAborted()
               await input.intake.markRelease(entry)
               return
             }
@@ -75,20 +81,21 @@ export function startExecutionReleaseObserver(input: {
               outcome: result,
               materialized: generation === 0,
             })
-            const receipt = await input.resources.release(proof, input.signal)
+            const receipt = await input.resources.release(proof, signal)
+            signal.throwIfAborted()
             await input.intake.markRelease(entry, receipt)
             return
           }
         }
         if (!evidence) {
-          await sleep(delay, input.signal)
+          await sleep(delay, signal)
           delay = Math.min(delay * 2, 5_000)
           continue
         }
       } catch (error) {
-        input.signal.throwIfAborted()
+        signal.throwIfAborted()
         log.warn("execution release retry scheduled", { sessionID: entry.sessionID, rootID: entry.rootID, error })
-        await sleep(delay, input.signal)
+        await sleep(delay, signal)
         delay = Math.min(delay * 2, 5_000)
       }
     }
@@ -96,21 +103,31 @@ export function startExecutionReleaseObserver(input: {
 
   function enqueue(sessionID?: string, rootID?: string) {
     if (stopped) return
-    void input.intake
+    const scan = input.intake
       .releaseEntries()
       .then((entries) => {
+        if (stopped || signal.aborted) return
         for (const entry of entries) {
           if (sessionID && entry.sessionID !== sessionID) continue
           if (rootID && entry.rootID !== rootID) continue
           const key = `${entry.sessionID}:${entry.rootID}`
           if (pending.has(key)) continue
-          const task = settle(entry).finally(() => pending.delete(key))
+          const task = settle(entry)
+            .catch((error) => {
+              if (!signal.aborted) failures.push(error)
+            })
+            .finally(() => pending.delete(key))
           pending.set(key, task)
         }
       })
       .catch((error) => {
-        if (!input.signal.aborted) log.warn("execution release index scan failed", { error })
+        if (!signal.aborted) {
+          failures.push(error)
+          log.warn("execution release index scan failed", { error })
+        }
       })
+      .finally(() => scans.delete(scan))
+    scans.add(scan)
   }
 
   const unsubscribe = Bus.subscribeGlobal(RolloutEvents.Updated, (event) => {
@@ -119,13 +136,24 @@ export function startExecutionReleaseObserver(input: {
     if (!["completed", "failed", "cancelled"].includes(record.value.status)) return
     enqueue(record.value.owner.sessionID, record.value.id)
   })
-  const stop = () => {
-    if (stopped) return
+  function close() {
+    if (closing) return closing
     stopped = true
     unsubscribe()
-    for (const task of pending.values()) void task.catch(() => {})
+    signal.removeEventListener("abort", onAbort)
+    controller.abort()
+    closing = (async () => {
+      await Promise.all(scans)
+      await Promise.all(pending.values())
+      if (failures.length) throw new AggregateError(failures, "Execution release observer could not drain")
+    })()
+    return closing
   }
-  input.signal.addEventListener("abort", stop, { once: true })
-  enqueue()
-  return stop
+  function onAbort() {
+    void close().catch((error) => log.warn("execution release observer cleanup failed", { error }))
+  }
+  signal.addEventListener("abort", onAbort, { once: true })
+  if (signal.aborted) onAbort()
+  else enqueue()
+  return close
 }

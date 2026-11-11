@@ -70,6 +70,9 @@ const ScopeField = ScopeRuntime.meta({ ref: "SessionScope" })
 
 const CortexDelegationInfoInner = z.object({
   taskID: z.string(),
+  rootID: z.string().optional(),
+  repairTurns: z.number().int().nonnegative().optional(),
+  pendingInput: CortexTypes.PendingInput.optional(),
   parentSessionID: z.string(),
   parentMessageID: z.string(),
   description: z.string(),
@@ -99,12 +102,17 @@ const CortexDelegationInfoInner = z.object({
   owner: CortexTypes.PluginTaskOwner.optional(),
   timeoutMs: z.number().int().positive().optional(),
   usage: CortexTypes.TaskUsage.optional(),
+  transfer: CortexTypes.TransferHold.optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
 export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
 export const CortexDelegationSummary = CortexDelegationInfoInner.omit({
+  rootID: true,
+  repairTurns: true,
+  pendingInput: true,
+  transfer: true,
   prompt: true,
   error: true,
   tools: true,

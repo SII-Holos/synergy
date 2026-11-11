@@ -3135,6 +3135,53 @@ export type AgendaItem = {
   }
 }
 
+export type OrgLocalProjectSummary = {
+  projectID: string
+  revision: string
+  binding: {
+    label: string
+    workspaceID: string
+    generation: number
+  } | null
+}
+
+export type OrgError = {
+  code:
+    | "INVALID_REQUEST"
+    | "AUTHENTICATION_REQUIRED"
+    | "PERMISSION_DENIED"
+    | "NOT_FOUND"
+    | "RUNTIME_OFFLINE"
+    | "COMMAND_OUTCOME_UNKNOWN"
+    | "REVISION_CONFLICT"
+    | "STALE_BINDING"
+    | "STALE_CONNECTION"
+    | "SHARE_REVOKED"
+    | "HANDOFF_BLOCKED"
+    | "RESOURCE_UNAVAILABLE"
+    | "BLOB_INCOMPLETE"
+    | "PROTOCOL_MISMATCH"
+    | "SERVICE_UNAVAILABLE"
+    | "ALREADY_INITIALIZED"
+    | "LAST_OWNER"
+    | "TOKEN_CONSUMED"
+    | "LOGIN_NAME_TAKEN"
+  message: string
+  requestID?: string
+  retryable: boolean
+  outcome: "not_dispatched" | "rejected" | "unknown"
+  currentRevision?: number
+  currentConnectionEpoch?: number
+  missingRequirements?: Array<string>
+  retryAfter?: number
+}
+
+export type OrgLocalProjectBind = {
+  requestID: string
+  expectedRevision: string
+  directory: string
+}
+
 export type PushVapidKey = {
   publicKey: string
 }
@@ -3542,6 +3589,16 @@ export type SessionRollbackAck = {
 
 export type SessionCortexDelegation = {
   taskID: string
+  rootID?: string
+  repairTurns?: number
+  pendingInput?:
+    | {
+        kind: "initial"
+      }
+    | {
+        kind: "repair"
+        text: string
+      }
   parentSessionID: string
   parentMessageID: string
   description: string
@@ -3608,6 +3665,19 @@ export type SessionCortexDelegation = {
     cacheWriteTokens: number
     cost: number
     accounting?: RolloutAccountingSummary
+  }
+  transfer?: {
+    version: 1
+    handoffID: string
+    rootSessionID: string
+    frozenAt: number
+    priorStatus: "queued" | "running"
+    resumeIntentID?: string
+    rootID?: string
+    admitted: boolean
+    maxOutputTokens?: number
+    maxCost?: number
+    deadlineAt?: number
   }
 }
 
@@ -17251,6 +17321,72 @@ export type GlobalAgendaListResponses = {
 }
 
 export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
+
+export type OrgLocalProjectGetData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: never
+  url: "/organization-local-project/{projectID}"
+}
+
+export type OrgLocalProjectGetErrors = {
+  /**
+   * Member Runtime required
+   */
+  403: OrgError
+  /**
+   * Binding unavailable
+   */
+  503: OrgError
+}
+
+export type OrgLocalProjectGetError = OrgLocalProjectGetErrors[keyof OrgLocalProjectGetErrors]
+
+export type OrgLocalProjectGetResponses = {
+  /**
+   * Safe local Workspace summary
+   */
+  200: OrgLocalProjectSummary
+}
+
+export type OrgLocalProjectGetResponse = OrgLocalProjectGetResponses[keyof OrgLocalProjectGetResponses]
+
+export type OrgLocalProjectBindData = {
+  body?: OrgLocalProjectBind
+  path: {
+    projectID: string
+  }
+  query?: never
+  url: "/organization-local-project/{projectID}"
+}
+
+export type OrgLocalProjectBindErrors = {
+  /**
+   * Member Runtime required
+   */
+  403: OrgError
+  /**
+   * Binding or request changed
+   */
+  409: OrgError
+  /**
+   * Directory unavailable
+   */
+  503: OrgError
+}
+
+export type OrgLocalProjectBindError = OrgLocalProjectBindErrors[keyof OrgLocalProjectBindErrors]
+
+export type OrgLocalProjectBindResponses = {
+  /**
+   * Safe committed local Workspace summary
+   */
+  200: OrgLocalProjectSummary
+}
+
+export type OrgLocalProjectBindResponse = OrgLocalProjectBindResponses[keyof OrgLocalProjectBindResponses]
 
 export type PushGetVapidKeyData = {
   body?: never

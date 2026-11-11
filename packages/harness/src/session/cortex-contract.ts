@@ -9,6 +9,23 @@ import { RolloutAccounting } from "./rollout/accounting"
  * Definitions are byte-identical to the former cortex/types.ts owner.
  */
 export namespace SessionCortexContract {
+  export const PendingInput = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("initial") }),
+    z.strictObject({ kind: z.literal("repair"), text: z.string() }),
+  ])
+  export const TransferHold = z.strictObject({
+    version: z.literal(1),
+    handoffID: z.string().min(1),
+    rootSessionID: z.string().min(1),
+    frozenAt: z.number().int().nonnegative(),
+    priorStatus: z.enum(["queued", "running"]),
+    resumeIntentID: z.string().min(1).optional(),
+    rootID: z.string().optional(),
+    admitted: z.boolean(),
+    maxOutputTokens: z.number().int().positive().optional(),
+    maxCost: z.number().nonnegative().optional(),
+    deadlineAt: z.number().int().nonnegative().optional(),
+  })
   export const PluginTaskOwner = z.object({
     pluginId: z.string(),
     pluginGeneration: z.string(),

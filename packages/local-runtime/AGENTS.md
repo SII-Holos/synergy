@@ -40,4 +40,6 @@ Trusted transfers use `workspace-file/service`: imports accept stable operation 
 
 `environment/profiles` owns global profiles and local/S3/OSS factories. Snapshot settings, fail closed, and keep external mounts read-only. Test `test/environment/profiles.test.ts`; `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE` enables Docker integration.
 
+Explicit `environment: "native"` composition selects the native provider/default without installing personal profile resolution. Hosted compositions supply their own providers.
+
 Session transfer directories use `session/transfer-workspace`; verify `test/session/transfer.test.ts`.

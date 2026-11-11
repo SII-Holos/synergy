@@ -47,12 +47,12 @@ export namespace OrganizationSyncProtocol {
     .meta({ ref: "OrgTranscriptContent" })
   export type Content = z.infer<typeof Content>
 
-  export const TranscriptPart = z
-    .discriminatedUnion("type", [
-      z.strictObject({ type: z.literal("text"), content: Content, origin: z.enum(["user", "system"]).optional() }),
+  export function transcriptPartSchema<C extends z.ZodType>(content: C) {
+    return z.discriminatedUnion("type", [
+      z.strictObject({ type: z.literal("text"), content, origin: z.enum(["user", "system"]).optional() }),
       z.strictObject({
         type: z.literal("reasoning"),
-        content: Content,
+        content,
         time: z.strictObject({ start: z.number(), end: z.number().optional() }).optional(),
       }),
       z.strictObject({
@@ -60,9 +60,9 @@ export namespace OrganizationSyncProtocol {
         callID: Identity.ID,
         tool: z.string().min(1).max(256),
         status: z.enum(["pending", "generating", "running", "completed", "error"]),
-        input: Content,
-        output: Content.optional(),
-        error: Content.optional(),
+        input: content,
+        output: content.optional(),
+        error: content.optional(),
         title: z.string().max(1024).optional(),
         startedAt: z.number().nonnegative().optional(),
         completedAt: z.number().nonnegative().optional(),
@@ -83,9 +83,10 @@ export namespace OrganizationSyncProtocol {
         tokens: TokenUsage.optional(),
       }),
       z.strictObject({ type: z.literal("compaction"), auto: z.boolean() }),
-      z.strictObject({ type: z.literal("notice"), kind: z.string().min(1).max(256), content: Content }),
+      z.strictObject({ type: z.literal("notice"), kind: z.string().min(1).max(256), content }),
     ])
-    .meta({ ref: "OrgTranscriptPart" })
+  }
+  export const TranscriptPart = transcriptPartSchema(Content).meta({ ref: "OrgTranscriptPart" })
   export type TranscriptPart = z.infer<typeof TranscriptPart>
 
   export const ShareChange = z
@@ -266,10 +267,13 @@ export namespace OrganizationSyncProtocol {
     .max(2048)
     .regex(/^[a-zA-Z0-9_-]+$/)
   export const MessageQuery = z.strictObject({
+    latest: z
+      .union([z.boolean(), z.literal("true").transform(() => true), z.literal("false").transform(() => false)])
+      .optional(),
     sourceSessionID: Identity.ID.optional(),
     limit: z.coerce.number().int().min(1).max(64).default(32),
     cursor: WindowCursor.optional(),
-    watermark: Identity.Revision.optional(),
+    watermark: z.coerce.number().int().nonnegative().safe().optional(),
   })
   export type MessageQuery = z.input<typeof MessageQuery>
   export const PartQuery = MessageQuery.extend({
