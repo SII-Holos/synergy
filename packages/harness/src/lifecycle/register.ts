@@ -25,6 +25,7 @@ import { registerSessionCortexIndexMigrations } from "../session/cortex-index-mi
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { registerSessionMaintenanceOwner } from "../session/maintenance"
 import { registerEnvironmentMaintenanceOwner } from "../environment/maintenance-owner"
+import { LoopJob } from "../session/loop-job"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -49,6 +50,7 @@ export function registerHarness() {
   WorkspaceOperations.register()
   RuntimeMaintenance.registerProtection()
   registerSessionMaintenanceOwner()
+  LoopJob.registerMaintenanceOwner()
   registerEnvironmentMaintenanceOwner()
   SessionTransferGate.register()
   registerSessionResolver()

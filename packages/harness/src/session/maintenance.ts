@@ -26,6 +26,10 @@ export function registerSessionMaintenanceOwner() {
         : []
     },
     async release(context) {
+      await RuntimeMaintenance.assertReleasing(context.lease)
+    },
+    async released(context) {
+      await RuntimeMaintenance.assertReleased(context.lease)
       context.signal.throwIfAborted()
       if (RuntimeContext.isReady()) SessionManager.openAdmission()
     },

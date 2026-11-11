@@ -83,6 +83,7 @@ export namespace RuntimeMaintenance {
     drain(context: Context): Promise<void>
     inspect(context: Context): Promise<Requirement[]>
     release(context: Context): Promise<void>
+    released?(context: Context): Promise<void>
   }
   interface LeaseIdentity {
     runtime: RuntimeContext.Instance
@@ -255,6 +256,12 @@ export namespace RuntimeMaintenance {
     const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
     if (info.phase !== "releasing" || info.purpose !== "organization-backup")
       throw new Blocked({ message: "Native source release requires its current releasing backup operation" })
+    return info
+  }
+  export async function assertReleased(lease: Lease) {
+    const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
+    if (info.phase !== "released" || info.purpose !== "organization-backup")
+      throw new Blocked({ message: "Native admission requires its confirmed released backup operation" })
     return info
   }
   export async function withFrozen<T>(
@@ -475,7 +482,7 @@ export namespace RuntimeMaintenance {
       : await Lock.write("runtime-maintenance")
     const initial = await Storage.snapshot((tx) => requireCurrent(tx, lease))
     if (initial.phase === "released") {
-      state().pending = false
+      await reopen(context(lease, options.signal))
       return initial
     }
     if (initial.phase === "recovery-held" || lease.purpose === "organization-restore")
@@ -501,7 +508,15 @@ export namespace RuntimeMaintenance {
       await tx.write(operationKey(info.maintenanceID), released)
       return released
     })
-    state().pending = false
+    await reopen(currentContext)
     return released
+  }
+  async function reopen(context: Context) {
+    await assertReleased(context.lease)
+    for (const [, owner] of owners().reverse()) {
+      context.signal.throwIfAborted()
+      await owner.released?.(context)
+    }
+    state().pending = false
   }
 }

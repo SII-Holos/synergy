@@ -285,6 +285,51 @@ test("a committed begin with a lost SQL acknowledgement reconciles the original 
   })
 })
 
+test("native admission reopens only after the original released commit is confirmed, including a lost acknowledgement", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    let releases = 0
+    let reopened = 0
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() { return [] },
+      async release() { releases++ },
+      async released(context) {
+        await RuntimeMaintenance.assertReleased(context.lease)
+        await expect(RuntimeMaintenance.assertReleased({ ...context.lease })).rejects.toThrow()
+        reopened++
+      },
+    })
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    const original = f.store.transaction.bind(f.store)
+    let lost = false
+    using fault = spyOn(f.store, "transaction").mockImplementation(
+      async <T>(body: (tx: StoreTransaction) => Promise<T>, options?: TransactionOptions) => {
+        const result = await original(body, options)
+        const info = RuntimeMaintenance.Info.safeParse(result)
+        if (!lost && info.success && info.data.phase === "released") {
+          lost = true
+          throw new StorageCommitUnknownError("runtime-maintenance-release", new Error("Fixture released acknowledgement lost"))
+        }
+        return result
+      },
+    )
+    await expect(RuntimeMaintenance.release(lease)).rejects.toThrow("did not confirm")
+    expect((await RuntimeMaintenance.status())?.phase).toBe("released")
+    expect(releases).toBe(1)
+    expect(reopened).toBe(0)
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+    await RuntimeMaintenance.release(lease)
+    expect(releases).toBe(1)
+    expect(reopened).toBe(1)
+    await RuntimeMaintenance.assertAdmission()
+  })
+})
+
 test("a pre-cancelled maintenance request leaves ordinary admission and canonical state unchanged", async () => {
   await using f = await fixture()
   await f.run(async () => {
