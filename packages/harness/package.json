@@ -21,6 +21,7 @@
     "./environment/process": "./src/environment/process.ts",
     "./workspace/operations": "./src/workspace/operations.ts",
     "./workspace/tree": "./src/workspace/tree.ts",
+    "./workspace/portable-tree": "./src/workspace/portable-tree.ts",
     "./workspace/errors": "./src/workspace/errors.ts",
     "./workspace/protocol": "./src/workspace/protocol.ts",
     "./workspace/mount": "./src/workspace/mount.ts",
