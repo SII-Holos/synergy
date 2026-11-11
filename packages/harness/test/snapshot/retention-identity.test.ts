@@ -92,7 +92,7 @@ for (const backend of ["native", "stored"] as const)
           ).rejects.toThrow()
           await Session.remove(session.id)
           expect(await SnapshotStore.owns("home", session.id, original)).toBe(false)
-          expect(await Storage.count({ prefix: ["sessions", "home", privateID, "snapshot_content"] })).toBe(0)
+          expect(await Storage.count({ prefix: ["snapshot-v2", "home", "content", privateID] })).toBe(0)
           await expect(
             SnapshotGit.checked(operation.repository, [
               "rev-parse",

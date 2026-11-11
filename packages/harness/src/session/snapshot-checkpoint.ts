@@ -11,6 +11,7 @@ import { SnapshotStore } from "./snapshot-store"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotRecords } from "./snapshot-records"
+import { StoredSnapshotContent as Content } from "./stored-snapshot-content"
 import { SnapshotCaptureAuthority as Authority } from "./snapshot-capture-authority"
 
 export namespace SnapshotCheckpoint {
@@ -171,10 +172,13 @@ export namespace SnapshotCheckpoint {
       const database = new Database(path.join(directory, "index.sqlite"))
       indexes.push({ database, directory })
       database.exec(
-        "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE owners (scope TEXT NOT NULL,id TEXT NOT NULL,backend TEXT NOT NULL,owner TEXT NOT NULL,PRIMARY KEY(scope,id)); CREATE TABLE roots (scope TEXT NOT NULL,id TEXT NOT NULL,root TEXT NOT NULL,PRIMARY KEY(scope,id,root)); CREATE TABLE parts (scope TEXT NOT NULL,id TEXT NOT NULL,root TEXT NOT NULL,PRIMARY KEY(scope,id,root)); CREATE TABLE observed (scope TEXT NOT NULL,id TEXT NOT NULL,root TEXT NOT NULL,PRIMARY KEY(scope,id,root)); CREATE TABLE formats (scope TEXT PRIMARY KEY,external INTEGER NOT NULL)",
+        "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE owners (scope TEXT NOT NULL,id TEXT NOT NULL,backend TEXT NOT NULL,owner TEXT NOT NULL,PRIMARY KEY(scope,id)); CREATE TABLE roots (scope TEXT NOT NULL,id TEXT NOT NULL,root TEXT NOT NULL,canonical INTEGER NOT NULL,PRIMARY KEY(scope,id,root)); CREATE TABLE fences (scope TEXT NOT NULL,id TEXT NOT NULL,root TEXT NOT NULL,PRIMARY KEY(scope,id,root)); CREATE TABLE parts (scope TEXT NOT NULL,id TEXT NOT NULL,root TEXT NOT NULL,PRIMARY KEY(scope,id,root)); CREATE TABLE observed (scope TEXT NOT NULL,id TEXT NOT NULL,root TEXT NOT NULL,PRIMARY KEY(scope,id,root)); CREATE TABLE formats (scope TEXT PRIMARY KEY,external INTEGER NOT NULL)",
       )
       using ownerInsert = database.prepare("INSERT INTO owners VALUES (?,?,?,?)")
-      using rootInsert = database.prepare("INSERT OR IGNORE INTO roots VALUES (?,?,?)")
+      using rootInsert = database.prepare(
+        "INSERT INTO roots VALUES (?,?,?,?) ON CONFLICT(scope,id,root) DO UPDATE SET canonical=MAX(canonical,excluded.canonical)",
+      )
+      using fenceInsert = database.prepare("INSERT INTO fences VALUES (?,?,?)")
       using partInsert = database.prepare("INSERT OR IGNORE INTO parts VALUES (?,?,?)")
       using formatInsert = database.prepare("INSERT INTO formats VALUES (?,?)")
       for await (const entry of StorageCheckpoint.entries({
@@ -186,6 +190,8 @@ export namespace SnapshotCheckpoint {
         assertCurrent()
         if (entry.type !== "record") continue
         const key = entry.key
+        const header = Content.headerIdentity(key)
+        const fence = Content.fenceIdentity(key)
         if (key.length === 3 && key[0] === "snapshot-v2" && key[2] === "repository") {
           const format = SnapshotStore.RepositoryFormat.parse(entry.value)
           formatInsert.run(SnapshotStore.component(key[1]), Number(format.content === "external-v1"))
@@ -194,18 +200,20 @@ export namespace SnapshotCheckpoint {
           SnapshotStore.component(key[3])
           const owner = SnapshotStore.Owner.parse(upgradeImportedRecord(key, entry.value))
           ownerInsert.run(key[1], key[3], owner.backend, JSON.stringify(owner))
-        } else if (
-          key.length === 6 &&
-          key[0] === "sessions" &&
-          key[3] === "snapshot_content" &&
-          key[5] === "manifest"
-        ) {
-          if (!SnapshotStore.OID.test(key[4])) fail("Captured stored Snapshot root is invalid")
-          rootInsert.run(key[1], key[2], key[4])
+        } else if (header) {
+          const manifest = header.legacy ? Content.LegacyManifest.parse(entry.value) : Content.Header.parse(entry.value)
+          if (manifest.root !== header.root) fail("Captured stored Snapshot root is invalid")
+          rootInsert.run(header.scopeID, header.retentionID, header.root, Number(!header.legacy))
+        } else if (fence) {
+          Content.LegacyFence.parse(entry.value)
+          fenceInsert.run(fence.scopeID, fence.retentionID, fence.root ?? "all")
         } else if (key.length === 7 && key[0] === "sessions" && key[3] === "messages" && key[5] === "parts")
           for (const root of SnapshotRecords.partRoots(entry.value)) partInsert.run(key[1], key[2], root)
       }
       assertCurrent()
+      database.exec(
+        "DELETE FROM roots WHERE canonical=0 AND EXISTS(SELECT 1 FROM fences f WHERE f.scope=roots.scope AND f.id=roots.id AND (f.root='all' OR f.root=roots.root))",
+      )
       using ownerRows = database.prepare<{ scope: string; id: string; owner: string }, []>(
         "SELECT scope,id,owner FROM owners ORDER BY scope,id",
       )

@@ -20,6 +20,7 @@ import { registerWorkspaceMigrations } from "../workspace/migration"
 import { WorkspaceMounts } from "../workspace/mount"
 import { EnvironmentExecution } from "../environment/execution"
 import { registerSnapshotOwnershipMigrations } from "../session/snapshot-ownership-migration"
+import { registerStoredSnapshotMigrations } from "../session/stored-snapshot-maintenance"
 import { registerSessionChildIndexMigrations } from "../session/child-index-migration"
 import { registerSessionCortexIndexMigrations } from "../session/cortex-index-migration"
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
@@ -37,6 +38,7 @@ export function registerHarness() {
   registerScopeMigrations()
   registerSessionMigrations()
   registerSnapshotOwnershipMigrations()
+  registerStoredSnapshotMigrations()
   registerSessionChildIndexMigrations()
   registerSessionCortexIndexMigrations()
   registerObservabilityMigrations()

@@ -22,7 +22,14 @@ import { upgradeAccessRecord } from "../migration/import"
 export namespace SnapshotStore {
   export interface Persistence {
     roots?(scopeID: string, retentionID: string, signal?: AbortSignal): AsyncIterable<string>
-    retain(scopeID: string, sessionID: string, root: string, repository: string, signal?: AbortSignal): Promise<void>
+    retain(
+      scopeID: string,
+      retentionID: string,
+      root: string,
+      repository: string,
+      signal?: AbortSignal,
+      ownerSessionID?: string,
+    ): Promise<void>
     restore(
       scopeID: string,
       sessionID: string,
@@ -30,7 +37,7 @@ export namespace SnapshotStore {
       repository: string,
       signal?: AbortSignal,
     ): Promise<Set<string>>
-    release?(scopeID: string, retentionID: string): Promise<void>
+    release?(scopeID: string, retentionID: string, ownerSessionID?: string): Promise<void>
   }
   const state = RuntimeContext.state(() => ({ backend: undefined as Persistence | undefined }))
   export function registerStorage(backend: Persistence) {
@@ -152,8 +159,8 @@ export namespace SnapshotStore {
     return record.retentionID
   }
 
-  export async function releaseContent(scopeID: string, retentionID: string) {
-    await state().backend?.release?.(scopeID, component(retentionID))
+  export async function releaseContent(scopeID: string, retentionID: string, ownerSessionID?: string) {
+    await state().backend?.release?.(scopeID, component(retentionID), ownerSessionID)
   }
 
   export async function* roots(scopeID: string, sessionID: string, signal?: AbortSignal): AsyncGenerator<string> {
@@ -600,7 +607,14 @@ export namespace SnapshotStore {
     if (result.exitCode !== 0)
       log.warn("snapshot retention failed", { exitCode: result.exitCode, stderr: result.stderr })
     if (result.exitCode === 0)
-      await state().backend?.retain(operation.scopeID, retention, hash, operation.repository, signal)
+      await state().backend?.retain(
+        operation.scopeID,
+        retention,
+        hash,
+        operation.repository,
+        signal,
+        operation.sessionID,
+      )
     return result.exitCode === 0
   }
 
@@ -618,7 +632,8 @@ export namespace SnapshotStore {
       () => command(repository(scopeID), ["update-ref", "--stdin"], signal, `${updates.join("\n")}\n`),
       signal,
     )
-    for (const hash of valid) await state().backend?.retain(scopeID, retention, hash, repository(scopeID), signal)
+    for (const hash of valid)
+      await state().backend?.retain(scopeID, retention, hash, repository(scopeID), signal, sessionID)
   }
 
   export function withReferences<T>(scopeID: string, sessionID: string, fn: () => Promise<T>, signal?: AbortSignal) {

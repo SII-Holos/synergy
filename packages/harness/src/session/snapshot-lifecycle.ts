@@ -150,7 +150,7 @@ export namespace SnapshotLifecycle {
       if (job.backend === "legacy" && !(await SnapshotProtection.active(Storage.current().artifactDirectory)))
         await fs.rm(SnapshotStore.legacyRepository(scopeID, sessionID), { recursive: true, force: true })
       await fs.rm(SnapshotStore.cache(scopeID, sessionID), { recursive: true, force: true })
-      await SnapshotStore.releaseContent(scopeID, job.retentionID)
+      await SnapshotStore.releaseContent(scopeID, job.retentionID, sessionID)
       await fs.rm(canonical, { recursive: true, force: true })
       await Storage.collectArtifactGarbage()
       await Storage.remove(StoragePath.snapshotMigration(scopeID, sessionID))

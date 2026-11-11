@@ -293,7 +293,7 @@ test("captured stored Snapshot roots come from the encrypted archive after live 
             },
             protect: () => true,
           })
-          await Storage.removeTree(["sessions", "home", session.id, "snapshot_content"])
+          await Storage.removeTree(["snapshot-v2", "home", "content", session.id])
           expect(await Array.fromAsync(SnapshotStore.roots("home", session.id))).toEqual([])
           const [owner] = await Array.fromAsync(capture.owners(archive))
           expect(capture.describe(owner)).toMatchObject({ sessionID: session.id, owner: { retentionID: session.id } })
