@@ -883,6 +883,8 @@ test("native task navigation uses the captured member reader while input, contro
       true,
     )
     expect(memberChecks).toBe(1)
+    expect(await page.getByRole("button", { name: "Pause", exact: true }).count()).toBe(0)
+    expect(await page.getByRole("button", { name: "Continue", exact: true }).count()).toBe(1)
     for (const variant of [
       { width: 1100, height: 760, scheme: "light" as const },
       { width: 375, height: 667, scheme: "light" as const },
@@ -902,6 +904,11 @@ test("native task navigation uses the captured member reader while input, contro
       expect(input && input.y >= 0 && input.y + input.height <= variant.height).toBe(true)
       const reading = await page.locator(".organization-transcript-viewport").boundingBox()
       expect(reading && reading.height >= 64).toBe(true)
+      if (variant.width <= 375) {
+        expect(reading && reading.height >= 100).toBe(true)
+        const label = await page.locator('.organization-session-composer [data-slot="input-label"]').boundingBox()
+        expect(label && label.width >= 150 && label.height >= 16).toBe(true)
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       if (process.env.SYNERGY_UI_SCREENSHOT_DIR)
         await page.screenshot({

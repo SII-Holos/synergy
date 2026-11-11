@@ -12,6 +12,8 @@ Capture one private read dispatcher per directory binding and share it between r
 
 Keep the selected reading source independent of the root directory and resource state. A task changes the transcript, task directory and interaction source only. The main title and actual root Run observation stay visible. Composer input, pause, continue, cancel, resource changes, knowledge selection and artifact publication retain the original root identity. An explicit breadcrumb returns to the main conversation, and the input label names its root destination while a child is open.
 
+The root destination label stays visible at narrow sizes even when a draft occupies the input. The actual paused observation replaces Pause with Continue; compact toolbar gaps preserve the existing touch targets while leaving more room for reading. Passing the minimum reading-height regression alone does not establish usable layout.
+
 Changing the binding disposes the captured reader and selected child. Late task responses cannot restore the old source. A missing selected child returns reading to the main conversation; broader access, authentication or binding failures retain the conversation invalidation lifecycle. Private and shared child bodies continue through their existing message renderers and body residency limits.
 
 ## Alternatives considered

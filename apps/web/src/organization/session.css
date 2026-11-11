@@ -89,7 +89,7 @@
   font-size: 12px;
   color: var(--text-weak);
 }
-.organization-session-title h2 {
+.organization-session-view--detail .organization-session-title h2 {
   overflow-wrap: anywhere;
   font-size: 18px;
   line-height: 1.4;
@@ -211,6 +211,9 @@
   .organization-session-chat > .organization-session-composer {
     padding: 12px;
   }
+  .organization-session-composer > .organization-actions {
+    gap: 8px;
+  }
   .organization-session-composer [data-slot="input-description"],
   .organization-session-composer [data-slot="input-label"] {
     position: absolute;
@@ -219,6 +222,15 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+  .organization-session-composer[data-root-destination="true"] [data-slot="input-label"] {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+    font-size: 12px;
   }
   .organization-transcript-viewport {
     min-height: 240px;

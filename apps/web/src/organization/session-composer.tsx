@@ -143,6 +143,7 @@ export function OrganizationSessionComposer(props: {
   return (
     <form
       class="organization-session-composer"
+      data-root-destination={!!props.messageLabel}
       onSubmit={(event) => {
         event.preventDefault()
         if (!pending() && props.session.permissions.execute && props.modelReady && !tooLarge() && draft.text.trim())
@@ -222,7 +223,7 @@ export function OrganizationSessionComposer(props: {
             {_(messages.send)}
           </Button>
         </Show>
-        <Show when={props.session.permissions.stop}>
+        <Show when={props.session.permissions.stop && props.control?.pausedSince === undefined}>
           <Button
             type="button"
             disabled={!props.online || busy() || !!pending()}
