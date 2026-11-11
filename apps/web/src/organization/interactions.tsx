@@ -56,6 +56,7 @@ export function OrganizationSessionInteractions(props: {
   sourceSessionID?: string
   binding: Protocol.SessionBinding
   online: boolean
+  invalidated?: (error: unknown) => void
 }) {
   return (
     <ErrorBoundary fallback={() => <WorkspaceError error={{ code: "COMMAND_OUTCOME_UNKNOWN" }} />}>
@@ -68,6 +69,7 @@ function InteractionSurface(props: {
   sourceSessionID?: string
   binding: Protocol.SessionBinding
   online: boolean
+  invalidated?: (error: unknown) => void
 }) {
   const { _, i18n } = useLingui()
   const space = useSpace()
@@ -80,6 +82,7 @@ function InteractionSurface(props: {
     sourceSessionID: props.sourceSessionID,
     binding: props.binding,
     signal: owner.signal,
+    invalidated: props.invalidated,
   })
   const [data] = createStore<Data>({ session: [], session_diff: {}, message: {}, part: {} })
   const questions = createMemo(() =>

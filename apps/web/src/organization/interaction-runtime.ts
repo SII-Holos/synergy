@@ -12,6 +12,7 @@ import { createOrganizationDecisionOutbox } from "./decision-outbox"
 import { confirmDecisionOutboxReceipt, type DecisionOutboxRecord } from "./decision-outbox-record"
 import { organizationInteractionWindow } from "./interaction-window"
 import { createOrganizationQuestionDrafts } from "./question-drafts"
+import { organizationOwnerFailure } from "./owner-error"
 
 export type OrganizationInteractionDecision = Extract<Interaction.Result, { operation: "decisions" }>["items"][number]
 export type OrganizationRetainedDecision = DecisionOutboxRecord & { available: boolean }
@@ -28,6 +29,7 @@ export function createOrganizationInteractionRuntime(input: {
   sourceSessionID?: string
   binding: Protocol.SessionBinding
   signal: AbortSignal
+  invalidated?: (error: unknown) => void
 }) {
   const sourceID = input.sourceSessionID ?? input.rootSessionID
   const outbox = createOrganizationDecisionOutbox({
@@ -127,21 +129,11 @@ export function createOrganizationInteractionRuntime(input: {
   function fail(error: unknown) {
     if (signal.aborted) return
     const code = error && typeof error === "object" && "code" in error ? error.code : undefined
-    if (
-      typeof code === "string" &&
-      [
-        "PERMISSION_DENIED",
-        "AUTHENTICATION_REQUIRED",
-        "NOT_FOUND",
-        "permission_denied",
-        "reauthorization_required",
-        "signed_out",
-        "identity_changed",
-      ].includes(code)
-    ) {
+    if (organizationOwnerFailure(error)) {
       setState(reconcile({ pending: [], retained: [], nativeRecords: [] }))
       setPinned(undefined)
       controller.abort()
+      input.invalidated?.(error)
     }
     setError({ code: typeof code === "string" ? code : "COMMAND_OUTCOME_UNKNOWN" })
   }

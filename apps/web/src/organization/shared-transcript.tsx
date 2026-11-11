@@ -9,6 +9,7 @@ import type { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-or
 import type { OrgPublicationFile } from "@ericsanchezok/synergy-sdk/organization"
 import { useSpace } from "@/context/space"
 import { WorkspaceError } from "./workspace-error"
+import { organizationOwnerFailure } from "./owner-error"
 import { PublicationFiles, publicationContent } from "./publication-files"
 import { streamPublicationDownload } from "./publication-transfer"
 import {
@@ -27,6 +28,7 @@ export function SharedOrganizationTranscript(props: {
   sessionID: string
   sourceSessionID?: string
   shareGeneration: number
+  invalidated?: (error: unknown) => void
 }) {
   const { _ } = useLingui()
   const space = useSpace()
@@ -102,9 +104,11 @@ export function SharedOrganizationTranscript(props: {
   }
   function fail(error: unknown) {
     if (signal.aborted) return
-    const code = error && typeof error === "object" && "code" in error ? error.code : undefined
-    if (code === "PERMISSION_DENIED" || code === "AUTHENTICATION_REQUIRED" || code === "NOT_FOUND") invalidate()
-    setError(error)
+    if (organizationOwnerFailure(error)) {
+      invalidate()
+      props.invalidated?.(error)
+    }
+    if (!signal.aborted) setError(error)
   }
   function refresh(messageID: string) {
     const references = new Set(

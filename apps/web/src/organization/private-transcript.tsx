@@ -19,6 +19,7 @@ import { createOrganizationSessionReader, OrganizationSessionReadError } from ".
 import { projectOrganizationMessage, projectOrganizationPart } from "./transcript"
 import { OrganizationTranscriptPart } from "./transcript-part"
 import { WorkspaceError } from "./workspace-error"
+import { organizationOwnerFailure } from "./owner-error"
 import { organizationSessionMessages as messages } from "./session-messages"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
 import { PrivateContentDownload } from "./private-content"
@@ -47,6 +48,7 @@ export function PrivateOrganizationTranscript(props: {
   binding: Protocol.SessionBinding
   title?: (value: string) => void
   observed?: (value: Sync.Status) => void
+  invalidated?: (error: unknown) => void
 }) {
   const { _ } = useLingui()
   const space = useSpace()
@@ -134,24 +136,13 @@ export function PrivateOrganizationTranscript(props: {
   }
   function fail(error: unknown) {
     if (signal.aborted) return
-    const code = error && typeof error === "object" && "code" in error ? error.code : undefined
-    if (
-      [
-        "PERMISSION_DENIED",
-        "AUTHENTICATION_REQUIRED",
-        "NOT_FOUND",
-        "STALE_BINDING",
-        "permission_denied",
-        "identity_changed",
-        "reauthorization_required",
-        "signed_out",
-      ].includes(String(code))
-    ) {
+    if (organizationOwnerFailure(error)) {
       for (const id of state.order) release(id)
       setState(reconcile({ order: [], messages: {}, records: {}, bodies: {} }))
       setData(reconcile({ session: [], session_diff: {}, message: { [sourceID]: [] }, part: {} }))
+      props.invalidated?.(error)
     }
-    setError(error)
+    if (!signal.aborted) setError(error)
   }
   function retainInteractions() {
     const selection = document.getSelection()

@@ -89,9 +89,14 @@ test("the project conversation route shows the private title and keeps send cont
     { width: 375, height: 667, scheme: "light" as const },
     { width: 375, height: 667, scheme: "light" as const, pending: true },
     { width: 1100, height: 760, scheme: "light" as const, readOnly: true },
+    { width: 1100, height: 760, scheme: "light" as const, revokedDirectory: true },
+    { width: 1100, height: 760, scheme: "light" as const, revokedReader: true },
   ]) {
     const readOnly = "readOnly" in variant
     const hasPending = "pending" in variant
+    let revokedDirectory = false
+    let revokedReader = false
+    const denied = Promise.withResolvers<void>()
     const viewport = { width: variant.width, height: variant.height }
     const page = await browser.newPage({ viewport, colorScheme: variant.scheme })
     await page.route("**/brand/synergy-product-icon.png", async (route) =>
@@ -103,6 +108,13 @@ test("the project conversation route shows the private title and keeps send cont
     await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
     await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
       const url = new URL(request.path, entry.issuer)
+      if (
+        (revokedDirectory && url.pathname === "/org/v1/sessions/session-a") ||
+        (revokedReader && url.pathname.endsWith("/read"))
+      ) {
+        denied.resolve()
+        return { ok: false, error: { code: "permission_denied" } }
+      }
       const query = request.body ? JSON.parse(request.body) : undefined
       const binding = {
         schemaVersion: 1,
@@ -274,6 +286,24 @@ test("the project conversation route shows the private title and keeps send cont
         expect(reading && reading.height >= 64).toBe(true)
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      if ("revokedDirectory" in variant || "revokedReader" in variant) {
+        revokedDirectory = "revokedDirectory" in variant
+        revokedReader = "revokedReader" in variant
+        await denied.promise
+        await page.locator(".organization-session-view--detail > .organization-workspace-error").waitFor()
+        expect(await page.getByRole("textbox", { name: "Message", exact: true }).count()).toBe(0)
+        expect(await page.getByRole("heading", { name: "Private research", exact: true }).count()).toBe(0)
+        expect(await page.getByRole("button", { name: "Pause", exact: true }).count()).toBe(0)
+        expect(await page.locator(".organization-transcript-viewport").count()).toBe(0)
+        revokedDirectory = false
+        revokedReader = false
+        await page
+          .locator(".organization-session-view--detail > .organization-workspace-error")
+          .getByRole("button", { name: "Retry", exact: true })
+          .click()
+        await page.getByRole("heading", { name: "Private research", exact: true }).waitFor()
+        expect(await page.getByRole("textbox", { name: "Message", exact: true }).inputValue()).toBe("A retained draft")
+      }
     } finally {
       await page.close()
     }

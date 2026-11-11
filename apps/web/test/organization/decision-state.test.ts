@@ -213,6 +213,7 @@ test("a Main permission denial invalidates the interaction owner and releases it
     id: "denied-password",
     questions: [{ ...request.questions[0]!, input_type: "password" }],
   }
+  const failures: unknown[] = []
   const scope = createRoot((dispose) => ({
     dispose,
     runtime: createOrganizationInteractionRuntime({
@@ -229,6 +230,7 @@ test("a Main permission denial invalidates the interaction owner and releases it
         bindingEpoch: 1,
       },
       signal: new AbortController().signal,
+      invalidated: (error) => failures.push(error),
     }),
   }))
   try {
@@ -238,6 +240,7 @@ test("a Main permission denial invalidates the interaction owner and releases it
       source: ["custom"],
     }))
     scope.runtime.fail({ code: "permission_denied" })
+    expect(failures).toEqual([{ code: "permission_denied" }])
     expect(scope.runtime.active()).toBe(false)
     expect(scope.runtime.decisions.draft(question).custom).toEqual([""])
   } finally {

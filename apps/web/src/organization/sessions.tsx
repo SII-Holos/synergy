@@ -10,6 +10,7 @@ import type { OrgSessionResourceContract } from "@ericsanchezok/synergy-sdk/orga
 import { useSpace } from "@/context/space"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { WorkspaceError } from "./workspace-error"
+import { organizationOwnerFailure } from "./owner-error"
 import { OrganizationSessionCreate } from "./session-create"
 import { OrganizationSessionComposer } from "./session-composer"
 import { OrganizationSessionResources } from "./session-resources"
@@ -180,7 +181,18 @@ function OrganizationSessionPage(props: {
   })
   let timer: ReturnType<typeof setTimeout> | undefined
   let revision = 0
+  let unavailable = false
+  function invalidated(error: unknown) {
+    if (signal.aborted || !organizationOwnerFailure(error)) return
+    unavailable = true
+    revision++
+    if (timer) clearTimeout(timer)
+    setState(reconcile({}))
+    setError(error)
+    if (organizationOwnerFailure(error) === "authentication") space.authorizationRequired(view)
+  }
   async function load() {
+    if (unavailable) return
     const version = ++revision
     try {
       const [session, share, resources] = await Promise.all([
@@ -195,15 +207,19 @@ function OrganizationSessionPage(props: {
       setError(undefined)
     } catch (error) {
       if (signal.aborted || version !== revision) return
-      const code = error && typeof error === "object" && "code" in error ? error.code : undefined
-      if (code === "NOT_FOUND" || code === "PERMISSION_DENIED" || code === "AUTHENTICATION_REQUIRED")
-        setState("session", undefined)
-      setError(error)
+      if (organizationOwnerFailure(error)) invalidated(error)
+      else setError(error)
     }
   }
   async function poll() {
     await load()
-    if (!signal.aborted) timer = setTimeout(() => void poll(), document.visibilityState === "visible" ? 5000 : 15000)
+    if (!signal.aborted && !unavailable)
+      timer = setTimeout(() => void poll(), document.visibilityState === "visible" ? 5000 : 15000)
+  }
+  function retry() {
+    if (timer) clearTimeout(timer)
+    unavailable = false
+    void poll()
   }
   function sharing() {
     const share = state.share
@@ -254,7 +270,7 @@ function OrganizationSessionPage(props: {
   }
   return (
     <section class="organization-session-view organization-session-view--detail">
-      <WorkspaceError error={error()} retry={() => void load()} />
+      <WorkspaceError error={error()} retry={retry} />
       <Show when={state.session}>
         {(session) => (
           <>
@@ -324,6 +340,7 @@ function OrganizationSessionPage(props: {
                       <SharedOrganizationTranscript
                         sessionID={props.sessionID}
                         shareGeneration={state.share!.shareGeneration}
+                        invalidated={invalidated}
                       />
                     )}
                   </Show>
@@ -334,6 +351,7 @@ function OrganizationSessionPage(props: {
                         binding={binding()!}
                         title={setNativeTitle}
                         observed={setNativeStatus}
+                        invalidated={invalidated}
                       />
                     )}
                   </Show>
@@ -343,6 +361,7 @@ function OrganizationSessionPage(props: {
                         sessionID={props.sessionID}
                         binding={binding()!}
                         online={session().runtime?.state === "online"}
+                        invalidated={invalidated}
                       />
                     )}
                   </Show>
