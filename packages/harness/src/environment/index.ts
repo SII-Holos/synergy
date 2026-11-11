@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { RuntimeContext } from "../lifecycle/context"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { StorageRecovery } from "../storage/recovery"
@@ -29,6 +30,10 @@ export namespace Environment {
   const epoch = RuntimeContext.state(() => randomUUID())
   const consumers = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<void>>())
   const lostResources = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<boolean>>())
+
+  export function hasPendingRequests() {
+    return pending().size > 0 || providerRequests().size > 0
+  }
 
   export function registerResourceOwner(
     name: string,
@@ -360,9 +365,11 @@ export namespace Environment {
         environmentID: id,
         message: "Environment allocation is uncertain; reconcile it before executing",
       })
+    await RuntimeMaintenance.assertAdmission()
     return providerRequest(id, async () => {
       const requestID = `alloc_${randomUUID().replaceAll("-", "")}`
       info = await Storage.transaction(async () => {
+        await RuntimeMaintenance.assertAdmission()
         const latest = await get(id, scopeID)
         if (latest.state !== "idle")
           throw new Busy({ environmentID: id, message: "Environment is already being allocated" })

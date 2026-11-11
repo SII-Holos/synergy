@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { RuntimeContext } from "../lifecycle/context"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Environment } from "."
@@ -40,6 +41,10 @@ export namespace EnvironmentExecution {
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const finishing = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const connections = RuntimeContext.state(() => new Map<string, Promise<Executor>>())
+
+  export function hasPendingRequests() {
+    return pending().size > 0 || finishing().size > 0
+  }
 
   export function registerRecovery() {
     StorageRecovery.register("environment-execution", recover)
@@ -119,6 +124,7 @@ export namespace EnvironmentExecution {
         : reconcile(input.id, input.scopeID)
     }
     input.signal?.throwIfAborted()
+    await RuntimeMaintenance.assertAdmission()
     const use = await Environment.acquire(input.environmentID, {
       scopeID: input.scopeID,
       useID: useID(input.scopeID, input.id),
@@ -129,6 +135,7 @@ export namespace EnvironmentExecution {
     let recorded = false
     try {
       const info = await Storage.transaction(async () => {
+        await RuntimeMaintenance.assertAdmission()
         await Environment.assertTarget(use.target, input.scopeID)
         const evidence: NonNullable<Info["evidence"]> = []
         for (const workspace of input.workspaces ?? []) {
