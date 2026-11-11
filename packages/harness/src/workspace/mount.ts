@@ -13,6 +13,8 @@ import { Log } from "../util/log"
 import { WorkspaceCheckpoints } from "./checkpoint"
 import { WorkspaceEvidence } from "./evidence"
 import { WorkspaceErrors } from "./errors"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
+import { addAbortListener } from "node:events"
 
 export namespace WorkspaceMounts {
   export type Selection = {
@@ -28,6 +30,62 @@ export namespace WorkspaceMounts {
   export function register() {
     Environment.registerResourceOwner("workspace", beforeDeallocate, allocationLost)
     StorageRecovery.register("workspace-mounts", recover)
+    RuntimeMaintenance.register("workspace-mounts", {
+      version: 1,
+      order: 240,
+      async suspend(context) { await RuntimeMaintenance.assertDraining(context.lease) },
+      async drain(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+        while (attaching().size || detaching().size) {
+          context.signal.throwIfAborted()
+          const aborted = Promise.withResolvers<never>()
+          using listener = addAbortListener(context.signal, () => aborted.reject(context.signal.reason))
+          await Promise.race([Promise.allSettled([...attaching().values(), ...detaching().values()]), aborted.promise])
+        }
+        for await (const info of indexedMounts(context.signal)) {
+          if (info.activeMount?.state !== "preparing") continue
+          const result = await (await connect(info)).inspect(reference(info))
+          context.signal.throwIfAborted()
+          if (result) await publishMounted(info, result)
+        }
+        const requirements = await inspectMaintenance(context.signal)
+        if (requirements.length)
+          throw new RuntimeMaintenance.Blocked({ message: "Workspace mount transitions require original native evidence", requirements })
+      },
+      inspect: (context) => inspectMaintenance(context.signal),
+      async release(context) { await RuntimeMaintenance.assertReleasing(context.lease) },
+    })
+  }
+
+  async function* indexedMounts(signal: AbortSignal) {
+    for await (const row of Storage.records({ prefix: ["workspace_environment"], limit: 128 })) {
+      signal.throwIfAborted()
+      if (row.key.length !== 3 || typeof row.value !== "string")
+        throw new Error("Workspace mount maintenance found an invalid native index")
+      const info = await WorkspaceCatalog.get(row.key[2], row.value)
+      if (info.scopeID !== row.value || info.id !== row.key[2] || info.activeMount?.target.environmentID !== row.key[1])
+        throw new Error("Workspace mount maintenance found another native ownership identity")
+      yield info
+    }
+  }
+  async function inspectMaintenance(signal: AbortSignal): Promise<RuntimeMaintenance.Requirement[]> {
+    const requirements = new Map<string, RuntimeMaintenance.Requirement>()
+    const add = (code: string, label: string) => requirements.set(code, { owner: "workspace-mounts", code, label, recoverable: true })
+    if (attaching().size || detaching().size) add("workspace_mount_request_active", "Wait for the original Workspace mount transition")
+    for await (const info of indexedMounts(signal))
+      if (info.activeMount!.state !== "active")
+        add(`workspace_mount_${info.activeMount!.state}`, "Reconcile the original native mount receipt and final save")
+    for await (const row of Storage.records({ prefix: ["workspace"], limit: 128 })) {
+      signal.throwIfAborted()
+      const info = WorkspaceCatalog.Info.parse(row.value)
+      if (row.key.length !== 2 || row.key[1] !== info.id)
+        throw new Error("Workspace mount maintenance found an invalid canonical catalog identity")
+      if (!info.activeMount) continue
+      const [scopeID] = await Storage.readMany([StoragePath.workspaceEnvironment(info.activeMount.target.environmentID, info.id)])
+      if (scopeID !== info.scopeID)
+        add("workspace_mount_index_missing", "Restore exact coverage of the canonical native Workspace view")
+    }
+    return [...requirements.values()]
   }
 
   export async function recover(progress?: () => void) {
@@ -111,6 +169,7 @@ export namespace WorkspaceMounts {
   }
 
   async function mount(input: Selection) {
+    await RuntimeMaintenance.assertAdmission()
     const useID = `mount:${input.workspaceID}`
     const use = await Environment.acquire(input.environmentID, {
       scopeID: input.scopeID,
@@ -119,6 +178,7 @@ export namespace WorkspaceMounts {
       capabilities: ["files"],
     })
     let info: WorkspaceCatalog.Info
+    let created = false
     try {
       info = await Storage.transaction(async () => {
         const previous = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
@@ -135,9 +195,15 @@ export namespace WorkspaceMounts {
               workspaceID: previous.id,
               message: "Workspace is already mounted in another allocation",
             })
+          if (!["preparing", "active"].includes(previous.activeMount.state))
+            throw new WorkspaceCatalog.Unavailable({
+              workspaceID: previous.id,
+              message: "Workspace requires its original native save or unavailable-view reconciliation",
+            })
           await Environment.retainUse(use.target, input.scopeID, useID)
           return previous
         }
+        await RuntimeMaintenance.assertAdmission()
         const generation = (previous.mountGeneration ?? 0) + 1
         const next = WorkspaceCatalog.Info.parse({
           ...previous,
@@ -156,10 +222,11 @@ export namespace WorkspaceMounts {
         await Storage.write(StoragePath.workspace(next.id), next)
         await WorkspaceCatalog.publishUpdated(next)
         await Storage.write(StoragePath.workspaceEnvironment(input.environmentID, next.id), next.scopeID)
+        created = true
         return next
       })
     } catch (error) {
-      await use.release()
+      if (!(error instanceof Storage.CommitUnknownError)) await use.release()
       throw error
     }
     const files = await connect(info)
@@ -170,6 +237,11 @@ export namespace WorkspaceMounts {
         throw new WorkspaceCatalog.Unavailable({
           workspaceID: info.id,
           message: "Workspace live view was lost; an earlier checkpoint cannot replace it implicitly",
+        })
+      if (!created)
+        throw new WorkspaceCatalog.Unavailable({
+          workspaceID: info.id,
+          message: "Workspace preparation requires its original native mount receipt; an earlier head cannot recreate it",
         })
       let source: WorkspaceProtocol.MountInput["source"]
       if (info.backend?.provider === "objects") {
@@ -190,10 +262,26 @@ export namespace WorkspaceMounts {
       }
       result = await files.mount({ ...reference(info), readOnly: active.readOnly, source })
     }
-    const mounted = await Storage.transaction(async () => {
+    return publishMounted(info, result)
+  }
+
+  async function publishMounted(info: WorkspaceCatalog.Info, raw: WorkspaceProtocol.Mount) {
+    const result = WorkspaceProtocol.Mount.parse(raw)
+    const active = info.activeMount!
+    if (result.id !== active.id || result.workspaceID !== info.id || result.generation !== active.generation)
+      throw new WorkspaceCatalog.BindingChanged({ workspaceID: info.id, message: "Native mount receipt belongs to another view" })
+    return Storage.transaction(async () => {
       const latest = await WorkspaceCatalog.get(info.id, info.scopeID)
       assertMount(latest, info)
       await Environment.assertTarget(active.target, info.scopeID)
+      if (latest.activeMount!.state === "active") {
+        if (latest.activeMount!.path !== result.path)
+          throw new WorkspaceCatalog.BindingChanged({ workspaceID: info.id, message: "Native mount receipt has another path" })
+        await Environment.releaseUse(active.target, info.scopeID, `mount:${info.id}`)
+        return latest
+      }
+      if (latest.activeMount!.state !== "preparing")
+        throw new WorkspaceCatalog.BindingChanged({ workspaceID: info.id, message: "Native mount transition changed before publication" })
       const next = WorkspaceCatalog.Info.parse({
         ...latest,
         revision: latest.revision + 1,
@@ -202,10 +290,9 @@ export namespace WorkspaceMounts {
       })
       await Storage.write(StoragePath.workspace(info.id), next)
       await WorkspaceCatalog.publishUpdated(next)
-      await Environment.releaseUse(active.target, info.scopeID, useID)
+      await Environment.releaseUse(active.target, info.scopeID, `mount:${info.id}`)
       return next
     })
-    return mounted
   }
 
   export function reference(info: WorkspaceCatalog.Info): WorkspaceProtocol.Reference {
@@ -246,6 +333,7 @@ export namespace WorkspaceMounts {
     assertRevision(info)
     const mount = info.activeMount
     if (!mount) return info
+    await RuntimeMaintenance.assertAdmission()
     const useID = `detach:${mount.id}`
     const use = await Environment.acquire(mount.target.environmentID, {
       scopeID: input.scopeID,
@@ -255,6 +343,7 @@ export namespace WorkspaceMounts {
     })
     try {
       info = await Storage.transaction(async () => {
+        await RuntimeMaintenance.assertAdmission()
         const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
         assertRevision(latest)
         assertMount(latest, info)
