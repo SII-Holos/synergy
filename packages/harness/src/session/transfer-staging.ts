@@ -208,6 +208,29 @@ export namespace SessionTransferStaging {
       if (RuntimeContext.current() !== runtime) fail("Staged owner context belongs to another Runtime")
       input.signal.throwIfAborted()
     }
+    function assertDependency(dependency: string) {
+      assertOwner()
+      if (!Owners.stagedDependencies(ownerID).includes(dependency))
+        fail("Portable owner has not declared this staged dependency")
+      if (!Object.hasOwn(current.root.owners, dependency))
+        fail("Declared staged dependency is absent from the verified manifest")
+      compatible({ [dependency]: current.root.owners[dependency] })
+    }
+    async function readBoundRecord(boundOwner: string, key: string[]) {
+      assertOwner()
+      const [reference] = await Storage.readMany([
+        destinationKey(input.handoffID, { kind: "record", key: Key.parse(key) }),
+      ])
+      if (reference === undefined) return
+      const destination = Destination.parse(reference)
+      if (destination.ownerID !== boundOwner || destination.sessionID !== input.session.id) return
+      const entry = Entry.parse(await Storage.read(entryKey(input.handoffID, destination)))
+      if (entry.kind !== "record" || JSON.stringify(entry.key) !== JSON.stringify(key) || entry.id !== destination.id)
+        fail("Staged portable destination index changed")
+      const record = await readRecord(input.handoffID, entry)
+      assertOwner()
+      return record
+    }
     const context: Owners.TargetContext = {
       ...base,
       sourceVersion,
@@ -220,21 +243,11 @@ export namespace SessionTransferStaging {
           return member === undefined ? undefined : current.root.owners[dependency]
         },
         async record(key) {
-          assertOwner()
-          const [reference] = await Storage.readMany([
-            destinationKey(input.handoffID, { kind: "record", key: Key.parse(key) }),
-          ])
-          if (reference === undefined) return
-          const destination = Destination.parse(reference)
-          if (destination.ownerID !== ownerID || destination.sessionID !== input.session.id) return
-          const entry = Entry.parse(await Storage.read(entryKey(input.handoffID, destination)))
-          if (
-            entry.kind !== "record" ||
-            JSON.stringify(entry.key) !== JSON.stringify(key) ||
-            entry.id !== destination.id
-          )
-            fail("Staged portable destination index changed")
-          return readRecord(input.handoffID, entry)
+          return readBoundRecord(ownerID, key)
+        },
+        async relatedRecord(dependency, key) {
+          assertDependency(dependency)
+          return readBoundRecord(dependency, key)
         },
         async *records() {
           assertOwner()
@@ -245,12 +258,7 @@ export namespace SessionTransferStaging {
           }
         },
         async *relatedRecords(dependency) {
-          assertOwner()
-          if (!Owners.stagedDependencies(ownerID).includes(dependency))
-            fail("Portable owner has not declared this staged dependency")
-          if (!Object.hasOwn(current.root.owners, dependency))
-            fail("Declared staged dependency is absent from the verified manifest")
-          compatible({ [dependency]: current.root.owners[dependency] })
+          assertDependency(dependency)
           for await (const entry of entries(input.handoffID, dependency, input.session.id)) {
             assertOwner()
             if (entry.ownerID !== dependency || entry.sessionID !== input.session.id)

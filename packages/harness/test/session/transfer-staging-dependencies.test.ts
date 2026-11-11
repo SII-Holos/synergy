@@ -111,6 +111,13 @@ test("declared staged dependencies are read-only and bound to one handoff member
         for await (const row of context.staged.relatedRecords!("session-core")) rows.push(row)
         expect(rows).toHaveLength(2)
         expect(rows[0]).not.toHaveProperty("publish")
+        expect(
+          await context.staged.relatedRecord!("session-core", ["sessions", "home", session.id, "info"]),
+        ).toBeDefined()
+        expect(
+          await context.staged.relatedRecord!("session-core", ["sessions", "home", other.id, "info"]),
+        ).toBeUndefined()
+        await expect(context.staged.relatedRecord!("unrelated", ["unrelated", session.id])).rejects.toThrow("declared")
         dependencies.push("unrelated")
         await expect(context.staged.relatedRecords!("unrelated")[Symbol.asyncIterator]().next()).rejects.toThrow(
           "declared",

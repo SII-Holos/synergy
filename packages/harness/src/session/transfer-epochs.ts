@@ -287,11 +287,25 @@ export namespace SessionTransferEpochs {
     return existing(Binding.parse(value))
   }
 
+  export async function targetPreparation(input: { sessionID: string; handoffID: string }) {
+    const record = await optional(State, reservationKey(input.sessionID))
+    if (
+      !record ||
+      record.role !== "target" ||
+      record.phase !== "prepared" ||
+      record.binding.handoffID !== input.handoffID
+    )
+      fail("owner preparation requires this destination's exact reserved handoff")
+    return structuredClone(record)
+  }
+
   export async function ownerPreparationBinding(input: { sessionID: string; handoffID: string }): Promise<Binding> {
     const intent = await optional(SourceIntent, sourceIntentKey(input.sessionID))
-    if (!intent || intent.binding.handoffID !== input.handoffID) fail("owner preparation requires the current source intent")
+    if (!intent || intent.binding.handoffID !== input.handoffID)
+      fail("owner preparation requires the current source intent")
     const record = await existing(intent.binding)
-    if (record.role !== "source" || (record.phase !== "draining" && record.phase !== "frozen")) fail("owner preparation requires a draining or frozen source")
+    if (record.role !== "source" || (record.phase !== "draining" && record.phase !== "frozen"))
+      fail("owner preparation requires a draining or frozen source")
     return structuredClone(record.binding)
   }
 
@@ -505,8 +519,14 @@ export namespace SessionTransferEpochs {
       }
       const [canonical] = await Storage.readMany([["session_index", binding.sessionID]])
       const records = await Storage.query({ prefix: ["sessions", binding.scopeID, binding.sessionID], limit: 1 })
-      const usage = await Storage.query({ prefix: ["usage", binding.scopeID, `session_${binding.sessionID}`], limit: 1 })
-      const artifacts = await Storage.artifactReferences({ prefix: ["sessions", binding.scopeID, binding.sessionID], limit: 1 })
+      const usage = await Storage.query({
+        prefix: ["usage", binding.scopeID, `session_${binding.sessionID}`],
+        limit: 1,
+      })
+      const artifacts = await Storage.artifactReferences({
+        prefix: ["sessions", binding.scopeID, binding.sessionID],
+        limit: 1,
+      })
       const current = await pointer(binding.sessionID)
       if (canonical || current || records.length || usage.length || artifacts.length) {
         if (

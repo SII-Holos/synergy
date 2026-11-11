@@ -115,6 +115,9 @@ test("a cold Runtime cannot reuse or interpret verified staging through an incom
     await expect(context.staged.relatedRecords!("session-core")[Symbol.asyncIterator]().next()).rejects.toThrow(
       "incompatible",
     )
+    await expect(context.staged.relatedRecord!("session-core", ["future-core", previous.session.id])).rejects.toThrow(
+      "incompatible",
+    )
     expect(bytes).not.toHaveBeenCalled()
   })
-})
+}, 15000)

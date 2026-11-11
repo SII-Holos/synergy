@@ -53,6 +53,7 @@ export namespace SessionTransferOwners {
       record(key: string[]): Promise<StagedRecord | undefined>
       records(): AsyncIterable<StagedRecord>
       relatedRecords?(ownerID: string): AsyncIterable<StagedRecord>
+      relatedRecord?(ownerID: string, key: string[]): Promise<StagedRecord | undefined>
       ownerVersion?(ownerID: string): Promise<number | undefined>
       artifacts(): AsyncIterable<StagedArtifact>
     }

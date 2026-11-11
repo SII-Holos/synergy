@@ -70,20 +70,37 @@ export namespace SessionTransferCore {
       for await (const row of Storage.records({ prefix, limit: 128 })) if (own(session, row.key)) yield row
   }
 
-  export async function* snapshotRoots(session: Readonly<Session.Info>, records: AsyncIterable<Owners.StagedRecord>) {
+  export async function* snapshotRoots(
+    session: Readonly<Session.Info>,
+    records: AsyncIterable<Owners.StagedRecord>,
+    header?: Owners.StagedRecord,
+  ) {
+    if (header) {
+      if (!isInfo(session, header.key)) fail("Snapshot canonical metadata has another owner")
+      parseInfo(session, header.value)
+    }
     let infos = 0
     for await (const record of records) {
       if (!own(session, record.key)) fail("Snapshot root evidence belongs to another core Session")
       if (isInfo(session, record.key)) {
         parseInfo(session, record.value)
+        if (header && JSON.stringify(header.value) !== JSON.stringify(record.value))
+          fail("Snapshot canonical metadata changed")
         infos++
       }
       if (record.key.length === 7 && record.key[3] === "messages" && record.key[5] === "parts") {
-        if (infos !== 1) fail("Snapshot roots require prior canonical Session metadata")
+        if (!header && infos !== 1) fail("Snapshot roots require prior canonical Session metadata")
         yield* SnapshotRecords.partRoots(record.value)
       }
     }
     if (infos !== 1) fail("Snapshot root evidence requires one canonical core Session record")
+  }
+
+  export async function* stagedSnapshotRoots(context: Owners.TargetContext) {
+    const records = context.staged.relatedRecords?.("session-core")
+    const header = await context.staged.relatedRecord?.("session-core", infoKey(context.session))
+    if (!records || !header) fail("Snapshot preparation requires its canonical core read dependency")
+    yield* snapshotRoots(context.session, records, header)
   }
 
   async function inspect(context: Owners.SourceContext): Promise<Owners.Inspection> {
