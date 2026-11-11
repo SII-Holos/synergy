@@ -1,5 +1,6 @@
 import { RuntimeContext } from "./context"
 import { HomeOwnershipFile } from "./home-ownership-file"
+import { z } from "zod"
 
 export namespace HomeOwnership {
   export const Info = HomeOwnershipFile.Info
@@ -13,10 +14,14 @@ export namespace HomeOwnership {
     return HomeOwnershipFile.open({ root: host.root, env: host.env, selected: state().selected })
   }
 
-  export function select(input: Omit<Info, "schemaVersion">) {
+  export function select(
+    input:
+      | Omit<z.infer<typeof HomeOwnershipFile.LegacyInfo>, "schemaVersion">
+      | Omit<z.infer<typeof HomeOwnershipFile.FencedInfo>, "schemaVersion">,
+  ) {
     RuntimeContext.assertCompositionOpen("Home owner")
     if (state().selected) throw new Error("Home owner is already selected")
-    state().selected = Info.parse({ ...input, schemaVersion: 1 })
+    state().selected = Info.parse({ ...input, schemaVersion: "readerContract" in input ? 2 : 1 })
   }
 
   export async function read() {

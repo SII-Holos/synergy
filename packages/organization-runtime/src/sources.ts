@@ -2,7 +2,7 @@ import { ConfigSource } from "@ericsanchezok/synergy-harness/config/source"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { InstructionSource } from "@ericsanchezok/synergy-harness/session/instruction-source"
 import { SkillSelection } from "@ericsanchezok/synergy-local-runtime/skill/selection"
-import { runtimeIdentityDigest, type RuntimeIdentity } from "./home"
+import { HostedHomeReaderContract, runtimeIdentityDigest, type RuntimeIdentity } from "./home"
 import { registerSessionSchema } from "./session-schema"
 import { registerMemberProviderSdks } from "./model-provider"
 import { registerMemberExecution } from "./execution-source"
@@ -11,10 +11,16 @@ import { createMemberMcpTool } from "./mcp-tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { registerOrganizationKnowledge } from "./knowledge-source"
 import { createMemberKnowledgeTool } from "./tools/knowledge"
+import { registerHostedHomeMigration } from "./hosted-home-migration"
 
 export function registerMemberSources(identity: RuntimeIdentity) {
+  if (!("accountID" in identity)) registerHostedHomeMigration(identity)
   registerSessionSchema({ orgID: identity.orgID })
-  HomeOwnership.select({ owner: "organization-runtime", identity: runtimeIdentityDigest(identity) })
+  HomeOwnership.select({
+    owner: "organization-runtime",
+    identity: runtimeIdentityDigest(identity),
+    ...("accountID" in identity ? {} : { readerContract: HostedHomeReaderContract }),
+  })
   ConfigSource.register({
     resolve: async ({ scope }) =>
       (await import("@ericsanchezok/synergy-harness/config/project-source")).ProjectConfig.fields(scope, [

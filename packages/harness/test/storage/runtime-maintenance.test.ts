@@ -42,6 +42,55 @@ const actor = {
   requestID: "maintenance-one",
 }
 
+test("a frozen native owner operation retains its phase until actual protected work finishes before releasing", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    let releases = 0
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release() {
+        releases++
+      },
+    })
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    const entered = Promise.withResolvers<void>()
+    const finish = Promise.withResolvers<void>()
+    const captured = RuntimeMaintenance.withFrozen(lease, async () => {
+      entered.resolve()
+      await finish.promise
+      expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
+      return "retained"
+    })
+    await entered.promise
+    const released = RuntimeMaintenance.release(lease)
+    try {
+      await expect(Storage.write(["canonical", "while-capturing"], { unsafe: true })).rejects.toThrow()
+      expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
+      expect(releases).toBe(0)
+    } finally {
+      finish.resolve()
+      expect(await captured).toBe("retained")
+      await released
+    }
+    expect(releases).toBe(1)
+    expect((await RuntimeMaintenance.status())?.phase).toBe("released")
+    let invoked = false
+    await expect(
+      RuntimeMaintenance.withFrozen({ ...lease }, async () => {
+        invoked = true
+      }),
+    ).rejects.toThrow()
+    expect(invoked).toBeFalse()
+  })
+})
+
 test("native owner release validates the actual opaque lease and releasing phase", async () => {
   await using f = await fixture()
   await f.run(async () => {

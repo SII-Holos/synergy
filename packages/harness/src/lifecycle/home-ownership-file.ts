@@ -6,11 +6,20 @@ import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { assertIsolatedTestHome } from "../global/test-home-guard.js"
 
 export namespace HomeOwnershipFile {
-  export const Info = z.strictObject({
-    schemaVersion: z.literal(1),
+  const fields = {
     owner: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
     identity: z.string().regex(/^[a-f0-9]{64}$/),
+  }
+  export const LegacyInfo = z.strictObject({
+    schemaVersion: z.literal(1),
+    ...fields,
   })
+  export const FencedInfo = z.strictObject({
+    schemaVersion: z.literal(2),
+    ...fields,
+    readerContract: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
+  })
+  export const Info = z.discriminatedUnion("schemaVersion", [LegacyInfo, FencedInfo])
   export type Info = z.infer<typeof Info>
 
   export class Error extends globalThis.Error {
@@ -53,6 +62,13 @@ export namespace HomeOwnershipFile {
       }
       if (!selected || selected.owner !== current.owner || selected.identity !== current.identity)
         throw new Error("Home owner is unavailable or does not match this identity")
+      if (
+        selected.schemaVersion !== current.schemaVersion ||
+        (selected.schemaVersion === 2 &&
+          current.schemaVersion === 2 &&
+          selected.readerContract !== current.readerContract)
+      )
+        throw new Error("Home owner format requires its explicit migration")
       return current
     }
 
@@ -63,6 +79,27 @@ export namespace HomeOwnershipFile {
         await AtomicFile.writeJsonAtomic(filename, JSON.stringify(selected) + "\n", { private: true, durable: true })
       })
     }
-    return { read, assert, persist }
+    async function upgrade(expected: Info, options: { signal?: AbortSignal } = {}) {
+      const prior = LegacyInfo.parse(expected)
+      if (
+        !selected ||
+        selected.schemaVersion !== 2 ||
+        selected.owner !== prior.owner ||
+        selected.identity !== prior.identity
+      )
+        throw new Error("Home owner upgrade must retain its selected identity")
+      await withFileLock(
+        { directory: path.join(root, "state", ".locks"), key: "home-ownership", signal: options.signal },
+        async () => {
+          const current = await read()
+          options.signal?.throwIfAborted()
+          if (JSON.stringify(current) === JSON.stringify(selected)) return
+          if (JSON.stringify(current) !== JSON.stringify(prior))
+            throw new Error("Home owner changed before its upgrade")
+          await AtomicFile.writeJsonAtomic(filename, JSON.stringify(selected) + "\n", { private: true, durable: true })
+        },
+      )
+    }
+    return { read, assert, persist, upgrade }
   }
 }

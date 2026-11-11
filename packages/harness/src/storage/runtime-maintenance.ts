@@ -257,6 +257,30 @@ export namespace RuntimeMaintenance {
       throw new Blocked({ message: "Native source release requires its current releasing backup operation" })
     return info
   }
+  export async function withFrozen<T>(
+    lease: Lease,
+    body: (context: Context) => Promise<T>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<T> {
+    if (Storage.inTransaction())
+      throw new Blocked({ message: "Frozen native work must own its lifetime outside a storage transaction" })
+    identity(lease)
+    using held = options.signal
+      ? await Lock.writeWithSignal("runtime-maintenance", options.signal)
+      : await Lock.write("runtime-maintenance")
+    const assertFrozen = async () => {
+      const info = await assertHeld(lease)
+      if (info.phase !== "frozen")
+        throw new Blocked({ message: "Native protected work requires its current frozen operation" })
+    }
+    await assertFrozen()
+    const currentContext = context(lease, options.signal)
+    currentContext.signal.throwIfAborted()
+    const result = await body(currentContext)
+    currentContext.signal.throwIfAborted()
+    await assertFrozen()
+    return result
+  }
   export async function assertAdmission() {
     const info = await status()
     if (state().pending || (info && info.phase !== "released"))
