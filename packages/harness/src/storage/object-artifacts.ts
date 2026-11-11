@@ -54,7 +54,11 @@ const StoredPage = z.object({ hash: Hash, page: Page }).strict()
 const Stream = z
   .object({ writerID: z.string(), unreferencedSince: z.number().optional(), deleting: z.boolean().optional() })
   .strict()
-type Prepared = { location: ArtifactLocation; intentID: string }
+type Prepared = {
+  location: ArtifactLocation
+  intentID: string
+  receipt: Readonly<{ operationID: string; requestHash: string }>
+}
 
 export interface ObjectArtifactOptions {
   /** A dedicated namespace prefix: these hashes must not overlap Workspace or other owners. */
@@ -174,26 +178,25 @@ export class ObjectArtifacts {
       const encoded = encode(manifest)
       const id = hash(encoded)
       await put(id, encoded)
-      const sealed = await this.store.transaction(
-        async (tx) => {
-          const old = await this.optional(tx, catalogKey(id))
-          if (old && Catalog.parse(old).deleting) {
-            await tx.remove(intentKey(intentID))
-            await this.removeStream(tx, intentID)
-            return false
-          }
-          for await (const row of this.records(tx, ["storage_object_stream_pages", intentID]))
-            await tx.write(pageKey(id, Number(row.key.at(-1))), StoredPage.parse(row.value))
-          await tx.write(catalogKey(id), { manifest })
-          await tx.write(intentKey(intentID), { writerID: this.options.writerID, manifest: id })
+      const receipt = Object.freeze({ operationID: `artifact-stream-prepare:${intentID}`, requestHash: id })
+      const sealed = await this.store.transaction(async (tx) => {
+        const old = await this.optional(tx, catalogKey(id))
+        if (old && Catalog.parse(old).deleting) {
+          await tx.remove(intentKey(intentID))
           await this.removeStream(tx, intentID)
-          return true
-        },
-        { operationID: `artifact-stream-prepare:${intentID}`, requestHash: id },
-      )
+          return false
+        }
+        for await (const row of this.records(tx, ["storage_object_stream_pages", intentID]))
+          await tx.write(pageKey(id, Number(row.key.at(-1))), StoredPage.parse(row.value))
+        await tx.write(catalogKey(id), { manifest })
+        await tx.write(intentKey(intentID), { writerID: this.options.writerID, manifest: id })
+        await this.removeStream(tx, intentID)
+        return true
+      }, receipt)
       if (!sealed) throw new StorageConflictError("Artifact is being reclaimed")
       return {
         intentID,
+        receipt,
         location: ArtifactLocation.parse({
           pack: `${id}.pack`,
           blockOffset: 0,
@@ -209,6 +212,14 @@ export class ObjectArtifacts {
       if (!(error instanceof StorageCommitUnknownError)) this.released.add(intentID)
       throw error
     }
+  }
+
+  async preparationReceipt(prepared: Prepared) {
+    const actual = await this.store.operationReceipt(prepared.receipt.operationID)
+    const success = z.strictObject({ value: z.literal(true) }).safeParse(actual?.result)
+    if (!actual || actual.requestHash !== prepared.receipt.requestHash || !success.success)
+      throw new StorageIntegrityError("Object preparation has no matching committed success receipt")
+    return Object.freeze({ ...prepared.receipt, result: JSON.stringify(success.data) })
   }
 
   async publish(tx: StoreTransaction, prepared: Prepared) {

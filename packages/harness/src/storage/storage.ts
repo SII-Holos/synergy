@@ -30,6 +30,7 @@ import { ObservabilityIssues } from "../observability/issues"
 import { ObservabilityResources } from "../observability/resources"
 import { StorageEventSinks } from "./event-sinks"
 import { observeStorageProgress } from "./progress"
+import { StoragePortable } from "./portable"
 
 export namespace Storage {
   export const NotFoundError = MissingRecord
@@ -455,6 +456,22 @@ export namespace Storage {
     { backend: ObjectArtifacts; object: Awaited<ReturnType<ObjectArtifacts["prepare"]>> }
   >()
 
+  export async function preparedBinaryReceipt(token: PreparedBinary) {
+    const prepared = preparedBinaries.get(token)
+    function assertOwner() {
+      if (!prepared || prepared.released || prepared.publishing)
+        throw new StorageConflictError("The prepared artifact is not available")
+      if (prepared.store !== current().store || prepared.runtime !== RuntimeContext.current())
+        throw new StorageConflictError("The prepared artifact belongs to another owner")
+    }
+    assertOwner()
+    const object = preparedObjects.get(token)
+    if (!object) return undefined
+    const receipt = await object.backend.preparationReceipt(object.object)
+    assertOwner()
+    return Object.freeze({ ...receipt })
+  }
+
   export async function publishPreparedBinary(token: PreparedBinary) {
     const prepared = preparedBinaries.get(token)
     const handle = current()
@@ -559,6 +576,92 @@ export namespace Storage {
         )
       }
     })()
+  }
+
+  export interface ArtifactCheckpoint {
+    exportPortable(
+      filename: string,
+      options?: StoragePortable.ExportOptions,
+    ): Promise<{ count: number; sha256: string }>
+    stream(location: ArtifactLocation): AsyncGenerator<Uint8Array>
+  }
+
+  export async function withArtifactCheckpoint<T>(
+    body: (checkpoint: ArtifactCheckpoint) => Promise<T>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<T> {
+    const runtime = RuntimeContext.current()
+    const handle = current()
+    if (handle.transaction) throw new StorageConflictError("An artifact checkpoint requires committed storage")
+    const state = artifactPack(["storage"])
+    const scope = new AbortController()
+    const signal = options.signal ? AbortSignal.any([scope.signal, options.signal]) : scope.signal
+    let active = true
+    function assertCurrent() {
+      if (!active || RuntimeContext.current() !== runtime || current().store !== handle.store)
+        throw new StorageConflictError("The artifact checkpoint is no longer active")
+      signal.throwIfAborted()
+    }
+    const read = () =>
+      state.gate.run(
+        async () => {
+          assertCurrent()
+          const readers = new Set<{ close?: () => Promise<void> }>()
+          const exports = new Set<Promise<unknown>>()
+          const checkpoint: ArtifactCheckpoint = {
+            exportPortable(filename, options) {
+              assertCurrent()
+              const pending = StoragePortable.exportFile(handle.store, filename, options).then((result) => {
+                assertCurrent()
+                return result
+              })
+              exports.add(pending)
+              void pending.then(
+                () => exports.delete(pending),
+                () => exports.delete(pending),
+              )
+              return pending
+            },
+            stream(location) {
+              const held: { close?: () => Promise<void> } = {}
+              const reader = (async function* () {
+                assertCurrent()
+                readers.add(held)
+                try {
+                  for await (const chunk of (state.objects ?? state.pack).stream(location, signal)) {
+                    assertCurrent()
+                    yield chunk
+                  }
+                  assertCurrent()
+                } finally {
+                  readers.delete(held)
+                }
+              })()
+              held.close = async () => {
+                await reader.return(undefined)
+              }
+              return reader
+            },
+          }
+          try {
+            const result = await body(checkpoint)
+            if (readers.size || exports.size)
+              throw new StorageConflictError("The artifact checkpoint has unfinished operations")
+            return result
+          } finally {
+            active = false
+            scope.abort(new StorageConflictError("The artifact checkpoint is closed"))
+            await Promise.allSettled([...readers].map((reader) => reader.close?.()))
+            await Promise.allSettled(exports)
+          }
+        },
+        { signal },
+      )
+    if (state.objects) return read()
+    return withFileLock(
+      { directory: path.join(handle.artifactDirectory, "storage", ".locks"), key: "artifact-packs", signal },
+      read,
+    )
   }
 
   export async function validateArtifacts(

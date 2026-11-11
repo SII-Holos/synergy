@@ -80,6 +80,7 @@
     "./storage/object-artifacts": "./src/storage/object-artifacts.ts",
     "./storage/upgrade-work": "./src/storage/upgrade-work.ts",
     "./storage/storage": "./src/storage/storage.ts",
+    "./storage/checkpoint": "./src/storage/checkpoint.ts",
     "./storage/mutation-guard": "./src/storage/mutation-guard.ts",
     "./storage/event-sinks": "./src/storage/event-sinks.ts",
     "./id/id": "./src/id/id.ts",
