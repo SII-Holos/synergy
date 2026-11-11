@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { memberIdentityDigest, prepareMemberHome, readMemberHome } from "../src/home"
+import { memberIdentityDigest, NativeHomeReaderContract, prepareMemberHome, readMemberHome } from "../src/home"
 
 const roots: string[] = []
 async function directory() {
@@ -153,7 +153,7 @@ test("provisioning never adopts existing personal data or replaces a damaged est
   const member = await prepareMemberHome({ baseDirectory, identity: { ...identity, deviceID: "clean" }, origin })
   const binding = path.join(member.root, "organization.json")
   const original = await Bun.file(binding).json()
-  await Bun.write(binding, JSON.stringify({ ...original, schemaVersion: 2 }))
+  await Bun.write(binding, JSON.stringify({ ...original, schemaVersion: 3 }))
   await expect(readMemberHome(member.home, member.identity)).rejects.toThrow("unsupported")
   await fs.rm(binding)
   await expect(prepareMemberHome({ baseDirectory, identity: member.identity, origin })).rejects.toThrow("identity")
@@ -165,7 +165,13 @@ test("unfinished initial provisioning resumes without changing a published machi
   const identity = { orgID: "organization", accountID: "member", deviceID: "device" }
   const origin = "https://organization.example"
   const member = await prepareMemberHome({ baseDirectory, identity, origin })
-  const pending = { schemaVersion: 1, state: "provisioning", identity, origin }
+  const pending = {
+    schemaVersion: 2,
+    readerContract: NativeHomeReaderContract,
+    state: "provisioning",
+    identity,
+    origin,
+  }
   const binding = path.join(member.root, "organization.json")
   await Bun.write(binding, JSON.stringify(pending))
   await expect(readMemberHome(member.home, identity)).rejects.toThrow("incomplete")

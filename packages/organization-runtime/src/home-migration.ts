@@ -8,31 +8,31 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 import { runMigrations, type Migration } from "@ericsanchezok/synergy-harness/migration"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { readCredentials } from "./credentials"
-import { HostedBinding, HostedIdentity, HostedHomeReaderContract, LegacyBinding } from "./home-schema"
+import { Binding, RuntimeIdentity, NativeHomeReaderContract, LegacyBinding } from "./home-schema"
 import { runtimeHomeOrigin, runtimeIdentityDigest } from "./home"
 import { MemberHomeError, readRecord, writeRecord } from "./record"
 
 const domain = "organization-runtime-home"
-const schema = z.union([LegacyBinding, HostedBinding])
-const configured = RuntimeContext.state(() => ({ identity: undefined as HostedIdentity | undefined }))
+const schema = z.union([LegacyBinding, Binding])
+const configured = RuntimeContext.state(() => ({ identity: undefined as RuntimeIdentity | undefined }))
 const request = RuntimeContext.createAsyncContext<{
   home: string
-  identity: HostedIdentity
+  identity: RuntimeIdentity
   lease: RuntimeMaintenance.Lease
   signal?: AbortSignal
 }>()
 
 function owner() {
   const identity = configured().identity
-  if (!identity) throw new MemberHomeError("Hosted Home migration requires its selected organization owner")
+  if (!identity) throw new MemberHomeError("Organization Home migration requires its selected organization owner")
   const host = RuntimeContext.current().host
   if (path.resolve(host.root) !== path.join(path.resolve(host.home), ".synergy"))
-    throw new MemberHomeError("Hosted Home migration requires its canonical native root")
+    throw new MemberHomeError("Organization Home migration requires its canonical native root")
   const selected = {
     schemaVersion: 2 as const,
     owner: "organization-runtime",
     identity: runtimeIdentityDigest(identity),
-    readerContract: HostedHomeReaderContract,
+    readerContract: NativeHomeReaderContract,
   }
   return { identity, host, selected, files: HomeOwnershipFile.open({ root: host.root, env: host.env, selected }) }
 }
@@ -42,7 +42,7 @@ async function records() {
   for (const directory of [current.host.home, current.host.root]) {
     const stat = await fs.lstat(directory)
     if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new MemberHomeError("Hosted Home migration requires an independent local Home")
+      throw new MemberHomeError("Organization Home migration requires an independent local Home")
   }
   const ownership = await current.files.read()
   const binding = await readRecord(path.join(current.host.root, "organization.json"), schema, "identity records")
@@ -51,42 +51,41 @@ async function records() {
     !binding ||
     ownership.owner !== current.selected.owner ||
     ownership.identity !== current.selected.identity ||
-    runtimeIdentityDigest(binding.identity) !== current.selected.identity ||
-    "accountID" in binding.identity
+    runtimeIdentityDigest(binding.identity) !== current.selected.identity
   )
-    throw new MemberHomeError("Hosted Home migration cannot adopt a missing or foreign identity")
-  if (ownership.schemaVersion === 2 && ownership.readerContract !== HostedHomeReaderContract)
-    throw new MemberHomeError("Hosted Home reader contract is unsupported")
+    throw new MemberHomeError("Organization Home migration cannot adopt a missing or foreign identity")
+  if (ownership.schemaVersion === 2 && ownership.readerContract !== NativeHomeReaderContract)
+    throw new MemberHomeError("Organization Home reader contract is unsupported")
   if (ownership.schemaVersion === 1 && binding.schemaVersion !== 1)
-    throw new MemberHomeError("Hosted Home files have an inconsistent migration order")
+    throw new MemberHomeError("Organization Home files have an inconsistent migration order")
   runtimeHomeOrigin(binding.origin)
   const credentials = await readCredentials(current.host.root)
   if (binding.state === "ready" && (!credentials || credentials.publicKey !== binding.publicKey))
-    throw new MemberHomeError("Hosted Home migration cannot replace missing or mismatched credentials")
+    throw new MemberHomeError("Organization Home migration cannot replace missing or mismatched credentials")
   return { ...current, ownership, binding }
 }
 
 async function assertRequest() {
   const input = request.getStore()
-  if (!input) throw new MemberHomeError("Hosted Home upgrade requires explicit frozen native maintenance")
+  if (!input) throw new MemberHomeError("Organization Home upgrade requires explicit frozen native maintenance")
   const selected = owner()
   if (
     path.resolve(input.home) !== path.resolve(selected.host.home) ||
     runtimeIdentityDigest(input.identity) !== selected.selected.identity
   )
-    throw new MemberHomeError("Hosted Home migration belongs to another native Home or identity")
+    throw new MemberHomeError("Organization Home migration belongs to another native Home or identity")
   const info = await RuntimeMaintenance.assertHeld(input.lease)
   if (info.phase !== "frozen")
-    throw new MemberHomeError("Hosted Home migration requires its current frozen writer cohort")
+    throw new MemberHomeError("Organization Home migration requires its current frozen writer cohort")
   input.signal?.throwIfAborted()
   return { input, selected }
 }
 
-export const hostedHomeMigration: Migration = {
-  id: "20261112-hosted-home-reader-fence-v2",
+export const organizationHomeMigration: Migration = {
+  id: "20261112-organization-home-reader-fence-v2",
   scope: "global",
   execution: "maintenance",
-  description: "Fence previous hosted Home readers before publishing maintenance-capable bindings",
+  description: "Fence previous organization Home readers before publishing native ownership bindings",
   async isApplied() {
     const current = await records()
     return current.ownership.schemaVersion === 2 && current.binding.schemaVersion === 2
@@ -94,7 +93,11 @@ export const hostedHomeMigration: Migration = {
   async up(progress) {
     const { input, selected } = await assertRequest()
     await withFileLock(
-      { directory: path.join(selected.host.root, "state", ".locks"), key: "hosted-home-format", signal: input.signal },
+      {
+        directory: path.join(selected.host.root, "state", ".locks"),
+        key: "organization-home-format",
+        signal: input.signal,
+      },
       async () => {
         await assertRequest()
         const current = await records()
@@ -110,7 +113,7 @@ export const hostedHomeMigration: Migration = {
         if (current.binding.schemaVersion === 1)
           await writeRecord(
             path.join(current.host.root, "organization.json"),
-            HostedBinding.parse({ ...current.binding, schemaVersion: 2, readerContract: HostedHomeReaderContract }),
+            Binding.parse({ ...current.binding, schemaVersion: 2, readerContract: NativeHomeReaderContract }),
           )
         progress(1, 1)
       },
@@ -118,27 +121,27 @@ export const hostedHomeMigration: Migration = {
   },
 }
 
-const migrations = [hostedHomeMigration]
-export function registerHostedHomeMigration(input: HostedIdentity) {
-  RuntimeContext.assertCompositionOpen("Hosted Home migration")
-  const identity = HostedIdentity.parse(input)
+const migrations = [organizationHomeMigration]
+export function registerOrganizationHomeMigration(input: RuntimeIdentity) {
+  RuntimeContext.assertCompositionOpen("Organization Home migration")
+  const identity = RuntimeIdentity.parse(input)
   const prior = configured().identity
   if (prior && runtimeIdentityDigest(prior) !== runtimeIdentityDigest(identity))
-    throw new MemberHomeError("Hosted Home migration owner is already selected")
+    throw new MemberHomeError("Organization Home migration owner is already selected")
   configured().identity = identity
   MigrationRegistry.register(domain, migrations)
 }
 
-export async function upgradeHostedHome(input: {
+export async function upgradeOrganizationHome(input: {
   home: string
-  identity: HostedIdentity
+  identity: RuntimeIdentity
   lease: RuntimeMaintenance.Lease
   signal?: AbortSignal
 }) {
   return RuntimeMaintenance.withFrozen(
     input.lease,
     () =>
-      request.run({ ...input, identity: HostedIdentity.parse(input.identity) }, async () => {
+      request.run({ ...input, identity: RuntimeIdentity.parse(input.identity) }, async () => {
         await assertRequest()
         const result = await runMigrations({
           targetDomain: domain,
@@ -148,7 +151,7 @@ export async function upgradeHostedHome(input: {
         })
         const current = await records()
         if (current.ownership.schemaVersion !== 2 || current.binding.schemaVersion !== 2)
-          throw new MemberHomeError("Hosted Home migration receipt does not match its canonical files")
+          throw new MemberHomeError("Organization Home migration receipt does not match its canonical files")
         return result
       }),
     { signal: input.signal },

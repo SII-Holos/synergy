@@ -6,7 +6,7 @@
   "license": "MIT",
   "exports": {
     "./home": "./src/home.ts",
-    "./hosted-home-migration": "./src/hosted-home-migration.ts",
+    "./home-migration": "./src/home-migration.ts",
     "./enrollment": "./src/enrollment.ts",
     "./registration": "./src/registration.ts",
     "./connection": "./src/connection.ts",

@@ -7,7 +7,10 @@ import { readRecord } from "../../src/record"
 
 // The version-1 startup reader is retained to exercise the real previous strict file contract in Node.
 const Owner = z.strictObject({ schemaVersion: z.literal(1), owner: z.string(), identity: z.string() })
-const Identity = z.strictObject({ orgID: z.string(), hostID: z.string() })
+const Identity = z.union([
+  z.strictObject({ orgID: z.string(), hostID: z.string() }),
+  z.strictObject({ orgID: z.string(), accountID: z.string(), deviceID: z.string() }),
+])
 const Binding = z.strictObject({
   schemaVersion: z.literal(1),
   identity: Identity,
@@ -21,7 +24,13 @@ const root = path.join(home, ".synergy")
 const owner = Owner.parse(JSON.parse(await fs.readFile(path.join(root, "home-ownership.json"), "utf8")))
 const binding = await readRecord(path.join(root, "organization.json"), Binding, "identity records")
 const digest = createHash("sha256")
-  .update(JSON.stringify(["hosted", expected.orgID, expected.hostID]))
+  .update(
+    JSON.stringify(
+      "accountID" in expected
+        ? [expected.orgID, expected.accountID, expected.deviceID]
+        : ["hosted", expected.orgID, expected.hostID],
+    ),
+  )
   .digest("hex")
 if (
   !binding ||

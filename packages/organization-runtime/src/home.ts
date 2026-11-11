@@ -9,12 +9,12 @@ import {
   Binding,
   MemberBinding,
   HostedBinding,
-  HostedHomeReaderContract,
+  NativeHomeReaderContract,
   MemberIdentity,
   HostedIdentity,
   RuntimeIdentity,
 } from "./home-schema.js"
-export { MemberIdentity, HostedIdentity, RuntimeIdentity, HostedHomeReaderContract } from "./home-schema.js"
+export { MemberIdentity, HostedIdentity, RuntimeIdentity, NativeHomeReaderContract } from "./home-schema.js"
 
 export interface RuntimeHome {
   home: string
@@ -80,15 +80,12 @@ async function withOwner<T>(
   const owner = HomeOwnershipFile.open({
     root,
     env: { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME },
-    selected:
-      "accountID" in identity
-        ? { schemaVersion: 1, owner: "organization-runtime", identity: runtimeIdentityDigest(identity) }
-        : {
-            schemaVersion: 2,
-            owner: "organization-runtime",
-            identity: runtimeIdentityDigest(identity),
-            readerContract: HostedHomeReaderContract,
-          },
+    selected: {
+      schemaVersion: 2,
+      owner: "organization-runtime",
+      identity: runtimeIdentityDigest(identity),
+      readerContract: NativeHomeReaderContract,
+    },
   })
   for (const directory of [home, root]) {
     const stat = await fs.lstat(directory).catch((error: NodeJS.ErrnoException) => {
@@ -145,13 +142,19 @@ async function prepareRuntimeHome(input: { baseDirectory: string; identity: Runt
           throw new MemberHomeError("Member Runtime identity is missing from an existing Home")
         current =
           "accountID" in identity
-            ? MemberBinding.parse({ schemaVersion: 1, state: "provisioning", identity, origin: address })
+            ? MemberBinding.parse({
+                schemaVersion: 2,
+                state: "provisioning",
+                identity,
+                origin: address,
+                readerContract: NativeHomeReaderContract,
+              })
             : HostedBinding.parse({
                 schemaVersion: 2,
                 state: "provisioning",
                 identity,
                 origin: address,
-                readerContract: HostedHomeReaderContract,
+                readerContract: NativeHomeReaderContract,
               })
         await writeRecord(filename(root), current)
       }
