@@ -189,6 +189,7 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/organization/attachment-directory.test.ts",
     "test/organization/decision-state.test.ts",
     "test/components/prompt-input/loop-status-resource.test.ts",
     "test/components/session/conversation-hydration.test.ts",

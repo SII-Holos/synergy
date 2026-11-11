@@ -645,6 +645,223 @@ test("private attachments expose verified previews and target-only native saves 
   }
 })
 
+test("tool files open from safe counts, page through hidden windows and retain ordinal-bound preview and native save targets", async () => {
+  for (const variant of [
+    { width: 375, scheme: "light" },
+    { width: 1100, scheme: "dark" },
+  ] as const) {
+    const page = await browser.newPage({ viewport: { width: variant.width, height: 667 }, colorScheme: variant.scheme })
+    const binding = {
+      schemaVersion: 1,
+      orgID: "org-a",
+      projectID: "project-a",
+      creatorID: "account-a",
+      driverRuntimeID: "runtime-a",
+      bindingEpoch: 1,
+    }
+    const bytes = Buffer.from("Verified tool file 你好")
+    const sha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+    const queries: { operation: string; cursor?: string; ordinal?: number; length?: number }[] = []
+    const downloads: unknown[] = []
+    let revoked = false
+    await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
+    await page.exposeFunction("hostDownloadAttachment", (request: unknown) => {
+      downloads.push(request)
+      return { ok: true, value: { kind: "result", result: { saved: true, bytes: bytes.length } } }
+    })
+    await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+      const query = JSON.parse(request.body!)
+      queries.push(query)
+      if (revoked) return { ok: false, error: { code: "permission_denied" } }
+      const base = { operation: query.operation, rootSessionID: "session-a", sourceSessionID: "session-a", binding }
+      const body =
+        query.operation === "timeline"
+          ? {
+              ...base,
+              items: [
+                {
+                  messageID: "message-tool",
+                  role: "assistant",
+                  createdAt: 1,
+                  summary: "Tool file metadata",
+                  version: "message-v1",
+                  order: "1",
+                },
+              ],
+              referencedRoots: [],
+              hasMore: false,
+              total: 1,
+              generation: 1,
+            }
+          : query.operation === "parts"
+            ? {
+                ...base,
+                messageID: "message-tool",
+                hasMore: false,
+                items: [
+                  {
+                    messageID: "message-tool",
+                    partID: "tool-files",
+                    type: "tool",
+                    preview: "Report generation",
+                    content: { version: "display-tool-v1", bytes: 0 },
+                    attachmentCount: 2,
+                  },
+                  {
+                    messageID: "message-tool",
+                    partID: "tool-empty",
+                    type: "tool",
+                    preview: "No files",
+                    content: { version: "display-empty-v1", bytes: 0 },
+                    attachmentCount: 0,
+                  },
+                  {
+                    messageID: "message-tool",
+                    partID: "tool-hidden",
+                    type: "tool",
+                    preview: "Hidden tool",
+                    content: { version: "display-hidden-v1", bytes: 0 },
+                    attachmentCount: 9,
+                    render: false,
+                  },
+                ],
+              }
+            : query.operation === "partContent"
+              ? {
+                  ...base,
+                  state: "preparing",
+                  messageID: "message-tool",
+                  partID: query.partID,
+                  version: "native-field-v1",
+                  progress: { phase: "materializing", bytes: 1 },
+                }
+              : query.operation === "attachments"
+                ? {
+                    ...base,
+                    messageID: "message-tool",
+                    partID: "tool-files",
+                    version: "tool-files-v1",
+                    total: 2,
+                    items:
+                      query.cursor === "hidden-window"
+                        ? []
+                        : [
+                            {
+                              ordinal: query.cursor ? 1000 : 0,
+                              filename: query.cursor ? "final.txt" : "report.txt",
+                              mediaType: "text/plain",
+                              bytes: bytes.length,
+                            },
+                          ],
+                    cursor: query.cursor === "last-window" ? undefined : query.cursor ? "last-window" : "hidden-window",
+                  }
+                : query.operation === "attachmentContent"
+                  ? {
+                      ...base,
+                      state: "ready",
+                      messageID: "message-tool",
+                      partID: "tool-files",
+                      ordinal: query.ordinal,
+                      reference: {
+                        kind: "attachment",
+                        version: "tool-files-v1",
+                        filename: query.ordinal === 0 ? "report.txt" : "final.txt",
+                        mediaType: "text/plain",
+                        bytes: bytes.length,
+                        sha256,
+                      },
+                      chunk: {
+                        offset: query.offset,
+                        nextOffset: Math.min(bytes.length, query.offset + query.length),
+                        totalBytes: bytes.length,
+                        sha256,
+                        data: bytes.subarray(query.offset, query.offset + query.length).toString("base64url"),
+                        complete: query.offset + query.length >= bytes.length,
+                      },
+                    }
+                  : query.operation === "session"
+                    ? {
+                        ...base,
+                        session: { sessionID: "session-a", title: "Private tool files", createdAt: 1, updatedAt: 2 },
+                      }
+                    : { ...base, status: { type: "idle", observedAt: 1, controlVersion: 0 } }
+      return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
+    })
+    try {
+      await page.goto(new URL("/organization/org-a/account-a/deployment-a?fixture=private", server.url).href)
+      const files = page.getByRole("button", { name: "Files 2", exact: true })
+      await files.waitFor()
+      expect(await page.getByRole("button", { name: "Files 0", exact: true }).count()).toBe(0)
+      expect(await page.getByRole("button", { name: "Files 9", exact: true }).count()).toBe(0)
+      expect(
+        queries.filter((query) => query.operation === "attachments" || query.operation === "attachmentContent"),
+      ).toHaveLength(0)
+      await page.getByText("Content is preparing. Retry to load its verified bytes.", { exact: true }).waitFor()
+      const headers = queries.filter((query) => query.operation === "partContent").length
+      expect(headers).toBeGreaterThanOrEqual(2)
+      await files.click()
+      const first = page.getByRole("region", { name: "report.txt", exact: true })
+      await first.waitFor()
+      expect(queries.filter((query) => query.operation === "partContent")).toHaveLength(headers)
+      expect(queries.filter((query) => query.operation === "attachmentContent")).toHaveLength(0)
+      await first.getByRole("button", { name: "Preview", exact: true }).click()
+      await first.getByText("Verified tool file 你好", { exact: true }).waitFor()
+      expect(
+        queries.filter((query) => query.operation === "attachmentContent").every((query) => query.ordinal === 0),
+      ).toBe(true)
+      await page.getByRole("button", { name: "Next files", exact: true }).click()
+      await page.getByText("No visible files on this page", { exact: true }).waitFor()
+      expect(await page.getByText("Verified tool file 你好", { exact: true }).count()).toBe(0)
+      await page.getByRole("button", { name: "Next files", exact: true }).click()
+      const last = page.getByRole("region", { name: "final.txt", exact: true })
+      await last.waitFor()
+      expect(await first.count()).toBe(0)
+      expect(await page.getByRole("button", { name: "Next files", exact: true }).count()).toBe(0)
+      await last.getByRole("button", { name: "Preview", exact: true }).click()
+      await last.getByText("Verified tool file 你好", { exact: true }).waitFor()
+      await last.getByRole("button", { name: "Download", exact: true }).click()
+      await last.getByText("File saved", { exact: true }).waitFor()
+      expect(downloads).toHaveLength(1)
+      expect(downloads[0]).toMatchObject({
+        connectionID: entry.id,
+        binding,
+        query: {
+          operation: "attachmentContent",
+          rootSessionID: "session-a",
+          messageID: "message-tool",
+          partID: "tool-files",
+          version: "tool-files-v1",
+          ordinal: 1000,
+          offset: 0,
+          length: 65_536,
+        },
+      })
+      expect(Object.keys(downloads[0] as object).sort()).toEqual(["binding", "connectionID", "query", "requestID"])
+      const bounds = await last.boundingBox()
+      expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= variant.width).toBe(true)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      if (process.env.SYNERGY_UI_SCREENSHOT_DIR) {
+        await fs.mkdir(process.env.SYNERGY_UI_SCREENSHOT_DIR, { recursive: true })
+        await page.waitForFunction((scheme) => document.documentElement.dataset.colorScheme === scheme, variant.scheme)
+        await page.screenshot({
+          path: path.join(
+            process.env.SYNERGY_UI_SCREENSHOT_DIR,
+            `tool-files-${variant.width}-667-${variant.scheme}.png`,
+          ),
+        })
+      }
+      revoked = true
+      await page.getByRole("button", { name: "First files", exact: true }).click()
+      await page.getByRole("alert").waitFor()
+      expect(await last.count()).toBe(0)
+      expect(await page.getByText("Verified tool file 你好", { exact: true }).count()).toBe(0)
+      expect(queries.filter((query) => query.operation === "attachments")).toHaveLength(4)
+    } finally {
+      await page.close()
+    }
+  }
+})
+
 test("a native permission revocation clears previously rendered private content", async () => {
   const page = await browser.newPage({ viewport: { width: 1000, height: 760 } })
   let revoked = false

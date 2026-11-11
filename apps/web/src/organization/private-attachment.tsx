@@ -16,13 +16,31 @@ import { publicationMessages as messages } from "./publication-messages"
 import { organizationOwnerFailure } from "./owner-error"
 import { WorkspaceError } from "./workspace-error"
 
-type Attachment = Read.Part & { part: Extract<Read.Part["part"], { type: "attachment" }> }
-type Target = {
+export type PrivateAttachmentTarget = {
   rootSessionID: string
   sourceSessionID?: string
-  record: Attachment
+  messageID: string
+  partID: string
+  version: string
+  ordinal?: number
+  file: Pick<Read.AttachmentMetadata, "filename" | "mediaType" | "bytes">
   binding: Protocol.SessionBinding
   read: (query: Read.Query, signal: AbortSignal) => Promise<Read.Result>
+}
+export function privateAttachmentIdentity(
+  input: Pick<
+    PrivateAttachmentTarget,
+    "rootSessionID" | "sourceSessionID" | "messageID" | "partID" | "version" | "ordinal"
+  >,
+) {
+  return JSON.stringify([
+    input.rootSessionID,
+    input.sourceSessionID ?? input.rootSessionID,
+    input.messageID,
+    input.partID,
+    input.version,
+    input.ordinal,
+  ])
 }
 type Writable = { write(bytes: Uint8Array): Promise<void>; close(): Promise<void>; abort(): Promise<void> }
 type SaveWindow = Window & {
@@ -34,14 +52,15 @@ const unavailable = {
 }
 const previewLimit = 256 * 1024
 
-async function descriptor(input: Target, signal: AbortSignal) {
+async function descriptor(input: PrivateAttachmentTarget, signal: AbortSignal) {
   const query = {
     operation: "attachmentContent" as const,
     rootSessionID: input.rootSessionID,
     sourceSessionID: input.sourceSessionID,
-    messageID: input.record.messageID,
-    partID: input.record.partID,
-    version: input.record.version,
+    messageID: input.messageID,
+    partID: input.partID,
+    version: input.version,
+    ordinal: input.ordinal,
     offset: 0,
     length: 1,
   }
@@ -53,7 +72,7 @@ async function descriptor(input: Target, signal: AbortSignal) {
 }
 
 export function PrivateAttachment(
-  props: Target & {
+  props: PrivateAttachmentTarget & {
     previewActive: boolean
     openPreview: () => void
     closePreview: () => void
@@ -82,10 +101,14 @@ export function PrivateAttachment(
     setError(undefined)
     const active = (transfer = new AbortController())
     const signal = AbortSignal.any([lifetime, active.signal])
-    const target: Target = {
+    const target: PrivateAttachmentTarget = {
       rootSessionID: props.rootSessionID,
       sourceSessionID: props.sourceSessionID,
-      record: { ...props.record },
+      messageID: props.messageID,
+      partID: props.partID,
+      version: props.version,
+      ordinal: props.ordinal,
+      file: { ...props.file },
       binding: { ...props.binding },
       read: props.read,
     }
@@ -106,9 +129,10 @@ export function PrivateAttachment(
               operation: "attachmentContent",
               rootSessionID: target.rootSessionID,
               sourceSessionID: target.sourceSessionID,
-              messageID: target.record.messageID,
-              partID: target.record.partID,
-              version: target.record.version,
+              messageID: target.messageID,
+              partID: target.partID,
+              version: target.version,
+              ordinal: target.ordinal,
               offset: 0,
               length: 65_536,
             },
@@ -144,8 +168,9 @@ export function PrivateAttachment(
         const result = await OrganizationReadContent.stream({
           rootSessionID: target.rootSessionID,
           sourceSessionID: target.sourceSessionID,
-          messageID: target.record.messageID,
-          partID: target.record.partID,
+          messageID: target.messageID,
+          partID: target.partID,
+          ordinal: target.ordinal,
           reference,
           expectedBinding: target.binding,
           signal,
@@ -173,27 +198,25 @@ export function PrivateAttachment(
     }
   }
   return (
-    <section class="organization-private-attachment" aria-label={props.record.part.filename}>
+    <section class="organization-private-attachment" aria-label={props.file.filename}>
       <div class="organization-private-attachment-header">
-        <FileIcon node={{ path: props.record.part.filename, type: "file" }} aria-hidden="true" />
+        <FileIcon node={{ path: props.file.filename, type: "file" }} aria-hidden="true" />
         <div>
-          <strong title={props.record.part.filename}>
+          <strong title={props.file.filename}>
             <span>
-              {props.record.part.filename.includes(".")
-                ? props.record.part.filename.slice(0, props.record.part.filename.lastIndexOf("."))
-                : props.record.part.filename}
+              {props.file.filename.includes(".")
+                ? props.file.filename.slice(0, props.file.filename.lastIndexOf("."))
+                : props.file.filename}
             </span>
             <span>
-              {props.record.part.filename.includes(".")
-                ? props.record.part.filename.slice(props.record.part.filename.lastIndexOf("."))
-                : ""}
+              {props.file.filename.includes(".") ? props.file.filename.slice(props.file.filename.lastIndexOf(".")) : ""}
             </span>
           </strong>
           <span>
-            {props.record.part.mediaType}
-            <Show when={props.record.part.bytes !== undefined}>
+            {props.file.mediaType}
+            <Show when={props.file.bytes !== undefined}>
               {" "}
-              · {new Intl.NumberFormat().format(props.record.part.bytes!)}{" "}
+              · {new Intl.NumberFormat().format(props.file.bytes!)}{" "}
               {_({ id: "organization.session.bytes", message: "bytes" })}
             </Show>
           </span>
@@ -226,7 +249,7 @@ export function PrivateAttachment(
   )
 }
 
-function AttachmentPreview(props: Target & { signal: AbortSignal; fail: (error: unknown) => void }) {
+function AttachmentPreview(props: PrivateAttachmentTarget & { signal: AbortSignal; fail: (error: unknown) => void }) {
   const { _ } = useLingui()
   const controller = new AbortController()
   const signal = AbortSignal.any([props.signal, controller.signal])
@@ -259,8 +282,9 @@ function AttachmentPreview(props: Target & { signal: AbortSignal; fail: (error: 
           const result = await OrganizationReadContent.stream({
             rootSessionID: props.rootSessionID,
             sourceSessionID: props.sourceSessionID,
-            messageID: props.record.messageID,
-            partID: props.record.partID,
+            messageID: props.messageID,
+            partID: props.partID,
+            ordinal: props.ordinal,
             reference,
             expectedBinding: props.binding,
             signal,
@@ -312,7 +336,7 @@ function AttachmentPreview(props: Target & { signal: AbortSignal; fail: (error: 
                 </Show>
               }
             >
-              {(url) => <img src={url()} alt={props.record.part.filename} />}
+              {(url) => <img src={url()} alt={props.file.filename} />}
             </Show>
           }
         >

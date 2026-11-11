@@ -23,7 +23,8 @@ import { organizationOwnerFailure } from "./owner-error"
 import { organizationSessionMessages as messages } from "./session-messages"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
 import { PrivateContentDownload } from "./private-content"
-import { PrivateAttachment } from "./private-attachment"
+import { PrivateAttachment, privateAttachmentIdentity } from "./private-attachment"
+import { PrivateToolAttachments } from "./private-tool-attachments"
 import "./session.css"
 
 type Native = Extract<Read.Content, { kind: "native" }>
@@ -517,7 +518,13 @@ function PrivateMessageRow(props: {
   function attachment(record: Read.Part) {
     const value = () => (record.part.type === "attachment" ? { ...record, part: record.part } : undefined)
     const identity = () =>
-      JSON.stringify([props.sourceSessionID ?? props.sessionID, props.event.messageID, record.partID, record.version])
+      privateAttachmentIdentity({
+        rootSessionID: props.sessionID,
+        sourceSessionID: props.sourceSessionID,
+        messageID: props.event.messageID,
+        partID: record.partID,
+        version: record.version,
+      })
     return (
       <Show when={value()}>
         {(value) => (
@@ -526,7 +533,10 @@ function PrivateMessageRow(props: {
               <PrivateAttachment
                 rootSessionID={props.sessionID}
                 sourceSessionID={props.sourceSessionID}
-                record={{ ...value(), version }}
+                messageID={value().messageID}
+                partID={value().partID}
+                version={version}
+                file={value().part}
                 binding={props.binding}
                 read={props.read}
                 invalidated={props.fail}
@@ -545,35 +555,58 @@ function PrivateMessageRow(props: {
       <WorkspaceError error={error()} retry={() => void load()} />
       <Show when={props.message} fallback={<p>{props.event.summary}</p>}>
         {(message) => (
-          <Show when={message().role === "assistant"} fallback={<Message message={message()} parts={props.parts} />}>
-            <For each={props.records}>
-              {(record) => (
-                <Show
-                  when={record.part.type === "attachment"}
-                  fallback={
-                    <OrganizationTranscriptPart
-                      record={record}
-                      part={props.parts.find((part) => part.id === record.partID)}
-                      message={message()}
-                    />
-                  }
-                >
-                  {attachment(record)}
-                </Show>
-              )}
-            </For>
+          <Show when={message().role !== "assistant"}>
+            <Message message={message()} parts={props.parts} />
           </Show>
         )}
       </Show>
-      <Show when={props.message?.role !== "assistant"}>
-        <For each={props.records}>{(record) => attachment(record)}</For>
-      </Show>
-      <For
-        each={state.summaries.filter(
-          (summary) => summary.render !== false && !props.records.some((record) => record.partID === summary.partID),
+      <For each={state.summaries.filter((summary) => summary.render !== false)}>
+        {(summary) => (
+          <div class="organization-private-part">
+            <Show
+              when={props.records.find((record) => record.partID === summary.partID)}
+              fallback={<p>{summary.preview}</p>}
+            >
+              {(record) => (
+                <Show
+                  when={record().part.type === "attachment"}
+                  fallback={
+                    <Show when={props.message?.role === "assistant" && props.message}>
+                      {(message) => (
+                        <OrganizationTranscriptPart
+                          record={record()}
+                          part={props.parts.find((part) => part.id === record().partID)}
+                          message={message()}
+                        />
+                      )}
+                    </Show>
+                  }
+                >
+                  {attachment(record())}
+                </Show>
+              )}
+            </Show>
+            <Show when={summary.type === "tool" && summary.attachmentCount && summary.attachmentCount > 0}>
+              <Show when={summary.content.version} keyed>
+                {(_version) => (
+                  <PrivateToolAttachments
+                    sessionID={props.sessionID}
+                    sourceSessionID={props.sourceSessionID}
+                    messageID={props.event.messageID}
+                    partID={summary.partID}
+                    count={summary.attachmentCount!}
+                    binding={props.binding}
+                    signal={signal}
+                    read={props.read}
+                    attachmentPreview={props.attachmentPreview}
+                    selectAttachmentPreview={props.selectAttachmentPreview}
+                    invalidated={props.fail}
+                  />
+                )}
+              </Show>
+            </Show>
+          </div>
         )}
-      >
-        {(summary) => <p>{summary.preview}</p>}
       </For>
       <Show when={pending()}>
         <div role="status">

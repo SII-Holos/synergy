@@ -70,4 +70,4 @@ bun run localization:check
 
 Use the existing app or an isolated second instance for interaction checks. Verify both themes, keyboard/focus, loading/error states, session switching/reconnect when relevant, and the Desktop path for native Browser or Electron behavior. Do not bypass hooks or claim unrun checks.
 
-Retain owner-bound descendants. Load drafts lazily; passwords stay volatile. Finite pages cannot confirm absence.
+Retain owner-bound descendants. Hydrate drafts/files lazily; passwords stay volatile. Finite pages cannot confirm absence.

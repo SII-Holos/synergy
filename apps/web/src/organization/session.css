@@ -158,6 +158,31 @@
   color: var(--text-weak);
   font-size: 12px;
 }
+.organization-private-part,
+.organization-private-tool-file-page {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.organization-private-tool-files {
+  min-width: 0;
+}
+.organization-private-tool-files > button {
+  min-height: 44px;
+  gap: 8px;
+}
+.organization-private-tool-files > button > span {
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+}
+.organization-private-tool-file-page {
+  margin-top: 8px;
+}
+.organization-private-tool-file-page > p {
+  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .organization-private-attachment {
   display: grid;
   gap: 12px;
