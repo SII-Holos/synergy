@@ -77,6 +77,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
       ["POST", "/org/v1/invites/invite-one/revoke"],
       ["POST", "/org/v1/organization/leave"],
       ["POST", "/org/v1/sessions/session-one/read"],
+      ["POST", "/org/v1/sessions/session-one/interactions/reply"],
       ["GET", "/org/v1/projects/project-one/knowledge/applied/releases?limit=50"],
       ["POST", "/org/v1/projects/project-one/knowledge/applied/references"],
       ["GET", "/org/v1/sessions/session-one/knowledge/releases?limit=50"],
@@ -96,7 +97,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
     })
     expect(result).toMatchObject({ ok: true, value: { status: 200 } })
   }
-  expect(calls).toBe(17)
+  expect(calls).toBe(18)
   ipc.dispose()
 })
 

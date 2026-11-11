@@ -94,6 +94,7 @@ nativeTest(
         logout: true,
         memberIPC: true,
         binaryIPC: true,
+        nativeReadIPC: true,
       })
     } finally {
       clearTimeout(timeout)

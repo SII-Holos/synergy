@@ -5,7 +5,7 @@ import { DesktopOrganizationIPC } from "../src/organization/ipc"
 import { organizationFixture } from "./fixture/organization"
 import { OrganizationReadProtocol as Read } from "@ericsanchezok/synergy-organization-protocol"
 
-async function setup() {
+async function setup(options: {content?:Uint8Array;nativeDelayMs?:number;requestTimeoutMs?:number;transferIdleMs?:number;saveFile?:ConstructorParameters<typeof DesktopOrganizationIPC>[0]["saveFile"]} = {}) {
   const f = await organizationFixture()
   try {
     const verifier = randomBytes(32).toString("base64url")
@@ -56,7 +56,15 @@ async function setup() {
           expect(url.pathname).toBe("/organization/session/read")
           const query = Read.Query.parse(await request.json())
           queries.push(query)
-          const value = Read.Result.parse({
+          if (options.nativeDelayMs) await new Promise((resolve) => setTimeout(resolve,options.nativeDelayMs))
+          const content = options.content
+          const contentHash = content && createHash("sha256").update(content).digest("hex")
+          const value = Read.Result.parse(content && query.operation === "partContent" ? {
+            operation:"partContent",state:"ready",rootSessionID:query.rootSessionID,sourceSessionID:query.sourceSessionID ?? query.rootSessionID,
+            binding:{...binding(),bindingEpoch:state.nativeEpoch},
+            value:{messageID:query.messageID,partID:query.partID,version:"native-v1",part:{type:"text",content:{kind:"native",version:"native-v1",field:"text",bytes:content.length,sha256:contentHash,original:"partial"}}},
+            chunk:{field:"text",offset:query.offset,nextOffset:Math.min(content.length,query.offset+query.length),totalBytes:content.length,sha256:contentHash,original:"partial",data:Buffer.from(content.slice(query.offset,query.offset+query.length)).toString("base64url"),complete:query.offset+query.length>=content.length},
+          } : {
             operation: "status",
             rootSessionID: "session-a",
             sourceSessionID: "session-a",
@@ -119,6 +127,9 @@ async function setup() {
       accounts: f.accounts,
       authorization,
       fetch: transport,
+      saveFile:options.saveFile,
+      requestTimeoutMs:options.requestTimeoutMs,
+      transferIdleMs:options.transferIdleMs,
       trusted: (event) => event === trusted,
       members: {
         running: () => [
@@ -208,4 +219,52 @@ test("native conflicts expose a fixed outcome without native error data", async 
   f.state.conflict = true
   const result = await f.ipc.handle(f.trusted, "memberRequest", f.input)
   expect(result).toEqual({ ok: true, value: { kind: "revision_conflict" } })
+})
+
+test("the native content IPC saves only the creator's exact bound field in verified bounded chunks", async () => {
+  const content = Buffer.from("Private content 内容\n".repeat(15000))
+  const chunks:Uint8Array[]=[]
+  await using f = await setup({content,saveFile:async (_fileName,write) => ({saved:true,bytes:await write(async (chunk) => {chunks.push(chunk.slice())})})})
+  const input = {...f.input,fileName:"result.txt",binding:f.binding(),query:{operation:"partContent",rootSessionID:"session-a",messageID:"message-a",partID:"part-a",version:"native-v1",field:"text",offset:0,length:131072},reference:{kind:"native",version:"native-v1",field:"text",bytes:content.length,sha256:createHash("sha256").update(content).digest("hex"),original:"partial"}}
+  expect(await f.ipc.handle(f.trusted,"downloadContent",input)).toEqual({ok:true,value:{kind:"result",result:{saved:true,bytes:content.length},original:"partial"}})
+  expect(Buffer.concat(chunks)).toEqual(content)
+  expect(chunks.every((chunk) => chunk.byteLength <= 131072)).toBe(true)
+  expect(f.queries.length).toBeGreaterThan(3)
+})
+
+test("a binding change while the native save picker is open cannot publish field bytes", async () => {
+  const content = new TextEncoder().encode("Private content")
+  let writes=0
+  let picked=false
+  let changed:() => void = () => {}
+  await using f = await setup({content,saveFile:async (_fileName,write) => {changed();return {saved:true,bytes:await write(async () => {writes++})}}})
+  changed = () => {picked=true;f.state.epoch=2}
+  const input = {...f.input,fileName:"result.txt",binding:f.binding(),query:{operation:"partContent",rootSessionID:"session-a",messageID:"message-a",partID:"part-a",version:"native-v1",field:"text",offset:0,length:131072},reference:{kind:"native",version:"native-v1",field:"text",bytes:content.length,sha256:createHash("sha256").update(content).digest("hex"),original:"partial"}}
+  expect(await f.ipc.handle(f.trusted,"downloadContent",input)).toMatchObject({ok:false})
+  expect(writes).toBe(0)
+  expect(picked).toBe(true)
+})
+
+test("ordinary reads keep their total deadline while a progressing content save can outlive it", async () => {
+  const content = Buffer.from("Progress 内容\n".repeat(20000))
+  await using f = await setup({content,nativeDelayMs:100,requestTimeoutMs:50,transferIdleMs:600,saveFile:async (_name,write) => ({saved:true,bytes:await write(async () => {})})})
+  expect(await f.ipc.handle(f.trusted,"memberRequest",f.input)).toEqual({ok:false,error:{code:"cancelled"}})
+  const input = {...f.input,requestID:"download-progress",fileName:"result.txt",binding:f.binding(),query:{operation:"partContent",rootSessionID:"session-a",messageID:"message-a",partID:"part-a",version:"native-v1",field:"text",offset:0,length:131072},reference:{kind:"native",version:"native-v1",field:"text",bytes:content.length,sha256:createHash("sha256").update(content).digest("hex"),original:"partial"}}
+  expect(await f.ipc.handle(f.trusted,"downloadContent",input)).toMatchObject({ok:true,value:{kind:"result",result:{saved:true,bytes:content.length}}})
+})
+
+test("an idle native field request finishes before its held response and never opens a save picker", async () => {
+  const content = Buffer.from("Private content")
+  let saves=0
+  await using f = await setup({content,transferIdleMs:30,saveFile:async () => {saves++;return {saved:false}}})
+  f.state.hold=true
+  const input = {...f.input,requestID:"idle-download",fileName:"result.txt",binding:f.binding(),query:{operation:"partContent",rootSessionID:"session-a",messageID:"message-a",partID:"part-a",version:"native-v1",field:"text",offset:0,length:131072},reference:{kind:"native",version:"native-v1",field:"text",bytes:content.length,sha256:createHash("sha256").update(content).digest("hex"),original:"partial"}}
+  const pending=f.ipc.handle(f.trusted,"downloadContent",input)
+  await f.entered.promise
+  let timer:ReturnType<typeof setTimeout>|undefined
+  const result = await Promise.race([pending,new Promise<undefined>((resolve) => {timer=setTimeout(() => resolve(undefined),500)})])
+  clearTimeout(timer)
+  f.release.resolve()
+  expect(result).toEqual({ok:false,error:{code:"cancelled"}})
+  expect(saves).toBe(0)
 })

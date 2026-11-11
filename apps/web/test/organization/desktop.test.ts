@@ -34,6 +34,7 @@ function fixture() {
     projectBinding: async () => ({ ok: false, error: { code: "unavailable" } }),
     bindProject: async () => ({ ok: false, error: { code: "unavailable" } }),
     memberRequest: async () => ({ ok: false, error: { code: "unavailable" } }),
+    downloadContent: async () => ({ ok: false, error: { code: "unavailable" } }),
     cancel: async (input) => {
       cancelled.push(input.requestID)
       return { ok: true, value: undefined }

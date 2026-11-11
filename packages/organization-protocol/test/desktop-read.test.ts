@@ -41,3 +41,18 @@ test("native private reading accepts only the canonical typed query and safe bus
   } as const
   expect(Desktop.MemberReadOutcome.parse(value)).toEqual(value)
 })
+
+test("native content saving binds one immutable field without arbitrary paths or partial starting offsets", () => {
+  const input = {
+    requestID:"download-a",connectionID:"a".repeat(64),fileName:"result.txt",
+    binding:{schemaVersion:1,orgID:"org-a",projectID:"project-a",creatorID:"account-a",driverRuntimeID:"runtime-a",bindingEpoch:1},
+    query:{operation:"partContent",rootSessionID:"session-a",messageID:"message-a",partID:"part-a",field:"output",version:"v1",offset:0,length:131072},
+    reference:{kind:"native",version:"v1",field:"output",bytes:1,sha256:"a".repeat(64),original:"partial"},
+  }
+  expect(Desktop.ContentDownload.safeParse(input).success).toBe(true)
+  expect(Desktop.ContentDownload.safeParse({...input,fileName:"../result.txt"}).success).toBe(false)
+  expect(Desktop.ContentDownload.safeParse({...input,query:{...input.query,offset:1}}).success).toBe(false)
+  expect(Desktop.ContentDownload.safeParse({...input,query:{...input.query,version:"v2"}}).success).toBe(false)
+  expect(Desktop.ContentDownload.safeParse({...input,reference:{...input.reference,field:"text"}}).success).toBe(false)
+  expect(Desktop.ContentDownload.safeParse({...input,directory:"/private/path"}).success).toBe(false)
+})

@@ -15,6 +15,8 @@ import type { DesktopOrganizationAccounts } from "./accounts.js"
 import type { DesktopOrganizationAuthorization } from "./authorization.js"
 import type { DesktopMemberRuntimes } from "./member-runtimes.js"
 import { DesktopOrganizationError as Failure } from "./error.js"
+import { downloadOrganizationContent } from "./content-download.js"
+import { downloadIdleDeadline } from "./transfer-deadline.js"
 
 type Action = keyof Desktop.Bridge
 class NativeReadFailure extends Error {
@@ -36,6 +38,7 @@ const routes: [string, RegExp][] = [
   ["POST", /^\/org\/v1\/(projects|invites|sessions|resources|organization\/(transfer-owner|leave)|auth\/password)$/],
   ["POST", new RegExp(`^/org/v1/invites/${id}/revoke$`)],
   ["POST", new RegExp(`^/org/v1/sessions/${id}/(commands|control|read)$`)],
+  ["POST", new RegExp(`^/org/v1/sessions/${id}/interactions/reply$`)],
   ["DELETE", new RegExp(`^/org/v1/sessions/${id}/share$`)],
   ["POST", new RegExp(`^/org/v1/accounts/${id}/reset$`)],
   ["POST", new RegExp(`^/org/v1/runtimes/${id}/revoke$`)],
@@ -204,6 +207,8 @@ export class DesktopOrganizationIPC<Event = unknown> {
       authorization: DesktopOrganizationAuthorization
       members?: Pick<DesktopMemberRuntimes, "start" | "status" | "running">
       fetch?: typeof fetch
+      requestTimeoutMs?:number
+      transferIdleMs?:number
       chooseDirectory?: () => Promise<string | undefined>
       saveFile?: (
         fileName: string,
@@ -347,12 +352,16 @@ export class DesktopOrganizationIPC<Event = unknown> {
           this.options.saveFile!(
             request.fileName,
             async (append) => {
+              const owner = this.requests.get(request.requestID)
+              const deadline = downloadIdleDeadline(signal,this.options.transferIdleMs,() => owner?.controller.abort())
+              const transferSignal = deadline.signal
+              try {
               const access = await this.options.accounts.access(request.connectionID)
-              if (!current() || signal.aborted) throw new Failure("cancelled")
+              if (!current() || transferSignal.aborted) throw new Failure("cancelled")
               const response = await (this.options.fetch ?? globalThis.fetch)(
                 new Request(`${access.connection.issuer}${request.path}`, {
                   headers: { authorization: `Bearer ${access.accessToken}` },
-                  signal,
+                  signal:transferSignal,
                   redirect: "error",
                   credentials: "omit",
                   referrerPolicy: "no-referrer",
@@ -372,31 +381,35 @@ export class DesktopOrganizationIPC<Event = unknown> {
               const cancel = () => {
                 void reader?.cancel().catch(() => {})
               }
-              signal.addEventListener("abort", cancel, { once: true })
+              transferSignal.addEventListener("abort", cancel, { once: true })
               const digest = createHash("sha256")
               let size = 0
               try {
                 while (reader) {
-                  if (!current() || signal.aborted) throw new Failure("cancelled")
+                  if (!current() || transferSignal.aborted) throw new Failure("cancelled")
                   const next = await reader.read()
                   if (next.done) break
+                  if (!next.value.byteLength) throw new Failure("invalid_response")
                   size += next.value.byteLength
                   if (size > request.bytes) throw new Failure("invalid_response")
                   digest.update(next.value)
                   await append(next.value)
+                  deadline.progress(next.value.byteLength)
                 }
-                if (!current() || signal.aborted) throw new Failure("cancelled")
+                if (!current() || transferSignal.aborted) throw new Failure("cancelled")
                 if (size !== request.bytes || digest.digest("hex") !== request.sha256)
                   throw new Failure("invalid_response")
                 return size
               } finally {
-                signal.removeEventListener("abort", cancel)
+                transferSignal.removeEventListener("abort", cancel)
                 await reader?.cancel().catch(() => {})
                 reader?.releaseLock()
               }
+              } finally {deadline.dispose()}
             },
             signal,
           ),
+          "transfer",
         )
       }
       case "projectBinding":
@@ -459,6 +472,39 @@ export class DesktopOrganizationIPC<Event = unknown> {
         return this.run(request.requestID, request.connectionID, (signal) =>
           this.readMember(request.connectionID, request.query, signal, current),
         )
+      }
+      case "downloadContent": {
+        const request = parse(Desktop.ContentDownload,input)
+        if (!this.options.saveFile) throw new Failure("unavailable")
+        return this.run(request.requestID,request.connectionID,async (signal) => {
+          const owner = this.requests.get(request.requestID)
+          const local = this.options.members?.running().find((member) => member.connectionID === request.connectionID && member.runtimeID === request.binding.driverRuntimeID)
+          const read = async (query:Read.Query):Promise<Read.Result> => {
+            const deadline = downloadIdleDeadline(signal,this.options.transferIdleMs,() => owner?.controller.abort())
+            const readSignal = deadline.signal
+            try {
+            if (!current() || readSignal.aborted) throw new Failure("cancelled")
+            if (local) {
+              const now = this.options.members?.running().find((member) => member.connectionID === request.connectionID)
+              if (!now || now.runtimeID !== local.runtimeID || now.connection.url !== local.connection.url || new Headers(now.connection.headers).get("authorization") !== new Headers(local.connection.headers).get("authorization")) throw new NativeReadFailure("binding_changed")
+              const result = await this.readMember(request.connectionID,query,readSignal,current)
+              if (result.kind !== "result") throw new NativeReadFailure(result.kind)
+              return result.result
+            }
+            const access = await this.options.accounts.access(request.connectionID)
+            if (!current() || readSignal.aborted) throw new Failure("cancelled")
+            if (access.connection.orgID !== request.binding.orgID || access.connection.account.accountID !== request.binding.creatorID) throw new Failure("permission_denied")
+            const client = createOrganizationClient({baseUrl:access.connection.issuer,fetch:this.jsonTransport(access.connection.issuer,readSignal,current),headers:{authorization:`Bearer ${access.accessToken}`},credentials:"omit",redirect:"error"})
+            const response = await client.orgSessionRead.read({sessionID:query.rootSessionID,orgPrivateReadQuery:query},{signal:readSignal})
+            if (!current() || readSignal.aborted) throw new Failure("cancelled")
+            if (response.error) this.readError(response.error)
+            const result = Read.Result.safeParse(response.data)
+            if (!result.success || !Read.matches(query,result.data,request.binding)) throw new Failure("invalid_response")
+            return result.data
+            } finally {deadline.dispose()}
+          }
+          return downloadOrganizationContent(request,{signal,read,save:(name,write) => this.options.saveFile!(name,write,signal)})
+        },"transfer")
       }
     }
   }
@@ -661,11 +707,12 @@ export class DesktopOrganizationIPC<Event = unknown> {
     requestID: string,
     connectionID: string | undefined,
     operation: (signal: AbortSignal) => Promise<T>,
+    lifetime:"request"|"transfer"="request",
   ) {
     if (this.requests.has(requestID)) throw new Failure("request_in_progress")
     if (this.requests.size >= 64) throw new Failure("unavailable")
     const controller = new AbortController()
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(300_000)])
+    const signal = lifetime === "transfer" ? controller.signal : AbortSignal.any([controller.signal, AbortSignal.timeout(this.options.requestTimeoutMs ?? 300_000)])
     const request = { controller, connectionID }
     this.requests.set(requestID, request)
     let cancel!: () => void
@@ -700,6 +747,7 @@ export function registerOrganizationIPC<Event>(
     "projectBinding",
     "bindProject",
     "memberRequest",
+    "downloadContent",
   ] as const)
     host.handle(`desktop.organization.${action}`, (event, input) => owner.handle(event, action, input))
 }

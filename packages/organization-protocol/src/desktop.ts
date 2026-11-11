@@ -3,6 +3,7 @@ import { OrganizationClientAuth as Auth } from "./client-auth.js"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationLocalProjectProtocol as LocalProject } from "./local-project.js"
 import { OrganizationReadProtocol as Read } from "./read.js"
+import { OrganizationProtocol as Protocol } from "./core.js"
 
 export namespace OrganizationDesktop {
   export const BinaryLimit = 4 * 1024 * 1024
@@ -108,6 +109,22 @@ export namespace OrganizationDesktop {
   ])
   export type ProjectBindingOutcome = z.infer<typeof ProjectBindingOutcome>
   export const MemberRequest = MemberStart.extend({ query: Read.Query })
+  export type MemberRequest = z.infer<typeof MemberRequest>
+  export const ContentDownload = MemberRequest.extend({
+    binding: Protocol.SessionBinding,
+    reference: Read.Content,
+    fileName: Download.shape.fileName,
+  }).refine((value) => value.query.operation === "partContent" && value.reference.kind === "native" &&
+    value.query.offset === 0 && value.query.version === value.reference.version && value.query.field === value.reference.field,
+    "Saving requires an exact complete field reference")
+  export type ContentDownload = z.infer<typeof ContentDownload>
+  export const ContentDownloadOutcome = z.discriminatedUnion("kind", [
+    z.strictObject({kind:z.literal("result"),result:DownloadResult,original:z.enum(["complete","partial"])}),
+    z.strictObject({kind:z.literal("preparing"),version:z.string().min(1).max(512),progress:z.strictObject({
+      phase:z.enum(["queued","materializing","busy"]),bytes:z.number().int().nonnegative().safe(),totalBytes:z.number().int().nonnegative().safe().optional(),
+    })}),
+  ])
+  export type ContentDownloadOutcome = z.infer<typeof ContentDownloadOutcome>
   export const MemberReadOutcome = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("result"), result: Read.Result }),
     z.strictObject({ kind: z.literal("revision_conflict") }),
@@ -151,5 +168,6 @@ export namespace OrganizationDesktop {
     projectBinding(input: z.infer<typeof ProjectBinding>): Promise<Result<ProjectBindingOutcome>>
     bindProject(input: z.infer<typeof ProjectBind>): Promise<Result<ProjectBindingOutcome>>
     memberRequest(input: z.infer<typeof MemberRequest>): Promise<Result<MemberReadOutcome>>
+    downloadContent(input: ContentDownload): Promise<Result<ContentDownloadOutcome>>
   }
 }
