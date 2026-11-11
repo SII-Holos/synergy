@@ -30,7 +30,7 @@ test("organization work areas and conversations keep their full account and proj
     accountID: "account-a",
     deploymentIncarnation: "deployment-a",
   } as const
-  for (const view of ["members", "resources", "knowledge", "artifacts", "settings"] as const) {
+  for (const view of ["members", "resources", "knowledge", "artifacts", "settings", "account"] as const) {
     expect(parseOrganizationRoute(organizationRoute(identity, undefined, "/synergy", view), "/synergy")).toEqual({
       kind: "organization",
       identity,

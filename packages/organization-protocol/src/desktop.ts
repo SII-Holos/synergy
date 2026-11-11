@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { OrganizationClientAuth as Auth } from "./client-auth.js"
 import { OrganizationIdentity as Identity } from "./identity.js"
+import { OrganizationLocalProjectProtocol as LocalProject } from "./local-project.js"
 
 export namespace OrganizationDesktop {
   export const BinaryLimit = 4 * 1024 * 1024
@@ -98,6 +99,13 @@ export namespace OrganizationDesktop {
   })
   export type DownloadResult = z.infer<typeof DownloadResult>
   export const MemberStart = Account.extend({ requestID: Identity.ID })
+  export const ProjectBinding = MemberStart.extend({ projectID: Identity.ID })
+  export const ProjectBind = ProjectBinding.extend({ expectedRevision: LocalProject.Summary.shape.revision })
+  export const ProjectBindingOutcome = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("ready"), summary: LocalProject.Summary }),
+    z.strictObject({ kind: z.literal("revision_conflict"), current: LocalProject.Summary }),
+  ])
+  export type ProjectBindingOutcome = z.infer<typeof ProjectBindingOutcome>
   export const MemberRuntime = Account.extend({
     state: z.enum(["stopped", "starting", "running", "failed"]),
     runtimeID: Identity.ID.optional(),
@@ -118,6 +126,7 @@ export namespace OrganizationDesktop {
     "unavailable",
     "untrusted_sender",
     "request_in_progress",
+    "permission_denied",
   ])
   export type ErrorCode = z.infer<typeof ErrorCode>
   export type Result<T> = { ok: true; value: T } | { ok: false; error: { code: ErrorCode } }
@@ -130,5 +139,7 @@ export namespace OrganizationDesktop {
     signOut(input: z.infer<typeof Account>): Promise<Result<Connection>>
     memberStatus(input: z.infer<typeof Account>): Promise<Result<MemberRuntime>>
     startMember(input: z.infer<typeof MemberStart>): Promise<Result<MemberRuntime>>
+    projectBinding(input: z.infer<typeof ProjectBinding>): Promise<Result<ProjectBindingOutcome>>
+    bindProject(input: z.infer<typeof ProjectBind>): Promise<Result<ProjectBindingOutcome>>
   }
 }

@@ -15,6 +15,7 @@ const messages = {
   unavailable: "The organization could not be reached. Retry when it is available.",
   untrusted_sender: "This page cannot access organization connections.",
   request_in_progress: "This organization request is already in progress.",
+  permission_denied: "Your current organization permissions do not allow this action.",
 } as const satisfies Record<OrganizationDesktop.ErrorCode, string>
 
 export class DesktopOrganizationError extends Error {

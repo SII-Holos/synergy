@@ -97,6 +97,12 @@
   font-size: 13px;
   line-height: 1.6;
 }
+.organization-editor > h3 {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
 .organization-workspace-error {
   display: flex;
   align-items: center;

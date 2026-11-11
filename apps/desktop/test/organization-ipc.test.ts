@@ -66,13 +66,18 @@ test("shared transcript windows and runtime availability use exact main-authenti
       { preconnect() {} },
     ),
   )
-  for (const [index, [method, path]] of ([
-    ["GET", "/org/v1/sessions/session-one/sync/messages?limit=32"],
-    ["GET", "/org/v1/sessions/session-one/sync/messages/message-one/parts?limit=64"],
-    ["GET", "/org/v1/runtimes/runtime-one/connection"],
-    ["GET", "/org/v1/sessions/session-one/knowledge/status"],
-    ["PUT", "/org/v1/sessions/session-one/share"],
-  ] as const).entries()) {
+  for (const [index, [method, path]] of (
+    [
+      ["GET", "/org/v1/sessions/session-one/sync/messages?limit=32"],
+      ["GET", "/org/v1/sessions/session-one/sync/messages/message-one/parts?limit=64"],
+      ["GET", "/org/v1/runtimes/runtime-one/connection"],
+      ["GET", "/org/v1/sessions/session-one/knowledge/status"],
+      ["PUT", "/org/v1/sessions/session-one/share"],
+      ["GET", "/org/v1/invites?limit=50"],
+      ["POST", "/org/v1/invites/invite-one/revoke"],
+      ["POST", "/org/v1/organization/leave"],
+    ] as const
+  ).entries()) {
     const result = await ipc.handle(trusted, "request", {
       requestID: `read-${index}`,
       connectionID: connection.id,
@@ -82,7 +87,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
     })
     expect(result).toMatchObject({ ok: true, value: { status: 200 } })
   }
-  expect(calls).toBe(5)
+  expect(calls).toBe(8)
   ipc.dispose()
 })
 
@@ -276,7 +281,14 @@ test("native downloads stream only authorized immutable content and verify its d
       error: { code: "invalid_request" },
     })
     empty = true
-    expect(await ipc.handle(trusted, "download", { ...request, requestID: "empty", bytes: 0, sha256: createHash("sha256").digest("hex") })).toEqual({ ok: true, value: { saved: true, bytes: 0 } })
+    expect(
+      await ipc.handle(trusted, "download", {
+        ...request,
+        requestID: "empty",
+        bytes: 0,
+        sha256: createHash("sha256").digest("hex"),
+      }),
+    ).toEqual({ ok: true, value: { saved: true, bytes: 0 } })
   } finally {
     ipc.dispose()
   }

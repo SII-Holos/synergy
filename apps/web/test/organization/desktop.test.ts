@@ -31,6 +31,8 @@ function fixture() {
     memberStatus: async () => ({ ok: true, value: { connectionID: connection.id, state: "stopped" } }),
     startMember: async () => ({ ok: false, error: { code: "unavailable" } }),
     download: async () => ({ ok: false, error: { code: "unavailable" } }),
+    projectBinding: async () => ({ ok: false, error: { code: "unavailable" } }),
+    bindProject: async () => ({ ok: false, error: { code: "unavailable" } }),
     cancel: async (input) => {
       cancelled.push(input.requestID)
       return { ok: true, value: undefined }

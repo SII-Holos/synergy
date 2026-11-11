@@ -11,7 +11,7 @@ export type OrganizationRoute =
       sessionID?: string
     }
 
-const views = ["sessions", "members", "resources", "knowledge", "artifacts", "settings"] as const
+const views = ["sessions", "members", "resources", "knowledge", "artifacts", "settings", "account"] as const
 export type OrganizationView = (typeof views)[number]
 
 export function organizationRoute(

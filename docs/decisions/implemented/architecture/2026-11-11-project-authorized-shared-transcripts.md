@@ -28,6 +28,8 @@ Handoff rebinding retains committed shared history and its sequence. The directo
 
 ## Consequences
 
+The organization transcript reuses the existing message renderer through explicit safe projections and business decision ports. It bounds message/part windows and decoded field residency, releases canonical rendered Parts when their content is evicted, and tracks all message owners of a shared content hash. A late replay response cannot replace a newer window or lower replay progress. The rendered multi-owner regression uses real Range reads and checksums through cache eviction; these component checks do not establish that the complete Session route or private read chain is delivered.
+
 Chronological message and part windows retain per-object references into immutable event history, including tombstones, so a fixed watermark resolves the actual earlier version. Generation-owned preparation upgrades these indexes in bounded batches. Interactive pages may explicitly rebase a validated cursor to the current watermark with `latest`; this changes freshness only, never cursor identity or authorization. Frontend entity sequences remain independent of its global replay cursor. See the [window regression](../../../postmortem/0100-shared-window-current-version-loss.md).
 
 Shared history becomes readable while execution stays with its original owners. Projections and immutable evidence add storage and require eventual generation-aware reclamation. Snapshot consumers must finish pagination and replay from the returned watermark; route existence alone does not establish frontend or end-to-end acceptance. Runtime handoff data transfer and activation retain their separate verification requirements.

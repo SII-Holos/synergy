@@ -8,16 +8,19 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { OrgProjectView } from "@ericsanchezok/synergy-sdk/organization"
 import { useSpace } from "@/context/space"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { usePlatform } from "@/context/platform"
 import { WorkspaceError } from "./workspace-error"
 import { organizationWorkspaceMessages as messages } from "./workspace-messages"
 import { OrganizationKnowledge } from "./knowledge"
 import { OrganizationArtifacts } from "./artifacts"
 import { OrganizationProjectMembers } from "./project-members"
+import { OrganizationLocalProject } from "./local-project"
 
 export function OrganizationProjects() {
   const space = useSpace()
   const { _ } = useLingui()
   const confirm = useConfirm()
+  const platform = usePlatform()
   const api = space.client()!
   const view = space.current()!
   const route = space.route()
@@ -292,6 +295,16 @@ export function OrganizationProjects() {
                 </Show>
               </nav>
               <Switch>
+                <Match
+                  when={
+                    !projectView &&
+                    project().permissions.execute &&
+                    platform.platform === "desktop" &&
+                    platform.organization
+                  }
+                >
+                  <OrganizationLocalProject projectID={projectID!} />
+                </Match>
                 <Match when={projectView === "knowledge"}>
                   <OrganizationKnowledge
                     projectID={projectID}

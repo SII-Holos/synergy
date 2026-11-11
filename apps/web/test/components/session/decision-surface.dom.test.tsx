@@ -219,16 +219,25 @@ beforeAll(async () => {
         const decisions = createSessionDecisionState({
           connectionKey: new URLSearchParams(location.search).get("server") ?? "http://fixture",
           scopeID,
-          client: useSDK().client,
           questions: () => Object.values(questions()).flat(),
           permissions: () => Object.values(permissions()).flat(),
           questionSnapshot: snapshot,
-          captureQuestionSnapshot: () => gate.capture(scopeID),
-          seedQuestions: (requests, headers, token) => {
-            if (!gate.accept(token)) return false
-            setQuestions({ s1: requests }); setSnapshot(token); return true
+          replyQuestion: (request, answers) => answers
+            ? useSDK().client.question.reply({ requestID: request.id, answers })
+            : useSDK().client.question.reject({ requestID: request.id }),
+          replyPermission: (request, reply) => useSDK().client.permission.reply({ requestID: request.id, reply }),
+          async questionPending(request) {
+            const token = gate.capture(scopeID)
+            const result = await useSDK().client.question.list()
+            if (!gate.accept(token)) throw new Error("Obsolete fixture snapshot")
+            setQuestions({ s1: result.data }); setSnapshot(token)
+            return result.data.some((item) => item.id === request.id && item.sessionID === request.sessionID)
           },
-          seedPermissions: (id, requests) => setPermissions({ [id]: requests }),
+          async permissionPending(request) {
+            const result = await useSDK().client.permission.list()
+            setPermissions({ [request.sessionID]: result.data })
+            return result.data.some((item) => item.id === request.id && item.sessionID === request.sessionID)
+          },
         })
         window.confirmSnapshot = () => {
           setQuestions({}); setSnapshot(gate.capture(scopeID))

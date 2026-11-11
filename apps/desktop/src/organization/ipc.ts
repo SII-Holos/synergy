@@ -1,6 +1,14 @@
 import { z } from "zod"
 import { createHash } from "node:crypto"
-import { OrganizationDesktop as Desktop } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationDesktop as Desktop,
+  OrganizationLocalProjectProtocol as LocalProject,
+  OrganizationIdentity as Identity,
+  OrganizationRuntimeProtocol as Runtime,
+  OrganizationProtocol as Protocol,
+} from "@ericsanchezok/synergy-organization-protocol"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import type { DesktopOrganizationAccounts } from "./accounts.js"
 import type { DesktopOrganizationAuthorization } from "./authorization.js"
 import type { DesktopMemberRuntimes } from "./member-runtimes.js"
@@ -9,7 +17,7 @@ import { DesktopOrganizationError as Failure } from "./error.js"
 type Action = keyof Desktop.Bridge
 const id = "[a-zA-Z0-9_-]+"
 const routes: [string, RegExp][] = [
-  ["GET", /^\/org\/v1\/(organization|accounts|projects|runtimes|resources|auth\/session)$/],
+  ["GET", /^\/org\/v1\/(organization|accounts|invites|projects|runtimes|resources|auth\/session)$/],
   ["GET", new RegExp(`^/org/v1/(projects|runtimes|resources|sessions)/${id}$`)],
   ["GET", new RegExp(`^/org/v1/projects/${id}/(members|member-candidates|sessions|resources)$`)],
   ["GET", new RegExp(`^/org/v1/sessions/${id}/(resources|share|sync/events|sync/search|sync/snapshot)$`)],
@@ -18,7 +26,8 @@ const routes: [string, RegExp][] = [
   ["GET", new RegExp(`^/org/v1/sessions/${id}/commands/${id}$`)],
   ["GET", new RegExp(`^/org/v1/commands/${id}$`)],
   ["GET", new RegExp(`^/org/v1/resources/${id}/grants/(account|project)$`)],
-  ["POST", /^\/org\/v1\/(projects|invites|sessions|resources|organization\/transfer-owner|auth\/password)$/],
+  ["POST", /^\/org\/v1\/(projects|invites|sessions|resources|organization\/(transfer-owner|leave)|auth\/password)$/],
+  ["POST", new RegExp(`^/org/v1/invites/${id}/revoke$`)],
   ["POST", new RegExp(`^/org/v1/sessions/${id}/(commands|control)$`)],
   ["DELETE", new RegExp(`^/org/v1/sessions/${id}/share$`)],
   ["POST", new RegExp(`^/org/v1/accounts/${id}/reset$`)],
@@ -181,8 +190,9 @@ export class DesktopOrganizationIPC<Event = unknown> {
     private options: {
       accounts: DesktopOrganizationAccounts
       authorization: DesktopOrganizationAuthorization
-      members?: DesktopMemberRuntimes
+      members?: Pick<DesktopMemberRuntimes, "start" | "status" | "running">
       fetch?: typeof fetch
+      chooseDirectory?: () => Promise<string | undefined>
       saveFile?: (
         fileName: string,
         write: (append: (chunk: Uint8Array) => Promise<void>) => Promise<number>,
@@ -337,7 +347,12 @@ export class DesktopOrganizationIPC<Event = unknown> {
                 }),
               )
               const length = response.headers.get("content-length")
-              if (response.status !== 200 || response.redirected || (!response.body && request.bytes !== 0) || (length !== null && (!/^\d+$/.test(length) || Number(length) !== request.bytes))) {
+              if (
+                response.status !== 200 ||
+                response.redirected ||
+                (!response.body && request.bytes !== 0) ||
+                (length !== null && (!/^\d+$/.test(length) || Number(length) !== request.bytes))
+              ) {
                 await response.body?.cancel().catch(() => {})
                 throw new Failure(response.status === 401 ? "reauthorization_required" : "invalid_response")
               }
@@ -372,6 +387,157 @@ export class DesktopOrganizationIPC<Event = unknown> {
           ),
         )
       }
+      case "projectBinding":
+      case "bindProject": {
+        const request =
+          action === "projectBinding" ? parse(Desktop.ProjectBinding, input) : parse(Desktop.ProjectBind, input)
+        return this.run(
+          request.requestID,
+          request.connectionID,
+          async (signal): Promise<Desktop.ProjectBindingOutcome> => {
+            let context = await this.memberProject(request.connectionID, request.projectID, signal, current)
+            const read = async () => {
+              const result = await context.client.orgLocalProject.get({ projectID: request.projectID }, { signal })
+              context.assertCurrent()
+              if (result.error) this.projectError(result.error)
+              const value = LocalProject.Summary.safeParse(result.data)
+              if (!value.success) throw new Failure("invalid_response")
+              if (value.data.projectID !== request.projectID) throw new Failure("identity_changed")
+              return value.data
+            }
+            const summary = await read()
+            if (!("expectedRevision" in request)) return { kind: "ready", summary }
+            if (summary.revision !== request.expectedRevision) return { kind: "revision_conflict", current: summary }
+            if (!this.options.chooseDirectory) throw new Failure("unavailable")
+            const directory = await this.options.chooseDirectory()
+            context.assertCurrent()
+            if (directory === undefined) throw new Failure("cancelled")
+            const checked = await this.memberProject(request.connectionID, request.projectID, signal, current)
+            context.assertCurrent()
+            context = checked
+            const binding = {
+              requestID: request.requestID,
+              expectedRevision: request.expectedRevision,
+              directory,
+            }
+            if (Buffer.byteLength(JSON.stringify(binding)) > 64 * 1024) throw new Failure("invalid_request")
+            const result = await context.client.orgLocalProject.bind(
+              {
+                projectID: request.projectID,
+                orgLocalProjectBind: binding,
+              },
+              { signal },
+            )
+            context.assertCurrent()
+            if (result.error) {
+              const error = Protocol.Error.safeParse(result.error)
+              if (error.success && error.data.code === "REVISION_CONFLICT")
+                return { kind: "revision_conflict", current: await read() }
+              this.projectError(result.error)
+            }
+            const returned = LocalProject.Summary.safeParse(result.data)
+            if (!returned.success || returned.data.projectID !== request.projectID)
+              throw new Failure("invalid_response")
+            return { kind: "ready", summary: await read() }
+          },
+        )
+      }
+    }
+  }
+
+  private projectError(value: unknown): never {
+    const error = Protocol.Error.safeParse(value)
+    if (!error.success) throw new Failure("invalid_response")
+    throw new Failure(
+      error.data.code === "AUTHENTICATION_REQUIRED"
+        ? "reauthorization_required"
+        : error.data.code === "PERMISSION_DENIED"
+          ? "permission_denied"
+          : "unavailable",
+    )
+  }
+
+  private jsonTransport(baseUrl: string, signal: AbortSignal, current: () => boolean) {
+    const origin = new URL(baseUrl).origin
+    return Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (!current() || signal.aborted) throw new Failure("cancelled")
+        const request = new Request(input, init)
+        if (new URL(request.url).origin !== origin) throw new Failure("invalid_request")
+        const response = await (this.options.fetch ?? globalThis.fetch)(request)
+        if (!current() || signal.aborted) {
+          await response.body?.cancel().catch(() => {})
+          throw new Failure("cancelled")
+        }
+        if (response.redirected || (response.status >= 300 && response.status < 400)) {
+          await response.body?.cancel().catch(() => {})
+          throw new Failure("invalid_response")
+        }
+        const body = await responseBody(response, signal)
+        if (!current() || signal.aborted) throw new Failure("cancelled")
+        return new Response(response.status === 204 ? null : body, {
+          status: response.status,
+          headers: response.headers,
+        })
+      },
+      { preconnect() {} },
+    )
+  }
+
+  private async memberProject(connectionID: string, projectID: string, signal: AbortSignal, current: () => boolean) {
+    const access = await this.options.accounts.access(connectionID)
+    if (!current() || signal.aborted) throw new Failure("cancelled")
+    const running = this.options.members?.running().find((member) => member.connectionID === connectionID)
+    if (!running) throw new Failure("unavailable")
+    const assertCurrent = () => {
+      if (!current() || signal.aborted) throw new Failure("cancelled")
+      const now = this.options.members?.running().find((member) => member.connectionID === connectionID)
+      if (
+        !now ||
+        now.runtimeID !== running.runtimeID ||
+        now.connection.url !== running.connection.url ||
+        new Headers(now.connection.headers).get("authorization") !==
+          new Headers(running.connection.headers).get("authorization")
+      )
+        throw new Failure("identity_changed")
+    }
+    const client = createOrganizationClient({
+      baseUrl: access.connection.issuer,
+      fetch: this.jsonTransport(access.connection.issuer, signal, current),
+      headers: { authorization: `Bearer ${access.accessToken}` },
+      credentials: "omit",
+      redirect: "error",
+    })
+    const [projectResult, runtimeResult] = await Promise.all([
+      client.orgProjects.get({ projectID }, { signal }),
+      client.orgRuntime.get({ runtimeID: running.runtimeID }, { signal }),
+    ])
+    assertCurrent()
+    if (projectResult.error) this.projectError(projectResult.error)
+    if (runtimeResult.error) this.projectError(runtimeResult.error)
+    const project = Identity.ProjectView.safeParse(projectResult.data)
+    const runtime = Runtime.Registration.safeParse(runtimeResult.data)
+    if (!project.success || !runtime.success) throw new Failure("invalid_response")
+    if (
+      project.data.projectID !== projectID ||
+      project.data.orgID !== access.connection.orgID ||
+      runtime.data.runtimeID !== running.runtimeID ||
+      runtime.data.orgID !== access.connection.orgID ||
+      runtime.data.deploymentIncarnation !== access.connection.deploymentIncarnation ||
+      runtime.data.runtimeKind !== "member" ||
+      runtime.data.accountID !== access.connection.account.accountID
+    )
+      throw new Failure("identity_changed")
+    if (!project.data.permissions.execute || runtime.data.state !== "active") throw new Failure("permission_denied")
+    return {
+      assertCurrent,
+      client: createSynergyClient({
+        baseUrl: running.connection.url,
+        fetch: this.jsonTransport(running.connection.url, signal, current),
+        headers: running.connection.headers,
+        credentials: "omit",
+        redirect: "error",
+      }),
     }
   }
 
@@ -415,6 +581,8 @@ export function registerOrganizationIPC<Event>(
     "memberStatus",
     "startMember",
     "download",
+    "projectBinding",
+    "bindProject",
   ] as const)
     host.handle(`desktop.organization.${action}`, (event, input) => owner.handle(event, action, input))
 }

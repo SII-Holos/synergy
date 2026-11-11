@@ -1382,14 +1382,28 @@ async function start() {
     accounts: organizationAccounts,
     authorization: organizationAuthorization,
     members: memberRuntimes,
-    saveFile: (fileName, write, signal) => saveOrganizationDownload({
-      fileName, write, signal,
-      choose: async (defaultPath) => {
-        const options = { defaultPath }
-        const result = mainWindow && !mainWindow.isDestroyed() ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options)
-        return result.canceled ? undefined : result.filePath
-      },
-    }),
+    chooseDirectory: async () => {
+      const options = { properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory"> }
+      const selected =
+        mainWindow && !mainWindow.isDestroyed()
+          ? await dialog.showOpenDialog(mainWindow, options)
+          : await dialog.showOpenDialog(options)
+      return selected.canceled ? undefined : selected.filePaths[0]
+    },
+    saveFile: (fileName, write, signal) =>
+      saveOrganizationDownload({
+        fileName,
+        write,
+        signal,
+        choose: async (defaultPath) => {
+          const options = { defaultPath }
+          const result =
+            mainWindow && !mainWindow.isDestroyed()
+              ? await dialog.showSaveDialog(mainWindow, options)
+              : await dialog.showSaveDialog(options)
+          return result.canceled ? undefined : result.filePath
+        },
+      }),
     trusted: (event) => trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null),
   })
   registerOrganizationIPC(ipcMain, organizationIPC)

@@ -10,6 +10,9 @@ const playwrightIsolated = [
   "test/organization/authorization.browser.test.ts",
   "test/organization/space.browser.test.ts",
   "test/organization/workspace.browser.test.ts",
+  "test/organization/members.browser.test.ts",
+  "test/organization/transcript.browser.test.ts",
+  "test/organization/decision-state.test.ts",
   "test/components/settings/panels/runtime-resources.browser.test.ts",
   "test/components/provider/provider-connection-test.dom.test.ts",
   "test/components/digital-twin/composer.dom.test.ts",
@@ -181,6 +184,7 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/organization/decision-state.test.ts",
     "test/components/prompt-input/loop-status-resource.test.ts",
     "test/components/session/conversation-hydration.test.ts",
     "test/components/session/project-directory-resource.test.ts",

@@ -14,6 +14,8 @@ The current issuer or a current organization administrator can revoke an unconsu
 
 Self leave derives the account from current credentials and accepts only its expected revision. It uses the same account mutation owner, last-owner check, authentication revision and post-commit connection removal hook as administrator removal. The retained account becomes removed, preserving project and conversation attribution. Concurrent exits serialize against the authoritative owner set.
 
+The organization Account view exposes invitation history and membership exit to every current account. It confirms revocation with the displayed invitation revision and obtains the current account revision before confirmed exit. Administrator member management displays one-time reset links with their expiry without persisting them; ownership transfer reads the organization's revision separately from either account revision. These views use the shared theme, controls and space navigation independently of personal Runtime availability.
+
 ## Alternatives considered
 
 **List invitation links or digests.** These identifiers carry authentication material or couple a public catalog to secret storage. Independent public identifiers permit safe metadata and exact authorization without returning credentials.

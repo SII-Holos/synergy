@@ -2,7 +2,7 @@ import { createContext, createEffect, onCleanup, untrack, useContext, type Paren
 import { createStore, produce, reconcile } from "solid-js/store"
 import { z } from "zod"
 import type { PermissionRequest, QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
-import { useSDK, type SDKContext } from "@/context/sdk"
+import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import type { QuestionSnapshotToken } from "./question-snapshot"
 import { Persist, persisted } from "@/utils/persist"
@@ -25,17 +25,13 @@ type Operation = Parameters<ReturnType<typeof createRequestSubmission>["run"]>[1
 export type DecisionRuntime = {
   connectionKey: string
   scopeID: string
-  client: SDKContext["client"]
   questions(): readonly QuestionRequest[]
   permissions(): readonly PermissionRequest[]
   questionSnapshot(): QuestionSnapshotToken | undefined
-  captureQuestionSnapshot(): QuestionSnapshotToken
-  seedQuestions(
-    requests: readonly QuestionRequest[],
-    headers: Headers | undefined,
-    token: QuestionSnapshotToken,
-  ): boolean
-  seedPermissions(sessionID: string, requests: readonly PermissionRequest[], headers: Headers | undefined): void
+  replyQuestion(request: RequestIdentity, answers?: string[][]): Promise<unknown>
+  replyPermission(request: RequestIdentity, reply: Reply): Promise<unknown>
+  questionPending(request: RequestIdentity): Promise<boolean>
+  permissionPending(request: RequestIdentity): Promise<boolean>
 }
 
 export function createSessionDecisionState(runtime: DecisionRuntime) {
@@ -144,37 +140,20 @@ export function createSessionDecisionState(runtime: DecisionRuntime) {
     await actions.run(id, operation)
     finish(id, operation)
   }
-  const questionPending = async (request: RequestIdentity) => {
-    const token = runtime.captureQuestionSnapshot()
-    const result = await runtime.client.question.list(undefined, { throwOnError: true })
-    if (!result.data || !runtime.seedQuestions(result.data, result.response?.headers, token))
-      throw new Error("Pending question could not be confirmed")
-    return runtime.questions().some((item) => item.id === request.id && item.sessionID === request.sessionID)
-  }
   const respondQuestion = (request: QuestionRequest, answers?: string[][]) => {
-    const client = runtime.client
     const identity = { id: request.id, sessionID: request.sessionID }
     const captured = answers?.map((answer) => [...answer])
     return run("question", identity, {
-      submit: () =>
-        captured
-          ? client.question.reply({ requestID: identity.id, answers: captured }, { throwOnError: true })
-          : client.question.reject({ requestID: identity.id }, { throwOnError: true }),
-      isPending: () => questionPending(identity),
+      submit: () => runtime.replyQuestion(identity, captured),
+      isPending: () => runtime.questionPending(identity),
       settled: () => clearDraft(identity),
     })
   }
   const respondPermission = (request: RequestIdentity, reply: Reply) => {
-    const client = runtime.client
     const identity = { id: request.id, sessionID: request.sessionID }
     return run("permission", identity, {
-      submit: () => client.permission.reply({ requestID: identity.id, reply }, { throwOnError: true }),
-      isPending: async () => {
-        const result = await client.permission.list({ sessionID: identity.sessionID }, { throwOnError: true })
-        if (!result.data) throw new Error("Pending permission could not be confirmed")
-        runtime.seedPermissions(identity.sessionID, result.data, result.response?.headers)
-        return runtime.permissions().some((item) => item.id === identity.id && item.sessionID === identity.sessionID)
-      },
+      submit: () => runtime.replyPermission(identity, reply),
+      isPending: () => runtime.permissionPending(identity),
     })
   }
   const retry = async (id: string) => {
@@ -220,14 +199,32 @@ export function SessionDecisionProvider(props: ParentProps<{ value?: SessionDeci
       const state = createSessionDecisionState({
         connectionKey: sdk.cacheKey,
         scopeID: sdk.scopeID,
-        client: sdk.client,
         questions: () => Object.values(sync.questions).flat(),
         permissions: () => Object.values(sync.permissions).flat(),
         questionSnapshot: () => sync.questionSnapshot(sdk.scopeID),
-        captureQuestionSnapshot: () => sync.captureQuestionSnapshot(sdk.scopeID),
-        seedQuestions: sync.seedGlobalQuestions,
-        seedPermissions: (sessionID, requests, headers) =>
-          sync.seedSessionPermissions(sessionID, requests, headers, sdk.scopeID),
+        replyQuestion: (request, answers) =>
+          answers
+            ? sdk.client.question.reply({ requestID: request.id, answers }, { throwOnError: true })
+            : sdk.client.question.reject({ requestID: request.id }, { throwOnError: true }),
+        replyPermission: (request, reply) =>
+          sdk.client.permission.reply({ requestID: request.id, reply }, { throwOnError: true }),
+        async questionPending(request) {
+          const token = sync.captureQuestionSnapshot(sdk.scopeID)
+          const result = await sdk.client.question.list(undefined, { throwOnError: true })
+          if (!result.data || !sync.seedGlobalQuestions(result.data, result.response?.headers, token))
+            throw new Error("Pending question could not be confirmed")
+          return Object.values(sync.questions)
+            .flat()
+            .some((item) => item.id === request.id && item.sessionID === request.sessionID)
+        },
+        async permissionPending(request) {
+          const result = await sdk.client.permission.list({ sessionID: request.sessionID }, { throwOnError: true })
+          if (!result.data) throw new Error("Pending permission could not be confirmed")
+          sync.seedSessionPermissions(request.sessionID, result.data, result.response?.headers, sdk.scopeID)
+          return (sync.permissions[request.sessionID] ?? []).some(
+            (item) => item.id === request.id && item.sessionID === request.sessionID,
+          )
+        },
       })
       const releases = [
         sdk.event.on("question.replied", (event) =>

@@ -40,6 +40,7 @@ export function OrganizationSpace() {
   const confirm = useConfirm()
   onMount(() => window.dispatchEvent(new Event("synergy:app-surface-ready")))
   const title = () => space.connection()?.name ?? space.connection()?.issuer ?? _(messages.connect)
+  const ready = () => space.current()?.identity.kind === "organization" && space.current()
   function signOut() {
     const key = space.selected()
     if (!key) return
@@ -61,7 +62,7 @@ export function OrganizationSpace() {
         "organization-space--desktop": platform.platform === "desktop",
       }}
     >
-      <Show when={space.selected() !== "connect"}>
+      <Show when={space.selected() !== "connect" && !ready()}>
         <header class="organization-space-header">
           <div>
             <p class="organization-space-brand">{_({ id: "app.name.synergy", message: "Synergy" })}</p>
@@ -81,7 +82,7 @@ export function OrganizationSpace() {
           </Show>
         </header>
       </Show>
-      <main class="organization-space-content">
+      <main class="organization-space-content" classList={{ "organization-space-content--workspace": !!ready() }}>
         <Show when={space.error()}>
           {(error) => (
             <p role="alert" class="organization-space-error">
@@ -136,7 +137,7 @@ export function OrganizationSpace() {
                     </div>
                   }
                 >
-                  {(_view) => <OrganizationWorkspace />}
+                  {(_view) => <OrganizationWorkspace footer={<SpaceAccess />} signOut={signOut} />}
                 </Show>
               )}
             </Show>
@@ -145,7 +146,9 @@ export function OrganizationSpace() {
           <Connect />
         </Show>
       </main>
-      <SpaceAccess />
+      <Show when={!ready()}>
+        <SpaceAccess />
+      </Show>
     </div>
   )
 }

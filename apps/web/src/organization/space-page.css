@@ -44,6 +44,10 @@
   padding: 32px;
   min-height: 0;
 }
+.organization-space-content--workspace {
+  overflow: hidden;
+  padding: 0;
+}
 .organization-space-footer {
   flex-shrink: 0;
   width: min(280px, 100%);

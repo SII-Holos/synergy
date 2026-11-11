@@ -1,0 +1,103 @@
+export const organizationSessionMessages = {
+  conversations: { id: "organization.session.conversations", message: "Conversations" },
+  new: { id: "organization.session.new", message: "New conversation" },
+  title: { id: "organization.session.title", message: "Conversation title" },
+  execution: { id: "organization.session.execution", message: "Run on" },
+  computer: { id: "organization.session.computer", message: "This computer" },
+  computerHint: {
+    id: "organization.session.computerHint",
+    message: "Start this organization's member runtime when you begin work. Your personal runtime stays separate.",
+  },
+  hosted: { id: "organization.session.hosted", message: "Organization-hosted runtime" },
+  runtime: { id: "organization.session.runtime", message: "Runtime" },
+  chooseRuntime: { id: "organization.session.chooseRuntime", message: "Choose an execution runtime" },
+  start: { id: "organization.session.start", message: "Start this computer" },
+  starting: { id: "organization.session.starting", message: "Starting…" },
+  online: { id: "organization.session.online", message: "Online" },
+  offline: { id: "organization.session.offline", message: "Offline" },
+  private: { id: "organization.session.private", message: "Private conversation" },
+  shared: { id: "organization.session.shared", message: "Shared with project" },
+  created: { id: "organization.session.created", message: "Created {date}" },
+  empty: { id: "organization.session.empty", message: "Start the conversation" },
+  emptyHint: {
+    id: "organization.session.emptyHint",
+    message: "Choose where work runs, select project resources, and invite your team by sharing a conversation.",
+  },
+  checkStatus: { id: "organization.session.checkStatus", message: "Check request status" },
+  pending: {
+    id: "organization.session.pending",
+    message: "This request is waiting for a receipt. Check its status before submitting again.",
+  },
+  accepted: { id: "organization.session.accepted", message: "Request accepted" },
+  rejected: { id: "organization.session.rejected", message: "Request rejected" },
+  resources: { id: "organization.session.resources", message: "Conversation resources" },
+  model: { id: "organization.session.model", message: "Model" },
+  chooseModel: { id: "organization.session.chooseModel", message: "Choose a project model" },
+  unavailableModel: {
+    id: "organization.session.unavailableModel",
+    message: "The selected model is no longer available to your account. Choose an authorized project model.",
+  },
+  selectedModel: { id: "organization.session.selectedModel", message: "Selected model" },
+  unavailableConnections: {
+    id: "organization.session.unavailableConnections",
+    message: "Remove unavailable connections",
+  },
+  connections: { id: "organization.session.connections", message: "Connections" },
+  resourcesHint: {
+    id: "organization.session.resourcesHint",
+    message:
+      "Choose authorized project resources while the conversation is idle. Credentials stay on the organization service.",
+  },
+  chooseResources: { id: "organization.session.chooseResources", message: "Choose conversation resources" },
+  modelRequired: {
+    id: "organization.session.modelRequired",
+    message: "Choose a model before sending work to this conversation.",
+  },
+  noModels: {
+    id: "organization.session.noModels",
+    message: "No model is available. Ask a project manager to grant a model before sending work.",
+  },
+  send: { id: "organization.session.send", message: "Send" },
+  message: { id: "organization.session.message", message: "Message" },
+  draftHint: {
+    id: "organization.session.draftHint",
+    message: "Your draft is kept for this account, project and conversation.",
+  },
+  task: { id: "organization.session.task", message: "New task" },
+  steer: { id: "organization.session.steer", message: "Steer current work" },
+  context: { id: "organization.session.context", message: "Add context" },
+  inputMode: { id: "organization.session.inputMode", message: "Message mode" },
+  pause: { id: "organization.session.pause", message: "Pause" },
+  continue: { id: "organization.session.continue", message: "Continue" },
+  cancel: { id: "organization.session.cancel", message: "Cancel work" },
+  cancelHint: {
+    id: "organization.session.cancelHint",
+    message: "Request cancellation of the observed active run. Accepted work may need time to stop.",
+  },
+  share: { id: "organization.session.share", message: "Share with project" },
+  unshare: { id: "organization.session.unshare", message: "Make private" },
+  shareHint: {
+    id: "organization.session.shareHint",
+    message:
+      "Project members can read the synchronized conversation. Members with execute access can send requests to its online runtime.",
+  },
+  unshareHint: {
+    id: "organization.session.unshareHint",
+    message:
+      "Revoke project access and close the current sharing generation. Published artifacts keep their own project access.",
+  },
+  sync: { id: "organization.session.sync", message: "Synchronization" },
+  lastSync: { id: "organization.session.lastSync", message: "Last synchronized {date}" },
+  syncPending: { id: "organization.session.syncPending", message: "Waiting for synchronization" },
+  syncFailed: { id: "organization.session.syncFailed", message: "Synchronization needs attention" },
+  historyUnavailable: {
+    id: "organization.session.historyUnavailable",
+    message: "This historical record contains metadata only. Full message content is not available.",
+  },
+  loadContent: { id: "organization.session.loadContent", message: "Load full content" },
+  memberKnowledge: {
+    id: "organization.session.memberKnowledge",
+    message: "This conversation uses the executing computer owner's applied project versions.",
+  },
+  versioned: { id: "organization.session.versioned", message: "Fixed knowledge versions" },
+}
