@@ -160,4 +160,18 @@ export function identityRoutes(authentication: () => Authentication, publicOrigi
           ),
         ),
     )
+    .get(
+      "/projects/:projectID/members",
+      operation("orgProjects.members", "List public project member identities", Identity.ProjectMemberPage),
+      validator("param", projectParam, validation),
+      validator("query", Identity.Page, validation),
+      async (c) => c.json(await Projects.members(credentials(c), c.req.valid("param").projectID, c.req.valid("query"))),
+    )
+    .get(
+      "/projects/:projectID/member-candidates",
+      operation("orgProjects.candidates", "Find current accounts for project membership management", Identity.ProjectCandidatePage),
+      validator("param", projectParam, validation),
+      validator("query", Identity.CandidateQuery, validation),
+      async (c) => c.json(await Projects.candidates(credentials(c), c.req.valid("param").projectID, c.req.valid("query"))),
+    )
 }

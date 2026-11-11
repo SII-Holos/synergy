@@ -101,12 +101,12 @@ export namespace OrganizationStoragePath {
   export const runtimeTicket = (hash: string) => ["organization", "runtime-tickets", hash]
   export const projects = () => ["organization", "projects"]
   export const project = (id: string) => [...projects(), id]
-  export const projectMember = (projectID: string, accountID: string) => [
+  export const projectMembers = (projectID: string) => [
     "organization",
     "project-members",
     projectID,
-    accountID,
   ]
+  export const projectMember = (projectID: string, accountID: string) => [...projectMembers(projectID), accountID]
   export const accessibleProjects = (accountID: string) => ["organization", "project-access", accountID]
   export const projectAccess = (accountID: string, projectID: string) => [...accessibleProjects(accountID), projectID]
   export const sessions = () => ["organization", "sessions"]

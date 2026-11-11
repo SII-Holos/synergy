@@ -151,4 +151,13 @@ export namespace OrganizationIdentity {
     .strictObject({ expectedRevision: Revision, role: ProjectRole.nullable() })
     .meta({ ref: "OrgProjectMemberChange" })
   export type ProjectMemberChange = z.infer<typeof ProjectMemberChange>
+  export const ProjectMemberIdentity = Account.pick({ accountID: true, displayName: true, loginName: true, state: true })
+  export const ProjectMemberView = ProjectMemberIdentity.extend({ role: ProjectRole })
+  export const ProjectMemberPage = z.strictObject({
+    items: z.array(ProjectMemberView).max(100), projectRevision: Revision, cursor: ID.optional(),
+  }).meta({ ref: "OrgProjectMemberPage" })
+  export const CandidateQuery = Page.extend({ q: z.string().trim().max(128).default("") })
+  export const ProjectCandidatePage = z.strictObject({
+    items: z.array(ProjectMemberIdentity).max(100), projectRevision: Revision, cursor: ID.optional(),
+  }).meta({ ref: "OrgProjectCandidatePage" })
 }
