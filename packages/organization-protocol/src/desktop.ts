@@ -149,6 +149,22 @@ export namespace OrganizationDesktop {
     }),
   ])
   export type ContentDownloadOutcome = z.infer<typeof ContentDownloadOutcome>
+  export const AttachmentDownload = MemberRequest.extend({
+    binding: Protocol.SessionBinding,
+  }).refine(
+    (value) => value.query.operation === "attachmentContent" && value.query.offset === 0,
+    "Saving requires an exact complete attachment target",
+  )
+  export type AttachmentDownload = z.infer<typeof AttachmentDownload>
+  export const AttachmentDownloadOutcome = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("result"), result: DownloadResult }),
+    z.strictObject({
+      kind: z.literal("unavailable"),
+      version: z.string().min(1).max(512),
+      reason: z.enum(["partial", "not_retained"]),
+    }),
+  ])
+  export type AttachmentDownloadOutcome = z.infer<typeof AttachmentDownloadOutcome>
   export const MemberReadOutcome = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("result"), result: Read.Result }),
     z.strictObject({ kind: z.literal("revision_conflict") }),
@@ -194,5 +210,6 @@ export namespace OrganizationDesktop {
     bindProject(input: z.infer<typeof ProjectBind>): Promise<Result<ProjectBindingOutcome>>
     memberRequest(input: z.infer<typeof MemberRequest>): Promise<Result<MemberReadOutcome>>
     downloadContent(input: ContentDownload): Promise<Result<ContentDownloadOutcome>>
+    downloadAttachment(input: AttachmentDownload): Promise<Result<AttachmentDownloadOutcome>>
   }
 }

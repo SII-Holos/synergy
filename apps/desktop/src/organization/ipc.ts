@@ -15,7 +15,7 @@ import type { DesktopOrganizationAccounts } from "./accounts.js"
 import type { DesktopOrganizationAuthorization } from "./authorization.js"
 import type { DesktopMemberRuntimes } from "./member-runtimes.js"
 import { DesktopOrganizationError as Failure } from "./error.js"
-import { downloadOrganizationContent } from "./content-download.js"
+import { downloadOrganizationAttachment, downloadOrganizationContent } from "./content-download.js"
 import { downloadIdleDeadline } from "./transfer-deadline.js"
 import { DesktopOrganizationCommandStream, type DesktopCommandLease } from "./command-stream.js"
 
@@ -517,8 +517,12 @@ export class DesktopOrganizationIPC<Event = unknown> {
           this.readMember(request.connectionID, request.query, signal, current),
         )
       }
-      case "downloadContent": {
-        const request = parse(Desktop.ContentDownload, input)
+      case "downloadContent":
+      case "downloadAttachment": {
+        const download = action === "downloadContent"
+          ? { kind: "content" as const, request: parse(Desktop.ContentDownload, input) }
+          : { kind: "attachment" as const, request: parse(Desktop.AttachmentDownload, input) }
+        const request = download.request
         if (!this.options.saveFile) throw new Failure("unavailable")
         return this.run(
           request.requestID,
@@ -582,11 +586,14 @@ export class DesktopOrganizationIPC<Event = unknown> {
                 deadline.dispose()
               }
             }
-            return downloadOrganizationContent(request, {
+            const options = {
               signal,
               read,
-              save: (name, write) => this.options.saveFile!(name, write, signal),
-            })
+              save: (name: string, write: (append: (chunk: Uint8Array) => Promise<void>) => Promise<number>) => this.options.saveFile!(name, write, signal),
+            }
+            return download.kind === "content"
+              ? downloadOrganizationContent(download.request, options)
+              : downloadOrganizationAttachment(download.request, options)
           },
           "transfer",
         )
@@ -855,6 +862,7 @@ export function registerOrganizationIPC<Event>(
     "bindProject",
     "memberRequest",
     "downloadContent",
+    "downloadAttachment",
   ] as const)
     host.handle(`desktop.organization.${action}`, (event, input) => owner.handle(event, action, input))
 }

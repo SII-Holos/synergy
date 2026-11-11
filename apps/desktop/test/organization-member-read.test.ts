@@ -5,7 +5,7 @@ import { DesktopOrganizationIPC } from "../src/organization/ipc"
 import { organizationFixture } from "./fixture/organization"
 import { OrganizationReadProtocol as Read } from "@ericsanchezok/synergy-organization-protocol"
 
-async function setup(options: {content?:Uint8Array;nativeDelayMs?:number;requestTimeoutMs?:number;transferIdleMs?:number;saveFile?:ConstructorParameters<typeof DesktopOrganizationIPC>[0]["saveFile"]} = {}) {
+async function setup(options: {content?:Uint8Array;attachment?:Uint8Array;remote?:boolean;nativeDelayMs?:number;requestTimeoutMs?:number;transferIdleMs?:number;saveFile?:ConstructorParameters<typeof DesktopOrganizationIPC>[0]["saveFile"]} = {}) {
   const f = await organizationFixture()
   try {
     const verifier = randomBytes(32).toString("base64url")
@@ -51,15 +51,28 @@ async function setup(options: {content?:Uint8Array;nativeDelayMs?:number;request
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const request = new Request(input, init)
         const url = new URL(request.url)
-        if (url.origin === "http://127.0.0.1:43210") {
-          expect(request.headers.get("authorization")).toBe("Bearer private-member-credential")
-          expect(url.pathname).toBe("/organization/session/read")
+        if (url.origin === "http://127.0.0.1:43210" || url.pathname === "/org/v1/sessions/session-a/read") {
+          if (options.remote) {
+            expect(url.origin).toBe(f.info.issuer)
+            expect(request.headers.get("authorization")).toMatch(/^Bearer /)
+            expect(request.headers.get("authorization")).not.toBe("Bearer private-member-credential")
+          } else {
+            expect(request.headers.get("authorization")).toBe("Bearer private-member-credential")
+            expect(url.pathname).toBe("/organization/session/read")
+          }
           const query = Read.Query.parse(await request.json())
           queries.push(query)
           if (options.nativeDelayMs) await new Promise((resolve) => setTimeout(resolve,options.nativeDelayMs))
           const content = options.content
           const contentHash = content && createHash("sha256").update(content).digest("hex")
-          const value = Read.Result.parse(content && query.operation === "partContent" ? {
+          const attachment = options.attachment
+          const attachmentHash = attachment && createHash("sha256").update(attachment).digest("hex")
+          const value = Read.Result.parse(attachment && query.operation === "attachmentContent" ? {
+            operation:"attachmentContent",state:"ready",rootSessionID:query.rootSessionID,sourceSessionID:query.sourceSessionID ?? query.rootSessionID,
+            binding:{...binding(),bindingEpoch:state.nativeEpoch},messageID:query.messageID,partID:query.partID,
+            reference:{kind:"attachment",version:"attachment-v1",filename:"evidence.bin",mediaType:"application/octet-stream",bytes:attachment.length,sha256:attachmentHash},
+            chunk:{offset:query.offset,nextOffset:Math.min(attachment.length,query.offset+query.length),totalBytes:attachment.length,sha256:attachmentHash,data:Buffer.from(attachment.slice(query.offset,query.offset+query.length)).toString("base64url"),complete:query.offset+query.length>=attachment.length},
+          } : content && query.operation === "partContent" ? {
             operation:"partContent",state:"ready",rootSessionID:query.rootSessionID,sourceSessionID:query.sourceSessionID ?? query.rootSessionID,
             binding:{...binding(),bindingEpoch:state.nativeEpoch},
             value:{messageID:query.messageID,partID:query.partID,version:"native-v1",part:{type:"text",content:{kind:"native",version:"native-v1",field:"text",bytes:content.length,sha256:contentHash,original:"partial"}}},
@@ -132,7 +145,7 @@ async function setup(options: {content?:Uint8Array;nativeDelayMs?:number;request
       transferIdleMs:options.transferIdleMs,
       trusted: (event) => event === trusted,
       members: {
-        running: () => [
+        running: () => options.remote ? [] : [
           {
             connectionID: connection.id,
             runtimeID: "runtime-a",
@@ -267,4 +280,51 @@ test("an idle native field request finishes before its held response and never o
   f.release.resolve()
   expect(result).toEqual({ok:false,error:{code:"cancelled"}})
   expect(saves).toBe(0)
+})
+
+test("the attachment IPC derives its immutable descriptor through the captured member and rejects foreign creators before the picker", async () => {
+  const attachment = Uint8Array.from({length:150001},(_, index) => index % 256)
+  const chunks:Uint8Array[]=[]
+  let saves=0
+  await using f = await setup({attachment,saveFile:async (name,write) => {
+    saves++
+    expect(name).toBe("evidence.bin")
+    return {saved:true,bytes:await write(async (chunk) => {chunks.push(chunk.slice())})}
+  }})
+  const input = {...f.input,requestID:"attachment-save",binding:f.binding(),query:{operation:"attachmentContent",rootSessionID:"session-a",messageID:"message-a",partID:"part-a",version:"attachment-v1",offset:0,length:65536}}
+  expect(await f.ipc.handle(f.trusted,"downloadAttachment",input)).toEqual({ok:true,value:{kind:"result",result:{saved:true,bytes:attachment.length}}})
+  expect(new Uint8Array(Buffer.concat(chunks))).toEqual(attachment)
+  expect(chunks.every(chunk => chunk.byteLength<=65536)).toBe(true)
+  expect(f.queries).toHaveLength(4)
+  f.state.creatorID="foreign-creator"
+  expect(await f.ipc.handle(f.trusted,"downloadAttachment",{...input,requestID:"attachment-foreign"})).toEqual({ok:false,error:{code:"permission_denied"}})
+  expect(saves).toBe(1)
+  expect(f.queries).toHaveLength(4)
+})
+
+test("the attachment IPC revalidates the current binding after a native save picker", async () => {
+  const attachment = new Uint8Array([0,255,128])
+  let changed:()=>void = () => {}
+  let writes=0
+  await using f = await setup({attachment,saveFile:async (_name,write) => {
+    changed()
+    return {saved:true,bytes:await write(async () => {writes++})}
+  }})
+  changed=()=>{f.state.epoch=2}
+  const input = {...f.input,requestID:"attachment-binding",binding:f.binding(),query:{operation:"attachmentContent",rootSessionID:"session-a",messageID:"message-a",partID:"part-a",version:"attachment-v1",offset:0,length:65536}}
+  expect(await f.ipc.handle(f.trusted,"downloadAttachment",input)).toMatchObject({ok:false})
+  expect(writes).toBe(0)
+})
+
+test("remote attachment saving stays on the generated organization read route with captured source and binding", async () => {
+  const attachment = Uint8Array.from({length:70003},(_,index) => index % 256)
+  const chunks:Uint8Array[]=[]
+  await using f = await setup({attachment,remote:true,saveFile:async (_name,write) => ({saved:true,bytes:await write(async chunk => {chunks.push(chunk.slice())})})})
+  const input = {...f.input,requestID:"attachment-remote",binding:f.binding(),query:{operation:"attachmentContent",rootSessionID:"session-a",sourceSessionID:"child-a",messageID:"message-a",partID:"part-a",version:"attachment-v1",offset:0,length:65536}}
+  expect(await f.ipc.handle(f.trusted,"downloadAttachment",input)).toEqual({ok:true,value:{kind:"result",result:{saved:true,bytes:attachment.length}}})
+  expect(new Uint8Array(Buffer.concat(chunks))).toEqual(attachment)
+  expect(f.queries).toHaveLength(3)
+  expect(f.queries.every(query => query.sourceSessionID==="child-a" && query.operation==="attachmentContent" && query.version==="attachment-v1")).toBe(true)
+  f.state.nativeEpoch=2
+  expect(await f.ipc.handle(f.trusted,"downloadAttachment",{...input,requestID:"attachment-remote-changed"})).toEqual({ok:false,error:{code:"invalid_response"}})
 })

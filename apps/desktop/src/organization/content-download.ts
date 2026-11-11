@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser-core"
 import {
   OrganizationDesktop as Desktop,
   OrganizationReadProtocol as Read,
@@ -8,6 +9,49 @@ import {
 class PreparingContent extends Error {
   constructor(readonly result: Extract<Read.Result,{operation:"partContent";state:"preparing"}>) {
     super("Native content is preparing")
+  }
+}
+
+class UnavailableAttachment extends Error {
+  constructor(readonly result: Extract<Read.Result, { operation: "attachmentContent"; state: "unavailable" }>) {
+    super("Native attachment evidence is unavailable")
+  }
+}
+
+export async function downloadOrganizationAttachment(input: Desktop.AttachmentDownload, options: {
+  signal: AbortSignal
+  read: (query: Read.Query, signal: AbortSignal) => Promise<Read.Result>
+  save: (fileName: string, write: (append: (chunk: Uint8Array) => Promise<void>) => Promise<number>) => Promise<Desktop.DownloadResult>
+}): Promise<Desktop.AttachmentDownloadOutcome> {
+  const request = Desktop.AttachmentDownload.parse(input)
+  if (request.query.operation !== "attachmentContent") throw new Error("Invalid native attachment target")
+  const query = request.query
+  options.signal.throwIfAborted()
+  const firstQuery = { ...query, length: 1 }
+  const first = Read.Result.parse(await options.read(firstQuery, options.signal))
+  options.signal.throwIfAborted()
+  if (!Read.matches(firstQuery, first, request.binding) || first.operation !== "attachmentContent")
+    throw new Error("Native attachment identity changed")
+  if (first.state === "unavailable") return { kind: "unavailable", version: first.version, reason: first.reason }
+  const reference = first.reference
+  try {
+    const result = await options.save(sanitizeBrowserFilename(reference.filename, "attachment"), async (append) => {
+      const hash = createHash("sha256")
+      const result = await OrganizationReadContent.stream({
+        rootSessionID: query.rootSessionID, sourceSessionID: query.sourceSessionID,
+        messageID: query.messageID, partID: query.partID,
+        reference, expectedBinding: request.binding, signal: options.signal, read: options.read, append,
+        hash: { update: (bytes) => hash.update(bytes), digest: () => hash.digest("hex") },
+      })
+      if (result.state === "unavailable") throw new UnavailableAttachment(result.pending)
+      return result.bytes
+    })
+    options.signal.throwIfAborted()
+    return { kind: "result", result }
+  } catch (error) {
+    if (error instanceof UnavailableAttachment)
+      return { kind: "unavailable", version: error.result.version, reason: error.result.reason }
+    throw error
   }
 }
 function preparation(result: Extract<Read.Result,{operation:"partContent";state:"preparing"}>):Desktop.ContentDownloadOutcome {
