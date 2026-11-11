@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { projectOrganizationMessage, projectOrganizationPart } from "../../src/organization/transcript"
 import type { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-organization-protocol"
+import type { OrganizationReadProtocol as Read } from "@ericsanchezok/synergy-organization-protocol"
 
 const base = {
   type: "message",
@@ -151,4 +152,50 @@ test("reasoning and step accounting require actual observations and retain their
       () => undefined,
     ),
   ).toBeUndefined()
+})
+
+test("private native headers reuse the message projector and retain partial output provenance", () => {
+  const native: Read.Part = {
+    partID: "native-part",
+    messageID: "native-message",
+    version: "native-v1",
+    part: {
+      type: "tool",
+      tool: "organization_knowledge",
+      callID: "call-native",
+      status: "completed",
+      startedAt: 1,
+      completedAt: 2,
+      input: { kind: "inline", text: "{}" },
+      output: {
+        kind: "native",
+        version: "native-v1",
+        field: "output",
+        bytes: 15,
+        sha256: "a".repeat(64),
+        original: "partial",
+      },
+    },
+  }
+  const part = projectOrganizationPart(native, "native-session", () => "Retained output")
+  expect(part).toMatchObject({
+    id: "native-part",
+    sessionID: "native-session",
+    state: { status: "completed", output: "Retained output", outputTruncated: true },
+  })
+  const nativeMessage: Read.Message = {
+    messageID: "native-message",
+    version: "message-v1",
+    order: "0001",
+    role: "user",
+    createdAt: 1,
+    summary: "",
+    model: { providerID: "team", modelID: "model" },
+    agent: "general",
+  }
+  expect(projectOrganizationMessage(nativeMessage, "native-session")).toMatchObject({
+    id: "native-message",
+    role: "user",
+    time: { created: 1 },
+  })
 })

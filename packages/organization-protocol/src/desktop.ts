@@ -2,6 +2,7 @@ import { z } from "zod"
 import { OrganizationClientAuth as Auth } from "./client-auth.js"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationLocalProjectProtocol as LocalProject } from "./local-project.js"
+import { OrganizationReadProtocol as Read } from "./read.js"
 
 export namespace OrganizationDesktop {
   export const BinaryLimit = 4 * 1024 * 1024
@@ -106,6 +107,14 @@ export namespace OrganizationDesktop {
     z.strictObject({ kind: z.literal("revision_conflict"), current: LocalProject.Summary }),
   ])
   export type ProjectBindingOutcome = z.infer<typeof ProjectBindingOutcome>
+  export const MemberRequest = MemberStart.extend({ query: Read.Query })
+  export const MemberReadOutcome = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("result"), result: Read.Result }),
+    z.strictObject({ kind: z.literal("revision_conflict") }),
+    z.strictObject({ kind: z.literal("not_found") }),
+    z.strictObject({ kind: z.literal("binding_changed") }),
+  ])
+  export type MemberReadOutcome = z.infer<typeof MemberReadOutcome>
   export const MemberRuntime = Account.extend({
     state: z.enum(["stopped", "starting", "running", "failed"]),
     runtimeID: Identity.ID.optional(),
@@ -141,5 +150,6 @@ export namespace OrganizationDesktop {
     startMember(input: z.infer<typeof MemberStart>): Promise<Result<MemberRuntime>>
     projectBinding(input: z.infer<typeof ProjectBinding>): Promise<Result<ProjectBindingOutcome>>
     bindProject(input: z.infer<typeof ProjectBind>): Promise<Result<ProjectBindingOutcome>>
+    memberRequest(input: z.infer<typeof MemberRequest>): Promise<Result<MemberReadOutcome>>
   }
 }

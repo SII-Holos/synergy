@@ -3,6 +3,30 @@
   gap: 16px;
   min-width: 0;
 }
+.organization-transcript,
+.organization-session-composer {
+  width: min(100%, 50rem);
+  margin-inline: auto;
+}
+.organization-deferred-tool {
+  display: grid;
+  gap: 8px;
+}
+.organization-deferred-tool > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.organization-deferred-tool [data-component="tool-trigger"] {
+  min-width: 0;
+  flex: 1;
+}
+.organization-deferred-tool > p,
+.organization-deferred-tool > div > span {
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .organization-transcript-viewport {
   height: min(62dvh, 760px);
   min-height: 320px;
@@ -56,5 +80,8 @@
   }
   .organization-transcript-message {
     padding-inline: 0;
+  }
+  .organization-transcript-message > button {
+    min-height: 44px;
   }
 }

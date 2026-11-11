@@ -82,6 +82,156 @@ afterAll(async () => {
   if (directory) await fs.rm(directory, { recursive: true, force: true })
 })
 
+test("removing an earlier live part preserves a focused later tool control", async () => {
+  const page = await browser.newPage({ viewport: { width: 1000, height: 760 } })
+  const replay = Promise.withResolvers<{ ok: true; value: { status: number; body: string } }>()
+  let events = 0
+  const records = ["part-first", "part-second"].map((partID, index) => ({
+    type: "part",
+    sequence: index + 2,
+    messageID: "message-a",
+    partID,
+    integrity: "a".repeat(64),
+    part: {
+      type: "tool",
+      callID: `call-${partID}`,
+      tool: "organization_knowledge",
+      status: "completed",
+      startedAt: 1,
+      completedAt: 2,
+      metadata: { operation: "read", path: `${partID}.md` },
+      input: { kind: "inline", text: '{"input":{"operation":"read"}}' },
+      output: { kind: "inline", text: `Result ${partID}` },
+    },
+  }))
+  await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
+  await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+    const url = new URL(request.path, entry.issuer)
+    if (url.pathname.endsWith("/events") && ++events === 1) return replay.promise
+    const body = url.pathname.endsWith("/messages")
+      ? {
+          shareGeneration: 1,
+          watermark: 3,
+          items: [
+            {
+              ...message("message-a"),
+              role: "assistant",
+              parentID: "user-root",
+              mode: "general",
+              cost: 0,
+              tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+            },
+          ],
+        }
+      : url.pathname.endsWith("/parts")
+        ? { shareGeneration: 1, watermark: 3, complete: true, items: records }
+        : { shareGeneration: 1, nextSeq: 5, items: [] }
+    return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
+  })
+  try {
+    await page.goto(new URL("/organization/org-a/account-a/deployment-a", server.url).href)
+    const control = page.locator('[data-part-id="part-second"]').getByRole("button").first()
+    await control.focus()
+    await control.evaluate((element) => {
+      Reflect.set(window, "retainedToolControl", element)
+    })
+    replay.resolve({
+      ok: true,
+      value: {
+        status: 200,
+        body: JSON.stringify({
+          shareGeneration: 1,
+          cursor: 4,
+          nextSeq: 5,
+          items: [
+            {
+              type: "part",
+              sequence: 4,
+              messageID: "message-a",
+              partID: "part-first",
+              removed: true,
+              integrity: "a".repeat(64),
+            },
+          ],
+        }),
+      },
+    })
+    await page.locator('[data-part-id="part-first"]').waitFor({ state: "detached" })
+    expect(await page.evaluate(() => document.activeElement === Reflect.get(window, "retainedToolControl"))).toBe(true)
+  } finally {
+    replay.resolve({ ok: true, value: { status: 200, body: "{}" } })
+    await page.close()
+  }
+})
+
+test("cold tool fields keep their real metadata visible without fetching or inventing the output", async () => {
+  const page = await browser.newPage({ viewport: { width: 1000, height: 760 } })
+  const reads: string[] = []
+  await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
+  await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+    reads.push(request.path)
+    const url = new URL(request.path, entry.issuer)
+    const body = url.pathname.endsWith("/messages")
+      ? {
+          shareGeneration: 1,
+          watermark: 2,
+          items: [
+            {
+              ...message("message-a"),
+              role: "assistant",
+              parentID: "user-root",
+              mode: "general",
+              cost: 0,
+              tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+            },
+          ],
+        }
+      : url.pathname.endsWith("/parts")
+        ? {
+            shareGeneration: 1,
+            watermark: 2,
+            complete: true,
+            items: [
+              {
+                type: "part",
+                sequence: 2,
+                messageID: "message-a",
+                partID: "cold-tool",
+                integrity: "a".repeat(64),
+                part: {
+                  type: "tool",
+                  callID: "cold-call",
+                  tool: "organization_knowledge",
+                  status: "completed",
+                  startedAt: 1,
+                  completedAt: 2,
+                  metadata: { operation: "read", path: "guide.md" },
+                  input: { kind: "inline", text: '{"input":{"operation":"read"}}' },
+                  output: {
+                    kind: "blob",
+                    blobID: "cold-output",
+                    hash: "b".repeat(64),
+                    bytes: 100000,
+                    mediaType: "text/plain",
+                  },
+                },
+              },
+            ],
+          }
+        : { shareGeneration: 1, nextSeq: 3, items: [] }
+    return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
+  })
+  try {
+    await page.goto(new URL("/organization/org-a/account-a/deployment-a", server.url).href)
+    await page.getByRole("button", { name: "Load full content", exact: true }).waitFor()
+    expect(await page.getByText("guide.md", { exact: true }).count()).toBe(1)
+    expect(await page.locator('[data-part-id="cold-tool"][data-content-state="deferred"]').count()).toBe(1)
+    expect(reads.some((path) => path.includes("/blobs/"))).toBe(false)
+  } finally {
+    await page.close()
+  }
+})
+
 test("evicting a content blob releases every message that references its canonical tool output", async () => {
   const page = await browser.newPage({ viewport: { width: 1800, height: 2000 } })
   const bytes = [

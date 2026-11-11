@@ -76,6 +76,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
       ["GET", "/org/v1/invites?limit=50"],
       ["POST", "/org/v1/invites/invite-one/revoke"],
       ["POST", "/org/v1/organization/leave"],
+      ["POST", "/org/v1/sessions/session-one/read"],
     ] as const
   ).entries()) {
     const result = await ipc.handle(trusted, "request", {
@@ -87,7 +88,7 @@ test("shared transcript windows and runtime availability use exact main-authenti
     })
     expect(result).toMatchObject({ ok: true, value: { status: 200 } })
   }
-  expect(calls).toBe(8)
+  expect(calls).toBe(9)
   ipc.dispose()
 })
 

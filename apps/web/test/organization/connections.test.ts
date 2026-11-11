@@ -249,6 +249,7 @@ test("native connections retain the exact IPC descriptor and cancel requests at 
     download: async () => ({ ok: false, error: { code: "unavailable" } }),
     projectBinding: async () => ({ ok: false, error: { code: "unavailable" } }),
     bindProject: async () => ({ ok: false, error: { code: "unavailable" } }),
+    memberRequest: async () => ({ ok: false, error: { code: "unavailable" } }),
   }
   const registry = createOrganizationConnections({
     storage: storage(),

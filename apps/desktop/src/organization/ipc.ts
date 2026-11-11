@@ -6,6 +6,8 @@ import {
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationProtocol as Protocol,
+  OrganizationReadProtocol as Read,
+  OrganizationSessionProtocol as Session,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
@@ -15,6 +17,11 @@ import type { DesktopMemberRuntimes } from "./member-runtimes.js"
 import { DesktopOrganizationError as Failure } from "./error.js"
 
 type Action = keyof Desktop.Bridge
+class NativeReadFailure extends Error {
+  constructor(readonly kind: "not_found" | "revision_conflict" | "binding_changed") {
+    super(kind)
+  }
+}
 const id = "[a-zA-Z0-9_-]+"
 const routes: [string, RegExp][] = [
   ["GET", /^\/org\/v1\/(organization|accounts|invites|projects|runtimes|resources|auth\/session)$/],
@@ -28,7 +35,7 @@ const routes: [string, RegExp][] = [
   ["GET", new RegExp(`^/org/v1/resources/${id}/grants/(account|project)$`)],
   ["POST", /^\/org\/v1\/(projects|invites|sessions|resources|organization\/(transfer-owner|leave)|auth\/password)$/],
   ["POST", new RegExp(`^/org/v1/invites/${id}/revoke$`)],
-  ["POST", new RegExp(`^/org/v1/sessions/${id}/(commands|control)$`)],
+  ["POST", new RegExp(`^/org/v1/sessions/${id}/(commands|control|read)$`)],
   ["DELETE", new RegExp(`^/org/v1/sessions/${id}/share$`)],
   ["POST", new RegExp(`^/org/v1/accounts/${id}/reset$`)],
   ["POST", new RegExp(`^/org/v1/runtimes/${id}/revoke$`)],
@@ -442,6 +449,12 @@ export class DesktopOrganizationIPC<Event = unknown> {
           },
         )
       }
+      case "memberRequest": {
+        const request = parse(Desktop.MemberRequest, input)
+        return this.run(request.requestID, request.connectionID, (signal) =>
+          this.readMember(request.connectionID, request.query, signal, current),
+        )
+      }
     }
   }
 
@@ -455,6 +468,104 @@ export class DesktopOrganizationIPC<Event = unknown> {
           ? "permission_denied"
           : "unavailable",
     )
+  }
+
+  private readError(value: unknown): never {
+    const error = Protocol.Error.safeParse(value)
+    if (!error.success) throw new Failure("invalid_response")
+    if (error.data.code === "NOT_FOUND") throw new NativeReadFailure("not_found")
+    if (error.data.code === "REVISION_CONFLICT") throw new NativeReadFailure("revision_conflict")
+    if (error.data.code === "STALE_BINDING" || error.data.code === "STALE_CONNECTION")
+      throw new NativeReadFailure("binding_changed")
+    this.projectError(error.data)
+  }
+
+  private async readMember(
+    connectionID: string,
+    query: Read.Query,
+    signal: AbortSignal,
+    current: () => boolean,
+  ): Promise<Desktop.MemberReadOutcome> {
+    try {
+      const running = this.options.members?.running().find((member) => member.connectionID === connectionID)
+      if (!running) throw new Failure("unavailable")
+      const live = () => {
+        if (!current() || signal.aborted) throw new Failure("cancelled")
+        const now = this.options.members?.running().find((member) => member.connectionID === connectionID)
+        if (
+          !now ||
+          now.runtimeID !== running.runtimeID ||
+          now.connection.url !== running.connection.url ||
+          new Headers(now.connection.headers).get("authorization") !==
+            new Headers(running.connection.headers).get("authorization")
+        )
+          throw new NativeReadFailure("binding_changed")
+      }
+      const authorize = async () => {
+        const access = await this.options.accounts.access(connectionID)
+        live()
+        const client = createOrganizationClient({
+          baseUrl: access.connection.issuer,
+          fetch: this.jsonTransport(access.connection.issuer, signal, current),
+          headers: { authorization: `Bearer ${access.accessToken}` },
+          credentials: "omit",
+          redirect: "error",
+        })
+        const [directoryResult, runtimeResult] = await Promise.all([
+          client.orgSessions.get({ sessionID: query.rootSessionID }, { signal }),
+          client.orgRuntime.get({ runtimeID: running.runtimeID }, { signal }),
+        ])
+        live()
+        if (directoryResult.error) this.readError(directoryResult.error)
+        if (runtimeResult.error) this.readError(runtimeResult.error)
+        const directory = Session.View.safeParse(directoryResult.data)
+        const runtime = Runtime.Registration.safeParse(runtimeResult.data)
+        if (!directory.success || !runtime.success) throw new Failure("invalid_response")
+        if (directory.data.sessionID !== query.rootSessionID) throw new Failure("invalid_response")
+        if (directory.data.creatorID !== access.connection.account.accountID || !directory.data.permissions.read)
+          throw new Failure("permission_denied")
+        if (directory.data.driverRuntimeID !== running.runtimeID) throw new NativeReadFailure("binding_changed")
+        if (
+          runtime.data.runtimeID !== running.runtimeID ||
+          runtime.data.orgID !== access.connection.orgID ||
+          runtime.data.deploymentIncarnation !== access.connection.deploymentIncarnation ||
+          runtime.data.runtimeKind !== "member" ||
+          runtime.data.accountID !== access.connection.account.accountID
+        )
+          throw new Failure("identity_changed")
+        if (runtime.data.state !== "active") throw new Failure("permission_denied")
+        return Protocol.SessionBinding.parse({
+          schemaVersion: 1,
+          orgID: access.connection.orgID,
+          projectID: directory.data.projectID,
+          creatorID: directory.data.creatorID,
+          driverRuntimeID: directory.data.driverRuntimeID,
+          bindingEpoch: directory.data.bindingEpoch,
+        })
+      }
+      const binding = await authorize()
+      const client = createSynergyClient({
+        baseUrl: running.connection.url,
+        fetch: this.jsonTransport(running.connection.url, signal, current),
+        headers: running.connection.headers,
+        credentials: "omit",
+        redirect: "error",
+      })
+      const response = await client.orgLocalSession.read({ orgPrivateReadQuery: query }, { signal })
+      live()
+      if (response.error) this.readError(response.error)
+      const result = Read.Result.safeParse(response.data)
+      if (!result.success) throw new Failure("invalid_response")
+      if (JSON.stringify(result.data.binding) !== JSON.stringify(binding))
+        throw new NativeReadFailure("binding_changed")
+      if (!Read.matches(query, result.data, binding)) throw new Failure("invalid_response")
+      const checked = await authorize()
+      if (JSON.stringify(checked) !== JSON.stringify(binding)) throw new NativeReadFailure("binding_changed")
+      return { kind: "result", result: result.data }
+    } catch (error) {
+      if (error instanceof NativeReadFailure) return { kind: error.kind }
+      throw error
+    }
   }
 
   private jsonTransport(baseUrl: string, signal: AbortSignal, current: () => boolean) {
@@ -583,6 +694,7 @@ export function registerOrganizationIPC<Event>(
     "download",
     "projectBinding",
     "bindProject",
+    "memberRequest",
   ] as const)
     host.handle(`desktop.organization.${action}`, (event, input) => owner.handle(event, action, input))
 }

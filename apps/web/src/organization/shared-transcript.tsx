@@ -20,6 +20,7 @@ import {
 } from "./transcript"
 import { organizationSessionMessages as messages } from "./session-messages"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
+import { OrganizationTranscriptPart } from "./transcript-part"
 import "./session.css"
 
 export function SharedOrganizationTranscript(props: {
@@ -123,7 +124,11 @@ export function SharedOrganizationTranscript(props: {
       messageID,
       reconcile(
         (state.parts[messageID] ?? [])
-          .map((part) => projectOrganizationPart(part, props.sessionID, (body) => state.bodies[body.hash]))
+          .map((part) =>
+            projectOrganizationPart(part, props.sessionID, (body) =>
+              body.kind === "blob" ? state.bodies[body.hash] : undefined,
+            ),
+          )
           .filter((part) => part !== undefined),
       ),
     )
@@ -649,7 +654,19 @@ function SharedMessageRow(props: {
           </>
         }
       >
-        {(message) => <Message message={message()} parts={props.parts} />}
+        {(message) => (
+          <Show when={message().role === "assistant"} fallback={<Message message={message()} parts={props.parts} />}>
+            <For each={props.records}>
+              {(record) => (
+                <OrganizationTranscriptPart
+                  record={record}
+                  part={props.parts.find((part) => part.id === record.partID)}
+                  message={message()}
+                />
+              )}
+            </For>
+          </Show>
+        )}
       </Show>
       <Show when={props.hasPrevious}>
         <Button disabled={busy()} onClick={() => void load(true)}>

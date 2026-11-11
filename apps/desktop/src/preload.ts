@@ -34,6 +34,7 @@ const organization: OrganizationDesktop.Bridge = {
   download: (input) => ipcRenderer.invoke("desktop.organization.download", input),
   projectBinding: (input) => ipcRenderer.invoke("desktop.organization.projectBinding", input),
   bindProject: (input) => ipcRenderer.invoke("desktop.organization.bindProject", input),
+  memberRequest: (input) => ipcRenderer.invoke("desktop.organization.memberRequest", input),
 }
 
 const browserNative = {

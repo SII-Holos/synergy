@@ -1,12 +1,19 @@
 import { z } from "zod"
 import type { Message, Part, ToolState } from "@ericsanchezok/synergy-sdk"
 import type { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-organization-protocol"
+import type { OrganizationReadProtocol as Read } from "@ericsanchezok/synergy-organization-protocol"
 
 export type OrganizationMessageEvent = Extract<Sync.Event, { type: "message" }>
 export type OrganizationPartEvent = Extract<Sync.Event, { type: "part" }>
-export type OrganizationContentRead = (content: Extract<Sync.Content, { kind: "blob" }>) => string | undefined
+export type OrganizationMessageData = Omit<OrganizationMessageEvent, "type" | "sequence" | "integrity">
+export type OrganizationPartData = Omit<OrganizationPartEvent, "type" | "sequence" | "integrity" | "part"> & {
+  part?: Sync.TranscriptPart | Read.Part["part"]
+}
+export type OrganizationContentRead = (
+  content: Exclude<Sync.Content | Read.Content, { kind: "inline" }>,
+) => string | undefined
 
-export function projectOrganizationMessage(event: OrganizationMessageEvent, sessionID: string): Message | undefined {
+export function projectOrganizationMessage(event: OrganizationMessageData, sessionID: string): Message | undefined {
   if (event.removed || !event.agent || !event.model) return
   const base = {
     id: event.messageID,
@@ -36,7 +43,7 @@ export function projectOrganizationMessage(event: OrganizationMessageEvent, sess
   }
 }
 
-function contentText(content: Sync.Content | undefined, read: OrganizationContentRead) {
+function contentText(content: Sync.Content | Read.Content | undefined, read: OrganizationContentRead) {
   return content?.kind === "inline" ? content.text : content ? read(content) : undefined
 }
 function toolInput(raw: string) {
@@ -49,7 +56,7 @@ function toolInput(raw: string) {
 }
 
 export function projectOrganizationPart(
-  event: OrganizationPartEvent,
+  event: OrganizationPartData,
   rootSessionID: string,
   read: OrganizationContentRead,
 ): Part | undefined {
@@ -95,6 +102,7 @@ export function projectOrganizationPart(
           status: "completed",
           input,
           output,
+          ...(part.output?.kind === "native" && part.output.original === "partial" ? { outputTruncated: true } : {}),
           title: part.title ?? part.tool,
           metadata: part.metadata ?? {},
           time,
