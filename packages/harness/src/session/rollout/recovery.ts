@@ -24,6 +24,12 @@ export namespace RolloutRecovery {
   }>()
   const identityKey = (identity: RolloutSchema.Owner) => JSON.stringify(RolloutArtifact.root(identity))
 
+  async function frozen(identity: RolloutSchema.Owner) {
+    if (identity.kind !== "session") return false
+    const { SessionTransferGate } = await import("../transfer-gate")
+    return SessionTransferGate.isFrozen(identity.sessionID)
+  }
+
   export async function ensure(identity: RolloutSchema.Owner) {
     const state = admission()
     const key = identityKey(identity)
@@ -36,6 +42,7 @@ export namespace RolloutRecovery {
         context.key === key)
     )
       return
+    if (await frozen(identity)) return
     if (Storage.inTransaction()) throw new Error("Recover historical owners before opening a transaction")
     const pending = state.pending.get(key)
     if (pending) return pending
@@ -173,6 +180,7 @@ export namespace RolloutRecovery {
       const touched = new Set(RolloutPending.touched().map(identityKey))
       for (const identity of pending.owners) {
         if (!touched.has(identityKey(identity))) continue
+        if (await frozen(identity)) continue
         await owner(identity)
         await RolloutPending.recovered(identity)
       }

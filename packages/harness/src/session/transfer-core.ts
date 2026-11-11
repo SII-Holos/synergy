@@ -17,6 +17,12 @@ import { MessageV2 } from "./message-v2"
 import { Bus } from "../bus"
 import { SessionEvent } from "./event"
 import type { SessionTransferStream } from "./transfer-stream"
+import { SessionTransferReferences } from "./transfer-references"
+import { PartContent } from "./part-content"
+import { RolloutArtifact } from "./rollout/artifact"
+import { SnapshotRecords } from "./snapshot-records"
+import { RolloutSchema } from "./rollout/schema"
+import { RolloutEvidence } from "./rollout/evidence"
 
 export namespace SessionTransferCore {
   const Mapping = z.object({
@@ -73,8 +79,10 @@ export namespace SessionTransferCore {
         for (const owner of MessageV2.requiredOwners(message))
           requirements.push(...Owners.compatibility({ [owner]: 1 }))
       }
+      if (row.key[5] === "parts" && SnapshotRecords.partRoots(row.value).length)
+        requirements.push(...Owners.compatibility({ "session-snapshots": 1 }))
       const tool = z.object({ type: z.literal("tool"), state: z.object({ status: z.string() }) }).safeParse(row.value)
-      if (tool.success && ["pending", "running"].includes(tool.data.state.status)) {
+      if (tool.success && ["pending", "generating", "running"].includes(tool.data.state.status)) {
         requirements.push({
           code: "tool_unsettled",
           owner: "session-core",
@@ -126,6 +134,89 @@ export namespace SessionTransferCore {
     for await (const artifact of context.staged.artifacts())
       if (!own(context.session, artifact.key) || artifact.key[0] !== "sessions")
         fail("Portable core contains another owner's binary artifacts")
+  }
+
+  async function* dependencies(context: Owners.SourceContext): AsyncGenerator<Owners.Dependency> {
+    for await (const record of records(context.session)) {
+      context.signal.throwIfAborted()
+      if (
+        record.key.length === 8 &&
+        record.key[3] === "rollout" &&
+        record.key[4] === "runs" &&
+        record.key[6] === "tools"
+      ) {
+        const tool = RolloutSchema.ToolExecutionRecord.parse(record.value)
+        const owner = { kind: "session" as const, scopeID: context.session.scope.id, sessionID: context.session.id }
+        if (
+          tool.id !== record.key[7] ||
+          tool.runID !== record.key[5] ||
+          JSON.stringify(RolloutArtifact.root(tool.owner)) !== JSON.stringify(RolloutArtifact.root(owner))
+        )
+          fail("Portable tool evidence has another native owner")
+        for (const source of RolloutEvidence.sources({ kind: "tool", value: tool })) {
+          if (
+            source.artifact.status !== "complete" ||
+            source.artifact.mediaType.split(";")[0].toLowerCase() !== "application/json"
+          )
+            continue
+          let body = ""
+          const decoder = new TextDecoder("utf-8", { fatal: true })
+          for await (const block of RolloutArtifact.read(owner, source.artifact)) {
+            context.signal.throwIfAborted()
+            body += decoder.decode(block, { stream: true })
+          }
+          body += decoder.decode()
+          const value: unknown = JSON.parse(body)
+          if (source.field === "input") yield* SessionTransferReferences.value(value)
+          else yield* SessionTransferReferences.result(value)
+        }
+      }
+      if (record.key[3] !== "messages" || record.key[5] !== "parts") {
+        yield* SessionTransferReferences.value(record.value)
+        continue
+      }
+      const part = record.value as PartContent.Stored
+      if (
+        part.type === "tool" &&
+        part.state.status === "completed" &&
+        part.state.outputArtifact?.status === "complete" &&
+        part.state.metadata.rolloutImportMissingOutput !== true &&
+        part.state.metadata.rolloutLegacyOutput !== "missing"
+      ) {
+        const { outputPath: _historicalPath, ...metadata } = part.state.metadata
+        yield* SessionTransferReferences.value({ ...part, state: { ...part.state, metadata } })
+      } else yield* SessionTransferReferences.value(part)
+      if (part.type === "text" || part.type === "reasoning") {
+        let body = ""
+        for await (const block of PartContent.textBlocks(record.key, part, context.signal)) body += block
+        yield* SessionTransferReferences.markdown(body)
+      } else if (part.type === "compaction_recovery") yield* SessionTransferReferences.markdown(part.summary)
+      else if (part.type === "tool") {
+        const state = part.state
+        if (state.status !== "completed") continue
+        const reference = state.metadata.outputPath
+        if (
+          !state.outputArtifact ||
+          state.metadata.rolloutImportMissingOutput === true ||
+          state.metadata.rolloutLegacyOutput === "missing"
+        ) {
+          if (typeof reference === "string") yield { kind: "tool-output", reference }
+          yield* SessionTransferReferences.markdown(state.output)
+          continue
+        }
+        let output = ""
+        const decoder = new TextDecoder()
+        for await (const block of RolloutArtifact.read(
+          { kind: "session", scopeID: context.session.scope.id, sessionID: context.session.id },
+          state.outputArtifact,
+        )) {
+          context.signal.throwIfAborted()
+          output += decoder.decode(block, { stream: true })
+        }
+        output += decoder.decode()
+        yield* SessionTransferReferences.markdown(output)
+      }
+    }
   }
 
   async function scope(source: Scope) {
@@ -223,6 +314,7 @@ export namespace SessionTransferCore {
           after = page.at(-1)!.key
         }
       },
+      dependencies,
       validate,
       publish,
     })

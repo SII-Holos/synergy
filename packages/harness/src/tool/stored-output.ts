@@ -19,6 +19,7 @@ const aliasKey = (alias: string) => ["tool_output_aliases", hash(alias)]
 
 /** Immutable output records share the current Storage authority, never a filesystem path. */
 export namespace StoredToolOutput {
+  export const Metadata = Info
   export async function open(referenceValue: string) {
     if (!referenceValue || referenceValue.length > 4096) throw new Error("tool_output_reference_invalid")
     let id: string

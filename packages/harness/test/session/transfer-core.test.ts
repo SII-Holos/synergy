@@ -136,3 +136,57 @@ test("the native core owner preserves message, Inbox, binary and unknown retaine
     }),
   )
 })
+
+test("core preparation cannot accept an unsettled tool or omit the required historical Snapshot owner", async () => {
+  await using runtime = await testRuntime({ register: Core.register })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ workspace: null, environmentID: null })
+        const messageID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: messageID,
+          sessionID: session.id,
+          role: "user",
+          time: { created: 1 },
+          isRoot: true,
+          rootID: messageID,
+          agent: "general",
+          model: { providerID: "fixture", modelID: "fixture" },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID,
+          type: "snapshot",
+          snapshot: "a".repeat(40),
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID,
+          type: "tool",
+          callID: "unsettled",
+          tool: "fixture",
+          state: { status: "generating", input: {}, raw: "{", charsReceived: 1 },
+        })
+        await Session.flushPartWrites(session.id)
+        const context = {
+          session: await Session.get(session.id),
+          rootSessionID: session.id,
+          handoffID: "required-snapshots",
+          signal: new AbortController().signal,
+        }
+        const inspected = await Owners.inspect(context, ["session-core"])
+        expect(inspected.requirements).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ code: "owner_missing", owner: "session-snapshots" }),
+            expect.objectContaining({ code: "tool_unsettled", owner: "session-core" }),
+          ]),
+        )
+      },
+    }),
+  )
+})
