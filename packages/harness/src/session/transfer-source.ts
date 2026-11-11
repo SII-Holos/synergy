@@ -9,6 +9,7 @@ import { Storage } from "../storage/storage"
 import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import { SessionLifecycle } from "./lifecycle"
 import { SessionManager } from "./manager"
+import { LoopJob } from "./loop-job"
 import { SessionInteraction } from "./interaction"
 import { SessionTransferEpochs as Epochs } from "./transfer-epochs"
 import { SessionTransferOwners as Owners } from "./transfer-owners"
@@ -150,6 +151,23 @@ export namespace SessionTransferSource {
       using find = database.prepare<{ id: string; parent: string | null; owners: string | null }, [string]>(
         "SELECT id,parent,owners FROM members WHERE id=?",
       )
+      const lineage = z.object({ id: z.string(), parentID: z.string().optional(), scope: z.object({ id: z.string() }) })
+      await using recording = LoopJob.preserveRecordingFailures(async (sessionID) => {
+        if (find.get(sessionID)) return true
+        const visited = new Set<string>()
+        let current: string | undefined = sessionID
+        while (current) {
+          if (visited.has(current)) fail("Source recording has a cyclic native parent lineage")
+          visited.add(current)
+          const [raw] = await Storage.readMany<unknown>([["sessions", binding.scopeID, current, "info"]])
+          if (raw === undefined) return false
+          const info = lineage.parse(raw)
+          if (info.id !== current || info.scope.id !== binding.scopeID) return false
+          if (current === root.id) return true
+          current = info.parentID
+        }
+        return false
+      })
       const add = async (sessionID: string) => {
         const session = await Session.get(sessionID)
         if (session.scope.id !== binding.scopeID || (session.id === root.id ? !!session.parentID : !session.parentID))
@@ -160,7 +178,6 @@ export namespace SessionTransferSource {
       }
       await add(root.id)
       await SessionLifecycle.pause({ sessionID: root.id, reason: "interrupted" })
-      SessionManager.signalAbort(root.id, { pauseTurn: true })
       await Epochs.beginSource(binding)
       const discover = async () => {
         let added = 0
@@ -188,6 +205,35 @@ export namespace SessionTransferSource {
           }
         }
       }
+      const assignDepths = () => {
+        database.exec("UPDATE members SET depth=NULL; DELETE FROM queue")
+        using rootDepth = database.prepare("UPDATE members SET depth=0 WHERE id=?")
+        using enqueue = database.prepare("INSERT OR IGNORE INTO queue VALUES (?)")
+        using next = database.prepare<{ id: string; depth: number }, []>(
+          "SELECT m.id,m.depth FROM queue q JOIN members m ON m.id=q.id ORDER BY m.id LIMIT 128",
+        )
+        using children = database.prepare<{ id: string }, [string]>(
+          "SELECT id FROM members WHERE parent=? AND depth IS NULL ORDER BY id",
+        )
+        using assignDepth = database.prepare("UPDATE members SET depth=? WHERE id=?")
+        using dequeue = database.prepare("DELETE FROM queue WHERE id=?")
+        rootDepth.run(root.id)
+        enqueue.run(root.id)
+        for (;;) {
+          input.signal.throwIfAborted()
+          const batch = next.all()
+          if (!batch.length) break
+          for (const row of batch) {
+            for (const child of children.iterate(row.id)) {
+              assignDepth.run(row.depth + 1, child.id)
+              enqueue.run(child.id)
+            }
+            dequeue.run(row.id)
+          }
+        }
+        using unreachable = database.prepare("SELECT id FROM members WHERE depth IS NULL LIMIT 1")
+        if (unreachable.get()) fail("Source aggregate has a cyclic or foreign native parent lineage")
+      }
       for (;;) {
         await discover()
         using pending = database.prepare<{ id: string; owners: string }, []>(
@@ -203,7 +249,6 @@ export namespace SessionTransferSource {
             const member = memberBinding(binding, row.id)
             if (!SessionInteraction.isUnattended(session.interaction) && !session.cortex) {
               await SessionLifecycle.pause({ sessionID: row.id, reason: "interrupted" })
-              SessionManager.signalAbort(row.id, { pauseTurn: true })
             }
             await Epochs.beginSource(member)
             await Storage.write(
@@ -217,8 +262,9 @@ export namespace SessionTransferSource {
             held.run(row.id)
           }
         }
+        assignDepths()
         using undrained = database.prepare<{ id: string; owners: string }, []>(
-          "SELECT id,owners FROM members WHERE drained=0 ORDER BY id LIMIT 128",
+          "SELECT id,owners FROM members WHERE drained=0 ORDER BY depth DESC,id LIMIT 128",
         )
         using drained = database.prepare("UPDATE members SET drained=1 WHERE id=?")
         for (;;) {
@@ -244,32 +290,14 @@ export namespace SessionTransferSource {
         database.exec("UPDATE members SET discovered=0")
         if (!(await discover())) break
       }
-      using rootDepth = database.prepare("UPDATE members SET depth=0 WHERE id=?")
-      using enqueue = database.prepare("INSERT OR IGNORE INTO queue VALUES (?)")
-      using next = database.prepare<{ id: string; depth: number }, []>(
-        "SELECT m.id,m.depth FROM queue q JOIN members m ON m.id=q.id ORDER BY m.id LIMIT 128",
-      )
-      using children = database.prepare<{ id: string }, [string]>(
-        "SELECT id FROM members WHERE parent=? AND depth IS NULL ORDER BY id",
-      )
-      using assignDepth = database.prepare("UPDATE members SET depth=? WHERE id=?")
-      using dequeue = database.prepare("DELETE FROM queue WHERE id=?")
-      rootDepth.run(root.id)
-      enqueue.run(root.id)
-      for (;;) {
+      using ordinary = database.prepare<{ id: string }, []>("SELECT id FROM members ORDER BY depth DESC,id")
+      for (const row of ordinary.iterate()) {
         input.signal.throwIfAborted()
-        const batch = next.all()
-        if (!batch.length) break
-        for (const row of batch) {
-          for (const child of children.iterate(row.id)) {
-            assignDepth.run(row.depth + 1, child.id)
-            enqueue.run(child.id)
-          }
-          dequeue.run(row.id)
-        }
+        const session = await Session.get(row.id)
+        if (!session.cortex && !SessionInteraction.isUnattended(session.interaction))
+          SessionManager.signalAbort(row.id, { pauseTurn: true })
       }
-      using unreachable = database.prepare("SELECT id FROM members WHERE depth IS NULL LIMIT 1")
-      if (unreachable.get()) fail("Source aggregate has a cyclic or foreign native parent lineage")
+      assignDepths()
       await input.verify()
       using ordered = database.prepare<{ id: string; owners: string }, []>(
         "SELECT id,owners FROM members ORDER BY depth DESC,id",

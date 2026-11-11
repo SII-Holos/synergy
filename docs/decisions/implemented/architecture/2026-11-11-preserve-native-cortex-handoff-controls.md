@@ -14,6 +14,8 @@ Register Cortex with the public Session transfer owner registry. Owner export bi
 
 Only an exact cancelled-source or activated-target epoch, a separately admitted aggregate-root Continue and current execution-owner admission can release a hold. Continuation hydrates the same task and resumes its recorded native root through the existing Session continuation receipt and loop. It does not resend admitted initial input. A task that never admitted input uses its original reserved identity for its first native admission. Native startup reconciliation preserves transfer holds; an active cold task without such evidence explicitly blocks portability.
 
+The synchronous Task tool delegates parent-abort decisions to Cortex. Only a native paused-turn reason plus the child's live hold, canonical parent identity and exact current transfer binding or maintenance operation preserves that child. A pause reason alone does not suppress ordinary cancellation, and a normal user cancellation still encounters the canonical hold rejection. The Task tool owns and drains its asynchronous cancellation work; a cancellation failure reaches the tool caller rather than becoming an unhandled promise or being replaced by the parent abort reason. Aggregate suspension must establish descendant holds before aborting their parents; this callback does not certify an unsuspended descendant.
+
 ## Alternatives considered
 
 **Cancel and recreate delegated work.** This destroys parent delivery intent and can duplicate an uncertain operation.
@@ -21,6 +23,8 @@ Only an exact cancelled-source or activated-target epoch, a separately admitted 
 **Write paused on internal children.** This changes the human and machine interaction contract to satisfy an unrelated transfer guard.
 
 **Persist a separate portable task table.** The child Session already owns task status and controls; another authority would diverge after restart or completion.
+
+**Suppress every parent-pause cancellation.** Ordinary parent stops still need to cancel unprotected delegated work. Only current native ownership evidence distinguishes controlled suspension from that ordinary stop.
 
 ## Consequences
 

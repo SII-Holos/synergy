@@ -204,7 +204,11 @@ export namespace SessionTransferCore {
     }
     if (infos !== 1) fail("Portable core metadata is missing or duplicated")
     for await (const artifact of context.staged.artifacts())
-      if (!own(context.session, artifact.key) || artifact.key[0] !== "sessions" || isInfo(context.session, artifact.key))
+      if (
+        !own(context.session, artifact.key) ||
+        artifact.key[0] !== "sessions" ||
+        isInfo(context.session, artifact.key)
+      )
         fail("Portable core contains another owner's binary artifacts")
   }
 
@@ -389,6 +393,8 @@ export namespace SessionTransferCore {
       inspect,
       async freeze(context) {
         await SessionManager.waitForIdle(context.session.id, context.signal)
+        await LoopJob.drainSnapshot(context.session.id, context.signal)
+        context.signal.throwIfAborted()
         if (SessionManager.isRunning(context.session.id) || LoopJob.activeBackgroundCount(context.session.id))
           fail("Portable core still has native background execution")
         await Session.flushPartWrites(context.session.id)

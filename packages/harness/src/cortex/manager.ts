@@ -11,7 +11,7 @@ import { RolloutLifecycle } from "../session/rollout/lifecycle"
 import { record, RolloutRecordingError } from "../session/rollout/error"
 import { $ } from "bun"
 
-import { BusyError } from "../session/error"
+import { BusyError, PausedTurnAbort } from "../session/error"
 import { CortexWorkspace } from "./workspace"
 import { Bus } from "../bus"
 import { Config } from "../config/config"
@@ -1566,6 +1566,56 @@ export namespace Cortex {
     }
 
     return result
+  }
+
+  export async function cancelOnParentAbort(
+    taskID: string,
+    input: { parentSessionID: string; reason: unknown },
+  ): Promise<void> {
+    const state = runtimeState()
+    const task = state.tasks.get(taskID)
+    if (!task) return
+    if (task.parentSessionID !== input.parentSessionID) throw new Error("Cortex abort belongs to another parent")
+    if (isTerminal(task.status)) return
+    if (!PausedTurnAbort.is(input.reason) || !isHeld(taskID)) return cancel(taskID)
+    const session = await Session.get(task.sessionID)
+    if (
+      session.cortex?.taskID !== taskID ||
+      session.parentID !== input.parentSessionID ||
+      session.cortex.parentSessionID !== input.parentSessionID
+    )
+      throw new Error("Cortex parent abort requires its canonical child ownership")
+    if (PausedTurnAbort.is(input.reason)) {
+      const maintenance = session.cortex.maintenance
+      if (maintenance && !maintenance.releasedAt && state.maintenanceHeld.get(taskID) === maintenance.maintenanceID) {
+        const operation = await RuntimeMaintenance.status()
+        if (
+          operation?.maintenanceID !== maintenance.maintenanceID ||
+          operation.sourceRuntimeID !== RuntimeContext.current().id ||
+          operation.purpose !== maintenance.purpose ||
+          !["draining", "frozen", "releasing"].includes(operation.phase)
+        )
+          throw new RuntimeMaintenance.Blocked({ message: "Cortex maintenance abort has no current native operation" })
+        return
+      }
+      const transfer = session.cortex.transfer
+      if (transfer && !transfer.resumeIntentID && state.transferHeld.has(taskID)) {
+        let binding: SessionTransferEpochs.Binding
+        try {
+          binding = await SessionTransferEpochs.ownerPreparationBinding({
+            sessionID: session.id,
+            handoffID: transfer.handoffID,
+          })
+        } catch (error) {
+          if (!(error instanceof SessionTransferEpochs.Rejected)) throw error
+          binding = await SessionTransferEpochs.assertFrozen(session.id, transfer.handoffID)
+        }
+        if (binding.scopeID !== session.scope.id || binding.rootSessionID !== transfer.rootSessionID)
+          throw new SessionTransferOwners.Rejected({ message: "Cortex parent abort has another transfer root binding" })
+        return
+      }
+    }
+    await cancel(taskID)
   }
 
   export async function cancel(taskID: string): Promise<void> {

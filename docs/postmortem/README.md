@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0102](0102-parent-abort-preceded-cortex-transfer-hold.md)
+
 - [0101](0101-paused-runtime-lost-cancellation-target.md)
 
 - [0100](0100-shared-window-current-version-loss.md)

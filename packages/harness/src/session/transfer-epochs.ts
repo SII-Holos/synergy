@@ -188,6 +188,7 @@ export namespace SessionTransferEpochs {
       !["frozen", "surrendered"].includes(record.phase)
     )
       fail("requires the exact frozen handoff binding")
+    return structuredClone(record.binding)
   }
 
   export async function assertOwnerMutation(sessionID: string) {

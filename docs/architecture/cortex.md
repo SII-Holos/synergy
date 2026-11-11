@@ -167,6 +167,8 @@ Cortex participates in the Session transfer owner registry. A versioned `Session
 
 An exact epoch proof and independently admitted root Continue are required to resume. Cortex hydrates the same task and uses the native continuation receipt for an admitted root, without sending the initial task again. A queued task that never admitted input starts with its reserved identity. Source freeze failures retain recoverable evidence; an active cold task without a proven hold blocks transfer. See the [native control decision](../decisions/implemented/architecture/2026-11-11-preserve-native-cortex-handoff-controls.md).
 
+Synchronous Task tools preserve a child on parent pause only after Cortex validates the exact current native hold and canonical parent. Ordinary stops still cancel unprotected tasks; cancellation errors remain visible. The tool drains its asynchronous abort work before its execution settles. Aggregate owners must suspend descendants before aborting their parents, and a paused-turn signal alone is insufficient proof.
+
 ## Runtime maintenance
 
 Cortex contributes actual suspension, drainage, inspection and source release to `RuntimeMaintenance`. Its separate versioned `Session.cortex.maintenance` hold retains task/root admission, exact budget, absolute deadline and notification intent while the existing native turn and background owners drain. It does not change task status or parent pause state. Missing live writers, unknown schemas and unresolved plugin ownership prevent a freeze proof. The Cortex maintenance migration rebuilds only the derived hold index.

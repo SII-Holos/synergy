@@ -234,11 +234,30 @@ Use diagnostic modes (progress, tail, summary) only for a one-shot check; if the
           metadata: { sessionId: task.sessionID },
         })
 
+        let cancellation: Promise<{ ok: true } | { ok: false; error: unknown }> | undefined
+        let cancellationReported = false
         function cancel() {
-          void Cortex.cancel(task.id)
+          cancellation ??= Cortex.cancelOnParentAbort(task.id, {
+            parentSessionID: ctx.sessionID,
+            reason: ctx.abort.reason,
+          }).then(
+            () => ({ ok: true as const }),
+            (error: unknown) => ({ ok: false as const, error }),
+          )
+        }
+        async function drainCancellation() {
+          const result = await cancellation
+          if (result && !result.ok) {
+            cancellationReported = true
+            throw result.error
+          }
         }
         ctx.abort.addEventListener("abort", cancel)
-        using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
+        await using _ = defer(async () => {
+          ctx.abort.removeEventListener("abort", cancel)
+          if (!cancellationReported) await drainCancellation()
+        })
+        if (ctx.abort.aborted) cancel()
 
         const parts: Record<string, { id: string; tool: string; state: { status: string; title?: string } }> = {}
         const unsub = Bus.subscribe(MessageV2.Event.PartUpdated, async (evt) => {
@@ -266,6 +285,9 @@ Use diagnostic modes (progress, tail, summary) only for a one-shot check; if the
         let completed: CortexTypes.Task | undefined
         try {
           completed = await Cortex.waitFor(task.id, SYNC_TIMEOUT_S, ctx.abort)
+        } catch (error) {
+          await drainCancellation()
+          throw error
         } finally {
           finishWaiting?.()
           unsub()
