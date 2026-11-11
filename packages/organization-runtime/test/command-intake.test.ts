@@ -33,7 +33,12 @@ test("handoff barriers require every authorized command slot to be durably recon
     await receiver.input(await service.input(native.id))
     expect(await receiver.barrier(native.id, 1, 1)).toBe(1)
     await expect(receiver.barrier(native.id, 1, 2)).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
-    const second = await service.input(native.id, { commandSeq: 2, requestID: "barrier-skip", attemptID: "barrier-skip", admissionID: "barrier-skip" })
+    const second = await service.input(native.id, {
+      commandSeq: 2,
+      requestID: "barrier-skip",
+      attemptID: "barrier-skip",
+      admissionID: "barrier-skip",
+    })
     await receiver.skip(await service.skip(second.authorization.permit))
     expect(await receiver.barrier(native.id, 1, 2)).toBe(2)
     await expect(receiver.barrier(native.id, 2, 2)).rejects.toMatchObject({ data: { code: "STALE_BINDING" } })
@@ -1120,6 +1125,68 @@ test("a rejected attempt closes only its own slot and a newly authorized retry c
     const reusedAttempt = await service.input(id, { ...retry.authorization.permit, authRevision: 2 })
     await expect(receiver.input(reusedAttempt)).rejects.toBeInstanceOf(OrganizationRuntimeError)
     expect(await SessionInbox.list(id)).toHaveLength(1)
+  })
+})
+
+test("accepted task retries retain the original resource release identity and never reopen a settled grant", async () => {
+  const service = await authority()
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    SessionManager.closeAdmission()
+    const id = (await session()).id
+    const receiver = service.receiver()
+    const first = await receiver.input(
+      await service.input(id, { provisionalGrantID: "original-grant" }, "Original task", "task"),
+    )
+    const [release] = await receiver.releaseEntries()
+    if (!release) throw new Error("Original task has no release entry")
+    const retry = await service.input(
+      id,
+      {
+        commandSeq: 2,
+        admissionID: "retry-admission",
+        attemptID: "retry-attempt",
+        provisionalGrantID: "unused-retry-grant",
+        actor: { ...first.attempt.permit.actor, displayName: "Renamed requester" },
+      },
+      "Original task",
+      "task",
+    )
+    expect((await receiver.input(retry)).accepted).toEqual(first.accepted)
+    expect(await receiver.releaseEntries()).toEqual([release])
+    await receiver.markRelease(release)
+    const settled = await Storage.read(Keys.release(binding.orgID, binding.creatorID, release.requestID))
+    const repeated = await service.input(
+      id,
+      {
+        commandSeq: 3,
+        admissionID: "third-admission",
+        attemptID: "third-attempt",
+        provisionalGrantID: "another-unused-grant",
+      },
+      "Original task",
+      "task",
+    )
+    expect((await receiver.input(repeated)).accepted).toEqual(first.accepted)
+    expect(await receiver.releaseEntries()).toEqual([])
+    expect(await Storage.read(Keys.release(binding.orgID, binding.creatorID, release.requestID))).toEqual(settled)
+    expect(await SessionInbox.list(id)).toHaveLength(1)
+    const fresh = await service.input(
+      id,
+      {
+        requestID: "fresh-task",
+        commandSeq: 4,
+        admissionID: "fresh-admission",
+        attemptID: "fresh-attempt",
+        provisionalGrantID: "fresh-grant",
+      },
+      "A genuinely new task",
+      "task",
+    )
+    const received = await receiver.input(fresh)
+    expect((await receiver.releaseEntries()).map((entry) => entry.grantID)).toEqual(["fresh-grant"])
+    expect(received.accepted?.effect.messageID).not.toBe(first.accepted?.effect.messageID)
+    expect(await SessionInbox.list(id)).toHaveLength(2)
   })
 })
 

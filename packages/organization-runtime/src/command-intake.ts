@@ -27,59 +27,12 @@ import { OrganizationLocalProjects } from "./local-project"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import { boundSessionSource } from "./session-source"
+import { OrganizationCommandRecords as IntakeRecords } from "./command-records"
 
-const RequestIdentity = z.strictObject({
-  schemaVersion: z.literal(1),
-  orgID: Identity.ID,
-  subjectID: Identity.ID,
-  requestID: Identity.ID,
-  sessionID: Identity.ID,
-  projectID: Identity.ID,
-  runtimeID: Identity.ID,
-  operation: Command.Operation,
-  payloadHash: OrganizationProtocol.Digest,
-})
-const Request = z
-  .strictObject({ identity: RequestIdentity, accepted: Command.Accepted.optional() })
-  .refine(
-    (value) => !value.accepted || JSON.stringify(value.identity) === JSON.stringify(identity(value.accepted.permit)),
-    "Accepted effect must belong to its logical request",
-  )
-const State = z.strictObject({
-  schemaVersion: z.literal(1),
-  orgID: Identity.ID,
-  sessionID: Identity.ID,
-  projectID: Identity.ID,
-  runtimeID: Identity.ID,
-  bindingEpoch: OrganizationProtocol.Epoch,
-  commandSeq: Identity.Revision,
-})
-const Slot = z.strictObject({ schemaVersion: z.literal(1), attemptID: Identity.ID })
-const Counter = z.strictObject({ schemaVersion: z.literal(1), intakeSeq: Identity.Revision })
-const Lookup = z.strictObject({ subjectID: Identity.ID, requestID: Identity.ID })
-const ControlState = z.strictObject({ schemaVersion: z.literal(1), controlVersion: Command.ControlVersion })
+const { Request, State, Slot, Counter, Lookup, ControlState, Release, identity } = IntakeRecords
 export async function readCommandControlVersion(orgID: string, sessionID: string) {
   return (await read(ControlState, Keys.control(orgID, sessionID)))?.controlVersion ?? 0
 }
-const Release = z.strictObject({
-  schemaVersion: z.literal(1),
-  orgID: Identity.ID,
-  subjectID: Identity.ID,
-  requestID: Identity.ID,
-  sessionID: Identity.ID,
-  projectID: Identity.ID,
-  runtimeID: Identity.ID,
-  bindingEpoch: OrganizationProtocol.Epoch,
-  rootID: Identity.ID,
-  grantID: Identity.ID,
-  actor: Command.Actor,
-  admissionID: Identity.ID,
-  attemptID: Identity.ID,
-  acceptedAt: z.number().int().nonnegative(),
-  state: z.enum(["pending", "released"]),
-  receipt: Execution.ReleaseReceipt.optional(),
-  reconciledAt: z.number().int().nonnegative().optional(),
-})
 type Release = z.infer<typeof Release>
 
 function failure(code: OrganizationProtocol.Error["code"], message: string) {
@@ -93,19 +46,6 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
 async function read<T>(schema: z.ZodType<T>, key: string[]): Promise<T | undefined> {
   const [value] = await Storage.readMany<unknown>([key])
   return value === undefined ? undefined : parse(schema, value)
-}
-function identity(permit: Command.Permit) {
-  return RequestIdentity.parse({
-    schemaVersion: 1,
-    orgID: permit.orgID,
-    subjectID: permit.actor.subjectID,
-    requestID: permit.requestID,
-    sessionID: permit.sessionID,
-    projectID: permit.projectID,
-    runtimeID: permit.runtimeID,
-    operation: permit.operation,
-    payloadHash: permit.payloadHash,
-  })
 }
 function expired(window: { authorizedAt: number; deadline: number }) {
   const now = Date.now()
@@ -234,23 +174,29 @@ export function createCommandIntake(options: {
       )
     }
     await Storage.write(current.attemptKey, attempt)
-    if (accepted?.effect.kind === "inbox" && accepted.effect.mode === "task" && permit.provisionalGrantID) {
+    if (
+      accepted?.effect.kind === "inbox" &&
+      accepted.effect.mode === "task" &&
+      accepted.permit.provisionalGrantID &&
+      !current.request?.accepted
+    ) {
+      const original = accepted.permit
       await Storage.write(
-        Keys.release(permit.orgID, permit.actor.subjectID, permit.requestID),
+        Keys.release(original.orgID, original.actor.subjectID, original.requestID),
         Release.parse({
           schemaVersion: 1,
-          orgID: permit.orgID,
-          subjectID: permit.actor.subjectID,
-          requestID: permit.requestID,
-          sessionID: permit.sessionID,
-          projectID: permit.projectID,
-          runtimeID: permit.runtimeID,
-          bindingEpoch: permit.bindingEpoch,
+          orgID: original.orgID,
+          subjectID: original.actor.subjectID,
+          requestID: original.requestID,
+          sessionID: original.sessionID,
+          projectID: original.projectID,
+          runtimeID: original.runtimeID,
+          bindingEpoch: original.bindingEpoch,
           rootID: accepted.effect.messageID,
-          grantID: permit.provisionalGrantID,
-          actor: permit.actor,
-          admissionID: permit.admissionID,
-          attemptID: permit.attemptID,
+          grantID: original.provisionalGrantID,
+          actor: original.actor,
+          admissionID: original.admissionID,
+          attemptID: original.attemptID,
           acceptedAt: accepted.acceptedAt,
           state: "pending",
         }),
@@ -283,7 +229,10 @@ export function createCommandIntake(options: {
               JSON.stringify(page.keys[index])
           )
             throw failure("PROTOCOL_MISMATCH", "Execution release index identity is invalid")
-          if (release.state === "pending") result.push(release)
+          if (release.state !== "pending" || release.runtimeID !== runtimeID) continue
+          const state = await read(State, Keys.state(authority.orgID, release.sessionID))
+          if (state && (state.runtimeID !== runtimeID || state.bindingEpoch !== release.bindingEpoch)) continue
+          result.push(release)
         }
         after = page.after
       } while (after)
@@ -332,15 +281,13 @@ export function createCommandIntake(options: {
         await ScopeContext.provide({
           scope: source.scope,
           workspace: null,
-        fn: async () => {
-          const receipt = await (
-            winner.outcome.kind === "permission"
+          fn: async () => {
+            const receipt = await (winner.outcome.kind === "permission"
               ? PermissionNext.reconcile({ sessionID: source.id, requestID: effect.requestID })
-            : Question.reconcile({ sessionID: source.id, requestID: effect.requestID })
-          )
-          if (!receipt || JSON.stringify(decisionWinner(receipt)) !== JSON.stringify(winner))
-            throw failure("PROTOCOL_MISMATCH", "Committed decision has no matching native winner")
-        },
+              : Question.reconcile({ sessionID: source.id, requestID: effect.requestID }))
+            if (!receipt || JSON.stringify(decisionWinner(receipt)) !== JSON.stringify(winner))
+              throw failure("PROTOCOL_MISMATCH", "Committed decision has no matching native winner")
+          },
         })
       },
       { commitGuard: assertActive },
@@ -352,7 +299,8 @@ export function createCommandIntake(options: {
       requestID: receipt.requestID,
       actor: receipt.actor,
       decidedAt: receipt.decidedAt,
-      outcome: receipt.outcome.kind === "permission" ? receipt.outcome : { kind: "question", reply: receipt.outcome.reply },
+      outcome:
+        receipt.outcome.kind === "permission" ? receipt.outcome : { kind: "question", reply: receipt.outcome.reply },
     })
   }
   async function controlVersion(permit: Command.Permit) {
@@ -880,7 +828,7 @@ export function createCommandIntake(options: {
               ? { status: "expired" as const }
               : {
                   status: decision.status,
-                    winner: decisionWinner(decision.receipt),
+                  winner: decisionWinner(decision.receipt),
                 }
           return {
             kind: "decision",

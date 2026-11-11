@@ -22,6 +22,7 @@ export function registerSessionSchema(member?: { orgID: string }) {
   registerSyncMigrations()
   SessionSchemaRegistry.register("organization-runtime", {
     shape: fields,
+    transferOwner: "organization-runtime",
     inherit: ["organization"],
     async adoptTransfer(input) {
       if (input.source.organization === undefined && input.previous?.organization === undefined && !member) return {}

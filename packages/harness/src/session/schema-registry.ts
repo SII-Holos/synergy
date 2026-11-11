@@ -17,6 +17,7 @@ export namespace SessionSchemaRegistry {
     Omit<SessionExtensionShape, "workflow"> & { workflow: z.ZodOptional<z.ZodType<WorkflowKindRegistry.Workflow>> }
   export interface Contribution {
     shape: z.ZodRawShape
+    transferOwner?: string
     inherit?: readonly string[]
     validateMutation?(input: {
       previous?: Readonly<Record<string, unknown>>
@@ -47,6 +48,7 @@ export namespace SessionSchemaRegistry {
     if (existing === contribution) return
     if (existing) throw new Error(`Session domain ${id} is already registered`)
     ConfigExtensions.assertRegistrationOpen(id)
+    if (contribution.transferOwner) z.string().min(1).max(256).parse(contribution.transferOwner)
     if (!!contribution.adoptTransfer !== !!contribution.validateTransfer)
       throw new Error(`Session domain ${id} must own both transfer adoption and validation`)
     for (const key of contribution.inherit ?? []) {
@@ -149,6 +151,20 @@ export namespace SessionSchemaRegistry {
           structuredClone(input) as Parameters<NonNullable<Contribution["validateMutation"]>>[0],
         )
     }
+  }
+
+  export function transferOwners(input: unknown) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return []
+    const fields = input as Record<string, unknown>
+    return [
+      ...new Set(
+        [...state().owners.values()].flatMap((owner) =>
+          owner.transferOwner && Object.keys(owner.shape).some((key) => fields[key] !== undefined)
+            ? [owner.transferOwner]
+            : [],
+        ),
+      ),
+    ].sort()
   }
 
   export async function adoptTransfer(input: TransferMutation) {

@@ -5,7 +5,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Keep tools, routes, config and migrations with their domain.
 - `SessionExecutionOwners` gates components using references and `MessageV2` semantics. Preserve blocked records; human tasks cannot resume unavailable predecessors. Root admission and Agent selection persist independently; execution views cannot replace Session writes. Compose native receipts and observe activity/release without recovery; verify `test/session/{resume,rollout-cancel,rollout-activity}.test.ts`.
 - Session L/progress: `session/long-term-memory`, never workflows/Library. [State](../../docs/architecture/session-and-messages.md#session-long-term-summary).
-- `SessionSchemaRegistry` composes owner fields, inheritance, validation/indexes and epoch-only adoption; domains own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
+- `SessionSchemaRegistry` owns fields, inheritance, indexes, required portability readers and epoch-only adoption; domains own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition completes schema registration.
 - `RuntimeHandle` owns Host, composition and storage; seal registration before startup. Use `run` for work, `bind` for native callbacks. Persisted Home ownership must match. Node provisioning reuses `HomeOwnershipFile`. Test isolated instances and child entrypoints; keep migration listings detached.
 - Use unsealed migration fixtures.
 

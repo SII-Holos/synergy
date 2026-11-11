@@ -7,6 +7,7 @@ import { Session } from "."
 import { SessionTransferEpochs } from "./transfer-epochs"
 import { SessionTransferFreezeAuthority } from "./transfer-freeze-authority"
 import type { SessionTransferStream } from "./transfer-stream"
+import { SessionSchemaRegistry } from "./schema-registry"
 
 export namespace SessionTransferOwners {
   export type FreezeReceipt = SessionTransferFreezeAuthority.Receipt
@@ -171,6 +172,7 @@ export namespace SessionTransferOwners {
           kind
         ] ?? kind,
       )
+    for (const id of SessionSchemaRegistry.transferOwners(input)) ids.add(id)
     return [...ids].sort()
   }
 

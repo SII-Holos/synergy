@@ -10,6 +10,7 @@ export namespace OrganizationIntakePath {
   ]
   export const intake = (orgID: string, runtimeID: string) => [...root(orgID), "runtimes", runtimeID, "intake"]
   const session = (orgID: string, sessionID: string) => [...root(orgID), "sessions", sessionID]
+  export const sessionRecords = session
   export const state = (orgID: string, sessionID: string) => [...session(orgID, sessionID), "state"]
   export const control = (orgID: string, sessionID: string) => [...session(orgID, sessionID), "control"]
   export const attempt = (orgID: string, sessionID: string, attemptID: string) => [
@@ -47,7 +48,10 @@ export namespace OrganizationSyncPath {
   export const drafts = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "drafts"]
   export const draft = (orgID: string, sessionID: string, draftID: string) => [...drafts(orgID, sessionID), draftID]
   export const orderedDrafts = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "draft-order"]
-  export const orderedDraft = (orgID: string, sessionID: string, sequence: number) => [...orderedDrafts(orgID, sessionID), String(sequence).padStart(16, "0")]
+  export const orderedDraft = (orgID: string, sessionID: string, sequence: number) => [
+    ...orderedDrafts(orgID, sessionID),
+    String(sequence).padStart(16, "0"),
+  ]
   export const roots = (orgID: string) => ["organization-sync", orgID, "roots"]
   export const registeredRoot = (orgID: string, sessionID: string) => [...roots(orgID), sessionID]
   export const projections = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "projections"]

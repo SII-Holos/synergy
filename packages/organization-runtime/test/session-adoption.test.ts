@@ -17,6 +17,7 @@ import {
 import { registerSessionSchema, SessionBindingError } from "../src/session-schema"
 import { OrganizationSessionAdoption as Adoption } from "../src/session-adoption"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { registerOrganizationTransferOwner } from "../src/session-transfer"
 
 test("verified paused destination adoption changes only driver and epoch through canonical Core publication", async () => {
   const sourceBinding = {
@@ -30,6 +31,7 @@ test("verified paused destination adoption changes only driver and epoch through
   const register = () => {
     Core.register()
     registerSessionSchema(sourceBinding)
+    registerOrganizationTransferOwner()
   }
   const values = new Map<string, Uint8Array>()
   const store = {
@@ -131,16 +133,18 @@ test("verified paused destination adoption changes only driver and epoch through
     for (const binding of bindings) await Epochs.reserve(binding, permit.manifestHash)
     const contexts: { ownerID: string; context: Owners.TargetContext }[] = []
     for (const session of exported.sessions) {
-      const context = await Staging.context({
-        handoffID: permit.handoffID,
-        ownerID: "session-core",
-        session,
-        rootSessionID: permit.sessionID,
-        mapping: {},
-        signal: new AbortController().signal,
-      })
-      await Owners.validate("session-core", context)
-      contexts.push({ ownerID: "session-core", context })
+      for (const ownerID of ["session-core", "organization-runtime"]) {
+        const context = await Staging.context({
+          handoffID: permit.handoffID,
+          ownerID,
+          session,
+          rootSessionID: permit.sessionID,
+          mapping: {},
+          signal: new AbortController().signal,
+        })
+        await Owners.validate(ownerID, context)
+        contexts.push({ ownerID, context })
+      }
     }
     const activate = () =>
       Epochs.activateMany({
@@ -250,16 +254,18 @@ test("verified paused destination adoption changes only driver and epoch through
       })
     const contexts: { ownerID: string; context: Owners.TargetContext }[] = []
     for (const session of returned.sessions) {
-      const context = await Staging.context({
-        handoffID: backPermit.handoffID,
-        ownerID: "session-core",
-        session,
-        rootSessionID: permit.sessionID,
-        mapping: {},
-        signal: new AbortController().signal,
-      })
-      await Owners.validate("session-core", context)
-      contexts.push({ ownerID: "session-core", context })
+      for (const ownerID of ["session-core", "organization-runtime"]) {
+        const context = await Staging.context({
+          handoffID: backPermit.handoffID,
+          ownerID,
+          session,
+          rootSessionID: permit.sessionID,
+          mapping: {},
+          signal: new AbortController().signal,
+        })
+        await Owners.validate(ownerID, context)
+        contexts.push({ ownerID, context })
+      }
     }
     const authorization = { permit: backPermit, signature: await Handoff.signPermit(backPermit, keys.privateKey) }
     await Adoption.run(authorization, { ...connection, runtimeID: "runtime-a" }, () =>
