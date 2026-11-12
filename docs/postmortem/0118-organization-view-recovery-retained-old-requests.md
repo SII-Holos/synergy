@@ -20,6 +20,7 @@ Headless App fixtures reproduced the issues using isolated browser storage and c
 8. A separate App fixture reproduced inline project saves closing replacement edits, member discovery admitting an older search, reactive project props reviving the old member view, nested member denial retaining its parent project, confirmations borrowing a refreshed revision, and resource-access reads and writes surviving an account → project → account cycle. All twelve cases initially failed, including four publication cases with duplicate actions or explanations.
 9. Captured component and selector generations fixed those request cases. The first rerun passed ten cases and exposed the artifact empty state repeating its existing explanation after Cancel. Removing that duplicate retained the page-level guidance and synchronous focus behavior.
 10. The final request/publication fixture passed twelve cases with 51 assertions. The eight existing project/catalog cases passed 46 assertions; three targeted conversation cases passed 103 assertions across narrow and wide layouts, read-only access and root-versus-child task controls. Screenshots verified the publication states and conversation geometry; this did not establish long-history body acceptance.
+11. Two further App cases held an accepted project save across a successful refresh that removed management permission but retained read access. Both retained the old editor. Retiring its generation preserved the current readable project and rejected the late old save result; the expanded request fixture passed fourteen cases with 65 assertions.
 
 ## Root cause
 
@@ -33,6 +34,7 @@ Account selection and view lifetime were conflated. A Space can remain selected 
 - [x] Machine check: `apps/web/test/components/dialog/confirm-owned.browser.test.ts` — exact owned-dialog closure preserves another owner and suppresses late retired completion and failure feedback.
 - [x] Machine check: `apps/web/test/organization/workspace-requests.browser.test.ts` — project editor replacement, member discovery and reactive owner changes, actual project denial, fixed confirmation revisions and resource selector cycles across held reads and accepted writes.
 - [x] Machine check: the same fixture checks one publication entry and explanation, explicit opening/cancellation focus and narrow geometry for knowledge and artifacts.
+- [x] Machine check: the same fixture holds an accepted save across management downgrade at narrow and wide sizes, preserving the earlier 503 draft before the confirmed permission change.
 
 The [decision](../decisions/implemented/bug-fix/2026-11-12-retire-organization-view-requests-before-recovery.md) defines disposal and restoration behavior. The frontend Skill requires testing a held accepted mutation across form replacement and access recovery.
 

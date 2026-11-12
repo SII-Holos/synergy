@@ -61,6 +61,7 @@ export function OrganizationProjects() {
     setEditing(false)
   }
   function edit(project?: OrgProjectView) {
+    if (blocked() || !current() || (projectID && !state.project?.permissions.manage)) return
     closeEditor()
     editor = new AbortController()
     setName(project?.name ?? "")
@@ -99,7 +100,18 @@ export function OrganizationProjects() {
     try {
       if (projectID) {
         const result = await api.orgProjects.get({ projectID }, options)
-        if (current(version)) setState("project", reconcile(result.data))
+        if (!current(version)) return
+        batch(() => {
+          if (state.project?.permissions.manage && !result.data.permissions.manage) {
+            generation++
+            confirm.closeOwned()
+            closeEditor()
+            setName("")
+            setDescription("")
+            setLoading(false)
+          }
+          setState("project", reconcile(result.data))
+        })
       } else {
         const result = await api.orgProjects.list({ limit: 50, cursor: more ? cursor() : undefined }, options)
         if (!current(version)) return
@@ -117,7 +129,14 @@ export function OrganizationProjects() {
     }
   }
   async function save() {
-    if (busy() || blocked() || !current() || !editor || (!editing() && !creating()) || (projectID && !state.project))
+    if (
+      busy() ||
+      blocked() ||
+      !current() ||
+      !editor ||
+      (!editing() && !creating()) ||
+      (projectID && !state.project?.permissions.manage)
+    )
       return
     const version = generation
     const editVersion = editorGeneration
@@ -159,7 +178,7 @@ export function OrganizationProjects() {
   }
   function changeLifecycle() {
     const project = state.project
-    if (!project || blocked() || !current()) return
+    if (!project?.permissions.manage || blocked() || !current()) return
     const version = generation
     const target = { projectID: project.projectID, revision: project.revision, state: project.state }
     const restoring = target.state === "archived"

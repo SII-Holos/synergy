@@ -218,6 +218,69 @@ for (const width of [375, 1100])
     }
   }, 30000)
 
+for (const width of [375, 1100])
+  test(`a confirmed project manage downgrade retires an editor and its accepted old save at ${width}px`, async () => {
+    const page = await browser.newPage({ viewport: { width, height: width === 375 ? 667 : 760 } })
+    const reading = Promise.withResolvers<void>()
+    const releaseRead = Promise.withResolvers<void>()
+    const written = Promise.withResolvers<void>()
+    const releaseWrite = Promise.withResolvers<void>()
+    const delivered = Promise.withResolvers<void>()
+    let reads = 0
+    let writes = 0
+    try {
+      await open(page, "projects/project-one", async (request, url) => {
+        if (request.method === "PATCH") {
+          writes++
+          if (writes === 1) return json({ name: "ServiceUnavailableError", data: { code: "SERVICE_UNAVAILABLE" } }, 503)
+          written.resolve()
+          await releaseWrite.promise
+          delivered.resolve()
+          return json({ ...project, name: "Old accepted manager result", revision: 2 })
+        }
+        if (url.pathname === "/org/v1/projects/project-one") {
+          reads++
+          if (reads === 1) return json(project)
+          reading.resolve()
+          await releaseRead.promise
+          return json({
+            ...project,
+            name: "Current readable project",
+            revision: 3,
+            role: "reader",
+            permissions: { read: true, manage: false, execute: false },
+          })
+        }
+        throw new Error(`Unexpected fixture request: ${request.method} ${url.pathname}`)
+      })
+      await page.getByRole("button", { name: "Edit project", exact: true }).click()
+      await page.getByLabel("Project name", { exact: true }).fill("Retained project draft")
+      await page.getByRole("button", { name: "Save changes", exact: true }).click()
+      await page.getByRole("alert").waitFor()
+      expect(await page.getByLabel("Project name", { exact: true }).inputValue()).toBe("Retained project draft")
+      await page.getByRole("button", { name: "Retry", exact: true }).click()
+      await reading.promise
+      await page.getByRole("button", { name: "Save changes", exact: true }).click()
+      await written.promise
+      releaseRead.resolve()
+      await page.getByRole("heading", { name: "Current readable project", exact: true }).waitFor()
+      expect(await page.getByLabel("Project name", { exact: true }).count()).toBe(0)
+      expect(await page.getByRole("button", { name: "Save changes", exact: true }).count()).toBe(0)
+      releaseWrite.resolve()
+      await delivered.promise
+      await settled(page)
+      expect(await page.getByRole("heading", { name: "Current readable project", exact: true }).count()).toBe(1)
+      expect(await page.getByRole("button", { name: "Edit project", exact: true }).count()).toBe(0)
+      expect(await page.getByRole("button", { name: "Archive project", exact: true }).count()).toBe(0)
+      expect(writes).toBe(2)
+      await screenshot(page, `project-manage-downgrade-${width}.png`)
+    } finally {
+      releaseRead.resolve()
+      releaseWrite.resolve()
+      await page.close()
+    }
+  }, 30000)
+
 test("closing and reopening project member discovery retires its first pending search", async () => {
   const page = await browser.newPage({ viewport: { width: 1100, height: 760 } })
   const entered = Promise.withResolvers<void>(),

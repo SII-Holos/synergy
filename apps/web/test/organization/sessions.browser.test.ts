@@ -1542,3 +1542,280 @@ test("a read-only project member opens synchronized child tasks without requesti
     await page.close()
   }
 })
+
+for (const width of [375, 1100])
+  test(`a shared archive keeps all 320 messages reachable through finite pages at ${width}px`, async () => {
+    const page = await browser.newPage({
+      viewport: { width, height: width === 375 ? 667 : 760 },
+      colorScheme: width === 375 ? "light" : "dark",
+    })
+    const pages: number[] = []
+    const bodies = new Set<number>()
+    const paths: string[] = []
+    const number = (index: number) => String(index).padStart(4, "0")
+    const waitForReading = (id: string) =>
+      page.waitForFunction((id) => {
+        const row = document.querySelector(`[data-organization-message="${id}"]`)
+        const viewport = row?.closest(".organization-transcript-viewport")
+        if (
+          !row ||
+          !viewport ||
+          !row.querySelector("h2") ||
+          !row.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true })
+        )
+          return false
+        if (viewport.querySelector("button[disabled]")) return false
+        const bounds = viewport.getBoundingClientRect()
+        const item = row.getBoundingClientRect()
+        const top = Math.max(bounds.top, item.top)
+        const bottom = Math.min(bounds.bottom, item.bottom)
+        if (bottom <= top) return false
+        const hit = document.elementFromPoint(bounds.left + bounds.width / 2, (top + bottom) / 2)
+        return !!hit && row.contains(hit)
+      }, id)
+    await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
+    await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+      const url = new URL(request.path, entry.issuer)
+      paths.push(url.pathname)
+      let body: unknown
+      if (url.pathname === "/org/v1/organization") body = { orgID: "org-a", name: "Research team", revision: 1 }
+      else if (url.pathname === "/org/v1/projects/project-a")
+        body = {
+          projectID: "project-a",
+          orgID: "org-a",
+          name: "Field notes",
+          description: "",
+          state: "active",
+          revision: 1,
+          createdAt: 1,
+          role: "reader",
+          permissions: { read: true, execute: false, manage: false },
+        }
+      else if (url.pathname === "/org/v1/sessions/session-a")
+        body = {
+          ...session,
+          creatorID: "another-member",
+          shareState: "shared",
+          title: "Shared archive",
+          permissions: { read: true, execute: false, stop: false },
+          runtime: {
+            runtimeID: "runtime-a",
+            runtimeKind: "hosted",
+            name: "Team runtime",
+            state: "online",
+            connectionEpoch: 1,
+          },
+        }
+      else if (url.pathname.endsWith("/share"))
+        body = {
+          sessionID: "session-a",
+          shareState: "shared",
+          shareGeneration: 1,
+          bindingEpoch: 1,
+          nextSeq: 641,
+          syncState: "synced",
+          updatedAt: 1,
+        }
+      else if (url.pathname.endsWith("/sync/messages")) {
+        const cursor = url.searchParams.get("cursor")
+        const end = cursor ? Number(cursor.slice("before-".length)) : 320
+        const start = Math.max(0, end - 32)
+        pages.push(start)
+        expect(url.searchParams.get("limit")).toBe("32")
+        expect(url.searchParams.get("latest")).toBe("true")
+        body = {
+          shareGeneration: 1,
+          watermark: 640,
+          cursor: start ? `before-${start}` : undefined,
+          items: Array.from({ length: end - start }, (_, offset) => {
+            const index = start + offset
+            return {
+              type: "message",
+              sequence: index * 2 + 1,
+              sessionID: "session-a",
+              messageID: `history-${number(index)}`,
+              role: index % 2 ? "assistant" : "user",
+              createdAt: index + 1,
+              completedAt: index % 2 ? index + 2 : undefined,
+              agent: "general",
+              model: { providerID: "team", modelID: "model" },
+              parentID: index % 2 ? `history-${number(index - 1)}` : undefined,
+              rootID: `history-${number(index - (index % 2))}`,
+              mode: "default",
+              cost: 0,
+              tokens: { input: 8, output: 8, reasoning: 0, cache: { read: 0, write: 0 } },
+              summary: "",
+              integrity: "a".repeat(64),
+            }
+          }),
+        }
+      } else if (url.pathname.endsWith("/parts")) {
+        const id = url.pathname.split("/").at(-2)!
+        const index = Number(id.slice("history-".length))
+        bodies.add(index)
+        body = {
+          shareGeneration: 1,
+          watermark: 640,
+          complete: true,
+          items: [
+            {
+              type: "part",
+              sequence: index * 2 + 2,
+              sessionID: "session-a",
+              messageID: id,
+              partID: `part-${number(index)}`,
+              part: {
+                type: "text",
+                content: {
+                  kind: "inline",
+                  text: `## Archive note ${number(index)}\n\n${"Recorded evidence stays readable while older messages are loaded. ".repeat(8)}\n\n中英混排 English evidence remains readable，长链接也能换行。\nhttps://example.test/reports/${"longtoken".repeat(32)}\n\n- Retain the selected reading window.\n- Keep every older page reachable.`,
+                },
+              },
+              integrity: "a".repeat(64),
+            },
+          ],
+        }
+      } else if (url.pathname.endsWith("/sync/events")) body = { shareGeneration: 1, nextSeq: 641, items: [] }
+      else if (url.pathname.endsWith("/resources"))
+        body = {
+          sessionID: "session-a",
+          revision: 1,
+          selection: {
+            modelResourceID: "model-a",
+            connectionResourceIDs: [],
+            infrastructure: { workspace: null, environment: null },
+          },
+        }
+      else body = { items: [] }
+      return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
+    })
+    try {
+      await page.goto(
+        new URL(
+          "/organization/org-a/account-a/deployment-a/projects/project-a/sessions/session-a?fixture=app",
+          server.url,
+        ).href,
+      )
+      await page.getByRole("heading", { name: "Shared archive", exact: true }).waitFor()
+      await page.getByRole("heading", { name: "Archive note 0288", exact: true }).waitFor()
+      expect(bodies.size).toBeLessThan(32)
+      for (let index = 1; index < 10; index++) {
+        const older = page.getByRole("button", { name: "Load older messages", exact: true })
+        await older.click()
+        await page.waitForFunction(() => !document.querySelector("button[disabled]"))
+      }
+      expect(pages).toEqual([288, 256, 224, 192, 160, 128, 96, 64, 32, 0])
+      expect(await page.getByRole("button", { name: "Load older messages", exact: true }).count()).toBe(0)
+      const viewport = page.locator(".organization-transcript-viewport")
+      await viewport.evaluate((element) => {
+        element.scrollTop = 0
+      })
+      await page.getByRole("heading", { name: "Archive note 0000", exact: true }).waitFor()
+      await page.evaluate(() => document.fonts.ready.then(() => {}))
+      await viewport.hover({ position: { x: 2, y: 2 } })
+      await page.mouse.wheel(0, -1000000)
+      await waitForReading("history-0000")
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      expect(await page.locator("[data-organization-message]").count()).toBeLessThan(80)
+      expect(bodies.size).toBeLessThan(320)
+      const bounds = await viewport.boundingBox()
+      const oldest = page.locator('[data-organization-message="history-0000"]')
+      const oldestBounds = await oldest.boundingBox()
+      expect(oldestBounds!.y).toBeGreaterThanOrEqual(bounds!.y - 1)
+      expect(oldestBounds!.y).toBeLessThan(bounds!.y + bounds!.height)
+      const wrapping = await oldest.locator('[data-slot="user-message-text"]').evaluate((element) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+        const split: string[] = []
+        const textRects: DOMRect[] = []
+        let node: Node | null
+        while ((node = walker.nextNode())) {
+          if (!node.parentElement?.closest("pre, code, table")) {
+            const textRange = document.createRange()
+            textRange.selectNodeContents(node)
+            textRects.push(...[...textRange.getClientRects()].filter((rect) => rect.width > 0))
+          }
+          if (node.parentElement?.closest("a, code, pre, button")) continue
+          const text = node.textContent ?? ""
+          for (const match of text.matchAll(/\b[A-Za-z]{4,20}\b/g)) {
+            const range = document.createRange()
+            range.setStart(node, match.index!)
+            range.setEnd(node, match.index! + match[0].length)
+            const lines = new Set([...range.getClientRects()].map((rect) => Math.round(rect.top)))
+            if (lines.size > 1) split.push(match[0])
+          }
+        }
+        return {
+          split: split.slice(0, 8),
+          width: element.clientWidth,
+          contentWidth: element.scrollWidth,
+          mixedText: element.textContent?.includes("中英混排 English evidence"),
+          left: element.getBoundingClientRect().left,
+          right: element.getBoundingClientRect().right,
+          textLeft: Math.min(...textRects.map((rect) => rect.left)),
+          textRight: Math.max(...textRects.map((rect) => rect.right)),
+        }
+      })
+      expect(wrapping.split).toEqual([])
+      expect(wrapping.contentWidth).toBeLessThanOrEqual(wrapping.width + 1)
+      expect(wrapping.mixedText).toBe(true)
+      expect({
+        container: wrapping.left >= bounds!.x - 1 && wrapping.right <= bounds!.x + bounds!.width + 1,
+        text: wrapping.textLeft >= bounds!.x - 1 && wrapping.textRight <= bounds!.x + bounds!.width + 1,
+      }).toEqual({ container: true, text: true })
+      expect(bounds!.height).toBeGreaterThan(64)
+      expect(bounds!.x).toBeGreaterThanOrEqual(0)
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      if (process.env.SYNERGY_UI_SCREENSHOT_DIR) {
+        await fs.mkdir(process.env.SYNERGY_UI_SCREENSHOT_DIR, { recursive: true })
+        await page.screenshot({ path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, `archive-oldest-${width}.png`) })
+      }
+      await page.getByRole("button", { name: "Latest messages", exact: true }).click()
+      await page.waitForFunction(() => !document.querySelector("button[disabled]"))
+      await viewport.evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+      await page.getByRole("heading", { name: "Archive note 0319", exact: true }).waitFor()
+      await page.evaluate(() => document.fonts.ready.then(() => {}))
+      await viewport.hover({ position: { x: 2, y: 2 } })
+      await page.mouse.wheel(0, 1000000)
+      await waitForReading("history-0319")
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      const latestBounds = await page.locator('[data-organization-message="history-0319"]').boundingBox()
+      expect(latestBounds!.y).toBeLessThan(bounds!.y + bounds!.height)
+      expect(latestBounds!.y + latestBounds!.height).toBeGreaterThan(bounds!.y)
+      const latestText = await page.locator('[data-organization-message="history-0319"]').evaluate((element) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+        const rects: DOMRect[] = []
+        let node: Node | null
+        while ((node = walker.nextNode())) {
+          if (node.parentElement?.closest("pre, code, table")) continue
+          const range = document.createRange()
+          range.selectNodeContents(node)
+          rects.push(...[...range.getClientRects()].filter((rect) => rect.width > 0))
+        }
+        return {
+          count: rects.length,
+          left: Math.min(...rects.map((rect) => rect.left)),
+          right: Math.max(...rects.map((rect) => rect.right)),
+        }
+      })
+      expect(latestText.count).toBeGreaterThan(0)
+      expect(latestText.left).toBeGreaterThanOrEqual(bounds!.x - 1)
+      expect(latestText.right).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1)
+      expect(pages.at(-1)).toBe(288)
+      expect(await page.getByRole("button", { name: "Load older messages", exact: true }).count()).toBe(1)
+      expect(await page.getByRole("textbox").count()).toBe(0)
+      expect(
+        paths.some((value) => value.endsWith("/read") || /\/(input|control|interactions\/reply)$/.test(value)),
+      ).toBe(false)
+      if (process.env.SYNERGY_UI_SCREENSHOT_DIR)
+        await page.screenshot({ path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, `archive-latest-${width}.png`) })
+    } finally {
+      await page.close()
+    }
+  }, 45000)
