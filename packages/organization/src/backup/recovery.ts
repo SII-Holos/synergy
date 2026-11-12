@@ -5,6 +5,8 @@ import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-r
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
+import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
 import { OrganizationCurrentAuthority as Current } from "./current-authority"
 import { OrganizationRecoveryAuthority as Authority } from "./authority"
 import { OrganizationServiceNative as Native } from "./service-native"
@@ -23,23 +25,64 @@ const key = (installationID: string) => ["organization-recovery", "current-polic
 function fail(message: string): never {
   throw new Error("Organization current-policy recovery " + message)
 }
+type TargetBinding = {
+  assert(): void
+  verify(): Promise<void>
+  run<T>(body: () => T): T
+  request: Native.InstallationRequest
+  permit: HomeRestoration.InstallPermit
+  reference: z.infer<typeof OrganizationInstallationReference>
+  checkpoint: AuthorityJournal.Checkpoint
+}
 
 export namespace OrganizationRecovery {
   export interface Target {
     readonly kind: "organization-recovery-policy-target"
   }
-  const targets = new WeakMap<
-    Target,
-    {
-      assert(): void
-      verify(): Promise<void>
-      run<T>(body: () => T): T
-      request: Native.InstallationRequest
-      permit: HomeRestoration.InstallPermit
-      reference: z.infer<typeof OrganizationInstallationReference>
-      checkpoint: AuthorityJournal.Checkpoint
-    }
-  >()
+  const targets = new WeakMap<Target, TargetBinding>()
+  async function apply(
+    target: TargetBinding,
+    evidence: AuthorityJournal.Adoption,
+    reference: Retirement.Reference,
+    assert: () => void,
+    signal?: AbortSignal,
+  ) {
+    const checkpoint = AuthorityJournal.describeAdoption(evidence)
+    if (hash(checkpoint) !== hash(reference.current.checkpoint))
+      fail("prepared policy has another final authority checkpoint")
+    return RuntimeMaintenance.restorationTransaction(
+      { permit: target.permit, request: target.request },
+      async (tx) => {
+        assert()
+        const address = key(target.reference.installationID)
+        const [value] = await tx.readMany([address])
+        if (value !== undefined) {
+          const receipt = Receipt.parse(value)
+          if (
+            hash(receipt.target) !== hash(target.reference) ||
+            hash(receipt.source) !== hash(reference) ||
+            hash(receipt.checkpoint) !== hash(checkpoint)
+          )
+            fail("publication receipt belongs to another original recovery")
+          await AuthorityJournal.adopt(tx, evidence)
+          assert()
+          return receipt
+        }
+        await AuthorityJournal.adopt(tx, evidence)
+        assert()
+        const receipt = Receipt.parse({
+          version: 1,
+          target: target.reference,
+          source: reference,
+          checkpoint,
+          appliedAt: Date.now(),
+        })
+        await tx.write(address, receipt)
+        return receipt
+      },
+      { signal, commitGuard: assert },
+    )
+  }
   export async function withTarget<T>(
     input: {
       permit: HomeRestoration.InstallPermit
@@ -165,40 +208,85 @@ export namespace OrganizationRecovery {
             await sourceRuntime.run(() => Retirement.verify(retired))
             cancellation?.throwIfAborted()
             await target.verify()
-            return RuntimeMaintenance.restorationTransaction(
-              { permit: target.permit, request: target.request },
-              async (tx) => {
-                assert()
-                const [value] = await tx.readMany([address])
-                if (value !== undefined) {
-                  const receipt = Receipt.parse(value)
-                  if (
-                    hash(receipt.target) !== hash(target.reference) ||
-                    hash(receipt.source) !== hash(reference) ||
-                    hash(receipt.checkpoint) !== hash(checkpoint)
-                  )
-                    fail("publication receipt belongs to another original recovery")
-                  await AuthorityJournal.adopt(tx, evidence)
-                  assert()
-                  return receipt
-                }
-                await AuthorityJournal.adopt(tx, evidence)
-                assert()
-                const receipt = Receipt.parse({
-                  version: 1,
-                  target: target.reference,
-                  source: reference,
-                  checkpoint,
-                  appliedAt: Date.now(),
-                })
-                await tx.write(address, receipt)
-                return receipt
-              },
-              { signal: cancellation, commitGuard: assert },
-            )
+            return apply(target, evidence, reference, assert, cancellation)
           },
         )
       })
     })
+  }
+  export function reconstructCold(input: {
+    source: Retirement.Receipt
+    target: Target
+    namespace: { directory: string; expected: StorageCheckpoint.Manifest }
+    native: { directory: string; expected: StorageCheckpoint.Manifest }
+    keys: VaultKeyProvider
+    signal?: AbortSignal
+  }) {
+    const source = input.source
+    const target = targets.get(input.target)
+    const namespace = {
+      directory: input.namespace.directory,
+      expected: StorageCheckpoint.Manifest.parse(input.namespace.expected),
+    }
+    const native = {
+      directory: input.native.directory,
+      expected: StorageCheckpoint.Manifest.parse(input.native.expected),
+    }
+    const provider = input.keys
+    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const signal = input.signal
+    const sourceRuntime = RuntimeContext.current()
+    if (!target) fail("requires its original target evidence")
+    return Retirement.withVerified(
+      source,
+      async (inspection) => {
+        const reference = Retirement.Reference.parse(inspection.reference)
+        const current = reference.current
+        const assert = () => {
+          signal?.throwIfAborted()
+          inspection.assertLive()
+          target.assert()
+        }
+        if (
+          hash(reference.target) !== hash(target.reference) ||
+          !current.after ||
+          hash(current.after) !== hash(target.checkpoint)
+        )
+          fail("cold source belongs to another original target or H0 anchor")
+        if (
+          Native.sourceHash(namespace.expected) !== current.namespaceHash ||
+          Native.sourceHash(native.expected) !== current.nativeHash
+        )
+          fail("cold archives do not match the original retired source hashes")
+        const verified = await Native.verify({ ...native, source: namespace.expected, keys, signal })
+        try {
+          if (
+            verified.identity.orgID !== current.checkpoint.namespaceID ||
+            hash(verified.startup.settings.clientAuthentication.clients) !== current.clientDefinitionsHash
+          )
+            fail("cold native settings do not match the original source")
+        } finally {
+          verified.rawConfiguration?.fill(0)
+        }
+        inspection.assertLive()
+        return target.run(async () => {
+          await target.verify()
+          assert()
+          return AuthorityJournal.withAdoption(
+            { ...namespace, keys, after: target.checkpoint, signal },
+            async (evidence) => {
+              assert()
+              if (hash(AuthorityJournal.describeAdoption(evidence)) !== hash(current.checkpoint))
+                fail("cold archive has another final authority checkpoint")
+              await sourceRuntime.run(() => Retirement.verify(source))
+              assert()
+              await target.verify()
+              return apply(target, evidence, reference, assert, signal)
+            },
+          )
+        })
+      },
+      { signal },
+    )
   }
 }

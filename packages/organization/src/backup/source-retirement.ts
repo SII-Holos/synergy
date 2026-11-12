@@ -48,7 +48,7 @@ export namespace OrganizationSourceRetirement {
     readonly kind: "organization-source-retired"
   }
   const receipts = new WeakMap<Receipt, { reference: Reference; assert(): void; verify(): Promise<void> }>()
-  const state = RuntimeContext.state(() => ({ pending: new Set<Promise<unknown>>() }))
+  const state = RuntimeContext.state(() => ({ pending: new Map<Promise<unknown>, "effect" | "read">() }))
 
   function binding(reference: Reference) {
     const runtime = RuntimeContext.current()
@@ -58,11 +58,9 @@ export namespace OrganizationSourceRetirement {
     const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
     const artifactDirectory = primary.artifactDirectory
     if (hash(store.options) !== reference.primaryConfigHash) fail("requires its original primary Store configuration")
-    const assert = () => {
+    const assertAlive = () => {
       if (
-        runtime !== RuntimeContext.current() ||
         runtime.storage !== primary ||
-        Storage.current() !== primary ||
         primary.store !== store ||
         hash(store.options) !== reference.primaryConfigHash ||
         primary.artifactDirectory !== artifactDirectory ||
@@ -73,8 +71,13 @@ export namespace OrganizationSourceRetirement {
       )
         fail("requires its original native Runtime and primary Store")
     }
+    const assert = () => {
+      assertAlive()
+      if (runtime !== RuntimeContext.current() || Storage.current() !== primary)
+        fail("requires its original native Runtime and primary Store")
+    }
     assert()
-    return { runtime, assert }
+    return { runtime, assert, assertAlive }
   }
   async function verifyReservation(reference: Reference) {
     const retained = await RuntimeMaintenance.retirement(reference.current.maintenance.maintenanceID)
@@ -121,9 +124,44 @@ export namespace OrganizationSourceRetirement {
     await original.verify()
     original.assert()
   }
-  function track<T>(work: Promise<T>) {
+  export function withVerified<T>(
+    receipt: Receipt,
+    body: (inspection: { reference: Reference; assertLive(): void }) => Promise<T>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<T> {
+    const original = receipts.get(receipt)
+    if (!original) fail("requires original verified source evidence")
+    original.assert()
+    const reference = Reference.parse(original.reference)
+    const owner = binding(reference)
+    const signal = options.signal
+    signal?.throwIfAborted()
+    return track(
+      (async () => {
+        let open = true
+        const assertLive = () => {
+          signal?.throwIfAborted()
+          if (!open) fail("source receipt inspection callback has ended")
+          owner.assertAlive()
+        }
+        try {
+          await original.verify()
+          assertLive()
+          const result = await body({ reference: Reference.parse(reference), assertLive })
+          assertLive()
+          await original.verify()
+          assertLive()
+          return result
+        } finally {
+          open = false
+        }
+      })(),
+      "read",
+    )
+  }
+  function track<T>(work: Promise<T>, kind: "effect" | "read" = "effect") {
     const pending = state().pending
-    pending.add(work)
+    pending.set(work, kind)
     work.then(
       () => pending.delete(work),
       () => pending.delete(work),
@@ -182,8 +220,11 @@ export namespace OrganizationSourceRetirement {
     original.assert()
   }
   export async function drain() {
-    const results = await Promise.allSettled([...state().pending])
-    const errors = results.filter((value) => value.status === "rejected").map((value) => value.reason)
+    const pending = [...state().pending]
+    const results = await Promise.allSettled(pending.map(([work]) => work))
+    const errors = results.flatMap((value, index) =>
+      value.status === "rejected" && pending[index]?.[1] === "effect" ? [value.reason] : [],
+    )
     if (errors.length) throw new AggregateError(errors, "Accepted source retirement did not complete")
   }
 }

@@ -19,7 +19,9 @@ import { OrganizationCurrentAuthority as Current } from "../../src/backup/curren
 import { OrganizationRecovery as Recovery } from "../../src/backup/recovery"
 import { OrganizationRecord as Record } from "../../src/storage/records"
 import { OrganizationStoragePath as Keys } from "../../src/storage/path"
-import { openOrganizationRecovery } from "../../src/service"
+import { openOrganizationRecovery, openOrganizationSourceRetirement } from "../../src/service"
+import { OrganizationSourceRetirement as Retirement } from "../../src/backup/source-retirement"
+import * as Signing from "../../src/signing"
 import { fixture as organizationFixture, password } from "../support/organization"
 
 const hash = (value: unknown) =>
@@ -55,9 +57,11 @@ let snapshot: StorageCheckpoint.Manifest
 let h0: Awaited<ReturnType<typeof AuthorityJournal.head>>
 let h1: typeof h0
 
-beforeAll(async () => {
-  directory = await fs.realpath(await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "recovery-authority-")))
-  source = await organizationFixture(undefined, { clientAuthentication: { clients } })
+async function captureFixture() {
+  const directory = await fs.realpath(
+    await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "recovery-authority-")),
+  )
+  const source = await organizationFixture(undefined, { clientAuthentication: { clients } })
   const owner = await source.initialize()
   const encrypted = path.join(directory, "encrypted")
   const report = await Cohort.capture({
@@ -77,20 +81,20 @@ beforeAll(async () => {
       requestID: "recovery-authority",
     },
   })
-  h0 = await source.service.maintenance.run(() => AuthorityJournal.head())
+  const h0 = await source.service.maintenance.run(() => AuthorityJournal.head())
   const changed = await owner.request("POST", "/auth/password", {
     currentPassword: password,
     password: "new source password after checkpoint",
   })
   expect(changed.status).toBe(200)
-  h1 = await source.service.maintenance.run(() => AuthorityJournal.head())
+  const h1 = await source.service.maintenance.run(() => AuthorityJournal.head())
   const opened = path.join(directory, "opened")
   await Archive.open({ directory: encrypted, outputDirectory: opened, keys: sourceKeys })
   const base = path.join(opened, "namespaces", "0000000000000000")
   const inventory = Cohort.NamespaceInventory.parse(await Bun.file(path.join(base, "namespace.json")).json())
   if (!inventory.native) throw new Error("Service native facet is missing")
-  snapshot = inventory.segment.namespace
-  input = {
+  const snapshot = inventory.segment.namespace
+  const input: Omit<Parameters<typeof Native.withInstalled>[0], "permit"> = {
     directory: path.join(base, "native"),
     expected: inventory.native,
     source: inventory.namespace,
@@ -108,6 +112,16 @@ beforeAll(async () => {
       },
     }),
   }
+  return { directory, source, input, snapshot, h0, h1 }
+}
+beforeAll(async () => {
+  const captured = await captureFixture()
+  directory = captured.directory
+  source = captured.source
+  input = captured.input
+  snapshot = captured.snapshot
+  h0 = captured.h0
+  h1 = captured.h1
 }, 20_000)
 
 afterAll(async () => {
@@ -121,34 +135,40 @@ type InstalledContext = {
   installationID: string
   home: string
 }
-async function target<T>(name: string, body: (context: InstalledContext) => Promise<T>, restore = true) {
-  const home = path.join(directory, name)
+async function target<T>(
+  name: string,
+  body: (context: InstalledContext) => Promise<T>,
+  restore = true,
+  captured = { directory, input, snapshot },
+) {
+  const original = captured.input
+  const home = path.join(captured.directory, name)
   await using runtime = await openOrganizationRecovery({ home })
   return runtime.run(async () => {
-    const selected = await HomeRestoration.begin(input.request)
+    const selected = await HomeRestoration.begin(original.request)
     return HomeRestoration.withTarget(selected, (permit) =>
-      Native.withInstalled({ ...input, permit }, (native) =>
+      Native.withInstalled({ ...original, permit }, (native) =>
         SnapshotMaintenance.withInstalledSegment(
           {
-            directory: path.join(path.dirname(input.directory), "snapshots"),
-            namespaceDirectory: path.join(path.dirname(input.directory), "records"),
-            source: input.source,
-            expected: snapshot,
+            directory: path.join(path.dirname(original.directory), "snapshots"),
+            namespaceDirectory: path.join(path.dirname(original.directory), "records"),
+            source: original.source,
+            expected: captured.snapshot,
             keys,
             permit,
-            request: input.request,
+            request: original.request,
           },
           async (installed) => {
             if (restore)
               await StorageCheckpoint.restoreArchive({
-                directory: path.join(path.dirname(input.directory), "records"),
-                expected: input.source,
+                directory: path.join(path.dirname(original.directory), "records"),
+                expected: original.source,
                 keys,
-                restoreID: input.request.restoreID,
+                restoreID: original.request.restoreID,
                 finalize: (tx, archive) =>
                   Native.adoptRestoration(tx, {
                     permit,
-                    request: input.request,
+                    request: original.request,
                     native,
                     snapshot: installed,
                     archive,
@@ -424,4 +444,277 @@ test("the original H0 target adopts the real H1 private policy only after its cu
       schemaVersion: 4,
     })
   })
+}, 20_000)
+
+test("closed source and target callbacks reconstruct fixed H1 policy cold without replacing inactive material", async () => {
+  const captured = await captureFixture()
+  const finalDirectory = path.join(captured.directory, "final-policy")
+  let coldSource: Awaited<ReturnType<typeof openOrganizationSourceRetirement>> | undefined
+  try {
+    const original = await target(
+      "cold-target",
+      async (context) => {
+        const prepared = await Authority.prepare({
+          permit: context.permit,
+          native: context.native,
+          request: captured.input.request,
+          namespaceDirectory: path.join(path.dirname(captured.input.directory), "records"),
+          keys,
+        })
+        const info = Authority.describe(prepared)
+        const materialFile = path.join(
+          context.home,
+          ".synergy",
+          "state",
+          "organization-recovery",
+          context.installationID,
+          "signing-material.json",
+        )
+        const material = await fs.readFile(materialFile)
+        const accountID = Record.Info.parse(await Storage.read(Keys.info())).owners[0]
+        if (!accountID) throw new Error("The original target has no owner")
+        const account = await captured.source.service.maintenance.run(() => Storage.read(Keys.account(accountID)))
+        const reference = await captured.source.service.maintenance.run(async () => {
+          const lease = await RuntimeMaintenance.begin({
+            purpose: "organization-backup",
+            requestID: "cold-policy",
+            actor: {
+              kind: "system",
+              subjectID: "operator",
+              displayName: "Host",
+              clientKind: "system",
+              requestID: "cold-policy",
+            },
+          })
+          await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+          return Current.withSource(
+            { lease, after: captured.h0, directory: finalDirectory, buildVersion: "fixture", keys },
+            async (source) => {
+              const reference = await Current.retirementReference(source, info.reference)
+              await Current.retire(source, reference)
+              return reference
+            },
+          )
+        })
+        expect(await AuthorityJournal.head()).toEqual(captured.h0)
+        return { reference, info, materialFile, material, accountID, account }
+      },
+      true,
+      captured,
+    )
+    await captured.source.service.close()
+    const namespace = {
+      directory: path.join(finalDirectory, "records"),
+      expected: StorageCheckpoint.Manifest.parse(
+        await Bun.file(path.join(finalDirectory, "records", "manifest.json")).json(),
+      ),
+    }
+    const native = {
+      directory: path.join(finalDirectory, "native"),
+      expected: StorageCheckpoint.Manifest.parse(
+        await Bun.file(path.join(finalDirectory, "native", "manifest.json")).json(),
+      ),
+    }
+    let freshKeyRequests = 0
+    const readKeys = {
+      async current() {
+        freshKeyRequests++
+        throw new Error("Cold reconstruction must not generate recovery material")
+      },
+      resolve: keys.resolve,
+    }
+    using generation = spyOn(Signing, "prepareSigningMaterial")
+    coldSource = await openOrganizationSourceRetirement({
+      home: captured.source.service.home,
+      reference: original.reference,
+    })
+    const firstSource = coldSource
+    const physical = await firstSource.complete()
+    const inspection: { guard?: () => void } = {}
+    await firstSource.run(() =>
+      Retirement.withVerified(physical, async (verified) => {
+        verified.assertLive()
+        inspection.guard = verified.assertLive
+      }),
+    )
+    const guard = inspection.guard
+    if (!guard) throw new Error("The actual cold source did not issue its inspection lifetime")
+    expect(guard).toThrow("callback")
+    const receipt = await target(
+      "cold-target",
+      async (context) => {
+        const prepared = await Authority.reopen({
+          permit: context.permit,
+          native: context.native,
+          request: captured.input.request,
+          namespaceDirectory: path.join(path.dirname(captured.input.directory), "records"),
+          keys: readKeys,
+        })
+        expect(Authority.describe(prepared)).toEqual(original.info)
+        return Recovery.withTarget({ ...context, prepared, request: captured.input.request }, async (selected) => {
+          await expect(
+            firstSource.run(() =>
+              Recovery.reconstructCold({
+                source: { ...physical },
+                target: selected,
+                namespace,
+                native,
+                keys: readKeys,
+              }),
+            ),
+          ).rejects.toThrow("original")
+          await expect(
+            firstSource.run(() =>
+              Recovery.reconstructCold({
+                source: physical,
+                target: selected,
+                namespace: { ...namespace, expected: { ...namespace.expected, archiveID: "another-archive" } },
+                native,
+                keys: readKeys,
+              }),
+            ),
+          ).rejects.toThrow("hashes")
+          const controller = new AbortController()
+          const reason = new Error("Cold H1 target publication cancelled at last receipt")
+          const entered = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          const write = StoreTransaction.prototype.write
+          using boundary = spyOn(StoreTransaction.prototype, "write").mockImplementation(async function (
+            this: StoreTransaction,
+            ...args: Parameters<StoreTransaction["write"]>
+          ) {
+            await write.apply(this, args)
+            if (
+              JSON.stringify(args[0]) ===
+              JSON.stringify(["organization-recovery", "current-policy", context.installationID])
+            ) {
+              entered.resolve()
+              await release.promise
+              controller.abort(reason)
+            }
+          })
+          const accepted = await firstSource.run(async () => ({
+            work: Recovery.reconstructCold({
+              source: physical,
+              target: selected,
+              namespace,
+              native,
+              keys: readKeys,
+              signal: controller.signal,
+            }).then(
+              (value) => ({ kind: "success" as const, value }),
+              (error: unknown) => ({ kind: "failure" as const, error }),
+            ),
+          }))
+          try {
+            await Promise.race([
+              entered.promise,
+              accepted.work.then(() => {
+                throw new Error("Cold reconstruction ended before its final write")
+              }),
+            ])
+            let closed = false
+            const closing = firstSource.close().then(() => {
+              closed = true
+            })
+            await Promise.resolve()
+            expect(closed).toBe(false)
+            release.resolve()
+            const outcome = await accepted.work
+            if (outcome.kind !== "failure") throw new Error("Cancelled cold reconstruction unexpectedly committed")
+            expect(outcome.error).toBe(reason)
+            await closing
+          } finally {
+            release.resolve()
+            await accepted.work
+          }
+          expect(await AuthorityJournal.head()).toEqual(captured.h0)
+          expect(await Storage.read(Keys.account(original.accountID))).not.toEqual(original.account)
+          boundary.mockRestore()
+          coldSource = await openOrganizationSourceRetirement({
+            home: captured.source.service.home,
+            reference: original.reference,
+          })
+          const resumed = coldSource
+          const resumedPhysical = await resumed.complete()
+          const receipt = await resumed.run(() =>
+            Recovery.reconstructCold({ source: resumedPhysical, target: selected, namespace, native, keys: readKeys }),
+          )
+          expect(await AuthorityJournal.head()).toEqual(captured.h1)
+          expect(await Storage.read(Keys.account(original.accountID))).toEqual(original.account)
+          return receipt
+        })
+      },
+      false,
+      captured,
+    )
+    await coldSource.close()
+    coldSource = await openOrganizationSourceRetirement({
+      home: captured.source.service.home,
+      reference: original.reference,
+    })
+    const secondSource = coldSource
+    const reopenedPhysical = await secondSource.complete()
+    await target(
+      "cold-target",
+      async (context) => {
+        const prepared = await Authority.reopen({
+          permit: context.permit,
+          native: context.native,
+          request: captured.input.request,
+          namespaceDirectory: path.join(path.dirname(captured.input.directory), "records"),
+          keys: readKeys,
+        })
+        expect(Authority.describe(prepared)).toEqual(original.info)
+        await Recovery.withTarget({ ...context, prepared, request: captured.input.request }, async (selected) => {
+          expect(
+            await secondSource.run(() =>
+              Recovery.reconstructCold({
+                source: reopenedPhysical,
+                target: selected,
+                namespace,
+                native,
+                keys: readKeys,
+              }),
+            ),
+          ).toEqual(receipt)
+        })
+        expect((await RuntimeMaintenance.status())?.phase).toBe("recovery-held")
+        expect(RuntimeContext.isReady()).toBe(false)
+        expect(await fs.readFile(original.materialFile)).toEqual(original.material)
+        await fs.rename(original.materialFile, original.materialFile + ".missing")
+        try {
+          await expect(
+            Authority.reopen({
+              permit: context.permit,
+              native: context.native,
+              request: captured.input.request,
+              namespaceDirectory: path.join(path.dirname(captured.input.directory), "records"),
+              keys: readKeys,
+            }),
+          ).rejects.toThrow("existing inactive")
+          await expect(
+            Authority.prepare({
+              permit: context.permit,
+              native: context.native,
+              request: captured.input.request,
+              namespaceDirectory: path.join(path.dirname(captured.input.directory), "records"),
+              keys: readKeys,
+            }),
+          ).rejects.toThrow("historical checkpoint")
+          expect(await fs.exists(original.materialFile)).toBe(false)
+        } finally {
+          await fs.rename(original.materialFile + ".missing", original.materialFile)
+        }
+      },
+      false,
+      captured,
+    )
+    expect(generation).toHaveBeenCalledTimes(0)
+    expect(freshKeyRequests).toBe(0)
+  } finally {
+    await coldSource?.close()
+    await captured.source[Symbol.asyncDispose]()
+    await fs.rm(captured.directory, { recursive: true, force: true })
+  }
 }, 20_000)

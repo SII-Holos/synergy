@@ -150,6 +150,12 @@ export namespace OrganizationRecoveryAuthority {
     keys: VaultKeyProvider
     signal?: AbortSignal
   }): Promise<Prepared> {
+    return select(input, false)
+  }
+  export function reopen(input: Parameters<typeof prepare>[0]): Promise<Prepared> {
+    return select(input, true)
+  }
+  function select(input: Parameters<typeof prepare>[0], existingOnly: boolean): Promise<Prepared> {
     const provider = input.keys
     const captured = {
       permit: input.permit,
@@ -162,9 +168,11 @@ export namespace OrganizationRecoveryAuthority {
     captured.signal?.throwIfAborted()
     HomeRestoration.assertRequest(captured.permit, captured.request)
     Native.assertInstalled(captured.native)
-    return withStorageQueueOptions({ signal: captured.signal }, () => queue().run(() => prepareNative(captured)))
+    return withStorageQueueOptions({ signal: captured.signal }, () =>
+      queue().run(() => prepareNative(captured, existingOnly)),
+    )
   }
-  async function prepareNative(input: Parameters<typeof prepare>[0]): Promise<Prepared> {
+  async function prepareNative(input: Parameters<typeof prepare>[0], existingOnly: boolean): Promise<Prepared> {
     const { permit, request, native, keys, signal } = input
     const runtime = RuntimeContext.current()
     const root = runtime.host.root
@@ -225,8 +233,27 @@ export namespace OrganizationRecoveryAuthority {
       )
         fail("requires its actual committed recovery hold")
       const history = await AuthorityJournal.inspect()
-      if (!history.covered || hash(history.head) !== hash(checkpoint))
-        fail("requires its unchanged restored historical checkpoint")
+      if (!history.covered || !history.head) fail("requires its unchanged restored historical checkpoint")
+      if (!existingOnly && hash(history.head) !== hash(checkpoint))
+        fail("creating inactive material requires its unchanged restored historical checkpoint")
+      if (existingOnly) {
+        const current = history.head
+        if (
+          current.sequence < checkpoint.sequence ||
+          ["journalID", "namespaceID", "contractHash", "baselineHash", "baselineEntries", "startedAt"].some(
+            (field) => Reflect.get(current, field) !== Reflect.get(checkpoint, field),
+          )
+        )
+          fail("existing inactive material belongs to another historical journal")
+        if (current.sequence === checkpoint.sequence) {
+          if (current.tailHash !== checkpoint.tailHash)
+            fail("existing inactive material has another historical checkpoint")
+        } else {
+          const next = (await AuthorityJournal.entries({ after: checkpoint.sequence, limit: 1 })).items[0]
+          if (!next || next.sequence !== checkpoint.sequence + 1 || next.previousHash !== checkpoint.tailHash)
+            fail("existing inactive material has no original H0 continuation anchor")
+        }
+      }
       const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
       const stored = Record.SigningIdentity.parse(await Storage.read(Keys.signingIdentity()))
       if (
@@ -242,10 +269,11 @@ export namespace OrganizationRecoveryAuthority {
     })
     assert()
     const clientDefinitionsHash = hash(fixed.manifest.startup.settings.clientAuthentication.clients)
-    const filename = await directory(root, reference.installationID, true, assert)
+    const filename = await directory(root, reference.installationID, !existingOnly, assert)
     assert()
     const existing = await read(filename, assert)
     assert()
+    if (existingOnly && !existing) fail("requires existing inactive signing material")
     async function validate(value: Material) {
       const info = authenticated(value)
       if (
