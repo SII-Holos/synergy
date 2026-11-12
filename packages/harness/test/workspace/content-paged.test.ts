@@ -145,6 +145,8 @@ test("indexed Workspace callbacks cannot escape, change Store namespaces or use 
     let content: AsyncIterator<Uint8Array> | undefined
     let entries: AsyncIterator<Portable.Entry> | undefined
     let children: AsyncIterator<Portable.Entry> | undefined
+    let references: AsyncIterator<Stream.Reference> | undefined
+    let chunks: AsyncIterator<{ hash: string; bytes: number }> | undefined
     await WorkspaceContent.withTree(info, store, async (tree) => {
       retained = tree
       tree.assertCurrent()
@@ -152,7 +154,16 @@ test("indexed Workspace callbacks cannot escape, change Store namespaces or use 
       entries = tree.entries()[Symbol.asyncIterator]()
       expect((await Array.fromAsync(tree.children(""))).map((entry) => entry.path)).toEqual(["file"])
       children = tree.children("")[Symbol.asyncIterator]()
+      references = tree.references()[Symbol.asyncIterator]()
+      const reference = await tree.references().next()
+      if (reference.done) throw new Error("Workspace file reference was not found")
+      chunks = reference.value.chunks[Symbol.asyncIterator]()
       await foreign.run(() => expect(tree.get("file")).rejects.toThrow("another Runtime"))
+      const foreignReference = await tree.references().next()
+      if (foreignReference.done) throw new Error("Workspace file reference was not found")
+      await foreign.run(() =>
+        expect(foreignReference.value.chunks[Symbol.asyncIterator]().next()).rejects.toThrow("another Runtime"),
+      )
       const handle = Storage.current()
       await Storage.provide({ ...handle, artifactDirectory: handle.artifactDirectory + "-foreign" }, () =>
         expect(tree.get("file")).rejects.toThrow("artifact"),
@@ -166,13 +177,16 @@ test("indexed Workspace callbacks cannot escape, change Store namespaces or use 
         handle.store.options.namespace = namespace
       }
     })
-    if (!retained || !content || !entries || !children) throw new Error("Workspace reader was not opened")
+    if (!retained || !content || !entries || !children || !references || !chunks)
+      throw new Error("Workspace reader was not opened")
     const original = retained
     await expect(original.get("file")).rejects.toThrow("ended")
     expect(() => original.assertCurrent()).toThrow("ended")
     await expect(content.next()).rejects.toThrow("ended")
     await expect(entries.next()).rejects.toThrow("ended")
     await expect(children.next()).rejects.toThrow("ended")
+    await expect(references.next()).rejects.toThrow("ended")
+    await expect(chunks.next()).rejects.toThrow("ended")
   })
 })
 

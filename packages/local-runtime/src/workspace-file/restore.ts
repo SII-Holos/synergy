@@ -351,10 +351,16 @@ export namespace WorkspaceFileRestore {
                 resources.kind === "objects"
                   ? await WorkspaceCatalog.get(source.id, ScopeContext.current.scope.id)
                   : undefined
-              const tree = original
-                ? await WorkspaceContent.manifest(
+              const entries = original
+                ? await WorkspaceContent.withTree(
                     original,
                     (await WorkspaceContent.resolve({ workspaceID: source.id, scopeID: original.scopeID })).store,
+                    async (tree) => {
+                      const selected = new Map<string, WorkspaceTree.Header | undefined>()
+                      for (const file of files) selected.set(file.file, (await tree.resolve(file.file, false)).entry)
+                      return selected
+                    },
+                    { signal: input.signal },
                   )
                 : undefined
               let revision = original?.content?.revision ?? 0
@@ -383,10 +389,10 @@ export namespace WorkspaceFileRestore {
                   input.signal?.throwIfAborted()
                   const expected = before.get(file.file)!
                   let expectedVersion = expected.entry?.entryVersion ?? null
-                  if (original && tree) {
+                  if (original && entries) {
                     if ((await WorkspaceCatalog.get(source.id, original.scopeID)).content?.revision !== revision)
                       throw new FileMutation.ConflictError()
-                    const entry = WorkspaceTree.resolve(tree, file.file, false).entry
+                    const entry = entries.get(file.file)
                     if (
                       (entry ? WorkspaceTree.entryVersion(entry, original.content?.revision) : null) !== expectedVersion
                     )

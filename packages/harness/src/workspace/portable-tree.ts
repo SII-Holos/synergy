@@ -28,6 +28,22 @@ export namespace WorkspacePortableTree {
   export type Root = z.infer<typeof Root>
   export type Entry = WorkspaceTree.Header
 
+  export function reference(entry: Entry, chunks: Stream.Reference["chunks"]): Stream.Reference {
+    const metadata = Metadata.parse(
+      entry.kind === "symlink"
+        ? { version: 1, kind: entry.kind, mode: entry.mode, target: entry.target }
+        : { version: 1, kind: entry.kind, mode: entry.mode },
+    )
+    return {
+      id: path(entry.path, metadata),
+      kind: entry.kind === "file" ? "file" : "record",
+      metadata,
+      bytes: entry.kind === "file" ? entry.size : 0,
+      hash: entry.kind === "file" ? entry.hash : emptyHash,
+      chunks,
+    }
+  }
+
   function describe(entry: Stream.Descriptor): Entry {
     const metadata = Metadata.parse(entry.metadata)
     const relative = path(entry.id, metadata)
@@ -86,6 +102,11 @@ export namespace WorkspacePortableTree {
           for await (const entry of source) yield describe(entry)
         })()
       }
+      function references(options: { prefix?: string; after?: string } = {}) {
+        return (async function* () {
+          for await (const entry of index.entries(options)) yield reference(describe(entry), index.chunks(entry.id))
+        })()
+      }
       function children(directory: string) {
         if (directory) WorkspaceTree.Path.parse(directory)
         return (async function* () {
@@ -119,6 +140,7 @@ export namespace WorkspacePortableTree {
         get,
         resolve,
         entries,
+        references,
         children,
         read,
         objects: index.objects,

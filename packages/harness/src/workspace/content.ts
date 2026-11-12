@@ -11,6 +11,7 @@ import { SensitivePathPolicy } from "../enforcement/sensitive-path"
 import { WorkspaceErrors } from "./errors"
 import { WorkspaceProtocol } from "./protocol"
 import { SnapshotLink } from "../session/snapshot-link"
+import { SessionTransferStream as Stream } from "../session/transfer-stream"
 
 import type { BlobStore } from "../storage/blobs"
 export type { BlobStore } from "../storage/blobs"
@@ -51,9 +52,39 @@ export namespace WorkspaceContent {
       virtualRoot: WorkspaceTree.VirtualRoot.optional(),
     })
     .strict()
-  export type Selection = { workspaceID: string; scopeID: string; generation?: number }
+  export type Selection = { workspaceID: string; scopeID: string; generation?: number; signal?: AbortSignal }
+
+  export function captureOwner(signal?: AbortSignal) {
+    const runtime = RuntimeContext.current()
+    const primary = runtime.storage
+    const root = runtime.host.root
+    const { store, artifactDirectory, artifactObjects } = Storage.current()
+    const namespace = JSON.stringify(store.options)
+    const objects = artifactObjects && {
+      blobs: artifactObjects.blobs,
+      writerID: artifactObjects.writerID,
+      now: artifactObjects.now,
+    }
+    return () => {
+      signal?.throwIfAborted()
+      const current = Storage.current()
+      if (RuntimeContext.current() !== runtime || runtime.storage !== primary || runtime.host.root !== root)
+        throw new Error("Workspace owner belongs to another Runtime")
+      if (
+        current.store !== store ||
+        JSON.stringify(store.options) !== namespace ||
+        current.artifactDirectory !== artifactDirectory ||
+        current.artifactObjects !== artifactObjects ||
+        artifactObjects?.blobs !== objects?.blobs ||
+        artifactObjects?.writerID !== objects?.writerID ||
+        artifactObjects?.now !== objects?.now
+      )
+        throw new Error("Workspace owner belongs to another Store or artifact configuration")
+    }
+  }
 
   export async function resolve(input: Selection, mounted = false) {
+    input = { ...input }
     const info = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
     if (info.binding.state !== "bound" || info.lifecycle !== "active" || info.backend?.provider !== "objects")
       throw new WorkspaceCatalog.Unavailable({
@@ -87,6 +118,15 @@ export namespace WorkspaceContent {
       await source.get(manifest, WorkspaceTree.manifestBytes),
       WorkspaceTree.manifestBytes,
     )
+    const tree = decode(manifest, bytes)
+    entries.push({ store, hash: manifest, bytes: bytes.length, tree })
+    while (entries.length > 8 || entries.reduce((total, entry) => total + entry.bytes, 0) > WorkspaceTree.manifestBytes)
+      entries.shift()
+    return tree
+  }
+
+  export function decode(manifest: string, input: Uint8Array): StoredTree {
+    const bytes = WorkspaceTree.verify(manifest, input, WorkspaceTree.manifestBytes)
     const raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
     const tree: StoredTree =
       raw && typeof raw === "object" && "tree" in raw ? Portable.Root.parse(raw) : WorkspaceTree.Manifest.parse(raw)
@@ -105,15 +145,6 @@ export namespace WorkspaceContent {
       Object.freeze(tree.tree)
     }
     Object.freeze(tree)
-    entries.push({ store, hash: manifest, bytes: bytes.length, tree })
-    while (entries.length > 8 || entries.reduce((total, entry) => total + entry.bytes, 0) > WorkspaceTree.manifestBytes)
-      entries.shift()
-    return tree
-  }
-
-  export async function manifest(info: WorkspaceCatalog.Info, store: BlobStore): Promise<WorkspaceTree.Manifest> {
-    const tree = await stored(info, store)
-    if (!("entries" in tree)) throw new Error("Paged Workspace content requires its indexed tree owner")
     return tree
   }
 
@@ -123,7 +154,7 @@ export namespace WorkspaceContent {
 
   type TreeSource = Pick<
     Awaited<ReturnType<typeof Portable.open>>,
-    "get" | "resolve" | "entries" | "children" | "read"
+    "get" | "resolve" | "entries" | "references" | "children" | "read"
   > & {
     readonly mode: number
   }
@@ -152,6 +183,22 @@ export namespace WorkspaceContent {
           for (const entry of tree.entries)
             if ((prefix === undefined || entry.path.startsWith(prefix)) && (after === undefined || entry.path > after))
               yield header(entry)
+        })()
+      },
+      references(options = {}) {
+        return (async function* () {
+          for (const entry of tree.entries)
+            if (
+              (options.prefix === undefined || entry.path.startsWith(options.prefix)) &&
+              (options.after === undefined || entry.path > options.after)
+            )
+              yield Portable.reference(
+                header(entry),
+                (async function* () {
+                  if (entry.kind === "file")
+                    for (const chunk of entry.chunks) if (chunk.size) yield { hash: chunk.hash, bytes: chunk.size }
+                })(),
+              )
         })()
       },
       children(directory) {
@@ -195,17 +242,8 @@ export namespace WorkspaceContent {
     options: { signal?: AbortSignal } = {},
   ): Promise<T> {
     const runtime = RuntimeContext.current()
-    const primary = runtime.storage
-    const root = runtime.host.root
-    const selected = Storage.current()
-    const owner = { store: selected.store, artifacts: selected.artifactDirectory, objects: selected.artifactObjects }
-    const namespace = JSON.stringify(owner.store.options)
-    const objectConfig = owner.objects && {
-      blobs: owner.objects.blobs,
-      writerID: owner.objects.writerID,
-      now: owner.objects.now,
-    }
     const signal = options.signal
+    const assert = captureOwner(signal)
     const get = store.get.bind(store)
     const pending = new Set<Promise<Uint8Array>>()
     const bound: BlobStore = {
@@ -227,20 +265,7 @@ export namespace WorkspaceContent {
     let reader: Awaited<ReturnType<typeof Portable.open>> | undefined
     function current() {
       if (!open) throw new Error("Workspace tree callback has ended")
-      signal?.throwIfAborted()
-      if (RuntimeContext.current() !== runtime || runtime.storage !== primary || runtime.host.root !== root)
-        throw new Error("Workspace tree belongs to another Runtime")
-      const handle = Storage.current()
-      if (
-        handle.store !== owner.store ||
-        JSON.stringify(owner.store.options) !== namespace ||
-        handle.artifactDirectory !== owner.artifacts ||
-        handle.artifactObjects !== owner.objects ||
-        owner.objects?.blobs !== objectConfig?.blobs ||
-        owner.objects?.writerID !== objectConfig?.writerID ||
-        owner.objects?.now !== objectConfig?.now
-      )
-        throw new Error("Workspace tree belongs to another Store or artifact configuration")
+      assert()
     }
     async function* guarded<V>(source: AsyncIterable<V>) {
       current()
@@ -294,6 +319,14 @@ export namespace WorkspaceContent {
           entries(options?: { prefix?: string; after?: string }) {
             current()
             return guarded(source.entries(options))
+          },
+          references(options?: { prefix?: string; after?: string }) {
+            current()
+            return guarded(
+              (async function* () {
+                for await (const entry of source.references(options)) yield { ...entry, chunks: guarded(entry.chunks) }
+              })(),
+            )
           },
           children(directory: string) {
             current()
@@ -360,9 +393,135 @@ export namespace WorkspaceContent {
     })
   }
 
+  export interface Prepared {
+    readonly info: WorkspaceCatalog.Info
+    readonly manifest: string
+    publish(): Promise<WorkspaceCatalog.Info>
+  }
+
+  function ports(store: BlobStore, assert: () => void): BlobStore {
+    const put = store.put.bind(store)
+    const get = store.get.bind(store)
+    return {
+      async put(hash, bytes) {
+        assert()
+        await put(hash, bytes)
+        assert()
+      },
+      async get(hash, maximum) {
+        assert()
+        const bytes = await get(hash, maximum)
+        assert()
+        return bytes
+      },
+    }
+  }
+
+  async function finish(
+    info: WorkspaceCatalog.Info,
+    store: BlobStore,
+    entries: AsyncIterable<Stream.Reference>,
+    mode: number,
+    assert: () => void,
+    signal?: AbortSignal,
+  ): Promise<Prepared> {
+    const tree = Portable.Root.parse({
+      version: 1,
+      mode,
+      tree: await Stream.link({ store, owners: { "workspace-files": 1 }, entries, signal }),
+    })
+    assert()
+    const bytes = new TextEncoder().encode(JSON.stringify(tree))
+    const manifest = WorkspaceTree.hash(bytes)
+    await store.put(manifest, bytes)
+    assert()
+    const original = WorkspaceCatalog.Info.parse(info)
+    return Object.freeze({
+      info: WorkspaceCatalog.Info.parse(original),
+      manifest,
+      async publish() {
+        assert()
+        return Storage.transaction(
+          async () => {
+            assert()
+            return WorkspaceCatalog.publishContent(original, manifest)
+          },
+          { commitGuard: assert },
+        )
+      },
+    })
+  }
+
+  async function prepare(
+    selection: Selection,
+    body: (input: {
+      info: WorkspaceCatalog.Info
+      store: BlobStore
+      tree: Tree
+      finish(entries: AsyncIterable<Stream.Reference>): Promise<Prepared>
+    }) => Promise<Prepared>,
+  ) {
+    const input = { ...selection }
+    const assert = captureOwner(input.signal)
+    assert()
+    const selected = await resolve(input)
+    assert()
+    const store = ports(selected.store, assert)
+    return withTree(
+      selected.info,
+      store,
+      (tree) =>
+        body({
+          ...selected,
+          store,
+          tree,
+          finish: (entries) => finish(selected.info, store, entries, tree.mode, assert, input.signal),
+        }),
+      { signal: input.signal },
+    )
+  }
+
+  async function parents(tree: Tree, filename: string, create: boolean) {
+    const missing: WorkspaceTree.Header[] = []
+    for (let name = path.posix.dirname(filename); name !== "."; name = path.posix.dirname(name)) {
+      const parent = await tree.get(name)
+      if (!parent) {
+        if (!create) throw new Error("Workspace parent directory is absent")
+        missing.push({ kind: "directory", path: name, mode: 0o755 })
+      } else if (parent.kind !== "directory" || !(parent.mode & 0o222))
+        throw new WorkspaceErrors.AccessDeniedError("Workspace parent is not a writable directory")
+    }
+    return missing
+  }
+
+  const emptyChunks = async function* () {}
+  function metadata(entry: WorkspaceTree.Header) {
+    return Portable.reference(entry, emptyChunks())
+  }
+  function file(filename: string, data: Uint8Array, mode: number, store: BlobStore) {
+    return Portable.reference(
+      {
+        path: filename,
+        kind: "file",
+        mode,
+        size: data.byteLength,
+        hash: WorkspaceTree.hash(data),
+      },
+      (async function* () {
+        for (let offset = 0; offset < data.byteLength; offset += Stream.chunkBytes) {
+          const bytes = data.slice(offset, offset + Stream.chunkBytes)
+          const hash = WorkspaceTree.hash(bytes)
+          await store.put(hash, bytes)
+          yield { hash, bytes: bytes.byteLength }
+        }
+      })(),
+    )
+  }
+  const member = (name: string, root: string) => name === root || name.startsWith(root + "/")
+
   export async function prepareWrite(
-    input: Selection,
-    change: {
+    selection: Selection,
+    raw: {
       path: string
       data: Uint8Array
       expectedVersion: string | null
@@ -371,169 +530,163 @@ export namespace WorkspaceContent {
       protectSensitive?: boolean
     },
   ) {
-    WorkspaceTree.Path.parse(change.path)
-    const { info, store } = await resolve(input)
-    const tree = await manifest(info, store)
-    const resolved = WorkspaceTree.resolve(tree, change.path)
-    change = { ...change, path: WorkspaceTree.Path.parse(resolved.path) }
-    if (change.protectSensitive) protectedPath(change.path)
-    const previous = resolved.entry
-    if (
-      change.expectedEntryVersion !== undefined &&
-      change.expectedEntryVersion !== (previous ? WorkspaceTree.entryVersion(previous, info.content?.revision) : null)
-    )
-      throw new WorkspaceErrors.ConflictError()
-    if (previous && !(previous.mode & 0o222)) throw new WorkspaceErrors.AccessDeniedError("Workspace file is read-only")
-    if (
-      (previous && previous.kind !== "file") ||
-      (previous?.kind === "file" ? `sha256:${previous.hash}` : null) !== change.expectedVersion
-    )
-      throw new WorkspaceErrors.ConflictError()
-    const chunks = []
-    for (let offset = 0; offset < change.data.length; offset += WorkspaceTree.chunkBytes) {
-      const bytes = change.data.subarray(offset, offset + WorkspaceTree.chunkBytes)
-      const hash = WorkspaceTree.hash(bytes)
-      await store.put(hash, bytes)
-      chunks.push({ hash, size: bytes.length })
-    }
-    const entry = WorkspaceTree.Entry.parse({
-      path: change.path,
-      kind: "file",
-      mode: change.mode ?? previous?.mode ?? 0o644,
-      hash: WorkspaceTree.hash(change.data),
-      size: change.data.length,
-      chunks,
+    const change = { ...raw, path: WorkspaceTree.Path.parse(raw.path), data: Uint8Array.from(raw.data) }
+    return prepare({ ...selection }, async ({ info, store, tree, finish }) => {
+      const resolved = await tree.resolve(change.path)
+      const filename = WorkspaceTree.Path.parse(resolved.path)
+      if (change.protectSensitive) protectedPath(filename)
+      const previous = resolved.entry
+      if (
+        change.expectedEntryVersion !== undefined &&
+        change.expectedEntryVersion !== (previous ? WorkspaceTree.entryVersion(previous, info.content?.revision) : null)
+      )
+        throw new WorkspaceErrors.ConflictError()
+      if (previous && !(previous.mode & 0o222))
+        throw new WorkspaceErrors.AccessDeniedError("Workspace file is read-only")
+      if (
+        (previous && previous.kind !== "file") ||
+        (previous?.kind === "file" ? "sha256:" + previous.hash : null) !== change.expectedVersion
+      )
+        throw new WorkspaceErrors.ConflictError()
+      const missing = await parents(tree, filename, true)
+      return finish(
+        (async function* () {
+          for await (const entry of tree.references()) if (entry.id !== filename) yield entry
+          for (const entry of missing) yield metadata(entry)
+          yield file(filename, change.data, change.mode ?? previous?.mode ?? 0o644, store)
+        })(),
+      )
     })
-    const entries = tree.entries.filter((item) => item.path !== change.path)
-    let parent = path.posix.dirname(change.path)
-    while (parent !== ".") {
-      const existing = entries.find((item) => item.path === parent)
-      if (existing && existing.kind !== "directory") throw new Error("Workspace parent is not a directory")
-      if (!existing) entries.push({ kind: "directory", path: parent, mode: 0o755 })
-      parent = path.posix.dirname(parent)
-    }
-    return prepare(info, store, { version: 1, entries: [...entries, entry] })
   }
 
   export async function write(input: Selection, change: Parameters<typeof prepareWrite>[1]) {
-    const prepared = await prepareWrite(input, change)
-    return WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
+    return (await prepareWrite(input, change)).publish()
   }
 
-  export async function prepareChange(input: Selection, raw: WorkspaceProtocol.Change, protectSensitive?: boolean) {
+  export async function prepareChange(selection: Selection, raw: WorkspaceProtocol.Change, protectSensitive?: boolean) {
     const change = WorkspaceProtocol.Change.parse(raw)
-    const { info, store } = await resolve(input)
-    const tree = await manifest(info, store)
-    const from = WorkspaceTree.resolve(
-      tree,
-      "path" in change ? change.path : change.kind === "import" ? change.to : change.from,
-      false,
-    )
-    if (protectSensitive) protectedPath(from.path)
-    const entries = new Map(tree.entries.map((entry) => [entry.path, entry]))
-    const conflict = () => new WorkspaceErrors.ConflictError()
-    const parents = (filename: string, create: boolean) => {
-      const missing: string[] = []
-      for (let name = path.posix.dirname(filename); name !== "."; name = path.posix.dirname(name)) {
-        const parent = entries.get(name)
-        if (!parent) {
-          if (!create) throw new Error("Workspace parent directory is absent")
-          missing.push(name)
-        } else if (parent.kind !== "directory" || !(parent.mode & 0o222))
-          throw new Error("Workspace parent is not a writable directory")
+    const input = { ...selection }
+    return prepare(input, async ({ info, store, tree, finish }) => {
+      const from = await tree.resolve(
+        "path" in change ? change.path : change.kind === "import" ? change.to : change.from,
+        false,
+      )
+      if (protectSensitive) protectedPath(from.path)
+      const conflict = () => new WorkspaceErrors.ConflictError()
+      if (change.kind === "replace") {
+        if (
+          (from.entry ? WorkspaceTree.entryVersion(from.entry, info.content?.revision) : null) !==
+          change.expectedVersion
+        )
+          throw conflict()
+        if (from.entry?.kind === "directory" || (from.entry?.kind === "file" && !(from.entry.mode & 0o222)))
+          throw new WorkspaceErrors.AccessDeniedError("Workspace entry cannot be replaced")
+        if (
+          change.expectedContentVersion !== undefined &&
+          (from.entry?.kind !== "file" || "sha256:" + from.entry.hash !== change.expectedContentVersion)
+        )
+          throw conflict()
+        const data = Buffer.from(change.data, "base64")
+        if (data.toString("base64") !== change.data || data.length > WorkspaceProtocol.writeBytes)
+          throw new Error("Invalid replacement bytes")
+        const missing = await parents(tree, from.path, true)
+        const replacement =
+          change.mode === "120000"
+            ? metadata({ kind: "symlink", path: from.path, mode: 0o777, target: SnapshotLink.decode(data).target })
+            : file(from.path, data, change.mode === "100755" ? 0o755 : 0o644, store)
+        return finish(
+          (async function* () {
+            for await (const entry of tree.references()) if (entry.id !== from.path) yield entry
+            for (const entry of missing) yield metadata(entry)
+            yield replacement
+          })(),
+        )
       }
-      for (const name of missing) entries.set(name, { kind: "directory", path: name, mode: 0o755 })
-    }
-    if (change.kind === "replace") {
-      if (
-        (from.entry ? WorkspaceTree.entryVersion(from.entry, info.content?.revision) : null) !== change.expectedVersion
-      )
-        throw conflict()
-      if (from.entry?.kind === "directory" || (from.entry?.kind === "file" && !(from.entry.mode & 0o222)))
-        throw new WorkspaceErrors.AccessDeniedError("Workspace entry cannot be replaced")
-      if (
-        change.expectedContentVersion !== undefined &&
-        (from.entry?.kind !== "file" || `sha256:${from.entry.hash}` !== change.expectedContentVersion)
-      )
-        throw conflict()
-      const data = Buffer.from(change.data, "base64")
-      if (data.toString("base64") !== change.data || data.length > WorkspaceProtocol.writeBytes)
-        throw new Error("Invalid replacement bytes")
-      parents(from.path, true)
-      if (change.mode === "120000")
-        entries.set(from.path, {
-          kind: "symlink",
-          path: from.path,
-          mode: 0o777,
-          target: SnapshotLink.decode(data).target,
+      if (change.kind === "import") {
+        if (from.entry) throw conflict()
+        const missing = await parents(tree, from.path, true)
+        const incoming = WorkspaceCatalog.Info.parse({
+          ...info,
+          content: { revision: info.content?.revision ?? 0, manifest: change.manifest },
         })
-      else {
-        const chunks = []
-        for (let offset = 0; offset < data.length; offset += WorkspaceTree.chunkBytes) {
-          const bytes = data.subarray(offset, offset + WorkspaceTree.chunkBytes)
-          const hash = WorkspaceTree.hash(bytes)
-          await store.put(hash, bytes)
-          chunks.push({ hash, size: bytes.length })
-        }
-        entries.set(from.path, {
-          kind: "file",
-          path: from.path,
-          mode: change.mode === "100755" ? 0o755 : 0o644,
-          hash: WorkspaceTree.hash(data),
-          size: data.length,
-          chunks,
-        })
+        return withTree(
+          incoming,
+          store,
+          async (source) => {
+            if (!(await source.get("entry"))) throw new Error("Transfer has no root entry")
+            return finish(
+              (async function* () {
+                yield* tree.references()
+                for (const entry of missing) yield metadata(entry)
+                for await (const entry of source.references()) {
+                  const original = await source.get(entry.id)
+                  const relocated = WorkspaceTree.importHeader(original!, from.path)
+                  if (protectSensitive) protectedPath(relocated.path)
+                  yield { ...entry, id: Portable.path(relocated.path, Portable.Metadata.parse(entry.metadata)) }
+                }
+              })(),
+            )
+          },
+          { signal: input.signal },
+        )
       }
-    } else if (change.kind === "import") {
-      if (from.entry) throw conflict()
-      const bytes = WorkspaceTree.verify(
-        change.manifest,
-        await store.get(change.manifest, WorkspaceTree.manifestBytes),
-        WorkspaceTree.manifestBytes,
-      )
-      const incoming = WorkspaceTree.importEntries(JSON.parse(new TextDecoder().decode(bytes)), from.path)
-      for (const entry of incoming) {
-        if (protectSensitive) protectedPath(entry.path)
-        entries.set(entry.path, entry)
+      if (change.kind === "mkdir") {
+        if (from.entry) throw conflict()
+        const missing = await parents(tree, from.path, change.createParents ?? false)
+        return finish(
+          (async function* () {
+            yield* tree.references()
+            for (const entry of missing) yield metadata(entry)
+            yield metadata({ kind: "directory", path: from.path, mode: change.mode ?? 0o755 })
+          })(),
+        )
       }
-      parents(from.path, true)
-    } else if (change.kind === "mkdir") {
-      if (from.entry) throw conflict()
-      parents(from.path, change.createParents ?? false)
-      entries.set(from.path, { kind: "directory", path: from.path, mode: change.mode ?? 0o755 })
-    } else {
       if (!from.entry || WorkspaceTree.entryVersion(from.entry, info.content?.revision) !== change.expectedVersion)
         throw conflict()
-      const members = tree.entries.filter((entry) => entry.path === from.path || entry.path.startsWith(`${from.path}/`))
-      if (protectSensitive) for (const entry of members) protectedPath(entry.path)
       if (change.kind === "remove") {
-        if (!change.recursive && members.length > 1)
-          throw new Error("Directory is not empty; recursive removal is required")
-        parents(from.path, false)
-        for (const entry of members) entries.delete(entry.path)
-      } else {
-        const to = WorkspaceTree.resolve(tree, change.to, false)
-        if (to.entry) throw conflict()
-        if (from.path.startsWith(`${to.path}/`) || to.path.startsWith(`${from.path}/`))
-          throw new Error("Source and destination must be separate filesystem entries")
-        parents(to.path, false)
-        if (change.kind === "move") {
-          parents(from.path, false)
-          for (const entry of members) entries.delete(entry.path)
+        if (!change.recursive) {
+          const children = tree.entries({ prefix: from.path + "/" })
+          const next = await children.next()
+          await children.return(undefined)
+          if (!next.done) throw new Error("Directory is not empty; recursive removal is required")
         }
-        for (const entry of members) {
-          const name = to.path + entry.path.slice(from.path.length)
-          if (protectSensitive) protectedPath(name)
-          entries.set(name, { ...entry, path: name })
-        }
+        await parents(tree, from.path, false)
+        return finish(
+          (async function* () {
+            for await (const entry of tree.references()) {
+              if (member(entry.id, from.path)) {
+                if (protectSensitive) protectedPath(entry.id)
+              } else yield entry
+            }
+          })(),
+        )
       }
-    }
-    return prepare(info, store, { version: 1, entries: [...entries.values()] })
+      const to = await tree.resolve(change.to, false)
+      if (to.entry) throw conflict()
+      if (member(from.path, to.path) || member(to.path, from.path))
+        throw new Error("Source and destination must be separate filesystem entries")
+      await parents(tree, to.path, false)
+      if (change.kind === "move") await parents(tree, from.path, false)
+      return finish(
+        (async function* () {
+          for await (const entry of tree.references())
+            if (change.kind !== "move" || !member(entry.id, from.path)) yield entry
+          for await (const entry of tree.references({ prefix: from.path })) {
+            if (!member(entry.id, from.path)) continue
+            const filename = to.path + entry.id.slice(from.path.length)
+            if (protectSensitive) {
+              protectedPath(entry.id)
+              protectedPath(filename)
+            }
+            yield { ...entry, id: Portable.path(filename, Portable.Metadata.parse(entry.metadata)) }
+          }
+        })(),
+      )
+    })
   }
 
   export async function mutate(input: Selection, change: WorkspaceProtocol.Change) {
-    const prepared = await prepareChange(input, change)
-    return WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
+    return (await prepareChange(input, change)).publish()
   }
 
   function protectedPath(filename: string) {
@@ -541,17 +694,12 @@ export namespace WorkspaceContent {
       throw new WorkspaceErrors.AccessDeniedError("Access denied: protected filesystem entry")
   }
 
-  async function prepare(info: WorkspaceCatalog.Info, store: BlobStore, tree: WorkspaceTree.Manifest) {
-    const bytes = WorkspaceTree.encode(tree)
-    const manifest = WorkspaceTree.hash(bytes)
-    await store.put(manifest, bytes)
-    return { info, manifest }
-  }
-
-  export async function publish(info: WorkspaceCatalog.Info, store: BlobStore, tree: WorkspaceTree.Manifest) {
-    const bytes = WorkspaceTree.encode(tree)
-    const hash = WorkspaceTree.hash(bytes)
-    await store.put(hash, bytes)
-    return WorkspaceCatalog.publishContent(info, hash)
+  export async function publish(info: WorkspaceCatalog.Info, provider: BlobStore, raw: WorkspaceTree.Manifest) {
+    const input = WorkspaceCatalog.Info.parse(info)
+    const tree = WorkspaceTree.Manifest.parse(raw)
+    const assert = captureOwner()
+    const store = ports(provider, assert)
+    const prepared = await finish(input, store, legacy(tree, store).references(), 0o755, assert)
+    return prepared.publish()
   }
 }

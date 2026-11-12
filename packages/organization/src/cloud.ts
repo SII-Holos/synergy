@@ -324,7 +324,7 @@ export namespace OrganizationCloud {
         return previous.result
       }
       revision(input.expectedRevision, (await WorkspaceCatalog.get(workspaceID, scopeID)).revision)
-      await WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
+      await prepared.publish()
       const result = await view(locator)
       await Storage.write(operation, Receipt.parse({ schemaVersion: 1, digest: hash, result }))
       return result

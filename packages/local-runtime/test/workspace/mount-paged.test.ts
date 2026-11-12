@@ -75,6 +75,22 @@ test("native attachment copies a complete paged saved head and saves independent
     expect(mounted.activeMount?.state).toBe("active")
     const files = await WorkspaceMounts.connect(mounted)
     const reference = WorkspaceMounts.reference(mounted)
+    const checkpoint = await files.write({
+      id: "paged-native-write",
+      mount: reference,
+      path: ".env",
+      data: Buffer.from("checkpoint fixture").toString("base64"),
+      expectedVersion: null,
+    })
+    expect(checkpoint.beforeManifest).toBeString()
+    expect(checkpoint.manifest).toBeString()
+    const saved = await WorkspaceMounts.save(mounted, files, checkpoint)
+    expect(WorkspacePortableTree.Root.safeParse(await WorkspaceContent.storedRoot(saved, store)).success).toBe(true)
+    const before = WorkspaceContent.decode(
+      checkpoint.beforeManifest!,
+      await store.get(checkpoint.beforeManifest!, WorkspaceTree.manifestBytes),
+    )
+    expect(WorkspacePortableTree.Root.safeParse(before).success).toBe(true)
     await fs.rm(objects, { recursive: true })
     expect((await files.read({ mount: reference, path: "file-259", maximumBytes: 16 })).data).toBe(
       Buffer.from([0, 255, 259 % 251]).toString("base64"),
@@ -84,6 +100,9 @@ test("native attachment copies a complete paged saved head and saves independent
     expect(await WorkspaceContent.read({ workspaceID: workspace.id, scopeID: scope.id }, "file-259")).toEqual(
       new Uint8Array([0, 255, 259 % 251]),
     )
+    expect(
+      new TextDecoder().decode(await WorkspaceContent.read({ workspaceID: workspace.id, scopeID: scope.id }, ".env")),
+    ).toBe("checkpoint fixture")
     expect(await Environment.uses(environment.id)).toEqual([])
   })
 }, 20_000)

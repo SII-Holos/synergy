@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0136](0136-default-workspace-writer-rejected-paged-heads.md)
+
 - [0137](0137-current-fingerprints-hid-a-missing-authority-transition.md)
 
 - [0133](0133-session-freeze-ignored-retained-environment-admission.md)

@@ -275,14 +275,26 @@ export namespace WorkspaceOperations {
     })
   }
 
-  export function mutate(input: Selection & { change: WorkspaceProtocol.Change; protectSensitive?: boolean }) {
-    return operate(input, {
-      change: WorkspaceProtocol.Change.parse(input.change),
-      protectSensitive: input.protectSensitive,
-    })
+  export function mutate(
+    input: Selection & { change: WorkspaceProtocol.Change; protectSensitive?: boolean; assertCurrent?: () => void },
+  ) {
+    return operate(
+      input,
+      {
+        change: WorkspaceProtocol.Change.parse(input.change),
+        protectSensitive: input.protectSensitive,
+      },
+      input.assertCurrent,
+    )
   }
 
-  async function operate(input: Selection, change: Change) {
+  async function operate(input: Selection, change: Change, sourceGuard?: () => void) {
+    input = { ...input }
+    const owner = WorkspaceContent.captureOwner(input.signal)
+    const assert = () => {
+      sourceGuard?.()
+      owner()
+    }
     const digest = WorkspaceTree.hash(
       new TextEncoder().encode(JSON.stringify({ workspaceID: input.workspaceID, ...change })),
     )
@@ -293,9 +305,11 @@ export namespace WorkspaceOperations {
           throw new Error("Workspace operation already has different input")
         return completed(await resume(existing))
       }
-      input.signal?.throwIfAborted()
+      assert()
       await RuntimeMaintenance.assertAdmission()
+      assert()
       const workspace = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
+      assert()
       if (input.generation !== undefined && input.generation !== workspace.binding.generation)
         throw new WorkspaceCatalog.BindingChanged({ workspaceID: workspace.id, message: "Workspace binding changed" })
       if (!workspace.activeMount) {
@@ -307,28 +321,31 @@ export namespace WorkspaceOperations {
           "change" in change
             ? await WorkspaceContent.prepareChange(input, change.change, change.protectSensitive)
             : await WorkspaceContent.prepareWrite(input, { ...change, data: Buffer.from(change.data, "base64") })
-        input.signal?.throwIfAborted()
-        const info = await Storage.transaction(async () => {
-          await RuntimeMaintenance.assertAdmission()
-          await WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
-          const evidence = await WorkspaceEvidence.begin(prepared.info)
-          return persist(
-            Info.parse({
-              id: input.id,
-              scopeID: input.scopeID,
-              workspaceID: workspace.id,
-              generation: workspace.binding.generation,
-              input: operation,
-              digest,
-              state: evidence ? "unsaved" : "completed",
-              evidence,
-              beforeManifest: prepared.info.content?.manifest ?? null,
-              afterManifest: prepared.manifest,
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-            }),
-          )
-        })
+        assert()
+        const info = await Storage.transaction(
+          async () => {
+            await RuntimeMaintenance.assertAdmission()
+            await prepared.publish()
+            const evidence = await WorkspaceEvidence.begin(prepared.info)
+            return persist(
+              Info.parse({
+                id: input.id,
+                scopeID: input.scopeID,
+                workspaceID: workspace.id,
+                generation: workspace.binding.generation,
+                input: operation,
+                digest,
+                state: evidence ? "unsaved" : "completed",
+                evidence,
+                beforeManifest: prepared.info.content?.manifest ?? null,
+                afterManifest: prepared.manifest,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              }),
+            )
+          },
+          { commitGuard: assert },
+        )
         return resume(info)
       }
       if (workspace.activeMount.state !== "active" || workspace.binding.state !== "bound")

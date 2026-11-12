@@ -12,6 +12,7 @@ import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import type { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
 import { NativeFileMutation } from "./mutation-core"
 import { NativeFileEntry } from "./entry-core"
+import { WorkspacePortableTree } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
 
 export namespace FileView {
   export const native = EnvironmentResources.localFiles
@@ -383,20 +384,53 @@ export namespace FileView {
 
   export async function importTree(
     filename: string,
-    capture: (store: BlobStore) => Promise<WorkspaceTree.Manifest>,
+    capture: (store: BlobStore) => Promise<WorkspaceContent.StoredTree>,
     signal?: AbortSignal,
     operationID?: string,
   ) {
+    const assert = WorkspaceContent.captureOwner(signal)
+    const destination = relative(filename)
+    const id = operationID ?? EnvironmentResources.nextOperationID()
     const info = await selected()
+    const original = selection(info)
+    assert()
     const files = info.activeMount ? await WorkspaceMounts.connect(info) : undefined
-    const store: BlobStore = files
-      ? { get: (hash, limit) => files.getBlob(hash, limit), put: (hash, bytes) => files.putBlob(hash, bytes) }
+    const selectedStore: BlobStore = files
+      ? { get: files.getBlob.bind(files), put: files.putBlob.bind(files) }
       : (await WorkspaceContent.resolve(selection(info))).store
+    const get = selectedStore.get.bind(selectedStore)
+    const put = selectedStore.put.bind(selectedStore)
+    const store: BlobStore = {
+      async get(hash, maximum) {
+        assert()
+        const bytes = await get(hash, maximum)
+        assert()
+        return bytes
+      },
+      async put(hash, bytes) {
+        assert()
+        await put(hash, bytes)
+        assert()
+      },
+    }
+    assert()
     const tree = await capture(store)
-    const bytes = WorkspaceTree.encode(tree)
+    assert()
+    const bytes =
+      "entries" in tree
+        ? WorkspaceTree.encode(tree)
+        : new TextEncoder().encode(JSON.stringify(WorkspacePortableTree.Root.parse(tree)))
     const manifest = WorkspaceTree.hash(bytes)
     await store.put(manifest, bytes)
-    await mutate({ kind: "import", to: relative(filename), manifest }, signal, true, operationID)
+    assert()
+    await WorkspaceOperations.mutate({
+      ...original,
+      id,
+      change: { kind: "import", to: destination, manifest },
+      signal,
+      protectSensitive: true,
+      assertCurrent: assert,
+    })
   }
 
   export async function mutate(

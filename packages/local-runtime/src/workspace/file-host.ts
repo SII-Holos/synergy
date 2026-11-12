@@ -16,7 +16,7 @@ import type { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/a
 import { NativeWorkspaceTree } from "./tree"
 import { NativeWorkspacePortableTree } from "./portable-tree"
 import { WorkspacePortableTree } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
-import type { WorkspaceContent, BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
+import { WorkspaceContent, type BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileWatcherBinding } from "../file/watcher-binding"
 // @ts-ignore
@@ -188,10 +188,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
   private async savedTree(hash: string, store: BlobStore): Promise<WorkspaceContent.StoredTree> {
     const bytes = await store.get(hash, WorkspaceTree.manifestBytes)
     this.shutdown.signal.throwIfAborted()
-    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
-    return value && typeof value === "object" && "tree" in value
-      ? WorkspacePortableTree.Root.parse(value)
-      : WorkspaceTree.Manifest.parse(value)
+    return WorkspaceContent.decode(hash, bytes)
   }
   private materialize(
     root: string,
@@ -681,8 +678,13 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       const source = MountReceipt.parse(await this.receipt("mounts", reference.id)).input.source
       let manifest: string | null = null
       if (source.kind === "materialized") {
-        const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
-        const bytes = WorkspaceTree.encode(tree)
+        const tree = await NativeWorkspacePortableTree.checkpoint({
+          root: mount.path,
+          directory: this.treeCache(),
+          store: this.blobs(),
+          signal: this.shutdown.signal,
+        })
+        const bytes = new TextEncoder().encode(JSON.stringify(tree))
         manifest = WorkspaceTree.hash(bytes)
         await this.putBlob(manifest, bytes)
       }
@@ -703,8 +705,13 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     const source = MountReceipt.parse(await this.receipt("mounts", reference.id)).input.source
     if (source.kind !== "materialized") return undefined
     await this.options.coordinator.validateRetention(claim, mount.path)
-    const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
-    const bytes = WorkspaceTree.encode(tree)
+    const tree = await NativeWorkspacePortableTree.checkpoint({
+      root: mount.path,
+      directory: this.treeCache(),
+      store: this.blobs(),
+      signal: this.shutdown.signal,
+    })
+    const bytes = new TextEncoder().encode(JSON.stringify(tree))
     const manifest = WorkspaceTree.hash(bytes)
     await this.putBlob(manifest, bytes)
     return manifest

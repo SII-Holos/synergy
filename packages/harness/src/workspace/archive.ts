@@ -129,6 +129,14 @@ export namespace WorkspaceArchive {
   export async function* records(snapshot: Saved, signal?: AbortSignal): AsyncGenerator<ArchiveRecord> {
     const assert = snapshots.get(snapshot)
     if (!assert) throw new Invalid("Workspace archive requires its original saved selection")
+    yield* graphRecords(snapshot, assert, signal)
+  }
+
+  async function* graphRecords(
+    snapshot: Pick<Saved, "tree" | "store">,
+    assert: () => void,
+    signal?: AbortSignal,
+  ): AsyncGenerator<ArchiveRecord> {
     assert()
     signal?.throwIfAborted()
     if (!("entries" in snapshot.tree)) {
@@ -175,10 +183,46 @@ export namespace WorkspaceArchive {
   export async function copyObjects(snapshot: Saved, destination: Pick<BlobStore, "put">, signal?: AbortSignal) {
     const assert = snapshots.get(snapshot)
     if (!assert) throw new Invalid("Workspace archive requires its original saved selection")
+    return copyGraph(snapshot, assert, destination, signal)
+  }
+
+  export async function copyManifest(
+    input: { manifest: string; source: Pick<BlobStore, "get"> },
+    destination: Pick<BlobStore, "put">,
+    signal?: AbortSignal,
+  ) {
+    const manifest = WorkspaceTree.Hash.parse(input.manifest)
+    const assert = owner(signal)
+    const get = input.source.get.bind(input.source)
+    const put = destination.put.bind(destination)
+    const source: BlobStore = {
+      async put() {
+        throw new Invalid("Raw Workspace graph source is read-only")
+      },
+      async get(hash, maximum) {
+        assert()
+        const bytes = await get(hash, maximum)
+        assert()
+        return bytes
+      },
+    }
+    const tree = WorkspaceContent.decode(manifest, await source.get(manifest, WorkspaceTree.manifestBytes))
+    assert()
+    const copied = await copyGraph({ tree, store: source }, assert, { put }, signal)
+    if (copied !== manifest) throw new Invalid("Raw Workspace graph descriptor changed")
+    return copied
+  }
+
+  async function copyGraph(
+    snapshot: Pick<Saved, "tree" | "store">,
+    assert: () => void,
+    destination: Pick<BlobStore, "put">,
+    signal?: AbortSignal,
+  ) {
     const put = destination.put.bind(destination)
     let descriptor: Uint8Array | undefined
     let manifest: string | undefined
-    for await (const record of records(snapshot, signal)) {
+    for await (const record of graphRecords(snapshot, assert, signal)) {
       assert()
       signal?.throwIfAborted()
       if (record.kind === "manifest")

@@ -29,7 +29,7 @@ Vault and execution-time secret resolution stay here; detection belongs to `pack
 
 Before copying deferred datasets, use `storage/compat` convergence. Central migrations stage shared records and owner cohorts; Runtime Handle drains imports.
 
-Compare Workspace checkpoints; separate tool evidence. Use versioned previews, Snapshot ownership, indexed captures and callback-bound archive/installation evidence. `WorkspaceContent.withTree` guards readers; `WorkspaceArchive` verifies graph copies. Preserve uncertain preparations. Verify `test/snapshot/`, `test/workspace/{portable-tree,archive,archive-paged,tree-import}.test.ts` and Local Runtime's `test/workspace/change-attribution.test.ts`.
+Compare Workspace checkpoints; separate evidence. Preserve Snapshot ownership, callback-bound `withTree` references and Archive verification. `WorkspaceContent` writes paged heads; publish preparations inside original receipt transactions. Preserve uncertain preparations. Verify `test/snapshot/`, `test/workspace/{content-producer,portable-tree,archive,archive-paged,tree-import}.test.ts` and Local Runtime's `test/workspace/change-attribution.test.ts`.
 
 Cortex holds preserve task/root/input/budget/deadline/notification identity; never cancel/recreate or auto-resume. Transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`, `test/cortex/{parent-abort,task-tool-abort}.test.ts`.
 

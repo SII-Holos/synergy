@@ -632,73 +632,83 @@ export namespace WorkspaceMounts {
     beforeRelease?: (workspace: WorkspaceCatalog.Info) => Promise<void>,
     attempt?: WorkspaceCheckpoints.Attempt,
   ) {
+    info = WorkspaceCatalog.Info.parse(info)
+    checkpoint = WorkspaceProtocol.Checkpoint.parse(checkpoint)
+    const assert = WorkspaceContent.captureOwner()
+    const acknowledge = files.acknowledge.bind(files)
+    const get = files.getBlob.bind(files)
+    const source = {
+      async get(hash: string, maximum: number) {
+        assert()
+        const bytes = await get(hash, maximum)
+        assert()
+        return bytes
+      },
+    }
     if (JSON.stringify(checkpoint.mount) !== JSON.stringify(reference(info)))
       throw new Error("Workspace checkpoint belongs to another mount")
     if (attempt?.state === "saved" && attempt.saved) {
       await beforeRelease?.(attempt.saved)
-      await files.acknowledge(checkpoint.id)
+      await acknowledge(checkpoint.id)
       return attempt.saved
     }
     if (info.backend?.provider !== "objects") {
-      await files.acknowledge(checkpoint.id)
+      await acknowledge(checkpoint.id)
       return info
     }
     if (!checkpoint.manifest) throw new Error("Object-backed Workspace checkpoint has no manifest")
-    if (checkpoint.beforeManifest) await preserveManifest(info, files, checkpoint.beforeManifest)
-    const bytes = WorkspaceTree.verify(
-      checkpoint.manifest,
-      await files.getBlob(checkpoint.manifest, WorkspaceTree.manifestBytes),
-      WorkspaceTree.manifestBytes,
-    )
-    const tree = WorkspaceTree.Manifest.parse(JSON.parse(new TextDecoder().decode(bytes)))
+    if (checkpoint.beforeManifest) await preserveManifest(info, source, checkpoint.beforeManifest)
     const { store } = await WorkspaceContent.resolve({ workspaceID: info.id, scopeID: info.scopeID }, true)
-    await transfer(tree, { get: (hash, size) => files.getBlob(hash, size) }, store)
-    await store.put(checkpoint.manifest, bytes)
-    const latest = await WorkspaceCatalog.get(info.id, info.scopeID)
-    assertMount(latest, info)
+    assert()
+    const put = store.put.bind(store)
+    await WorkspaceArchive.copyManifest(
+      { manifest: checkpoint.manifest, source },
+      {
+        async put(hash, bytes) {
+          assert()
+          await put(hash, bytes)
+          assert()
+        },
+      },
+    )
     let result: WorkspaceCatalog.Info
     try {
-      result =
-        latest.content?.manifest === checkpoint.manifest
-          ? latest
-          : await WorkspaceCatalog.publishContent(info, checkpoint.manifest)
+      result = await Storage.transaction(
+        async () => {
+          const latest = await WorkspaceCatalog.get(info.id, info.scopeID)
+          assertMount(latest, info)
+          return latest.content?.manifest === checkpoint.manifest
+            ? latest
+            : WorkspaceCatalog.publishContent(info, checkpoint.manifest!)
+        },
+        { commitGuard: assert },
+      )
     } catch (error) {
       if (attempt && WorkspaceCatalog.BindingChanged.isInstance(error)) await WorkspaceCheckpoints.conflict(attempt)
       throw error
     }
     if (attempt) await WorkspaceCheckpoints.saved(attempt, result)
     await beforeRelease?.(result)
-    await files.acknowledge(checkpoint.id)
+    assert()
+    await acknowledge(checkpoint.id)
     return result
   }
 
-  async function preserveManifest(info: WorkspaceCatalog.Info, files: WorkspaceFileHost, manifest: string) {
-    const bytes = WorkspaceTree.verify(
-      manifest,
-      await files.getBlob(manifest, WorkspaceTree.manifestBytes),
-      WorkspaceTree.manifestBytes,
-    )
-    const tree = WorkspaceTree.Manifest.parse(JSON.parse(new TextDecoder().decode(bytes)))
+  async function preserveManifest(info: WorkspaceCatalog.Info, source: Pick<BlobStore, "get">, manifest: string) {
+    const assert = WorkspaceContent.captureOwner()
     const { store } = await WorkspaceContent.resolve({ workspaceID: info.id, scopeID: info.scopeID }, true)
-    await transfer(tree, { get: (hash, size) => files.getBlob(hash, size) }, store)
-    await store.put(manifest, bytes)
-  }
-
-  async function transfer(
-    tree: WorkspaceTree.Manifest,
-    source: Pick<BlobStore, "get">,
-    destination: Pick<BlobStore, "put">,
-  ) {
-    const copied = new Set<string>()
-    for (const entry of tree.entries) {
-      if (entry.kind !== "file") continue
-      for (const chunk of entry.chunks) {
-        if (copied.has(chunk.hash)) continue
-        const bytes = WorkspaceTree.verify(chunk.hash, await source.get(chunk.hash, chunk.size), chunk.size)
-        await destination.put(chunk.hash, bytes)
-        copied.add(chunk.hash)
-      }
-    }
+    assert()
+    const put = store.put.bind(store)
+    await WorkspaceArchive.copyManifest(
+      { manifest, source },
+      {
+        async put(hash, bytes) {
+          assert()
+          await put(hash, bytes)
+          assert()
+        },
+      },
+    )
   }
 
   export async function* releaseMounts(environment: Environment.Info) {

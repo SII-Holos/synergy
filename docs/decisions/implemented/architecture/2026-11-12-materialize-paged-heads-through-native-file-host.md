@@ -28,7 +28,7 @@ The host rechecks the final directory's identity against the same prepared recei
 
 ## Consequences
 
-Native mount and import consumers accept both saved-head formats while preserving the original file ownership, mutation receipts, cold recovery and shutdown drainage. Default checkpoint/capture producers still emit their existing legacy format; this consumer change does not advance that producer or remove its limits. The optional preparation identity is additive, but older ambiguous pending native mounts require explicit recovery instead of inferred adoption.
+Native mount and import consumers accept both saved-head formats while preserving the original file ownership, mutation receipts, cold recovery and shutdown drainage. The [default producer decision](2026-11-12-write-paged-workspace-heads-through-indexed-chunks.md) advances checkpoint and file-import production after save and preservation consumers accept the complete paged graph. The optional preparation identity is additive, but older ambiguous pending native mounts require explicit recovery instead of inferred adoption.
 
 ## Verification
 

@@ -80,7 +80,16 @@ export namespace NativeWorkspacePortableTree {
     }
   }
   export function capture(options: Options): Promise<Portable.Root> {
-    return inventory(options, "capture")
+    return inventory(snapshot(options), "capture")
+  }
+  export function checkpoint(options: Options): Promise<Portable.Root> {
+    return inventory(snapshot(options), "checkpoint")
+  }
+  function snapshot(options: Options): Options {
+    return {
+      ...options,
+      store: { put: options.store.put.bind(options.store), get: options.store.get.bind(options.store) },
+    }
   }
   export async function verify(options: Omit<Options, "store"> & { captured: Portable.Root }): Promise<void> {
     const captured = Portable.Root.parse(options.captured)
@@ -101,7 +110,7 @@ export namespace NativeWorkspacePortableTree {
     if (current.mode !== captured.mode || Stream.digest(current.tree) !== Stream.digest(captured.tree))
       throw new Error("Portable Workspace changed after materialization")
   }
-  async function inventory(options: Options, policy: "capture" | "verify"): Promise<Portable.Root> {
+  async function inventory(options: Options, policy: "capture" | "checkpoint" | "verify"): Promise<Portable.Root> {
     const { directory, store, signal } = options
     const root = path.resolve(options.root)
     signal?.throwIfAborted()

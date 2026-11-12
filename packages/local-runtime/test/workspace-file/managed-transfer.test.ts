@@ -1,18 +1,75 @@
 import { expect, test } from "bun:test"
+import fs from "node:fs/promises"
 import path from "node:path"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
-import { WorkspaceBlobs } from "@ericsanchezok/synergy-harness/workspace/content"
+import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { storageTestBackends } from "../../../harness/test/support/storage-backends"
 import { WorkspaceFileService as Files } from "../../src/workspace-file/service"
+import { FileView } from "../../src/file/view"
+import { NativeWorkspacePortableTree } from "../../src/workspace/portable-tree"
 import { testRuntime as localRuntime } from "../support/runtime"
 import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
+
+test("paged file import retains its original Workspace after native capture changes the caller selection", async () => {
+  await using temporary = await tmpdir()
+  const root = path.join(temporary.path, "source")
+  await fs.mkdir(root)
+  await Bun.write(path.join(root, "entry"), "original selection")
+  await using runtime = await testRuntime({
+    register() {
+      WorkspaceBlobs.register("import-selection", {
+        put: (hash, bytes) => Storage.writeBinary(["import-selection", hash], bytes),
+        get: (hash) => Storage.readBinary(["import-selection", hash]),
+      })
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const original = await WorkspaceCatalog.create({
+          scopeID: Scope.home().id,
+          backend: { provider: "objects", spec: { blobStore: "import-selection" } },
+        })
+        const other = await WorkspaceCatalog.create({
+          scopeID: Scope.home().id,
+          backend: { provider: "objects", spec: { blobStore: "import-selection" } },
+        })
+        await using resources = await EnvironmentResources.resolve({
+          origin: runtime.origin("import-selection"),
+          scopeID: original.scopeID,
+          workspaceID: original.id,
+          needs: { workspace: true },
+        })
+        await EnvironmentResources.provide(resources, "import-selection", () =>
+          FileView.importTree("uploaded", async (store) => {
+            const tree = await NativeWorkspacePortableTree.checkpoint({
+              root,
+              directory: path.join(temporary.path, "cache"),
+              store,
+            })
+            resources.workspace = other
+            return tree
+          }),
+        )
+        expect((await WorkspaceCatalog.get(other.id, other.scopeID)).content).toEqual(other.content)
+        expect(
+          new TextDecoder().decode(
+            await WorkspaceContent.read({ workspaceID: original.id, scopeID: original.scopeID }, "uploaded"),
+          ),
+        ).toBe("original selection")
+      },
+    }),
+  )
+})
 
 for (const backend of storageTestBackends())
   test(`${backend}: managed imports replay their operation and stream bounded chunks without preloading file content`, async () => {
