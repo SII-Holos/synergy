@@ -44,6 +44,7 @@ import { createHandoffs, registerHandoffAuthorityHistory } from "./handoff"
 import { createSessionReadForwarder } from "./session-read"
 import { OrganizationServiceMaintenance } from "./service-maintenance"
 import { OrganizationServiceHome } from "./service-home"
+import { OrganizationServiceNative } from "./backup/service-native"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -75,21 +76,25 @@ export async function openOrganizationServiceHomeUpgrade(
 
 async function openOrganizationNamespace(options: OrganizationServiceOptions, mode: "serve" | "upgrade") {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
+  const home = path.resolve(options.home)
+  const publicOrigin = options.publicOrigin
+  const webOptions = options.web ? { ...options.web } : undefined
+  const database = options.database ? { ...options.database } : undefined
+  const cloud = options.cloud
   const settings = OrganizationSettings.parse({
     authentication: options.authentication,
     clientAuthentication: options.clientAuthentication,
     registration: options.registration,
     connections: options.connections,
   })
-  if (settings.clientAuthentication?.clients.length && !options.publicOrigin)
+  if (settings.clientAuthentication?.clients.length && !publicOrigin)
     throw new Error("Client authentication requires an organization public origin")
-  if (options.publicOrigin) {
-    const url = new URL(options.publicOrigin)
-    if (url.origin !== options.publicOrigin || url.protocol !== "https:")
+  if (publicOrigin) {
+    const url = new URL(publicOrigin)
+    if (url.origin !== publicOrigin || url.protocol !== "https:")
       throw new Error("Organization public origin must be an HTTPS origin")
   }
-  const web = mode === "serve" && options.web ? await organizationWeb(options.web.directory) : undefined
-  const home = path.resolve(options.home)
+  const web = mode === "serve" && webOptions ? await organizationWeb(webOptions.directory) : undefined
   const root = path.join(home, ".synergy")
   const context = RuntimeContext.create(
     {
@@ -171,7 +176,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
         throw new Error("Organization service requires a dedicated Home without personal Runtime data")
       await fs.mkdir(path.join(root, "data"), { recursive: true, mode: 0o700 })
       store = await TransactionalStore.open(
-        options.database ?? {
+        database ?? {
           backend: "sqlite",
           namespace: "organization",
           filename: path.join(root, "data", "organization.sqlite"),
@@ -187,7 +192,9 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
       await OrganizationServiceHome.assertStartupOwner()
       OrganizationServiceMaintenance.register()
       OrganizationServiceHome.registerNamespaceIdentity()
-      OrganizationCloud.register(options.cloud)
+      OrganizationCloud.register(cloud)
+      if (mode === "serve")
+        OrganizationServiceNative.register({ ...settings, publicOrigin, web: webOptions, database, cloud })
       OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
         if (!connections) throw new Error("Organization Runtime presence is unavailable")
         return connections.availability(runtimeID)
@@ -260,12 +267,12 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
         },
       })
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
-      const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
+      const clientAuthentication = createClientAuthentication(settings.clientAuthentication, publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)
       const app = organizationApp(
         () => ready,
         authentication,
-        options.publicOrigin,
+        publicOrigin,
         registrations,
         connections,
         clientAuthentication,

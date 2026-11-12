@@ -21,8 +21,19 @@ export namespace SnapshotCheckpoint {
     readonly directory: string
     readonly namespace: Readonly<StorageCheckpoint.Manifest>
   }
+  export interface ArchiveEvidence {
+    readonly kind: "snapshot-checkpoint-archive"
+  }
+  const archiveEvidence = new WeakMap<ArchiveEvidence, { archive: Archive; assertCurrent(): void }>()
+  export function assertArchive(evidence: ArchiveEvidence): Archive {
+    const original = archiveEvidence.get(evidence)
+    if (!original) fail("Namespace archive requires native capture evidence")
+    original.assertCurrent()
+    return original.archive
+  }
   export interface Capture {
     exportArchive(input: Parameters<typeof StorageCheckpoint.exportArchive>[0]): Promise<Archive>
+    validateArchive(archive: Archive, options?: { signal?: AbortSignal }): Promise<ArchiveEvidence>
     exportSnapshots(input: {
       archive: Archive
       directory: string
@@ -96,6 +107,7 @@ export namespace SnapshotCheckpoint {
     const dataRoot = handle.artifactDirectory
     const store = handle.store
     const objects = handle.artifactObjects
+    const objectConfig = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
     await using lease = await SnapshotLease.acquireHome(dataRoot, { signal })
     signal.throwIfAborted()
     const controller = new AbortController()
@@ -112,7 +124,10 @@ export namespace SnapshotCheckpoint {
         RuntimeContext.current() !== runtime ||
         Storage.current().store !== store ||
         Storage.current().artifactDirectory !== dataRoot ||
-        Storage.current().artifactObjects !== objects
+        Storage.current().artifactObjects !== objects ||
+        objects?.blobs !== objectConfig?.blobs ||
+        objects?.writerID !== objectConfig?.writerID ||
+        objects?.now !== objectConfig?.now
       )
         fail("Snapshot capture is closed or belongs to another Runtime")
       scopeSignal.throwIfAborted()
@@ -183,6 +198,14 @@ export namespace SnapshotCheckpoint {
         }
     }
     async function exported(input: Parameters<Capture["exportArchive"]>[0]): Promise<Archive> {
+      const originalKeys = input.keys
+      input = {
+        ...input,
+        keys: Object.freeze({
+          current: originalKeys.current.bind(originalKeys),
+          resolve: originalKeys.resolve.bind(originalKeys),
+        }),
+      }
       assertCurrent()
       const exportSignal = input.signal ? AbortSignal.any([scopeSignal, input.signal]) : scopeSignal
       const namespace = await StorageCheckpoint.exportArchive({ ...input, signal: exportSignal })
@@ -268,6 +291,39 @@ export namespace SnapshotCheckpoint {
       return archive
     }
     const port: Capture = {
+      validateArchive(archive, options = {}) {
+        const originalSignal = options.signal
+        const signal = originalSignal ? AbortSignal.any([scopeSignal, originalSignal]) : scopeSignal
+        const task = (async () => {
+          assertCurrent()
+          signal.throwIfAborted()
+          const keys = archiveKeys.get(archive)
+          if (!archives.has(archive) || !keys) fail("Namespace capture requires its own exported archive")
+          await StorageCheckpoint.verifyArchive({
+            directory: archive.directory,
+            keys,
+            expected: archive.namespace,
+            signal,
+          })
+          assertCurrent()
+          signal.throwIfAborted()
+          const proof = Object.freeze({ kind: "snapshot-checkpoint-archive" as const })
+          archiveEvidence.set(proof, {
+            archive,
+            assertCurrent() {
+              assertCurrent()
+              signal.throwIfAborted()
+            },
+          })
+          return proof
+        })()
+        pending.add(task)
+        void task.then(
+          () => pending.delete(task),
+          () => pending.delete(task),
+        )
+        return task
+      },
       exportArchive(input) {
         assertCurrent()
         const task = exported(input)

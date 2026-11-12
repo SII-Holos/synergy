@@ -20,6 +20,7 @@ import {
 import { OrganizationRecord as Record } from "../storage/records"
 import { OrganizationStoragePath as Keys } from "../storage/path"
 import { OrganizationRecoveryArchive } from "./archive"
+import { OrganizationServiceNative } from "./service-native"
 
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
 const deployment = { orgID: Identity.ID, deploymentIncarnation: Identity.ID }
@@ -155,13 +156,19 @@ export namespace OrganizationBackupCohort {
   export interface Source {
     readonly kind: "organization-backup-namespace"
   }
-  export const NamespaceInventory = z.strictObject({
-    version: z.literal(1),
-    ordinal: z.number().int().nonnegative().safe(),
-    identity: Descriptor,
-    namespace: StorageCheckpoint.Manifest,
-    segment: z.strictObject({ namespace: StorageCheckpoint.Manifest }),
-  })
+  export const NamespaceInventory = z
+    .strictObject({
+      version: z.literal(2),
+      ordinal: z.number().int().nonnegative().safe(),
+      identity: Descriptor,
+      namespace: StorageCheckpoint.Manifest,
+      segment: z.strictObject({ namespace: StorageCheckpoint.Manifest }),
+      native: StorageCheckpoint.Manifest.optional(),
+    })
+    .refine(
+      (value) => (value.identity.kind === "service") === !!value.native,
+      "Service namespaces require their native Home segment",
+    )
   export type NamespaceInventory = z.infer<typeof NamespaceInventory>
   export function service(runner: Runner): Source {
     const source = Object.freeze({ kind: "organization-backup-namespace" as const })
@@ -295,12 +302,23 @@ export namespace OrganizationBackupCohort {
                   directory: path.join(base, "snapshots"),
                   signal,
                 })
+                const native =
+                  identity.kind === "service"
+                    ? await OrganizationServiceNative.capture({
+                        archive: await capture.validateArchive(namespace, { signal }),
+                        lease: source.lease!,
+                        directory: path.join(base, "native"),
+                        keys,
+                        signal,
+                      })
+                    : undefined
                 return NamespaceInventory.parse({
-                  version: 1,
+                  version: 2,
                   ordinal,
                   identity,
                   namespace: namespace.namespace,
                   segment: { namespace: segment.namespace },
+                  native: native?.namespace,
                 })
               },
               { signal },
@@ -310,7 +328,7 @@ export namespace OrganizationBackupCohort {
         await Bun.write(
           path.join(temporary, "cohort.json"),
           JSON.stringify({
-            version: 1,
+            version: 2,
             orgID: initial.identity.orgID,
             deploymentIncarnation: initial.identity.deploymentIncarnation,
             namespaces: sources.length,

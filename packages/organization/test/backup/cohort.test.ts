@@ -3,6 +3,8 @@ import { createHash, randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { OrganizationBackupCohort as Cohort } from "../../src/backup/cohort"
+import { OrganizationServiceNative } from "../../src/backup/service-native"
+import { OrganizationServiceHome } from "../../src/service-home"
 import { OrganizationRecoveryArchive } from "../../src/backup/archive"
 import { OrganizationStoragePath as Keys } from "../../src/storage/path"
 import { OrganizationRecord as Record } from "../../src/storage/records"
@@ -48,8 +50,11 @@ async function runtime(registration?: Runtime.HostedRegistrationRecord | "servic
   const selected = {
     schemaVersion: 2 as const,
     owner: registration === "service" ? "organization" : "organization-runtime",
-    identity: "f".repeat(64),
-    readerContract: "cohort-fixture-v1",
+    identity:
+      registration === "service"
+        ? createHash("sha256").update("synergy.organization.service.v1").digest("hex")
+        : "f".repeat(64),
+    readerContract: registration === "service" ? OrganizationServiceHome.readerContract : "cohort-fixture-v1",
   }
   if (registration) {
     await HomeOwnershipFile.open({ root: home.host.root, env: home.host.env, selected }).persist()
@@ -61,6 +66,7 @@ async function runtime(registration?: Runtime.HostedRegistrationRecord | "servic
     register() {
       RuntimeMaintenance.configure({ required: ["sessions", "loop-jobs", "environments"] })
       if (registration) {
+        if (registration === "service") OrganizationServiceNative.register({})
         HomeOwnership.select(selected)
         NativeNamespaceIdentity.register({
           owner: selected.owner,

@@ -4,7 +4,11 @@ import path from "node:path"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
-import { OrganizationConfigurationError, readOrganizationConfiguration } from "../src/configuration"
+import {
+  OrganizationConfigurationError,
+  readOrganizationConfiguration,
+  readOrganizationConfigurationSnapshot,
+} from "../src/configuration"
 import { ORGANIZATION_CONFIG_FILENAME, registerConfig } from "../src/config-schema"
 import { openOrganizationService } from "../src/service"
 
@@ -148,5 +152,69 @@ test("the organization domain is optional, global-only and fail-closed in compos
     })
   } finally {
     context.dispose()
+  }
+})
+
+test("native configuration snapshots retain the same validated JSONC bytes and explicit absence", async () => {
+  await using f = await fixture()
+  expect(await readOrganizationConfigurationSnapshot(f.home)).toEqual({
+    present: false,
+    settings: {},
+    bytes: new Uint8Array(),
+  })
+  const text = '{ // retained original comment\n "organization": { "authentication": { "loginMs": 12345 } } }\n'
+  await f.write(text)
+  const snapshot = await readOrganizationConfigurationSnapshot(f.home)
+  expect(snapshot.present).toBe(true)
+  expect(Buffer.from(snapshot.bytes).toString()).toBe(text)
+  expect(snapshot.settings).toEqual(await readOrganizationConfiguration(f.home))
+  const controller = new AbortController()
+  const reason = new Error("native capture cancelled")
+  controller.abort(reason)
+  await expect(readOrganizationConfigurationSnapshot(f.home, { signal: controller.signal })).rejects.toBe(reason)
+})
+
+test("native configuration snapshots reject a valid pathname replacement during the original descriptor read", async () => {
+  await using f = await fixture()
+  await f.write('{"organization":{"authentication":{"loginMs":12345}}}')
+  const open = fs.open.bind(fs)
+  const intercept = spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+    const file = await open(...args)
+    if (String(args[0]) !== f.file) return file
+    const read = file.read.bind(file)
+    let replaced = false
+    file.read = (async (...args: Parameters<typeof read>) => {
+      if (!replaced) {
+        replaced = true
+        await fs.rename(f.file, f.file + ".retained")
+        await Bun.write(f.file, '{"organization":{"authentication":{"loginMs":54321}}}')
+      }
+      return read(...args)
+    }) as typeof file.read
+    return file
+  })
+  try {
+    await expect(readOrganizationConfigurationSnapshot(f.home)).rejects.toMatchObject({ data: { reason: "changed" } })
+  } finally {
+    intercept.mockRestore()
+  }
+})
+
+test("native configuration snapshots reject a parent symlink even when it reaches the same original file", async () => {
+  await using f = await fixture()
+  await f.write("{}")
+  const open = fs.open.bind(fs)
+  const intercept = spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+    const file = await open(...args)
+    if (String(args[0]) !== f.file) return file
+    const parent = path.dirname(f.file)
+    await fs.rename(parent, parent + ".retained")
+    await fs.symlink(parent + ".retained", parent, "dir")
+    return file
+  })
+  try {
+    await expect(readOrganizationConfigurationSnapshot(f.home)).rejects.toMatchObject({ data: { reason: "changed" } })
+  } finally {
+    intercept.mockRestore()
   }
 })

@@ -19,7 +19,9 @@ import { SnapshotCheckpoint } from "./snapshot-checkpoint"
 import { StoredSnapshotMaintenance } from "./stored-snapshot-maintenance"
 
 export namespace SnapshotMaintenance {
+  export type ArchiveEvidence = SnapshotCheckpoint.ArchiveEvidence
   export const withCapture = SnapshotCheckpoint.withCapture
+  export const assertArchive = SnapshotCheckpoint.assertArchive
   export const withRestoredSegment = SnapshotCheckpoint.withRestoredSegment
   export const collectStoredPreparations = StoredSnapshotMaintenance.collect
   const Journal = z.object({
