@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
+import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
@@ -114,6 +115,25 @@ const initializationMigration: Migration = {
 
 export namespace OrganizationServiceHome {
   export const readerContract = selected.readerContract
+  export const recoveryReaderContract = "native-organization-service-recovery-v1"
+  export function archivedOwner(value: unknown) {
+    const current = HomeOwnershipFile.FencedInfo.parse(value)
+    if (
+      current.owner !== selected.owner ||
+      current.identity !== selected.identity ||
+      current.readerContract !== selected.readerContract
+    )
+      fail("Archived service Home belongs to another native owner or reader")
+    return current
+  }
+  export function installOwner(permit: HomeRestoration.InstallPermit) {
+    if (HomeRestoration.describe(permit).owner !== selected.owner)
+      fail("Service installation belongs to another native domain")
+    return HomeRestoration.installOwner(permit, {
+      identity: selected.identity,
+      readerContract: recoveryReaderContract,
+    })
+  }
   export const initialization = initializationMigration
   export async function assertStartupOwner() {
     owner()
@@ -137,6 +157,18 @@ export namespace OrganizationServiceHome {
       identity: selected.identity,
       readerContract: selected.readerContract,
     })
+  }
+  export async function selectForRecovery() {
+    const current = await owner().files.read()
+    if (current?.schemaVersion !== 3) return select()
+    if (
+      current.owner !== selected.owner ||
+      current.identity !== selected.identity ||
+      current.readerContract !== recoveryReaderContract
+    )
+      fail("Service recovery Home belongs to another native owner or reader")
+    await HomeRestoration.assertPendingOwner(current)
+    HomeOwnership.select(current)
   }
   export async function selectForUpgrade() {
     const { ownership } = await retainedOwner()

@@ -173,6 +173,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
       registerConfig()
       HomeRestoration.register()
       if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
+      else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()
       else OrganizationServiceHome.select()
       ownership = await ServerProcessLock.acquire()
       if (mode !== "recovery") await HomeRestoration.assertOrdinaryStartup()

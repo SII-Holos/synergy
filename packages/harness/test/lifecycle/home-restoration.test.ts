@@ -1,10 +1,12 @@
 import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { fileLockPath, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { RuntimeContext } from "../../src/lifecycle/context"
 import { HomeRestoration } from "../../src/lifecycle/home-restoration"
+import { HomeOwnershipFile } from "../../src/lifecycle/home-ownership-file"
 import { Storage } from "../../src/storage/storage"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { ServerProcessLock } from "../../src/util/server-process-lock"
@@ -311,5 +313,108 @@ test("an existing local artifact directory cannot be replaced between installati
   } finally {
     await selected.close()
     await fs.rm(selected.home, { recursive: true, force: true })
+  }
+})
+
+test("native installation fences bind the real intent references and cannot install archived ownership formats", async () => {
+  const selected = await fixture()
+  const owner = { identity: "c".repeat(64), readerContract: "native-organization-recovery-v1" }
+  try {
+    await selected.run(async () => {
+      const target = await HomeRestoration.begin(request)
+      const info = await HomeRestoration.inspect(target)
+      let expired: HomeRestoration.InstallPermit | undefined
+      await HomeRestoration.withTarget(target, async (permit) => {
+        expired = permit
+        const installed = await HomeRestoration.installOwner(permit, owner)
+        expect(installed).toEqual({
+          schemaVersion: 3,
+          owner: request.owner,
+          ...owner,
+          installationID: info.installationID,
+          incarnation: info.incarnation,
+        })
+        expect(await HomeRestoration.installOwner(permit, owner)).toEqual(installed)
+        const override = { ...owner, installationID: "another-installation" }
+        await expect(HomeRestoration.installOwner(permit, override)).rejects.toThrow()
+        await expect(
+          HomeOwnershipFile.open({
+            root: selected.root,
+            env: RuntimeContext.current().host.env,
+            selected: { schemaVersion: 2, owner: request.owner, ...owner },
+          }).assert(),
+        ).rejects.toThrow("migration")
+      })
+      await expect(HomeRestoration.installOwner(expired!, owner)).rejects.toThrow("callback")
+      expect(await Bun.file(path.join(selected.root, "home-ownership.json")).json()).toMatchObject({
+        schemaVersion: 3,
+        installationID: info.installationID,
+      })
+    })
+  } finally {
+    await selected.close()
+    await fs.rm(selected.home, { recursive: true, force: true })
+  }
+})
+
+test("released strict readers refuse installed ownership before real credential reads or SQL writes", async () => {
+  const baseline = await fixture()
+  const recovered = await fixture()
+  const identity = "c".repeat(64)
+  const compiled = await Bun.build({
+    entrypoints: [new URL("./support/ownership-v2-reader.ts", import.meta.url).pathname],
+    target: "node",
+  })
+  if (!compiled.success) throw new Error("Released ownership reader did not compile")
+  const entry = path.join(baseline.home, "released-reader.mjs")
+  await fs.writeFile(entry, await compiled.outputs[0]!.text())
+  for (const root of [baseline.root, recovered.root]) {
+    await fs.mkdir(path.join(root, "auth"))
+    await fs.writeFile(path.join(root, "auth", "organization-runtime.json"), "private fixture credential bytes")
+  }
+  await baseline.run(() =>
+    HomeOwnershipFile.open({
+      root: baseline.root,
+      env: RuntimeContext.current().host.env,
+      selected: { schemaVersion: 2, owner: request.owner, identity, readerContract: "native-reader-v2" },
+    }).persist(),
+  )
+  await baseline.close()
+  async function reader(root: string, operation: "credentials" | "sql", name: string) {
+    const probe = path.join(baseline.home, name)
+    const child = Bun.spawn(
+      [
+        operation === "credentials" ? "node" : process.execPath,
+        entry,
+        root,
+        operation,
+        probe,
+        pathToFileURL(new URL("../../src/storage/transactional-store.ts", import.meta.url).pathname).href,
+      ],
+      { env: { ...process.env }, stdout: "pipe", stderr: "pipe", timeout: 10_000 },
+    )
+    const [code] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    return { code, reached: await Bun.file(probe).exists() }
+  }
+  try {
+    expect(await reader(baseline.root, "credentials", "before-private")).toEqual({ code: 0, reached: true })
+    expect(await reader(baseline.root, "sql", "before-sql")).toEqual({ code: 0, reached: true })
+    await recovered.run(async () => {
+      const target = await HomeRestoration.begin(request)
+      await HomeRestoration.withTarget(target, async (permit) => {
+        await HomeRestoration.installOwner(permit, { identity, readerContract: "native-organization-recovery-v1" })
+        expect(await reader(recovered.root, "credentials", "after-private")).toEqual({ code: 1, reached: false })
+        expect(await reader(recovered.root, "sql", "after-sql")).toEqual({ code: 1, reached: false })
+        expect(await Storage.readMany([["released-reader", "publication"]])).toEqual([undefined])
+      })
+    })
+  } finally {
+    await recovered.close()
+    await fs.rm(baseline.home, { recursive: true, force: true })
+    await fs.rm(recovered.home, { recursive: true, force: true })
   }
 })

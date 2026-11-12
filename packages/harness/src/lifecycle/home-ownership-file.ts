@@ -19,7 +19,13 @@ export namespace HomeOwnershipFile {
     ...fields,
     readerContract: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
   })
-  export const Info = z.discriminatedUnion("schemaVersion", [LegacyInfo, FencedInfo])
+  export const RestorationInfo = FencedInfo.extend({
+    schemaVersion: z.literal(3),
+    installationID: z.uuid(),
+    incarnation: z.uuid(),
+  })
+  export type RestorationInfo = z.infer<typeof RestorationInfo>
+  export const Info = z.discriminatedUnion("schemaVersion", [LegacyInfo, FencedInfo, RestorationInfo])
   export type Info = z.infer<typeof Info>
 
   export class Error extends globalThis.Error {
@@ -64,20 +70,27 @@ export namespace HomeOwnershipFile {
         throw new Error("Home owner is unavailable or does not match this identity")
       if (
         selected.schemaVersion !== current.schemaVersion ||
-        (selected.schemaVersion === 2 &&
-          current.schemaVersion === 2 &&
-          selected.readerContract !== current.readerContract)
+        (selected.schemaVersion !== 1 &&
+          current.schemaVersion !== 1 &&
+          selected.readerContract !== current.readerContract) ||
+        (selected.schemaVersion === 3 &&
+          current.schemaVersion === 3 &&
+          (selected.installationID !== current.installationID || selected.incarnation !== current.incarnation))
       )
         throw new Error("Home owner format requires its explicit migration")
       return current
     }
 
-    async function persist() {
+    async function persist(options: { signal?: AbortSignal } = {}) {
       if (!selected) throw new Error("Select a Home owner before persisting its identity")
-      await withFileLock({ directory: path.join(root, "state", ".locks"), key: "home-ownership" }, async () => {
-        if (await assert()) return
-        await AtomicFile.writeJsonAtomic(filename, JSON.stringify(selected) + "\n", { private: true, durable: true })
-      })
+      await withFileLock(
+        { directory: path.join(root, "state", ".locks"), key: "home-ownership", signal: options.signal },
+        async () => {
+          if (await assert()) return
+          options.signal?.throwIfAborted()
+          await AtomicFile.writeJsonAtomic(filename, JSON.stringify(selected) + "\n", { private: true, durable: true })
+        },
+      )
     }
     async function upgrade(expected: Info, options: { signal?: AbortSignal } = {}) {
       const prior = LegacyInfo.parse(expected)

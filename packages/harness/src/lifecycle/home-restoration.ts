@@ -14,12 +14,13 @@ import { ServerProcessLock } from "../util/server-process-lock"
 
 const ID = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/)
 const Hash = z.string().regex(/^[a-f0-9]{64}$/)
-const Request = z.strictObject({
+const RestorationRequest = z.strictObject({
   restoreID: ID,
   owner: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
   sourceHash: Hash,
   payload: JsonValue,
 })
+const FenceRequest = HomeOwnershipFile.FencedInfo.omit({ schemaVersion: true, owner: true })
 const Physical = z.strictObject({ device: z.string().regex(/^\d+$/), inode: z.string().regex(/^\d+$/) })
 const Artifacts = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("present"), directory: z.string(), identity: Physical }),
@@ -34,7 +35,7 @@ type Artifacts = z.infer<typeof Artifacts>
 const Disk = z.strictObject({
   schemaVersion: z.literal(1),
   restoreID: ID,
-  owner: Request.shape.owner,
+  owner: RestorationRequest.shape.owner,
   sourceHash: Hash,
   requestHash: Hash,
   installationID: z.uuid(),
@@ -235,6 +236,8 @@ async function verify(binding: Binding, signal?: AbortSignal) {
 }
 
 export namespace HomeRestoration {
+  export const Request = RestorationRequest
+  export type Request = z.infer<typeof Request>
   export const Info = Disk.omit({ target: true })
   export type Info = z.infer<typeof Info>
   export interface Target {
@@ -357,11 +360,51 @@ export namespace HomeRestoration {
     frame.signal?.throwIfAborted()
     assertPrimary(frame.binding)
   }
+  export function describe(permit: InstallPermit): Info {
+    assertCurrent(permit)
+    const { target: _, ...info } = permits.get(permit)!.binding.record
+    return Info.parse(info)
+  }
+  export function assertRequest(permit: InstallPermit, value: Request) {
+    assertCurrent(permit)
+    const request = Request.parse(value)
+    if (digest(request) !== permits.get(permit)!.binding.record.requestHash)
+      throw new RestorationError("Installation belongs to a different original request")
+    assertCurrent(permit)
+  }
   export async function verifyCurrent(permit: InstallPermit) {
     assertCurrent(permit)
     const frame = permits.get(permit)!
     await verify(frame.binding, frame.signal)
     assertCurrent(permit)
+  }
+  export async function installOwner(
+    permit: InstallPermit,
+    input: z.infer<typeof FenceRequest>,
+  ): Promise<HomeOwnershipFile.RestorationInfo> {
+    assertCurrent(permit)
+    const selected = FenceRequest.parse(input)
+    const frame = permits.get(permit)!
+    const record = frame.binding.record
+    const ownership = HomeOwnershipFile.RestorationInfo.parse({
+      ...selected,
+      schemaVersion: 3,
+      owner: record.owner,
+      installationID: record.installationID,
+      incarnation: record.incarnation,
+    })
+    await verifyCurrent(permit)
+    const files = HomeOwnershipFile.open({
+      root: record.target.root,
+      env: frame.binding.runtime.host.env,
+      selected: ownership,
+    })
+    await files.persist({ signal: frame.signal })
+    await verifyCurrent(permit)
+    const retained = await files.assert({ required: true })
+    assertCurrent(permit)
+    if (digest(retained) !== digest(ownership)) throw new RestorationError("Native installation ownership changed")
+    return Object.freeze(ownership)
   }
   export async function withTarget<T>(
     selected: Target,
@@ -397,5 +440,27 @@ export namespace HomeRestoration {
     if (!record) return
     state().blocked = true
     throw new RestorationError("Native Home restoration is incomplete; use its restricted recovery owner")
+  }
+  export async function assertPendingOwner(value: HomeOwnershipFile.RestorationInfo) {
+    requireRegistered()
+    const ownership = HomeOwnershipFile.RestorationInfo.parse(value)
+    const runtime = RuntimeContext.current()
+    const { home, root } = runtime.host
+    const record = await read(root)
+    if (
+      !record ||
+      record.owner !== ownership.owner ||
+      record.installationID !== ownership.installationID ||
+      record.incarnation !== ownership.incarnation ||
+      (await fs.realpath(home)) !== record.target.home ||
+      (await fs.realpath(root)) !== record.target.root ||
+      digest(await physical(home)) !== digest(record.target.homeIdentity) ||
+      digest(await physical(root)) !== digest(record.target.rootIdentity)
+    )
+      throw new RestorationError("Restored Home ownership requires its actual native installation intent")
+    await HomeOwnershipFile.open({ root, env: runtime.host.env, selected: ownership }).assert({ required: true })
+    if (RuntimeContext.current() !== runtime)
+      throw new RestorationError("Restored Home ownership belongs to another Runtime")
+    state().blocked = true
   }
 }

@@ -4,6 +4,7 @@ import { createHash } from "node:crypto"
 import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
+import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
@@ -14,7 +15,7 @@ import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/trans
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
-import { OrganizationIdentity } from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationIdentity, OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import {
   OrganizationSettings,
   AuthenticationSettings,
@@ -26,6 +27,7 @@ import {
 import { readOrganizationConfigurationSnapshot, parseOrganizationConfiguration } from "../configuration"
 import { OrganizationServiceHome } from "../service-home"
 import type { OrganizationServiceOptions } from "../service"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 
 export namespace OrganizationServiceNative {
   const Settings = z.strictObject({
@@ -241,12 +243,8 @@ export namespace OrganizationServiceNative {
     }
     if (!manifest || JSON.stringify(manifest.source) !== JSON.stringify(source))
       fail("segment belongs to another namespace checkpoint")
-    if (
-      manifest.owner.owner !== "organization" ||
-      manifest.owner.readerContract !== OrganizationServiceHome.readerContract ||
-      manifest.startup.requirements.length
-    )
-      fail("segment requires its owning service composition")
+    OrganizationServiceHome.archivedOwner(manifest.owner)
+    if (manifest.startup.requirements.length) fail("segment requires its owning service composition")
     if (manifest.configuration.present !== !!configuration) fail("configuration bytes are missing or undeclared")
     if (!configuration) return manifest
     if (
@@ -267,5 +265,132 @@ export namespace OrganizationServiceNative {
     )
       fail("configuration meaning changed")
     return { ...manifest, rawConfiguration }
+  }
+  export function sourceHash(value: StorageCheckpoint.Manifest) {
+    return hash(Buffer.from(JSON.stringify(StorageCheckpoint.Manifest.parse(value))))
+  }
+  const CohortMapping = z.strictObject({
+    archiveID: OrganizationIdentity.ID,
+    pagesHash: OrganizationProtocol.Digest,
+    ordinal: z.number().int().nonnegative().safe(),
+    source: Identity,
+  })
+  export const InstallationRequest = HomeRestoration.Request.extend({
+    owner: z.literal("organization"),
+    payload: z.strictObject({ nativeHash: OrganizationProtocol.Digest, cohort: CohortMapping }),
+  })
+  export type InstallationRequest = z.infer<typeof InstallationRequest>
+  export function installationRequest(input: {
+    restoreID: string
+    source: StorageCheckpoint.Manifest
+    expected: StorageCheckpoint.Manifest
+    cohort: z.infer<typeof CohortMapping>
+  }): InstallationRequest {
+    return InstallationRequest.parse({
+      restoreID: input.restoreID,
+      owner: "organization",
+      sourceHash: sourceHash(input.source),
+      payload: { nativeHash: sourceHash(input.expected), cohort: structuredClone(input.cohort) },
+    })
+  }
+  export interface Installed {
+    readonly manifest: Readonly<Manifest>
+    readonly ownership: Readonly<HomeOwnershipFile.RestorationInfo>
+    assertCurrent(): void
+    verify(): Promise<void>
+  }
+  const installations = new WeakMap<Installed, { assert(): void; verify(): Promise<void> }>()
+  export function assertInstalled(installed: Installed) {
+    const current = installations.get(installed)
+    if (!current) fail("requires original native installation evidence")
+    current.assert()
+  }
+  export async function verifyInstalled(installed: Installed) {
+    assertInstalled(installed)
+    await installations.get(installed)!.verify()
+    assertInstalled(installed)
+  }
+  export async function withInstalled<T>(
+    input: Parameters<typeof verify>[0] & { permit: HomeRestoration.InstallPermit; request: InstallationRequest },
+    body: (installed: Installed) => Promise<T>,
+  ): Promise<T> {
+    const permit = input.permit
+    const directory = input.directory
+    const expected = StorageCheckpoint.Manifest.parse(input.expected)
+    const source = StorageCheckpoint.Manifest.parse(input.source)
+    const signal = input.signal
+    const provider = input.keys
+    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const request = InstallationRequest.parse(structuredClone(input.request))
+    const selected = HomeRestoration.describe(permit)
+    if (selected.owner !== "organization" || selected.sourceHash !== sourceHash(source))
+      fail("installation belongs to another namespace checkpoint or native owner")
+    if (request.sourceHash !== sourceHash(source) || request.payload.nativeHash !== sourceHash(expected))
+      fail("installation requires its original fixed native facet")
+    HomeRestoration.assertRequest(permit, request)
+    const runtime = RuntimeContext.current()
+    const home = runtime.host.home
+    let active = true
+    const assert = () => {
+      if (!active) fail("installation callback is closed")
+      signal?.throwIfAborted()
+      HomeRestoration.assertCurrent(permit)
+      HomeRestoration.assertRequest(permit, request)
+      if (RuntimeContext.current() !== runtime || runtime.host.home !== home)
+        fail("installation belongs to another Runtime")
+    }
+    try {
+      const verified = await verify({ directory, expected, source, keys, signal })
+      assert()
+      const { rawConfiguration, ...metadata } = verified
+      const manifest = Manifest.parse(metadata)
+      if (JSON.stringify(manifest.identity) !== JSON.stringify(request.payload.cohort.source))
+        fail("installation belongs to another original cohort participant")
+      const ownership = await OrganizationServiceHome.installOwner(permit)
+      assert()
+      const filename = path.join(home, ".synergy", "config", "synergy.d", ORGANIZATION_CONFIG_FILENAME)
+      let current = await readOrganizationConfigurationSnapshot(home, { signal })
+      assert()
+      const matches = (value: typeof current) =>
+        value.present === manifest.configuration.present &&
+        (!value.present ||
+          (value.bytes.byteLength === manifest.configuration.raw?.bytes &&
+            hash(value.bytes) === manifest.configuration.raw.sha256))
+      if (!current.present && rawConfiguration) {
+        await fs.mkdir(path.dirname(filename), { recursive: true, mode: 0o700 })
+        assert()
+        current = await readOrganizationConfigurationSnapshot(home, { signal })
+        assert()
+        if (!current.present) {
+          await AtomicFile.writeFileAtomic(filename, rawConfiguration, { private: true, durable: true })
+          assert()
+        } else if (!matches(current)) fail("target configuration conflicts with the fixed native material")
+      } else if (!matches(current)) fail("target configuration conflicts with the fixed native material")
+      const validate = async () => {
+        assert()
+        await HomeRestoration.verifyCurrent(permit)
+        assert()
+        await HomeOwnershipFile.open({ root: runtime.host.root, env: runtime.host.env, selected: ownership }).assert({
+          required: true,
+        })
+        assert()
+        if (!matches(await readOrganizationConfigurationSnapshot(home, { signal })))
+          fail("installed configuration changed")
+        assert()
+      }
+      await validate()
+      const installed: Installed = Object.freeze({
+        manifest: Manifest.parse(manifest),
+        ownership: Object.freeze({ ...ownership }),
+        assertCurrent: assert,
+        verify: validate,
+      })
+      installations.set(installed, { assert, verify: validate })
+      const result = await body(installed)
+      await validate()
+      return result
+    } finally {
+      active = false
+    }
   }
 }
