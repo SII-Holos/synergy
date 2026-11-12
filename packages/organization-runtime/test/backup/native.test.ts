@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { createHash } from "node:crypto"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRuntimeNative as Native } from "../../src/backup/native"
@@ -18,6 +21,7 @@ import { fixture } from "../support/organization"
 import { OrganizationBackupCohort as Cohort } from "../../../organization/src/backup/cohort"
 import { OrganizationRecoveryArchive as Archive } from "../../../organization/src/backup/archive"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
+import { ArchivedHomeReaderContract, HostedBinding } from "../../src/home-schema"
 
 const keys = {
   async current() {
@@ -212,6 +216,86 @@ test("a Hosted native segment preserves explicit absent connection state and rej
   await expect(
     Native.verify({ ...input, source: { ...captured.archive.namespace, archiveID: "different" } }),
   ).rejects.toThrow("another namespace")
+})
+
+test("a fixed archived Home2 prior-reader segment stays verifiable without ordinary-reader fallback", async () => {
+  await using selected = await source()
+  const captured = await selected.capture()
+  const material = new Map<string, Uint8Array>()
+  let original: Native.Manifest | undefined
+  for await (const entry of StorageCheckpoint.entries({
+    directory: captured.native.directory,
+    expected: captured.native.namespace,
+    keys,
+  })) {
+    if (entry.type === "record") {
+      original = Native.Manifest.parse(entry.value)
+      continue
+    }
+    if (entry.type !== "artifact" || entry.location.size > 8192) throw new Error("Invalid native fixture role")
+    const bytes = new Uint8Array(entry.location.size)
+    let offset = 0
+    for await (const chunk of StorageCheckpoint.streamArtifact({
+      directory: captured.native.directory,
+      location: entry.location,
+    })) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    material.set(entry.key[2]!, bytes)
+  }
+  if (!original) throw new Error("Native fixture metadata is missing")
+  const previous = ArchivedHomeReaderContract.options[0]
+  for (const role of ["owner", "binding"]) {
+    const bytes = material.get(role)
+    if (!bytes) throw new Error("Native fixture role is missing")
+    const record = JSON.parse(Buffer.from(bytes).toString("utf8"))
+    record.readerContract = previous
+    material.set(role, Buffer.from(JSON.stringify(record)))
+  }
+  expect(HostedBinding.safeParse(JSON.parse(Buffer.from(material.get("binding")!).toString("utf8"))).success).toBe(
+    false,
+  )
+  const directory = path.join(selected.service.root, "archived-native")
+  const temporary = path.join(selected.service.root, "archive-conversion")
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace: "archive-conversion",
+    filename: path.join(temporary, "segment.sqlite"),
+  })
+  try {
+    const expected = await selected.runtime.run(() =>
+      Storage.provide({ store, artifactDirectory: path.join(temporary, "artifacts") }, async () => {
+        for (const [role, bytes] of material) await Storage.writeBinary(["runtime-native", "file", role], bytes)
+        await Storage.write(
+          ["runtime-native", "manifest"],
+          Native.Manifest.parse({
+            ...original,
+            files: Object.fromEntries(
+              [...material].map(([role, bytes]) => [
+                role,
+                { bytes: bytes.byteLength, sha256: createHash("sha256").update(bytes).digest("hex") },
+              ]),
+            ),
+          }),
+        )
+        return StorageCheckpoint.exportArchive({
+          directory,
+          archiveID: "historical-native",
+          namespaceID: captured.native.namespace.namespaceID,
+          buildVersion: "prior-reader-fixture",
+          keys,
+          protect: () => true,
+        })
+      }),
+    )
+    const historical = await Native.verify({ directory, expected, source: captured.archive.namespace, keys })
+    expect(historical.registration).toEqual(selected.registration)
+    expect(historical.startup).toEqual(original.startup)
+    expect(historical.files.credentials).toEqual(original.files.credentials)
+  } finally {
+    await store.close()
+  }
 })
 
 test("missing Hosted machine credentials block capture without generating a replacement identity", async () => {

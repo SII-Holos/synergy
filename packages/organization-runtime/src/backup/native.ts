@@ -14,7 +14,7 @@ import { Global } from "@ericsanchezok/synergy-harness/global"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
-import { HostedIdentity, HostedBinding, NativeHomeReaderContract } from "../home-schema"
+import { HostedIdentity, HostedBinding, ArchivedHostedBinding, ArchivedHomeReaderContract } from "../home-schema"
 import { readHostedHome, runtimeIdentityDigest, runtimeHomeOrigin } from "../home"
 import { captureCredentialRecord, verifyCredentialRecord } from "../credentials"
 import { captureRegistrationRecord, verifyRegistrationRecord } from "../registration"
@@ -62,11 +62,12 @@ export namespace OrganizationRuntimeNative {
   async function records(files: ReadonlyMap<Role, Uint8Array>, startup: z.infer<typeof Startup>) {
     const required = (role: Role) => files.get(role) ?? fail("is missing " + role)
     const owner = parseRecord(required("owner"), HomeOwnershipFile.FencedInfo, "Home ownership", 4096)
-    const binding = parseRecord(required("binding"), HostedBinding, "identity records")
+    const binding = parseRecord(required("binding"), ArchivedHostedBinding, "identity records")
     if (
       binding.state !== "ready" ||
       owner.owner !== "organization-runtime" ||
-      owner.readerContract !== NativeHomeReaderContract ||
+      !ArchivedHomeReaderContract.safeParse(owner.readerContract).success ||
+      owner.readerContract !== binding.readerContract ||
       owner.identity !== runtimeIdentityDigest(startup.identity) ||
       runtimeIdentityDigest(binding.identity) !== owner.identity
     )

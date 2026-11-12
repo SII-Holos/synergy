@@ -6,7 +6,7 @@ import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { version } from "../package.json" with { type: "json" }
 import { prepareHostedHome, prepareMemberHome, runtimeIdentityDigest } from "../src/home"
 
-for (const reader of ["legacy", "maintenance"] as const) {
+for (const reader of ["legacy", "maintenance", "before-origin"] as const) {
   test(`real pinned agent and policy workers with the previous ${reader} reader refuse the current native Home`, async () => {
     const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "native-worker-fence-"))
     try {
@@ -71,7 +71,11 @@ for (const reader of ["legacy", "maintenance"] as const) {
             schemaVersion: reader === "legacy" ? 1 : 2,
             owner: "organization-runtime",
             identity: runtimeIdentityDigest(home.identity),
-            ...(reader === "maintenance" ? { readerContract: "purpose-bound-maintenance-v1" } : {}),
+            ...(reader === "maintenance"
+              ? { readerContract: "purpose-bound-maintenance-v1" }
+              : reader === "before-origin"
+                ? { readerContract: "native-organization-ownership-v1" }
+                : {}),
           }),
         )
         const before = await worker(role)

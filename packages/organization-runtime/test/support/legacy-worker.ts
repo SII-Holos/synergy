@@ -8,9 +8,15 @@ export const metadata = { id: "organization-runtime", version, apiVersion: 1 } a
 export function registerWorker() {
   const env = RuntimeContext.current().host.env
   const identity = RuntimeIdentity.parse(JSON.parse(env.SYNERGY_MEMBER_IDENTITY ?? ""))
+  const readerContract =
+    env.SYNERGY_LEGACY_READER === "maintenance"
+      ? "purpose-bound-maintenance-v1"
+      : env.SYNERGY_LEGACY_READER === "before-origin"
+        ? "native-organization-ownership-v1"
+        : undefined
   HomeOwnership.select({
     owner: "organization-runtime",
     identity: runtimeIdentityDigest(identity),
-    ...(env.SYNERGY_LEGACY_READER === "maintenance" ? { readerContract: "purpose-bound-maintenance-v1" } : {}),
+    ...(readerContract ? { readerContract } : {}),
   })
 }

@@ -6,23 +6,38 @@ import { readCredentials } from "../../src/credentials"
 import { readRecord } from "../../src/record"
 
 // The version-1 startup reader is retained to exercise the real previous strict file contract in Node.
-const Owner = z.strictObject({ schemaVersion: z.literal(1), owner: z.string(), identity: z.string() })
+const ownerFields = { owner: z.string(), identity: z.string() }
+const currentPreOrigin = process.argv[4] === "before-origin"
+const Owner = currentPreOrigin
+  ? z.strictObject({
+      ...ownerFields,
+      schemaVersion: z.literal(2),
+      readerContract: z.literal("native-organization-ownership-v1"),
+    })
+  : z.strictObject({ ...ownerFields, schemaVersion: z.literal(1) })
 const Identity = z.union([
   z.strictObject({ orgID: z.string(), hostID: z.string() }),
   z.strictObject({ orgID: z.string(), accountID: z.string(), deviceID: z.string() }),
 ])
-const Binding = z.strictObject({
-  schemaVersion: z.literal(1),
+const bindingFields = {
   identity: Identity,
   origin: z.string(),
   state: z.literal("ready"),
   publicKey: z.string(),
+}
+const PreOriginBinding = z.strictObject({
+  ...bindingFields,
+  schemaVersion: z.literal(2),
+  readerContract: z.literal("native-organization-ownership-v1"),
 })
+const LegacyBinding = z.strictObject({ ...bindingFields, schemaVersion: z.literal(1) })
 const home = process.argv[2]
 const expected = Identity.parse(JSON.parse(process.argv[3]))
 const root = path.join(home, ".synergy")
 const owner = Owner.parse(JSON.parse(await fs.readFile(path.join(root, "home-ownership.json"), "utf8")))
-const binding = await readRecord(path.join(root, "organization.json"), Binding, "identity records")
+const binding = currentPreOrigin
+  ? await readRecord(path.join(root, "organization.json"), PreOriginBinding, "identity records")
+  : await readRecord(path.join(root, "organization.json"), LegacyBinding, "identity records")
 const digest = createHash("sha256")
   .update(
     JSON.stringify(

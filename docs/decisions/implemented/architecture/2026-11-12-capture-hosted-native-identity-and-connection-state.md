@@ -16,6 +16,8 @@ The shared Node-compatible record owner reads a bounded ordinary-file descriptor
 
 The native facet uses the existing canonical Storage checkpoint representation and the existing encrypted outer recovery container. Its manifest binds the exact source namespace and file inventory. The cohort accepts an explicit trusted capture port for a Hosted participant, preserving the service-to-Runtime dependency direction. Native namespace identity still derives from the enrolled Home through native evidence, never the port's caller label.
 
+Inert archived Home-two material uses the canonical Home owner's explicit archival reader contracts and Hosted binding schema. Owner and binding must name exactly the same supported historical contract, including the prior contract after the live reader advances. Capture still enters through the current-only live Home reader; archival compatibility never supplies an ordinary startup fallback.
+
 ## Alternatives considered
 
 **Regenerate credentials during restore.** This loses original machine proof and can hide incomplete recovery material.
@@ -30,4 +32,4 @@ An independently opened cohort can verify the original Hosted machine tuple and 
 
 ## Verification
 
-`test/record.test.ts` first reproduced linked file and linked parent acceptance, then verifies exact bytes, descriptor cleanup under the original cancellation reason and retained-path replacement. `test/backup/native.test.ts` uses actual enrolled HTTPS Hosted Homes and native frozen checkpoint evidence. It covers absent and advanced connection checkpoints, a separate held connection writer during cancellation, a different fixed namespace, encrypted cohort reopen, and independent cold Home/registration/key-signature reads after the original source Runtime is closed and Home removed. Existing Home and enrollment suites retain normal provisioning and TLS behavior. Full PRD recovery acceptance remains separate.
+`test/record.test.ts` first reproduced linked file and linked parent acceptance, then verifies exact bytes, descriptor cleanup under the original cancellation reason and retained-path replacement. `test/backup/native.test.ts` uses actual enrolled HTTPS Hosted Homes and native frozen checkpoint evidence. It covers absent and advanced connection checkpoints, a separate held connection writer during cancellation, a different fixed namespace, encrypted cohort reopen, and independent cold Home/registration/key-signature reads after the original source Runtime is closed and Home removed. A canonically reissued fixed native archive with the prior Home-two contract remains verifiable with the same machine key, while the ordinary binding parser rejects it. Existing Home and enrollment suites retain normal provisioning and TLS behavior. Full PRD recovery acceptance remains separate.
