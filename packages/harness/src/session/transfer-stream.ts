@@ -26,6 +26,8 @@ export namespace SessionTransferStream {
     hash: Hash,
     chunks: Chunks,
   })
+  const InputHeader = Entry.omit({ bytes: true, hash: true, chunks: true })
+  const ReferenceHeader = Entry.omit({ chunks: true })
   const Page = z.strictObject({
     version: z.literal(2),
     kind: z.literal("entries"),
@@ -58,6 +60,7 @@ export namespace SessionTransferStream {
   }
   export type Output = Omit<z.infer<typeof Entry>, "chunks"> & { content: AsyncIterable<Uint8Array> }
   export type Descriptor = Omit<z.infer<typeof Entry>, "chunks">
+  export type Reference = Descriptor & { chunks: AsyncIterable<z.infer<typeof Chunk>> }
   const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
   const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value))
   export const digest = (root: Root) => hash(encode(Root.parse(root)))
@@ -79,80 +82,39 @@ export namespace SessionTransferStream {
     return schema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)))
   }
 
-  export async function write(input: {
-    store: BlobStore
-    entries: AsyncIterable<Input>
-    owners: Root["owners"]
-    signal?: AbortSignal
-  }): Promise<Root> {
+  type Writer = { store: BlobStore; owners: Root["owners"]; signal?: AbortSignal }
+  function writer(input: Writer): Writer {
+    const signal = input.signal
+    signal?.throwIfAborted()
+    const provider = input.store
+    return {
+      store: { put: provider.put.bind(provider), get: provider.get.bind(provider) },
+      owners: Root.shape.owners.parse(input.owners),
+      signal,
+    }
+  }
+  async function catalog(input: Writer, source: AsyncIterable<z.infer<typeof Entry>>): Promise<Root> {
     let head: string | null = null
     let pages = 0
     let entries = 0
     let bytes = 0
     let pending: z.infer<typeof Entry>[] = []
     let pendingBytes = 1024
-    const buffer = new Uint8Array(chunkBytes)
     async function flush() {
       if (!pending.length) return
+      input.signal?.throwIfAborted()
       head = await put(
         input.store,
         Page.parse({ version: 2, kind: "entries", index: pages, previous: head, items: pending }),
       )
+      input.signal?.throwIfAborted()
       pages = count(pages, 1)
       pending = []
       pendingBytes = 1024
     }
-    for await (const entry of input.entries) {
+    input.signal?.throwIfAborted()
+    for await (const descriptor of source) {
       input.signal?.throwIfAborted()
-      const digest = createHash("sha256")
-      let chunkHead: string | null = null
-      let chunkPages = 0
-      let chunks = 0
-      let size = 0
-      let chunkList: z.infer<typeof Chunk>[] = []
-      let buffered = 0
-      async function flushList() {
-        if (!chunkList.length) return
-        chunkHead = await put(
-          input.store,
-          ChunkPage.parse({ version: 2, kind: "chunks", index: chunkPages, previous: chunkHead, items: chunkList }),
-        )
-        chunkPages = count(chunkPages, 1)
-        chunkList = []
-      }
-      async function flushChunk() {
-        if (!buffered) return
-        const content = buffer.slice(0, buffered)
-        const key = hash(content)
-        await input.store.put(key, content)
-        chunkList.push({ hash: key, bytes: content.length })
-        chunks = count(chunks, 1)
-        buffered = 0
-        if (chunkList.length === pageItems) await flushList()
-      }
-      for await (const content of entry.content) {
-        input.signal?.throwIfAborted()
-        digest.update(content)
-        size = count(size, content.length)
-        let offset = 0
-        while (offset < content.length) {
-          const length = Math.min(chunkBytes - buffered, content.length - offset)
-          buffer.set(content.subarray(offset, offset + length), buffered)
-          buffered += length
-          offset += length
-          if (buffered === chunkBytes) await flushChunk()
-        }
-      }
-      await flushChunk()
-      await flushList()
-      const descriptor = Entry.parse({
-        id: entry.id,
-        kind: entry.kind,
-        metadata: entry.metadata,
-        bytes: size,
-        hash: digest.digest("hex"),
-        chunks: { pages: chunkPages, count: chunks, head: chunkHead },
-      })
       const descriptorBytes = encode(descriptor).length
       if (descriptorBytes > pageBytes / 2)
         throw new Rejected({ message: "Portable entry metadata exceeds its frame size" })
@@ -160,10 +122,11 @@ export namespace SessionTransferStream {
       pending.push(descriptor)
       pendingBytes += descriptorBytes + 1
       entries = count(entries, 1)
-      bytes = count(bytes, size)
+      bytes = count(bytes, descriptor.bytes)
       if (pending.length === pageItems) await flush()
     }
     await flush()
+    input.signal?.throwIfAborted()
     return Root.parse({
       format: "synergy-portable-session",
       version: 2,
@@ -174,6 +137,113 @@ export namespace SessionTransferStream {
       bytes,
       owners: input.owners,
     })
+  }
+
+  async function chunkChain(input: Writer, source: AsyncIterable<z.infer<typeof Chunk>>) {
+    let head: string | null = null
+    let pages = 0
+    let chunks = 0
+    let bytes = 0
+    let pending: z.infer<typeof Chunk>[] = []
+    async function flush() {
+      if (!pending.length) return
+      input.signal?.throwIfAborted()
+      head = await put(
+        input.store,
+        ChunkPage.parse({ version: 2, kind: "chunks", index: pages, previous: head, items: pending }),
+      )
+      input.signal?.throwIfAborted()
+      pages = count(pages, 1)
+      pending = []
+    }
+    input.signal?.throwIfAborted()
+    for await (const value of source) {
+      input.signal?.throwIfAborted()
+      const chunk = Chunk.parse(value)
+      pending.push(chunk)
+      chunks = count(chunks, 1)
+      bytes = count(bytes, chunk.bytes)
+      if (pending.length === pageItems) await flush()
+    }
+    await flush()
+    input.signal?.throwIfAborted()
+    return { chunks: { pages, count: chunks, head }, bytes }
+  }
+
+  export async function write(input: Writer & { entries: AsyncIterable<Input> }): Promise<Root> {
+    const selected = writer(input)
+    const buffer = new Uint8Array(chunkBytes)
+    return catalog(
+      selected,
+      (async function* () {
+        selected.signal?.throwIfAborted()
+        for await (const entry of input.entries) {
+          selected.signal?.throwIfAborted()
+          const header = InputHeader.parse({
+            id: entry.id,
+            kind: entry.kind,
+            metadata: entry.metadata,
+          })
+          header.metadata = Entry.shape.metadata.parse(JSON.parse(JSON.stringify(header.metadata)))
+          const content = entry.content
+          const digest = createHash("sha256")
+          let buffered = 0
+          const retained = await chunkChain(
+            selected,
+            (async function* () {
+              async function save() {
+                selected.signal?.throwIfAborted()
+                const bytes = buffer.slice(0, buffered)
+                const key = hash(bytes)
+                digest.update(bytes)
+                await selected.store.put(key, bytes)
+                selected.signal?.throwIfAborted()
+                buffered = 0
+                return { hash: key, bytes: bytes.length }
+              }
+              for await (const bytes of content) {
+                selected.signal?.throwIfAborted()
+                let offset = 0
+                while (offset < bytes.length) {
+                  const length = Math.min(chunkBytes - buffered, bytes.length - offset)
+                  buffer.set(bytes.subarray(offset, offset + length), buffered)
+                  buffered += length
+                  offset += length
+                  if (buffered === chunkBytes) yield await save()
+                }
+              }
+              if (buffered) yield await save()
+            })(),
+          )
+          yield Entry.parse({ ...header, ...retained, hash: digest.digest("hex") })
+        }
+      })(),
+    )
+  }
+
+  export async function link(input: Writer & { entries: AsyncIterable<Reference> }): Promise<Root> {
+    const selected = writer(input)
+    return catalog(
+      selected,
+      (async function* () {
+        selected.signal?.throwIfAborted()
+        for await (const entry of input.entries) {
+          selected.signal?.throwIfAborted()
+          const header = ReferenceHeader.parse({
+            id: entry.id,
+            kind: entry.kind,
+            metadata: entry.metadata,
+            bytes: entry.bytes,
+            hash: entry.hash,
+          })
+          header.metadata = Entry.shape.metadata.parse(JSON.parse(JSON.stringify(header.metadata)))
+          const retained = await chunkChain(selected, entry.chunks)
+          if (retained.bytes !== header.bytes)
+            throw new Rejected({ message: "Portable reference chunk totals mismatch" })
+          yield Entry.parse({ ...header, chunks: retained.chunks })
+        }
+      })(),
+    )
   }
 
   export async function open(input: { root: Root; store: BlobStore; directory: string; signal?: AbortSignal }) {
@@ -310,6 +380,23 @@ export namespace SessionTransferStream {
     const chunkRows = database.query<ChunkRow, [string, number, number]>(
       "SELECT ordinal, offset, hash, bytes FROM chunks WHERE id = ? AND ordinal > ? ORDER BY ordinal LIMIT ?",
     )
+    function indexedChunks(id: string) {
+      return (async function* () {
+        const entry = await indexedEntry(id)
+        if (!entry) throw new Rejected({ message: "Portable entry is absent" })
+        let ordinal = -1
+        for (;;) {
+          assertIndexed()
+          const rows = chunkRows.all(id, ordinal, pageItems)
+          if (!rows.length) return
+          for (const row of rows) {
+            assertIndexed()
+            ordinal = row.ordinal
+            yield { hash: row.hash, bytes: row.bytes }
+          }
+        }
+      })()
+    }
     function assertIndexed() {
       assertOpen()
       if (!indexed) throw new Rejected({ message: "Portable metadata index is incomplete" })
@@ -408,7 +495,13 @@ export namespace SessionTransferStream {
         throw new Rejected({ message: "Portable indexed manifest totals mismatch" })
       database.exec("COMMIT")
       indexed = true
-      return Object.freeze({ root, get: indexedEntry, entries: indexedEntries, read: indexedContent })
+      return Object.freeze({
+        root,
+        get: indexedEntry,
+        entries: indexedEntries,
+        chunks: indexedChunks,
+        read: indexedContent,
+      })
     }
     async function close() {
       if (closed) return
