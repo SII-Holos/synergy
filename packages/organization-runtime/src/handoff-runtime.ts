@@ -11,11 +11,13 @@ import { OrganizationRuntimeError } from "./error"
 import { RuntimeIdentity } from "./home"
 import type { MemberConnectionOptions } from "./connection"
 import { createHandoffInspection } from "./handoff-inspection"
+import { registerHandoffCleanup } from "./handoff-recovery"
 
-export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtimeID: string }) {
+export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtimeID: string; ca?: string | string[] }) {
   const identity = RuntimeIdentity.parse(input.identity)
   const source = Source.create({ identity, runtimeID: input.runtimeID })
   const target = Target.create({ identity, runtimeID: input.runtimeID })
+  const closeCleanup = registerHandoffCleanup({ ...input, target: target.recover })
   const assertOwner = WorkspaceContent.captureOwner()
   const dispatch: NonNullable<MemberConnectionOptions["handoff"]> = async (
     authorization,
@@ -97,6 +99,9 @@ export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtime
   return {
     dispatch,
     inspection: createHandoffInspection({ identity, runtimeID: input.runtimeID }),
-    close: source.close,
+    async close() {
+      await closeCleanup()
+      await source.close()
+    },
   }
 }

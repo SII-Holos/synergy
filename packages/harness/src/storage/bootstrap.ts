@@ -101,6 +101,37 @@ async function rejectLegacyWriters(
 }
 
 export namespace StorageBootstrap {
+  export const DatasetIdentity = z.strictObject({ storeID: z.uuid(), artifactStoreID: z.uuid() })
+  export const target = targetIdentity
+  export async function currentIdentity() {
+    const runtime = RuntimeContext.current(),
+      primary = runtime.storage,
+      current = Storage.current()
+    const configuration = JSON.stringify(current.store.options),
+      root = runtime.host.root
+    const assert = () => {
+      const active = Storage.current()
+      if (
+        !primary ||
+        RuntimeContext.current() !== runtime ||
+        runtime.storage !== primary ||
+        runtime.host.root !== root ||
+        current.store !== primary.store ||
+        active.store !== primary.store ||
+        current.artifactDirectory !== primary.artifactDirectory ||
+        active.artifactDirectory !== primary.artifactDirectory ||
+        current.artifactObjects !== primary.artifactObjects ||
+        active.artifactObjects !== primary.artifactObjects ||
+        JSON.stringify(current.store.options) !== configuration
+      )
+        throw new StorageIntegrityError("Dataset identity requires its original primary Store and artifact owner")
+    }
+    assert()
+    const [raw] = await Storage.readMany([["storage_meta", "identity"]])
+    const identity = DatasetIdentity.parse(raw)
+    assert()
+    return Object.freeze({ ...identity, target: targetIdentity(current.store.options) })
+  }
   export type RestorationBase = StorageBootstrapBase.Evidence
   export async function status(root: string) {
     const saved = await optionalJson(path.join(root, "data", "storage", "manifest.json"))

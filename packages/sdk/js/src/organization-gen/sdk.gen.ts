@@ -132,6 +132,8 @@ import type {
   OrgHandoffAcceptResponses,
   OrgHandoffCancelErrors,
   OrgHandoffCancelResponses,
+  OrgHandoffCleanupsErrors,
+  OrgHandoffCleanupsResponses,
   OrgHandoffCommitErrors,
   OrgHandoffCommitResponses,
   OrgHandoffDrive,
@@ -154,6 +156,9 @@ import type {
   OrgHandoffPrepareResponses,
   OrgHandoffProofErrors,
   OrgHandoffProofResponses,
+  OrgHandoffRecoveryErrors,
+  OrgHandoffRecoveryRequest,
+  OrgHandoffRecoveryResponses,
   OrgHandoffSignedProof,
   OrgHandoffWorkspaceRequest,
   OrgHandoffWorkspaceRequestErrors,
@@ -3750,6 +3755,36 @@ export class OrgCloudFiles extends HeyApiClient {
 
 export class OrgHandoff extends HeyApiClient {
   /**
+   * Discover only the member Runtime's original cleanup slots
+   */
+  public cleanups<ThrowOnError extends boolean = false>(
+    parameters: {
+      runtimeID: string
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "runtimeID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgHandoffCleanupsResponses, OrgHandoffCleanupsErrors, ThrowOnError>({
+      url: "/org/v1/runtimes/{runtimeID}/handoff-cleanups",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Inspect current Workspace references and available handoff choices
    */
   public options<ThrowOnError extends boolean = false>(
@@ -3994,6 +4029,28 @@ export class OrgHandoff extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<OrgHandoffDriveResponses, OrgHandoffDriveErrors, ThrowOnError>({
       url: "/org/v1/handoffs/{handoffID}/drive",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Authorize only original target cleanup with the retained machine key
+   */
+  public recovery<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgHandoffRecoveryRequest: OrgHandoffRecoveryRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgHandoffRecoveryRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgHandoffRecoveryResponses, OrgHandoffRecoveryErrors, ThrowOnError>({
+      url: "/runtime/v1/handoffs/recovery",
       ...options,
       ...params,
       headers: {

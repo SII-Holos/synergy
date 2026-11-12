@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationHandoffProtocol as Handoff } from "../../organization-protocol/src/handoff"
@@ -64,6 +65,98 @@ async function fixture(targetAccountID = "bob") {
     },
   }
 }
+
+test("target cleanup discovery shares the original Handoff transaction and validates bounded participant index pages", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+    const before = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+    const prefix = [
+      "organization",
+      "handoff-targets",
+      "runtime-bob",
+      createHash("sha256").update(f.targetKeys.publicKey).digest("hex"),
+    ]
+    const handoffID = "rollback-cleanup-slot"
+    const input = {
+      handoffID,
+      targetRuntimeID: "runtime-bob",
+      expectedBindingEpoch: before.bindingEpoch,
+      expectedControlRevision: before.controlRevision,
+      mappingPlanRevision: 1,
+    }
+    await expect(
+      Storage.transaction(async () => {
+        await f.handoffs.prepare(f.credentials.alice, f.sessionID, input)
+        expect(await Storage.read([...prefix, handoffID])).toEqual({ version: 1, handoffID })
+        throw new Error("Roll back original Handoff publication")
+      }),
+    ).rejects.toThrow("Roll back original Handoff publication")
+    expect(
+      await Storage.readMany([
+        ["organization", "handoffs", handoffID],
+        [...prefix, handoffID],
+      ]),
+    ).toEqual([undefined, undefined])
+    expect(await Record.read(Record.SessionDirectory, Keys.session(f.sessionID))).toEqual(before)
+    for (const id of [handoffID, "filtered-cleanup-2", "filtered-cleanup-3"]) {
+      const current = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+      const prepared = await f.handoffs.prepare(f.credentials.alice, f.sessionID, {
+        ...input,
+        handoffID: id,
+        expectedControlRevision: current.controlRevision,
+      })
+      await f.handoffs.cancel(f.credentials.alice, id)
+      const proof = Handoff.Proof.parse({
+        ...Handoff.Binding.strip().parse(prepared),
+        purpose: "source-cancelled",
+        manifestHash: null,
+        gateCancelled: true,
+        paused: true,
+      })
+      await f.handoffs.proof({ proof, signature: await Handoff.signProof(proof, f.machineKeys.privateKey) })
+    }
+    let cursor: string | undefined,
+      pages = 0
+    do {
+      const page = await f.handoffs.cleanupCandidates(f.credentials.bob, "runtime-bob", { limit: 1, cursor })
+      expect(page.items).toEqual([])
+      cursor = page.cursor
+      pages++
+      expect(pages).toBeLessThanOrEqual(4)
+    } while (cursor)
+    expect(pages).toBeGreaterThanOrEqual(3)
+    const key = [...prefix, handoffID],
+      original = await Storage.read(key)
+    try {
+      for (const changed of [
+        { version: 99, handoffID },
+        { version: 1, handoffID, unknown: true },
+        { version: 1, handoffID: "other" },
+      ]) {
+        await Storage.write(key, changed)
+        await expect(f.handoffs.cleanupCandidates(f.credentials.bob, "runtime-bob", { limit: 100 })).rejects.toThrow()
+      }
+    } finally {
+      await Storage.write(key, original)
+    }
+    await expect(f.handoffs.cleanupCandidates(f.credentials.alice, "runtime-bob", { limit: 100 })).rejects.toThrow(
+      "Runtime not found",
+    )
+    const primary = ["organization", "handoffs", handoffID],
+      record = await Storage.read<Record<string, unknown>>(primary)
+    const target = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-alice")))!
+    try {
+      await Storage.write(primary, {
+        ...record,
+        target: { ...Runtime.Registration.parse(record.target), publicKey: target.publicKey },
+      })
+      await expect(f.handoffs.cleanupCandidates(f.credentials.bob, "runtime-bob", { limit: 100 })).rejects.toThrow()
+    } finally {
+      await Storage.write(primary, record)
+    }
+  })
+})
 
 test("replaying an old target proof after cancellation and unsharing cannot observe a later private binding", async () => {
   await using f = await fixture()

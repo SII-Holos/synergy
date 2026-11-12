@@ -3,6 +3,7 @@ import { validator } from "hono-openapi"
 import { z } from "zod"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationHandoffRecovery as Recovery,
   OrganizationHandoffObjectProtocol as Objects,
   OrganizationIdentity as Identity,
 } from "@ericsanchezok/synergy-organization-protocol"
@@ -15,6 +16,16 @@ export function handoffRoutes(handoffs: () => Handoffs, publicOrigin?: string) {
   const session = z.strictObject({ sessionID: Identity.ID })
   const target = z.strictObject({ handoffID: Identity.ID })
   return new Hono()
+    .get(
+      "/runtimes/:runtimeID/handoff-cleanups",
+      operation("orgHandoff.cleanups", "Discover only the member Runtime's original cleanup slots", Recovery.Page),
+      validator("param", z.strictObject({ runtimeID: Identity.ID }), validation),
+      validator("query", Identity.Page, validation),
+      async (c) =>
+        c.json(
+          await handoffs().cleanupCandidates(credentials(c), c.req.valid("param").runtimeID, c.req.valid("query")),
+        ),
+    )
     .get(
       "/sessions/:sessionID/handoff-options",
       operation(
@@ -119,6 +130,21 @@ export function handoffRoutes(handoffs: () => Handoffs, publicOrigin?: string) {
 
 export function handoffMachineRoutes(handoffs: () => Handoffs) {
   return new Hono()
+    .post(
+      "/handoffs/recovery",
+      operation(
+        "orgHandoff.recovery",
+        "Authorize only original target cleanup with the retained machine key",
+        Recovery.Response,
+        true,
+      ),
+      validator("json", Recovery.Request, validation),
+      async (c) => {
+        if (c.req.header("cookie") || c.req.header("origin"))
+          fail("PERMISSION_DENIED", "Handoff cleanup requires only its machine proof")
+        return c.json(await handoffs().recovery(c.req.valid("json"), { signal: c.req.raw.signal }))
+      },
+    )
     .post(
       "/handoffs/object",
       operation(

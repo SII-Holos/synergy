@@ -696,7 +696,7 @@ test("copied move receipts in another real namespace cannot recover the original
       await foreign.write(["workspace", f.target.id], f.target)
       await foreign.write(["workspace_move", "home", f.request.id], record)
       await Storage.provide({ ...original, store: foreign }, () =>
-        expect(WorkspaceMove.run(f.request)).rejects.toThrow("reference changed"),
+        expect(WorkspaceMove.run(f.request)).rejects.toThrow("actual writable primary Store"),
       )
       expect((await f.coordinator.inspect()).filter((claim) => claim.id.startsWith("workspace-move:"))).toHaveLength(1)
     } finally {
@@ -779,11 +779,14 @@ test("exclusive recovery cannot lend an original native claim to a replacement d
       .parse(await Storage.read(["workspace_move", "home", f.request.id]))
     await fs.rename(f.directory, f.directory + "-original")
     await fs.mkdir(f.directory)
-    await Bun.write(path.join(f.directory, "file"), "move-body")
+    await Bun.write(path.join(f.directory, "file"), "replacement must remain")
     await expect(WorkspaceAccess.recoverExclusive(record.native.claim)).rejects.toThrow("identity changed")
+    expect(await WorkspaceMove.inspect(f.request)).toMatchObject({ nativeRequested: true })
+    expect((await WorkspaceCatalog.get(f.target.id, "home")).content).toEqual(f.target.content)
     await WorkspaceMove.release(f.request, "cancelled")
     expect((await f.coordinator.inspect()).filter((claim) => claim.id.startsWith("workspace-move:"))).toHaveLength(0)
     expect(await Bun.file(path.join(f.directory + "-original", "file")).text()).toBe("move-body")
+    expect(await Bun.file(path.join(f.directory, "file")).text()).toBe("replacement must remain")
   })
 })
 

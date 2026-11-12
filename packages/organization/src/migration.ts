@@ -30,6 +30,7 @@ const migrations: Migration[] = [
   OrganizationHandoffExecution.migration,
   OrganizationHandoffExecution.workspaceMigration,
   OrganizationHandoffExecution.differenceMigration,
+  OrganizationHandoffExecution.cleanupMigration,
   sharedProjectionMigration,
   sharedWindowMigration,
   sharedWindowHistoryMigration,

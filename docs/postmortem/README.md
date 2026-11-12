@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0172](0172-handoff-response-crossed-cleanup-authorization-mode.md)
+- [0171](0171-native-move-cold-open-changed-dispatch-identity.md)
 - [0170](0170-service-recovery-skipped-retained-binary-changes.md)
 - [0169](0169-old-handoff-proofs-disclosed-current-private-bindings.md)
 - [0168](0168-workspace-move-release-escaped-an-outer-transaction.md)

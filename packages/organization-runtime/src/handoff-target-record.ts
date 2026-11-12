@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { OrganizationHandoffProtocol as Handoff } from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationHandoffRecovery as Recovery } from "@ericsanchezok/synergy-organization-protocol"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/import"
 
@@ -13,11 +14,24 @@ const Previous = z
     "Version-one target receipts require their original reader",
   )
 export const HandoffTargetRecord = z
-  .strictObject({ version: z.literal(2), ...fields })
+  .strictObject({ version: z.literal(3), plan: z.union([Handoff.MachinePlan, Recovery.Permit]), fact: Handoff.Proof })
   .superRefine((value, context) => {
     const invalid = (message: string) => context.addIssue({ code: "custom", message })
     const { plan, fact } = value,
       native = plan.workspacePlan?.mapping.kind === "organization-native"
+    if (
+      plan.purpose === "handoff-target-cleanup" &&
+      (!["target-never-activate", "target-preview-released"].includes(fact.purpose) ||
+        plan.operation !== "retire-target")
+    )
+      invalid("Recovery receipts cannot prepare, preview or activate a target")
+    if (
+      plan.purpose === "handoff-target-cleanup" &&
+      fact.purpose === "target-never-activate" &&
+      plan.preparedHash !== undefined &&
+      plan.preparedHash !== fact.preparedHash
+    )
+      invalid("Recovery receipt changed its explicitly retained preparation hash")
     if (
       (Object.keys(Handoff.Binding.shape) as (keyof z.infer<typeof Handoff.Binding>)[]).some(
         (key) => plan[key] !== fact[key],
@@ -77,6 +91,21 @@ export const handoffTargetMigration: Migration = {
       throw new Error("Unknown version-one destination receipt")
     Previous.parse(value)
     value.version = 2
+    HandoffTargetRecord.parse({ ...value, version: 3 })
+  },
+}
+export const handoffTargetRecoveryMigration: Migration = {
+  id: "20261113-organization-handoff-target-recovery",
+  description: "Retain only inactive target recovery permits through the original receipt owner",
+  scope: "global",
+  execution: "record",
+  dependsOn: ["organization-sync/20261113-organization-handoff-target-difference"],
+  async up() {},
+  upgradeRecord(key, value) {
+    if (key.length !== 5 || key[0] !== "organization_handoff_target" || value.version !== 2) return
+    z.strictObject({ version: z.literal(2), ...fields }).parse(value)
+    value.version = 3
     HandoffTargetRecord.parse(value)
   },
 }
+export type HandoffTargetPlan = z.infer<typeof HandoffTargetRecord>["plan"]

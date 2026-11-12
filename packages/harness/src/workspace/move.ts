@@ -115,7 +115,7 @@ export namespace WorkspaceMove {
     candidate: WorkspaceTree.Hash.optional(),
     receipt: Receipt.optional(),
   })
-  const Record = LegacyRecord.extend({
+  const PreviousRecord = LegacyRecord.extend({
     version: z.literal(2),
     request: Input,
     preview: WorkspaceDifference.Summary.optional(),
@@ -123,6 +123,24 @@ export namespace WorkspaceMove {
     nativeReceipt: NativeReceipt.optional(),
     nativePublication: WorkspaceTree.Hash.optional(),
   })
+  const NativeNamespaceSelection = z.strictObject({
+    root: z.string().min(1),
+    artifacts: z.string().min(1),
+    target: WorkspaceTree.Hash,
+    storeID: z.uuid(),
+    artifactStoreID: z.uuid(),
+  })
+  const NativeNamespace = z.strictObject({
+    version: z.union([z.literal(1), z.literal(2)]),
+    selection: NativeNamespaceSelection.optional(),
+  })
+  const Record = PreviousRecord.extend({ version: z.literal(3), nativeNamespace: NativeNamespace }).refine(
+    (record) =>
+      record.nativeNamespace.version === 1 ||
+      (!record.nativeRequested && record.native === undefined) ||
+      !!record.nativeNamespace.selection,
+    "Native dispatch requires its original dataset selection",
+  )
   type Record = z.infer<typeof Record>
   export const migration: Migration = {
     id: "20261113-workspace-native-adoption",
@@ -134,15 +152,30 @@ export namespace WorkspaceMove {
       if (key.length !== 3 || key[0] !== "workspace_move" || value.version !== 1) return
       LegacyRecord.parse(value)
       value.version = 2
+      PreviousRecord.parse(value)
+    },
+  }
+  export const namespaceMigration: Migration = {
+    id: "20261113-workspace-native-dispatch-namespace",
+    description: "Retain legacy native dispatch identity while anchoring new claims to their dataset",
+    scope: "global",
+    execution: "record",
+    dependsOn: ["workspace/20261113-workspace-native-adoption"],
+    async up() {},
+    upgradeRecord(key, value) {
+      if (key.length !== 3 || key[0] !== "workspace_move" || value.version !== 2) return
+      PreviousRecord.parse(value)
+      value.version = 3
+      value.nativeNamespace = { version: 1 }
       Record.parse(value)
     },
   }
   const LegacyStatus = LegacyRecord.omit({ native: true })
-  const CurrentStatus = Record.omit({ native: true })
+  const CurrentStatus = PreviousRecord.omit({ native: true })
   export const Status = z.union([LegacyStatus, CurrentStatus])
   function status(record: Record) {
-    const { native: _, ...visible } = record
-    if ("kind" in record.request) return CurrentStatus.parse(visible)
+    const { native: _, nativeNamespace: _namespace, ...visible } = record
+    if ("kind" in record.request) return CurrentStatus.parse({ ...visible, version: 2 })
     return LegacyStatus.parse({
       version: 1,
       digest: record.digest,
@@ -172,8 +205,14 @@ export namespace WorkspaceMove {
       id: string,
       previous: z.infer<typeof JsonValue> | undefined,
       signal?: AbortSignal,
+      compatibleIDs?: readonly string[],
     ): Promise<SourceLease>
-    release(source: Request["source"], id: string, reference: z.infer<typeof JsonValue> | undefined): Promise<void>
+    release(
+      source: Request["source"],
+      id: string,
+      reference: z.infer<typeof JsonValue> | undefined,
+      compatibleIDs?: readonly string[],
+    ): Promise<void>
   }
   const state = RuntimeContext.state(() => ({
     host: undefined as SourceHost | undefined,
@@ -200,14 +239,61 @@ export namespace WorkspaceMove {
   export function requestHash(value: Request) {
     return hash(Request.parse(value))
   }
-  const nativeID = (request: Input) =>
-    "workspace-move:" +
-    hash([
-      request,
-      RuntimeContext.current().host.root,
-      Storage.current().store.options,
-      Storage.current().artifactDirectory,
-    ])
+  function nativePrimary() {
+    const runtime = RuntimeContext.current(),
+      handle = Storage.current(),
+      primary = runtime.storage
+    if (
+      !primary ||
+      handle.store !== primary.store ||
+      handle.store.options.readonly ||
+      handle.artifactDirectory !== primary.artifactDirectory ||
+      handle.artifactObjects !== primary.artifactObjects
+    )
+      throw new Error("Native Workspace claims require their actual writable primary Store")
+    return handle
+  }
+  function legacyNativeIDs(request: Input) {
+    const handle = nativePrimary(),
+      ids = new Set<string>()
+    for (const readonly of [undefined, false])
+      for (const recover of [undefined, false, true])
+        for (const mustExist of [undefined, false, true])
+          ids.add(
+            "workspace-move:" +
+              hash([
+                request,
+                RuntimeContext.current().host.root,
+                { ...handle.store.options, readonly, recover, mustExist },
+                handle.artifactDirectory,
+              ]),
+          )
+    return [...ids]
+  }
+  async function nativeDispatch(request: Input, record: Record) {
+    const assert = WorkspaceContent.captureOwner(),
+      handle = nativePrimary(),
+      runtime = RuntimeContext.current()
+    const { StorageBootstrap } = await import("../storage/bootstrap")
+    const identity = await StorageBootstrap.currentIdentity()
+    assert()
+    nativePrimary()
+    const selection = NativeNamespaceSelection.parse({
+      ...identity,
+      root: runtime.host.root,
+      artifacts: handle.artifactDirectory,
+    })
+    if (
+      record.nativeNamespace.selection &&
+      JSON.stringify(record.nativeNamespace.selection) !== JSON.stringify(selection)
+    )
+      reject(request, "Native Workspace claim belongs to another original dataset")
+    return {
+      id: "workspace-move:v2:" + hash([request, selection]),
+      compatibleIDs: record.nativeNamespace.version === 1 ? legacyNativeIDs(request) : [],
+      namespace: NativeNamespace.parse({ ...record.nativeNamespace, selection }),
+    }
+  }
   const contains = (parent: string, child: string) => !parent || child === parent || child.startsWith(parent + "/")
   const overlaps = (left: string, right: string) => contains(left, right) || contains(right, left)
   const held = (record: Record) => ["preparing", "publishing", "published"].includes(record.state)
@@ -382,7 +468,13 @@ export namespace WorkspaceMove {
         (!info.binding.path || !info.binding.physicalID || info.sharedWritableWorkspaceIDs.length)
       )
         reject(request, "Native adoption requires its original physical directory")
-      const record = Record.parse({ version: 2, request, digest: hash(request), state: "preparing" })
+      const record = Record.parse({
+        version: 3,
+        request,
+        digest: hash(request),
+        state: "preparing",
+        nativeNamespace: { version: 2 },
+      })
       await Storage.write(key(request), record)
       await Storage.write(indexKey(request), request)
       return record
@@ -406,11 +498,25 @@ export namespace WorkspaceMove {
   }
   async function releaseNative(request: Input) {
     const assert = WorkspaceContent.captureOwner()
-    const id = nativeID(request)
     const record = await read(request)
     assert()
     if (!record || (!record.nativeRequested && record.native === undefined)) return
-    await host().release(physical(request), id, record.native)
+    const dispatch = await nativeDispatch(request, record)
+    await Storage.transaction(
+      async () => {
+        const current = await read(request)
+        if (!current || JSON.stringify(current.native) !== JSON.stringify(record.native))
+          reject(request, "Workspace move source claim changed")
+        await Storage.write(key(request), Record.parse({ ...current, nativeNamespace: dispatch.namespace }))
+      },
+      {
+        commitGuard() {
+          assert()
+          nativePrimary()
+        },
+      },
+    )
+    await host().release(physical(request), dispatch.id, record.native, dispatch.compatibleIDs)
     assert()
     await Storage.transaction(
       async () => {
@@ -419,7 +525,12 @@ export namespace WorkspaceMove {
           reject(request, "Workspace move source claim changed")
         await Storage.write(key(request), Record.parse({ ...current, nativeRequested: false, native: undefined }))
       },
-      { commitGuard: assert },
+      {
+        commitGuard() {
+          assert()
+          nativePrimary()
+        },
+      },
     )
   }
   export async function inspect(value: Input) {
@@ -563,15 +674,19 @@ export namespace WorkspaceMove {
         assert()
       },
     }
+    const dispatch = await nativeDispatch(request, record)
     await Storage.transaction(
       async () => {
         const current = await read(request)
         if (!current || !held(current)) reject(request, "Workspace move no longer owns its target reservation")
-        await Storage.write(key(request), Record.parse({ ...current, nativeRequested: true }))
+        await Storage.write(
+          key(request),
+          Record.parse({ ...current, nativeRequested: true, nativeNamespace: dispatch.namespace }),
+        )
       },
       { commitGuard: assert },
     )
-    const source = await host().hold(request.source, nativeID(request), record.native, signal)
+    const source = await host().hold(request.source, dispatch.id, record.native, signal, dispatch.compatibleIDs)
     const capture = source.capture.bind(source)
     const reference = JsonValue.parse(source.reference)
     assert()
@@ -863,15 +978,19 @@ export namespace WorkspaceMove {
   async function nativeClaim(request: NativeRequest, signal: AbortSignal | undefined, assert: () => void) {
     const record = await read(request)
     if (!record || !held(record)) reject(request, "Native adoption no longer owns its original target")
+    const dispatch = await nativeDispatch(request, record)
     await Storage.transaction(
       async () => {
         const current = await read(request)
         if (!current || !held(current)) reject(request, "Native adoption no longer owns its original target")
-        await Storage.write(key(request), Record.parse({ ...current, nativeRequested: true }))
+        await Storage.write(
+          key(request),
+          Record.parse({ ...current, nativeRequested: true, nativeNamespace: dispatch.namespace }),
+        )
       },
       { commitGuard: assert },
     )
-    const lease = await host().hold(physical(request), nativeID(request), record.native, signal)
+    const lease = await host().hold(physical(request), dispatch.id, record.native, signal, dispatch.compatibleIDs)
     const reference = JsonValue.parse(lease.reference)
     assert()
     await Storage.transaction(

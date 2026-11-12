@@ -50,6 +50,7 @@ async function upgradeVolumeIdentities(progress: Parameters<Migration["up"]>[0],
 
 export const workspaceMigrations: Migration[] = [
   WorkspaceMove.migration,
+  WorkspaceMove.namespaceMigration,
   {
     id: "20260927-workspace-storage-backend",
     emptyInput: [["workspace"]],

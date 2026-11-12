@@ -170,7 +170,8 @@ export namespace OrganizationHandoffWorkspaceTarget {
       assertPublication: locator,
     })
   }
-  function nativeRequest(plan: Handoff.MachinePlan) {
+  type NativeMetadata = Pick<Handoff.MachinePlan, "workspacePlan" | "frozen" | "sourceBinding" | "mappingPlanRevision">
+  function nativeRequest(plan: NativeMetadata) {
     const mapping = plan.workspacePlan?.mapping,
       actor = plan.workspacePlan?.targetActor,
       frozen = plan.frozen?.proof
@@ -324,23 +325,23 @@ export namespace OrganizationHandoffWorkspaceTarget {
     return result
   }
   export async function status(
-    plan: Handoff.MachinePlan,
+    plan: NativeMetadata,
     resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
     signal: AbortSignal,
   ) {
-    const request = nativeRequest(Handoff.MachinePlan.parse(plan)),
+    const request = nativeRequest(plan),
       assert = WorkspaceContent.captureOwner(signal)
     const status = await WorkspaceMove.inspect(request)
     assert()
     return status
   }
   export async function release(
-    plan: Handoff.MachinePlan,
+    plan: NativeMetadata,
     resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
     signal: AbortSignal,
     outcome: "activated" | "cancelled" | "retired",
   ) {
-    const request = nativeRequest(Handoff.MachinePlan.parse(plan)),
+    const request = nativeRequest(plan),
       assert = WorkspaceContent.captureOwner(signal)
     if (await WorkspaceMove.inspect(request)) await WorkspaceMove.release(request, outcome)
     assert()

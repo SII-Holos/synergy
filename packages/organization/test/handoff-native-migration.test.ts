@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/import"
-import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
+import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import { createHash } from "node:crypto"
+import {
+  OrganizationRuntimeProtocol as Runtime,
+  OrganizationHandoffProtocol as Handoff,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { createHandoffs } from "../src/handoff"
 import { OrganizationRecord as Record } from "../src/storage/records"
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
@@ -55,7 +60,33 @@ test("the original Handoff owner reads fresh records and upgrades both previous 
       selectionActor: null,
     }
     const current = { ...previous, version: 3 }
-    for (const value of [legacy, previous, current]) {
+    const proof = Handoff.Proof.parse({
+      ...Handoff.Binding.strip().parse(legacy),
+      purpose: "source-frozen",
+      manifestHash: "a".repeat(64),
+      commandSeq: 0,
+      receivedSeq: 0,
+      compatibilityHash: "b".repeat(64),
+      closureHash: "c".repeat(64),
+      fileClosureHash: null,
+      workspaceMoveReceiptHash: null,
+      paused: true,
+      drained: true,
+    })
+    const frozen = { proof, signature: await Handoff.signProof(proof, f.machineKeys.privateKey) }
+    const migration = MigrationRegistry.list()
+      .get("organization")
+      ?.find((entry) => entry.id === "20261113-organization-handoff-cleanup-participant-index")
+    if (!migration) throw new Error("Missing centrally registered Handoff cleanup index migration")
+    const cleanupRoot = ["organization", "handoff-targets"]
+    const cleanupKey = [
+      ...cleanupRoot,
+      legacy.targetRuntimeID,
+      createHash("sha256").update(legacy.target.publicKey).digest("hex"),
+      handoffID,
+    ]
+    for (const base of [legacy, previous, current]) {
+      const value = { ...base, manifestHash: proof.manifestHash, frozen }
       await Storage.write(key, value)
       expect(await handoffs.get(f.credentials.alice, handoffID)).toMatchObject({
         handoffID,
@@ -67,6 +98,19 @@ test("the original Handoff owner reads fresh records and upgrades both previous 
         request: previous.request,
         selectionActor: null,
       })
+      await Storage.write([...cleanupRoot, "stale-runtime", "old-key", "old-handoff"], {
+        version: 1,
+        handoffID: "old-handoff",
+      })
+      await migration.up(() => {})
+      expect(await Storage.read(key)).toEqual(value)
+      expect(await Storage.read(cleanupKey)).toEqual({ version: 1, handoffID })
+      expect(
+        (await Array.fromAsync(Storage.records({ prefix: cleanupRoot }))).map(({ key, value }) => ({ key, value })),
+      ).toEqual([{ key: cleanupKey, value: { version: 1, handoffID } }])
+      await migration.up(() => {})
+      expect(await Storage.read(key)).toEqual(value)
+      expect(await Storage.read(cleanupKey)).toEqual({ version: 1, handoffID })
     }
     const actor = (subjectID: string) => ({
       kind: "account",
@@ -172,8 +216,17 @@ test("the original Handoff owner reads fresh records and upgrades both previous 
     ]) {
       await Storage.write(key, value)
       await expect(handoffs.get(f.credentials.alice, handoffID)).rejects.toThrow()
+      await expect(migration.up(() => {})).rejects.toThrow()
     }
     await Storage.write(key, current)
+    await Storage.write([...key, "unknown"], current)
+    try {
+      await expect(migration.up(() => {})).rejects.toThrow("canonical record")
+    } finally {
+      await Storage.remove([...key, "unknown"])
+    }
+    await migration.up(() => {})
+    expect(await Storage.read(cleanupKey)).toEqual({ version: 1, handoffID })
     expect(await handoffs.get(f.credentials.alice, handoffID)).toMatchObject({ targetAccepted: false })
   })
 })

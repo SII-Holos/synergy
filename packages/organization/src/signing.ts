@@ -7,6 +7,7 @@ import {
   OrganizationRuntimeProtocol as Runtime,
   OrganizationGatewayProtocol as Gateway,
   OrganizationHandoffProtocol as Handoff,
+  OrganizationHandoffRecovery as Recovery,
   OrganizationReadProtocol as Read,
   OrganizationInteractionProtocol as Interactions,
 } from "@ericsanchezok/synergy-organization-protocol"
@@ -122,6 +123,18 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
   const identity = Object.freeze(Command.SigningIdentity.parse({ ...publicFields, schemaVersion: 1 }))
   return {
     identity,
+    async signHandoffRecovery(value: Recovery.Permit): Promise<Recovery.SignedPermit> {
+      const permit = Recovery.Permit.parse(value)
+      if (
+        permit.orgID !== identity.orgID ||
+        permit.deploymentIncarnation !== identity.deploymentIncarnation ||
+        permit.keyID !== identity.keyID ||
+        permit.issuedAt > Date.now() ||
+        permit.expiresAt <= Date.now()
+      )
+        fail("PERMISSION_DENIED", "Handoff cleanup belongs to another or expired signing authority")
+      return { permit, signature: await Recovery.signPermit(permit, privateKey) }
+    },
     async signHandoffInspection(value: Handoff.InspectionPlan): Promise<Handoff.SignedInspectionPlan> {
       const plan = Handoff.InspectionPlan.parse(value)
       if (

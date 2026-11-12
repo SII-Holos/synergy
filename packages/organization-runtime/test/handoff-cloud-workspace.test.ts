@@ -3,14 +3,19 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { z } from "zod"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
+import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
+import { OrganizationHandoffCleanup as Cleanup } from "../src/handoff-recovery"
+import { openMemberConnection } from "../src/connection"
 import {
   OrganizationCloudProtocol as Cloud,
   OrganizationHandoffProtocol as Handoff,
+  OrganizationHandoffRecovery as Recovery,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import {
@@ -27,6 +32,9 @@ import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
+import { readCredentials } from "../src/credentials"
+import { OrganizationHandoffTarget as NativeTarget } from "../src/handoff-target"
+import { readHandoffTargetRecord } from "../src/handoff-target-record"
 
 async function port() {
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -50,10 +58,15 @@ for (const scenario of [
   "return-adopt-prepared-cancel-shared",
   "return-adopt-unshare-cleanup",
   "return-adopt-role-cleanup",
+  "return-adopt-runtime-revoked-cleanup",
+  "return-adopt-account-removed-cleanup",
 ] as const)
   test(`consented native files complete one cross-Realm receipt (${scenario})`, async () => {
     const adopting = scenario.startsWith("return-adopt")
-    const restrictedRecipient = scenario === "return-adopt-unshare-cleanup" || scenario === "return-adopt-role-cleanup"
+    const revokedRecovery =
+      scenario === "return-adopt-runtime-revoked-cleanup" || scenario === "return-adopt-account-removed-cleanup"
+    const restrictedRecipient =
+      scenario === "return-adopt-unshare-cleanup" || scenario === "return-adopt-role-cleanup" || revokedRecovery
     await using resources = testResources()
     using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
     const objects = path.join(process.env.SYNERGY_TEST_ROOT!, "handoff-cloud-" + crypto.randomUUID())
@@ -239,6 +252,26 @@ for (const scenario of [
       }
       return claim
     })
+    const actualTargets = new Map<string, ReturnType<typeof NativeTarget.create>>()
+    type RecoveryInput = Parameters<ReturnType<typeof NativeTarget.create>["recover"]>[0]
+    const cleanupInputs = new Map<string, RecoveryInput>()
+    let recoveryProbe: ((value: RecoveryInput) => Promise<void>) | undefined
+    const createTarget = NativeTarget.create
+    using targetControllers = revokedRecovery
+      ? spyOn(NativeTarget, "create").mockImplementation((input) => {
+          const target = createTarget(input)
+          const recover = target.recover.bind(target)
+          target.recover = async (value) => {
+            cleanupInputs.set(input.runtimeID, value)
+            const probe = recoveryProbe
+            recoveryProbe = undefined
+            await probe?.(value)
+            return recover(value)
+          }
+          actualTargets.set(input.runtimeID, target)
+          return target
+        })
+      : undefined
     async function member(
       deviceID: string,
       token: string,
@@ -290,7 +323,7 @@ for (const scenario of [
         baseUrl: `http://127.0.0.1:${listener.port}`,
         headers: { authorization: `Bearer ${token}` },
       })
-      return { runtime, client, registration, headers: account.headers, sockets }
+      return { runtime, client, registration, headers: account.headers, sockets, home, input }
     }
     const source = await member("native-source", "a".repeat(64))
     const target = await member("cloud-target", "b".repeat(64), recipient)
@@ -1103,9 +1136,289 @@ for (const scenario of [
           rescued: false,
         }
         const { entered, resume, aborting } = held
+        let modeReply: Promise<{ status: number; privatePage: boolean }> | undefined
+        let deliverMode: (() => void | Promise<void>) | undefined
         const cancelled = async (knownPrepared: boolean, pending?: Promise<unknown>) => {
           await f.client.orgHandoff.cancel({ handoffID: returningID, body: {} }, sourceOptions)
-          expect((await back("cancel-source")).facts[0]?.proof.purpose).toBe("source-cancelled")
+          const sourceCancellation = (await back("cancel-source")).facts[0]!
+          expect(sourceCancellation.proof.purpose).toBe("source-cancelled")
+          if (revokedRecovery) {
+            const selected = {
+              sessionID,
+              scopeID: project.projectID,
+              handoffID: returningID,
+              sourceID: target.registration.runtimeID,
+              targetID: receiver.registration.runtimeID,
+              fromEpoch: 2,
+              toEpoch: 3,
+            }
+            const original = await receiver.runtime.run(async () =>
+              z
+                .object({ request: WorkspaceMove.NativeRequest })
+                .parse(await Storage.read(["workspace_move", project.projectID, "return-existing-native"])),
+            )
+            expect(await receiver.runtime.run(() => WorkspaceMove.inspect(original.request))).toMatchObject({
+              state: "published",
+              nativeRequested: true,
+            })
+            try {
+              if (scenario === "return-adopt-runtime-revoked-cleanup") {
+                await receiver.runtime.run(async () => {
+                  const key = [
+                    "organization_handoff_target",
+                    receiver.registration.orgID,
+                    receiver.registration.deploymentIncarnation,
+                    returningID,
+                    "prepared",
+                  ]
+                  const saved = readHandoffTargetRecord(key, await Storage.read(key)),
+                    originalPlan = Handoff.MachinePlan.parse(saved.plan)
+                  const attacker = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]),
+                    publicKey = await Runtime.publicKey(attacker.publicKey),
+                    issuedAt = Date.now()
+                  const fake = Recovery.Permit.strip().parse({
+                    ...originalPlan,
+                    purpose: "handoff-target-cleanup",
+                    operation: "retire-target",
+                    requestHash: "f".repeat(64),
+                    keyID: "self-signed-service",
+                    participantKey: receiver.registration.publicKey,
+                    sourceKey: publicKey,
+                    preparedHash: await Handoff.proofHash(saved.fact),
+                    issuedAt,
+                    expiresAt: issuedAt + 30000,
+                    frozen: {
+                      proof: originalPlan.frozen!.proof,
+                      signature: await Handoff.signProof(originalPlan.frozen!.proof, attacker.privateKey),
+                    },
+                    cleanup: {
+                      proof: sourceCancellation.proof,
+                      signature: await Handoff.signProof(sourceCancellation.proof, attacker.privateKey),
+                    },
+                  })
+                  const bare = {
+                    authorization: { permit: fake, signature: await Recovery.signPermit(fake, attacker.privateKey) },
+                    signingIdentity: {
+                      schemaVersion: 1,
+                      orgID: fake.orgID,
+                      deploymentIncarnation: fake.deploymentIncarnation,
+                      keyID: fake.keyID,
+                      publicKey,
+                    },
+                    signal: new AbortController().signal,
+                  }
+                  const controller = actualTargets.get(receiver.registration.runtimeID)!
+                  const denied = await Reflect.apply(controller.recover, controller, [bare]).then(
+                    () => false,
+                    () => true,
+                  )
+                  const epoch = await Epochs.inspect(selected),
+                    move = await WorkspaceMove.inspect(original.request)
+                  const physical = (await workspaceCoordinator.inspect()).some(
+                    (claim) => claim.state === "active" && claim.roots?.some((root) => root.path === receiverDirectory),
+                  )
+                  expect({
+                    denied,
+                    phase: epoch.phase,
+                    state: move?.state,
+                    nativeRequested: move?.nativeRequested,
+                    physical,
+                  }).toEqual({
+                    denied: true,
+                    phase: "prepared",
+                    state: "published",
+                    nativeRequested: true,
+                    physical: true,
+                  })
+                })
+              }
+              if (scenario === "return-adopt-runtime-revoked-cleanup") {
+                const projectNow = (await f.client.orgProjects.get({ projectID: project.projectID }, options)).data
+                await f.client.orgProjects.member(
+                  {
+                    projectID: project.projectID,
+                    accountID: receiverAccountID,
+                    orgProjectMemberChange: { expectedRevision: projectNow.revision, role: null },
+                  },
+                  options,
+                )
+                expect(
+                  (await f.client.orgHandoff.get({ handoffID: returningID }, { headers: receiver.headers })).response
+                    .status,
+                ).toBe(404)
+                const candidates = (
+                  await f.client.orgHandoff.cleanups(
+                    { runtimeID: receiver.registration.runtimeID, limit: 1 },
+                    receiverOptions,
+                  )
+                ).data
+                expect(candidates.items).toMatchObject([{ handoffID: returningID }])
+                await expect(
+                  f.client.orgHandoff.cleanups({ runtimeID: receiver.registration.runtimeID }, options),
+                ).rejects.toMatchObject({ code: "PERMISSION_DENIED" })
+                const current = (
+                  await f.client.orgRuntime.get({ runtimeID: receiver.registration.runtimeID }, receiverOptions)
+                ).data
+                await f.client.orgRuntime.revoke(
+                  {
+                    runtimeID: receiver.registration.runtimeID,
+                    orgRuntimeRevoke: { expectedRevision: current.revision },
+                  },
+                  options,
+                )
+              } else {
+                const account = (await f.client.orgAccounts.list(undefined, options)).data.items.find(
+                  (account) => account.accountID === receiverAccountID,
+                )!
+                await f.client.orgAccounts.update(
+                  {
+                    accountID: receiverAccountID,
+                    orgAccountChange: { expectedRevision: account.revision, state: "removed" },
+                  },
+                  options,
+                )
+                await receiver.runtime.close()
+                receiver.runtime = await openMemberRuntime(receiver.input)
+                resources.defer("cold removed-account target", () => receiver.runtime.close())
+              }
+              await expect(back("inspect-target")).rejects.toThrow()
+              let reconnected: Awaited<ReturnType<typeof openMemberConnection>> | undefined
+              try {
+                await expect(
+                  openMemberConnection({
+                    home: receiver.home.home,
+                    identity: receiver.home.identity,
+                    ca: f.ca,
+                    buildVersion: "recovery-normal-connection-fence",
+                  }).then((value) => {
+                    reconnected = value
+                    return value
+                  }),
+                ).rejects.toThrow()
+              } finally {
+                await reconnected?.close()
+              }
+              const page = await receiver.runtime.run(() => Cleanup.discover({ limit: 1 }))
+              expect(page.items).toMatchObject([{ handoffID: returningID }])
+              const descriptor = page.items[0]!
+              expect(JSON.stringify(page)).not.toContain("currentDriver")
+              expect(JSON.stringify(page)).not.toContain("bindingEpoch")
+              await expect(
+                receiver.runtime.run(() => Cleanup.inspect({ ...descriptor, manifestHash: "0".repeat(64) })),
+              ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+              const transport = new Bun.FetchSession({ tls: { ca: f.ca, rejectUnauthorized: true }, proxy: false })
+              try {
+                const machineClient = createOrganizationClient({
+                  baseUrl: f.origin,
+                  credentials: "omit",
+                  redirect: "error",
+                  fetch: Object.assign(transport.fetch, { preconnect() {} }),
+                })
+                const foreign = await readCredentials(source.home.root)
+                const issuedAt = Date.now(),
+                  proof = Recovery.Proof.parse({
+                    schemaVersion: 1,
+                    purpose: "handoff-cleanup-recovery",
+                    orgID: receiver.registration.orgID,
+                    deploymentIncarnation: receiver.registration.deploymentIncarnation,
+                    runtimeID: receiver.registration.runtimeID,
+                    requestID: crypto.randomUUID(),
+                    issuedAt,
+                    expiresAt: issuedAt + 30000,
+                    query: { operation: "discover", page: { limit: 1 } },
+                  })
+                const denied = await machineClient.orgHandoff.recovery({
+                  orgHandoffRecoveryRequest: { proof, signature: await Recovery.sign(proof, foreign!.privateKey) },
+                })
+                expect(denied.response.status).toBe(403)
+              } finally {
+                transport.close()
+              }
+              if (scenario === "return-adopt-runtime-revoked-cleanup")
+                recoveryProbe = async (value) => {
+                  const controller = actualTargets.get(receiver.registration.runtimeID)!
+                  const epoch = await Epochs.inspect(selected),
+                    move = await WorkspaceMove.inspect(original.request)
+                  await expect(source.runtime.run(() => controller.recover(value))).rejects.toThrow()
+                  const foreign = await TransactionalStore.open({
+                    backend: "sqlite",
+                    filename: path.join(f.root, "foreign-cleanup.sqlite"),
+                    namespace: "foreign",
+                  })
+                  try {
+                    await expect(
+                      Storage.provide({ store: foreign, artifactDirectory: Storage.current().artifactDirectory }, () =>
+                        controller.recover(value),
+                      ),
+                    ).rejects.toThrow()
+                  } finally {
+                    await foreign.close()
+                  }
+                  expect(await Epochs.inspect(selected)).toEqual(epoch)
+                  expect(await WorkspaceMove.inspect(original.request)).toEqual(move)
+                }
+              const before = await receiver.runtime.run(() => Cleanup.inspect(descriptor))
+              expect(before).toMatchObject({ state: "blocked", facts: [] })
+              if (scenario === "return-adopt-runtime-revoked-cleanup") {
+                const controller = actualTargets.get(receiver.registration.runtimeID)!,
+                  ended = cleanupInputs.get(receiver.registration.runtimeID)!
+                await expect(receiver.runtime.run(() => controller.recover(ended))).rejects.toThrow(
+                  "real enrolled HTTP authorization owner",
+                )
+              }
+              let proofPosts = 0
+              if (scenario === "return-adopt-runtime-revoked-cleanup")
+                f.interceptHTTP(async (request) => {
+                  if (new URL(request.url).pathname !== "/runtime/v1/handoffs/proof") return
+                  proofPosts++
+                  const result = await f.service.fetch(request)
+                  if (result.status !== 200) return result
+                  return Response.json(
+                    {
+                      code: "SERVICE_UNAVAILABLE",
+                      message: "Lost committed cleanup proof acknowledgement",
+                      outcome: "unknown",
+                      retryable: false,
+                    },
+                    { status: 503 },
+                  )
+                })
+              using releases = spyOn(WorkspaceMove, "release")
+              if (scenario === "return-adopt-runtime-revoked-cleanup")
+                await expect(receiver.runtime.run(() => Cleanup.retire(descriptor))).rejects.toMatchObject({
+                  data: { outcome: "unknown" },
+                })
+              else
+                expect((await receiver.runtime.run(() => Cleanup.retire(descriptor))).facts[0]?.proof.purpose).toBe(
+                  "target-never-activate",
+                )
+              f.interceptHTTP(undefined)
+              const released = releases.mock.calls.length
+              const checked = await receiver.runtime.run(() => Cleanup.inspect(descriptor))
+              expect(checked).toMatchObject({ state: "complete", stage: "target-never-activate" })
+              expect(releases.mock.calls.length).toBe(released)
+              if (scenario === "return-adopt-runtime-revoked-cleanup") expect(proofPosts).toBe(1)
+              await receiver.runtime.run(async () => {
+                expect(await Epochs.inspect(selected)).toMatchObject({ phase: "never_activate" })
+                expect(await WorkspaceMove.inspect(original.request)).toMatchObject({
+                  state: "retired",
+                  nativeRequested: false,
+                })
+              })
+              expect(
+                (await workspaceCoordinator.inspect()).some(
+                  (claim) => claim.state === "active" && claim.roots?.some((root) => root.path === receiverDirectory),
+                ),
+              ).toBe(false)
+              expect(allocations).toBe(0)
+            } finally {
+              await receiver.runtime.run(async () => {
+                await Epochs.neverActivate(selected, returning.data.manifestHash ?? returnedFrozen!.manifestHash!)
+                await WorkspaceMove.release(original.request, "retired")
+              })
+            }
+            return
+          }
           if (knownPrepared && !restrictedRecipient)
             expect(
               (
@@ -1225,6 +1538,10 @@ for (const scenario of [
                 sourceOptions,
               ),
             ).rejects.toMatchObject({ code: "NOT_FOUND" })
+            if (modeReply) {
+              f.interceptFrames(undefined)
+              await deliverMode?.()
+            }
           }
           const lostCleanup = scenario === "return-adopt-unshare-cleanup" || scenario === "return-adopt-late-preview"
           let cleanupPosts = 0
@@ -1300,6 +1617,7 @@ for (const scenario of [
               ).toBe(false)
             })
             expect(held.rescued).toBe(false)
+            if (modeReply) expect(await modeReply).toEqual({ status: 403, privatePage: false })
             const current = (await f.client.orgSessions.get({ sessionID }, options)).data
             expect(current.driverRuntimeID).toBe(
               scenario === "return-adopt-unshare-cleanup"
@@ -1326,8 +1644,10 @@ for (const scenario of [
               await expect(back("inspect-target")).rejects.toMatchObject({ code: "PERMISSION_DENIED" })
             }
           } finally {
+            f.interceptFrames(undefined)
+            await deliverMode?.()
             resume.resolve()
-            await Promise.allSettled([retiring, ...(pending ? [pending] : [])])
+            await Promise.allSettled([retiring, ...(pending ? [pending] : []), ...(modeReply ? [modeReply] : [])])
           }
         }
         await expect(back("prepare-target")).rejects.toMatchObject({ code: "HANDOFF_BLOCKED" })
@@ -1445,6 +1765,49 @@ for (const scenario of [
         expect(prepared?.purpose === "target-prepared" ? prepared.workspaceNativeReceiptHash : undefined).toMatch(
           /^[a-f0-9]{64}$/,
         )
+        if (scenario === "return-adopt-role-cleanup") {
+          const heldReply = Promise.withResolvers<void>()
+          f.interceptFrames((socket, raw) => {
+            const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
+            if (
+              frame.type !== "receipt" ||
+              frame.reply.kind !== "handoff" ||
+              frame.reply.result.handoffID !== returningID ||
+              frame.reply.result.requestID !== "held-before-cleanup-mode" ||
+              !frame.reply.result.differencePage?.items.length
+            )
+              return false
+            const retained = typeof raw === "string" ? raw : Buffer.from(raw)
+            let delivered = false
+            deliverMode = () => {
+              if (delivered) return
+              delivered = true
+              return f.service.websocket.message(socket, retained)
+            }
+            heldReply.resolve()
+            return true
+          })
+          modeReply = f.client.orgHandoff
+            .drive(
+              {
+                handoffID: returningID,
+                orgHandoffDrive: {
+                  operation: "inspect-target",
+                  requestID: "held-before-cleanup-mode",
+                  expectedRevision: consent.diffHash,
+                },
+              },
+              { headers: receiver.headers, throwOnError: false },
+            )
+            .then((reply) => ({ status: reply.response.status, privatePage: !!reply.data?.differencePage }))
+          void modeReply.catch(() => {})
+          await Promise.race([
+            heldReply.promise,
+            modeReply.then(() => {
+              throw new Error("Private inspection completed without its actual held difference reply")
+            }),
+          ])
+        }
         if (scenario.startsWith("return-adopt-prepared-cancel") || restrictedRecipient) {
           await expect(back("retire-target")).rejects.toMatchObject({ code: "HANDOFF_BLOCKED" })
           await f.client.orgCloudWorkspaces.write(
@@ -1466,6 +1829,37 @@ for (const scenario of [
               sourceOptions,
             ),
           ).rejects.toMatchObject({ code: "REVISION_CONFLICT" })
+          if (revokedRecovery) {
+            const descriptor = Recovery.Descriptor.parse({
+              ...Handoff.Binding.strip().parse(returning.data),
+              manifestHash: returnedFrozen!.manifestHash,
+            })
+            try {
+              await expect(receiver.runtime.run(() => Cleanup.inspect(descriptor))).rejects.toMatchObject({
+                data: { code: "HANDOFF_BLOCKED" },
+              })
+            } catch (error) {
+              await receiver.runtime.run(async () => {
+                await Epochs.neverActivate(
+                  {
+                    sessionID,
+                    scopeID: project.projectID,
+                    handoffID: returningID,
+                    sourceID: target.registration.runtimeID,
+                    targetID: receiver.registration.runtimeID,
+                    fromEpoch: 2,
+                    toEpoch: 3,
+                  },
+                  descriptor.manifestHash,
+                )
+                const original = z
+                  .object({ request: WorkspaceMove.NativeRequest })
+                  .parse(await Storage.read(["workspace_move", project.projectID, "return-existing-native"]))
+                await WorkspaceMove.release(original.request, "retired")
+              })
+              throw error
+            }
+          }
           await cancelled(true)
           return
         }

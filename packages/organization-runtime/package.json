@@ -9,6 +9,7 @@
   },
   "exports": {
     "./home": "./src/home.ts",
+    "./handoff-recovery": "./src/handoff-recovery.ts",
     "./home-migration": "./src/home-migration.ts",
     "./enrollment": "./src/enrollment.ts",
     "./registration": "./src/registration.ts",

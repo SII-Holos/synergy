@@ -2625,6 +2625,27 @@ export type OrgCloudFileInspectionRequest = {
   signature: string
 }
 
+export type OrgHandoffCleanupDescriptor = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  manifestHash: string
+  cleanupFactHash?: string
+}
+
+export type OrgHandoffCleanupPage = {
+  items: Array<OrgHandoffCleanupDescriptor>
+  cursor?: string
+}
+
 export type OrgHandoffOptions = {
   sessionID: string
   projectID: string
@@ -3189,6 +3210,187 @@ export type OrgHandoffDrive = {
     | "retire-target"
   expectedRevision?: string
   cursor?: string
+}
+
+export type OrgServiceSigningIdentity = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  keyID: string
+  publicKey: string
+}
+
+export type OrgHandoffCleanupDiscovery = {
+  items: Array<OrgHandoffCleanupDescriptor>
+  cursor?: string
+  operation: "discover"
+}
+
+export type OrgHandoffRecoveryPermit = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  purpose: "handoff-target-cleanup"
+  requestID: string
+  requestHash: string
+  keyID: string
+  runtimeID: string
+  participantKey: OrgRuntimePublicKey
+  operation: "inspect-target" | "retire-target"
+  sourceBinding: OrgSessionBinding
+  controlRevision: number
+  manifestHash: string
+  frozen: OrgHandoffSignedProof
+  cleanup: OrgHandoffSignedProof
+  sourceKey: OrgRuntimePublicKey
+  preparedHash?: string
+  workspacePlan: {
+    mapping:
+      | {
+          kind: "native"
+        }
+      | {
+          kind: "organization-live"
+          source: {
+            workspaceID: string
+            generation: number
+          }
+          resource: {
+            resourceID: string
+            workspaceID: string
+            generation: number
+            path: string
+          }
+        }
+      | {
+          kind: "organization-native"
+          moveID: string
+          source: {
+            workspaceID: string
+            generation: number
+          }
+          resource: {
+            resourceID: string
+            workspaceID: string
+            generation: number
+            path: string
+          }
+          target: {
+            kind: "existing"
+            workspaceID: string
+            generation: number
+            expectedRevision: number
+            projectRevision: string
+          }
+        }
+      | {
+          kind: "organization-object"
+          moveID: string
+          source: {
+            workspaceID: string
+            generation: number
+          }
+          target: {
+            resourceID: string
+            workspaceID: string
+            generation: number
+            path: string
+            expectedRevision: number
+          }
+          acceptedDiffHash: null
+        }
+    hash: string
+    selectionActor: ActorStamp | null
+    targetActor?: ActorStamp | null
+    differenceConsent?: {
+      sourceSnapshotHash: string
+      targetDigest: string
+      diffHash: string
+      mappingPlanRevision: number
+    }
+    difference?: {
+      sourceSnapshotHash: string
+      targetDigest: string
+      diffHash: string
+      mappingPlanRevision: number
+      entries: number
+      sourceEntries: number
+      targetEntries: number
+      mode: {
+        source: number
+        target: number
+      }
+    }
+    targetScopeID?: string
+  }
+  issuedAt: number
+  expiresAt: number
+}
+
+export type OrgHandoffSignedRecoveryPermit = {
+  permit: OrgHandoffRecoveryPermit
+  signature: string
+}
+
+export type OrgHandoffRecoveryResponse = {
+  requestID: string
+  requestHash: string
+  signingIdentity: OrgServiceSigningIdentity
+  result:
+    | OrgHandoffCleanupDiscovery
+    | {
+        operation: "inspect-target" | "retire-target"
+        authorization: OrgHandoffSignedRecoveryPermit
+      }
+}
+
+export type OrgHandoffRecoveryProof = {
+  schemaVersion: 1
+  purpose: "handoff-cleanup-recovery"
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  requestID: string
+  issuedAt: number
+  expiresAt: number
+  query:
+    | {
+        operation: "discover"
+        page: {
+          limit?: number
+          cursor?: string
+        }
+      }
+    | {
+        binding: {
+          schemaVersion: 1
+          orgID: string
+          deploymentIncarnation: string
+          handoffID: string
+          sessionID: string
+          sourceRuntimeID: string
+          targetRuntimeID: string
+          fromEpoch: number
+          toEpoch: number
+          mappingPlanRevision: number
+          shareGeneration: number
+        }
+        manifestHash: string
+        operation: "inspect-target" | "retire-target"
+      }
+}
+
+export type OrgHandoffRecoveryRequest = {
+  proof: OrgHandoffRecoveryProof
+  signature: string
 }
 
 export type OrgHandoffObjectProof = {
@@ -9441,6 +9643,56 @@ export type OrgCloudFilesInspectResponses = {
 
 export type OrgCloudFilesInspectResponse = OrgCloudFilesInspectResponses[keyof OrgCloudFilesInspectResponses]
 
+export type OrgHandoffCleanupsData = {
+  body?: never
+  path: {
+    runtimeID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/runtimes/{runtimeID}/handoff-cleanups"
+}
+
+export type OrgHandoffCleanupsErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffCleanupsError = OrgHandoffCleanupsErrors[keyof OrgHandoffCleanupsErrors]
+
+export type OrgHandoffCleanupsResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffCleanupPage
+}
+
+export type OrgHandoffCleanupsResponse = OrgHandoffCleanupsResponses[keyof OrgHandoffCleanupsResponses]
+
 export type OrgHandoffOptionsData = {
   body?: never
   path: {
@@ -9869,6 +10121,51 @@ export type OrgHandoffDriveResponses = {
 }
 
 export type OrgHandoffDriveResponse = OrgHandoffDriveResponses[keyof OrgHandoffDriveResponses]
+
+export type OrgHandoffRecoveryData = {
+  body: OrgHandoffRecoveryRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/handoffs/recovery"
+}
+
+export type OrgHandoffRecoveryErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffRecoveryError = OrgHandoffRecoveryErrors[keyof OrgHandoffRecoveryErrors]
+
+export type OrgHandoffRecoveryResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffRecoveryResponse
+}
+
+export type OrgHandoffRecoveryResponse2 = OrgHandoffRecoveryResponses[keyof OrgHandoffRecoveryResponses]
 
 export type OrgHandoffObjectReadData = {
   body: OrgHandoffObjectRequest

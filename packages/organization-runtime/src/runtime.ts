@@ -167,7 +167,11 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
         const start = async () => {
           const context = RuntimeContext.current()
           handoff = input.handoff
-            ? createRuntimeHandoff({ identity: member.identity, runtimeID: registration.runtimeID })
+            ? createRuntimeHandoff({
+                identity: member.identity,
+                runtimeID: registration.runtimeID,
+                ca: input.ca,
+              })
             : undefined
           bridgeDrained = false
           bridge = startMemberBridge({

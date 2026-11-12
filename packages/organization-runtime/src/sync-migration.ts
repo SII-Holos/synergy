@@ -4,11 +4,12 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { OrganizationSyncPath as Keys } from "./storage/path"
 import { registerKnowledgeActiveMigrations } from "./knowledge-active"
-import { handoffTargetMigration } from "./handoff-target-record"
+import { handoffTargetMigration, handoffTargetRecoveryMigration } from "./handoff-target-record"
 
 const Sequence = z.object({ localSequence: z.number().int().nonnegative(), draftID: z.string().min(1) })
 const migrations: Migration[] = [
   handoffTargetMigration,
+  handoffTargetRecoveryMigration,
   {
     id: "20261111-organization-sync-order",
     description: "Index pending sync drafts in publication order and register resumable roots",

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { z } from "zod"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationHandoffRecovery as Recovery,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -22,7 +23,13 @@ import { RuntimeIdentity } from "./home"
 import { assertHandoffHome } from "./handoff-home"
 import { OrganizationHandoffWorkspaceTarget as WorkspaceTarget } from "./handoff-workspace-target"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
-import { HandoffTargetRecord as Receipt, readHandoffTargetRecord } from "./handoff-target-record"
+import {
+  HandoffTargetRecord as Receipt,
+  readHandoffTargetRecord,
+  type HandoffTargetPlan,
+} from "./handoff-target-record"
+import { readRuntimeRegistration } from "./registration"
+import { readHandoffCleanupAuthorization, type HandoffCleanupAuthorization } from "./handoff-recovery"
 
 export namespace OrganizationHandoffTarget {
   type Mapping = Owners.TargetContext["mapping"]
@@ -65,18 +72,16 @@ export namespace OrganizationHandoffTarget {
   function fail(message: string): never {
     throw new OrganizationRuntimeError({ code: "HANDOFF_BLOCKED", message, outcome: "rejected", retryable: false })
   }
-  function same(left: Handoff.MachinePlan, right: Handoff.MachinePlan) {
+  function same(left: HandoffTargetPlan, right: HandoffTargetPlan) {
     return (
       identity.every((field) => left[field] === right[field]) &&
       JSON.stringify(left.sourceBinding) === JSON.stringify(right.sourceBinding)
     )
   }
-  function factBinding(plan: Handoff.MachinePlan) {
-    return Object.fromEntries(
-      ["schemaVersion", ...identity].map((key) => [key, plan[key as keyof Handoff.MachinePlan]]),
-    )
+  function factBinding(plan: HandoffTargetPlan) {
+    return Object.fromEntries(["schemaVersion", ...identity].map((key) => [key, plan[key as keyof HandoffTargetPlan]]))
   }
-  function binding(plan: Handoff.MachinePlan, sessionID = plan.sessionID): Epochs.Binding {
+  function binding(plan: HandoffTargetPlan, sessionID = plan.sessionID): Epochs.Binding {
     return {
       sessionID,
       scopeID: plan.sourceBinding.projectID,
@@ -186,14 +191,14 @@ export namespace OrganizationHandoffTarget {
       return { plan, manifestHash, frozen }
     }
     type Kind = "prepared" | "activated" | "retired" | "difference" | "preview-released"
-    const key = (plan: Handoff.MachinePlan, kind: Kind) => [
+    const key = (plan: HandoffTargetPlan, kind: Kind) => [
       "organization_handoff_target",
       plan.orgID,
       plan.deploymentIncarnation,
       plan.handoffID,
       kind,
     ]
-    async function receipt(plan: Handoff.MachinePlan, kind: Kind) {
+    async function receipt(plan: HandoffTargetPlan, kind: Kind) {
       const [raw] = await Storage.readMany([key(plan, kind)])
       if (raw === undefined) return
       const saved = readHandoffTargetRecord(key(plan, kind), raw)
@@ -214,7 +219,7 @@ export namespace OrganizationHandoffTarget {
         fail("Destination receipt has another native purpose")
       return saved
     }
-    async function reserve(plan: Handoff.MachinePlan, manifestHash: string, signal: AbortSignal) {
+    async function reserve(plan: HandoffTargetPlan, manifestHash: string, signal: AbortSignal, verify?: () => void) {
       const bindings: Epochs.Binding[] = []
       for await (const member of Staging.members({
         handoffID: plan.handoffID,
@@ -224,7 +229,13 @@ export namespace OrganizationHandoffTarget {
       })) {
         assertOwner(signal)
         const selected = binding(plan, member.session.id)
-        await Epochs.reserve(selected, manifestHash, await Epochs.destinationPrior(selected))
+        const prior = await Epochs.destinationPrior(selected)
+        await Storage.transaction(() => Epochs.reserve(selected, manifestHash, prior), {
+          commitGuard() {
+            assertOwner(signal)
+            verify?.()
+          },
+        })
         bindings.push(selected)
       }
       return bindings
@@ -377,44 +388,157 @@ export namespace OrganizationHandoffTarget {
       assertOwner(input.signal)
       return { convertedHash: converted.digest("hex"), bindings, contexts: [...core, ...remaining] }
     }
+    async function inspectCleanup(plan: HandoffTargetPlan, signal: AbortSignal, verify?: () => void) {
+      verify?.()
+      const manifestHash = plan.manifestHash
+      const retired = (await receipt(plan, "retired")) ?? (await receipt(plan, "preview-released"))
+      const move = await WorkspaceTarget.status(plan, undefined, signal)
+      const job = jobs.get(plan.handoffID)
+      const hasEpoch =
+        retired || move || job || (await receipt(plan, "prepared")) || (await receipt(plan, "difference"))
+      const epoch = hasEpoch ? await Epochs.inspect(binding(plan)) : undefined
+      if (epoch && (epoch.role !== "target" || epoch.manifestHash !== manifestHash))
+        fail("Cleanup inspection has another original native epoch")
+      if (retired && epoch?.phase !== "never_activate") fail("Native cleanup has no actual never-activate tombstone")
+      const complete = !!retired && (!move || (!move.nativeRequested && ["cancelled", "retired"].includes(move.state)))
+      assertOwner(signal)
+      verify?.()
+      return Handoff.MachineExecution.parse({
+        handoffID: plan.handoffID,
+        requestID: plan.requestID,
+        runtimeID: plan.runtimeID,
+        operation: plan.operation,
+        state: complete ? "complete" : job ? "working" : hasEpoch ? "blocked" : "idle",
+        stage: complete ? retired.fact.purpose : hasEpoch ? "preparing" : "idle",
+        revision: complete
+          ? await Handoff.proofHash(retired.fact)
+          : hash({
+              handoffID: plan.handoffID,
+              manifestHash,
+              phase: epoch?.phase,
+              state: move?.state,
+              nativeRequested: move?.nativeRequested,
+            }),
+        requirements: [],
+        facts: complete ? [retired.fact] : [],
+      })
+    }
+    async function retireNative(plan: HandoffTargetPlan, signal: AbortSignal, verify?: () => void) {
+      const workspace = plan.workspacePlan
+      if (!workspace || workspace.mapping.kind !== "organization-native")
+        fail("Native retirement requires its original Workspace mapping")
+      const assert = () => {
+        assertOwner(signal)
+        verify?.()
+      }
+      assert()
+      const manifestHash = plan.manifestHash!
+      closing.add(plan.handoffID)
+      const previous = jobs.get(plan.handoffID)
+      if (previous) {
+        if (!same(plan, previous.plan) || previous.plan.manifestHash !== manifestHash)
+          fail("Native retirement has another accepted preparation")
+        previous.abort.abort(new Error("Original native target preparation cancelled"))
+        await previous.promise.catch(() => {})
+      }
+      await Staging.verify(plan.handoffID, signal)
+      assert()
+      const saved = await receipt(plan, "prepared")
+      const retired = (await receipt(plan, "retired")) ?? (await receipt(plan, "preview-released"))
+      const knownPrepared = !!(
+        saved &&
+        saved.fact.purpose === "target-prepared" &&
+        plan.preparedHash === (await Handoff.proofHash(saved.fact))
+      )
+      const bindings = await reserve(plan, manifestHash, signal, verify)
+      await Storage.transaction(
+        async () => {
+          if (await receipt(plan, "activated")) fail("An activated native destination cannot be retired")
+          for (const selected of bindings) await Epochs.neverActivate(selected, manifestHash)
+        },
+        { commitGuard: assert },
+      )
+      await WorkspaceTarget.release(plan, undefined, signal, knownPrepared ? "retired" : "cancelled")
+      assert()
+      if (retired) return retired.fact
+      const fact = Handoff.Proof.parse({
+        ...factBinding(plan),
+        manifestHash,
+        tombstonePersisted: true,
+        ...(knownPrepared
+          ? { purpose: "target-never-activate", preparedHash: plan.preparedHash }
+          : { purpose: "target-preview-released", diffHash: workspace.difference?.diffHash ?? null }),
+      })
+      return Storage.transaction(
+        async () => {
+          if (await receipt(plan, "activated")) fail("An activated native destination cannot be retired")
+          await Storage.write(
+            key(plan, knownPrepared ? "retired" : "preview-released"),
+            Receipt.parse({ version: 3, plan, fact }),
+          )
+          return fact
+        },
+        { commitGuard: assert },
+      )
+    }
     return {
+      async recover(value: {
+        authorization: HandoffCleanupAuthorization
+        signal: AbortSignal
+      }): Promise<Handoff.MachineExecution> {
+        const trusted = readHandoffCleanupAuthorization(value.authorization)
+        const authorization = trusted.authorization,
+          plan = authorization.permit,
+          signing = trusted.signingIdentity,
+          signal = value.signal
+        assertOwner(signal)
+        if (
+          plan.runtimeID !== runtimeID ||
+          plan.orgID !== identity.orgID ||
+          plan.orgID !== signing.orgID ||
+          plan.deploymentIncarnation !== signing.deploymentIncarnation ||
+          plan.keyID !== signing.keyID ||
+          plan.issuedAt > Date.now() ||
+          plan.expiresAt <= Date.now() ||
+          !(await Recovery.verifyPermit(plan, authorization.signature, signing.publicKey))
+        )
+          fail("Recovery requires the original finite cleanup-only service authorization")
+        const registration = await readRuntimeRegistration(RuntimeContext.current().host.home, identity)
+        if (
+          !registration ||
+          registration.state === "pending" ||
+          registration.runtimeID !== runtimeID ||
+          registration.orgID !== plan.orgID ||
+          registration.deploymentIncarnation !== plan.deploymentIncarnation ||
+          registration.publicKey !== plan.participantKey ||
+          !("accountID" in identity) ||
+          plan.workspacePlan.targetActor?.kind !== "account" ||
+          plan.workspacePlan.targetActor.subjectID !== identity.accountID ||
+          plan.workspacePlan.targetActor.requestID !== plan.handoffID ||
+          !(await Handoff.verifyProof(plan.cleanup.proof, plan.cleanup.signature, plan.sourceKey)) ||
+          !(await Handoff.verifyProof(plan.frozen.proof, plan.frozen.signature, plan.sourceKey))
+        )
+          fail("Recovery does not own this enrolled target and original source cancellation")
+        assertOwner(signal)
+        if (plan.operation === "inspect-target") return inspectCleanup(plan, signal, trusted.assert)
+        const fact = await retireNative(plan, signal, trusted.assert)
+        assertOwner(signal)
+        return Handoff.MachineExecution.parse({
+          handoffID: plan.handoffID,
+          requestID: plan.requestID,
+          runtimeID: plan.runtimeID,
+          operation: plan.operation,
+          state: "complete",
+          stage: fact.purpose,
+          revision: await Handoff.proofHash(fact),
+          requirements: [],
+          facts: [fact],
+        })
+      },
       async inspect(value: Input): Promise<Handoff.MachineExecution> {
         const input = snapshot(value)
         const { plan, manifestHash } = await authorize(input, "inspect-target")
-        if (plan.cleanup) {
-          const retired = (await receipt(plan, "retired")) ?? (await receipt(plan, "preview-released"))
-          const move = await WorkspaceTarget.status(plan, input.resources, input.signal)
-          const job = jobs.get(plan.handoffID)
-          const hasEpoch =
-            retired || move || job || (await receipt(plan, "prepared")) || (await receipt(plan, "difference"))
-          const epoch = hasEpoch ? await Epochs.inspect(binding(plan)) : undefined
-          if (epoch && (epoch.role !== "target" || epoch.manifestHash !== manifestHash))
-            fail("Cleanup inspection has another original native epoch")
-          if (retired && epoch?.phase !== "never_activate")
-            fail("Native cleanup has no actual never-activate tombstone")
-          const complete =
-            !!retired && (!move || (!move.nativeRequested && ["cancelled", "retired"].includes(move.state)))
-          assertOwner(input.signal)
-          return Handoff.MachineExecution.parse({
-            handoffID: plan.handoffID,
-            requestID: plan.requestID,
-            runtimeID: plan.runtimeID,
-            operation: plan.operation,
-            state: complete ? "complete" : job ? "working" : hasEpoch ? "blocked" : "idle",
-            stage: complete ? retired.fact.purpose : hasEpoch ? "preparing" : "idle",
-            revision: complete
-              ? await Handoff.proofHash(retired.fact)
-              : hash({
-                  handoffID: plan.handoffID,
-                  manifestHash,
-                  phase: epoch?.phase,
-                  state: move?.state,
-                  nativeRequested: move?.nativeRequested,
-                }),
-            requirements: [],
-            facts: complete ? [retired.fact] : [],
-          })
-        }
+        if (plan.cleanup) return inspectCleanup(plan, input.signal)
         const activated = await receipt(plan, "activated")
         const retired = (await receipt(plan, "retired")) ?? (await receipt(plan, "preview-released"))
         const observedDifference = await receipt(plan, "difference")
@@ -506,7 +630,7 @@ export namespace OrganizationHandoffTarget {
                 (await receipt(plan, "prepared"))
               )
                 fail("Native target closed during its accepted preview")
-              await Storage.write(key(plan, "difference"), Receipt.parse({ version: 2, plan, fact }))
+              await Storage.write(key(plan, "difference"), Receipt.parse({ version: 3, plan, fact }))
               return fact
             },
             {
@@ -592,7 +716,7 @@ export namespace OrganizationHandoffTarget {
               if (existing && JSON.stringify(existing.fact) !== JSON.stringify(fact))
                 fail("Destination preparation cannot change its immutable mapping")
               if (existing) return existing.fact
-              await Storage.write(key(plan, "prepared"), Receipt.parse({ version: 2, plan, fact }))
+              await Storage.write(key(plan, "prepared"), Receipt.parse({ version: 3, plan, fact }))
               return fact
             },
             {
@@ -660,7 +784,7 @@ export namespace OrganizationHandoffTarget {
               async publish() {
                 assertOwner(input.signal)
                 await Staging.publish({ handoffID: plan.handoffID, contexts: prepared.contexts })
-                await Storage.write(key(plan, "activated"), Receipt.parse({ version: 2, plan, fact }))
+                await Storage.write(key(plan, "activated"), Receipt.parse({ version: 3, plan, fact }))
                 assertOwner(input.signal)
               },
             })
@@ -678,53 +802,7 @@ export namespace OrganizationHandoffTarget {
       async retire(value: Input): Promise<Handoff.Proof> {
         const input = snapshot(value)
         const { plan, manifestHash } = await authorize(input, "retire-target")
-        if (plan.workspacePlan?.mapping.kind === "organization-native") {
-          closing.add(plan.handoffID)
-          const previous = jobs.get(plan.handoffID)
-          if (previous) {
-            if (!same(plan, previous.plan) || previous.plan.manifestHash !== manifestHash)
-              fail("Native retirement has another accepted preparation")
-            previous.abort.abort(new Error("Original native target preparation cancelled"))
-            await previous.promise.catch(() => {})
-          }
-          await Staging.verify(plan.handoffID, input.signal)
-          const saved = await receipt(plan, "prepared")
-          const retired = (await receipt(plan, "retired")) ?? (await receipt(plan, "preview-released"))
-          const knownPrepared = !!(
-            saved &&
-            saved.fact.purpose === "target-prepared" &&
-            plan.preparedHash === (await Handoff.proofHash(saved.fact))
-          )
-          const bindings = await reserve(plan, manifestHash, input.signal)
-          await Storage.transaction(
-            async () => {
-              if (await receipt(plan, "activated")) fail("An activated native destination cannot be retired")
-              for (const selected of bindings) await Epochs.neverActivate(selected, manifestHash)
-            },
-            { commitGuard: () => assertOwner(input.signal) },
-          )
-          await WorkspaceTarget.release(plan, input.resources, input.signal, knownPrepared ? "retired" : "cancelled")
-          if (retired) return retired.fact
-          const fact = Handoff.Proof.parse({
-            ...factBinding(plan),
-            manifestHash,
-            tombstonePersisted: true,
-            ...(knownPrepared
-              ? { purpose: "target-never-activate", preparedHash: plan.preparedHash }
-              : { purpose: "target-preview-released", diffHash: plan.workspacePlan.difference?.diffHash ?? null }),
-          })
-          return Storage.transaction(
-            async () => {
-              if (await receipt(plan, "activated")) fail("An activated native destination cannot be retired")
-              await Storage.write(
-                key(plan, knownPrepared ? "retired" : "preview-released"),
-                Receipt.parse({ version: 2, plan, fact }),
-              )
-              return fact
-            },
-            { commitGuard: () => assertOwner(input.signal) },
-          )
-        }
+        if (plan.workspacePlan?.mapping.kind === "organization-native") return retireNative(plan, input.signal)
         const saved = await receipt(plan, "prepared")
         if (
           !saved ||
@@ -753,7 +831,7 @@ export namespace OrganizationHandoffTarget {
               preparedHash: plan.preparedHash,
               tombstonePersisted: true,
             })
-            await Storage.write(key(plan, "retired"), Receipt.parse({ version: 2, plan, fact }))
+            await Storage.write(key(plan, "retired"), Receipt.parse({ version: 3, plan, fact }))
             assertOwner(input.signal)
             return fact
           },

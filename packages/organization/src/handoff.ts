@@ -2,6 +2,7 @@ import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationHandoffRecovery as Recovery,
   OrganizationHandoffObjectProtocol as Objects,
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
@@ -177,6 +178,20 @@ const RawStored = z.union([LegacyStored, PreviousStored, Stored])
 type Stored = z.infer<typeof Stored>
 const key = (id: string) => ["organization", "handoffs", id]
 const sessionKey = (sessionID: string) => ["organization", "session-handoffs", sessionID]
+const cleanupRoot = ["organization", "handoff-targets"]
+const CleanupEntry = z.strictObject({ version: z.literal(1), handoffID: Identity.ID })
+const participantHash = (publicKey: string) => createHash("sha256").update(publicKey).digest("hex")
+const cleanupPrefix = (runtimeID: string, publicKey: string) => [...cleanupRoot, runtimeID, participantHash(publicKey)]
+async function indexCleanup(record: Stored) {
+  if (!Storage.inWriteTransaction())
+    fail("INVALID_REQUEST", "Handoff participant index must join its canonical transaction")
+  if (record.target.runtimeKind !== "member") return
+  const key = [...cleanupPrefix(record.targetRuntimeID, record.target.publicKey), record.handoffID]
+  const [existing] = await Storage.readMany([key])
+  if (existing !== undefined && CleanupEntry.parse(existing).handoffID !== record.handoffID)
+    fail("SERVICE_UNAVAILABLE", "Handoff participant index conflicts with its original record")
+  await Storage.write(key, CleanupEntry.parse({ version: 1, handoffID: record.handoffID }))
+}
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 interface WorkspaceFrame {
   scopeID: string
@@ -434,6 +449,26 @@ export namespace OrganizationHandoffExecution {
       PreviousStored.parse(value)
       value.version = 3
       Stored.parse(value)
+    },
+  }
+  export const cleanupMigration: Migration = {
+    id: "20261113-organization-handoff-cleanup-participant-index",
+    description: "Index original target participant identities without separate cleanup state",
+    scope: "global",
+    execution: "startup",
+    dependsOn: ["organization/20261113-organization-handoff-native-difference"],
+    async up(progress) {
+      await Storage.removeTree(cleanupRoot)
+      let count = 0
+      for await (const row of Storage.records({ prefix: ["organization", "handoffs"], limit: 128 })) {
+        UpgradeWork.signal()?.throwIfAborted()
+        const record = Stored.parse(upgradeAccessRecord(row.key, row.value))
+        if (row.key.length !== 3 || row.key[2] !== record.handoffID)
+          fail("SERVICE_UNAVAILABLE", "Handoff participant index has another canonical record")
+        await Storage.transaction(() => indexCleanup(record))
+        progress(++count, 0)
+      }
+      progress(count, count)
     },
   }
   export const migration: Migration = {
@@ -694,6 +729,79 @@ export function createHandoffs(options: {
     return access
   }
 
+  async function originalCleanup(record: Stored) {
+    const proof = record.cancelled?.proof
+    if (
+      record.phase !== "cancelled" ||
+      record.request.workspaceMapping.kind !== "organization-native" ||
+      !record.sourceBinding ||
+      record.sourceControlRevision === undefined ||
+      !record.frozen ||
+      !record.manifestHash ||
+      record.surrendered ||
+      record.activated ||
+      proof?.purpose !== "source-cancelled" ||
+      bindingFields.some((field) => record[field] !== proof[field]) ||
+      proof.manifestHash !== record.manifestHash ||
+      !record.cancelled ||
+      !(await Handoff.verifyProof(proof, record.cancelled.signature, record.source.publicKey))
+    )
+      fail("HANDOFF_BLOCKED", "Native cleanup requires the exact permanent source cancellation proof")
+    return {
+      sourceBinding: record.sourceBinding,
+      controlRevision: record.sourceControlRevision,
+      manifestHash: record.manifestHash,
+      frozen: record.frozen,
+      cleanup: record.cancelled,
+    }
+  }
+  async function cleanupPage(runtime: Record.RuntimeRegistration, value: Identity.Page): Promise<Recovery.Page> {
+    const page = Identity.Page.parse(value),
+      prefix = cleanupPrefix(runtime.runtimeID, runtime.publicKey)
+    const rows = await Storage.query({
+      prefix,
+      after: page.cursor ? [...prefix, page.cursor] : undefined,
+      limit: page.limit + 1,
+    })
+    const items: z.infer<typeof Recovery.Descriptor>[] = []
+    for (const row of rows.slice(0, page.limit)) {
+      const entry = CleanupEntry.parse(row.value),
+        record = await load(entry.handoffID)
+      if (
+        row.key.length !== 5 ||
+        row.key.at(-1) !== record.handoffID ||
+        record.targetRuntimeID !== runtime.runtimeID ||
+        record.target.publicKey !== runtime.publicKey ||
+        record.orgID !== runtime.orgID ||
+        record.deploymentIncarnation !== runtime.deploymentIncarnation ||
+        record.target.runtimeKind !== "member" ||
+        runtime.runtimeKind !== "member" ||
+        record.target.accountID !== runtime.accountID ||
+        record.target.deviceID !== runtime.deviceID
+      )
+        fail("SERVICE_UNAVAILABLE", "Handoff participant index conflicts with its original owner")
+      if (
+        record.phase !== "cancelled" ||
+        record.request.workspaceMapping.kind !== "organization-native" ||
+        !record.frozen ||
+        !record.manifestHash
+      )
+        continue
+      const original = await originalCleanup(record)
+      const fact = record.retired ?? record.previewReleased
+      items.push(
+        Recovery.Descriptor.parse({
+          ...Handoff.Binding.strip().parse(record),
+          manifestHash: original.manifestHash,
+          ...(fact ? { cleanupFactHash: await Handoff.proofHash(fact.proof) } : {}),
+        }),
+      )
+    }
+    return Recovery.Page.parse({
+      items,
+      cursor: rows.length > page.limit ? rows[page.limit - 1]!.key.at(-1) : undefined,
+    })
+  }
   async function machineAccess(credentials: Credentials, record: Stored, operation: Handoff.MachineOperation) {
     if (
       (operation === "retire-target" || operation === "inspect-target") &&
@@ -701,7 +809,6 @@ export function createHandoffs(options: {
       record.request.workspaceMapping.kind === "organization-native"
     ) {
       const access = await authorize(credentials, "runtime.read", { runtimeID: record.targetRuntimeID })
-      const proof = record.cancelled?.proof
       if (
         record.target.runtimeKind !== "member" ||
         access.account.accountID !== record.target.accountID ||
@@ -717,24 +824,11 @@ export function createHandoffs(options: {
           "PERMISSION_DENIED",
           "Only the original active destination member can drain its cancelled native preparation",
         )
-      if (
-        !record.sourceBinding ||
-        record.sourceControlRevision === undefined ||
-        !record.frozen ||
-        !record.manifestHash ||
-        record.surrendered ||
-        record.activated ||
-        proof?.purpose !== "source-cancelled" ||
-        bindingFields.some((field) => record[field] !== proof[field]) ||
-        proof.manifestHash !== record.manifestHash ||
-        !record.cancelled ||
-        !(await Handoff.verifyProof(proof, record.cancelled.signature, record.source.publicKey))
-      )
-        fail("HANDOFF_BLOCKED", "Native cleanup requires the exact permanent source cancellation proof")
+      const original = await originalCleanup(record)
       return {
         ...access,
-        sourceBinding: record.sourceBinding,
-        controlRevision: record.sourceControlRevision,
+        sourceBinding: original.sourceBinding,
+        controlRevision: original.controlRevision,
         cleanup: true as const,
       }
     }
@@ -757,6 +851,7 @@ export function createHandoffs(options: {
 
   async function save(record: Stored) {
     await Storage.write(key(record.handoffID), Stored.parse(record))
+    await indexCleanup(record)
   }
 
   async function objectAuthority(request: Objects.Request) {
@@ -798,6 +893,104 @@ export function createHandoffs(options: {
   }
 
   const api = {
+    async cleanupCandidates(credentials: Credentials, runtimeID: string, value: Identity.Page) {
+      const page = Identity.Page.parse(value)
+      return Storage.snapshot(async () => {
+        const access = await authorize(credentials, "runtime.read", { runtimeID })
+        if (
+          access.runtime.runtimeKind !== "member" ||
+          access.runtime.accountID !== access.account.accountID ||
+          access.runtime.state !== "active"
+        )
+          fail("PERMISSION_DENIED", "Only the active target member can discover its original cleanup slots")
+        return cleanupPage(access.runtime, page)
+      })
+    },
+    async recovery(value: Recovery.Request, input: { signal: AbortSignal }): Promise<Recovery.Response> {
+      const request = Recovery.Request.parse(value),
+        proof = request.proof,
+        owner = WorkspaceContent.captureOwner(input.signal)
+      return Storage.snapshot(async () => {
+        owner()
+        const deployment = Organization.Deployment.parse(await Storage.read(Keys.deployment()))
+        const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(proof.runtimeID))
+        if (
+          !runtime ||
+          runtime.runtimeKind !== "member" ||
+          runtime.state === "pending" ||
+          runtime.orgID !== proof.orgID ||
+          runtime.deploymentIncarnation !== proof.deploymentIncarnation ||
+          deployment.orgID !== proof.orgID ||
+          deployment.deploymentIncarnation !== proof.deploymentIncarnation ||
+          proof.issuedAt > Date.now() ||
+          proof.expiresAt <= Date.now() ||
+          !(await Recovery.verify(proof, request.signature, runtime.publicKey))
+        )
+          fail(
+            "PERMISSION_DENIED",
+            "Cleanup recovery requires the original enrolled participant key and fresh deployment request",
+          )
+        const requestHash = await Recovery.requestHash(proof)
+        const query = proof.query
+        if (query.operation === "discover") {
+          const page = await cleanupPage(runtime, query.page)
+          owner()
+          if (proof.expiresAt <= Date.now()) fail("PERMISSION_DENIED", "Cleanup recovery request expired")
+          return Recovery.Response.parse({
+            requestID: proof.requestID,
+            requestHash,
+            signingIdentity: options.signing.identity,
+            result: { operation: "discover", ...page },
+          })
+        }
+        const record = await load(query.binding.handoffID)
+        if (
+          record.targetRuntimeID !== runtime.runtimeID ||
+          record.target.runtimeKind !== "member" ||
+          record.target.publicKey !== runtime.publicKey ||
+          record.target.accountID !== runtime.accountID ||
+          record.target.deviceID !== runtime.deviceID ||
+          bindingFields.some((field) => record[field] !== query.binding[field]) ||
+          record.manifestHash !== query.manifestHash
+        )
+          fail("PERMISSION_DENIED", "Cleanup recovery belongs to another original participant or frozen binding")
+        const original = await originalCleanup(record),
+          issuedAt = Date.now()
+        const authorization = await options.signing.signHandoffRecovery(
+          Recovery.Permit.parse({
+            ...Handoff.Binding.strip().parse(record),
+            ...original,
+            purpose: "handoff-target-cleanup",
+            requestID: proof.requestID,
+            requestHash,
+            keyID: options.signing.identity.keyID,
+            runtimeID: runtime.runtimeID,
+            participantKey: runtime.publicKey,
+            sourceKey: record.source.publicKey,
+            operation: query.operation,
+            preparedHash: record.prepared ? await Handoff.proofHash(record.prepared.proof) : undefined,
+            workspacePlan: {
+              mapping: record.request.workspaceMapping,
+              hash: await Handoff.mappingHash(record.request.workspaceMapping),
+              selectionActor: record.selectionActor,
+              targetActor: record.targetActor,
+              differenceConsent: record.differenceConsent,
+              difference: record.difference?.proof.difference,
+              targetScopeID: OrganizationCloud.scopeID(record.orgID, original.sourceBinding.projectID),
+            },
+            issuedAt,
+            expiresAt: Math.min(issuedAt + 30000, proof.expiresAt),
+          }),
+        )
+        owner()
+        return Recovery.Response.parse({
+          requestID: proof.requestID,
+          requestHash,
+          signingIdentity: options.signing.identity,
+          result: { operation: query.operation, authorization },
+        })
+      })
+    },
     async options(
       credentials: Credentials,
       sessionID: string,
@@ -1392,6 +1585,8 @@ export function createHandoffs(options: {
       await Storage.snapshot(async () => {
         const record = await load(handoffID)
         const access = await machineAccess(credentials, record, request.operation)
+        if (access.cleanup !== authorized.cleanup)
+          fail("PERMISSION_DENIED", "Handoff read authority changed while its original response was pending")
         if (access.cleanup) assertRuntimeConnection(access.runtime, authorized.connection.handshake)
         authorized.connection.assertCurrent()
       })
