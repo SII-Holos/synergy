@@ -105,3 +105,5 @@ For long destination copies, refresh a separate machine-signed finite proof per 
 Controller fixtures must open the prepared/enrolled Homes supplying their machine keys. Another Store with copied binding metadata does not establish that machine's installed writer. Hold native work while a short HTTP observer ends, verify its distinct connection lifetime and inspect the same job; also drop an actual completion receipt and count preparation calls. Concurrent retries must join the exact owned native job; inspection cannot silently restart it. Snapshot caller objects, signals and private ports before asynchronous authorization, and mutate them while the real verifier is held.
 
 Report route and operation ID, Scope ownership, schema/errors, generated method, event/snapshot behavior, consumers migrated, generated files, and tests.
+
+Verify optional schema fields from both the full product and a minimal consumer type graph. An unavailable exact field must match its runtime rejection type; do not import an unrelated optional owner, cast the generated SDK call or drop input merely to satisfy an augmentation-dependent type.
