@@ -57,6 +57,7 @@ export namespace SessionTransferStream {
     content: AsyncIterable<Uint8Array>
   }
   export type Output = Omit<z.infer<typeof Entry>, "chunks"> & { content: AsyncIterable<Uint8Array> }
+  export type Descriptor = Omit<z.infer<typeof Entry>, "chunks">
   const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
   const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value))
   export const digest = (root: Root) => hash(encode(Root.parse(root)))
@@ -188,6 +189,9 @@ export namespace SessionTransferStream {
     database.exec(
       "CREATE TABLE pages (kind TEXT NOT NULL, position INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY(kind, position)); CREATE TABLE identities (id TEXT PRIMARY KEY)",
     )
+    database.exec(
+      "CREATE TABLE entries (id TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE chunks (id TEXT NOT NULL, ordinal INTEGER NOT NULL, offset INTEGER NOT NULL, hash TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY(id, ordinal)); CREATE INDEX chunk_offsets ON chunks(id, offset)",
+    )
     database.exec("BEGIN")
     const addPage = database.query("INSERT INTO pages (kind, position, hash) VALUES (?, ?, ?)")
     const readPage = database.query<{ hash: string }, [string, number]>(
@@ -198,6 +202,7 @@ export namespace SessionTransferStream {
     let verified = false
     let started = false
     let closed = false
+    let indexed = false
     function assertOpen() {
       if (closed) throw new Rejected({ message: "Portable reader is closed" })
       signal?.throwIfAborted()
@@ -292,12 +297,125 @@ export namespace SessionTransferStream {
       database.exec("COMMIT")
       verified = true
     }
+    const putEntry = database.query("INSERT INTO entries (id, value) VALUES (?, ?)")
+    const putChunk = database.query("INSERT INTO chunks (id, ordinal, offset, hash, bytes) VALUES (?, ?, ?, ?, ?)")
+    const getEntry = database.query<{ value: string }, [string]>("SELECT value FROM entries WHERE id = ?")
+    const nextEntry = database.query<{ id: string; value: string }, [string, string]>(
+      "SELECT id, value FROM entries WHERE id >= ? AND id > ? ORDER BY id LIMIT 1",
+    )
+    type ChunkRow = { ordinal: number; offset: number; hash: string; bytes: number }
+    const firstChunk = database.query<ChunkRow, [string, number]>(
+      "SELECT ordinal, offset, hash, bytes FROM chunks WHERE id = ? AND offset <= ? ORDER BY offset DESC LIMIT 1",
+    )
+    const chunkRows = database.query<ChunkRow, [string, number, number]>(
+      "SELECT ordinal, offset, hash, bytes FROM chunks WHERE id = ? AND ordinal > ? ORDER BY ordinal LIMIT ?",
+    )
+    function assertIndexed() {
+      assertOpen()
+      if (!indexed) throw new Rejected({ message: "Portable metadata index is incomplete" })
+    }
+    function descriptor(value: string): Descriptor {
+      const { chunks: _chunks, ...entry } = Entry.parse(JSON.parse(value))
+      return entry
+    }
+    async function indexedEntry(id: string) {
+      assertIndexed()
+      const row = getEntry.get(id)
+      return row ? descriptor(row.value) : undefined
+    }
+    function indexedEntries(options: { after?: string; prefix?: string } = {}): AsyncGenerator<Descriptor> {
+      const after = options.after
+      const prefix = options.prefix
+      return (async function* () {
+        let cursor = after ?? ""
+        while (true) {
+          assertIndexed()
+          const row = nextEntry.get(prefix ?? "", cursor)
+          if (!row) return
+          cursor = row.id
+          if (prefix !== undefined && !row.id.startsWith(prefix)) return
+          yield descriptor(row.value)
+        }
+      })()
+    }
+    function indexedContent(id: string, options: { offset?: number; length?: number } = {}) {
+      const selectedID = id
+      const offset = Count.parse(options.offset ?? 0)
+      const length = options.length === undefined ? undefined : Count.parse(options.length)
+      return (async function* () {
+        const entry = await indexedEntry(selectedID)
+        assertIndexed()
+        if (!entry) throw new Rejected({ message: "Portable entry is absent" })
+        const end = Math.min(entry.bytes, count(offset, length ?? Math.max(0, entry.bytes - offset)))
+        const complete = offset === 0 && end === entry.bytes
+        const digest = complete ? createHash("sha256") : undefined
+        const first = firstChunk.get(selectedID, offset)
+        let ordinal = (first?.ordinal ?? 0) - 1
+        let received = 0
+        while (offset + received < end) {
+          assertIndexed()
+          const rows = chunkRows.all(selectedID, ordinal, pageItems)
+          if (!rows.length) throw new Rejected({ message: "Portable indexed content is incomplete" })
+          for (const row of rows) {
+            assertIndexed()
+            ordinal = row.ordinal
+            if (row.offset >= end) break
+            const data = await store.get(row.hash, row.bytes)
+            assertIndexed()
+            if (data.length !== row.bytes || hash(data) !== row.hash)
+              throw new Rejected({ message: "Portable content chunk checksum mismatch" })
+            const bytes = data.subarray(Math.max(0, offset - row.offset), Math.min(row.bytes, end - row.offset))
+            digest?.update(bytes)
+            received = count(received, bytes.byteLength)
+            yield bytes
+            if (offset + received >= end) break
+          }
+        }
+        assertIndexed()
+        if (received !== Math.max(0, end - offset) || (digest && digest.digest("hex") !== entry.hash))
+          throw new Rejected({ message: "Portable indexed content checksum mismatch" })
+      })()
+    }
+    async function buildIndex() {
+      if (started || closed) throw new Rejected({ message: "Portable reader is single-use" })
+      started = true
+      await index(root, Page, "page-")
+      let received = 0
+      let totalBytes = 0
+      for await (const page of pages(root.pages, Page, "page-"))
+        for (const entry of page.items) {
+          assertOpen()
+          if (addIdentity.run(entry.id).changes !== 1)
+            throw new Rejected({ message: "Duplicate portable entry identity" })
+          putEntry.run(entry.id, JSON.stringify(entry))
+          await index(entry.chunks, ChunkPage, "chunk-")
+          let size = 0
+          let chunks = 0
+          for await (const list of pages(entry.chunks.pages, ChunkPage, "chunk-"))
+            for (const chunk of list.items) {
+              assertOpen()
+              putChunk.run(entry.id, chunks, size, chunk.hash, chunk.bytes)
+              chunks = count(chunks, 1)
+              size = count(size, chunk.bytes)
+            }
+          if (size !== entry.bytes || chunks !== entry.chunks.count)
+            throw new Rejected({ message: "Portable indexed entry totals mismatch" })
+          received = count(received, 1)
+          totalBytes = count(totalBytes, size)
+        }
+      assertOpen()
+      if (received !== root.entries || totalBytes !== root.bytes)
+        throw new Rejected({ message: "Portable indexed manifest totals mismatch" })
+      database.exec("COMMIT")
+      indexed = true
+      return Object.freeze({ root, get: indexedEntry, entries: indexedEntries, read: indexedContent })
+    }
     async function close() {
       if (closed) return
       closed = true
       database.close()
       await fs.rm(directory, { recursive: true, force: true })
     }
-    return { root, entries, verified: () => verified, close, [Symbol.asyncDispose]: close }
+    return { root, entries, index: buildIndex, verified: () => verified, close, [Symbol.asyncDispose]: close }
   }
 }
