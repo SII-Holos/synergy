@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0135](0135-late-notifications-retained-a-replaced-deployment.md)
+
 - [0134](0134-authenticated-checkpoint-contained-invalid-authority-history.md)
 
 - [0131](0131-service-recovery-request-omitted-its-snapshot-facet.md)

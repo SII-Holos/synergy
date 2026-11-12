@@ -24,6 +24,7 @@ import {
   OrganizationSignOutIntent,
   type OrganizationSignOutStore,
 } from "./sign-out-store"
+import { createOrganizationNotificationSources } from "./notification-sources"
 
 const WebConnection = Auth.Authority.extend({
   transport: z.literal("web"),
@@ -100,6 +101,10 @@ export function createOrganizationConnections(options: {
   let revision = 0
   let disposed = false
   let persistenceFailed = false
+  const notifications = createOrganizationNotificationSources({
+    capture: captureNotifications,
+    unauthorized: requireAuthorization,
+  })
   function nativeBridge() {
     if (options.bridge?.protocolVersion !== Desktop.BridgeVersion)
       throw new OrganizationConnectionError("bridge_incompatible")
@@ -185,6 +190,7 @@ export function createOrganizationConnections(options: {
     if (index === -1) setState("connections", state.connections.length, value)
     else setState("connections", index, reconcile(value))
     save()
+    notifications.refresh()
     return value
   }
   function suspend() {
@@ -212,7 +218,12 @@ export function createOrganizationConnections(options: {
       }
     })
   }
-  function webClient(tokens: OrgClientTokens, signal: AbortSignal, onUnauthorized?: () => void) {
+  function webClient(
+    tokens: OrgClientTokens,
+    signal: AbortSignal,
+    onUnauthorized?: () => void,
+    projectResponse?: (input: Response) => Response,
+  ) {
     const owned = spaceFetch(signal, options.fetch)
     const transport: typeof fetch = Object.assign(
       async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -233,7 +244,7 @@ export function createOrganizationConnections(options: {
           new Request(request, { headers, credentials: "omit", redirect: "error", referrerPolicy: "no-referrer" }),
         )
         if (response.status === 401) onUnauthorized?.()
-        return response
+        return projectResponse ? projectResponse(response) : response
       },
       { preconnect() {} },
     )
@@ -243,6 +254,70 @@ export function createOrganizationConnections(options: {
       credentials: "omit",
       redirect: "error",
     })
+  }
+  function captureNotifications(key: string) {
+    const entry = connection(key)
+    if (disposed || !entry || entry.state !== "ready") return
+    const original = {
+      issuer: entry.issuer,
+      clientID: entry.clientID,
+      orgID: entry.orgID,
+      deploymentIncarnation: entry.deploymentIncarnation,
+      accountID: entry.account.accountID,
+      authRevision: entry.account.authRevision,
+      transport: entry.transport,
+      ...(entry.transport === "desktop" ? { id: entry.id, revision: entry.revision } : {}),
+    }
+    const token = entry.transport === "web" ? credentials.get(key) : undefined
+    const current = () => {
+      const next = connection(key)
+      return (
+        !disposed &&
+        next?.state === "ready" &&
+        next.issuer === original.issuer &&
+        next.clientID === original.clientID &&
+        next.orgID === original.orgID &&
+        next.deploymentIncarnation === original.deploymentIncarnation &&
+        next.account.accountID === original.accountID &&
+        next.account.authRevision === original.authRevision &&
+        next.transport === original.transport &&
+        (next.transport === "desktop"
+          ? next.id === original.id && next.revision === original.revision
+          : credentials.get(key) === token)
+      )
+    }
+    const audience = {
+      orgID: original.orgID,
+      accountID: original.accountID,
+      deploymentIncarnation: original.deploymentIncarnation,
+      authRevision: original.authRevision,
+    }
+    if (entry.transport === "desktop") {
+      if (!options.bridge) return
+      return {
+        audience,
+        current,
+        source: { kind: "desktop" as const, bridge: options.bridge, connectionID: entry.id, revision: entry.revision },
+      }
+    }
+    if (!token) return
+    return {
+      audience,
+      current,
+      expiresAt: token.expiresAt,
+      source: {
+        kind: "web" as const,
+        client: (signal: AbortSignal, response: (value: Response) => Response) =>
+          webClient(
+            token,
+            signal,
+            () => {
+              if (current()) requireAuthorization(key)
+            },
+            response,
+          ),
+      },
+    }
   }
   function select(key: string | undefined) {
     if (disposed) return
@@ -416,8 +491,14 @@ export function createOrganizationConnections(options: {
         if (recovered.state === "sign_out_pending") throw new OrganizationConnectionError("sign_out_pending")
         if (intentErrors.has(key)) throw intentErrors.get(key)
       }
+      for (const previous of [...state.connections]) {
+        if (previous.issuer !== entry.issuer || previous.deploymentIncarnation === entry.deploymentIncarnation) continue
+        credentials.delete(organizationSpaceKey(previous))
+        if (previous.state === "ready") put({ ...previous, state: "reauthorization_required" })
+      }
       put(entry)
       if (tokens) credentials.set(key, tokens)
+      notifications.refresh()
       select(key)
       return key
     } catch (error) {
@@ -643,6 +724,7 @@ export function createOrganizationConnections(options: {
     connect,
     restore,
     signOut,
+    subscribeNotifications: notifications.subscribe,
     authorizationRequired(owner: SpaceView) {
       if (view.isCurrent(owner) && owner.identity.kind === "organization") requireAuthorization(owner.key)
     },
@@ -687,6 +769,7 @@ export function createOrganizationConnections(options: {
         )
         if (disposed || version !== revision) return
         setState("connections", reconcile(restored))
+        notifications.refresh()
         select(selected())
       } catch (error) {
         if (!disposed && version === revision) setError(error)
@@ -695,6 +778,7 @@ export function createOrganizationConnections(options: {
     dispose() {
       disposed = true
       cancel()
+      notifications.dispose()
       credentials.clear()
       signOuts.close()
     },

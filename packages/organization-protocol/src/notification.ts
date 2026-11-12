@@ -41,8 +41,34 @@ export namespace OrganizationNotificationProtocol {
     return bytes
   }
 
-  export function read(stream: ReadableStream<Uint8Array>, expected: Audience, inputSignal?: AbortSignal) {
+  export function receiver(expected: Audience) {
     const audience = Audience.parse(expected)
+    let streamID: string | undefined
+    let sequence = -1
+    return {
+      get started() {
+        return streamID !== undefined
+      },
+      accept(input: unknown) {
+        const frame = Frame.parse(input)
+        if (!streamID) {
+          if (
+            frame.type !== "ready" ||
+            Object.entries(audience).some(([key, value]) => Reflect.get(frame, key) !== value)
+          )
+            throw new Error("Notification audience changed")
+          streamID = frame.streamID
+        } else if (frame.type === "ready" || frame.streamID !== streamID) throw new Error("Notification stream changed")
+        if (frame.sequence !== ++sequence) throw new Error("Notification sequence is not contiguous")
+        if (frame.type === "notice" && frame.notice.binding.orgID !== audience.orgID)
+          throw new Error("Notification organization changed")
+        return frame
+      },
+    }
+  }
+
+  export function read(stream: ReadableStream<Uint8Array>, expected: Audience, inputSignal?: AbortSignal) {
+    const frames = receiver(expected)
     const signal = inputSignal
     return (async function* (): AsyncGenerator<Frame> {
       signal?.throwIfAborted()
@@ -54,8 +80,6 @@ export namespace OrganizationNotificationProtocol {
       const decoder = new TextDecoder("utf-8", { fatal: true })
       const encoder = new TextEncoder()
       let pending = ""
-      let streamID: string | undefined
-      let sequence = -1
       try {
         while (true) {
           signal?.throwIfAborted()
@@ -63,7 +87,7 @@ export namespace OrganizationNotificationProtocol {
           signal?.throwIfAborted()
           if (chunk.done) {
             pending += decoder.decode()
-            if (pending || !streamID) throw new Error("Notification stream is incomplete")
+            if (pending || !frames.started) throw new Error("Notification stream is incomplete")
             return
           }
           for (let offset = 0; offset < chunk.value.byteLength; offset += 1024) {
@@ -79,25 +103,13 @@ export namespace OrganizationNotificationProtocol {
                 event.includes("\n")
               )
                 throw new Error("Invalid notification frame")
-              let frame: Frame
+              let input: unknown
               try {
-                frame = Frame.parse(JSON.parse(event.slice(6)))
+                input = JSON.parse(event.slice(6))
               } catch {
                 throw new Error("Invalid notification frame")
               }
-              if (!streamID) {
-                if (
-                  frame.type !== "ready" ||
-                  Object.entries(audience).some(([key, value]) => Reflect.get(frame, key) !== value)
-                )
-                  throw new Error("Notification audience changed")
-                streamID = frame.streamID
-              } else if (frame.type === "ready" || frame.streamID !== streamID)
-                throw new Error("Notification stream changed")
-              if (frame.sequence !== ++sequence) throw new Error("Notification sequence is not contiguous")
-              if (frame.type === "notice" && frame.notice.binding.orgID !== audience.orgID)
-                throw new Error("Notification organization changed")
-              yield frame
+              yield frames.accept(input)
             }
             if (encoder.encode(pending).byteLength > FrameLimit) throw new Error("Notification frame exceeds its bound")
           }
