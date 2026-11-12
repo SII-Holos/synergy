@@ -193,6 +193,15 @@ export namespace OrganizationRecovery {
         fail("captured policy belongs to another current source")
       return target.run(async () => {
         assert()
+        await OrganizationRecoveryWriters.preflight({
+          permit: target.permit,
+          request: target.request,
+          target: target.reference,
+          namespace: captured.namespace,
+          keys: captured.keys,
+          signal: cancellation,
+        })
+        assert()
         return AuthorityJournal.withAdoption(
           { ...captured.namespace, keys: captured.keys, after: target.checkpoint, signal: cancellation },
           async (evidence) => {
@@ -219,6 +228,34 @@ export namespace OrganizationRecovery {
         )
       })
     })
+  }
+  export async function preflightWriters(input: { source: Current.Source; target: Target; signal?: AbortSignal }) {
+    const source = input.source
+    const target = targets.get(input.target)
+    const signal = input.signal
+    if (!target) fail("requires its original target evidence")
+    const current = Current.describe(source)
+    if (!current.after || hash(current.after) !== hash(target.checkpoint))
+      fail("preflight requires its actual original H0 checkpoint anchor")
+    return Current.withCaptured(source, (captured) =>
+      target.run(async () => {
+        const cancellation =
+          signal && captured.signal ? AbortSignal.any([signal, captured.signal]) : (signal ?? captured.signal)
+        cancellation?.throwIfAborted()
+        captured.assertLive()
+        await target.verify()
+        await OrganizationRecoveryWriters.preflight({
+          permit: target.permit,
+          request: target.request,
+          target: target.reference,
+          namespace: captured.namespace,
+          keys: captured.keys,
+          signal: cancellation,
+        })
+        captured.assertLive()
+        target.assert()
+      }),
+    )
   }
   export function completeServicePublication(installationID: string) {
     return Publication.complete(installationID)

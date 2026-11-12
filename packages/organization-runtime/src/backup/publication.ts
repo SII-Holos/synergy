@@ -175,7 +175,10 @@ export namespace OrganizationHostedPublication {
           return Receipt.parse(existing)
         }
         for await (const row of Storage.records({ kind: "session", limit: 128 })) {
-          const recorded = Session.PersistedInfo.parse(row.value)
+          const recorded = Session.PersistedInfo.parse({
+            ...z.record(z.string(), z.unknown()).parse(row.value),
+            workspace: null,
+          })
           const session = await Session.get(recorded.id)
           if (session.scope.id !== recorded.scope.id || session.id !== recorded.id)
             fail("Session identity changed during restoration")

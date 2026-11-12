@@ -15,6 +15,11 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/import"
 
 export namespace OrganizationRecord {
+  export interface HistoricalReader {
+    read<T>(schema: z.ZodType<T>, key: string[]): T
+    entries(prefix: string[]): Iterable<{ key: string[]; value: unknown }>
+  }
+
   export const ExecutionUsage = z.strictObject({
     schemaVersion: z.literal(1),
     grantID: Identity.ID,

@@ -371,7 +371,11 @@ test("a target with H0 command facts cannot use its H1 Hosted registration to hi
 test("a final command counter does not certify its execution owner's physical settlement", async () => {
   await using f = await setup({ finalCommand: true })
   await f.run(async (input) => {
-    await expect(Writers.withReconciled(input, async () => {})).rejects.toThrow("command")
+    await expect(Writers.withReconciled(input, async () => {})).rejects.toThrow("missing H1 owner record")
+    expect(await Storage.read(Addresses.commandState("unclassified-session"))).toEqual({
+      schemaVersion: 1,
+      commandSeq: 2,
+    })
   })
 }, 30_000)
 

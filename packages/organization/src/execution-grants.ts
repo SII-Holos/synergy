@@ -14,6 +14,7 @@ import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
 import { projectView, projectExecutionRole, sessionView } from "./authorization"
 import type { CommandAdmissions } from "./command-admission"
+import { OrganizationCommandHistory } from "./command-history"
 import type { RuntimeConnections } from "./runtime-connection"
 import type { createHandoffs } from "./handoff"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
@@ -35,6 +36,67 @@ interface WorkspaceAuthorityFrame {
 const workspaceAuthorities = new WeakMap<OrganizationExecutionGrants.WorkspaceAuthority, WorkspaceAuthorityFrame>()
 
 export namespace OrganizationExecutionGrants {
+  export async function closedHistory(reader: Record.HistoricalReader, grantID: string) {
+    const grant = reader.read(Record.ExecutionGrant, Keys.executionGrant(grantID))
+    if (
+      grant.grantID !== grantID ||
+      grant.state !== "bound" ||
+      grant.retention.state !== "released" ||
+      grant.retention.outcome !== "completed" ||
+      grant.provenance
+    )
+      fail("PROTOCOL_MISMATCH", "Execution history requires its original completed release")
+    const permit = reader.read(Record.CommandAttempt, Keys.commandAttempt(grant.attemptID)).authorization.permit
+    const accepted = Command.InputAccepted.parse(await OrganizationCommandHistory.accepted(reader, permit))
+    const release = reader.read(Record.ExecutionRelease, Keys.executionRelease(grantID, grant.retention.generation))
+    if (
+      accepted.effect.mode !== "task" ||
+      permit.provisionalGrantID !== grantID ||
+      grant.orgID !== permit.orgID ||
+      grant.deploymentIncarnation !== permit.deploymentIncarnation ||
+      grant.sessionID !== permit.sessionID ||
+      grant.projectID !== permit.projectID ||
+      grant.runtimeID !== permit.runtimeID ||
+      grant.bindingEpoch !== permit.bindingEpoch ||
+      grant.admissionID !== permit.admissionID ||
+      grant.attemptID !== permit.attemptID ||
+      !same(grant.actor, permit.actor) ||
+      grant.rootID !== accepted.effect.messageID ||
+      reader.read(Record.RootGrant, Keys.rootGrant(grant.sessionID, grant.bindingEpoch, grant.rootID)).grantID !==
+        grantID ||
+      release.orgID !== grant.orgID ||
+      release.deploymentIncarnation !== grant.deploymentIncarnation ||
+      release.runtimeID !== grant.runtimeID ||
+      release.sessionID !== grant.sessionID ||
+      release.bindingEpoch !== grant.bindingEpoch ||
+      release.grantID !== grantID ||
+      release.rootID !== grant.rootID ||
+      release.generation !== grant.retention.generation ||
+      release.outcome !== grant.retention.outcome ||
+      release.releasedAt !== grant.retention.releasedAt
+    )
+      fail("PROTOCOL_MISMATCH", "Execution history has another original root or release")
+    return grant
+  }
+  export async function validateClosedHistory(reader: Record.HistoricalReader, key: string[], value: unknown) {
+    const kind = key[1]
+    if (kind !== "execution-grants" && kind !== "execution-releases" && kind !== "root-grants") return false
+    const grantID =
+      kind === "execution-grants"
+        ? Record.ExecutionGrant.parse(value).grantID
+        : kind === "execution-releases"
+          ? Record.ExecutionRelease.parse(value).grantID
+          : Record.RootGrant.parse(value).grantID
+    const grant = await closedHistory(reader, grantID)
+    const expected =
+      kind === "execution-grants"
+        ? Keys.executionGrant(grantID)
+        : kind === "execution-releases"
+          ? Keys.executionRelease(grantID, grant.retention.generation)
+          : Keys.rootGrant(grant.sessionID, grant.bindingEpoch, grant.rootID)
+    if (!same(key, expected)) fail("PROTOCOL_MISMATCH", "Execution history has another canonical key")
+    return true
+  }
   export interface WorkspaceAuthority {
     readonly kind: "organization-workspace-authority"
   }

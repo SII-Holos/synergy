@@ -12,11 +12,81 @@ import type { RuntimeConnections } from "./runtime-connection"
 import type { CommandSigningAuthority } from "./signing"
 import { runtimeAuthority } from "./runtime-authority"
 import { OrganizationHandoffExecution } from "./handoff"
+import { OrganizationExecutionGrants } from "./execution-grants"
+import { isDeepStrictEqual as same } from "node:util"
 
 function sameCall(left: Gateway.Target, right: Gateway.Target) {
   return (Object.keys(Gateway.Target.shape) as (keyof Gateway.Target)[]).every(
     (key) => key === "connectionEpoch" || left[key] === right[key],
   )
+}
+
+export namespace OrganizationGatewayHistory {
+  async function call(
+    reader: Record.HistoricalReader,
+    value: ReturnType<typeof Record.GatewayCall.parse>,
+    grant: Execution.BoundGrant,
+  ) {
+    const permit = value.authorization.permit
+    const signing = reader.read(Record.SigningIdentity, Keys.signingIdentity())
+    const resource = reader.read(Record.Resource, Keys.resource(grant.orgID, permit.resourceID))
+    if (
+      grant.retention.state !== "released" ||
+      value.retentionGeneration !== grant.retention.generation ||
+      value.receipt.state !== "response_complete" ||
+      permit.grantID !== grant.grantID ||
+      permit.orgID !== grant.orgID ||
+      permit.deploymentIncarnation !== grant.deploymentIncarnation ||
+      permit.runtimeID !== grant.runtimeID ||
+      permit.sessionID !== grant.sessionID ||
+      permit.rootID !== grant.rootID ||
+      permit.bindingEpoch !== grant.bindingEpoch ||
+      !Execution.callResourceIDs(grant.selection).includes(permit.resourceID) ||
+      resource.orgID !== grant.orgID ||
+      resource.resourceID !== permit.resourceID ||
+      resource.configuration.protocol !== permit.protocol ||
+      signing.orgID !== permit.orgID ||
+      signing.deploymentIncarnation !== permit.deploymentIncarnation ||
+      signing.keyID !== permit.keyID ||
+      !(await Gateway.verifyPermit(permit, value.authorization.signature, signing.publicKey))
+    )
+      fail("PROTOCOL_MISMATCH", "Gateway history requires its original complete released call")
+  }
+  export async function grant(reader: Record.HistoricalReader, grant: Execution.BoundGrant) {
+    let calls = 0
+    for (const row of reader.entries(Keys.gatewayCall(grant.grantID, "").slice(0, -1))) {
+      const value = Record.GatewayCall.parse(row.value)
+      if (!same(row.key, Keys.gatewayCall(grant.grantID, value.authorization.permit.callID)))
+        fail("PROTOCOL_MISMATCH", "Gateway history has another canonical call key")
+      await call(reader, value, grant)
+      calls++
+    }
+    if (calls > 0) {
+      const usage = reader.read(Record.ExecutionUsage, Keys.executionUsage(grant.grantID))
+      if (usage.grantID !== grant.grantID || usage.calls !== calls)
+        fail("PROTOCOL_MISMATCH", "Gateway history has incomplete canonical usage")
+    }
+    return calls
+  }
+  export async function validate(reader: Record.HistoricalReader, key: string[], raw: unknown) {
+    if (key[1] === "gateway-calls") {
+      const value = Record.GatewayCall.parse(raw)
+      const current = await OrganizationExecutionGrants.closedHistory(reader, value.authorization.permit.grantID)
+      if (!same(key, Keys.gatewayCall(current.grantID, value.authorization.permit.callID)))
+        fail("PROTOCOL_MISMATCH", "Gateway history has another canonical call key")
+      await call(reader, value, current)
+      reader.read(Record.ExecutionUsage, Keys.executionUsage(current.grantID))
+      return true
+    }
+    if (key[1] === "execution-usage") {
+      const usage = Record.ExecutionUsage.parse(raw)
+      const current = await OrganizationExecutionGrants.closedHistory(reader, usage.grantID)
+      if (!same(key, Keys.executionUsage(current.grantID)) || usage.calls !== (await grant(reader, current)))
+        fail("PROTOCOL_MISMATCH", "Gateway history has incomplete canonical usage")
+      return true
+    }
+    return false
+  }
 }
 
 export function createGatewayCalls(options: { connections: RuntimeConnections; signing: CommandSigningAuthority }) {

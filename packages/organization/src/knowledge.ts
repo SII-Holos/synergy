@@ -176,6 +176,34 @@ async function validateSkill(uploadID: string) {
 }
 
 export namespace OrganizationKnowledge {
+  export function emptyHistory(reader: OrganizationRecord.HistoricalReader, key: string[], value: unknown) {
+    const kind = key[1]
+    if (key[0] !== "organization-knowledge" || !kind || !["sessions", "activated", "activation-status"].includes(kind))
+      return false
+    const sessionID = key[2]
+    if (!sessionID) fail("PROTOCOL_MISMATCH", "Historical knowledge selection requires its Session")
+    const session = reader.read(OrganizationRecord.SessionDirectory, OrganizationKeys.session(sessionID))
+    const empty = Selections.empty(session.orgID, session.projectID, session.creatorID)
+    if (session.sessionID !== sessionID || digest(reader.read(Selection, keys.session(sessionID))) !== digest(empty))
+      fail("PROTOCOL_MISMATCH", "Historical knowledge selection is not the original empty selection")
+    if (kind === "activation-status") {
+      const status = ActivationStatus.parse(value)
+      if (
+        digest(key) !== digest(keys.status(sessionID)) ||
+        status.bindingEpoch !== session.bindingEpoch ||
+        !status.activated ||
+        digest(status.activated) !== digest(Selections.summary(empty)) ||
+        status.failedManifestHash
+      )
+        fail("PROTOCOL_MISMATCH", "Historical knowledge activation is not the original empty selection")
+    } else if (
+      digest(Selection.parse(value)) !== digest(empty) ||
+      digest(key) !==
+        digest(kind === "sessions" ? keys.session(sessionID) : keys.activated(sessionID, empty.manifestHash))
+    )
+      fail("PROTOCOL_MISMATCH", "Historical knowledge selection requires its original canonical key")
+    return true
+  }
   export function registerAuthorityHistory() {
     AuthorityJournal.register({
       id: "organization-knowledge-authority",

@@ -8,6 +8,7 @@ import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home
 import { openOrganizationRecovery, openOrganizationService } from "@ericsanchezok/synergy-organization/service"
 import { OrganizationRecovery } from "../../../organization/src/backup/recovery"
 import { OrganizationCurrentAuthority } from "../../../organization/src/backup/current-authority"
+import { OrganizationSourceRetirement } from "../../../organization/src/backup/source-retirement"
 import { OrganizationRecoveryPublication } from "../../../organization/src/backup/publication"
 import { cert, key as certificateKey } from "@ericsanchezok/synergy-testing/organization-tls"
 import { OrganizationServiceNative } from "../../../organization/src/backup/service-native"
@@ -29,15 +30,23 @@ import { registerOrganizationNamespaceIdentity } from "../../src/namespace-ident
 import { connectionState } from "../../src/connection-state"
 import { readCredentials } from "../../src/credentials"
 import { fixture } from "../support/organization"
-import { completedHostedTask, pausedHostedTask } from "../support/hosted-task"
+import {
+  completedHostedTask,
+  pausedHostedTask,
+  appendCompletedHostedTask,
+  verifyCompletedTaskHistory,
+} from "../support/hosted-task"
 import { openHostedRuntime } from "../../src/runtime"
 import { OrganizationBackupCohort as Cohort } from "../../../organization/src/backup/cohort"
 import { OrganizationRecoveryArchive as Archive } from "../../../organization/src/backup/archive"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { HostedBinding } from "../../src/home-schema"
 import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomic-write"
+import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { OrganizationExecutionLeases } from "../../src/execution-leases"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 
 const keys = {
   async current() {
@@ -57,6 +66,7 @@ const actor = {
 
 async function source(production = false) {
   const service = await fixture()
+  const workspaceCoordinator = new WorkspaceCoordinator({ directory: path.join(service.root, "native-coordination") })
   try {
     const home = await prepareHostedHome({
       baseDirectory: path.join(service.root, "hosted"),
@@ -84,6 +94,7 @@ async function source(production = false) {
           home: home.home,
           identity: home.identity,
           ca: service.ca,
+          workspaceCoordinator,
           ...(port ? { listen: { port, token: "f".repeat(64) } } : {}),
         })
       : await testRuntime({
@@ -131,6 +142,7 @@ async function source(production = false) {
       registration,
       service,
       runtime,
+      workspaceCoordinator,
       close,
       releaseCapture,
       capture(
@@ -409,8 +421,16 @@ test("the real enrolled cohort encrypts its Hosted native segment and preserves 
   expect(manifest.registration.runtimeID).toBe(selected.registration.runtimeID)
 })
 
-test("an enrolled Hosted namespace permanently fences its actual writer and binds the original service target request", async () => {
+async function recoverHostedWriter(withTask = false, late?: "session" | "input") {
   await using selected = await source(true)
+  await using task = withTask ? await completedHostedTask(selected) : undefined
+  const originalCalls = task?.calls.length ?? 0
+  if (task && !late) await verifyCompletedTaskHistory(selected, task)
+  const originalInput = task
+    ? await selected.runtime.run(() =>
+        MessageV2.get({ sessionID: task.sessionID, messageID: task.accepted.effect.messageID }),
+      )
+    : undefined
   let retiredReference: NamespaceRetirement.Reference | undefined
   let originalTarget:
     | {
@@ -507,180 +527,249 @@ test("an enrolled Hosted namespace permanently fences its actual writer and bind
       ),
     )
   })
-  await selected.capture(undefined, undefined, async (captured) => {
-    hostedMaterial = { native: captured.native.namespace, snapshot: captured.segment.namespace }
-    await NamespaceRetirement.withSource(
-      {
-        archive: captured.archive,
-        lease: captured.lease,
-        native: captured.native,
-        target: { request, installationID: original.installationID, incarnation: original.incarnation },
-      },
-      async (current) => {
-        const capturedReference = NamespaceRetirement.describeSource(current)
-        retiredReference = capturedReference
-        const reference = capturedReference
-        expect(reference.namespace.identity).toMatchObject({
-          kind: "hosted",
-          orgID: selected.registration.orgID,
-          runtimeID: selected.registration.runtimeID,
-          publicKey: selected.registration.publicKey,
-        })
-        expect(reference.target.request).toEqual(request)
-        const hostedRequest = OrganizationHostedRecovery.request({
-          restoreID: "restored-hosted",
-          source: reference,
-          snapshot: captured.segment.namespace,
-        })
-        await using restored = await openHostedRecovery({
-          request: hostedRequest,
-          home: path.join(selected.service.root, "hosted-target"),
-          identity: selected.home.identity,
-        })
-        const receipt = await NamespaceRetirement.retire(current)
-        const marker = await HomeOwnershipFile.open({
-          root: selected.home.root,
-          env: { SYNERGY_TEST_HOME: selected.home.home },
-        }).read()
-        expect(marker).toMatchObject({
-          schemaVersion: 4,
-          maintenanceID: captured.lease.maintenanceID,
-          source: { schemaVersion: 2, owner: "organization-runtime" },
-        })
-        await expect(readHostedHome(selected.home.home, selected.home.identity)).rejects.toThrow()
-        await NamespaceRetirement.withVerified(receipt, (inspection) =>
-          target.run(async () => {
-            expect(NamespaceRetirement.inspect(inspection)).toEqual(reference)
-          }),
-        )
-        expect(NamespaceRetirement.describe(await NamespaceRetirement.complete(reference))).toEqual(reference)
-        await NamespaceRetirement.withVerified(receipt, (inspection) =>
-          restored.run(async () => {
-            const request = OrganizationHostedRecovery.request({
-              restoreID: "restored-hosted",
-              source: reference,
-              snapshot: captured.segment.namespace,
-            })
-            await HomeRestoration.withTarget(restored.target, async (permit) => {
-              await restored.withRestorationBase((base) =>
-                OrganizationHostedRecovery.restore({
-                  base,
-                  permit,
-                  request,
-                  source: inspection,
-                  namespaceDirectory: path.join(selected.service.root, "records"),
-                  native: { directory: captured.native.directory, expected: captured.native.namespace },
-                  snapshot: { directory: captured.segment.directory, expected: captured.segment.namespace },
-                  keys,
-                }),
-              )
-              expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
-              expect(await RuntimeMaintenance.status()).toMatchObject({
-                phase: "recovery-held",
-                purpose: "organization-restore",
-              })
-            })
-          }),
-        )
-        await expect(
-          readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity),
-        ).rejects.toThrow()
-        await restored.close()
-        await using cold = await openHostedRecovery({
-          request: hostedRequest,
-          home: path.join(selected.service.root, "hosted-target"),
-          identity: selected.home.identity,
-        })
-        await cold.run(async () => {
-          expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
-        })
-      },
-    )
-  })
-  await selected.runtime.run(async () => {
-    const info = await RuntimeMaintenance.status()
-    if (!info) throw new Error("Missing retired writer hold")
-    expect(info.phase).toBe("frozen")
-  })
-  if (!retiredReference) throw new Error("Missing original permanent reference")
-  const reference = retiredReference
-  if (!originalTarget || !hostedMaterial) throw new Error("Missing original installed target or native material")
+  await using lateTask = late === "session" ? await completedHostedTask(selected) : undefined
+  if (late === "input") {
+    if (!task) throw new Error("Expected the original completed task")
+    await appendCompletedHostedTask(selected, task)
+  }
+  if (!originalTarget) throw new Error("Missing original target preparation")
   const h0 = originalTarget
-  const material = hostedMaterial
-  await selected.close()
-  await using coldSource = await openHostedSourceRetirement({
-    home: selected.home.home,
-    identity: selected.home.identity,
-    reference,
-  })
-  await coldSource.run(async () => {
-    expect(() => NamespaceRetirement.complete(reference)).toThrow("writable")
-    await expect(Storage.write(["unauthorized", "writer"], true)).rejects.toThrow()
-    const receipt = await NamespaceRetirement.read(reference)
-    await NamespaceRetirement.withVerified(receipt, (inspection) =>
-      target.run(async () => {
-        expect(NamespaceRetirement.inspect(inspection)).toEqual(reference)
-        await HomeRestoration.withTarget(h0.installation, (permit) =>
-          OrganizationServiceNative.withInstalled(
-            {
+  const withPolicyTarget = <T>(body: (evidence: OrganizationRecovery.Target) => Promise<T>) =>
+    target.run(() =>
+      HomeRestoration.withTarget(h0.installation, (permit) =>
+        OrganizationServiceNative.withInstalled(
+          {
+            permit,
+            request,
+            directory: path.join(serviceBase, "native"),
+            expected: inventory.native!,
+            source: inventory.namespace,
+            keys,
+          },
+          async (native) => {
+            const prepared = await OrganizationRecoveryAuthority.reopen({
               permit,
               request,
-              directory: path.join(serviceBase, "native"),
-              expected: inventory.native!,
-              source: inventory.namespace,
+              native,
+              namespaceDirectory: path.join(serviceBase, "records"),
               keys,
+            })
+            return OrganizationRecovery.withTarget({ permit, request, native, prepared }, body)
+          },
+        ),
+      ),
+    )
+  let serviceLease: RuntimeMaintenance.Lease | undefined
+  await selected.service.service.maintenance.run(async () => {
+    serviceLease = await RuntimeMaintenance.begin({
+      purpose: "organization-backup",
+      requestID: "actual-hosted-recovery-publication",
+      actor: { ...actor, requestID: "actual-hosted-recovery-publication" },
+    })
+    await RuntimeMaintenance.freeze(serviceLease, await RuntimeMaintenance.drain(serviceLease))
+    return OrganizationCurrentAuthority.withSource(
+      {
+        lease: serviceLease,
+        after: h0.checkpoint,
+        directory: path.join(selected.service.root, "service-current"),
+        buildVersion: "fixture",
+        keys,
+      },
+      async (current) => {
+        if (late) {
+          await selected.capture()
+          const outcome = await withPolicyTarget((policyTarget) =>
+            selected.service.service.maintenance.run(() =>
+              OrganizationRecovery.reconstruct({ source: current, target: policyTarget }),
+            ),
+          ).then(
+            () => ({ kind: "resolved" as const }),
+            (error: unknown) => ({ kind: "rejected" as const, error }),
+          )
+          const sourceState = await selected.service.service.maintenance.run(async () => ({
+            schemaVersion: (
+              await HomeOwnershipFile.open({
+                root: path.join(selected.service.service.home, ".synergy"),
+                env: { SYNERGY_TEST_HOME: selected.service.service.home },
+              }).read()
+            )?.schemaVersion,
+            reserved: serviceLease
+              ? (await RuntimeMaintenance.retirement(serviceLease.maintenanceID)) !== undefined
+              : true,
+          }))
+          expect(sourceState).toEqual({ schemaVersion: 2, reserved: false })
+          if (outcome.kind !== "rejected") throw new Error("Direct reconstruction accepted unsupported H0 task facts")
+          expect(outcome.error).toBeInstanceOf(RuntimeMaintenance.Blocked)
+          return
+        }
+        await selected.capture(undefined, undefined, async (captured) => {
+          hostedMaterial = { native: captured.native.namespace, snapshot: captured.segment.namespace }
+          const preflight = () =>
+            withPolicyTarget((policyTarget) =>
+              selected.service.service.maintenance.run(() =>
+                OrganizationRecovery.preflightWriters({ source: current, target: policyTarget }),
+              ),
+            )
+          await preflight()
+          await NamespaceRetirement.withSource(
+            {
+              archive: captured.archive,
+              lease: captured.lease,
+              native: captured.native,
+              target: { request, installationID: original.installationID, incarnation: original.incarnation },
             },
-            async (native) => {
-              const prepared = await OrganizationRecoveryAuthority.reopen({
-                permit,
-                request,
-                native,
-                namespaceDirectory: path.join(serviceBase, "records"),
-                keys,
+            async (current) => {
+              const capturedReference = NamespaceRetirement.describeSource(current)
+              retiredReference = capturedReference
+              const reference = capturedReference
+              expect(reference.namespace.identity).toMatchObject({
+                kind: "hosted",
+                orgID: selected.registration.orgID,
+                runtimeID: selected.registration.runtimeID,
+                publicKey: selected.registration.publicKey,
               })
-              await OrganizationRecovery.withTarget({ permit, request, native, prepared }, (policyTarget) =>
-                selected.service.service.maintenance.run(async () => {
-                  const lease = await RuntimeMaintenance.begin({
-                    purpose: "organization-backup",
-                    requestID: "actual-hosted-recovery-publication",
-                    actor: { ...actor, requestID: "actual-hosted-recovery-publication" },
-                  })
-                  await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
-                  return OrganizationCurrentAuthority.withSource(
-                    {
-                      lease,
-                      after: h0.checkpoint,
-                      directory: path.join(selected.service.root, "service-current"),
-                      buildVersion: "fixture",
-                      keys,
-                    },
-                    (current) =>
-                      OrganizationCurrentAuthority.withCaptured(current, async (captured) => {
-                        const sourceReference = await OrganizationCurrentAuthority.retirementReference(
-                          current,
-                          original,
-                        )
-                        const physical = await OrganizationCurrentAuthority.retire(current, sourceReference)
-                        await OrganizationRecovery.publishReconciled({
-                          source: physical,
-                          target: policyTarget,
-                          namespace: captured.namespace,
-                          native: captured.native,
-                          keys,
-                          writers: [inspection],
-                          publicOrigin: "https://organization.example",
-                        })
-                      }),
-                  )
+              expect(reference.target.request).toEqual(request)
+              const hostedRequest = OrganizationHostedRecovery.request({
+                restoreID: "restored-hosted",
+                source: reference,
+                snapshot: captured.segment.namespace,
+              })
+              await using restored = await openHostedRecovery({
+                request: hostedRequest,
+                home: path.join(selected.service.root, "hosted-target"),
+                identity: selected.home.identity,
+              })
+              const receipt = await NamespaceRetirement.retire(current)
+              const marker = await HomeOwnershipFile.open({
+                root: selected.home.root,
+                env: { SYNERGY_TEST_HOME: selected.home.home },
+              }).read()
+              expect(marker).toMatchObject({
+                schemaVersion: 4,
+                maintenanceID: captured.lease.maintenanceID,
+                source: { schemaVersion: 2, owner: "organization-runtime" },
+              })
+              await expect(readHostedHome(selected.home.home, selected.home.identity)).rejects.toThrow()
+              await NamespaceRetirement.withVerified(receipt, (inspection) =>
+                target.run(async () => {
+                  expect(NamespaceRetirement.inspect(inspection)).toEqual(reference)
                 }),
               )
+              expect(NamespaceRetirement.describe(await NamespaceRetirement.complete(reference))).toEqual(reference)
+              await NamespaceRetirement.withVerified(receipt, (inspection) =>
+                restored.run(async () => {
+                  const request = OrganizationHostedRecovery.request({
+                    restoreID: "restored-hosted",
+                    source: reference,
+                    snapshot: captured.segment.namespace,
+                  })
+                  await HomeRestoration.withTarget(restored.target, async (permit) => {
+                    await restored.withRestorationBase((base) =>
+                      OrganizationHostedRecovery.restore({
+                        base,
+                        permit,
+                        request,
+                        source: inspection,
+                        namespaceDirectory: path.join(selected.service.root, "records"),
+                        native: { directory: captured.native.directory, expected: captured.native.namespace },
+                        snapshot: { directory: captured.segment.directory, expected: captured.segment.namespace },
+                        keys,
+                      }),
+                    )
+                    expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
+                    expect(await RuntimeMaintenance.status()).toMatchObject({
+                      phase: "recovery-held",
+                      purpose: "organization-restore",
+                    })
+                  })
+                }),
+              )
+              await expect(
+                readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity),
+              ).rejects.toThrow()
+              await restored.close()
+              await using cold = await openHostedRecovery({
+                request: hostedRequest,
+                home: path.join(selected.service.root, "hosted-target"),
+                identity: selected.home.identity,
+              })
+              await cold.run(async () => {
+                expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
+              })
             },
-          ),
-        )
-      }),
+          )
+        })
+        if (late) return
+        await selected.runtime.run(async () => {
+          const info = await RuntimeMaintenance.status()
+          if (!info) throw new Error("Missing retired writer hold")
+          expect(info.phase).toBe("frozen")
+        })
+        if (!retiredReference) throw new Error("Missing original permanent reference")
+        const reference = retiredReference
+        if (!originalTarget || !hostedMaterial) throw new Error("Missing original installed target or native material")
+        const material = hostedMaterial
+        await selected.close()
+        await using coldSource = await openHostedSourceRetirement({
+          home: selected.home.home,
+          identity: selected.home.identity,
+          reference,
+        })
+        await coldSource.run(async () => {
+          expect(() => NamespaceRetirement.complete(reference)).toThrow("writable")
+          await expect(Storage.write(["unauthorized", "writer"], true)).rejects.toThrow()
+          const receipt = await NamespaceRetirement.read(reference)
+          await NamespaceRetirement.withVerified(receipt, (inspection) =>
+            withPolicyTarget((policyTarget) =>
+              selected.service.service.maintenance.run(() =>
+                OrganizationCurrentAuthority.withCaptured(current, async (captured) => {
+                  const policy = await OrganizationRecovery.reconstruct({ source: current, target: policyTarget })
+                  const physical = await OrganizationSourceRetirement.complete(policy.source)
+                  await OrganizationRecovery.publishReconciled({
+                    source: physical,
+                    target: policyTarget,
+                    namespace: captured.namespace,
+                    native: captured.native,
+                    keys,
+                    writers: [inspection],
+                    publicOrigin: "https://organization.example",
+                  })
+                }),
+              ),
+            ),
+          )
+        })
+      },
     )
   })
+  if (late) {
+    expect(retiredReference).toBeUndefined()
+    expect(
+      await HomeOwnershipFile.open({ root: selected.home.root, env: { SYNERGY_TEST_HOME: selected.home.home } }).read(),
+    ).toMatchObject({ schemaVersion: 2 })
+    expect(
+      await HomeOwnershipFile.open({
+        root: path.join(selected.service.service.home, ".synergy"),
+        env: { SYNERGY_TEST_HOME: selected.service.service.home },
+      }).read(),
+    ).toMatchObject({ schemaVersion: 2 })
+    const held = await selected.runtime.run(() => RuntimeMaintenance.status())
+    const serviceHold = serviceLease
+    if (!held || !serviceHold) throw new Error("Expected original unreleased native holds")
+    expect(await selected.runtime.run(() => RuntimeMaintenance.retirement(held.maintenanceID))).toBeUndefined()
+    expect(
+      await selected.service.service.maintenance.run(() => RuntimeMaintenance.retirement(serviceHold.maintenanceID)),
+    ).toBeUndefined()
+    await selected.releaseCapture()
+    await selected.service.service.maintenance.run(() => RuntimeMaintenance.release(serviceHold))
+    expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+    expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+    return
+  }
   await target.run(() => OrganizationRecovery.completeServicePublication(original.installationID))
+  if (!retiredReference || !hostedMaterial) throw new Error("Missing original retired Hosted material")
+  const reference = retiredReference
+  const material = hostedMaterial
   const hostedRequest = OrganizationHostedRecovery.request({
     restoreID: "restored-hosted",
     source: reference,
@@ -766,6 +855,7 @@ test("an enrolled Hosted namespace permanently fences its actual writer and bind
     home: path.join(selected.service.root, "hosted-target"),
     identity: selected.home.identity,
     ca: selected.service.ca,
+    workspaceCoordinator: selected.workspaceCoordinator,
     listen: { port, token: "e".repeat(64) },
   })
   const timer = setTimeout(() => connected.reject(new Error("Restored Hosted writer did not reconnect")), 3000)
@@ -782,7 +872,51 @@ test("an enrolled Hosted namespace permanently fences its actual writer and bind
     (await readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity)).publicKey,
   ).toBe(selected.home.publicKey)
   expect(Buffer.from(await ordinary.run(() => Storage.readBinary(["recovery", "proof"])))).toEqual(bytes)
-}, 15_000)
+  if (task) {
+    const recovered = await ordinary.run(() => Session.get(task.sessionID))
+    expect(recovered.paused).toBeDefined()
+    expect(recovered.organization).toEqual(task.info.organization)
+    const original = await ordinary.run(() =>
+      RolloutLedger.getRun(
+        { kind: "session", scopeID: recovered.scope.id, sessionID: recovered.id },
+        task.nativeRelease.rootID,
+      ),
+    )
+    expect(original.status).toBe("completed")
+    expect(original.id).toBe(task.accepted.effect.messageID)
+    if (!originalInput || originalInput.info.role !== "user")
+      throw new Error("Expected the original accepted native user input")
+    expect(originalInput.info.actor).toMatchObject({ kind: "account", subjectID: task.accepted.permit.actor.subjectID })
+    const input = await ordinary.run(() => MessageV2.get({ sessionID: recovered.id, messageID: original.id }))
+    if (input.info.role !== "user") throw new Error("Restored root changed its original input role")
+    expect(input.info.actor).toEqual(originalInput.info.actor)
+    expect(task.calls.length).toBe(originalCalls)
+  }
+}
+
+test(
+  "an enrolled Hosted namespace permanently fences its actual writer and binds the original service target request",
+  () => recoverHostedWriter(),
+  15_000,
+)
+
+test(
+  "a genuinely completed model task survives service and Hosted recovery without replay",
+  () => recoverHostedWriter(true),
+  20_000,
+)
+
+test(
+  "direct reconstruction rejects a completed Session created after H0 before either permanent fence",
+  () => recoverHostedWriter(false, "session"),
+  20_000,
+)
+
+test(
+  "direct reconstruction rejects a second completed task after H0 before permanent retirement",
+  () => recoverHostedWriter(true, "input"),
+  20_000,
+)
 
 test("a completed Hosted model task drains its actual native writers before capture and ordinary shutdown", async () => {
   await using selected = await source(true)

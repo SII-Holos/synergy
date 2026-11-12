@@ -162,10 +162,13 @@ test("current project access and capable connections gate A without granting adm
     await expect(f.commands.input(f.credentials.alice, f.request())).rejects.toMatchObject({
       data: { code: "PROTOCOL_MISMATCH" },
     })
-    for (const actor of ["owner", "admin", "bob", "reader", "outsider", "foreign"])
+    for (const actor of ["owner", "admin", "bob", "reader", "outsider"])
       await expect(f.commands.input(f.credentials[actor], f.request())).rejects.toMatchObject({
         data: { code: "NOT_FOUND" },
       })
+    await expect(f.commands.input(f.credentials.foreign, f.request())).rejects.toMatchObject({
+      data: { code: "AUTHENTICATION_REQUIRED" },
+    })
   })
   await f.connect(2)
   await f.run(async () => {

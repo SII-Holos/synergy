@@ -1,4 +1,5 @@
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { Database } from "bun:sqlite"
 import fs from "node:fs/promises"
@@ -16,6 +17,10 @@ import { OrganizationRecord as Record } from "../storage/records"
 import { OrganizationStoragePath as Keys } from "../storage/path"
 import { OrganizationInstallationReference } from "./installation-reference"
 import { OrganizationAuthorityHistory } from "../authority-history"
+import { OrganizationCommandHistory } from "../command-history"
+import { OrganizationExecutionGrants } from "../execution-grants"
+import { OrganizationGatewayHistory } from "../gateway-calls"
+import { OrganizationKnowledge } from "../knowledge"
 import {
   OrganizationProtocol,
   OrganizationExecutionProtocol as Execution,
@@ -28,14 +33,15 @@ const modelProtocols = new Set(["openai-compatible", "anthropic-compatible", "fi
 const indexes = new Set(["session-creators", "session-visibility", "hosted-runtimes"])
 type Mode = "metadata" | "exact" | "runtime"
 type Reference = z.infer<typeof OrganizationInstallationReference>
-type Frame = {
+type Inventory = {
   database: Database
-  target: Reference
-  namespaceHash: string
+  target?: Reference
+  kind: "preflight" | "publication"
   sources: Map<string, { proof: NamespaceRetirement.Inspection; reference: NamespaceRetirement.Reference }>
   assertTarget(): void
   assert(): void
 }
+type Frame = Inventory & { target: Reference; namespaceHash: string }
 const inspections = new WeakMap<OrganizationRecoveryWriters.Inspection, Frame>()
 const sealed = new WeakMap<StoreTransaction, { frame: Frame; failed: boolean }>()
 const mutations = RuntimeContext.createAsyncContext<{
@@ -51,18 +57,18 @@ function frame(evidence: OrganizationRecoveryWriters.Inspection) {
   selected.assert()
   return selected
 }
-function sourceRow(selected: Frame, key: string[]) {
+function sourceRow(selected: Inventory, key: string[]) {
   const row = selected.database
     .query<{ value: string; mode: Mode }, [string]>("SELECT value,mode FROM records WHERE key=?")
     .get(JSON.stringify(key))
   return row && { value: JSON.parse(row.value) as unknown, mode: row.mode }
 }
-function sourceValue<T>(selected: Frame, schema: z.ZodType<T>, key: string[]) {
+function sourceValue<T>(selected: Inventory, schema: z.ZodType<T>, key: string[]) {
   const row = sourceRow(selected, key)
   if (!row) blocked("missing H1 owner record")
   return schema.parse(row.value)
 }
-function sourceRuntime(selected: Frame, id: string) {
+function sourceRuntime(selected: Inventory, id: string) {
   const runtime = sourceValue(selected, Record.RuntimeRegistration, Keys.runtime(id))
   const deployment = sourceValue(selected, OrganizationProtocol.Deployment, Keys.deployment())
   const source = selected.sources.get(id)
@@ -72,17 +78,18 @@ function sourceRuntime(selected: Frame, id: string) {
   if (
     runtime.runtimeID !== id ||
     runtime.runtimeKind !== "hosted" ||
-    !identity ||
-    identity.orgID !== deployment.orgID ||
-    identity.deploymentIncarnation !== deployment.deploymentIncarnation ||
-    runtime.orgID !== identity.orgID ||
-    runtime.deploymentIncarnation !== identity.deploymentIncarnation ||
-    runtime.publicKey !== identity.publicKey
+    runtime.orgID !== deployment.orgID ||
+    runtime.deploymentIncarnation !== deployment.deploymentIncarnation ||
+    (selected.kind === "publication" &&
+      (!identity ||
+        identity.orgID !== deployment.orgID ||
+        identity.deploymentIncarnation !== deployment.deploymentIncarnation ||
+        runtime.publicKey !== identity.publicKey))
   )
     blocked("Hosted identity differs from its H1 deployment and permanent source")
   return runtime
 }
-function sourceSession(selected: Frame, id: string) {
+function sourceSession(selected: Inventory, id: string) {
   const session = sourceValue(selected, Record.SessionDirectory, Keys.session(id))
   const runtime = sourceRuntime(selected, session.driverRuntimeID)
   if (
@@ -94,7 +101,7 @@ function sourceSession(selected: Frame, id: string) {
     blocked("unreconciled Session binding or retained execution")
   return session
 }
-function sourceResource(selected: Frame, orgID: string, id: string) {
+function sourceResource(selected: Inventory, orgID: string, id: string) {
   const resource = sourceValue(selected, Record.Resource, Keys.resource(orgID, id))
   const deployment = sourceValue(selected, OrganizationProtocol.Deployment, Keys.deployment())
   if (
@@ -106,15 +113,21 @@ function sourceResource(selected: Frame, orgID: string, id: string) {
     blocked("external resource owner")
   return resource
 }
-function selection(selected: Frame, orgID: string, value: Execution.Selection) {
+function selection(selected: Inventory, orgID: string, value: Execution.Selection) {
   if (value.infrastructure.workspace || value.infrastructure.environment) blocked("Session infrastructure")
   for (const role of Execution.resourceRoles(value))
     if (Resource.kind(sourceResource(selected, orgID, role.resourceID).configuration) !== role.kind)
       blocked("resource selection owner")
 }
-function classify(selected: Frame, key: string[], value: unknown): Mode {
+async function classify(selected: Inventory, key: string[], value: unknown): Promise<Mode> {
   const [root, kind] = key
   if (root !== "organization") {
+    if (OrganizationKnowledge.emptyHistory(historicalReader(selected), key, value)) {
+      const sessionID = key[2]
+      if (!sessionID) blocked("knowledge Session owner")
+      sourceSession(selected, sessionID)
+      return "exact"
+    }
     if (!root || !safeRoots.has(root)) blocked("native " + (root ?? "owner"))
     if (root === "organization-api-tokens") return "exact"
     return "metadata"
@@ -133,28 +146,35 @@ function classify(selected: Frame, key: string[], value: unknown): Mode {
     if (key.length !== 3 || key[2] !== runtime.runtimeID || runtime.runtimeKind !== "hosted")
       blocked("member or malformed Runtime")
     const source = selected.sources.get(runtime.runtimeID)
-    if (!source) blocked("unproved Hosted Runtime")
+    if (!source && selected.kind === "publication") blocked("unproved Hosted Runtime")
     const expected = sourceRuntime(selected, runtime.runtimeID)
-    const published = Record.RuntimeRegistration.parse({
-      ...expected,
-      deploymentIncarnation: selected.target.incarnation,
-      revision: expected.revision + 1,
-    })
-    if (hash(runtime) !== hash(expected) && hash(runtime) !== hash(published))
+    const published =
+      selected.kind === "publication" &&
+      selected.target &&
+      Record.RuntimeRegistration.parse({
+        ...expected,
+        deploymentIncarnation: selected.target.incarnation,
+        revision: expected.revision + 1,
+      })
+    if (hash(runtime) !== hash(expected) && (!published || hash(runtime) !== hash(published)))
       blocked("Hosted registration changed outside publication")
     return "runtime"
   }
   if (kind === "runtime-connections") {
     const connection = Record.RuntimeConnection.parse(value)
     const identity = connection.handshake
+    const registration = sourceRuntime(selected, identity.runtimeID)
     const source = selected.sources.get(identity.runtimeID)
     if (
       key.length !== 3 ||
       key[2] !== identity.runtimeID ||
       identity.runtimeKind !== "hosted" ||
-      !source ||
-      identity.orgID !== source.reference.namespace.identity.orgID ||
-      identity.deploymentIncarnation !== source.reference.namespace.identity.deploymentIncarnation
+      identity.orgID !== registration.orgID ||
+      identity.deploymentIncarnation !== registration.deploymentIncarnation ||
+      (selected.kind === "publication" &&
+        (!source ||
+          identity.orgID !== source.reference.namespace.identity.orgID ||
+          identity.deploymentIncarnation !== source.reference.namespace.identity.deploymentIncarnation))
     )
       blocked("unknown connection observation")
     return "metadata"
@@ -244,10 +264,37 @@ function classify(selected: Frame, key: string[], value: unknown): Mode {
       blocked("resource access owner")
     return "exact"
   }
-  if (kind === "command-states") {
-    if (Record.CommandState.parse(value).pendingAttemptID) blocked("pending command")
-    blocked("unreconciled command owner")
+  const history = historicalReader(selected)
+  if (await OrganizationCommandHistory.validate(history, key, value)) {
+    const sessionID =
+      kind === "command-states"
+        ? key[2]
+        : kind === "command-requests"
+          ? Record.CommandRequest.parse(value).first.sessionID
+          : kind === "command-attempts"
+            ? Record.CommandAttempt.parse(value).authorization.permit.sessionID
+            : history.read(
+                Record.CommandAttempt,
+                Keys.commandAttempt(Record.CommandAttemptIndex.parse(value).attemptID),
+              ).authorization.permit.sessionID
+    if (!sessionID) blocked("command Session owner")
+    sourceSession(selected, sessionID)
+    return "exact"
   }
+  if (await OrganizationExecutionGrants.validateClosedHistory(history, key, value)) {
+    const grantID =
+      kind === "execution-grants"
+        ? Record.ExecutionGrant.parse(value).grantID
+        : kind === "execution-releases"
+          ? Record.ExecutionRelease.parse(value).grantID
+          : Record.RootGrant.parse(value).grantID
+    const grant = await OrganizationExecutionGrants.closedHistory(history, grantID)
+    sourceSession(selected, grant.sessionID)
+    selection(selected, grant.orgID, grant.selection)
+    await OrganizationGatewayHistory.grant(history, grant)
+    return "exact"
+  }
+  if (await OrganizationGatewayHistory.validate(history, key, value)) return "exact"
   if (kind && indexes.has(kind)) {
     if (kind === "hosted-runtimes") {
       const index = Record.RuntimeIndex.parse(value)
@@ -273,6 +320,29 @@ const safeRoots = new Set([
   "organization-recovery",
   "organization-api-tokens",
 ])
+function projected(key: string[]) {
+  return AuthorityJournal.definition().domains.some((domain) =>
+    domain.prefixes.some((prefix) => prefix.every((part, index) => key[index] === part)),
+  )
+}
+function historicalReader(selected: Inventory): Record.HistoricalReader {
+  return {
+    read(schema, key) {
+      return sourceValue(selected, schema, key)
+    },
+    *entries(prefix) {
+      const start = JSON.stringify(prefix).slice(0, -1) + ","
+      using rows = selected.database.query<{ key: string; value: string }, [string, string]>(
+        "SELECT key,value FROM records WHERE key>=? AND key<? ORDER BY key",
+      )
+      for (const row of rows.iterate(start, start + "\uffff")) {
+        selected.assertTarget()
+        yield { key: JSON.parse(row.key), value: JSON.parse(row.value) }
+      }
+    },
+  }
+}
+
 const schemaMarkers = new Map([
   ["execution-grant-index-schema", { version: 1, complete: true }],
   ["execution-control-index-schema", { version: 1, complete: true }],
@@ -308,18 +378,27 @@ export namespace OrganizationRecoveryWriters {
   export interface Inspection {
     readonly kind: "organization-recovery-writers"
   }
-  export async function withReconciled<T>(
-    input: {
-      permit: HomeRestoration.InstallPermit
-      request: HomeRestoration.Request
-      target: Reference
-      sources: readonly NamespaceRetirement.Inspection[]
-      namespace: { directory: string; expected: StorageCheckpoint.Manifest }
-      keys: VaultKeyProvider
-      signal?: AbortSignal
-    },
-    body: (evidence: Inspection) => Promise<T>,
-  ) {
+  type Input = {
+    permit: HomeRestoration.InstallPermit
+    request: HomeRestoration.Request
+    target: Reference
+    sources: readonly NamespaceRetirement.Inspection[]
+    namespace: { directory: string; expected: StorageCheckpoint.Manifest }
+    keys: VaultKeyProvider
+    signal?: AbortSignal
+  }
+  export function withReconciled<T>(input: Input, body: (evidence: Inspection) => Promise<T>) {
+    return withInventory(input, "publication", async (selected) => {
+      const evidence: Inspection = Object.freeze({ kind: "organization-recovery-writers" })
+      inspections.set(evidence, selected)
+      await assertReconciled(evidence)
+      return body(evidence)
+    })
+  }
+  export function preflight(input: Omit<Input, "sources">) {
+    return withInventory({ ...input, sources: [] }, "preflight", assertInventoryMatches)
+  }
+  async function withInventory<T>(input: Input, kind: Inventory["kind"], body: (selected: Frame) => Promise<T>) {
     const permit = input.permit
     const request = HomeRestoration.Request.parse(structuredClone(input.request))
     const target = OrganizationInstallationReference.parse(structuredClone(input.target))
@@ -398,7 +477,15 @@ export namespace OrganizationRecoveryWriters {
     assert()
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-recovery-writers-"))
     const database = new Database(path.join(directory, "writers.sqlite"))
-    const selected: Frame = { database, target, namespaceHash: hash(namespace.expected), sources, assertTarget, assert }
+    const selected: Frame = {
+      kind,
+      database,
+      target,
+      namespaceHash: hash(namespace.expected),
+      sources,
+      assertTarget,
+      assert,
+    }
     try {
       database.exec(
         "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL)",
@@ -422,12 +509,9 @@ export namespace OrganizationRecoveryWriters {
       using update = database.query("UPDATE records SET mode=? WHERE key=?")
       for (const row of rows.iterate()) {
         assertTarget()
-        update.run(classify(selected, JSON.parse(row.key), JSON.parse(row.value)), row.key)
+        update.run(await classify(selected, JSON.parse(row.key), JSON.parse(row.value)), row.key)
       }
-      const evidence: Inspection = Object.freeze({ kind: "organization-recovery-writers" })
-      inspections.set(evidence, selected)
-      await assertReconciled(evidence)
-      const result = await body(evidence)
+      const result = await body(selected)
       assert()
       return result
     } finally {
@@ -462,13 +546,26 @@ export namespace OrganizationRecoveryWriters {
   }
   export async function assertReconciled(evidence: Inspection) {
     const selected = frame(evidence)
+    await assertInventoryMatches(selected)
+    return inspect(evidence)
+  }
+  async function assertInventoryMatches(selected: Frame) {
     return Storage.snapshot(async (tx) => {
       let count = 0
       const found = new Set<string>()
       for await (const entry of tx.exportEntries()) {
         selected.assertTarget()
         if (entry.type === "record") {
-          const mode = classify(selected, entry.key, entry.value)
+          if (selected.kind === "preflight" && projected(entry.key)) continue
+          const before = sourceRow(selected, entry.key)
+          if (
+            selected.kind === "preflight" &&
+            before?.mode !== "metadata" &&
+            before &&
+            hash(before.value) !== hash(entry.value)
+          )
+            blocked("H0 facts differ from the actual H1 owner")
+          const mode = await classify(selected, entry.key, entry.value)
           if (mode !== "metadata") {
             const source = sourceRow(selected, entry.key)
             if (!source || (mode !== "runtime" && hash(source.value) !== hash(entry.value)))
@@ -484,17 +581,18 @@ export namespace OrganizationRecoveryWriters {
         )
           blocked("unclassified operation receipts")
       }
-      const expected = selected.database
-        .query<{ count: number }, []>("SELECT count(*) AS count FROM records WHERE mode<>'metadata'")
-        .get()!.count
+      let expected = 0
+      using rows = selected.database.query<{ key: string }, []>(
+        "SELECT key FROM records WHERE mode<>'metadata' ORDER BY key",
+      )
+      for (const row of rows.iterate()) if (selected.kind !== "preflight" || !projected(JSON.parse(row.key))) expected++
       if (
         count !== expected ||
-        found.size !== selected.sources.size ||
-        [...selected.sources.keys()].some((id) => !found.has(id))
+        (selected.kind === "publication" &&
+          (found.size !== selected.sources.size || [...selected.sources.keys()].some((id) => !found.has(id))))
       )
         blocked("incomplete H1 canonical roster or owner facts")
       selected.assert()
-      return inspect(evidence)
     })
   }
   export async function publish(evidence: Inspection, tx: StoreTransaction) {
