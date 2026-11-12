@@ -7,6 +7,7 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail, revision } from "./error"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
+import { OrganizationSessionDirectory } from "./session-directory"
 
 export namespace OrganizationProjects {
   export async function members(credentials: Credentials, projectID: string, input: Identity.Page) {
@@ -144,6 +145,8 @@ export namespace OrganizationProjects {
     return History.credentials(credentials, "project.update", async () => {
       const { project } = await authorize(credentials, "project.manage", { projectID })
       revision(input.expectedRevision, project.revision)
+      if (input.state === "archived" && project.state !== "archived")
+        await OrganizationSessionDirectory.assertProjectArchivable(projectID)
       const { expectedRevision: _, ...changes } = input
       const updated = Record.Project.parse({ ...project, ...changes, revision: project.revision + 1 })
       await Storage.write(Keys.project(projectID), updated)

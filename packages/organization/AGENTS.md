@@ -4,7 +4,7 @@ Own identity, authorization, resources, publications/projections, forwarding and
 
 Use isolated Storage Handles, central migrations and owner-local keys. Commit authorization with admission; Runtime acceptance is separate. Prepare binaries before transactions. Reauthorize downloads/receipts. Keep private member bodies Runtime-owned.
 
-Route actions through `authorization.ts`, resolving stored ownership before roles; deny unknown actions. Archived projects allow stopping, not new execution. Authentication and one-time token consumption belong to `auth/`. Do not duplicate role matrices in routes or Runtime adapters.
+Route actions through `authorization.ts`; resolve stored ownership before roles; deny unknown actions. Pending handoffs block archive; archived projects permit stopping. Authentication and one-time token consumption belong to `auth/`. Never duplicate role matrices in routes or Runtime adapters.
 
 Invitation reads require authorized indexes, excluding secrets/receipts. Keep consume/revoke CAS atomic and migrate indexes centrally. CLI invites require durable private output before HTTPS; never retry unknown issuance; verify `test/cli-invite.test.ts`. Self leave uses the account removal/last-owner guard; verify invite/auth suites.
 

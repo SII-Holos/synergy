@@ -6,18 +6,25 @@ import { createHandoffs, registerHandoffAuthorityHistory } from "../src/handoff"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { OrganizationAuthorityHistory } from "../src/authority-history"
 import { OrganizationSharing } from "../src/sharing"
+import { OrganizationProjects } from "../src/projects"
+import { OrganizationSessionDirectory } from "../src/session-directory"
 import { OrganizationRecord as Record } from "../src/storage/records"
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
 import { commandFixture } from "./support/commands"
 import { connection, keys } from "./support/runtime"
 
-async function fixture() {
+async function fixture(targetAccountID = "bob") {
   const f = await commandFixture()
   await f.connect(1, true, false, false, true)
   const targetKeys = await keys()
   const target = await f.run(async () => {
     const value = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
-    const updated = Record.RuntimeRegistration.parse({ ...value, connectionEpoch: 0, publicKey: targetKeys.publicKey })
+    const updated = Record.RuntimeRegistration.parse({
+      ...value,
+      accountID: targetAccountID,
+      connectionEpoch: 0,
+      publicKey: targetKeys.publicKey,
+    })
     await Storage.write(Keys.runtime("runtime-bob"), updated)
     return updated
   })
@@ -302,3 +309,140 @@ test("cancellation retains the handoff lock until a source proof and never reuse
     ).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
   })
 })
+
+test("project archive sees a late private handoff and waits for its actual cancellation proof", async () => {
+  await using f = await fixture("alice")
+  await f.run(async () => {
+    for (let index = 0; index < 128; index++)
+      await OrganizationSessionDirectory.reservePrivate(f.credentials.alice, {
+        sessionID: "ses_page_" + String(index).padStart(3, "0"),
+        projectID: "project",
+        runtimeID: "runtime-alice",
+      })
+    const sessionID = "ses_z_pending"
+    await OrganizationSessionDirectory.reservePrivate(f.credentials.alice, {
+      sessionID,
+      projectID: "project",
+      runtimeID: "runtime-alice",
+    })
+    const pending = await f.handoffs.prepare(f.credentials.alice, sessionID, {
+      handoffID: "private-archive-blocker",
+      targetRuntimeID: "runtime-bob",
+      expectedBindingEpoch: 1,
+      expectedControlRevision: 0,
+      mappingPlanRevision: 1,
+    })
+    await expect(OrganizationSessionDirectory.get(f.credentials.admin, sessionID)).rejects.toMatchObject({
+      data: { code: "NOT_FOUND" },
+    })
+    const project = await OrganizationProjects.get(f.credentials.admin, "project")
+    const archive = () =>
+      OrganizationProjects.update(f.credentials.admin, "project", {
+        expectedRevision: project.revision,
+        state: "archived",
+      })
+    await expect(archive()).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    expect(await OrganizationProjects.get(f.credentials.admin, "project")).toEqual(project)
+    const independent = await OrganizationProjects.create(f.credentials.admin, { name: "Independent", description: "" })
+    expect(
+      (
+        await OrganizationProjects.update(f.credentials.admin, independent.projectID, {
+          expectedRevision: independent.revision,
+          state: "archived",
+        })
+      ).state,
+    ).toBe("archived")
+    await f.handoffs.cancel(f.credentials.alice, pending.handoffID)
+    await expect(archive()).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    const proof = Handoff.Proof.parse({
+      schemaVersion: 1,
+      purpose: "source-cancelled",
+      orgID: "org",
+      deploymentIncarnation: "deployment",
+      handoffID: pending.handoffID,
+      sessionID,
+      sourceRuntimeID: pending.sourceRuntimeID,
+      targetRuntimeID: pending.targetRuntimeID,
+      fromEpoch: pending.fromEpoch,
+      toEpoch: pending.toEpoch,
+      mappingPlanRevision: 1,
+      shareGeneration: 0,
+      manifestHash: null,
+      gateCancelled: true,
+      paused: true,
+    })
+    expect(
+      await f.handoffs.proof({ proof, signature: await Handoff.signProof(proof, f.machineKeys.privateKey) }),
+    ).toMatchObject({ phase: "cancelled", bindingEpoch: 1 })
+    const archived = await archive()
+    expect(archived.state).toBe("archived")
+    expect((await OrganizationSessionDirectory.get(f.credentials.alice, sessionID)).permissions.execute).toBe(false)
+    const paused = await Record.read(Record.SessionDirectory, Keys.session(sessionID))
+    const restored = await OrganizationProjects.update(f.credentials.admin, "project", {
+      expectedRevision: archived.revision,
+      state: "active",
+    })
+    expect(restored.state).toBe("active")
+    expect(await Record.read(Record.SessionDirectory, Keys.session(sessionID))).toEqual(paused)
+  })
+})
+
+for (const first of ["handoff", "archive"] as const)
+  test(`${first} committing first determines project archive versus new handoff admission`, async () => {
+    await using f = await fixture("alice")
+    const admitted = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const rescue = setTimeout(() => release.resolve(), 10_000)
+    const prepare = () =>
+      f.handoffs.prepare(f.credentials.alice, f.sessionID, {
+        handoffID: "archive-admission-race",
+        targetRuntimeID: "runtime-bob",
+        expectedBindingEpoch: 1,
+        expectedControlRevision: 0,
+        mappingPlanRevision: 1,
+      })
+    const archive = () =>
+      OrganizationProjects.update(f.credentials.admin, "project", { expectedRevision: 1, state: "archived" })
+    const winner = Promise.resolve(
+      f.run(() =>
+        Storage.transaction(async () => {
+          const result = first === "handoff" ? await prepare() : await archive()
+          admitted.resolve()
+          await release.promise
+          return result
+        }),
+      ),
+    )
+    try {
+      await Promise.race([
+        admitted.promise,
+        winner.then(
+          () => {},
+          (error: unknown) => Promise.reject(error),
+        ),
+      ])
+      const loser = Promise.resolve(f.run(async () => (first === "handoff" ? archive() : prepare()))).then(
+        (value) => ({ ok: true, value }),
+        (error: unknown) => ({ ok: false, error }),
+      )
+      release.resolve()
+      await winner
+      expect(await loser).toMatchObject({
+        ok: false,
+        error: { data: { code: first === "handoff" ? "HANDOFF_BLOCKED" : "PERMISSION_DENIED" } },
+      })
+      await f.run(async () => {
+        expect((await Record.read(Record.Project, Keys.project("project")))?.state).toBe(
+          first === "handoff" ? "active" : "archived",
+        )
+        expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.handoffID).toBe(
+          first === "handoff" ? "archive-admission-race" : undefined,
+        )
+        expect((await AuthorityJournal.inspect()).covered).toBe(true)
+      })
+    } finally {
+      clearTimeout(rescue)
+      release.resolve()
+      await winner.catch(() => {})
+    }
+  })

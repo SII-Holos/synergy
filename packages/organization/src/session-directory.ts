@@ -57,6 +57,16 @@ async function present(session: Record.SessionDirectory, view: Protocol.View) {
 }
 
 export namespace OrganizationSessionDirectory {
+  export async function assertProjectArchivable(projectID: string) {
+    if (!Storage.inWriteTransaction()) throw new Error("Project archive requires its original admission transaction")
+    for await (const row of Storage.records({ prefix: Keys.sessions(), limit: 128 })) {
+      const session = Record.parse(Record.SessionDirectory, row.key, row.value)
+      if (row.key.length !== 3 || row.key[2] !== session.sessionID)
+        fail("SERVICE_UNAVAILABLE", "Session directory identity is inconsistent")
+      if (session.projectID === projectID && session.handoffID)
+        fail("HANDOFF_BLOCKED", "Resolve pending handoffs before archiving this project")
+    }
+  }
   export function registerRuntimeStatus(reader: RuntimeStatusReader) {
     RuntimeContext.assertCompositionOpen("Organization Session runtime presence")
     if (presentation().runtimeStatus) throw new Error("Organization Session runtime presence is already registered")

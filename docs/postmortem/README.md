@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0167](0167-project-archive-stranded-a-pending-handoff.md)
 - [0165](0165-handoff-view-hid-committed-cancellation-requests.md)
 - [0164](0164-native-rollout-settlement-crossed-source-freeze.md)
 - [0163](0163-hosted-publication-outlived-its-restricted-runtime.md)
