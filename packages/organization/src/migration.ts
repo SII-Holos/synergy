@@ -29,6 +29,7 @@ const migrations: Migration[] = [
   OrganizationExecutionIndex.controlMigration,
   OrganizationHandoffExecution.migration,
   OrganizationHandoffExecution.workspaceMigration,
+  OrganizationHandoffExecution.differenceMigration,
   sharedProjectionMigration,
   sharedWindowMigration,
   sharedWindowHistoryMigration,

@@ -33,7 +33,7 @@ export namespace OrganizationHandoffWorkspaceSource {
         const mapping = frame.plan.workspacePlan?.mapping
         if (
           !mapping ||
-          mapping.kind !== "organization-live" ||
+          (mapping.kind !== "organization-live" && mapping.kind !== "organization-native") ||
           binding.handoffID !== frame.plan.handoffID ||
           binding.sessionID !== frame.plan.sessionID ||
           binding.scopeID !== frame.plan.sourceBinding.projectID ||
@@ -99,7 +99,11 @@ export namespace OrganizationHandoffWorkspaceSource {
     signal: AbortSignal,
     body: () => Promise<T>,
   ) {
-    if (plan.workspacePlan?.mapping.kind !== "organization-live") return body()
+    if (
+      plan.workspacePlan?.mapping.kind !== "organization-live" &&
+      plan.workspacePlan?.mapping.kind !== "organization-native"
+    )
+      return body()
     if (!resources) fail("Remote source requires its original machine resource client")
     const send = resources.handoffWorkspace.bind(resources)
     const owner = WorkspaceContent.captureOwner(signal)

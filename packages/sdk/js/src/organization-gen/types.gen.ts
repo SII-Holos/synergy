@@ -2715,6 +2715,27 @@ export type OrgHandoffView = {
         }
       }
     | {
+        kind: "organization-native"
+        moveID: string
+        source: {
+          workspaceID: string
+          generation: number
+        }
+        resource: {
+          resourceID: string
+          workspaceID: string
+          generation: number
+          path: string
+        }
+        target: {
+          kind: "existing"
+          workspaceID: string
+          generation: number
+          expectedRevision: number
+          projectRevision: string
+        }
+      }
+    | {
         kind: "organization-object"
         moveID: string
         source: {
@@ -2732,6 +2753,20 @@ export type OrgHandoffView = {
       }
   mappingHash: string
   cancelRequested: boolean
+  workspaceDifference?: {
+    sourceSnapshotHash: string
+    targetDigest: string
+    diffHash: string
+    mappingPlanRevision: number
+    entries: number
+    sourceEntries: number
+    targetEntries: number
+    mode: {
+      source: number
+      target: number
+    }
+  }
+  workspaceDifferenceAccepted?: boolean
 }
 
 export type OrgHandoffPrepare =
@@ -2756,6 +2791,27 @@ export type OrgHandoffPrepare =
               workspaceID: string
               generation: number
               path: string
+            }
+          }
+        | {
+            kind: "organization-native"
+            moveID: string
+            source: {
+              workspaceID: string
+              generation: number
+            }
+            resource: {
+              resourceID: string
+              workspaceID: string
+              generation: number
+              path: string
+            }
+            target: {
+              kind: "existing"
+              workspaceID: string
+              generation: number
+              expectedRevision: number
+              projectRevision: string
             }
           }
         | {
@@ -2789,6 +2845,16 @@ export type OrgHandoffPage = {
 }
 
 export type OrgHandoffAccept =
+  | {
+      mappingPlanRevision: number
+      mappingHash: string
+      workspaceDifference: {
+        sourceSnapshotHash: string
+        targetDigest: string
+        diffHash: string
+        mappingPlanRevision: number
+      }
+    }
   | {
       mappingPlanRevision: number
       mappingHash: string
@@ -2872,6 +2938,8 @@ export type OrgHandoffProof =
       fileClosureHash: string | null
       workspaceMoveReceiptHash: string | null
       workspaceSourceHash?: string | null
+      workspaceNativeReceiptHash?: string
+      workspaceDifferenceHash?: string
       paused: true
     }
   | {
@@ -2944,6 +3012,51 @@ export type OrgHandoffProof =
       preparedHash: string
       tombstonePersisted: true
     }
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      handoffID: string
+      sessionID: string
+      sourceRuntimeID: string
+      targetRuntimeID: string
+      fromEpoch: number
+      toEpoch: number
+      mappingPlanRevision: number
+      shareGeneration: number
+      purpose: "target-difference"
+      manifestHash: string
+      difference: {
+        sourceSnapshotHash: string
+        targetDigest: string
+        diffHash: string
+        mappingPlanRevision: number
+        entries: number
+        sourceEntries: number
+        targetEntries: number
+        mode: {
+          source: number
+          target: number
+        }
+      }
+    }
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      handoffID: string
+      sessionID: string
+      sourceRuntimeID: string
+      targetRuntimeID: string
+      fromEpoch: number
+      toEpoch: number
+      mappingPlanRevision: number
+      shareGeneration: number
+      purpose: "target-preview-released"
+      manifestHash: string
+      diffHash: string | null
+      tombstonePersisted: true
+    }
 
 export type OrgHandoffSignedProof = {
   proof: OrgHandoffProof
@@ -2959,6 +3072,7 @@ export type OrgHandoffMachineResult = {
     | "inspect-target"
     | "prepare-source"
     | "prepare-target"
+    | "preview-target"
     | "surrender-source"
     | "cancel-source"
     | "activate-target"
@@ -2974,6 +3088,8 @@ export type OrgHandoffMachineResult = {
     | "source-cancelled"
     | "target-activated"
     | "target-never-activate"
+    | "target-difference"
+    | "target-preview-released"
   revision: string
   requirements: Array<{
     code: string
@@ -2996,6 +3112,66 @@ export type OrgHandoffMachineResult = {
     data: string
     complete: boolean
   }
+  workspaceDifference?: {
+    sourceSnapshotHash: string
+    targetDigest: string
+    diffHash: string
+    mappingPlanRevision: number
+    entries: number
+    sourceEntries: number
+    targetEntries: number
+    mode: {
+      source: number
+      target: number
+    }
+  }
+  differencePage?: {
+    diffHash: string
+    items: Array<{
+      path: string
+      source:
+        | {
+            path: string
+            kind: "file"
+            mode: number
+            size: number
+            hash: string
+          }
+        | {
+            path: string
+            kind: "directory"
+            mode: number
+          }
+        | {
+            path: string
+            kind: "symlink"
+            mode: number
+            target: string
+          }
+        | null
+      target:
+        | {
+            path: string
+            kind: "file"
+            mode: number
+            size: number
+            hash: string
+          }
+        | {
+            path: string
+            kind: "directory"
+            mode: number
+          }
+        | {
+            path: string
+            kind: "symlink"
+            mode: number
+            target: string
+          }
+        | null
+    }>
+    cursor?: string
+  }
   facts: Array<OrgHandoffSignedProof>
 }
 
@@ -3006,6 +3182,7 @@ export type OrgHandoffDrive = {
     | "inspect-target"
     | "prepare-source"
     | "prepare-target"
+    | "preview-target"
     | "surrender-source"
     | "cancel-source"
     | "activate-target"
@@ -3043,6 +3220,30 @@ export type OrgHandoffObjectProof = {
 export type OrgHandoffObjectRequest = {
   proof: OrgHandoffObjectProof
   signature: string
+}
+
+export type OrgHandoffFactAcknowledgement = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  purpose:
+    | "source-frozen"
+    | "target-prepared"
+    | "source-surrendered"
+    | "source-cancelled"
+    | "target-activated"
+    | "target-never-activate"
+    | "target-difference"
+    | "target-preview-released"
+  factHash: string
 }
 
 export type Schema0 =
@@ -9761,7 +9962,7 @@ export type OrgHandoffProofResponses = {
   /**
    * Success
    */
-  200: OrgHandoffView
+  200: OrgHandoffFactAcknowledgement
 }
 
 export type OrgHandoffProofResponse = OrgHandoffProofResponses[keyof OrgHandoffProofResponses]

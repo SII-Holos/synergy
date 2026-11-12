@@ -40,6 +40,58 @@ export namespace OrganizationHandoffProtocol {
       (field) => left[field as keyof z.infer<typeof Binding>] === right[field as keyof z.infer<typeof Binding>],
     )
   }
+  const Mode = z.number().int().min(0).max(0o777)
+  export const DifferenceConsent = z.strictObject({
+    sourceSnapshotHash: Hash,
+    targetDigest: Hash,
+    diffHash: Hash,
+    mappingPlanRevision: z.number().int().positive().safe(),
+  })
+  export type DifferenceConsent = z.infer<typeof DifferenceConsent>
+  export const Difference = DifferenceConsent.extend({
+    entries: Identity.Revision,
+    sourceEntries: Identity.Revision,
+    targetEntries: Identity.Revision,
+    mode: z.strictObject({ source: Mode, target: Mode }),
+  })
+  export type Difference = z.infer<typeof Difference>
+  const DifferenceHeader = z.discriminatedUnion("kind", [
+    z.strictObject({ path: WorkspacePath, kind: z.literal("file"), mode: Mode, size: Identity.Revision, hash: Hash }),
+    z.strictObject({ path: WorkspacePath, kind: z.literal("directory"), mode: Mode }),
+    z.strictObject({
+      path: WorkspacePath,
+      kind: z.literal("symlink"),
+      mode: Mode,
+      target: z.string().min(1).max(4096),
+    }),
+  ])
+  export const DifferencePage = z.strictObject({
+    diffHash: Hash,
+    items: z
+      .array(
+        z
+          .strictObject({
+            path: WorkspacePath,
+            source: DifferenceHeader.nullable(),
+            target: DifferenceHeader.nullable(),
+          })
+          .refine(
+            (item) =>
+              (!!item.source || !!item.target) &&
+              (!item.source || item.source.path === item.path) &&
+              (!item.target || item.target.path === item.path),
+            "Difference entries must retain their exact canonical path",
+          ),
+      )
+      .max(64),
+    cursor: Identity.ID.optional(),
+  })
+  export const DifferenceProof = Binding.extend({
+    purpose: z.literal("target-difference"),
+    manifestHash: Hash,
+    difference: Difference,
+  })
+  export const SignedDifference = z.strictObject({ proof: DifferenceProof, signature: SigningSignature })
   export const Proof = z
     .discriminatedUnion("purpose", [
       Binding.extend({
@@ -64,6 +116,8 @@ export namespace OrganizationHandoffProtocol {
         fileClosureHash: Hash.nullable(),
         workspaceMoveReceiptHash: Hash.nullable(),
         workspaceSourceHash: Hash.nullable().optional(),
+        workspaceNativeReceiptHash: Hash.optional(),
+        workspaceDifferenceHash: Hash.optional(),
         paused: z.literal(true),
       }),
       Binding.extend({
@@ -92,9 +146,21 @@ export namespace OrganizationHandoffProtocol {
         preparedHash: Hash,
         tombstonePersisted: z.literal(true),
       }),
+      DifferenceProof,
+      Binding.extend({
+        purpose: z.literal("target-preview-released"),
+        manifestHash: Hash,
+        diffHash: Hash.nullable(),
+        tombstonePersisted: z.literal(true),
+      }),
     ])
     .meta({ ref: "OrgHandoffProof" })
   export type Proof = z.infer<typeof Proof>
+  export const FactAcknowledgement = Binding.extend({
+    purpose: z.union(Proof.options.map((proof) => proof.shape.purpose)),
+    factHash: Hash,
+  }).meta({ ref: "OrgHandoffFactAcknowledgement" })
+  export type FactAcknowledgement = z.infer<typeof FactAcknowledgement>
   export const SignedProof = z
     .strictObject({ proof: Proof, signature: SigningSignature })
     .meta({ ref: "OrgHandoffSignedProof" })
@@ -137,6 +203,24 @@ export namespace OrganizationHandoffProtocol {
       }),
     }),
     z.strictObject({
+      kind: z.literal("organization-native"),
+      moveID: Identity.ID,
+      source: z.strictObject({ workspaceID: Identity.ID, generation: OrganizationProtocol.Epoch }),
+      resource: z.strictObject({
+        resourceID: Identity.ID,
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        path: WorkspacePath,
+      }),
+      target: z.strictObject({
+        kind: z.literal("existing"),
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        expectedRevision: z.number().int().positive().safe(),
+        projectRevision: Hash,
+      }),
+    }),
+    z.strictObject({
       kind: z.literal("organization-object"),
       moveID: Identity.ID,
       source: z.strictObject({ workspaceID: Identity.ID, generation: OrganizationProtocol.Epoch }),
@@ -170,6 +254,11 @@ export namespace OrganizationHandoffProtocol {
   export type Prepare = z.input<typeof Prepare>
   export const Accept = z
     .union([
+      z.strictObject({
+        mappingPlanRevision: z.number().int().positive().safe(),
+        mappingHash: Hash,
+        workspaceDifference: DifferenceConsent,
+      }),
       z.strictObject({ mappingPlanRevision: z.number().int().positive().safe(), mappingHash: Hash }),
       z.strictObject({ mappingPlanRevision: z.number().int().positive().safe() }),
     ])
@@ -315,6 +404,8 @@ export namespace OrganizationHandoffProtocol {
     workspaceMapping: WorkspaceMapping,
     mappingHash: Hash,
     cancelRequested: z.boolean(),
+    workspaceDifference: Difference.optional(),
+    workspaceDifferenceAccepted: z.boolean().optional(),
   }).meta({
     ref: "OrgHandoffView",
   })
@@ -328,6 +419,7 @@ export namespace OrganizationHandoffProtocol {
     "inspect-target",
     "prepare-source",
     "prepare-target",
+    "preview-target",
     "surrender-source",
     "cancel-source",
     "activate-target",
@@ -376,6 +468,7 @@ export namespace OrganizationHandoffProtocol {
     manifestHash: Hash.optional(),
     preparedHash: Hash.optional(),
     frozen: SignedProof.optional(),
+    cleanup: SignedProof.optional(),
     authorization: SignedPermit.optional(),
     object: ObjectRange.optional(),
     workspacePlan: z
@@ -383,6 +476,9 @@ export namespace OrganizationHandoffProtocol {
         mapping: WorkspaceMapping,
         hash: Hash,
         selectionActor: ActorStamp.Info.nullable(),
+        targetActor: ActorStamp.Info.nullable().optional(),
+        differenceConsent: DifferenceConsent.optional(),
+        difference: Difference.optional(),
         targetScopeID: Identity.ID.optional(),
       })
       .refine(
@@ -421,12 +517,28 @@ export namespace OrganizationHandoffProtocol {
     )
     .refine(
       (value) =>
-        !["prepare-target", "surrender-source", "activate-target", "retire-target", "object"].includes(
-          value.operation,
-        ) || !!value.manifestHash,
+        ![
+          "prepare-target",
+          "preview-target",
+          "surrender-source",
+          "activate-target",
+          "retire-target",
+          "object",
+        ].includes(value.operation) || !!value.manifestHash,
       "This machine operation requires the frozen manifest",
     )
     .refine((value) => !value.cursor || value.operation.startsWith("inspect-"), "Only inspection can page requirements")
+    .refine((value) => {
+      const cancelled = value.cleanup?.proof
+      return (
+        !cancelled ||
+        (value.workspacePlan?.mapping.kind === "organization-native" &&
+          ["retire-target", "inspect-target"].includes(value.operation) &&
+          cancelled.purpose === "source-cancelled" &&
+          sameBinding(value, cancelled) &&
+          cancelled.manifestHash === value.manifestHash)
+      )
+    }, "Cleanup inspection requires the original cancelled native binding")
     .refine((value) => {
       const required =
         value.operation === "surrender-source"
@@ -496,6 +608,8 @@ export namespace OrganizationHandoffProtocol {
       "source-cancelled",
       "target-activated",
       "target-never-activate",
+      "target-difference",
+      "target-preview-released",
     ]),
     revision: Hash,
     requirements: z.array(Requirement).max(64),
@@ -508,6 +622,8 @@ export namespace OrganizationHandoffProtocol {
       .optional(),
     readers: z.record(Identity.ID, z.array(z.number().int().positive().safe()).min(1)).optional(),
     object: ObjectChunk.optional(),
+    workspaceDifference: Difference.optional(),
+    differencePage: DifferencePage.optional(),
   }
   export const MachineExecution = z.strictObject({ ...machineResult, facts: z.array(Proof).max(3) })
   export type MachineExecution = z.infer<typeof MachineExecution>
@@ -538,16 +654,58 @@ export namespace OrganizationHandoffProtocol {
       )
         return false
     } else if (value.object) return false
+    const difference = value.facts.find((fact) => fact.proof.purpose === "target-difference")?.proof
+    if (difference?.purpose === "target-difference" && !value.workspaceDifference) return false
+    if (
+      value.workspaceDifference &&
+      (difference?.purpose !== "target-difference" ||
+        JSON.stringify(value.workspaceDifference) !== JSON.stringify(difference.difference))
+    )
+      return false
+    if (
+      value.differencePage &&
+      (plan.operation !== "inspect-target" ||
+        !plan.expectedRevision ||
+        value.differencePage.diffHash !== plan.expectedRevision ||
+        value.workspaceDifference?.diffHash !== plan.expectedRevision)
+    )
+      return false
+    if (value.differencePage && value.workspaceDifference) {
+      const cursor = plan.cursor ?? "0000000000000000"
+      if (!/^\d{16}$/.test(cursor)) return false
+      const position = Number(cursor),
+        next = position + value.differencePage.items.length,
+        total = value.workspaceDifference.entries
+      if (
+        !Number.isSafeInteger(position) ||
+        position > total ||
+        next > total ||
+        (next < total && value.differencePage.items.length === 0)
+      )
+        return false
+      if (value.differencePage.cursor !== (next < total ? String(next).padStart(16, "0") : undefined)) return false
+    }
     const completions: Partial<Record<MachineOperation, Proof["purpose"]>> = {
       "prepare-source": "source-frozen",
       "prepare-target": "target-prepared",
+      "preview-target": "target-difference",
       "surrender-source": "source-surrendered",
       "cancel-source": "source-cancelled",
       "activate-target": "target-activated",
       "retire-target": "target-never-activate",
     }
     const completion = completions[plan.operation]
-    if (value.state === "complete" && completion && !value.facts.some((fact) => fact.proof.purpose === completion))
+    if (
+      value.state === "complete" &&
+      completion &&
+      !value.facts.some(
+        (fact) =>
+          fact.proof.purpose === completion ||
+          (plan.operation === "retire-target" &&
+            plan.workspacePlan?.mapping.kind === "organization-native" &&
+            fact.proof.purpose === "target-preview-released"),
+      )
+    )
       return false
     for (const { proof } of value.facts) {
       if (
@@ -556,6 +714,31 @@ export namespace OrganizationHandoffProtocol {
         (plan.manifestHash && proof.manifestHash !== plan.manifestHash)
       )
         return false
+      if (
+        proof.purpose === "target-difference" &&
+        (plan.workspacePlan?.mapping.kind !== "organization-native" ||
+          proof.difference.mappingPlanRevision !== plan.mappingPlanRevision ||
+          plan.frozen?.proof.purpose !== "source-frozen" ||
+          proof.difference.sourceSnapshotHash !== plan.frozen.proof.workspaceSourceHash)
+      )
+        return false
+      if (
+        proof.purpose === "target-preview-released" &&
+        ((plan.operation !== "retire-target" && !(plan.operation === "inspect-target" && plan.cleanup)) ||
+          plan.workspacePlan?.mapping.kind !== "organization-native" ||
+          proof.diffHash !== (plan.workspacePlan.difference?.diffHash ?? null))
+      )
+        return false
+      if (proof.purpose === "target-prepared") {
+        if (plan.workspacePlan?.mapping.kind === "organization-native") {
+          if (
+            !proof.workspaceNativeReceiptHash ||
+            !plan.workspacePlan.differenceConsent ||
+            proof.workspaceDifferenceHash !== plan.workspacePlan.differenceConsent.diffHash
+          )
+            return false
+        } else if (proof.workspaceNativeReceiptHash || proof.workspaceDifferenceHash) return false
+      }
       if (
         proof.purpose === "source-frozen" &&
         (proof.commandSeq !== plan.commandSeq || proof.receivedSeq !== plan.commandSeq)

@@ -12,6 +12,7 @@ import { OrganizationRecord as Record } from "../src/storage/records"
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
 import { commandFixture } from "./support/commands"
 import { connection, keys } from "./support/runtime"
+import { handoffMachineRoutes } from "../src/routes/handoff"
 
 async function fixture(targetAccountID = "bob") {
   const f = await commandFixture()
@@ -63,6 +64,151 @@ async function fixture(targetAccountID = "bob") {
     },
   }
 }
+
+test("replaying an old target proof after cancellation and unsharing cannot observe a later private binding", async () => {
+  await using f = await fixture()
+  let privateSocket: WebSocket | undefined
+  try {
+    await f.run(async () => {
+      await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+      const original = await f.handoffs.prepare(f.credentials.alice, f.sessionID, {
+        handoffID: "old-observer",
+        targetRuntimeID: "runtime-bob",
+        expectedBindingEpoch: 1,
+        expectedControlRevision: 0,
+        mappingPlanRevision: 1,
+      })
+      await f.handoffs.accept(f.credentials.bob, original.handoffID, { mappingPlanRevision: 1 })
+      const tuple = (view: Handoff.View) => Handoff.Binding.strip().parse(view)
+      const frozen = (view: Handoff.View, manifestHash: string) =>
+        Handoff.Proof.parse({
+          ...tuple(view),
+          purpose: "source-frozen",
+          manifestHash,
+          commandSeq: view.commandSeq,
+          receivedSeq: view.commandSeq,
+          compatibilityHash: "b".repeat(64),
+          closureHash: "c".repeat(64),
+          fileClosureHash: null,
+          workspaceMoveReceiptHash: null,
+          paused: true,
+          drained: true,
+        })
+      const prepared = (view: Handoff.View, manifestHash: string) =>
+        Handoff.Proof.parse({
+          ...tuple(view),
+          purpose: "target-prepared",
+          manifestHash,
+          compatibilityHash: "b".repeat(64),
+          convertedHash: "d".repeat(64),
+          closureHash: "c".repeat(64),
+          fileClosureHash: null,
+          workspaceMoveReceiptHash: null,
+          paused: true,
+        })
+      const publish = async (proof: Handoff.Proof, key: CryptoKey) =>
+        f.handoffs.proof({ proof, signature: await Handoff.signProof(proof, key) })
+      await publish(frozen(original, "a".repeat(64)), f.machineKeys.privateKey)
+      const oldFact = prepared(original, "a".repeat(64)),
+        oldSigned = { proof: oldFact, signature: await Handoff.signProof(oldFact, f.targetKeys.privateKey) }
+      await f.handoffs.proof(oldSigned)
+      await f.handoffs.cancel(f.credentials.alice, original.handoffID)
+      await publish(
+        Handoff.Proof.parse({
+          ...tuple(original),
+          purpose: "source-cancelled",
+          manifestHash: "a".repeat(64),
+          gateCancelled: true,
+          paused: true,
+        }),
+        f.machineKeys.privateKey,
+      )
+      await OrganizationSharing.unshare(f.credentials.alice, f.sessionID, { expectedShareGeneration: 1 })
+      await expect(f.handoffs.get(f.credentials.bob, original.handoffID)).rejects.toMatchObject({
+        data: { code: "NOT_FOUND" },
+      })
+      const privateKeys = await keys()
+      const privateRuntime = await OrganizationAuthorityHistory.credentials(
+        f.credentials.alice,
+        "runtime.register",
+        async () => {
+          const source = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-alice")))!
+          const runtime = Record.RuntimeRegistration.parse({
+            ...source,
+            runtimeID: "runtime-private-alice",
+            deviceID: "private-device",
+            connectionEpoch: 0,
+            publicKey: privateKeys.publicKey,
+          })
+          await Storage.write(Keys.runtime(runtime.runtimeID), runtime)
+          return runtime
+        },
+      )
+      privateSocket = new WebSocket(f.baseUrl.replace(/^http/, "ws"))
+      const socket = privateSocket
+      await new Promise<void>((resolve, reject) => {
+        socket.onopen = () => resolve()
+        socket.onerror = reject
+      })
+      const signed = await connection(privateRuntime, privateKeys.privateKey, 1)
+      signed.proof.handshake.capabilities.push("commands", "handoffs")
+      signed.proof.handshake.schemas.commands = 1
+      signed.proof.handshake.schemas.handoffs = 1
+      signed.signature = await Runtime.sign(signed.proof, privateKeys.privateKey)
+      const connected = Promise.withResolvers<unknown>()
+      socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
+      socket.send(JSON.stringify(signed))
+      Runtime.Connected.parse(await connected.promise)
+      const current = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+      const next = await f.handoffs.prepare(f.credentials.alice, f.sessionID, {
+        handoffID: "private-next",
+        targetRuntimeID: privateRuntime.runtimeID,
+        expectedBindingEpoch: current.bindingEpoch,
+        expectedControlRevision: current.controlRevision,
+        mappingPlanRevision: 1,
+      })
+      await f.handoffs.accept(f.credentials.alice, next.handoffID, { mappingPlanRevision: 1 })
+      await publish(frozen(next, "e".repeat(64)), f.machineKeys.privateKey)
+      const target = prepared(next, "e".repeat(64))
+      await publish(target, privateKeys.privateKey)
+      const permit = await f.handoffs.permit(f.credentials.alice, next.handoffID, { purpose: "handoff-surrender" })
+      await publish(
+        Handoff.Proof.parse({
+          ...tuple(next),
+          purpose: "source-surrendered",
+          manifestHash: "e".repeat(64),
+          preparedHash: await Handoff.proofHash(target),
+          permitID: permit.permit.permitID,
+          gatePersisted: true,
+        }),
+        f.machineKeys.privateKey,
+      )
+      expect((await f.handoffs.commit(f.credentials.alice, next.handoffID)).currentDriver).toBe(
+        privateRuntime.runtimeID,
+      )
+      const app = handoffMachineRoutes(() => f.handoffs)
+      const response = await app.fetch(
+        new Request("https://organization.example/handoffs/proof", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(oldSigned),
+        }),
+      )
+      expect(response.status).toBe(200)
+      const acknowledgement = await response.json()
+      expect(acknowledgement).toEqual({
+        ...tuple(original),
+        purpose: "target-prepared",
+        factHash: await Handoff.proofHash(oldFact),
+      })
+      expect(acknowledgement).not.toHaveProperty("currentDriver")
+      expect(acknowledgement).not.toHaveProperty("bindingEpoch")
+      expect(JSON.stringify(acknowledgement)).not.toContain(privateRuntime.runtimeID)
+    })
+  } finally {
+    privateSocket?.close()
+  }
+})
 
 test("handoff reserves a monotonic epoch and requires exact target consent while blocking conflicting commands", async () => {
   await using f = await fixture()
@@ -230,7 +376,11 @@ test("signed source and target facts commit once and activation remains a separa
       preparedHash: await Handoff.proofHash(prepared),
       paused: true,
     })
-    const completed = await publish(activated, f.targetKeys.privateKey)
+    expect(await publish(activated, f.targetKeys.privateKey)).toMatchObject({
+      purpose: "target-activated",
+      factHash: await Handoff.proofHash(activated),
+    })
+    const completed = await f.handoffs.get(f.credentials.bob, state.handoffID)
     expect(completed).toMatchObject({
       phase: "completed",
       currentDriver: "runtime-bob",
@@ -288,12 +438,14 @@ test("cancellation retains the handoff lock until a source proof and never reuse
     await expect(f.handoffs.proof({ ...signed, signature: "0".repeat(128) })).rejects.toMatchObject({
       data: { code: "PERMISSION_DENIED" },
     })
-    expect(await f.handoffs.proof(signed)).toMatchObject({
+    const acknowledgement = await f.handoffs.proof(signed)
+    expect(acknowledgement).toMatchObject({ purpose: "source-cancelled", factHash: await Handoff.proofHash(proof) })
+    expect(await f.handoffs.get(f.credentials.alice, first.handoffID)).toMatchObject({
       phase: "cancelled",
       currentDriver: "runtime-alice",
       bindingEpoch: 1,
     })
-    expect(await f.handoffs.proof(signed)).toMatchObject({ phase: "cancelled" })
+    expect(await f.handoffs.proof(signed)).toEqual(acknowledgement)
     const second = await f.handoffs.prepare(f.credentials.alice, f.sessionID, {
       ...request,
       handoffID: "after-cancel",
@@ -373,7 +525,11 @@ test("project archive sees a late private handoff and waits for its actual cance
     })
     expect(
       await f.handoffs.proof({ proof, signature: await Handoff.signProof(proof, f.machineKeys.privateKey) }),
-    ).toMatchObject({ phase: "cancelled", bindingEpoch: 1 })
+    ).toMatchObject({ purpose: "source-cancelled", factHash: await Handoff.proofHash(proof) })
+    expect(await f.handoffs.get(f.credentials.alice, pending.handoffID)).toMatchObject({
+      phase: "cancelled",
+      bindingEpoch: 1,
+    })
     const archived = await archive()
     expect(archived.state).toBe("archived")
     expect((await OrganizationSessionDirectory.get(f.credentials.alice, sessionID)).permissions.execute).toBe(false)

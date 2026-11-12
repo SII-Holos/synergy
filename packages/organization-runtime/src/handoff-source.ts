@@ -510,7 +510,8 @@ export namespace OrganizationHandoffSource {
               workspaceMoveReceiptHash: await Transfer.workspaceMove(binding(plan)).then((receipt) =>
                 receipt ? WorkspaceMove.receiptHash(receipt) : null,
               ),
-              ...(plan.workspacePlan?.mapping.kind === "organization-live"
+              ...(plan.workspacePlan?.mapping.kind === "organization-live" ||
+              plan.workspacePlan?.mapping.kind === "organization-native"
                 ? {
                     workspaceSourceHash: await Transfer.workspaceSource(binding(plan)).then((snapshot) =>
                       snapshot ? WorkspaceArchive.subtreeHash(snapshot) : null,

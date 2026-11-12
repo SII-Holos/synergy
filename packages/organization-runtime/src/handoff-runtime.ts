@@ -66,11 +66,13 @@ export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtime
             ? await source.surrender(value)
             : plan.operation === "prepare-target"
               ? await target.prepare(value)
-              : plan.operation === "activate-target"
-                ? await target.activate(value)
-                : plan.operation === "retire-target"
-                  ? await target.retire(value)
-                  : undefined
+              : plan.operation === "preview-target"
+                ? await target.preview(value)
+                : plan.operation === "activate-target"
+                  ? await target.activate(value)
+                  : plan.operation === "retire-target"
+                    ? await target.retire(value)
+                    : undefined
     assertOwner()
     if (!fact)
       throw new OrganizationRuntimeError({
@@ -89,6 +91,7 @@ export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtime
       revision: await Handoff.proofHash(fact),
       requirements: [],
       facts: [fact],
+      ...(fact.purpose === "target-difference" ? { workspaceDifference: fact.difference } : {}),
     })
   }
   return {

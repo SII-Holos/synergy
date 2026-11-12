@@ -136,7 +136,12 @@ export function handoffMachineRoutes(handoffs: () => Handoffs) {
     )
     .post(
       "/handoffs/proof",
-      operation("orgHandoff.proof", "Reconcile an existing machine's signed durable handoff fact", Handoff.View, true),
+      operation(
+        "orgHandoff.proof",
+        "Acknowledge the original machine's signed durable handoff fact",
+        Handoff.FactAcknowledgement,
+        true,
+      ),
       validator("json", Handoff.SignedProof, validation),
       async (c) => {
         if (c.req.header("cookie") || c.req.header("origin"))

@@ -453,7 +453,7 @@ export function createMemberResourceClient(options: {
           )
             throw failure("PROTOCOL_MISMATCH", "Workspace transfer returned another original operation")
           if (result.action === "source" || result.action === "source-validate") {
-            if (mapping.kind !== "organization-live")
+            if (mapping.kind !== "organization-live" && mapping.kind !== "organization-native")
               throw failure("PROTOCOL_MISMATCH", "Workspace source changed its selected mapping")
             const snapshot = WorkspaceArchive.Subtree.parse(result.snapshot)
             if (

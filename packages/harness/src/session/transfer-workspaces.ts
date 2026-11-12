@@ -15,6 +15,7 @@ export namespace SessionTransferWorkspaces {
   export const registerTargetProvider = WorkspacePortableTarget.registerProvider
   export const withTargetProvider = WorkspacePortableTarget.withProvider
   export const prepareTarget = WorkspacePortableTarget.prepare
+  export const withTargetCaptured = WorkspacePortableTarget.withCaptured
   export const targetMapping = WorkspacePortableTarget.mapping
   export const withTargetPublication = WorkspacePortableTarget.withPublication
   export const ownsWorkspace = WorkspacePortableTarget.ownsWorkspace

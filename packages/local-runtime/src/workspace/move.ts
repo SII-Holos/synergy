@@ -25,6 +25,54 @@ function inside(root: string, filename: string) {
 
 export function registerNativeWorkspaceMove(coordinator: WorkspaceCoordinator) {
   WorkspaceMove.registerSourceHost({
+    async preview(source, store, consume, signal) {
+      source = { ...source }
+      store = { get: store.get.bind(store), put: store.put.bind(store) }
+      const assert = WorkspaceContent.captureOwner(signal)
+      const initial = await WorkspaceBinding.validate(source.workspaceID, source.scopeID, source.generation)
+      assert()
+      return WorkspaceAccess.exclusive(
+        [initial.path],
+        async () => {
+          assert()
+          const binding = await WorkspaceBinding.validate(source.workspaceID, source.scopeID, source.generation)
+          const info = await WorkspaceCatalog.get(source.workspaceID, source.scopeID)
+          const runtimeRoot = await fs.realpath(RuntimeContext.current().host.root)
+          assert()
+          if (
+            binding.path !== initial.path ||
+            info.backend?.provider !== "directory" ||
+            info.activeMount ||
+            !info.binding.physicalID ||
+            info.sharedWritableWorkspaceIDs.length ||
+            inside(runtimeRoot, binding.path) ||
+            inside(binding.path, runtimeRoot)
+          )
+            throw new Error("Workspace preview requires its original supported native directory")
+          const root = await NativeWorkspacePortableTree.capture({
+            root: binding.path,
+            directory: path.join(RuntimeContext.current().host.root, "cache", "workspace-moves"),
+            store,
+            signal,
+          })
+          assert()
+          const current = await WorkspaceCatalog.get(source.workspaceID, source.scopeID)
+          if (JSON.stringify(current) !== JSON.stringify(info))
+            throw new Error("Workspace preview target changed during capture")
+          let open = true
+          const check = () => {
+            assert()
+            if (!open) throw new Error("Native Workspace preview callback has ended")
+          }
+          try {
+            return await consume(info, root, check)
+          } finally {
+            open = false
+          }
+        },
+        signal,
+      )
+    },
     async hold(source, id, previous, signal) {
       source = { ...source }
       const assert = WorkspaceContent.captureOwner(signal)

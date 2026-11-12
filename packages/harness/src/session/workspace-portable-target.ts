@@ -26,6 +26,7 @@ export namespace WorkspacePortableTarget {
     path: ID,
     physicalID: ID,
     receipt: JsonValue,
+    catalog: WorkspaceCatalog.Info.optional(),
   })
   export type Native = z.infer<typeof Native>
   export interface Host {
@@ -34,10 +35,12 @@ export namespace WorkspacePortableTarget {
       captured: Schema.Captured
       store: BlobStore
       signal: AbortSignal
+      mode?: "existing"
     }): Promise<Native>
     validate(value: Native, signal: AbortSignal): Promise<void>
     withPublication<T>(values: readonly Native[], signal: AbortSignal, body: () => Promise<T>): Promise<T>
     assertPublication(value: Native): Native
+    publish?(value: Native): Promise<void>
   }
   export interface Provider {
     prepare(input: {
@@ -95,6 +98,7 @@ export namespace WorkspacePortableTarget {
       validate: input.validate.bind(input),
       withPublication: input.withPublication.bind(input),
       assertPublication: input.assertPublication.bind(input),
+      publish: input.publish?.bind(input),
     })
   }
   export function registerProvider(id: string, input: Provider) {
@@ -168,14 +172,87 @@ export namespace WorkspacePortableTarget {
     for await (const row of Storage.records({ prefix: [...prefix(handoffID), "workspaces"], limit: 128 }))
       yield Workspace.parse(row.value)
   }
+  export async function withCaptured<T>(
+    input: {
+      binding: Epochs.Binding
+      expectedReceiptHash: string
+      workspaceID: string
+      generation: number
+      signal: AbortSignal
+    },
+    body: (value: { captured: Schema.Captured; store: BlobStore; assert(): void }) => Promise<T>,
+  ): Promise<T> {
+    const binding = Epochs.Binding.parse(input.binding),
+      expected = Hash.parse(input.expectedReceiptHash),
+      workspaceID = ID.parse(input.workspaceID),
+      generation = z.number().int().positive().safe().parse(input.generation),
+      signal = input.signal
+    const owner = ownership(signal)
+    if (Storage.inTransaction()) fail("Workspace capture verification must precede its publication transaction")
+    return Graph.withGraph(
+      { handoffID: binding.handoffID, rootSessionID: binding.sessionID, scopeID: binding.scopeID, signal },
+      async (graph) => {
+        let open = true
+        const assert = () => {
+          owner()
+          if (!open) fail("Verified Workspace graph callback has ended")
+        }
+        try {
+          const actual = await Schema.digest(binding, graph.rows(), signal)
+          assert()
+          if (actual.hash !== expected) fail("Workspace graph differs from the complete frozen file closure")
+          let selected: Schema.Captured | undefined
+          for await (const captured of graph.workspaces()) {
+            await graph.verify(captured)
+            assert()
+            if (
+              selected ||
+              captured.workspaceID !== workspaceID ||
+              captured.generation !== generation ||
+              captured.scopeID !== binding.scopeID
+            )
+              fail("Existing native adoption requires one exact current Working location")
+            selected = captured
+          }
+          if (!selected) fail("Existing native adoption has no complete captured Working location")
+          const captured = Schema.Captured.parse(selected),
+            source = graph.store(captured)
+          const bytes = new TextEncoder().encode(JSON.stringify(captured.files)),
+            manifest = digest(captured.files)
+          const store: BlobStore = {
+            async put() {
+              fail("Verified target Workspace graph is read-only")
+            },
+            async get(hash, maximum) {
+              assert()
+              if (hash === manifest) {
+                if (bytes.byteLength > maximum) fail("Workspace root exceeds its requested bound")
+                return Uint8Array.from(bytes)
+              }
+              const value = await source.get(hash, maximum)
+              assert()
+              return value
+            },
+          }
+          const result = await body({ captured, store, assert })
+          assert()
+          return result
+        } finally {
+          open = false
+        }
+      },
+    )
+  }
   export function prepare(input: {
     binding: Epochs.Binding
     expectedReceiptHash: string
     signal: AbortSignal
+    nativeMode?: "existing"
   }): Promise<Prepared> {
     const binding = Epochs.Binding.parse(input.binding)
     const expected = Hash.parse(input.expectedReceiptHash)
     const signal = input.signal
+    const nativeMode = z.literal("existing").optional().parse(input.nativeMode)
     const assert = ownership(signal)
     return withStorageQueueOptions({ signal }, async () => {
       if (Storage.inTransaction()) fail("Workspace target preparation must run outside activation")
@@ -216,6 +293,7 @@ export namespace WorkspacePortableTarget {
                     captured,
                     store: graph.store(captured),
                     signal,
+                    mode: nativeMode,
                   }),
                 )
             assert()
@@ -230,7 +308,8 @@ export namespace WorkspacePortableTarget {
               ? WorkspaceCatalog.Info.parse(
                   await provider(remote).prepare({ handoffID: binding.handoffID, captured, createdAt: now, signal }),
                 )
-              : WorkspaceCatalog.Info.parse({
+              : (selected!.catalog ??
+                WorkspaceCatalog.Info.parse({
                   id: selected!.workspaceID,
                   scopeID: binding.scopeID,
                   type: "directory",
@@ -248,10 +327,19 @@ export namespace WorkspacePortableTarget {
                   lifecycle: "active",
                   createdAt: now,
                   updatedAt: now,
-                })
+                }))
             assert()
             if (
               catalog.scopeID !== binding.scopeID ||
+              (selected?.catalog &&
+                (catalog.id !== selected.workspaceID ||
+                  catalog.backend?.provider !== "directory" ||
+                  catalog.binding.state !== "bound" ||
+                  catalog.binding.hostID !== selected.hostID ||
+                  catalog.binding.path !== selected.path ||
+                  catalog.binding.physicalID !== selected.physicalID ||
+                  catalog.activeMount ||
+                  catalog.lifecycle !== "active")) ||
               (remote &&
                 (catalog.content ||
                   catalog.activeMount ||
@@ -439,12 +527,15 @@ export namespace WorkspacePortableTarget {
       const native = workspace.native
       const guard = () => {
         assert()
+        if (native?.catalog && digest(native.catalog) !== digest(workspace.catalog))
+          fail("Native Workspace publication changed its exact existing catalogue")
         if (native) host().assertPublication(native)
         if (workspace.provider) provider(workspace.provider).assertPublication(workspace.catalog)
       }
       guard()
       await Storage.transaction(
         async (tx) => {
+          if (native) await host().publish?.(native)
           const [existing] = await tx.readMany([StoragePath.workspace(workspace.catalog.id)])
           if (existing !== undefined) {
             if (digest(WorkspaceCatalog.Info.parse(existing)) !== digest(workspace.catalog))

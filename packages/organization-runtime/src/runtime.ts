@@ -4,6 +4,7 @@ import { RuntimeContext, type RuntimeLaunch } from "@ericsanchezok/synergy-harne
 import { openAgentRuntime, type AgentRuntimeOptions } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
+import type { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { version } from "../package.json" with { type: "json" }
@@ -55,6 +56,7 @@ export type MemberRuntimeOptions = Pick<
   listen?: z.infer<typeof MemberListener>
   desktop?: z.infer<typeof MemberDesktop>
   handoff?: true
+  workspaceCoordinator?: WorkspaceCoordinator
 }
 
 export async function openMemberRuntime(input: MemberRuntimeOptions) {
@@ -87,7 +89,11 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
   let restartBridge: (() => Promise<void>) | undefined
   let bridgeDrained = false
   const components = [
-    localRuntime({ workers: false, environment: "accountID" in member.identity ? "native" : false }),
+    localRuntime({
+      workers: false,
+      environment: "accountID" in member.identity ? "native" : false,
+      workspaceCoordinator: input.workspaceCoordinator,
+    }),
     ...(listener.data ? [(await import("@ericsanchezok/synergy-server/component")).server()] : []),
     ...(desktop.data ? [(await import("@ericsanchezok/synergy-browser-runtime/component")).browser()] : []),
     {
@@ -195,7 +201,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
               ? {
                   handoff: context.bind(handoff.dispatch),
                   handoffInspection: context.bind(handoff.inspection),
-                  handoffVersion: 4 as const,
+                  handoffVersion: 5 as const,
                 }
               : {}),
             notifications: true,

@@ -69,7 +69,12 @@ export namespace WorkspaceTree {
     z.object({ path: Path, kind: z.literal("symlink"), mode: Mode, target: z.string().min(1).max(4096) }),
   ])
   export type Entry = z.infer<typeof Entry>
-  export type Header = Exclude<Entry, { kind: "file" }> | Omit<Extract<Entry, { kind: "file" }>, "chunks">
+  export const Header = z.discriminatedUnion("kind", [
+    Entry.options[0].omit({ chunks: true }).strict(),
+    Entry.options[1].strict(),
+    Entry.options[2].strict(),
+  ])
+  export type Header = z.infer<typeof Header>
   export const Manifest = z
     .object({ version: z.literal(1), entries: z.array(Entry).max(100_000) })
     .superRefine((value, context) => {

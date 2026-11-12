@@ -81,7 +81,7 @@ export interface MemberConnectionOptions {
     connection: Connected,
     signal: AbortSignal,
   ) => Promise<Handoff.InspectionResult>
-  handoffVersion?: 1 | 2 | 3 | 4
+  handoffVersion?: 1 | 2 | 3 | 4 | 5
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
   interactions?: (
     authorization: Interactions.SignedPermit,

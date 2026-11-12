@@ -14,7 +14,7 @@ import { OrganizationCloud as Cloud } from "./cloud"
 export namespace OrganizationSessionResources {
   export function mappedWorkspace(
     contract: Record.SessionResources,
-    target: { resourceID: string; workspaceID: string },
+    target: { resourceID: string; workspaceID: string } | null,
   ) {
     return Record.SessionResources.parse({
       ...contract,
@@ -23,7 +23,7 @@ export namespace OrganizationSessionResources {
         ...contract.selection,
         infrastructure: {
           ...contract.selection!.infrastructure,
-          workspace: { resourceID: target.resourceID, workspaceID: target.workspaceID },
+          workspace: target && { resourceID: target.resourceID, workspaceID: target.workspaceID },
         },
       },
     })
@@ -31,7 +31,7 @@ export namespace OrganizationSessionResources {
   export async function rebindHandoff(
     session: Record.SessionDirectory,
     original: Record.SessionResources,
-    target: { resourceID: string; workspaceID: string },
+    target: { resourceID: string; workspaceID: string } | null,
   ) {
     if (!Storage.inTransaction() || !session.handoffID || session.retainedExecutionGrants)
       fail("HANDOFF_BLOCKED", "Mapped resources require their drained original handoff transaction")

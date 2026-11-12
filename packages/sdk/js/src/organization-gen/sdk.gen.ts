@@ -4005,7 +4005,7 @@ export class OrgHandoff extends HeyApiClient {
   }
 
   /**
-   * Reconcile an existing machine's signed durable handoff fact
+   * Acknowledge the original machine's signed durable handoff fact
    */
   public proof<ThrowOnError extends boolean = false>(
     parameters: {

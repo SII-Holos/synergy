@@ -16,6 +16,9 @@ import {
 import { OrganizationSessionTransfer as Transfer } from "./session-transfer"
 import { OrganizationRuntimeError } from "./error"
 import type { MemberResourceClient } from "./resource-client"
+import { NativeWorkspaceAdoption } from "@ericsanchezok/synergy-local-runtime/workspace/native-adoption"
+import { OrganizationLocalProjects } from "./local-project"
+import { OrganizationHandoffObjects } from "./handoff-objects"
 
 export namespace OrganizationHandoffWorkspaceTarget {
   const provider = "organization"
@@ -27,8 +30,33 @@ export namespace OrganizationHandoffWorkspaceTarget {
     validate(): Promise<void>
   }
   const frames = new AsyncLocalStorage<Frame>()
+  function binding(plan: Handoff.MachinePlan) {
+    return {
+      sessionID: plan.sessionID,
+      scopeID: plan.sourceBinding.projectID,
+      handoffID: plan.handoffID,
+      sourceID: plan.sourceRuntimeID,
+      targetID: plan.targetRuntimeID,
+      fromEpoch: plan.fromEpoch,
+      toEpoch: plan.toEpoch,
+    }
+  }
   function fail(message: string): never {
     throw new OrganizationRuntimeError({ code: "HANDOFF_BLOCKED", message, outcome: "rejected", retryable: false })
+  }
+  async function owned<T>(body: () => Promise<T>) {
+    try {
+      return await body()
+    } catch (error) {
+      if (error instanceof WorkspaceMove.Rejected)
+        throw new OrganizationRuntimeError({
+          code: "REVISION_CONFLICT",
+          message: error.data.message,
+          outcome: "rejected",
+          retryable: false,
+        })
+      throw error
+    }
   }
   function current() {
     const frame = frames.getStore()
@@ -142,6 +170,181 @@ export namespace OrganizationHandoffWorkspaceTarget {
       assertPublication: locator,
     })
   }
+  function nativeRequest(plan: Handoff.MachinePlan) {
+    const mapping = plan.workspacePlan?.mapping,
+      actor = plan.workspacePlan?.targetActor,
+      frozen = plan.frozen?.proof
+    if (
+      mapping?.kind !== "organization-native" ||
+      !actor ||
+      frozen?.purpose !== "source-frozen" ||
+      !frozen.workspaceSourceHash
+    )
+      fail("Native adoption requires its original complete signed source and target consent")
+    return WorkspaceMove.NativeRequest.parse({
+      kind: "native-adoption",
+      id: mapping.moveID,
+      source: { ...mapping.source, scopeID: plan.sourceBinding.projectID },
+      target: {
+        workspaceID: mapping.target.workspaceID,
+        generation: mapping.target.generation,
+        scopeID: plan.sourceBinding.projectID,
+        path: "",
+        expectedRevision: mapping.target.expectedRevision,
+      },
+      mappingRevision: plan.mappingPlanRevision,
+      sourceSnapshotHash: frozen.workspaceSourceHash,
+      actor,
+    })
+  }
+  async function native(
+    value: Handoff.MachinePlan,
+    resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
+    signal: AbortSignal,
+    requireSource = true,
+  ) {
+    const plan = Handoff.MachinePlan.parse(value),
+      mapping = plan.workspacePlan?.mapping,
+      actor = plan.workspacePlan?.targetActor
+    if (mapping?.kind !== "organization-native" || !actor || !resources?.handoffWorkspace)
+      fail("Existing native adoption requires its original complete target consent")
+    const owner = WorkspaceContent.captureOwner(signal),
+      send = resources.handoffWorkspace.bind(resources)
+    let snapshot: WorkspaceArchive.Subtree | undefined
+    for await (const member of Staging.members({
+      handoffID: plan.handoffID,
+      rootSessionID: plan.sessionID,
+      scopeID: plan.sourceBinding.projectID,
+      signal,
+    })) {
+      if (member.session.id !== plan.sessionID) continue
+      const context = await Staging.context({
+        ownerID: Transfer.id,
+        session: member.session,
+        rootSessionID: plan.sessionID,
+        handoffID: plan.handoffID,
+        mapping: {},
+        signal,
+      })
+      if (await Transfer.stagedWorkspaceMove(context))
+        fail("Native adoption cannot borrow an object destination receipt")
+      snapshot = (await Transfer.stagedWorkspaceSource(context)) ?? undefined
+      break
+    }
+    const frozen = plan.frozen?.proof
+    if (
+      !snapshot ||
+      frozen?.purpose !== "source-frozen" ||
+      frozen.workspaceSourceHash !== WorkspaceArchive.subtreeHash(snapshot)
+    )
+      fail("Native adoption has no complete final service source")
+    const original = snapshot
+    const request = nativeRequest(plan)
+    const local = async () => {
+      owner()
+      const selected = await OrganizationLocalProjects.get(plan.sourceBinding.projectID)
+      const catalog = await WorkspaceCatalog.get(mapping.target.workspaceID, plan.sourceBinding.projectID)
+      owner()
+      if (
+        selected.revision !== mapping.target.projectRevision ||
+        selected.binding?.workspaceID !== mapping.target.workspaceID ||
+        selected.binding.generation !== mapping.target.generation ||
+        catalog.revision !== mapping.target.expectedRevision ||
+        catalog.binding.generation !== mapping.target.generation ||
+        catalog.backend?.provider !== "directory" ||
+        !catalog.binding.path ||
+        catalog.activeMount ||
+        catalog.lifecycle !== "active"
+      )
+        fail("Native adoption target changed its consented project directory")
+    }
+    const recheck = async () => {
+      await local()
+      const result = await send(plan, { action: "source-validate" }, signal)
+      owner()
+      if (
+        result.action !== "source-validate" ||
+        JSON.stringify(WorkspaceArchive.Subtree.parse(result.snapshot)) !== JSON.stringify(original)
+      )
+        fail("Native adoption source changed its complete final snapshot")
+    }
+    if (requireSource) await recheck()
+    const objects = await OrganizationHandoffObjects.open(
+      { orgID: plan.orgID, deploymentIncarnation: plan.deploymentIncarnation, role: "target", binding: binding(plan) },
+      signal,
+    )
+    owner()
+    return { plan, request, snapshot: original, store: objects.store, assert: owner, recheck, commit: local, signal }
+  }
+  export async function preview(
+    plan: Handoff.MachinePlan,
+    resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
+    signal: AbortSignal,
+  ) {
+    const context = await native(plan, resources, signal)
+    const frozen = plan.frozen!.proof
+    const fileClosureHash = frozen.purpose === "source-frozen" ? frozen.fileClosureHash : null
+    if (!fileClosureHash) fail("Native preview requires the full final file closure")
+    return owned(() =>
+      Files.withTargetCaptured(
+        { binding: binding(plan), expectedReceiptHash: fileClosureHash, ...context.request.source, signal },
+        (capture) =>
+          WorkspaceMove.previewNative(context.request, {
+            source: {
+              snapshot: context.snapshot,
+              store: capture.store,
+              assert() {
+                capture.assert()
+                context.assert()
+              },
+              recheck: context.recheck,
+            },
+            store: context.store,
+            signal,
+          }),
+      ),
+    )
+  }
+  export async function difference(
+    plan: Handoff.MachinePlan,
+    resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
+    signal: AbortSignal,
+  ) {
+    const request = nativeRequest(Handoff.MachinePlan.parse(plan)),
+      assert = WorkspaceContent.captureOwner(signal)
+    if (!plan.expectedRevision) fail("Native difference paging requires the exact preview hash")
+    const result = await owned(() =>
+      WorkspaceMove.nativeDifference(request, {
+        expectedRevision: plan.expectedRevision!,
+        cursor: plan.cursor,
+        limit: 64,
+      }),
+    )
+    assert()
+    return result
+  }
+  export async function status(
+    plan: Handoff.MachinePlan,
+    resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
+    signal: AbortSignal,
+  ) {
+    const request = nativeRequest(Handoff.MachinePlan.parse(plan)),
+      assert = WorkspaceContent.captureOwner(signal)
+    const status = await WorkspaceMove.inspect(request)
+    assert()
+    return status
+  }
+  export async function release(
+    plan: Handoff.MachinePlan,
+    resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
+    signal: AbortSignal,
+    outcome: "activated" | "cancelled" | "retired",
+  ) {
+    const request = nativeRequest(Handoff.MachinePlan.parse(plan)),
+      assert = WorkspaceContent.captureOwner(signal)
+    if (await WorkspaceMove.inspect(request)) await WorkspaceMove.release(request, outcome)
+    assert()
+  }
   export async function run<T>(
     value: Handoff.MachinePlan,
     resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
@@ -150,6 +353,13 @@ export namespace OrganizationHandoffWorkspaceTarget {
   ) {
     const plan = Handoff.MachinePlan.parse(value)
     if (!plan.workspacePlan || plan.workspacePlan.mapping.kind === "native") return body()
+    if (plan.workspacePlan.mapping.kind === "organization-native") {
+      const context = await native(plan, resources, signal)
+      if (!plan.workspacePlan.differenceConsent) fail("Native preparation requires the second exact difference consent")
+      return owned(() =>
+        NativeWorkspaceAdoption.run({ ...context, consent: plan.workspacePlan!.differenceConsent! }, body),
+      )
+    }
     if (!resources?.handoffWorkspace) fail("Remote Workspace target requires its original machine resource client")
     const send = resources.handoffWorkspace.bind(resources)
     const owner = WorkspaceContent.captureOwner(signal)

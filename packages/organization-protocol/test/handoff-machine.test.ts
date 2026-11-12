@@ -168,3 +168,171 @@ test("machine replies cannot switch handoff facts or use an object range as arbi
     }),
   ).toBe(false)
 })
+
+test("native difference replies retain the frozen source, exact consent and complete bounded page cursor", async () => {
+  const difference = {
+    sourceSnapshotHash: "1".repeat(64),
+    targetDigest: "2".repeat(64),
+    diffHash: "3".repeat(64),
+    mappingPlanRevision: 1,
+    entries: 2,
+    sourceEntries: 2,
+    targetEntries: 2,
+    mode: { source: 0o755, target: 0o755 },
+  }
+  const workspacePlan = {
+    mapping: {
+      kind: "organization-native",
+      moveID: "native-move",
+      source: { workspaceID: "logical", generation: 1 },
+      resource: { resourceID: "files", workspaceID: "cloud", generation: 1, path: "selected" },
+      target: {
+        kind: "existing",
+        workspaceID: "native",
+        generation: 1,
+        expectedRevision: 1,
+        projectRevision: "4".repeat(64),
+      },
+    },
+    hash: "5".repeat(64),
+    selectionActor: { ...plan.actor, requestID: tuple.handoffID },
+    targetActor: { ...plan.actor, subjectID: "recipient", requestID: tuple.handoffID },
+    targetScopeID: "cloud-project",
+  }
+  const frozen = Handoff.Proof.parse({
+    ...tuple,
+    purpose: "source-frozen",
+    manifestHash: "6".repeat(64),
+    commandSeq: plan.commandSeq,
+    receivedSeq: plan.commandSeq,
+    compatibilityHash: "7".repeat(64),
+    closureHash: "8".repeat(64),
+    fileClosureHash: "9".repeat(64),
+    workspaceMoveReceiptHash: null,
+    workspaceSourceHash: difference.sourceSnapshotHash,
+    paused: true,
+    drained: true,
+  })
+  const machine = Handoff.MachinePlan.parse({
+    ...plan,
+    operation: "preview-target",
+    runtimeID: tuple.targetRuntimeID,
+    manifestHash: frozen.manifestHash,
+    workspacePlan,
+    frozen: { proof: frozen, signature: "0".repeat(128) },
+  })
+  const proof = Handoff.Proof.parse({
+    ...tuple,
+    purpose: "target-difference",
+    manifestHash: frozen.manifestHash,
+    difference,
+  })
+  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
+  const fact = { proof, signature: await Handoff.signProof(proof, keys.privateKey) }
+  const reply = Handoff.MachineResult.parse({
+    handoffID: machine.handoffID,
+    requestID: machine.requestID,
+    runtimeID: machine.runtimeID,
+    operation: machine.operation,
+    state: "complete",
+    stage: "target-difference",
+    revision: "a".repeat(64),
+    requirements: [],
+    facts: [fact],
+    workspaceDifference: difference,
+  })
+  expect(Handoff.matchesMachine(machine, reply)).toBe(true)
+  expect(Handoff.matchesMachine(machine, { ...reply, workspaceDifference: undefined })).toBe(false)
+  expect(
+    Handoff.matchesMachine(machine, { ...reply, workspaceDifference: { ...difference, targetDigest: "b".repeat(64) } }),
+  ).toBe(false)
+  const changed = { ...difference, sourceSnapshotHash: "c".repeat(64) }
+  expect(
+    Handoff.matchesMachine(machine, {
+      ...reply,
+      facts: [{ ...fact, proof: { ...proof, difference: changed } }],
+      workspaceDifference: changed,
+    }),
+  ).toBe(false)
+  expect(
+    await Handoff.verifyProof(
+      { ...proof, difference: changed },
+      fact.signature,
+      await Runtime.publicKey(keys.publicKey),
+    ),
+  ).toBe(false)
+  const inspection = { ...machine, operation: "inspect-target", expectedRevision: difference.diffHash }
+  const page = {
+    ...reply,
+    operation: "inspect-target",
+    differencePage: {
+      diffHash: difference.diffHash,
+      items: [{ path: "first", source: null, target: { path: "first", kind: "directory", mode: 0o755 } }],
+      cursor: "0000000000000001",
+    },
+  }
+  expect(Handoff.matchesMachine(inspection, page)).toBe(true)
+  for (const changed of [
+    { ...page, differencePage: { ...page.differencePage, items: [], cursor: undefined } },
+    { ...page, differencePage: { ...page.differencePage, cursor: undefined } },
+    { ...page, differencePage: { ...page.differencePage, cursor: "0000000000000002" } },
+    {
+      ...page,
+      differencePage: {
+        ...page.differencePage,
+        items: [{ path: "first", source: null, target: { path: "other", kind: "directory", mode: 0o755 } }],
+      },
+    },
+  ])
+    expect(Handoff.matchesMachine(inspection, changed)).toBe(false)
+  const last = {
+    ...page,
+    differencePage: {
+      ...page.differencePage,
+      items: [{ path: "last", source: null, target: { path: "last", kind: "directory", mode: 0o755 } }],
+      cursor: undefined,
+    },
+  }
+  expect(Handoff.matchesMachine({ ...inspection, cursor: "0000000000000001" }, last)).toBe(true)
+  const cancelled = Handoff.Proof.parse({
+    ...tuple,
+    purpose: "source-cancelled",
+    manifestHash: machine.manifestHash,
+    gateCancelled: true,
+    paused: true,
+  })
+  const cleanup = Handoff.MachinePlan.parse({
+    ...machine,
+    operation: "inspect-target",
+    cleanup: { proof: cancelled, signature: await Handoff.signProof(cancelled, keys.privateKey) },
+  })
+  const released = Handoff.Proof.parse({
+    ...tuple,
+    purpose: "target-preview-released",
+    manifestHash: machine.manifestHash,
+    diffHash: null,
+    tombstonePersisted: true,
+  })
+  const observed = Handoff.MachineResult.parse({
+    ...reply,
+    operation: "inspect-target",
+    stage: "target-preview-released",
+    workspaceDifference: undefined,
+    facts: [{ proof: released, signature: await Handoff.signProof(released, keys.privateKey) }],
+  })
+  expect(Handoff.matchesMachine(cleanup, observed)).toBe(true)
+  expect(Handoff.matchesMachine({ ...cleanup, cleanup: undefined }, observed)).toBe(false)
+  expect(
+    Handoff.matchesMachine(cleanup, {
+      ...observed,
+      facts: [{ ...observed.facts[0]!, proof: { ...released, diffHash: difference.diffHash } }],
+    }),
+  ).toBe(false)
+  expect(Handoff.MachinePlan.safeParse({ ...cleanup, operation: "prepare-target" }).success).toBe(false)
+  expect(
+    Handoff.MachinePlan.safeParse({
+      ...cleanup,
+      cleanup: { ...cleanup.cleanup, proof: { ...cancelled, fromEpoch: 0 } },
+    }).success,
+  ).toBe(false)
+})

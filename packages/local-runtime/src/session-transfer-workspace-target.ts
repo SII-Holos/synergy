@@ -1,10 +1,12 @@
 import { SessionTransferWorkspaces as Files } from "@ericsanchezok/synergy-harness/session/transfer"
 import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import { NativeWorkspacePortableTarget as Native } from "./workspace/portable-target"
+import { NativeWorkspaceAdoption as Adoption } from "./workspace/native-adoption"
 
 export function registerSessionTransferWorkspaceTarget() {
   Files.registerTargetHost({
-    async prepare({ handoffID, captured, store, signal }) {
+    async prepare({ handoffID, captured, store, signal, mode }) {
+      if (mode === "existing") return Adoption.prepare({ handoffID, captured, store, signal, mode })
       const receipt = await Native.prepare({
         handoffID,
         workspaceID: captured.workspaceID,
@@ -24,9 +26,20 @@ export function registerSessionTransferWorkspaceTarget() {
       }
     },
     async validate(value, signal) {
+      const adoption = Adoption.parse(value.receipt)
+      if (adoption) return Adoption.validate(Adoption.selection(value), signal)
       await Native.validate(Native.Receipt.parse(value.receipt), signal)
     },
     withPublication(values, signal, body) {
+      const first = values[0] && Adoption.parse(values[0].receipt)
+      if (first)
+        return Adoption.withPublication(
+          values.map((value) => Adoption.selection(value)),
+          signal,
+          body,
+        )
+      if (values.some((value) => Adoption.parse(value.receipt)))
+        throw new Error("Native target cannot mix fresh-copy and existing adoption")
       return Native.withPublication(
         values.map((value) => Native.Receipt.parse(value.receipt)),
         signal,
@@ -34,6 +47,11 @@ export function registerSessionTransferWorkspaceTarget() {
       )
     },
     assertPublication(value) {
+      const adoption = Adoption.parse(value.receipt)
+      if (adoption) {
+        Adoption.assertPublication(Adoption.selection(value))
+        return value
+      }
       const receipt = Native.assertPublication(Native.Receipt.parse(value.receipt))
       if (
         value.workspaceID !== receipt.workspaceID ||
@@ -44,6 +62,10 @@ export function registerSessionTransferWorkspaceTarget() {
       )
         throw new Error("Workspace publication has another native location")
       return value
+    },
+    async publish(value) {
+      const adoption = Adoption.parse(value.receipt)
+      if (adoption) await Adoption.publishFact(Adoption.selection(value))
     },
   })
 }
