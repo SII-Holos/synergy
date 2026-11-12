@@ -16,11 +16,31 @@ import { WorkspaceEvidence } from "./evidence"
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { addAbortListener } from "node:events"
 import { EnvironmentUseOwnership } from "../environment/use-ownership"
+import { WorkspaceFileSource } from "./file-source"
 
 export namespace WorkspaceOperations {
   const ObjectWrite = WorkspaceProtocol.WriteInput.omit({ mount: true }).extend({ kind: z.literal("objects-write") })
   const ObjectChange = WorkspaceProtocol.ChangeInput.omit({ mount: true }).extend({ kind: z.literal("objects-change") })
-  type Selection = { id: string; scopeID: string; workspaceID: string; generation?: number; signal?: AbortSignal }
+  const RemoteWrite = WorkspaceProtocol.WriteInput.omit({ mount: true }).extend({
+    kind: z.literal("files-write"),
+    version: z.literal(1),
+    source: WorkspaceFileSource.Record,
+    reference: WorkspaceProtocol.Reference,
+  })
+  const RemoteChange = WorkspaceProtocol.ChangeInput.omit({ mount: true }).extend({
+    kind: z.literal("files-change"),
+    version: z.literal(1),
+    source: WorkspaceFileSource.Record,
+    reference: WorkspaceProtocol.Reference,
+  })
+  type Selection = {
+    id: string
+    scopeID: string
+    workspaceID: string
+    generation?: number
+    signal?: AbortSignal
+    files?: WorkspaceFileSource.Lease
+  }
   type Change = (
     | {
         path: string
@@ -39,7 +59,14 @@ export namespace WorkspaceOperations {
       workspaceID: z.string(),
       generation: z.number().int().positive(),
       target: Environment.Target.optional(),
-      input: z.union([WorkspaceProtocol.WriteInput, WorkspaceProtocol.ChangeInput, ObjectWrite, ObjectChange]),
+      input: z.union([
+        RemoteWrite,
+        RemoteChange,
+        WorkspaceProtocol.WriteInput,
+        WorkspaceProtocol.ChangeInput,
+        ObjectWrite,
+        ObjectChange,
+      ]),
       digest: z.string(),
       state: z.enum(["submitted", "unknown", "unsaved", "completed", "failed"]),
       error: z.string().optional(),
@@ -264,6 +291,7 @@ export namespace WorkspaceOperations {
     mode?: number
     protectSensitive?: boolean
     signal?: AbortSignal
+    files?: WorkspaceFileSource.Lease
   }) {
     return operate(input, {
       path: input.path,
@@ -299,7 +327,8 @@ export namespace WorkspaceOperations {
       new TextEncoder().encode(JSON.stringify({ workspaceID: input.workspaceID, ...change })),
     )
     return serial(input.id, input.scopeID, async () => {
-      const [existing] = await Storage.readMany<Info>([StoragePath.workspaceOperation(input.scopeID, input.id)])
+      const [raw] = await Storage.readMany<unknown>([StoragePath.workspaceOperation(input.scopeID, input.id)])
+      const existing = raw === undefined ? undefined : Info.parse(raw)
       if (existing) {
         if (existing.digest !== digest || (input.generation !== undefined && existing.generation !== input.generation))
           throw new Error("Workspace operation already has different input")
@@ -312,6 +341,99 @@ export namespace WorkspaceOperations {
       assert()
       if (input.generation !== undefined && input.generation !== workspace.binding.generation)
         throw new WorkspaceCatalog.BindingChanged({ workspaceID: workspace.id, message: "Workspace binding changed" })
+      if (input.files) {
+        const lease = input.files
+        const source = WorkspaceFileSource.capture(lease, workspace)
+        const operation =
+          "change" in change
+            ? RemoteChange.parse({
+                id: input.id,
+                reference: lease.reference,
+                kind: "files-change",
+                version: 1,
+                source,
+                ...change,
+              })
+            : RemoteWrite.parse({
+                id: input.id,
+                reference: lease.reference,
+                kind: "files-write",
+                version: 1,
+                source,
+                ...change,
+              })
+        const info = await Storage.transaction(
+          async () => {
+            assert()
+            await RuntimeMaintenance.assertAdmission()
+            WorkspaceFileSource.capture(lease, await WorkspaceCatalog.get(workspace.id, workspace.scopeID))
+            return persist(
+              Info.parse({
+                id: input.id,
+                scopeID: input.scopeID,
+                workspaceID: workspace.id,
+                generation: workspace.binding.generation,
+                input: operation,
+                digest,
+                state: "submitted",
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              }),
+            )
+          },
+          {
+            commitGuard() {
+              assert()
+              lease.assert()
+            },
+          },
+        )
+        const retain = WorkspaceContent.captureOwner()
+        try {
+          const checkpoint = await ("change" in operation
+            ? lease.files.mutate(WorkspaceProtocol.ChangeInput.parse({ ...operation, mount: operation.reference }))
+            : lease.files.write(WorkspaceProtocol.WriteInput.parse({ ...operation, mount: operation.reference })))
+          return await finishRemote(info, lease, checkpoint)
+        } catch (error) {
+          retain()
+          if (error instanceof WorkspaceFileSource.Rejected) {
+            await persist({
+              ...info,
+              state: "failed",
+              failure: error.failure,
+              error: error.message,
+              updatedAt: Date.now(),
+            })
+            throw WorkspaceErrors.restore(error.failure)
+          }
+          let receipt: WorkspaceProtocol.CheckpointStatus | undefined
+          try {
+            receipt = await lease.files.checkpointStatus(info.id)
+          } catch {}
+          if (
+            receipt?.state === "failed" &&
+            receipt.id === info.id &&
+            JSON.stringify(receipt.mount) === JSON.stringify(operation.reference)
+          ) {
+            await persist({
+              ...info,
+              state: "failed",
+              error: receipt.error,
+              failure: receipt.failure,
+              updatedAt: Date.now(),
+            })
+            if (receipt.failure) throw WorkspaceErrors.restore(receipt.failure)
+            throw error
+          }
+          await persist({
+            ...info,
+            state: "unknown",
+            error: error instanceof Error ? error.message : String(error),
+            updatedAt: Date.now(),
+          })
+          throw error
+        }
+      }
       if (!workspace.activeMount) {
         const operation =
           "change" in change
@@ -440,6 +562,33 @@ export namespace WorkspaceOperations {
   async function resume(info: Info): Promise<Info> {
     if (info.state === "completed" || info.state === "failed") return info
     const workspace = await WorkspaceCatalog.get(info.workspaceID, info.scopeID)
+    if ("kind" in info.input && (info.input.kind === "files-write" || info.input.kind === "files-change")) {
+      if (workspace.binding.generation !== info.generation)
+        throw new WorkspaceCatalog.BindingChanged({
+          workspaceID: workspace.id,
+          message: "Workspace file binding changed",
+        })
+      const lease = await WorkspaceFileSource.restore(info.input.source, workspace)
+      try {
+        const receipt = await lease.files.checkpointStatus(info.id)
+        if (!receipt) return persist({ ...info, state: "unknown", updatedAt: Date.now() })
+        if (receipt.id !== info.id || JSON.stringify(receipt.mount) !== JSON.stringify(info.input.reference))
+          throw new Error("Remote Workspace receipt belongs to another original operation")
+        if (receipt.state === "failed")
+          return persist({
+            ...info,
+            state: "failed",
+            error: receipt.error,
+            failure: receipt.failure,
+            updatedAt: Date.now(),
+          })
+        if ((receipt.state !== "saved" && receipt.state !== "released") || !receipt.checkpoint)
+          return persist({ ...info, state: "unknown", updatedAt: Date.now() })
+        return await finishRemote(info, lease, receipt.checkpoint)
+      } finally {
+        await lease.release()
+      }
+    }
     if (!("mount" in info.input)) {
       if (
         workspace.binding.generation !== info.generation ||
@@ -525,6 +674,33 @@ export namespace WorkspaceOperations {
       )
       return persist({ ...info, state: "completed", error: undefined, updatedAt: Date.now() })
     })
+  }
+
+  async function finishRemote(info: Info, lease: WorkspaceFileSource.Lease, value: WorkspaceProtocol.Checkpoint) {
+    const checkpoint = WorkspaceProtocol.Checkpoint.parse(value)
+    if (
+      !("reference" in info.input) ||
+      checkpoint.id !== info.id ||
+      JSON.stringify(checkpoint.mount) !== JSON.stringify(info.input.reference)
+    )
+      throw new Error("Remote Workspace checkpoint belongs to another original operation")
+    lease.assert()
+    await lease.files.acknowledge(info.id)
+    lease.assert()
+    return Storage.transaction(
+      async () => {
+        lease.assert()
+        return persist({
+          ...info,
+          state: "completed",
+          error: undefined,
+          beforeManifest: checkpoint.beforeManifest ?? null,
+          afterManifest: checkpoint.manifest,
+          updatedAt: Date.now(),
+        })
+      },
+      { commitGuard: lease.assert },
+    )
   }
 
   function completed(info: Info) {

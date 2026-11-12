@@ -13,7 +13,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Local Runtime owns native PTYs, watchers and OS sandboxes. `workspace/observation` qualifies invalidations; Session owns live comparisons. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
 
 - Expose public domain operations; `session/prompt-budgeter` measures native model messages. Host adapters may use declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports. Use relative imports internally.
-- Local Runtime owns browsing, indexing, search, editing and conflicts; Harness retains execution read evidence and locking.
+- Local Runtime owns browsing and edits; Harness owns file-source leases, operation receipts, evidence and locking.
 - Native file imports cross the Runtime-scoped `workspace/file-import` Host contract; register the implementation before opening the Runtime and reject unavailable hosts explicitly.
 - Harness owns [resource admission](../../docs/architecture/resource-admission.md); Local Runtime supplies samples. Verify `test/resources/`.
 - Workspace catalog/binding generations own files. `workspace/access` owns claims, Session admission, callbacks and maintenance drainage; capacity scheduling stays private. File resources use `WorkspaceState`; Scope configuration/events use `ScopedState`. Startup contributions declare ownership. Verify `test/workspace/access-maintenance.test.ts`.

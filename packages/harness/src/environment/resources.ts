@@ -8,6 +8,7 @@ import { WorkspaceMounts } from "../workspace/mount"
 import { RuntimeContext } from "../lifecycle/context"
 import { WorkspaceTree } from "../workspace/tree"
 import { EnvironmentOrigin } from "./origin"
+import { WorkspaceFileSource } from "../workspace/file-source"
 
 export namespace EnvironmentResources {
   /** A model-facing file namespace, separate from any live Environment mount location. */
@@ -57,7 +58,7 @@ export namespace EnvironmentResources {
     workspaceGeneration?: number
   }
   export interface Resolved extends AsyncDisposable {
-    kind: "none" | "objects" | "native" | "execution"
+    kind: "none" | "objects" | "native" | "execution" | "files"
     selection?: Selection
     origin?: EnvironmentOrigin.Captured
     workspace?: WorkspaceCatalog.Info
@@ -65,6 +66,7 @@ export namespace EnvironmentResources {
     executor?: Executor
     runtime?: ExecutionProtocol.Description
     directory?: string
+    files?: WorkspaceFileSource.Lease
     release(): Promise<void>
   }
 
@@ -176,6 +178,15 @@ export namespace EnvironmentResources {
         throw new WorkspaceCatalog.BindingChanged({ workspaceID: workspace.id, message: "Workspace binding changed" })
     }
     if (!input.needs.execution && !workspace?.activeMount) {
+      if (workspace?.backend && WorkspaceFileSource.has(workspace.backend.provider)) {
+        if (!input.origin)
+          throw new WorkspaceCatalog.Unavailable({
+            workspaceID: workspace.id,
+            message: "Workspace files require their original resource origin",
+          })
+        const files = await WorkspaceFileSource.open({ workspace, origin: input.origin, signal: input.signal })
+        return result({ kind: "files", workspace, files, directory: files.directory }, files.release)
+      }
       if (workspace?.backend?.provider === "objects")
         return result({ kind: "objects", workspace, directory: virtualRoot(workspace) })
       const location = RuntimeContext.current().host.workspaceLocation

@@ -13,6 +13,7 @@ import type { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace
 import { NativeFileMutation } from "./mutation-core"
 import { NativeFileEntry } from "./entry-core"
 import { WorkspacePortableTree } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
+import { WorkspaceFileSource } from "@ericsanchezok/synergy-harness/workspace/file-source"
 
 export namespace FileView {
   export const native = EnvironmentResources.localFiles
@@ -72,6 +73,8 @@ export namespace FileView {
       return follow ? NativeFileMutation.canonical(resolve(filename)) : NativeFileEntry.canonical(resolve(filename))
     const info = await selected()
     const name = relative(filename)
+    const source = files(info)
+    if (source) return resolve(await source.files.canonical(source.reference, name, follow))
     if (info.activeMount)
       return resolve(
         await (await WorkspaceMounts.connect(info)).canonical(WorkspaceMounts.reference(info), name, follow),
@@ -101,7 +104,15 @@ export namespace FileView {
       latest.activeMount?.state !== selected.activeMount?.state
     )
       throw new WorkspaceCatalog.BindingChanged({ workspaceID: selected.id, message: "Workspace live view changed" })
+    const source = EnvironmentResources.current()?.files
+    if (source) WorkspaceFileSource.assertSelection(source, latest)
     return latest
+  }
+
+  function files(info: WorkspaceCatalog.Info) {
+    const source = EnvironmentResources.current()?.files
+    if (source) WorkspaceFileSource.assertSelection(source, info)
+    return source
   }
 
   function selection(info: WorkspaceCatalog.Info) {
@@ -141,7 +152,7 @@ export namespace FileView {
     signal?.throwIfAborted()
     const target = await canonical(filename, false)
     const info = native() ? undefined : await selected()
-    if (info && !info.activeMount) {
+    if (info && !info.activeMount && !files(info)) {
       const { store } = await WorkspaceContent.resolve(selection(info))
       return WorkspaceContent.withTree(
         info,
@@ -225,6 +236,8 @@ export namespace FileView {
     }
     const info = await selected()
     const name = relative(filename)
+    const source = files(info)
+    if (source) return source.files.stat(source.reference, name, follow)
     if (info.activeMount)
       return (await WorkspaceMounts.connect(info)).stat(WorkspaceMounts.reference(info), name, follow)
     const { store } = await WorkspaceContent.resolve(selection(info))
@@ -258,6 +271,8 @@ export namespace FileView {
     }
     const info = await selected()
     const name = relative(filename)
+    const source = files(info)
+    if (source) return source.files.list(source.reference, name)
     if (info.activeMount) return (await WorkspaceMounts.connect(info)).list(WorkspaceMounts.reference(info), name)
     const { store } = await WorkspaceContent.resolve(selection(info))
     return WorkspaceContent.withTree(info, store, async (tree) => {
@@ -315,15 +330,16 @@ export namespace FileView {
     }
     const info = await selected()
     const name = relative(filename)
-    if (!info.activeMount) {
+    const source = files(info)
+    if (!info.activeMount && !source) {
       const { store } = await WorkspaceContent.resolve(selection(info))
       return WorkspaceContent.withTree(info, store, (tree) => contentBytes(tree, name, range, maximumBytes))
     }
-    const files = await WorkspaceMounts.connect(info)
-    const mount = WorkspaceMounts.reference(info)
+    const host = source?.files ?? (await WorkspaceMounts.connect(info))
+    const mount = source?.reference ?? WorkspaceMounts.reference(info)
     const chunks: Uint8Array[] = []
     const offset = range?.offset ?? 0
-    const first = await files.read({
+    const first = await host.read({
       mount,
       path: name,
       offset,
@@ -334,7 +350,7 @@ export namespace FileView {
     chunks.push(Buffer.from(first.data, "base64"))
     let read = chunks[0]!.length
     while (read < length) {
-      const next = await files.read({
+      const next = await host.read({
         mount,
         path: name,
         offset: offset + read,
@@ -371,6 +387,7 @@ export namespace FileView {
       expectedEntryVersion,
       signal,
       protectSensitive,
+      files: files(info),
       ...(mode === undefined ? {} : { mode }),
     })
     return {
@@ -394,9 +411,10 @@ export namespace FileView {
     const info = await selected()
     const original = selection(info)
     assert()
-    const files = info.activeMount ? await WorkspaceMounts.connect(info) : undefined
-    const selectedStore: BlobStore = files
-      ? { get: files.getBlob.bind(files), put: files.putBlob.bind(files) }
+    const source = files(info)
+    const host = source?.files ?? (info.activeMount ? await WorkspaceMounts.connect(info) : undefined)
+    const selectedStore: BlobStore = host
+      ? { get: host.getBlob.bind(host), put: host.putBlob.bind(host) }
       : (await WorkspaceContent.resolve(selection(info))).store
     const get = selectedStore.get.bind(selectedStore)
     const put = selectedStore.put.bind(selectedStore)
@@ -430,6 +448,7 @@ export namespace FileView {
       signal,
       protectSensitive: true,
       assertCurrent: assert,
+      files: source,
     })
   }
 
@@ -446,6 +465,7 @@ export namespace FileView {
       change,
       signal,
       protectSensitive,
+      files: files(info),
     })
   }
 
