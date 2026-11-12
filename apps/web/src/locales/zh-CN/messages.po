@@ -13745,6 +13745,162 @@ msgid "organization.handoff.native"
 msgstr "创建独立的私有工作区副本"
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.native.absent"
+msgstr "不存在"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.accept"
+msgstr "使用目标端的版本"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptDirectory"
+msgstr "接受此目录选择"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.accepted"
+msgstr "已接受这些目标文件版本。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptHint"
+msgstr "使用 {directory} 中现有的文件。两个目录均不会被覆盖，云端文件保持不变。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.checkCleanup"
+msgstr "检查目标端清理状态"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanup"
+msgstr "目标端准备状态"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupComplete"
+msgstr "目标端的临时准备已释放。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupHint"
+msgstr "源端取消完成，并不代表目标端已释放临时准备。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupScope"
+msgstr "此操作仅检查原目标端，不能打开对话或开始执行。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupUnknown"
+msgstr "目标端清理尚未确认。请检查原目标运行时。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.details"
+msgstr "版本详情"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differenceHint"
+msgstr "目标端保留自身的文件版本。仅在源端存在的文件不会被复制，云端文件保持不变。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differences"
+msgstr "目录差异"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differenceVersion"
+msgstr "比较版本"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.directory"
+msgstr "目标端的现有目录"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.directoryKind"
+msgstr "目录"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.empty"
+msgstr "没有文件差异。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.existing"
+msgstr "使用现有本机目录"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.fileKind"
+msgstr "文件"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.hint"
+msgstr "保留目标目录中的文件。接受前请查看与源端最终冻结版本的差异。两个目录均不会被覆盖。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.incomplete"
+msgstr "完整比较共包含 {total} 项差异。请按需浏览页面，然后确认使用目标端的版本。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.linkKind"
+msgstr "符号链接"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.loading"
+msgstr "正在加载差异…"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.mode"
+msgstr "目录权限：{source} → {target}"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.next"
+msgstr "下一页"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.preview"
+msgstr "比较现有目录"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.previewHint"
+msgstr "准备迁移前，将目标目录与源端最终冻结版本进行比较。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.previous"
+msgstr "上一页"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.refresh"
+msgstr "重新比较"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.reviewed"
+msgstr "我已查看所需差异，并选择使用目标端的版本。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.selected"
+msgstr "目标项目已选定的本机目录"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.showing"
+msgstr "第 {first}–{last} 项，共 {total} 项"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.source"
+msgstr "源端冻结版本"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.sourceVersion"
+msgstr "源端冻结版本"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.target"
+msgstr "现有目录"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.targetVersion"
+msgstr "目录版本"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.unavailable"
+msgstr "此运行时尚未为该项目绑定可用的本机目录。请先在目标端绑定目录，然后刷新。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.waiting"
+msgstr "请目标成员检查并接受其目录中的文件版本。"
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.nativeHint"
 msgstr "在目标端创建独立工作区。源文件保留原位，不会覆盖目标端的现有文件夹。"
 

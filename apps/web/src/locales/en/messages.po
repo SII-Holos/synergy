@@ -13745,6 +13745,162 @@ msgid "organization.handoff.native"
 msgstr "Create a private workspace copy"
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.native.absent"
+msgstr "Not present"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.accept"
+msgstr "Use the destination versions"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptDirectory"
+msgstr "Accept this directory choice"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.accepted"
+msgstr "These destination versions have been accepted."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptHint"
+msgstr "Use the files already in {directory}. Neither directory is overwritten; cloud files remain unchanged."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.checkCleanup"
+msgstr "Check destination cleanup"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanup"
+msgstr "Destination preparation"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupComplete"
+msgstr "The destination preparation has been released."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupHint"
+msgstr "Source cancellation does not confirm that the destination released its temporary preparation."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupScope"
+msgstr "This check only inspects the original destination. It cannot open the conversation or start work."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupUnknown"
+msgstr "Destination cleanup is not confirmed. Check its original runtime."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.details"
+msgstr "Version details"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differenceHint"
+msgstr "The destination keeps its own versions. Source-only files will not be copied; cloud files remain unchanged."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differences"
+msgstr "Directory differences"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differenceVersion"
+msgstr "Comparison version"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.directory"
+msgstr "Existing destination directory"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.directoryKind"
+msgstr "Directory"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.empty"
+msgstr "No differing file entries."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.existing"
+msgstr "Use an existing local directory"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.fileKind"
+msgstr "File"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.hint"
+msgstr "Keep the destination directory's files. Review the frozen differences before accepting. Neither directory is overwritten."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.incomplete"
+msgstr "The complete comparison contains {total} differences. Browse the pages you need before choosing the destination versions."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.linkKind"
+msgstr "Symbolic link"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.loading"
+msgstr "Loading differences…"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.mode"
+msgstr "Directory permissions: {source} → {target}"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.next"
+msgstr "Next page"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.preview"
+msgstr "Compare the existing directory"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.previewHint"
+msgstr "Compare the real destination directory with the final frozen source before preparing it."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.previous"
+msgstr "Previous page"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.refresh"
+msgstr "Capture a new comparison"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.reviewed"
+msgstr "I have reviewed the differences I need and choose the destination versions."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.selected"
+msgstr "The destination project's selected local directory"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.showing"
+msgstr "Showing {first}–{last} of {total}"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.source"
+msgstr "Frozen source"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.sourceVersion"
+msgstr "Frozen source version"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.target"
+msgstr "Existing directory"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.targetVersion"
+msgstr "Directory version"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.unavailable"
+msgstr "This runtime has no available local directory for this project. Bind a directory there, then refresh."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.waiting"
+msgstr "The destination member must review and accept their directory's versions."
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.nativeHint"
 msgstr "Create a separate workspace on the destination. Source files stay in place; existing destination folders are not overwritten."
 

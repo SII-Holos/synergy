@@ -46,7 +46,7 @@ const runtime = (id: string) => ({
   createdAt: 0,
   runtimeKind: "member" as const,
   accountID: account.accountID,
-  deviceID: id === "source" ? "Source computer" : "Destination computer",
+  deviceID: id === "source" ? "Source-computer" : "Destination-computer",
 })
 const tuple = {
   schemaVersion: 1 as const,
@@ -87,9 +87,11 @@ beforeAll(async () => {
     import {PlatformProvider} from ${JSON.stringify(`/@fs/${source}/context/platform.tsx`)};
     import {OrganizationHandoff} from ${JSON.stringify(`/@fs/${source}/organization/handoff.tsx`)};
     import {useConfirm} from ${JSON.stringify(`/@fs/${source}/components/dialog/confirm-dialog.tsx`)};
+    import {organizationNativeHandoffMessages as nativeCopy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-native-messages.ts`)};
+    import {organizationWorkspaceMessages as workspaceCopy} from ${JSON.stringify(`/@fs/${source}/organization/workspace-messages.ts`)};
     import {useLingui} from "@lingui/solid"; import {organizationHandoffMessages as copy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-messages.ts`)};
     const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{protocolVersion:2,list:()=>window.hostList(),request:async value=>{const result=await window.hostRequest(value);window.handoffResponses=(window.handoffResponses??0)+1;return result},cancel:()=>Promise.resolve({ok:true}),startMember:()=>{throw new Error("No automatic runtime start")}}};
-    function Fixture(){const {_}=useLingui();window.handoffCopy=key=>_(copy[key]);const space=useSpace();const [execute,setExecute]=createSignal(true);const other=useConfirm();window.revoke=()=>setExecute(false);window.openOther=()=>other.show({title:"Unrelated confirmation",description:"Keep this dialog",confirmLabel:"Confirm",tone:"neutral",onConfirm(){}});const session={sessionID:"session-a",projectID:"project-a",creatorID:new URLSearchParams(location.search).has("cloud")?"account-a":"different-creator",driverRuntimeID:"source",bindingEpoch:7,shareState:"shared",resourceIDs:[],createdAt:0,get permissions(){return {read:true,execute:execute(),stop:true}},runtime:{runtimeID:"source",runtimeKind:"member",ownerID:"account-a",state:"online",connectionEpoch:1}};return <Show when={space.current()?.key} keyed>{()=> <OrganizationHandoff session={session} changed={()=>window.hostChanged()} compact={new URLSearchParams(location.search).has("compact")} />}</Show>}
+    function Fixture(){const {_}=useLingui();window.handoffCopy=key=>_(copy[key]);window.nativeHandoffCopy=key=>_(nativeCopy[key]);window.handoffMore=()=>_(workspaceCopy.more);const space=useSpace();const [execute,setExecute]=createSignal(true);const other=useConfirm();window.revoke=()=>setExecute(false);window.openOther=()=>other.show({title:"Unrelated confirmation",description:"Keep this dialog",confirmLabel:"Confirm",tone:"neutral",onConfirm(){}});const session={sessionID:"session-a",projectID:"project-a",creatorID:new URLSearchParams(location.search).has("cloud")?"account-a":"different-creator",driverRuntimeID:"source",bindingEpoch:7,shareState:"shared",resourceIDs:[],createdAt:0,get permissions(){return {read:true,execute:execute(),stop:true}},runtime:{runtimeID:"source",runtimeKind:"member",ownerID:"account-a",state:"online",connectionEpoch:1}};return <Show when={space.current()?.key} keyed>{()=> <OrganizationHandoff session={session} changed={()=>window.hostChanged()} compact={new URLSearchParams(location.search).has("compact")} />}</Show>}
     render(()=> <PlatformProvider value={platform}><AppBaseProviders><SpaceProvider><Fixture/></SpaceProvider></AppBaseProviders></PlatformProvider>,document.getElementById("root"));
   `,
   )
@@ -128,6 +130,10 @@ async function open(
     cancelResponses?: Array<"unknown" | "not_dispatched">
     cancelSourceResponses?: Array<"blocked" | "unknown">
     holdOptions?: Promise<void>
+    native?: boolean
+    noNativeDirectory?: boolean
+    dropPreview?: boolean
+    holdDifferencePage?: Promise<void>
   } = {},
 ) {
   const context = await browser.newContext({
@@ -149,6 +155,7 @@ async function open(
   const requests: Array<{ path: string; method: string; body: unknown }> = []
   const errors: string[] = []
   const cancellationRequested = Promise.withResolvers<void>()
+  const differenceRequested = Promise.withResolvers<void>()
   page.on("pageerror", (error) => errors.push(error.message))
   let view: Handoff.View | undefined
   let dropped = false
@@ -160,6 +167,18 @@ async function open(
   let cancellationDropped = false
   let cancellationAttempt = 0
   let sourceCancellationAttempt = 0
+  let sessionDenied = false
+  let cleanupReleased = false
+  const comparison = Handoff.Difference.parse({
+    sourceSnapshotHash: "b".repeat(64),
+    targetDigest: "c".repeat(64),
+    diffHash: "d".repeat(64),
+    mappingPlanRevision: 1,
+    entries: 65,
+    sourceEntries: 68,
+    targetEntries: 66,
+    mode: { source: 0o755, target: 0o700 },
+  })
   const permits = new Map<string, unknown>()
   const target = input.cloud
     ? {
@@ -200,40 +219,51 @@ async function open(
         controlRevision,
         sourceRuntimeID: "source",
         targetRuntimeID: "target",
-        source: input.cloud
-          ? {
-              kind: "organization",
-              label: "Team files",
-              reference: { workspaceID: "source-workspace", generation: 3, revision: 4 },
-              resource: {
-                resourceID: "workspace-storage",
-                workspaceID: "source-workspace",
-                generation: 3,
-                path: "project",
+        source:
+          input.cloud || input.native
+            ? {
+                kind: "organization",
+                label: "Team files",
+                reference: { workspaceID: "source-workspace", generation: 3, revision: 4 },
+                resource: {
+                  resourceID: "workspace-storage",
+                  workspaceID: "source-workspace",
+                  generation: 3,
+                  path: "project",
+                },
+              }
+            : {
+                kind: "native",
+                label: "Source project",
+                reference: { workspaceID: "source-workspace", generation: 3, revision: 4 },
               },
-            }
-          : {
-              kind: "native",
-              label: "Source project",
-              reference: { workspaceID: "source-workspace", generation: 3, revision: 4 },
-            },
-        native: input.cloud
-          ? null
-          : {
-              reference: { workspaceID: "default-target", generation: 1, revision: 1 },
-              label: "Existing destination project folder",
-              projectRevision: "a".repeat(64),
-            },
+        native:
+          input.cloud || input.noNativeDirectory
+            ? null
+            : {
+                reference: { workspaceID: "default-target", generation: 1, revision: 1 },
+                label: "Existing destination project folder",
+                projectRevision: "a".repeat(64),
+              },
         choices: [
           {
-            kind: input.cloud ? "organization-live" : input.object ? "organization-object" : "native",
+            kind: input.cloud || input.native ? "organization-live" : input.object ? "organization-object" : "native",
             requiresDifference: false,
           },
           { kind: "organization-native", requiresDifference: true },
         ],
       })
     }
-    if (url.pathname.endsWith("/handoffs") && request.method === "GET") return result({ items: view ? [view] : [] })
+    if (url.pathname.endsWith("/handoffs") && request.method === "GET")
+      return sessionDenied
+        ? {
+            ok: true,
+            value: {
+              status: 403,
+              body: JSON.stringify({ code: "PERMISSION_DENIED", message: "No Session read authority" }),
+            },
+          }
+        : result({ items: view ? [view] : [] })
     if (url.pathname.endsWith("/handoffs") && request.method === "POST") {
       const prepared = Handoff.CurrentPrepare.parse(body)
       if (input.rejectPrepare && !rejected) {
@@ -317,8 +347,26 @@ async function open(
         ...(active ? { cursor: "workspaces-two" } : {}),
       })
     }
-    if (view && url.pathname === `/org/v1/handoffs/${view.handoffID}`) return result(view)
+    if (view && url.pathname === `/org/v1/handoffs/${view.handoffID}`)
+      return sessionDenied
+        ? {
+            ok: true,
+            value: {
+              status: 403,
+              body: JSON.stringify({ code: "PERMISSION_DENIED", message: "No Session read authority" }),
+            },
+          }
+        : result(view)
     if (view && url.pathname.endsWith("/accept")) {
+      const accepted = Handoff.Accept.parse(body)
+      if ("workspaceDifference" in accepted) {
+        if (
+          JSON.stringify(accepted.workspaceDifference) !==
+          JSON.stringify(Handoff.DifferenceConsent.strip().parse(comparison))
+        )
+          throw new Error("The native member accepted another frozen difference")
+        view = { ...view, workspaceDifferenceAccepted: true }
+      }
       view = { ...view, targetAccepted: true, canAccept: false }
       return result(view)
     }
@@ -384,6 +432,93 @@ async function open(
     }
     if (view && url.pathname.endsWith("/drive")) {
       const operation = Handoff.Drive.parse(body)
+      if (input.native && view.phase === "cancelled" && operation.operation === "inspect-target") {
+        return result({
+          handoffID: view.handoffID,
+          requestID: operation.requestID,
+          runtimeID: "target",
+          operation: "inspect-target",
+          state: cleanupReleased ? "complete" : "blocked",
+          stage: cleanupReleased ? "target-preview-released" : "preparing",
+          revision: "e".repeat(64),
+          requirements: [],
+          facts: cleanupReleased
+            ? [
+                {
+                  proof: {
+                    ...tuple,
+                    handoffID: view.handoffID,
+                    purpose: "target-preview-released",
+                    manifestHash: view.manifestHash,
+                    diffHash: comparison.diffHash,
+                    tombstonePersisted: true,
+                  },
+                  signature: "f".repeat(128),
+                },
+              ]
+            : [],
+        })
+      }
+      if (input.native && ["preview-target", "inspect-target"].includes(operation.operation)) {
+        if (operation.operation === "preview-target") {
+          if (!view.targetAccepted || view.missingRequirements.some((item) => item.code === "source_freeze"))
+            throw new Error("Preview ran before initial consent and final source freeze")
+          view = { ...view, workspaceDifference: comparison, workspaceDifferenceAccepted: false, canAccept: true }
+          if (input.dropPreview && !dropped) {
+            dropped = true
+            return { ok: false, error: { code: "unavailable" } }
+          }
+        }
+        const page = operation.operation === "inspect-target" && operation.expectedRevision
+        if (page && operation.expectedRevision !== comparison.diffHash)
+          throw new Error("Difference paging used the proof hash instead of the actual diff hash")
+        if (page && operation.cursor && input.holdDifferencePage) {
+          differenceRequested.resolve()
+          await input.holdDifferencePage
+        }
+        const first = operation.cursor ? 64 : 0
+        const paths = Array.from({ length: operation.cursor ? 1 : 64 }, (_, index) => index + first)
+        return result({
+          handoffID: view.handoffID,
+          requestID: operation.requestID,
+          runtimeID: "target",
+          operation: operation.operation,
+          state: "complete",
+          stage: "target-difference",
+          revision: "e".repeat(64),
+          requirements: [],
+          workspaceDifference: comparison,
+          facts: [
+            {
+              proof: {
+                ...tuple,
+                handoffID: view.handoffID,
+                purpose: "target-difference",
+                manifestHash: view.manifestHash,
+                difference: comparison,
+              },
+              signature: "f".repeat(128),
+            },
+          ],
+          ...(page
+            ? {
+                differencePage: {
+                  diffHash: comparison.diffHash,
+                  items: paths.map((index) => {
+                    const path =
+                      index === 0 ? ".git/index" : index === 1 ? ".ignored/generated.bin" : `目录/file-${index}.txt`
+                    return {
+                      path,
+                      source: { path, kind: "file", mode: 0o644, size: 3, hash: "a".repeat(64) },
+                      target: { path, kind: "file", mode: 0o600, size: 4, hash: "b".repeat(64) },
+                    }
+                  }),
+                  ...(!operation.cursor ? { cursor: "0000000000000064" } : {}),
+                },
+              }
+            : {}),
+        })
+      }
       if (
         (input.blocked || input.unrecoverable) &&
         ((operation.operation === "prepare-source" && !blockedOnce) || operation.operation === "inspect-source")
@@ -413,10 +548,13 @@ async function open(
         stage = "source-frozen"
         view = {
           ...view,
+          ...(input.native ? { manifestHash: "9".repeat(64) } : {}),
           missingRequirements: requirements.filter((requirement) => requirement.code !== "source_freeze"),
         }
       }
       if (operation.operation === "prepare-target") {
+        if (input.native && !view.workspaceDifferenceAccepted)
+          throw new Error("Native preparation ran before exact second consent")
         stage = "target-prepared"
         view = { ...view, phase: "prepared", missingRequirements: [] }
       }
@@ -496,8 +634,48 @@ async function open(
     dialog,
     requests,
     errors,
+    comparison,
+    differenceRequested: differenceRequested.promise,
+    more() {
+      return page.evaluate(() => {
+        const translate = Reflect.get(window, "handoffMore")
+        if (typeof translate !== "function") throw new Error("The workspace locale owner is unavailable")
+        const value = translate()
+        if (typeof value !== "string") throw new Error("The workspace locale owner returned no label")
+        return value
+      })
+    },
+    nativeCopy(key: string) {
+      return page.evaluate((key) => {
+        const translate = Reflect.get(window, "nativeHandoffCopy")
+        if (typeof translate !== "function") throw new Error("The native locale owner is unavailable")
+        const value = translate(key)
+        if (typeof value !== "string") throw new Error("The native locale owner returned no label")
+        return value
+      }, key)
+    },
+    denySession() {
+      sessionDenied = true
+    },
+    finishNativeCleanup() {
+      cleanupReleased = true
+    },
     cancellationRequested: cancellationRequested.promise,
-    copy(key: "accept" | "prepareSource" | "prepareTarget" | "surrender" | "cancel" | "finishCancel" | "check") {
+    copy(
+      key:
+        | "accept"
+        | "prepareSource"
+        | "prepareTarget"
+        | "surrender"
+        | "cancel"
+        | "finishCancel"
+        | "check"
+        | "begin"
+        | "commit"
+        | "activate"
+        | "destination"
+        | "workspace",
+    ) {
       return page.evaluate((key) => {
         const translate = Reflect.get(window, "handoffCopy")
         if (typeof translate !== "function") throw new Error("The real locale owner is unavailable")
@@ -521,7 +699,7 @@ async function open(
 async function choose(f: Awaited<ReturnType<typeof open>>) {
   await f.dialog.getByRole("button", { name: "Load more", exact: true }).click()
   await f.dialog.getByRole("button", { name: /^Destination:/ }).click()
-  await f.page.getByRole("option", { name: /Destination computer|Hosted destination/ }).click()
+  await f.page.getByRole("option", { name: /Destination-computer|Hosted destination/ }).click()
   await f.page
     .getByRole("listbox", { name: "Destination", exact: true, includeHidden: true })
     .waitFor({ state: "hidden" })
@@ -740,7 +918,7 @@ test("a late preflight cannot reopen a move after switching organization owner",
   try {
     await f.dialog.getByRole("button", { name: "Load more", exact: true }).click()
     await f.dialog.getByRole("button", { name: /^Destination:/ }).click()
-    await f.page.getByRole("option", { name: "Destination computer" }).click()
+    await f.page.getByRole("option", { name: "Destination-computer" }).click()
     await f.dialog.getByText("Checking the current workspaces…").waitFor()
     await f.page.evaluate(() => {
       history.pushState(null, "", "/organization/org-b/account-b/deployment-a")
@@ -1002,7 +1180,7 @@ test("the real Chinese catalog keeps desktop and narrow light and dark move plan
       await f.dialog.locator(".organization-handoff-actions").first().getByRole("button").first().click()
       await f.dialog.locator(".organization-handoff-field").first().getByRole("button").click()
       await f.page
-        .getByRole("option", { name: variant.cloud ? "Hosted destination" : "Destination computer", exact: true })
+        .getByRole("option", { name: variant.cloud ? "Hosted destination" : "Destination-computer", exact: true })
         .click()
       await f.page.locator('[role="listbox"]').waitFor({ state: "hidden" })
       await f.dialog.locator('button[data-variant="primary"]').click()
@@ -1387,3 +1565,292 @@ test("a native surrender winning a cancellation race never sends cancellation to
     await f.close()
   }
 }, 30_000)
+
+async function chooseNativeDestination(f: Awaited<ReturnType<typeof open>>) {
+  await f.dialog.getByRole("button", { name: await f.more(), exact: true }).click()
+  await f.dialog.locator(".organization-handoff-field").first().getByRole("button").click()
+  await f.page.getByRole("option", { name: "Destination-computer", exact: true }).click()
+  await f.page.getByRole("listbox").waitFor({ state: "hidden" })
+  await f.dialog.getByRole("button", { name: await f.copy("begin"), exact: true }).waitFor()
+}
+async function chooseExisting(f: Awaited<ReturnType<typeof open>>) {
+  await chooseNativeDestination(f)
+  await f.dialog.locator(".organization-handoff-field").nth(1).getByRole("button").click()
+  await f.page.getByRole("option", { name: await f.nativeCopy("existing"), exact: true }).click()
+  await f.page.getByRole("listbox").waitFor({ state: "hidden" })
+  await f.dialog.getByText("Existing destination project folder", { exact: true }).waitFor()
+  await f.dialog.getByRole("button", { name: await f.copy("begin"), exact: true }).click()
+  await f.dialog.getByRole("button", { name: await f.nativeCopy("acceptDirectory"), exact: true }).click()
+  await f.dialog.getByRole("button", { name: await f.copy("prepareSource"), exact: true }).click()
+}
+
+test("existing native directory adoption reviews real paged hashes and requires a distinct destination-version consent", async () => {
+  const f = await open({ native: true })
+  try {
+    await chooseExisting(f)
+    const mapping = Handoff.CurrentPrepare.parse(
+      f.requests.find((request) => request.path.endsWith("/handoffs") && request.method === "POST")!.body,
+    ).workspaceMapping
+    expect(mapping).toMatchObject({
+      kind: "organization-native",
+      source: { workspaceID: "source-workspace", generation: 3 },
+      target: {
+        kind: "existing",
+        workspaceID: "default-target",
+        generation: 1,
+        expectedRevision: 1,
+        projectRevision: "a".repeat(64),
+      },
+    })
+    expect(await f.dialog.getByRole("button", { name: "Prepare the destination", exact: true }).count()).toBe(0)
+    await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click()
+    const reader = f.dialog.getByRole("region", { name: await f.nativeCopy("differences"), exact: true })
+    await reader.getByText(".git/index", { exact: true }).waitFor()
+    expect(await reader.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).isDisabled()).toBe(
+      true,
+    )
+    await reader.getByRole("button", { name: await f.nativeCopy("next"), exact: true }).click()
+    await reader.getByText("目录/file-64.txt", { exact: true }).waitFor()
+    await reader.getByRole("button", { name: await f.nativeCopy("previous"), exact: true }).click()
+    await reader.getByText(".ignored/generated.bin", { exact: true }).waitFor()
+    const review = reader.getByRole("checkbox", { name: await f.nativeCopy("reviewed"), exact: true })
+    await review.focus()
+    expect(await review.evaluate((input) => document.activeElement === input)).toBe(true)
+    await review.press("Space")
+    expect(await review.isChecked()).toBe(true)
+    await capture(f.page, "handoff-existing-native-light.png")
+    await reader.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).click()
+    const confirmation = f.page.getByRole("dialog", { name: await f.nativeCopy("accept"), exact: true })
+    await confirmation.waitFor()
+    expect(f.requests.filter((request) => request.path.endsWith("/accept"))).toHaveLength(1)
+    await confirmation.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).click()
+    const accepted = f.requests
+      .filter((request) => request.path.endsWith("/accept"))
+      .map((request) => Handoff.Accept.parse(request.body))
+    expect(accepted).toHaveLength(2)
+    expect(accepted[1]).toMatchObject({
+      mappingPlanRevision: 1,
+      mappingHash: "a".repeat(64),
+      workspaceDifference: Handoff.DifferenceConsent.strip().parse(f.comparison),
+    })
+    const pages = f.requests
+      .filter((request) => request.path.endsWith("/drive"))
+      .map((request) => Handoff.Drive.parse(request.body))
+      .filter((request) => request.operation === "inspect-target")
+    expect(pages.every((request) => request.expectedRevision === f.comparison.diffHash)).toBe(true)
+    expect(pages.some((request) => request.cursor === "0000000000000064")).toBe(true)
+    await f.dialog.getByRole("button", { name: "Prepare the destination", exact: true }).click()
+    await surrender(f)
+    await f.dialog.getByRole("button", { name: "Finish the move", exact: true }).click()
+    await f.dialog.getByRole("button", { name: "Activate the paused destination", exact: true }).click()
+    await f.dialog.getByRole("heading", { name: "Conversation moved and paused", exact: true }).waitFor()
+    expect(
+      f.requests.some((request) => /commands|controls|environment|compute|project-resources/.test(request.path)),
+    ).toBe(false)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 45_000)
+
+test("unknown native preview survives source cancellation and cleanup checks never refresh a revoked Session", async () => {
+  const f = await open({ native: true, dropPreview: true, viewport: { width: 375, height: 667 }, colorScheme: "dark" })
+  try {
+    await chooseExisting(f)
+    await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click()
+    await f.dialog.getByText(/no confirmed outcome/).waitFor()
+    const preview = Handoff.Drive.parse(
+      f.requests.find(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "preview-target",
+      )!.body,
+    )
+    await f.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await f.dialog.getByRole("button", { name: "Confirm source cancellation", exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: "Confirm source cancellation", exact: true })
+      .getByRole("button", { name: "Confirm source cancellation", exact: true })
+      .click()
+    await f.dialog.getByRole("button", { name: await f.nativeCopy("checkCleanup"), exact: true }).waitFor()
+    const saved = JSON.parse(
+      (await f.page.evaluate(
+        () => Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))?.[1],
+      ))!,
+    )
+    expect(saved.pending).toEqual({ kind: "drive", body: preview })
+    expect(saved.nativeCleanup.binding.handoffID).toBe(saved.handoffID)
+    f.denySession()
+    await f.page.reload()
+    const reads = () => f.requests.filter((request) => request.method === "GET" && /handoffs/.test(request.path)).length
+    const before = reads()
+    await f.page.getByRole("button", { name: "Move conversation", exact: true }).click()
+    const cleanup = f.page.getByRole("dialog", { name: await f.nativeCopy("cleanup"), exact: true })
+    const check = cleanup.getByRole("button", { name: await f.nativeCopy("checkCleanup"), exact: true })
+    await check.waitFor()
+    await f.page.evaluate("window.revoke()")
+    await check.click({ trial: true })
+    expect(await check.isEnabled()).toBe(true)
+    expect(await cleanup.getByRole("heading", { name: await f.nativeCopy("cleanup"), exact: true }).count()).toBe(1)
+    const received = await f.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+    await check.click()
+    await f.page.waitForFunction(
+      (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) > received,
+      received,
+    )
+    expect(reads()).toBe(before)
+    expect(await cleanup.getByText(await f.nativeCopy("cleanupUnknown"), { exact: true }).isVisible()).toBe(true)
+    await capture(f.page, "handoff-native-cleanup-dark-375.png")
+    f.finishNativeCleanup()
+    await check.click()
+    await cleanup.getByText(await f.nativeCopy("cleanupComplete"), { exact: true }).waitFor()
+    expect(reads()).toBe(before)
+    expect(
+      f.requests.filter(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "preview-target",
+      ),
+    ).toHaveLength(1)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 45_000)
+
+test("native difference readers retire held pages on permission loss and source cancellation", async () => {
+  for (const cancel of [false, true]) {
+    const held = Promise.withResolvers<void>()
+    const f = await open({ native: true, holdDifferencePage: held.promise })
+    try {
+      await chooseExisting(f)
+      await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click()
+      const reader = f.dialog.getByRole("region", { name: await f.nativeCopy("differences"), exact: true })
+      await reader.getByText(".git/index", { exact: true }).waitFor()
+      const next = reader.getByRole("button", { name: await f.nativeCopy("next"), exact: true })
+      await next.click()
+      await f.differenceRequested
+      if (cancel) {
+        await f.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+        await f.page
+          .getByRole("dialog", { name: "Cancel move", exact: true })
+          .getByRole("button", { name: "Cancel move", exact: true })
+          .click()
+        await f.dialog.getByRole("button", { name: "Confirm source cancellation", exact: true }).click()
+        await f.page
+          .getByRole("dialog", { name: "Confirm source cancellation", exact: true })
+          .getByRole("button", { name: "Confirm source cancellation", exact: true })
+          .click()
+        await f.dialog.getByRole("button", { name: await f.nativeCopy("checkCleanup"), exact: true }).waitFor()
+        f.denySession()
+      } else {
+        await f.page.evaluate("window.revoke()")
+        expect(await next.isDisabled()).toBe(true)
+      }
+      const received = await f.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+      held.resolve()
+      await f.page.waitForFunction(
+        (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) > received,
+        received,
+      )
+      expect(await f.dialog.getByText("目录/file-64.txt", { exact: true }).count()).toBe(0)
+      if (cancel) expect(await reader.count()).toBe(0)
+      else expect(await reader.getByText(".git/index", { exact: true }).isVisible()).toBe(true)
+      expect(f.errors).toEqual([])
+    } finally {
+      held.resolve()
+      await f.close()
+    }
+  }
+}, 45_000)
+
+test("an unavailable native directory never becomes a placeholder target", async () => {
+  const f = await open({ native: true, noNativeDirectory: true })
+  try {
+    await chooseNativeDestination(f)
+    await f.dialog.getByText(await f.nativeCopy("unavailable"), { exact: true }).waitFor()
+    expect(await f.dialog.getByText(await f.nativeCopy("existing"), { exact: true }).count()).toBe(0)
+    expect(f.requests.filter((request) => request.method === "POST")).toHaveLength(0)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 30_000)
+
+test("the real Chinese native comparison keeps two readable versions and reachable consent in both themes", async () => {
+  for (const variant of [
+    { viewport: { width: 1100, height: 760 }, colorScheme: "light" as const },
+    { viewport: { width: 375, height: 667 }, colorScheme: "light" as const },
+    { viewport: { width: 375, height: 667 }, colorScheme: "dark" as const },
+  ]) {
+    const f = await open({ ...variant, native: true, locale: "zh-CN" })
+    const name = `handoff-existing-native-zh-${variant.colorScheme}-${variant.viewport.width}`
+    try {
+      await chooseExisting(f)
+      await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click()
+      const reader = f.dialog.getByRole("region", { name: await f.nativeCopy("differences"), exact: true })
+      await reader.getByText(".git/index", { exact: true }).waitFor()
+      expect(
+        await reader.getByRole("heading", { name: await f.nativeCopy("differences"), exact: true }).innerText(),
+      ).toMatch(/[\u3400-\u9fff]/)
+      await f.dialog.locator(".organization-handoff > p").first().scrollIntoViewIfNeeded()
+      await capture(f.page, `${name}-top.png`)
+      await reader.locator(".organization-handoff-differences").scrollIntoViewIfNeeded()
+      expect(
+        await reader
+          .locator(".organization-handoff-differences > li")
+          .first()
+          .evaluate((element) => {
+            const body = element.closest('[data-slot="dialog-body"]')
+            if (!body) return false
+            const outer = body.getBoundingClientRect()
+            const row = element.getBoundingClientRect()
+            return row.top >= outer.top - 1 && row.bottom <= outer.bottom + 1
+          }),
+      ).toBe(true)
+      expect(await f.dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+      expect(
+        await reader
+          .locator(".organization-handoff-differences > li")
+          .first()
+          .locator("dl > div")
+          .evaluateAll((columns) => {
+            const [source, target] = columns.map((column) => column.getBoundingClientRect())
+            return (
+              !!source &&
+              !!target &&
+              source.right <= target.left &&
+              Math.abs(source.top - target.top) <= 1 &&
+              source.width >= 100 &&
+              target.width >= 100
+            )
+          }),
+      ).toBe(true)
+      await capture(f.page, `${name}-differences.png`)
+      const review = reader.getByRole("checkbox", { name: await f.nativeCopy("reviewed"), exact: true })
+      await review.focus()
+      await review.press("Space")
+      expect(await review.isChecked()).toBe(true)
+      const refresh = reader.getByRole("button", { name: await f.nativeCopy("refresh"), exact: true })
+      await refresh.scrollIntoViewIfNeeded()
+      await refresh.click({ trial: true })
+      await capture(f.page, `${name}-actions.png`)
+      const accept = reader.getByRole("button", { name: await f.nativeCopy("accept"), exact: true })
+      const returnFocus = await f.dialog.locator('[data-slot="dialog-footer"]').getByRole("button").elementHandle()
+      if (!returnFocus) throw new Error("The owning move dialog has no connected return-focus control")
+      await accept.click()
+      const confirmation = f.page.getByRole("dialog", { name: await f.nativeCopy("accept"), exact: true })
+      await confirmation.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).click({ trial: true })
+      expect(f.requests.filter((request) => request.path.endsWith("/accept"))).toHaveLength(1)
+      await f.page.keyboard.press("Escape")
+      await confirmation.waitFor({ state: "detached" })
+      await f.page.waitForFunction((button) => button.isConnected && document.activeElement === button, returnFocus)
+      expect(await f.dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+      expect(f.errors).toEqual([])
+    } finally {
+      await f.close()
+    }
+  }
+}, 60_000)

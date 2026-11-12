@@ -22,6 +22,11 @@ import { useSpace } from "@/context/space"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { WorkspaceError } from "./workspace-error"
 import { organizationHandoffMessages as messages } from "./handoff-messages"
+import { organizationNativeHandoffMessages as nativeMessages } from "./handoff-native-messages"
+import { OrganizationNativeDifference } from "./handoff-native"
+import { organizationNativeHandoffMapping } from "./handoff-native-state"
+import { OrganizationNativeCleanup } from "./handoff-native-cleanup"
+import { organizationNativeCleanupHandle, type OrganizationNativeCleanupHandle } from "./handoff-native-cleanup-state"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
 import {
   createOrganizationHandoffState,
@@ -153,6 +158,8 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   const [storageFailed, setStorageFailed] = createSignal(false)
   const [accessLost, setAccessLost] = createSignal(false)
   const [retryable, setRetryable] = createSignal(false)
+  const [nativeRevision, setNativeRevision] = createSignal(0)
+  const [cleanup, setCleanup] = createSignal<OrganizationNativeCleanupHandle>()
   let selectionRevision = 0
   let workspaceRevision = 0
   let handoffRevision = 0
@@ -196,9 +203,9 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
         ? (props.session.runtime?.name ?? _(messages.source))
         : _(messages.destination)
   }
-  function failure(error: unknown) {
+  function failure(error: unknown, display = true) {
     if (!current()) return
-    setError(error)
+    if (display) setError(error)
     const code = error && typeof error === "object" && "code" in error ? error.code : undefined
     if (["AUTHENTICATION_REQUIRED", "reauthorization_required", "signed_out"].includes(String(code))) {
       confirm.closeOwned()
@@ -218,6 +225,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
         setState("machine", undefined)
         setState("cancellationMachine", undefined)
         setRetryable(false)
+        setCleanup(undefined)
       }
       setSaved(value)
       return value
@@ -269,8 +277,19 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     setState("view", reconcile(view))
     if (terminal(view)) {
       try {
-        recovery.clear(view.handoffID)
-        setSaved(undefined)
+        if (view.phase === "cancelled" && view.workspaceMapping.kind === "organization-native" && view.manifestHash) {
+          const original = state.runtimes.find((runtime) => runtime.runtimeID === view.targetRuntimeID)
+          if (!original || (original.runtimeKind === "member" && original.accountID === accountID)) {
+            if (!saved()) retain(view.handoffID)
+            rememberCleanup()
+          } else {
+            recovery.clear(view.handoffID)
+            setSaved(undefined)
+          }
+        } else {
+          recovery.clear(view.handoffID)
+          setSaved(undefined)
+        }
       } catch (error) {
         setStorageFailed(true)
         throw error
@@ -278,6 +297,60 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       if (previous !== view.phase) props.changed()
     }
     return view
+  }
+  function rememberCleanup() {
+    const view = state.view
+    if (!view || cleanup()) return
+    const runtime = state.runtimes.find((runtime) => runtime.runtimeID === view.targetRuntimeID)
+    if (!runtime || runtime.runtimeKind !== "member" || runtime.accountID !== accountID) return
+    const handle = organizationNativeCleanupHandle(view, runtime)
+    if (!handle) return
+    try {
+      const saved = recovery.rememberCleanup(handle)
+      setSaved(saved)
+      setCleanup(saved.nativeCleanup)
+    } catch (error) {
+      setStorageFailed(true)
+      failure(error)
+    }
+  }
+  function cleanupAllowed(handle: OrganizationNativeCleanupHandle) {
+    const runtime = state.runtimes.find((runtime) => runtime.runtimeID === handle.runtime.runtimeID)
+    return (
+      current() &&
+      !storageFailed() &&
+      handle.binding.orgID === orgID &&
+      handle.binding.deploymentIncarnation === incarnation &&
+      handle.binding.sessionID === sessionID &&
+      handle.runtime.accountID === accountID &&
+      runtime?.runtimeKind === "member" &&
+      runtime.accountID === accountID &&
+      runtime.publicKey === handle.runtime.publicKey &&
+      runtime.state === "active"
+    )
+  }
+  async function readCleanup(handle: OrganizationNativeCleanupHandle, requestID: string) {
+    if (!cleanupAllowed(handle) || cleanup() !== handle)
+      throw new DOMException("The native cleanup owner was retired", "AbortError")
+    const response = await api.orgHandoff.drive(
+      { handoffID: handle.binding.handoffID, orgHandoffDrive: { operation: "inspect-target", requestID } },
+      options,
+    )
+    if (!cleanupAllowed(handle) || cleanup() !== handle)
+      throw new DOMException("The native cleanup owner was retired", "AbortError")
+    return Handoff.MachineResult.parse(response.data)
+  }
+  function cleanupComplete(handle: OrganizationNativeCleanupHandle) {
+    if (!current() || cleanup() !== handle) return
+    try {
+      handoffRevision++
+      recovery.clear(handle.binding.handoffID)
+      setSaved(undefined)
+      setRetryable(false)
+    } catch (error) {
+      setStorageFailed(true)
+      failure(error)
+    }
   }
   async function refresh() {
     const id = saved()?.handoffID ?? state.view?.handoffID
@@ -290,7 +363,10 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   async function runtime(id: string) {
     if (state.runtimes.some((runtime) => runtime.runtimeID === id)) return
     const result = await api.orgRuntime.get({ runtimeID: id }, options)
-    if (current()) setState("runtimes", reconcile([...state.runtimes, result.data]))
+    if (current()) {
+      setState("runtimes", reconcile([...state.runtimes, result.data]))
+      rememberCleanup()
+    }
   }
   async function loadRuntimes(more = false) {
     if (listing()) return
@@ -308,6 +384,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
         reconcile([...new Map([...previous, ...result.data.items].map((entry) => [entry.runtimeID, entry])).values()]),
       )
       setRuntimeCursor(result.data.cursor)
+      rememberCleanup()
     } catch (error) {
       failure(error)
     } finally {
@@ -429,7 +506,9 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   }
   function mapping(): Handoff.WorkspaceMapping | undefined {
     const preview = state.preview
-    if (!preview || !preview.choices.some((choice) => choice.kind === kind() && !choice.requiresDifference)) return
+    if (!preview) return
+    if (kind() === "organization-native") return organizationNativeHandoffMapping(preview, "validation")
+    if (!preview.choices.some((choice) => choice.kind === kind() && !choice.requiresDifference)) return
     if (kind() === "native") return { kind: "native" }
     if (!preview.source) return
     const source = {
@@ -499,6 +578,8 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
           throw new Error("Handoff operation returned another participant")
         setState("machine", reconcile(result))
         setRetryable(result.state === "blocked")
+        if (result.operation === "preview-target" && result.state === "complete")
+          setNativeRevision((value) => value + 1)
         if (organizationHandoffMachineKnown(action, result)) confirmed(id)
         await refresh()
         return result.state === "complete"
@@ -625,6 +706,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   }
   function drive(operation: Handoff.Drive["operation"]) {
     try {
+      if (operation === "preview-target") handoffRevision++
       const previous = state.machine
       const runtimeID = operation.endsWith("-source") ? state.view?.sourceRuntimeID : state.view?.targetRuntimeID
       return perform({
@@ -639,6 +721,127 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       failure(error)
       return Promise.resolve(false)
     }
+  }
+  function nativeDirectoryLabel(view: Handoff.View) {
+    const mapping = view.workspaceMapping
+    const original = state.preview
+    const native = original?.native
+    if (
+      mapping.kind === "organization-native" &&
+      original?.targetRuntimeID === view.targetRuntimeID &&
+      native &&
+      native.reference.workspaceID === mapping.target.workspaceID &&
+      native.reference.generation === mapping.target.generation &&
+      native.reference.revision === mapping.target.expectedRevision &&
+      native.projectRevision === mapping.target.projectRevision
+    )
+      return native.label
+    return _(nativeMessages.selected)
+  }
+  async function readDifference(summary: Handoff.Difference, cursor?: string) {
+    const view = state.view
+    if (
+      !current() ||
+      !view ||
+      !targetOwner() ||
+      !props.session.permissions.execute ||
+      pending() ||
+      view.cancelRequested ||
+      !["preparing", "prepared"].includes(view.phase) ||
+      JSON.stringify(view.workspaceDifference) !== JSON.stringify(summary)
+    )
+      throw new DOMException("The native comparison has another owner", "AbortError")
+    const revision = handoffRevision
+    const handoffID = view.handoffID
+    const targetRuntimeID = view.targetRuntimeID
+    const requestID = generateSecureUUID()
+    const response = await api.orgHandoff.drive(
+      {
+        handoffID,
+        orgHandoffDrive: {
+          operation: "inspect-target",
+          requestID,
+          expectedRevision: summary.diffHash,
+          ...(cursor ? { cursor } : {}),
+        },
+      },
+      options,
+    )
+    if (
+      !current() ||
+      revision !== handoffRevision ||
+      state.view?.handoffID !== handoffID ||
+      state.view.cancelRequested ||
+      JSON.stringify(state.view.workspaceDifference) !== JSON.stringify(summary)
+    )
+      throw new DOMException("The native comparison was retired", "AbortError")
+    const result = Handoff.MachineResult.parse(response.data)
+    if (
+      result.handoffID !== handoffID ||
+      result.runtimeID !== targetRuntimeID ||
+      result.requestID !== requestID ||
+      result.operation !== "inspect-target"
+    )
+      throw new Error("The difference reader returned another destination")
+    return result
+  }
+  function acceptDifference(value: Handoff.DifferenceConsent) {
+    const captured = state.view ? Handoff.View.parse(state.view) : undefined
+    if (
+      !captured?.canAccept ||
+      !allowed() ||
+      pending() ||
+      captured.cancelRequested ||
+      captured.workspaceMapping.kind !== "organization-native" ||
+      !captured.targetAccepted ||
+      !captured.workspaceDifference ||
+      !targetOwner()
+    )
+      return
+    const consent = Handoff.DifferenceConsent.parse(value)
+    if (
+      JSON.stringify(consent) !== JSON.stringify(Handoff.DifferenceConsent.strip().parse(captured.workspaceDifference))
+    )
+      return
+    const parent = dialog.active?.id
+    if (!parent) return
+    first?.focus({ preventScroll: true })
+    confirm.show({
+      title: nativeMessages.accept,
+      description: { ...nativeMessages.acceptHint, values: { directory: nativeDirectoryLabel(captured) } },
+      confirmLabel: nativeMessages.accept,
+      tone: "warning",
+      async onConfirm() {
+        const currentView = state.view
+        if (
+          !allowed() ||
+          !currentView?.canAccept ||
+          currentView.handoffID !== captured.handoffID ||
+          currentView.mappingHash !== captured.mappingHash ||
+          currentView.mappingPlanRevision !== captured.mappingPlanRevision ||
+          !currentView.workspaceDifference ||
+          currentView.cancelRequested ||
+          JSON.stringify(Handoff.DifferenceConsent.strip().parse(currentView.workspaceDifference)) !==
+            JSON.stringify(consent)
+        )
+          return
+        await perform(
+          {
+            kind: "accept",
+            body: {
+              mappingPlanRevision: captured.mappingPlanRevision,
+              mappingHash: captured.mappingHash,
+              workspaceDifference: consent,
+            },
+          },
+          captured.handoffID,
+        )
+      },
+      onConfirmed() {
+        if (current() && state.view?.handoffID === captured.handoffID && dialog.active?.id === parent)
+          first?.focus({ preventScroll: true })
+      },
+    })
   }
   async function check(cursor?: string) {
     if (inspecting() || cancelling() || !current()) return
@@ -696,7 +899,9 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       if (!allowed() || !sourceOwner() || pending() || !preview || !selected) return
       const handoffID = generateSecureUUID()
       const workspaceMapping =
-        selected.kind === "organization-object" ? { ...selected, moveID: generateSecureUUID() } : selected
+        selected.kind === "organization-object" || selected.kind === "organization-native"
+          ? { ...selected, moveID: generateSecureUUID() }
+          : selected
       await perform(
         {
           kind: "prepare",
@@ -794,6 +999,18 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   onMount(() => {
     try {
       setSaved(recovery.read())
+      const retained = saved()?.nativeCleanup
+      if (retained) {
+        if (
+          retained.binding.orgID !== orgID ||
+          retained.binding.deploymentIncarnation !== incarnation ||
+          retained.runtime.accountID !== accountID
+        )
+          throw new Error("Native cleanup has another account or deployment")
+        setCleanup(retained)
+        void runtime(retained.runtime.runtimeID).catch((error) => failure(error, false))
+        return
+      }
     } catch (error) {
       setStorageFailed(true)
       failure(error)
@@ -852,7 +1069,12 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   const supportedChoices = () =>
     state.preview?.choices.filter(
       (choice) =>
-        ["native", "organization-live", "organization-object"].includes(choice.kind) && !choice.requiresDifference,
+        (["native", "organization-live", "organization-object"].includes(choice.kind) && !choice.requiresDifference) ||
+        (choice.kind === "organization-native" &&
+          choice.requiresDifference &&
+          !!state.preview?.native &&
+          state.preview.source?.kind === "organization" &&
+          !!state.preview.source.resource),
     ) ?? []
   const remoteWorkspace = () => {
     const mapping = state.view?.workspaceMapping
@@ -864,7 +1086,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   }
   return (
     <Dialog
-      title={_(messages.move)}
+      title={_(cleanup() && !state.view ? nativeMessages.cleanup : messages.move)}
       size="form"
       initialFocus={() => first}
       footer={
@@ -874,7 +1096,9 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       }
     >
       <div class="organization-handoff">
-        <p>{_(messages.hint)}</p>
+        <Show when={!cleanup()}>
+          <p>{_(messages.hint)}</p>
+        </Show>
         <WorkspaceError
           error={error()}
           retry={
@@ -884,7 +1108,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
               : undefined
           }
         />
-        <Show when={!state.view && !saved()}>
+        <Show when={!state.view && !saved() && !cleanup()}>
           <Show when={sourceOwner() && props.session.permissions.execute} fallback={<p>{_(messages.ownerHint)}</p>}>
             <div class="organization-handoff-fields">
               <label class="organization-handoff-field">
@@ -951,9 +1175,11 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                               {_(
                                 kind() === "native"
                                   ? messages.native
-                                  : kind() === "organization-live"
-                                    ? messages.live
-                                    : messages.object,
+                                  : kind() === "organization-native"
+                                    ? nativeMessages.existing
+                                    : kind() === "organization-live"
+                                      ? messages.live
+                                      : messages.object,
                               )}
                             </p>
                           }
@@ -967,15 +1193,45 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                               label: _(
                                 choice.kind === "native"
                                   ? messages.native
-                                  : choice.kind === "organization-live"
-                                    ? messages.live
-                                    : messages.object,
+                                  : choice.kind === "organization-native"
+                                    ? nativeMessages.existing
+                                    : choice.kind === "organization-live"
+                                      ? messages.live
+                                      : messages.object,
                               ),
                             }))}
                           />
                         </Show>
                       </div>
-                      <p>{_(kind() === "organization-live" ? messages.liveHint : messages.nativeHint)}</p>
+                      <p>
+                        {_(
+                          kind() === "organization-native"
+                            ? nativeMessages.hint
+                            : kind() === "organization-live"
+                              ? messages.liveHint
+                              : messages.nativeHint,
+                        )}
+                      </p>
+                      <Show when={kind() === "organization-native" && preview().native}>
+                        {(native) => (
+                          <dl class="organization-handoff-summary">
+                            <div>
+                              <dt>{_(nativeMessages.directory)}</dt>
+                              <dd>{native().label}</dd>
+                            </div>
+                          </dl>
+                        )}
+                      </Show>
+                      <Show
+                        when={
+                          preview().source?.kind === "organization" &&
+                          state.runtimes.find((runtime) => runtime.runtimeID === preview().targetRuntimeID)
+                            ?.runtimeKind === "member" &&
+                          !preview().native
+                        }
+                      >
+                        <p>{_(nativeMessages.unavailable)}</p>
+                      </Show>
                       <Show when={kind() === "organization-object"}>
                         <label class="organization-handoff-field">
                           <span>{_(messages.storage)}</span>
@@ -1071,9 +1327,11 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                     {_(
                       view().workspaceMapping.kind === "native"
                         ? messages.native
-                        : view().workspaceMapping.kind === "organization-live"
-                          ? messages.live
-                          : messages.object,
+                        : view().workspaceMapping.kind === "organization-native"
+                          ? nativeMessages.existing
+                          : view().workspaceMapping.kind === "organization-live"
+                            ? messages.live
+                            : messages.object,
                     )}
                   </dd>
                 </div>
@@ -1145,10 +1403,33 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                 <p role="status">{_(messages.cancelRequested)}</p>
               </Show>
               <Show
+                when={
+                  props.session.permissions.read &&
+                  view().workspaceMapping.kind === "organization-native" &&
+                  view().targetAccepted &&
+                  !sourceMissing() &&
+                  !view().cancelRequested &&
+                  ["preparing", "prepared"].includes(view().phase)
+                }
+              >
+                <Show when={targetOwner()} fallback={<p>{_(nativeMessages.waiting)}</p>}>
+                  <OrganizationNativeDifference
+                    view={view()}
+                    revision={nativeRevision()}
+                    disabled={!allowed()}
+                    pending={!!pending()}
+                    read={readDifference}
+                    preview={() => void drive("preview-target")}
+                    accept={acceptDifference}
+                    failed={(error) => failure(error, false)}
+                  />
+                </Show>
+              </Show>
+              <Show
                 when={pending()}
                 fallback={
                   <div class="organization-handoff-actions">
-                    <Show when={view().canAccept && !view().cancelRequested}>
+                    <Show when={view().canAccept && !view().targetAccepted && !view().cancelRequested}>
                       <Button
                         variant="primary"
                         disabled={!allowed()}
@@ -1159,7 +1440,11 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                           })
                         }
                       >
-                        {_(messages.accept)}
+                        {_(
+                          view().workspaceMapping.kind === "organization-native"
+                            ? nativeMessages.acceptDirectory
+                            : messages.accept,
+                        )}
                       </Button>
                     </Show>
                     <Show when={!view().targetAccepted && !view().canAccept && !view().cancelRequested}>
@@ -1185,7 +1470,9 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                         view().targetAccepted &&
                         targetOwner() &&
                         !sourceMissing() &&
-                        targetMissing()
+                        targetMissing() &&
+                        (view().workspaceMapping.kind !== "organization-native" ||
+                          view().workspaceDifferenceAccepted === true)
                       }
                     >
                       <Button disabled={!allowed()} onClick={() => void drive("prepare-target")}>
@@ -1266,11 +1553,24 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
             </>
           )}
         </Show>
-        <Show when={saved() && !state.view}>
+        <Show when={saved() && !state.view && !cleanup()}>
           <p role="status">{_(busy() ? messages.working : messages.unknown)}</p>
           <Button disabled={busy()} onClick={() => void check()}>
             {_(messages.check)}
           </Button>
+        </Show>
+        <Show when={cleanup()} keyed>
+          {(handle) => (
+            <OrganizationNativeCleanup
+              handle={handle}
+              heading={!!state.view}
+              disabled={!cleanupAllowed(handle)}
+              current={() => current() && cleanup() === handle}
+              read={(requestID) => readCleanup(handle, requestID)}
+              complete={() => cleanupComplete(handle)}
+              failed={(error) => failure(error, false)}
+            />
+          )}
         </Show>
         <Show when={pending()?.kind === "permit" && !cancellation() && !state.view?.cancelRequested}>
           <p>{_(messages.retryPermitHint)}</p>

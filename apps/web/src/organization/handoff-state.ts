@@ -2,6 +2,7 @@ import { z } from "zod"
 import { OrganizationHandoffProtocol as Handoff } from "@ericsanchezok/synergy-organization-protocol"
 import { Persist } from "@/utils/persist"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
+import { OrganizationNativeCleanupHandle } from "./handoff-native-cleanup-state"
 
 export const OrganizationHandoffAction = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("prepare"), body: Handoff.CurrentPrepare }),
@@ -29,10 +30,18 @@ const Saved = z
     pending: OrganizationHandoffAction.optional(),
     cancellation: Cancellation.optional(),
     cancellationNonce: z.uuid().optional(),
+    nativeCleanup: OrganizationNativeCleanupHandle.optional(),
   })
   .refine(
     (value) => value.pending?.kind !== "prepare" || value.pending.body.handoffID === value.handoffID,
     "Handoff recovery must retain its original preparation identity",
+  )
+  .refine(
+    (value) =>
+      !value.nativeCleanup ||
+      (value.nativeCleanup.binding.handoffID === value.handoffID &&
+        value.nativeCleanup.binding.sessionID === value.sessionID),
+    "Native cleanup must retain its original conversation",
   )
 export type OrganizationHandoffSaved = z.infer<typeof Saved>
 
@@ -71,6 +80,7 @@ export function createOrganizationHandoffState(input: {
         pending,
         cancellation: previous?.cancellation,
         cancellationNonce: previous?.cancellationNonce,
+        nativeCleanup: previous?.handoffID === handoffID ? previous.nativeCleanup : undefined,
       })
       storage.setItem(key, JSON.stringify(saved))
       return saved
@@ -120,6 +130,26 @@ export function createOrganizationHandoffState(input: {
       storage.setItem(key, JSON.stringify(saved))
       return saved
     },
+    rememberCleanup(handle: z.infer<typeof OrganizationNativeCleanupHandle>) {
+      const original = OrganizationNativeCleanupHandle.parse(handle)
+      const handoffID = original.binding.handoffID
+      const previous = read()
+      if (previous && previous.handoffID !== handoffID) throw new Error("Native cleanup has another retained handoff")
+      if (previous?.nativeCleanup) {
+        const saved = previous.nativeCleanup
+        if (
+          JSON.stringify(saved.binding) !== JSON.stringify(original.binding) ||
+          saved.manifestHash !== original.manifestHash ||
+          saved.runtime.publicKey !== original.runtime.publicKey ||
+          saved.runtime.accountID !== original.runtime.accountID
+        )
+          throw new Error("Native cleanup changed its original destination")
+        return previous
+      }
+      const saved = Saved.parse({ version: 1, projectID, sessionID, handoffID, ...previous, nativeCleanup: original })
+      storage.setItem(key, JSON.stringify(saved))
+      return saved
+    },
     clear(handoffID: string) {
       if (read()?.handoffID === handoffID) storage.removeItem(key)
     },
@@ -128,8 +158,29 @@ export function createOrganizationHandoffState(input: {
 
 export function organizationHandoffOutcomeKnown(action: OrganizationHandoffAction, view: Handoff.View) {
   if (action.kind === "prepare") return action.body.handoffID === view.handoffID
+  if (
+    view.phase === "cancelled" &&
+    view.workspaceMapping.kind === "organization-native" &&
+    action.kind === "drive" &&
+    action.body.operation.endsWith("-target")
+  )
+    return false
   if (["completed", "cancelled", "retired"].includes(view.phase)) return true
-  if (action.kind === "accept") return view.targetAccepted
+  if (action.kind === "accept") {
+    if (
+      !view.targetAccepted ||
+      action.body.mappingPlanRevision !== view.mappingPlanRevision ||
+      ("mappingHash" in action.body && action.body.mappingHash !== view.mappingHash)
+    )
+      return false
+    if (!("workspaceDifference" in action.body)) return true
+    return (
+      view.workspaceDifferenceAccepted === true &&
+      !!view.workspaceDifference &&
+      JSON.stringify(action.body.workspaceDifference) ===
+        JSON.stringify(Handoff.DifferenceConsent.strip().parse(view.workspaceDifference))
+    )
+  }
   if (action.kind === "cancel")
     return view.cancelRequested || ["surrendered", "committed", "activation_permitted"].includes(view.phase)
   if (action.kind === "drive" && action.body.operation === "cancel-source")
@@ -147,6 +198,7 @@ export function organizationHandoffMachineKnown(action: OrganizationHandoffActio
   const stages: Partial<Record<Handoff.Drive["operation"], Handoff.MachineResult["stage"]>> = {
     "prepare-source": "source-frozen",
     "prepare-target": "target-prepared",
+    "preview-target": "target-difference",
     "surrender-source": "source-surrendered",
     "cancel-source": "source-cancelled",
     "activate-target": "target-activated",

@@ -189,3 +189,69 @@ test("an unsent cancellation reply cannot clear a newer or legacy unknown intent
   expect(values.get(key)).toBe(before)
   expect(reloaded.read()?.pending).toEqual(native)
 })
+
+const difference = Handoff.Difference.parse({
+  sourceSnapshotHash: "b".repeat(64),
+  targetDigest: "c".repeat(64),
+  diffHash: "d".repeat(64),
+  mappingPlanRevision: 1,
+  entries: 2,
+  sourceEntries: 4,
+  targetEntries: 4,
+  mode: { source: 0o755, target: 0o755 },
+})
+const existing = Handoff.WorkspaceMapping.parse({
+  kind: "organization-native",
+  moveID: "native-move",
+  source: { workspaceID: "cloud", generation: 4 },
+  resource: { resourceID: "storage", workspaceID: "cloud", generation: 4, path: "project" },
+  target: {
+    kind: "existing",
+    workspaceID: "native",
+    generation: 2,
+    expectedRevision: 3,
+    projectRevision: "e".repeat(64),
+  },
+})
+
+test("initial target acceptance cannot acknowledge a second native difference consent or a changed version", () => {
+  const view = Handoff.View.parse({
+    ...completed,
+    phase: "preparing",
+    currentDriver: "source",
+    bindingEpoch: 7,
+    canAccept: true,
+    canCancel: true,
+    canContinue: false,
+    workspaceMapping: existing,
+    workspaceDifference: difference,
+    workspaceDifferenceAccepted: false,
+  })
+  const action = {
+    kind: "accept" as const,
+    body: {
+      mappingPlanRevision: 1,
+      mappingHash: view.mappingHash,
+      workspaceDifference: Handoff.DifferenceConsent.strip().parse(difference),
+    },
+  }
+  expect(organizationHandoffOutcomeKnown(action, view)).toBe(false)
+  expect(organizationHandoffOutcomeKnown(action, { ...view, workspaceDifferenceAccepted: true })).toBe(true)
+  expect(
+    organizationHandoffOutcomeKnown(action, {
+      ...view,
+      workspaceDifferenceAccepted: true,
+      workspaceDifference: { ...difference, targetDigest: "f".repeat(64) },
+    }),
+  ).toBe(false)
+})
+
+test("source cancellation alone cannot acknowledge an unknown native target preview", () => {
+  const view = Handoff.View.parse({ ...completed, phase: "cancelled", workspaceMapping: existing })
+  expect(
+    organizationHandoffOutcomeKnown(
+      { kind: "drive", body: { operation: "preview-target", requestID: "original-preview" } },
+      view,
+    ),
+  ).toBe(false)
+})

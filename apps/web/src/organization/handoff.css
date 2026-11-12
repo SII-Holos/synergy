@@ -85,6 +85,78 @@
   display: inline-flex;
   align-items: center;
 }
+.organization-handoff-native {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding-block-start: 16px;
+  border-top: 1px solid var(--border-weaker-base);
+}
+.organization-handoff-differences {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(320px, 40vh);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+.organization-handoff-differences li {
+  display: grid;
+  gap: 8px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--border-weaker-base);
+  min-width: 0;
+}
+.organization-handoff-differences strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.organization-handoff-differences dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+.organization-handoff-versions dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.organization-handoff-differences dl > div {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 4px;
+}
+.organization-handoff-differences dt,
+.organization-handoff-versions dt {
+  font-size: 12px;
+  color: var(--text-weak);
+  overflow-wrap: anywhere;
+}
+.organization-handoff-differences dd,
+.organization-handoff-versions dd {
+  margin: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.organization-handoff-native code {
+  display: block;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.organization-handoff-versions {
+  min-width: 0;
+}
+.organization-handoff-versions summary {
+  cursor: pointer;
+  font-size: 13px;
+  margin-block-end: 12px;
+}
 @media (max-width: 600px) {
   .organization-handoff-actions > button {
     min-height: 44px;

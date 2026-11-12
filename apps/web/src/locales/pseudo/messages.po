@@ -13745,6 +13745,162 @@ msgid "organization.handoff.native"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.native.absent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.accept"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptDirectory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.accepted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.checkCleanup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupComplete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupScope"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.cleanupUnknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differenceHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differences"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.differenceVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.directory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.directoryKind"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.existing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.fileKind"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.incomplete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.linkKind"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.mode"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.next"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.previewHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.previous"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.reviewed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.selected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.showing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.sourceVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.target"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.targetVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.waiting"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.nativeHint"
 msgstr ""
 
