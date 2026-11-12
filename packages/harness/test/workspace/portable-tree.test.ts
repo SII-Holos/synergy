@@ -1,8 +1,12 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { tmpdir } from "../support/fixture"
 import { SessionTransferStream as Stream } from "../../src/session/transfer-stream"
 import { WorkspacePortableTree as Portable } from "../../src/workspace/portable-tree"
+import { WorkspaceContent, WorkspaceBlobs } from "../../src/workspace/content"
+import { WorkspaceCatalog } from "../../src/workspace/catalog"
+import { WorkspaceTree } from "../../src/workspace/tree"
+import { testRuntime } from "../support/runtime"
 
 async function fixture(entries: AsyncIterable<Stream.Input>) {
   const objects = new Map<string, Uint8Array>()
@@ -40,6 +44,21 @@ async function fixture(entries: AsyncIterable<Stream.Input>) {
   return { store, root: { version: 1 as const, mode: 0o755, tree }, bodyReads: () => bodyReads }
 }
 const empty = async function* () {}
+
+test("directory traversal preserves sibling files sorted before the descendant prefix", async () => {
+  await using temporary = await tmpdir()
+  const f = await fixture(
+    (async function* (): AsyncGenerator<Stream.Input> {
+      yield { id: "a", kind: "record", metadata: { version: 1, kind: "directory", mode: 0o755 }, content: empty() }
+      for (const id of ["a.txt", "a/x"])
+        yield { id, kind: "file", metadata: { version: 1, kind: "file", mode: 0o644 }, content: empty() }
+    })(),
+  )
+  await using view = await Portable.open({ ...f, directory: temporary.path })
+  expect((await Array.fromAsync(view.children(""))).map((entry) => entry.path)).toEqual(["a", "a.txt"])
+  expect((await Array.fromAsync(view.children("a"))).map((entry) => entry.path)).toEqual(["a/x"])
+  expect(f.bodyReads()).toBe(0)
+})
 
 test("paged children list immediate entries across pages without following links or reading bodies", async () => {
   await using temporary = await tmpdir()
@@ -84,6 +103,105 @@ test("paged children list immediate entries across pages without following links
   await view.close()
   await expect(escaped.next()).rejects.toThrow("closed")
 })
+
+test("late child cursors seek bounded metadata and retain their original directory and position", async () => {
+  await using temporary = await tmpdir()
+  const f = await fixture(
+    (async function* (): AsyncGenerator<Stream.Input> {
+      for (const id of ["a", "a/sub", "a0"])
+        yield { id, kind: "record", metadata: { version: 1, kind: "directory", mode: 0o755 }, content: empty() }
+      for (const id of ["a.txt", "a/sub.txt", "a0.txt", "z"])
+        yield { id, kind: "file", metadata: { version: 1, kind: "file", mode: 0o644 }, content: empty() }
+      for (let ordinal = 0; ordinal < 513; ordinal++)
+        yield {
+          id: `a/sub/file-${String(ordinal).padStart(4, "0")}`,
+          kind: "file",
+          metadata: { version: 1, kind: "file", mode: 0o644 },
+          content: empty(),
+        }
+    })(),
+  )
+  await using view = await Portable.open({ ...f, directory: temporary.path })
+  const parse = JSON.parse
+  let decoded = 0
+  using boundary = spyOn(JSON, "parse").mockImplementation((...args: Parameters<typeof JSON.parse>) => {
+    const value: unknown = parse(...args)
+    if (value && typeof value === "object" && typeof Reflect.get(value, "id") === "string") decoded++
+    return value
+  })
+  const options = { after: "a" }
+  const retained = view.children("", options)
+  options.after = "z"
+  expect((await retained.next()).value?.path).toBe("a.txt")
+  await retained.return(undefined)
+  const page = view.children("", { after: "a.txt" })
+  decoded = 0
+  expect((await page.next()).value?.path).toBe("a0")
+  expect(decoded).toBeLessThanOrEqual(2)
+  await page.return(undefined)
+  decoded = 0
+  const last = await Array.fromAsync(view.children("a/sub", { after: "a/sub/file-0510" }))
+  expect(last.map((entry) => entry.path)).toEqual(["a/sub/file-0511", "a/sub/file-0512"])
+  expect(decoded).toBeLessThanOrEqual(3)
+  expect((await Array.fromAsync(view.children("a", { after: "a/sub" }))).map((entry) => entry.path)).toEqual([
+    "a/sub.txt",
+  ])
+  expect(() => view.children("a", { after: "a/sub/file-0001" })).toThrow("another directory")
+  expect(() => view.children("a", { after: "z" })).toThrow("another directory")
+  expect(() => view.children("", { after: "../escape" })).toThrow()
+  expect(f.bodyReads()).toBe(0)
+})
+
+test.each(["paged", "legacy"] as const)(
+  "%s Workspace callbacks forward child cursors and retire their iterators",
+  async (kind) => {
+    const entries: WorkspaceTree.Entry[] = [
+      { path: "a", kind: "directory", mode: 0o755 },
+      ...["a.txt", "a/x"].map((path) => ({
+        path,
+        kind: "file" as const,
+        mode: 0o644,
+        size: 0,
+        hash: WorkspaceTree.hash(new Uint8Array()),
+        chunks: [],
+      })),
+    ]
+    const f = await fixture(
+      (async function* (): AsyncGenerator<Stream.Input> {
+        for (const entry of entries) {
+          const reference = Portable.reference(entry, empty())
+          yield { ...reference, content: empty() }
+        }
+      })(),
+    )
+    const bytes =
+      kind === "paged"
+        ? new TextEncoder().encode(JSON.stringify(f.root))
+        : WorkspaceTree.encode({ version: 1, entries })
+    const manifest = WorkspaceTree.hash(bytes)
+    await f.store.put(manifest, bytes)
+    await using runtime = await testRuntime({ register: () => WorkspaceBlobs.register("children-fixture", f.store) })
+    await runtime.run(async () => {
+      const workspace = await WorkspaceCatalog.create({
+        scopeID: "child-cursor-scope",
+        backend: { provider: "objects", spec: { blobStore: "children-fixture" } },
+      })
+      const info = await WorkspaceCatalog.publishContent(workspace, manifest)
+      let retained: AsyncIterator<Portable.Entry> | undefined
+      await WorkspaceContent.withTree(info, f.store, async (tree) => {
+        const options = { after: "a" }
+        const page = tree.children("", options)
+        options.after = "a.txt"
+        expect((await Array.fromAsync(page)).map((entry) => entry.path)).toEqual(["a.txt"])
+        expect(() => tree.children("a", { after: "a.txt" })).toThrow("another directory")
+        retained = tree.children("", { after: "a" })
+      })
+      if (!retained) throw new Error("Workspace callback did not retain the child iterator")
+      await expect(retained.next()).rejects.toThrow("ended")
+      expect(f.bodyReads()).toBe(0)
+    })
+  },
+)
 
 test("paged Workspace metadata resolves directories and links without reading unrelated file content", async () => {
   await using temporary = await tmpdir()

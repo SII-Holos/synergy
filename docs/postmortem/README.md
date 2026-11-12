@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0147](0147-portable-child-list-skipped-prefix-siblings.md)
+
 - [0146](0146-browser-logins-survived-deployment-incarnation.md)
 
 - [0145](0145-workspace-move-release-outpaced-native-admission.md)

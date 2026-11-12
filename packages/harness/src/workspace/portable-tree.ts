@@ -107,13 +107,16 @@ export namespace WorkspacePortableTree {
           for await (const entry of index.entries(options)) yield reference(describe(entry), index.chunks(entry.id))
         })()
       }
-      function children(directory: string) {
+      function children(directory: string, options: { after?: string } = {}) {
         if (directory) WorkspaceTree.Path.parse(directory)
+        const selectedAfter = options.after === undefined ? undefined : WorkspaceTree.Path.parse(options.after)
+        if (selectedAfter !== undefined && posix.dirname(selectedAfter) !== (directory || "."))
+          throw new Error("Portable Workspace child cursor belongs to another directory")
         return (async function* () {
           if (directory && (await get(directory))?.kind !== "directory") return
           const prefix = directory ? directory + "/" : ""
           let from = prefix
-          let after: string | undefined
+          let after = selectedAfter
           for (;;) {
             const source = index.entries({ prefix, from, after })
             const next = await source.next()
@@ -121,8 +124,12 @@ export namespace WorkspacePortableTree {
             if (next.done) return
             const entry = describe(next.value)
             after = entry.path
-            // "0" is the exclusive upper bound of the descendant "/" prefix in SQLite's binary order.
-            if (entry.kind === "directory") from = entry.path + "0"
+            const separator = entry.path.indexOf("/", prefix.length)
+            if (separator !== -1) {
+              // Skip only an encountered descendant prefix; siblings such as "a.txt" precede "a/".
+              from = entry.path.slice(0, separator) + "0"
+              continue
+            }
             yield entry
           }
         })()

@@ -201,10 +201,22 @@ export namespace WorkspaceContent {
               )
         })()
       },
-      children(directory) {
+      children(directory, options = {}) {
         if (directory) WorkspaceTree.Path.parse(directory)
+        const after = options.after === undefined ? undefined : WorkspaceTree.Path.parse(options.after)
+        if (after !== undefined && path.posix.dirname(after) !== (directory || "."))
+          throw new Error("Workspace child cursor belongs to another directory")
         return (async function* () {
-          for (const entry of WorkspaceTree.children(tree, directory)) yield header(entry)
+          const children = WorkspaceTree.children(tree, directory)
+          let start = 0
+          let end = children.length
+          if (after !== undefined)
+            while (start < end) {
+              const middle = start + Math.floor((end - start) / 2)
+              if (children[middle]!.path <= after) start = middle + 1
+              else end = middle
+            }
+          for (let index = start; index < children.length; index++) yield header(children[index]!)
         })()
       },
       read(filename, options = {}) {
@@ -328,9 +340,9 @@ export namespace WorkspaceContent {
               })(),
             )
           },
-          children(directory: string) {
+          children(directory: string, options?: { after?: string }) {
             current()
-            return guarded(source.children(directory))
+            return guarded(source.children(directory, options))
           },
           read(filename: string, options?: { offset?: number; length?: number }) {
             current()
