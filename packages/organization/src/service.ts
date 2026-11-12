@@ -47,6 +47,7 @@ import { createSessionReadForwarder } from "./session-read"
 import { OrganizationServiceMaintenance } from "./service-maintenance"
 import { OrganizationServiceHome } from "./service-home"
 import { OrganizationServiceNative } from "./backup/service-native"
+import { OrganizationSourceRetirement } from "./backup/source-retirement"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -83,7 +84,23 @@ export async function openOrganizationRecovery(options: Pick<OrganizationService
   return recovery
 }
 
-async function openOrganizationNamespace(options: OrganizationServiceOptions, mode: "serve" | "upgrade" | "recovery") {
+export async function openOrganizationSourceRetirement(
+  options: Pick<OrganizationServiceOptions, "home" | "database"> & {
+    reference: OrganizationSourceRetirement.Reference
+  },
+) {
+  const reference = OrganizationSourceRetirement.Reference.parse(structuredClone(options.reference))
+  const entry = await openOrganizationNamespace(options, "retirement", reference)
+  if (entry.mode !== "retirement") throw new Error("Organization retirement startup selected another native mode")
+  const { mode: _, ...retirement } = entry
+  return retirement
+}
+
+async function openOrganizationNamespace(
+  options: OrganizationServiceOptions,
+  mode: "serve" | "upgrade" | "recovery" | "retirement",
+  retirement?: OrganizationSourceRetirement.Reference,
+) {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
   const home = path.resolve(options.home)
   const publicOrigin = options.publicOrigin
@@ -146,6 +163,11 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
         await OrganizationServiceMaintenance.stop()
         const errors: unknown[] = []
         try {
+          await OrganizationSourceRetirement.drain()
+        } catch (error) {
+          errors.push(error)
+        }
+        try {
           ObservabilityMetrics.stop()
         } catch (error) {
           errors.push(error)
@@ -178,10 +200,13 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
       RuntimeMaintenance.registerProtection()
       if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
       else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()
-      else OrganizationServiceHome.select()
+      else if (mode === "retirement") {
+        if (!retirement) throw new Error("Source retirement requires its original reference")
+        await OrganizationServiceHome.selectForRetirement(OrganizationSourceRetirement.marker(retirement))
+      } else OrganizationServiceHome.select()
       ownership = await ServerProcessLock.acquire()
-      if (mode !== "recovery") await HomeRestoration.assertOrdinaryStartup()
-      const owned = await HomeOwnership.assert()
+      if (mode !== "recovery" && mode !== "retirement") await HomeRestoration.assertOrdinaryStartup()
+      const owned = mode === "retirement" ? undefined : await HomeOwnership.assert()
       const data = path.join(root, "data")
       const entries: string[] = await fs.readdir(data).catch((error: NodeJS.ErrnoException) => {
         if (error.code === "ENOENT") return []
@@ -204,7 +229,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
       OrganizationArtifacts.registerAuthorityHistory()
       OrganizationCloud.registerAuthorityHistory()
       registerOrganizationMigrations()
-      if (mode !== "recovery") {
+      if (mode !== "recovery" && mode !== "retirement") {
         await OrganizationServiceHome.assertStartupOwner()
         OrganizationServiceMaintenance.register()
         OrganizationServiceHome.registerNamespaceIdentity()
@@ -233,6 +258,20 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
       if (mode === "recovery") {
         ready = true
         return { mode: "recovery" as const, home, run: maintenance.run, close, [Symbol.asyncDispose]: close }
+      }
+      if (mode === "retirement") {
+        if (!retirement) throw new Error("Source retirement requires its original reference")
+        await OrganizationSourceRetirement.assertReserved(retirement)
+        ready = true
+        const reference = retirement
+        return {
+          mode: "retirement" as const,
+          home,
+          run: maintenance.run,
+          complete: () => maintenance.run(() => OrganizationSourceRetirement.complete(reference)),
+          close,
+          [Symbol.asyncDispose]: close,
+        }
       }
       await ensureMigrations({ output: "silent" })
       await HomeOwnership.assert({ required: true })

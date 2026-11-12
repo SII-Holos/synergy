@@ -158,6 +158,38 @@ export namespace OrganizationServiceHome {
       readerContract: selected.readerContract,
     })
   }
+  export async function retirementOwner() {
+    const current = await retainedOwner()
+    const source = current.ownership.schemaVersion === 4 ? current.ownership.source : current.ownership
+    if (
+      (source.schemaVersion !== 2 && source.schemaVersion !== 3) ||
+      source.readerContract !== (source.schemaVersion === 2 ? readerContract : recoveryReaderContract)
+    )
+      fail("Service retirement requires its original supported Home owner")
+    return current
+  }
+  export async function inspectRetirement(input: HomeOwnershipFile.RetirementInfo) {
+    const marker = HomeOwnershipFile.RetirementInfo.parse(structuredClone(input))
+    const source = marker.source
+    if (
+      source.owner !== selected.owner ||
+      source.identity !== selected.identity ||
+      source.readerContract !== (source.schemaVersion === 2 ? readerContract : recoveryReaderContract)
+    )
+      fail("Service retirement requires its original supported Home owner")
+    const { host } = owner()
+    for (const directory of [host.home, host.root]) {
+      const info = await fs.lstat(directory)
+      if (!info.isDirectory() || info.isSymbolicLink()) fail("Service retirement requires its independent native Home")
+    }
+    const files = HomeOwnershipFile.open({ root: host.root, env: host.env, selected: marker })
+    const status = await files.inspectRetirement(source)
+    return { files, status, marker }
+  }
+  export async function selectForRetirement(marker: HomeOwnershipFile.RetirementInfo) {
+    const native = await inspectRetirement(marker)
+    HomeOwnership.select(native.status === "source" ? native.marker.source : native.marker)
+  }
   export async function selectForRecovery() {
     const current = await owner().files.read()
     if (current?.schemaVersion !== 3) return select()

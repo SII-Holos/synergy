@@ -6,19 +6,14 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
+import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
-import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationServiceNative as Native } from "./service-native"
+import { OrganizationCurrentAuthorityInfo as Info } from "./current-authority-schema"
+import { OrganizationInstallationReference } from "./installation-reference"
+import { OrganizationSourceRetirement as Retirement } from "./source-retirement"
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
-const Info = z.strictObject({
-  checkpoint: AuthorityJournal.Checkpoint,
-  after: AuthorityJournal.Checkpoint.optional(),
-  maintenance: RuntimeMaintenance.Info,
-  namespaceHash: OrganizationProtocol.Digest,
-  nativeHash: OrganizationProtocol.Digest,
-  clientDefinitionsHash: OrganizationProtocol.Digest,
-})
 type Info = z.infer<typeof Info>
 function fail(message: string): never {
   throw new Error("Current organization authority " + message)
@@ -28,7 +23,16 @@ export namespace OrganizationCurrentAuthority {
   export interface Source {
     readonly kind: "organization-current-authority"
   }
-  const sources = new WeakMap<Source, { info: Info; assert(): void; verify(): Promise<void> }>()
+  const sources = new WeakMap<
+    Source,
+    {
+      info: Info
+      assert(): void
+      verify(): Promise<void>
+      accept(work: () => Promise<Retirement.Receipt>): Promise<Retirement.Receipt>
+      lease: RuntimeMaintenance.Lease
+    }
+  >()
   function original(source: Source) {
     const value = sources.get(source)
     if (!value) fail("requires original live source evidence")
@@ -43,6 +47,46 @@ export namespace OrganizationCurrentAuthority {
     await value.verify()
     value.assert()
   }
+  export async function retirementReference(source: Source, target: z.infer<typeof OrganizationInstallationReference>) {
+    const selected = OrganizationInstallationReference.parse(structuredClone(target))
+    const value = original(source)
+    await value.verify()
+    value.assert()
+    const reference = await Retirement.reference(value.info, selected)
+    value.assert()
+    return reference
+  }
+  export function retire(source: Source, input: Retirement.Reference) {
+    const reference = Retirement.Reference.parse(structuredClone(input))
+    const value = original(source)
+    if (hash(reference.current) !== hash(value.info)) fail("retirement requires its exact verified current source")
+    return value.accept(async () => {
+      await value.verify()
+      value.assert()
+      const actual = await Retirement.reference(value.info, reference.target)
+      value.assert()
+      if (hash(actual) !== hash(reference)) fail("retirement requires its original physical Home and primary Store")
+      await value.verify()
+      const writer = await ServerProcessLock.currentOwnership()
+      await ServerProcessLock.verifyOwnership(writer)
+      value.assert()
+      const referenceHash = Retirement.marker(reference).referenceHash
+      try {
+        await Storage.transaction(() => RuntimeMaintenance.reserveRetirement(value.lease, referenceHash), {
+          commitGuard() {
+            value.assert()
+            ServerProcessLock.assertCurrent(writer)
+          },
+        })
+      } catch (error) {
+        const retained = await RuntimeMaintenance.retirement(reference.current.maintenance.maintenanceID)
+        if (!retained || retained.referenceHash !== referenceHash) throw error
+      }
+      return Retirement.complete(reference)
+    })
+  }
+  export const describeRetirement = Retirement.describe
+  export const verifyRetirement = Retirement.verify
   export async function withSource<T>(
     input: {
       lease: RuntimeMaintenance.Lease
@@ -115,6 +159,8 @@ export namespace OrganizationCurrentAuthority {
               signal,
             })
             let open = true
+            let accepting = true
+            const accepted = new Set<Promise<Retirement.Receipt>>()
             const assert = () => {
               if (!open) fail("source callback has ended")
               assertOwner()
@@ -165,14 +211,35 @@ export namespace OrganizationCurrentAuthority {
                   clientDefinitionsHash,
                 }),
                 assert,
+                lease,
+                accept(body) {
+                  if (!accepting) fail("source callback no longer accepts retirement work")
+                  assert()
+                  const work = body()
+                  accepted.add(work)
+                  return work
+                },
                 async verify() {
                   if ((await verify()) !== clientDefinitionsHash) fail("native client definitions changed")
                 },
               })
-              const result = await body(source)
+              const outcome = await body(source).then(
+                (value) => ({ kind: "success" as const, value }),
+                (error: unknown) => ({ kind: "failure" as const, error }),
+              )
+              accepting = false
+              const completed = await Promise.allSettled([...accepted])
+              const failures = completed.filter((result) => result.status === "rejected").map((result) => result.reason)
+              if (outcome.kind === "failure") failures.unshift(outcome.error)
+              const errors = [...new Set(failures)]
+              if (errors.length === 1) throw errors[0]
+              if (errors.length) throw new AggregateError(errors, "Current source retirement did not complete")
+              if (outcome.kind !== "success") fail("source callback failed")
               await verify()
-              return result
+              return outcome.value
             } finally {
+              accepting = false
+              await Promise.allSettled([...accepted])
               open = false
             }
           },

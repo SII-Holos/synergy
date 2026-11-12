@@ -19,16 +19,9 @@ import { OrganizationRecord as Record } from "../storage/records"
 import { OrganizationStoragePath as Keys } from "../storage/path"
 import { prepareSigningMaterial, validateSigningMaterial, OrganizationSigningMaterial } from "../signing"
 import { OrganizationServiceNative as Native } from "./service-native"
+import { OrganizationInstallationReference as Reference } from "./installation-reference"
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
-const Reference = z.strictObject({
-  installationID: z.uuid(),
-  incarnation: z.uuid(),
-  restoreID: HomeRestoration.Request.shape.restoreID,
-  requestHash: OrganizationProtocol.Digest,
-  sourceHash: OrganizationProtocol.Digest,
-  nativeHash: OrganizationProtocol.Digest,
-})
 const Info = z.strictObject({
   reference: Reference,
   identity: Command.SigningIdentity,

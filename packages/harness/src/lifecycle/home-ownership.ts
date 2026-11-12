@@ -18,13 +18,21 @@ export namespace HomeOwnership {
     input:
       | Omit<z.infer<typeof HomeOwnershipFile.LegacyInfo>, "schemaVersion">
       | Omit<z.infer<typeof HomeOwnershipFile.FencedInfo>, "schemaVersion">
-      | Omit<HomeOwnershipFile.RestorationInfo, "schemaVersion">,
+      | Omit<HomeOwnershipFile.RestorationInfo, "schemaVersion">
+      | Omit<HomeOwnershipFile.RetirementInfo, "schemaVersion">,
   ) {
     RuntimeContext.assertCompositionOpen("Home owner")
     if (state().selected) throw new Error("Home owner is already selected")
     state().selected = Info.parse({
       ...input,
-      schemaVersion: "installationID" in input ? 3 : "readerContract" in input ? 2 : 1,
+      schemaVersion:
+        "maintenanceID" in input && "source" in input
+          ? 4
+          : "installationID" in input
+            ? 3
+            : "readerContract" in input
+              ? 2
+              : 1,
     })
   }
 
