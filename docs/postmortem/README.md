@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0137](0137-current-fingerprints-hid-a-missing-authority-transition.md)
+
 - [0133](0133-session-freeze-ignored-retained-environment-admission.md)
 
 - [0135](0135-late-notifications-retained-a-replaced-deployment.md)

@@ -66,6 +66,50 @@ test("an authenticated namespace archive cannot certify a corrupted authority ch
   }
 })
 
+test("matching current policy and fingerprints cannot conceal a lost committed authority transition", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    const before = await AuthorityJournal.head()
+    await AuthorityJournal.transaction("policy.before-lost-history", async (journal) => {
+      journal.identify(actor)
+      await Storage.write(["policy", "one"], { enabled: false, revision: 2, credential: "new-private" })
+    })
+    const { items } = await AuthorityJournal.entries({ limit: 1 })
+    const changed = items[0]
+    if (!changed) throw new Error("The actual policy transition has no history")
+    await Storage.write(["storage_authority_journal", "head"], before)
+    await Storage.remove([
+      "storage_authority_journal",
+      "entries",
+      before.journalID,
+      String(changed.sequence).padStart(16, "0"),
+    ])
+    const observed = await AuthorityJournal.inspect()
+    expect(observed.chainValid).toBe(true)
+    expect(await Storage.read(["policy", "one"])).toMatchObject({ enabled: false, revision: 2 })
+    expect(observed.covered).toBe(false)
+    expect(observed.fingerprintGaps).toBeGreaterThan(0)
+  })
+})
+
+test("authority coverage follows recorded deletion and recreation without retaining an obsolete fingerprint", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    await AuthorityJournal.transaction("policy.recorded-delete", async (journal) => {
+      journal.identify(actor)
+      await Storage.remove(["policy", "one"])
+    })
+    expect((await AuthorityJournal.inspect()).covered).toBe(true)
+    expect(await Storage.readMany([["policy", "one"]])).toEqual([undefined])
+    await AuthorityJournal.transaction("policy.recorded-recreation", async (journal) => {
+      journal.identify(actor)
+      await Storage.write(["policy", "one"], { enabled: true, revision: 1, credential: "recreated-private" })
+    })
+    expect((await AuthorityJournal.inspect()).covered).toBe(true)
+    expect((await AuthorityJournal.head()).sequence).toBe(2)
+  })
+})
+
 test("an archived continuation proves its fixed earlier head across pages without reading the later live head", async () => {
   await using f = await fixture()
   const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "journal-continuation-"))

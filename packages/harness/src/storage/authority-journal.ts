@@ -75,22 +75,112 @@ const Entry = z.strictObject({
 })
 type Entry = z.infer<typeof Entry>
 type ChainRow = { key: readonly string[]; value: unknown }
+type Projection = { baseline(value: z.infer<typeof Fingerprint>): void; change(value: Entry): void }
+
+async function historyIndex() {
+  initializeSqliteEngine()
+  const directory = await fs.mkdtemp(path.join(tmpdir(), "synergy-authority-"))
+  let database: Database | undefined
+  try {
+    database = new Database(path.join(directory, "journal.sqlite"))
+    database.exec(
+      "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE history(kind TEXT NOT NULL,journalID TEXT NOT NULL,entryKey TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(kind,journalID,entryKey)); CREATE TABLE expected(keyHash TEXT PRIMARY KEY,domainID TEXT NOT NULL,entryKey TEXT NOT NULL,hash TEXT NOT NULL)",
+    )
+    const selected = database
+    return {
+      database: selected,
+      async [Symbol.asyncDispose]() {
+        try {
+          selected.close()
+        } finally {
+          await fs.rm(directory, { recursive: true, force: true })
+        }
+      },
+    }
+  } catch (error) {
+    database?.close()
+    await fs.rm(directory, { recursive: true, force: true })
+    throw error
+  }
+}
+
+function expectedProjection(database: Database) {
+  type Row = { domainID: string; entryKey: string; hash: string }
+  const get = database.query<Row, [string]>("SELECT domainID,entryKey,hash FROM expected WHERE keyHash=?")
+  const insert = database.query("INSERT OR IGNORE INTO expected VALUES(?,?,?,?)")
+  const write = database.query("INSERT OR REPLACE INTO expected VALUES(?,?,?,?)")
+  const remove = database.query("DELETE FROM expected WHERE keyHash=?")
+  let consistent = true
+  const projection: Projection = {
+    baseline(value) {
+      if (
+        domainFor(value.key)?.id !== value.domainID ||
+        insert.run(keyHash(value.key), value.domainID, JSON.stringify(value.key), value.hash).changes !== 1
+      )
+        consistent = false
+    },
+    change(value) {
+      const key = keyHash(value.key)
+      const previous = get.get(key)
+      if (
+        domainFor(value.key)?.id !== value.domainID ||
+        previous?.hash !== value.beforeHash ||
+        (previous && (previous.domainID !== value.domainID || previous.entryKey !== JSON.stringify(value.key))) ||
+        (value.beforeHash === undefined
+          ? value.before !== undefined
+          : value.before === undefined || digest(value.before) !== value.beforeHash) ||
+        (value.afterHash === undefined
+          ? value.after !== undefined
+          : value.after === undefined || digest(value.after) !== value.afterHash)
+      )
+        consistent = false
+      if (value.afterHash === undefined) remove.run(key)
+      else write.run(key, value.domainID, JSON.stringify(value.key), value.afterHash)
+    },
+  }
+  return {
+    projection,
+    get consistent() {
+      return consistent
+    },
+    matches(value: z.infer<typeof Fingerprint>) {
+      const expected = get.get(keyHash(value.key))
+      return (
+        expected?.domainID === value.domainID &&
+        expected.entryKey === JSON.stringify(value.key) &&
+        expected.hash === value.hash
+      )
+    },
+    entries() {
+      const query = database.query<Row, []>("SELECT domainID,entryKey,hash FROM expected ORDER BY keyHash")
+      return (function* () {
+        try {
+          for (const row of query.iterate())
+            yield { domainID: row.domainID, key: Key.parse(JSON.parse(row.entryKey)), hash: row.hash }
+        } finally {
+          query.finalize()
+        }
+      })()
+    },
+  }
+}
 
 async function validChain(
   head: Header,
   baselineRows: AsyncIterable<ChainRow>,
   entryRows: AsyncIterable<ChainRow>,
-  assert: () => void = () => {},
-  after?: Header,
+  options: { assert?: () => void; after?: Header; projection?: Projection } = {},
 ) {
+  const { assert, after, projection } = options
   const baseline = createHash("sha256").update(
     JSON.stringify(["synergy-authority-baseline-v1", head.journalID, head.namespaceID, head.contractHash]),
   )
   let count = 0
   let valid = true
   for await (const row of baselineRows) {
-    assert()
+    assert?.()
     const entry = Baseline.parse(row.value)
+    projection?.baseline(entry.fingerprint)
     if (
       row.key.length !== 4 ||
       row.key[0] !== root[0] ||
@@ -107,8 +197,9 @@ async function validChain(
   let sequence = 0
   let anchored = !after || (after.sequence === 0 && after.tailHash === previous)
   for await (const row of entryRows) {
-    assert()
+    assert?.()
     const entry = Entry.parse(row.value)
+    projection?.change(entry)
     const { hash, ...body } = entry
     if (
       entry.journalID !== head.journalID ||
@@ -125,7 +216,7 @@ async function validChain(
     previous = hash
     if (after?.sequence === sequence && after.tailHash === hash) anchored = true
   }
-  assert()
+  assert?.()
   return valid && anchored && sequence === head.sequence && previous === head.tailHash
 }
 interface Domain {
@@ -303,15 +394,10 @@ export namespace AuthorityJournal {
     const provider = input.keys
     const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
     signal?.throwIfAborted()
-    initializeSqliteEngine()
-    const temporary = await fs.mkdtemp(path.join(tmpdir(), "synergy-authority-"))
-    let database: Database | undefined
-    try {
+    await using index = await historyIndex()
+    {
       signal?.throwIfAborted()
-      database = new Database(path.join(temporary, "journal.sqlite"))
-      database.exec(
-        "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE history(kind TEXT NOT NULL,journalID TEXT NOT NULL,entryKey TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(kind,journalID,entryKey))",
-      )
+      const database = index.database
       using insert = database.query("INSERT INTO history VALUES(?,?,?,?)")
       let checkpoint: Checkpoint | undefined
       for await (const entry of StorageCheckpoint.entries({ directory, expected, keys, signal })) {
@@ -349,13 +435,13 @@ export namespace AuthorityJournal {
         }
       }
       if (
-        !(await validChain(checkpoint, history("baseline"), history("entries"), () => signal?.throwIfAborted(), after))
+        !(await validChain(checkpoint, history("baseline"), history("entries"), {
+          assert: () => signal?.throwIfAborted(),
+          after,
+        }))
       )
         throw new StorageIntegrityError("Archived authority history is incomplete or invalid")
       return Checkpoint.parse(checkpoint)
-    } finally {
-      database?.close()
-      await fs.rm(temporary, { recursive: true, force: true })
     }
   }
   export type Contribution = Domain
@@ -513,14 +599,32 @@ export namespace AuthorityJournal {
     return Storage.snapshot(async (tx) => {
       const head = await read(tx, Header, headerKey)
       if (!head) return { covered: false, initialized: false, fingerprintGaps: 0, chainValid: false }
+      await using index = await historyIndex()
+      const expected = expectedProjection(index.database)
+      const chainValid = await validChain(
+        head,
+        rows(tx, [...root, "baseline", head.journalID]),
+        rows(tx, records(head.journalID)),
+        { projection: expected.projection },
+      )
       let fingerprintGaps = 0
       for await (const row of rows(tx, fingerprints(head.journalID))) {
-        const expected = Fingerprint.parse(row.value)
-        const domain = registry().domains.get(expected.domainID)
-        const [value] = await tx.readMany([expected.key])
-        const current = value === undefined || !domain ? undefined : project(domain, expected.key, value)
-        if (current === undefined || digest(current) !== expected.hash || row.key.at(-1) !== keyHash(expected.key))
+        const retained = Fingerprint.parse(row.value)
+        const domain = registry().domains.get(retained.domainID)
+        const [value] = await tx.readMany([retained.key])
+        const current = value === undefined || !domain ? undefined : project(domain, retained.key, value)
+        if (
+          current === undefined ||
+          digest(current) !== retained.hash ||
+          row.key.length !== 4 ||
+          row.key.at(-1) !== keyHash(retained.key) ||
+          !expected.matches(retained)
+        )
           fingerprintGaps++
+      }
+      for (const fingerprint of expected.entries()) {
+        const retained = await read(tx, Fingerprint, [...fingerprints(head.journalID), keyHash(fingerprint.key)])
+        if (!retained || !expected.matches(retained)) fingerprintGaps++
       }
       for (const domain of domains())
         for (const prefix of domain.prefixes)
@@ -530,17 +634,17 @@ export namespace AuthorityJournal {
             const expected = await read(tx, Fingerprint, [...fingerprints(head.journalID), keyHash(row.key)])
             if (!expected) fingerprintGaps++
           }
-      const chainValid = await validChain(
-        head,
-        rows(tx, [...root, "baseline", head.journalID]),
-        rows(tx, records(head.journalID)),
-      )
       return {
         head,
         initialized: true,
         fingerprintGaps,
         chainValid,
-        covered: head.contractHash === contractHash() && !head.untracked && fingerprintGaps === 0 && chainValid,
+        covered:
+          head.contractHash === contractHash() &&
+          !head.untracked &&
+          fingerprintGaps === 0 &&
+          chainValid &&
+          expected.consistent,
       }
     })
   }
