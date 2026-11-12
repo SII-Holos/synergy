@@ -13,7 +13,7 @@ Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClien
 
 `resources` owns telemetry-independent sampling. Register `ResourceHost` before startup; verify `test/resources` and both JIT modes.
 
-- Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
+- Own model SDK factories/loading in `src/provider/sdk-registry.ts`; `registerLocalRuntime()` registers host and worker sources.
 - Image decoding uses `AttachmentImageInput`; verify `test/attachment/image-input.test.ts` and Media's attachment suite.
 - Own native/Docker providers, Executor transport and receipts. Require Session/Host origins and owned Uses. Retain `OwnedProcess`/Workspace claims through final saving and publication. Verify `bun test test/environment test/workspace/coordinator.test.ts` and README's Docker integration.
 - Own PTYs, process maintenance, Linux ownership, watchers, sandboxes, Rust helpers and packaging. Use platform optional dependencies. Build: `bun script/build-pty.ts`; test process/maintenance, native-pty/pty/owned-process-linux. Require origins; drain completion; retain uncertain starts without killing/replaying. Register `SandboxHost` and `file-watcher` Scope startup; Harness owns policy/wrappers.
@@ -39,6 +39,6 @@ Trusted transfers use `workspace-file/service`: imports accept stable operation 
 
 `environment/profiles` owns global profiles and local/S3/OSS factories. Snapshot settings, fail closed, and keep external mounts read-only. Test `test/environment/profiles.test.ts`; `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE` enables Docker integration.
 
-Explicit `environment: "native"` composition selects the native provider/default without installing personal profile resolution. Hosted compositions supply their own providers.
+Explicit `environment: "native"` selects the native provider/default without personal profiles. Hosted compositions supply providers. Descriptor portability requires explicit composition; verify `test/session-transfer-environments-native.test.ts`.
 
 Transfers: `session-transfer-workspaces`, `session-transfer-workspace-target`; trees: `workspace/{file-host,portable-tree,portable-git,portable-target}`; claims: `session-transfer-physical`. Paged checkpoints/imports preserve identity/policy. Verify source/target/physical, file-host-paged, mount-paged, tree/Git.

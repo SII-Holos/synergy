@@ -22,6 +22,8 @@ import { NativeProcessMaintenance } from "../process/maintenance"
 import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 
 const Allocation = z.object({ id: z.string(), capabilities: z.array(z.string()), target: Environment.Target })
+const Spec = z.object({}).strict()
+const capabilities = ["exec", "pty", "files"] as const
 
 export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoordinator } = {}) {
   const root = path.join(RuntimeContext.current().host.root, "state", "environments")
@@ -33,7 +35,17 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
   const provider: EnvironmentProvider = {
     id: "native",
     ownership: "borrowed",
-    validateSpec: (spec) => z.object({}).strict().parse(spec),
+    validateSpec: (spec) => Spec.parse(spec),
+    portableDescriptor(spec) {
+      Spec.parse(spec)
+      return {
+        version: 1,
+        kind: "native",
+        platform: process.platform,
+        architecture: process.arch,
+        capabilities: [...capabilities],
+      }
+    },
     async workspacePath(_request, workspace) {
       return (await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.binding.generation)).path
     },
@@ -43,7 +55,7 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
         allocationID: request.requestID,
         generation: request.generation,
       }
-      const allocation = { id: request.requestID, capabilities: ["exec", "pty", "files"], target }
+      const allocation = { id: request.requestID, capabilities: [...capabilities], target }
       const current = await provider.inspect(request)
       if (current.state === "ready") return current.allocation
       if (current.state === "unknown") throw new Error("Native Environment has another allocation")

@@ -169,10 +169,19 @@ export namespace SessionTransferCore {
     return { raw, info }
   }
 
-  async function sourceInfo(context: Owners.TargetContext) {
-    const record = await context.staged.record(infoKey(context.session))
+  export async function stagedInfo(
+    session: Readonly<Session.Info>,
+    read: (key: string[]) => Promise<Owners.StagedRecord | undefined>,
+  ) {
+    session = structuredClone(session)
+    const record = await read(infoKey(session))
     if (!record) fail("Portable Session metadata is absent")
-    return parseInfo(context.session, record.value)
+    if (!isInfo(session, record.key)) fail("Portable Session metadata has another canonical address")
+    return parseInfo(session, record.value)
+  }
+
+  async function sourceInfo(context: Owners.TargetContext) {
+    return stagedInfo(context.session, (key) => context.staged.record(key))
   }
 
   function map(context: Owners.TargetContext, key: string[], value: unknown) {
