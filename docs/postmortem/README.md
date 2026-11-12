@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0144](0144-source-retirement-fenced-a-substituted-directory.md)
+
 - [0140](0140-project-publication-used-management-permission.md)
 
 - [0138](0138-space-local-notification-hosts-lost-background-actions.md)

@@ -1,5 +1,5 @@
 import path from "node:path"
-import { createReadStream } from "node:fs"
+import { constants, createReadStream } from "node:fs"
 import fs from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { z } from "zod"
@@ -57,9 +57,9 @@ export namespace HomeOwnershipFile {
     const selected = input.selected ? Info.parse(input.selected) : undefined
     const filename = path.join(root, "home-ownership.json")
     async function physicalHash() {
-      const info = await fs.lstat(root)
+      const info = await fs.lstat(root, { bigint: true })
       const canonical = await fs.realpath(root)
-      const after = await fs.lstat(root)
+      const after = await fs.lstat(root, { bigint: true })
       if (
         !info.isDirectory() ||
         info.isSymbolicLink() ||
@@ -152,23 +152,89 @@ export namespace HomeOwnershipFile {
         },
       )
     }
-    async function retire(expected: z.infer<typeof Source>) {
+    function retirement(expected: z.infer<typeof Source>) {
       const prior = Source.parse(expected)
       if (!selected || selected.schemaVersion !== 4 || JSON.stringify(selected.source) !== JSON.stringify(prior))
         throw new Error("Source retirement requires its original fenced Home identity")
-      await withFileLock({ directory: path.join(root, "state", ".locks"), key: "home-ownership" }, async () => {
-        if (selected.physicalHash !== (await physicalHash()))
-          throw new Error("Source Home physical identity changed before permanent retirement")
-        const info = await fs.lstat(filename)
-        if (!info.isFile() || info.isSymbolicLink()) throw new Error("Source Home ownership is invalid or changed")
-        const current = await read()
-        if (JSON.stringify(current) === JSON.stringify(selected)) return
-        if (JSON.stringify(current) !== JSON.stringify(prior))
-          throw new Error("Source Home owner changed before permanent retirement")
-        await AtomicFile.writeJsonAtomic(filename, JSON.stringify(selected) + "\n", { private: true, durable: true })
-        await assert({ required: true })
-      })
+      return { prior, marker: selected, encoded: Buffer.from(JSON.stringify(selected) + "\n") }
     }
-    return { read, assert, persist, upgrade, retire, physicalHash }
+    async function withRetirementFile<T>(
+      expected: z.infer<typeof Source>,
+      writable: boolean,
+      action: (input: {
+        file: fs.FileHandle
+        encoded: Buffer
+        status: "source" | "retired" | "incomplete"
+      }) => Promise<T>,
+    ) {
+      const { prior, marker, encoded } = retirement(expected)
+      if (marker.physicalHash !== (await physicalHash()))
+        throw new Error("Source Home physical identity changed before permanent retirement")
+      const before = await fs.lstat(filename, { bigint: true })
+      if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || before.size > 4096n)
+        throw new Error("Source Home ownership is invalid or changed")
+      const file = await fs.open(
+        filename,
+        (writable ? constants.O_RDWR : constants.O_RDONLY) | (constants.O_NOFOLLOW ?? 0),
+      )
+      try {
+        const info = await file.stat({ bigint: true })
+        if (
+          !info.isFile() ||
+          info.nlink !== 1n ||
+          info.dev !== before.dev ||
+          info.ino !== before.ino ||
+          info.size !== before.size ||
+          marker.physicalHash !== (await physicalHash())
+        )
+          throw new Error("Source Home physical identity changed before permanent retirement")
+        const bytes = Buffer.alloc(4097)
+        const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+        const raw = bytes.subarray(0, bytesRead)
+        const after = await file.stat({ bigint: true })
+        if (after.size !== BigInt(bytesRead) || after.size !== info.size || after.nlink !== 1n)
+          throw new Error("Source Home ownership changed while reading")
+        let value: unknown
+        try {
+          value = Info.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)))
+        } catch {}
+        const status =
+          JSON.stringify(value) === JSON.stringify(prior)
+            ? "source"
+            : JSON.stringify(value) === JSON.stringify(marker)
+              ? "retired"
+              : raw.length < encoded.length && raw.equals(encoded.subarray(0, raw.length))
+                ? "incomplete"
+                : undefined
+        if (!status) throw new Error("Source Home owner changed before permanent retirement")
+        return await action({ file, encoded, status })
+      } finally {
+        await file.close()
+      }
+    }
+    async function inspectRetirement(expected: z.infer<typeof Source>) {
+      return withRetirementFile(expected, false, async ({ status }) => status)
+    }
+    async function retire(expected: z.infer<typeof Source>) {
+      retirement(expected)
+      await withFileLock({ directory: path.join(root, "state", ".locks"), key: "home-ownership" }, () =>
+        withRetirementFile(expected, true, async ({ file, encoded, status }) => {
+          if (status !== "retired") {
+            // A pathname rename could publish into a replaced Home; retain this original inode through the fence.
+            await file.truncate(0)
+            await file.sync()
+            let offset = 0
+            while (offset < encoded.length) {
+              const { bytesWritten } = await file.write(encoded, offset, encoded.length - offset, offset)
+              if (!bytesWritten) throw new Error("Source Home retirement made no write progress")
+              offset += bytesWritten
+            }
+          }
+          await file.sync()
+          await assert({ required: true })
+        }),
+      )
+    }
+    return { read, assert, persist, upgrade, retire, inspectRetirement, physicalHash }
   }
 }

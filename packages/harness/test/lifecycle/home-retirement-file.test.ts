@@ -2,7 +2,6 @@ import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
-import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { HomeOwnershipFile } from "../../src/lifecycle/home-ownership-file"
 import { runtimeHome } from "../support/runtime-home"
 
@@ -57,11 +56,19 @@ test("permanent source retirement excludes literal released readers and retains 
   expect(await reader("credentials", "before-credentials")).toEqual({ code: 0, reached: true })
   expect(await reader("sql", "before-sql")).toEqual({ code: 0, reached: true })
   const target = HomeOwnershipFile.open({ root: fixture.host.root, env: fixture.host.env, selected: retired })
-  const write = AtomicFile.writeJsonAtomic
+  const open = fs.open
   const lost = new Error("native source retirement acknowledgement lost")
-  const barrier = spyOn(AtomicFile, "writeJsonAtomic").mockImplementation(async (...args) => {
-    await write(...args)
-    if (args[0] === path.join(fixture.host.root, "home-ownership.json")) throw lost
+  const barrier = spyOn(fs, "open").mockImplementation(async (...args) => {
+    const file = await open(...args)
+    if (args[0] === path.join(fixture.host.root, "home-ownership.json") && args[1] !== "r") {
+      const sync = file.sync.bind(file)
+      let calls = 0
+      spyOn(file, "sync").mockImplementation(async () => {
+        await sync()
+        if (++calls === 2) throw lost
+      })
+    }
+    return file
   })
   try {
     await expect(target.retire(original)).rejects.toBe(lost)
@@ -88,4 +95,105 @@ test("permanent source retirement excludes literal released readers and retains 
   await expect(
     HomeOwnershipFile.open({ root: copy.host.root, env: copy.host.env, selected: retired }).assert({ required: true }),
   ).rejects.toThrow("physical identity")
+})
+
+async function retirementFixture() {
+  const fixture = await runtimeHome()
+  const original = {
+    schemaVersion: 2 as const,
+    owner: "organization",
+    identity: "a".repeat(64),
+    readerContract: "native-organization-service-ownership-v1",
+  }
+  const files = HomeOwnershipFile.open({ root: fixture.host.root, env: fixture.host.env, selected: original })
+  await files.persist()
+  const marker = HomeOwnershipFile.RetirementInfo.parse({
+    ...original,
+    schemaVersion: 4,
+    readerContract: "native-organization-service-retirement-v1",
+    maintenanceID: "original-frozen-source",
+    referenceHash: "b".repeat(64),
+    physicalHash: await files.physicalHash(),
+    source: original,
+  })
+  const target = HomeOwnershipFile.open({ root: fixture.host.root, env: fixture.host.env, selected: marker })
+  return { ...fixture, original, files, marker, target, filename: path.join(fixture.host.root, "home-ownership.json") }
+}
+
+for (const replacement of ["directory", "file"] as const)
+  test(`permanent publication never writes into a substituted native ${replacement}`, async () => {
+    await using fixture = await retirementFixture()
+    const open = fs.open
+    let replaced = false
+    using barrier = spyOn(fs, "open").mockImplementation(async (...args) => {
+      const file = await open(...args)
+      if (args[0] === fixture.filename && typeof args[1] === "number") {
+        const write = file.write.bind(file)
+        spyOn(file, "write").mockImplementation((async (
+          buffer: Uint8Array,
+          offset: number,
+          length: number,
+          position: number,
+        ) => {
+          if (!replaced) {
+            replaced = true
+            if (replacement === "directory") {
+              await fs.rename(fixture.host.root, fixture.host.root + "-original")
+              await fs.mkdir(fixture.host.root, { recursive: true })
+            } else await fs.rename(fixture.filename, fixture.filename + ".original")
+            await fs.writeFile(fixture.filename, JSON.stringify(fixture.original))
+          }
+          return write(buffer, offset, length, position)
+        }) as typeof file.write)
+      }
+      return file
+    })
+    await expect(fixture.target.retire(fixture.original)).rejects.toThrow()
+    expect(replaced).toBe(true)
+    expect(await fixture.files.read()).toEqual(fixture.original)
+    const detached =
+      replacement === "directory"
+        ? path.join(fixture.host.root + "-original", "home-ownership.json")
+        : fixture.filename + ".original"
+    expect(JSON.parse(await fs.readFile(detached, "utf8"))).toEqual(fixture.marker)
+  })
+
+test("an interrupted retirement is strict for startup and can repair only its exact retained prefix", async () => {
+  await using fixture = await retirementFixture()
+  const encoded = JSON.stringify(fixture.marker) + "\n"
+  for (const size of [0, 1, 19, encoded.length - 2]) {
+    await fs.writeFile(fixture.filename, encoded.slice(0, size))
+    await expect(fixture.files.read()).rejects.toThrow("invalid or unsupported")
+    expect(await fixture.target.inspectRetirement(fixture.original)).toBe("incomplete")
+    await fixture.target.retire(fixture.original)
+    expect(await fixture.target.assert({ required: true })).toEqual(fixture.marker)
+  }
+  await fs.writeFile(fixture.filename, '{"schemaVersion":4,"foreign":true}')
+  await expect(fixture.target.inspectRetirement(fixture.original)).rejects.toThrow("changed")
+  await expect(fixture.target.retire(fixture.original)).rejects.toThrow("changed")
+  expect(await fs.readFile(fixture.filename, "utf8")).toBe('{"schemaVersion":4,"foreign":true}')
+})
+
+test("an actual interrupted fd write leaves a repairable prefix without reopening the old reader", async () => {
+  await using fixture = await retirementFixture()
+  const open = fs.open
+  const lost = new Error("native interrupted write")
+  using barrier = spyOn(fs, "open").mockImplementation(async (...args) => {
+    const file = await open(...args)
+    if (args[0] === fixture.filename && typeof args[1] === "number") {
+      const write = file.write.bind(file)
+      spyOn(file, "write").mockImplementation(async (buffer: NodeJS.ArrayBufferView | string) => {
+        if (!(buffer instanceof Uint8Array)) throw new Error("Expected native byte publication")
+        await write(buffer, 0, 23, 0)
+        throw lost
+      })
+    }
+    return file
+  })
+  await expect(fixture.target.retire(fixture.original)).rejects.toBe(lost)
+  await expect(fixture.files.assert({ required: true })).rejects.toThrow("invalid or unsupported")
+  expect(await fixture.target.inspectRetirement(fixture.original)).toBe("incomplete")
+  barrier.mockRestore()
+  await fixture.target.retire(fixture.original)
+  expect(await fixture.target.assert({ required: true })).toEqual(fixture.marker)
 })
