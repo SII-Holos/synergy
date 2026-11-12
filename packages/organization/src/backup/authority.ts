@@ -1,0 +1,349 @@
+import fs from "node:fs/promises"
+import { constants } from "node:fs"
+import path from "node:path"
+import { createHash } from "node:crypto"
+import { z } from "zod"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
+import { StorageQueue, withStorageQueueOptions } from "@ericsanchezok/synergy-harness/storage/queue"
+import { SecretEnvelope, type VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
+import {
+  OrganizationProtocol,
+  OrganizationCommandProtocol as Command,
+} from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationRecord as Record } from "../storage/records"
+import { OrganizationStoragePath as Keys } from "../storage/path"
+import { prepareSigningMaterial, validateSigningMaterial, OrganizationSigningMaterial } from "../signing"
+import { OrganizationServiceNative as Native } from "./service-native"
+
+const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+const Reference = z.strictObject({
+  installationID: z.uuid(),
+  incarnation: z.uuid(),
+  restoreID: HomeRestoration.Request.shape.restoreID,
+  requestHash: OrganizationProtocol.Digest,
+  sourceHash: OrganizationProtocol.Digest,
+  nativeHash: OrganizationProtocol.Digest,
+})
+const Info = z.strictObject({
+  reference: Reference,
+  identity: Command.SigningIdentity,
+  sourceIdentity: Command.SigningIdentity,
+  checkpoint: AuthorityJournal.Checkpoint,
+  clientDefinitionsHash: OrganizationProtocol.Digest,
+  createdAt: z.number().int().nonnegative().safe(),
+})
+type Info = z.infer<typeof Info>
+const Material = Info.extend({ version: z.literal(1), envelope: SecretEnvelope.Ciphertext })
+type Material = z.infer<typeof Material>
+const queue = RuntimeContext.state(() => new StorageQueue("organization.recovery-signing"))
+const materialName = "signing-material.json"
+
+function fail(message: string): never {
+  throw new Error("Organization recovery authority " + message)
+}
+async function directory(root: string, installationID: string, create: boolean, assert: () => void) {
+  let current = root
+  for (const name of ["state", "organization-recovery", installationID]) {
+    current = path.join(current, name)
+    if (create)
+      await fs.mkdir(current, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST") throw error
+      })
+    assert()
+    const info = await fs.lstat(current)
+    assert()
+    if (!info.isDirectory() || info.isSymbolicLink() || (await fs.realpath(current)) !== current)
+      fail("requires its original private material directory")
+    assert()
+  }
+  return path.join(current, materialName)
+}
+async function read(filename: string, assert: () => void): Promise<Material | undefined> {
+  try {
+    const before = await fs.lstat(filename)
+    assert()
+    if (!before.isFile() || before.isSymbolicLink() || before.size > 16 * 1024)
+      fail("material is invalid or unsupported")
+    const file = await fs.open(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+    try {
+      assert()
+      const initial = await file.stat()
+      assert()
+      if (initial.dev !== before.dev || initial.ino !== before.ino || initial.size !== before.size)
+        fail("material changed while opening")
+      const bytes = Buffer.alloc(initial.size + 1)
+      try {
+        let used = 0
+        for (;;) {
+          const next = await file.read(bytes, used, bytes.length - used, used)
+          assert()
+          used += next.bytesRead
+          if (used > initial.size) fail("material changed while reading")
+          if (!next.bytesRead) break
+        }
+        const final = await file.stat()
+        assert()
+        const retained = await fs.lstat(filename)
+        assert()
+        if (
+          used !== initial.size ||
+          final.mtimeMs !== initial.mtimeMs ||
+          final.ctimeMs !== initial.ctimeMs ||
+          retained.dev !== initial.dev ||
+          retained.ino !== initial.ino
+        )
+          fail("material changed while reading")
+        return Material.parse(JSON.parse(bytes.subarray(0, used).toString("utf8")))
+      } finally {
+        bytes.fill(0)
+      }
+    } finally {
+      await file.close()
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw error
+  }
+}
+function publicIdentity(stored: z.infer<typeof Record.SigningIdentity>) {
+  return Command.SigningIdentity.parse({
+    schemaVersion: 1,
+    orgID: stored.orgID,
+    deploymentIncarnation: stored.deploymentIncarnation,
+    keyID: stored.keyID,
+    publicKey: stored.publicKey,
+  })
+}
+function authenticated(value: Material) {
+  const { version: _, envelope: _envelope, ...info } = value
+  return Info.parse(info)
+}
+function envelopeIdentity(info: Info) {
+  return {
+    authority: ["organization-recovery-prepared-signing-v1", hash(info)],
+    id: info.reference.installationID,
+  }
+}
+
+export namespace OrganizationRecoveryAuthority {
+  export interface Prepared {
+    readonly kind: "organization-recovery-prepared-signing"
+  }
+  const prepared = new WeakMap<Prepared, { info: Info; assert(): void; verify(): Promise<void> }>()
+  export function assertPrepared(value: Prepared) {
+    const original = prepared.get(value)
+    if (!original) fail("requires its original prepared evidence")
+    original.assert()
+  }
+  export function describe(value: Prepared): Info {
+    assertPrepared(value)
+    return Info.parse(prepared.get(value)!.info)
+  }
+  export async function verify(value: Prepared) {
+    assertPrepared(value)
+    await prepared.get(value)!.verify()
+    assertPrepared(value)
+  }
+  export function prepare(input: {
+    permit: HomeRestoration.InstallPermit
+    request: Native.InstallationRequest
+    native: Native.Installed
+    namespaceDirectory: string
+    keys: VaultKeyProvider
+    signal?: AbortSignal
+  }): Promise<Prepared> {
+    const provider = input.keys
+    const captured = {
+      permit: input.permit,
+      request: Native.InstallationRequest.parse(structuredClone(input.request)),
+      native: input.native,
+      namespaceDirectory: input.namespaceDirectory,
+      keys: Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) }),
+      signal: input.signal,
+    }
+    captured.signal?.throwIfAborted()
+    HomeRestoration.assertRequest(captured.permit, captured.request)
+    Native.assertInstalled(captured.native)
+    return withStorageQueueOptions({ signal: captured.signal }, () => queue().run(() => prepareNative(captured)))
+  }
+  async function prepareNative(input: Parameters<typeof prepare>[0]): Promise<Prepared> {
+    const { permit, request, native, keys, signal } = input
+    const runtime = RuntimeContext.current()
+    const root = runtime.host.root
+    const selected = HomeRestoration.describe(permit)
+    const reference = Reference.parse({
+      installationID: selected.installationID,
+      incarnation: selected.incarnation,
+      restoreID: selected.restoreID,
+      requestHash: selected.requestHash,
+      sourceHash: selected.sourceHash,
+      nativeHash: request.payload.nativeHash,
+    })
+    const assert = () => {
+      signal?.throwIfAborted()
+      HomeRestoration.assertCurrent(permit)
+      HomeRestoration.assertInstalledOwner(permit)
+      HomeRestoration.assertRequest(permit, request)
+      Native.assertInstalled(native)
+      if (RuntimeContext.current() !== runtime || runtime.host.root !== root)
+        fail("requires its original native Runtime")
+    }
+    assert()
+    await Native.verifyInstalled(native)
+    assert()
+    const fixed = Native.inspectInstalled(native)
+    if (
+      selected.owner !== "organization" ||
+      Native.sourceHash(fixed.namespace) !== reference.nativeHash ||
+      Native.sourceHash(fixed.manifest.source) !== reference.sourceHash
+    )
+      fail("belongs to another original native installation")
+    const receipt = await Storage.current().store.operationReceipt("storage-checkpoint:" + reference.restoreID)
+    assert()
+    if (!receipt || receipt.requestHash !== fixed.manifest.source.records.sha256)
+      fail("requires its actual committed namespace import")
+    const checkpoint = await AuthorityJournal.readArchivedCheckpoint({
+      directory: input.namespaceDirectory,
+      expected: fixed.manifest.source,
+      keys,
+      signal,
+    })
+    assert()
+    const actual = await Storage.snapshot(async () => {
+      const retained = await RuntimeMaintenance.restoration(reference.installationID)
+      const held = await RuntimeMaintenance.status()
+      if (
+        !retained ||
+        !held ||
+        retained.installationID !== reference.installationID ||
+        retained.incarnation !== reference.incarnation ||
+        retained.restoreID !== reference.restoreID ||
+        retained.requestHash !== reference.requestHash ||
+        retained.sourceHash !== reference.sourceHash ||
+        held.phase !== "recovery-held" ||
+        held.purpose !== "organization-restore" ||
+        hash(held) !== hash(retained.target) ||
+        hash(await RuntimeMaintenance.operation(retained.source.maintenanceID)) !== hash(retained.source)
+      )
+        fail("requires its actual committed recovery hold")
+      const history = await AuthorityJournal.inspect()
+      if (!history.covered || hash(history.head) !== hash(checkpoint))
+        fail("requires its unchanged restored historical checkpoint")
+      const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
+      const stored = Record.SigningIdentity.parse(await Storage.read(Keys.signingIdentity()))
+      if (
+        checkpoint.namespaceID !== fixed.manifest.identity.orgID ||
+        deployment.orgID !== fixed.manifest.identity.orgID ||
+        deployment.deploymentIncarnation !== fixed.manifest.identity.deploymentIncarnation ||
+        stored.orgID !== deployment.orgID ||
+        stored.deploymentIncarnation !== deployment.deploymentIncarnation ||
+        stored.historyContractHash !== checkpoint.contractHash
+      )
+        fail("requires its original source identity and history")
+      return publicIdentity(stored)
+    })
+    assert()
+    const clientDefinitionsHash = hash(fixed.manifest.startup.settings.clientAuthentication.clients)
+    const filename = await directory(root, reference.installationID, true, assert)
+    assert()
+    const existing = await read(filename, assert)
+    assert()
+    async function validate(value: Material) {
+      const info = authenticated(value)
+      if (
+        hash(info.reference) !== hash(reference) ||
+        hash(info.checkpoint) !== hash(checkpoint) ||
+        hash(info.sourceIdentity) !== hash(actual) ||
+        info.clientDefinitionsHash !== clientDefinitionsHash ||
+        info.identity.orgID !== actual.orgID ||
+        info.identity.deploymentIncarnation !== reference.incarnation ||
+        info.identity.keyID === actual.keyID ||
+        info.identity.publicKey === actual.publicKey
+      )
+        fail("material belongs to another original installation")
+      const secret = Buffer.from(await keys.resolve(value.envelope.keyVersion))
+      let plaintext: Buffer | undefined
+      try {
+        assert()
+        plaintext = SecretEnvelope.open({
+          ...envelopeIdentity(info),
+          keyVersion: value.envelope.keyVersion,
+          key: secret,
+          envelope: value.envelope,
+        })
+        const signing = OrganizationSigningMaterial.parse(JSON.parse(plaintext.toString("utf8")))
+        if (signing.keyID !== info.identity.keyID || signing.publicKey !== info.identity.publicKey)
+          fail("material identity changed")
+        await validateSigningMaterial(signing)
+        assert()
+      } finally {
+        secret.fill(0)
+        plaintext?.fill(0)
+      }
+      return info
+    }
+    let material = existing
+    if (!material) {
+      const signing = await prepareSigningMaterial()
+      assert()
+      const info = Info.parse({
+        reference,
+        identity: {
+          ...actual,
+          keyID: signing.keyID,
+          publicKey: signing.publicKey,
+          deploymentIncarnation: reference.incarnation,
+        },
+        sourceIdentity: actual,
+        checkpoint,
+        clientDefinitionsHash,
+        createdAt: Date.now(),
+      })
+      const current = await keys.current()
+      const secret = Buffer.from(current.key)
+      const plaintext = Buffer.from(JSON.stringify(signing))
+      try {
+        assert()
+        material = Material.parse({
+          ...info,
+          version: 1,
+          envelope: SecretEnvelope.seal({
+            ...envelopeIdentity(info),
+            keyVersion: current.version,
+            key: secret,
+            bytes: plaintext,
+          }),
+        })
+        await AtomicFile.writeJsonAtomic(filename, JSON.stringify(material), { durable: true, private: true })
+        assert()
+      } finally {
+        secret.fill(0)
+        plaintext.fill(0)
+      }
+    }
+    const info = await validate(material)
+    assert()
+    const expected = hash(material)
+    const evidence: Prepared = Object.freeze({ kind: "organization-recovery-prepared-signing" })
+    prepared.set(evidence, {
+      info: Info.parse(info),
+      assert,
+      async verify() {
+        assert()
+        await Native.verifyInstalled(native)
+        assert()
+        await directory(root, reference.installationID, false, assert)
+        const retained = await read(filename, assert)
+        if (!retained || hash(retained) !== expected) fail("prepared material changed")
+        await validate(retained)
+        assert()
+      },
+    })
+    return evidence
+  }
+}

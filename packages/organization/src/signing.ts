@@ -28,10 +28,43 @@ async function readSigningIdentity() {
   }
 }
 
-export async function initializeSigningIdentity() {
+export const OrganizationSigningMaterial = z.strictObject({
+  keyID: Record.SigningIdentity.shape.keyID,
+  publicKey: Record.SigningIdentity.shape.publicKey,
+  pkcs8: Record.SigningIdentity.shape.pkcs8,
+})
+export type OrganizationSigningMaterial = z.infer<typeof OrganizationSigningMaterial>
+
+export async function prepareSigningMaterial(): Promise<OrganizationSigningMaterial> {
   const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
-  const publicKey = await Runtime.publicKey(keys.publicKey)
-  const pkcs8 = Buffer.from(await crypto.subtle.exportKey("pkcs8", keys.privateKey)).toString("hex")
+  return OrganizationSigningMaterial.parse({
+    keyID: crypto.randomUUID(),
+    publicKey: await Runtime.publicKey(keys.publicKey),
+    pkcs8: Buffer.from(await crypto.subtle.exportKey("pkcs8", keys.privateKey)).toString("hex"),
+  })
+}
+
+export async function validateSigningMaterial(input: OrganizationSigningMaterial): Promise<CryptoKey> {
+  try {
+    const material = OrganizationSigningMaterial.parse(input)
+    const bytes = Buffer.from(material.pkcs8, "hex")
+    try {
+      const key = createPrivateKey({ key: bytes, type: "pkcs8", format: "der" })
+      if (key.asymmetricKeyType !== "ed25519") throw new Error("Wrong signing algorithm")
+      const publicKey = createPublicKey(key).export({ format: "jwk" }).x
+      if (!publicKey || Buffer.from(publicKey, "base64url").toString("hex") !== material.publicKey)
+        throw new Error("Mismatched signing key")
+      return await crypto.subtle.importKey("pkcs8", bytes, "Ed25519", false, ["sign"])
+    } finally {
+      bytes.fill(0)
+    }
+  } catch {
+    throw new Error("Organization signing credentials are invalid or unsupported")
+  }
+}
+
+export async function initializeSigningIdentity() {
+  const material = await prepareSigningMaterial()
   await Storage.transaction(async () => {
     const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
     const [raw] = await Storage.readMany([Keys.signingIdentity()])
@@ -53,9 +86,7 @@ export async function initializeSigningIdentity() {
         historyContractHash: AuthorityJournal.definition().hash,
         orgID: deployment.orgID,
         deploymentIncarnation: deployment.deploymentIncarnation,
-        keyID: crypto.randomUUID(),
-        publicKey,
-        pkcs8,
+        ...material,
       }),
     )
   })
@@ -82,18 +113,11 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
   const stored = await readSigningIdentity()
   if (!stored || stored.orgID !== deployment.orgID || stored.deploymentIncarnation !== deployment.deploymentIncarnation)
     throw new Error("Organization signing identity is missing or does not match this deployment")
-  let privateKey: CryptoKey
-  try {
-    const bytes = Buffer.from(stored.pkcs8, "hex")
-    const key = createPrivateKey({ key: bytes, type: "pkcs8", format: "der" })
-    if (key.asymmetricKeyType !== "ed25519") throw new Error("Wrong signing algorithm")
-    const publicKey = createPublicKey(key).export({ format: "jwk" }).x
-    if (!publicKey || Buffer.from(publicKey, "base64url").toString("hex") !== stored.publicKey)
-      throw new Error("Mismatched signing key")
-    privateKey = await crypto.subtle.importKey("pkcs8", bytes, "Ed25519", false, ["sign"])
-  } catch {
-    throw new Error("Organization signing credentials are invalid or unsupported")
-  }
+  const privateKey = await validateSigningMaterial({
+    keyID: stored.keyID,
+    publicKey: stored.publicKey,
+    pkcs8: stored.pkcs8,
+  })
   const { pkcs8: _, historyContractHash: _history, ...publicFields } = stored
   const identity = Object.freeze(Command.SigningIdentity.parse({ ...publicFields, schemaVersion: 1 }))
   return {

@@ -299,7 +299,10 @@ export namespace OrganizationServiceNative {
     assertCurrent(): void
     verify(): Promise<void>
   }
-  const installations = new WeakMap<Installed, { assert(): void; verify(): Promise<void> }>()
+  const installations = new WeakMap<
+    Installed,
+    { assert(): void; verify(): Promise<void>; manifest: Manifest; namespace: StorageCheckpoint.Manifest }
+  >()
   export function assertInstalled(installed: Installed) {
     const current = installations.get(installed)
     if (!current) fail("requires original native installation evidence")
@@ -309,6 +312,14 @@ export namespace OrganizationServiceNative {
     assertInstalled(installed)
     await installations.get(installed)!.verify()
     assertInstalled(installed)
+  }
+  export function inspectInstalled(installed: Installed) {
+    assertInstalled(installed)
+    const current = installations.get(installed)!
+    return {
+      manifest: Manifest.parse(current.manifest),
+      namespace: StorageCheckpoint.Manifest.parse(current.namespace),
+    }
   }
   export async function withInstalled<T>(
     input: Parameters<typeof verify>[0] & { permit: HomeRestoration.InstallPermit; request: InstallationRequest },
@@ -385,7 +396,12 @@ export namespace OrganizationServiceNative {
         assertCurrent: assert,
         verify: validate,
       })
-      installations.set(installed, { assert, verify: validate })
+      installations.set(installed, {
+        assert,
+        verify: validate,
+        manifest: Manifest.parse(manifest),
+        namespace: StorageCheckpoint.Manifest.parse(expected),
+      })
       const result = await body(installed)
       await validate()
       return result

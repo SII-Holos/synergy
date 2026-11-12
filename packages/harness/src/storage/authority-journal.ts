@@ -6,6 +6,8 @@ import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "./storage"
 import { StorageMutationGuard } from "./mutation-guard"
+import { StorageCheckpoint } from "./checkpoint"
+import type { VaultKeyProvider } from "../secrets/encrypted-store"
 import { StorageConflictError, StorageIntegrityError } from "./errors"
 import type { StoreTransaction, TransactionOptions } from "./transactional-store"
 
@@ -226,6 +228,29 @@ async function finish(tx: StoreTransaction, action: Action) {
 }
 
 export namespace AuthorityJournal {
+  export const Checkpoint = Header
+  export type Checkpoint = z.infer<typeof Checkpoint>
+  export async function readArchivedCheckpoint(input: {
+    directory: string
+    expected: StorageCheckpoint.Manifest
+    keys: VaultKeyProvider
+    signal?: AbortSignal
+  }): Promise<Checkpoint> {
+    const directory = input.directory
+    const expected = StorageCheckpoint.Manifest.parse(input.expected)
+    const signal = input.signal
+    const provider = input.keys
+    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    let checkpoint: Checkpoint | undefined
+    for await (const entry of StorageCheckpoint.entries({ directory, expected, keys, signal })) {
+      if (entry.type !== "record" || JSON.stringify(entry.key) !== JSON.stringify(headerKey)) continue
+      if (checkpoint) throw new StorageIntegrityError("A checkpoint contains repeated authority history")
+      checkpoint = Checkpoint.parse(entry.value)
+    }
+    signal?.throwIfAborted()
+    if (!checkpoint) throw new StorageIntegrityError("A checkpoint has no authority history")
+    return Checkpoint.parse(checkpoint)
+  }
   export type Contribution = Domain
   export function selected() {
     return registry().installed

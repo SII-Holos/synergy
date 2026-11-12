@@ -4,6 +4,7 @@ import path from "node:path"
 import { z } from "zod"
 import { createHash } from "node:crypto"
 import { AuthorityJournal } from "../../src/storage/authority-journal"
+import { StorageCheckpoint } from "../../src/storage/checkpoint"
 import { Storage } from "../../src/storage/storage"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { storageTestRuntime } from "../support/storage-runtime"
@@ -24,6 +25,51 @@ const actor: ActorStamp.Info = {
   clientKind: "web",
   requestID: "policy-change",
 }
+
+test("archived authority checkpoints retain their historical head and require complete authenticated EOF", async () => {
+  await using f = await fixture()
+  const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "journal-checkpoint-"))
+  const keys = {
+    async current() {
+      return { version: "fixture", key: Buffer.alloc(32, 7) }
+    },
+    async resolve() {
+      return Buffer.alloc(32, 7)
+    },
+  }
+  try {
+    await f.run(async () => {
+      const head = await AuthorityJournal.head()
+      const archive = path.join(directory, "archive")
+      const expected = await StorageCheckpoint.exportArchive({
+        directory: archive,
+        archiveID: "historical-head",
+        namespaceID: "opaque-checkpoint-namespace",
+        buildVersion: "fixture",
+        keys,
+        protect: () => true,
+      })
+      await AuthorityJournal.transaction("policy.after-checkpoint", async (journal) => {
+        journal.identify(actor)
+        await Storage.write(["policy", "one"], { enabled: false, revision: 2, credential: "later-credential" })
+      })
+      expect(await AuthorityJournal.readArchivedCheckpoint({ directory: archive, expected, keys })).toEqual(head)
+      expect((await AuthorityJournal.head()).sequence).toBeGreaterThan(head.sequence)
+      const records = path.join(archive, "records.ndjson")
+      const original = await fs.readFile(records)
+      await fs.writeFile(records, original.subarray(0, original.byteLength - 5))
+      await expect(AuthorityJournal.readArchivedCheckpoint({ directory: archive, expected, keys })).rejects.toThrow()
+      await fs.writeFile(records, original)
+      const controller = new AbortController()
+      controller.abort(new Error("Cancelled historical checkpoint"))
+      await expect(
+        AuthorityJournal.readArchivedCheckpoint({ directory: archive, expected, keys, signal: controller.signal }),
+      ).rejects.toThrow("Cancelled historical checkpoint")
+    })
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
 async function fixture() {
   const runtime = await storageTestRuntime()
   const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "authority-journal-"))
