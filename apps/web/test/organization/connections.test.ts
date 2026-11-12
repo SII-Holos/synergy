@@ -4,6 +4,36 @@ import { spaceKey } from "../../src/context/space-state"
 import { Persist } from "../../src/utils/persist"
 import type { OrgClientTokens } from "@ericsanchezok/synergy-sdk/organization"
 import type { OrganizationDesktop as Desktop } from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationSignOutIntent, type OrganizationSignOutStore } from "../../src/organization/sign-out-store"
+
+function signOutStore(records = new Map<string, OrganizationSignOutIntent>()): OrganizationSignOutStore {
+  let closed = false
+  function current() {
+    if (closed) throw new Error("The intent store is closed")
+  }
+  return {
+    async get(key) {
+      current()
+      return structuredClone(records.get(key))
+    },
+    async begin(value) {
+      current()
+      const record = OrganizationSignOutIntent.parse(value)
+      if (!records.has(record.connectionKey)) records.set(record.connectionKey, record)
+      return structuredClone(records.get(record.connectionKey)!)
+    },
+    async remove(value) {
+      current()
+      const previous = records.get(value.connectionKey)
+      if (JSON.stringify(previous) !== JSON.stringify(value)) return false
+      records.delete(value.connectionKey)
+      return true
+    },
+    close() {
+      closed = true
+    },
+  }
+}
 
 function storage() {
   const values = new Map<string, string>()
@@ -217,6 +247,7 @@ test("native connections retain the exact IPC descriptor and cancel requests at 
   const token = tokens()
   const descriptor: Desktop.Connection = {
     id: "c".repeat(64),
+    revision: "00000000-0000-4000-8000-000000000001",
     issuer: token.issuer,
     orgID: token.orgID,
     deploymentIncarnation: token.deploymentIncarnation,
@@ -229,6 +260,7 @@ test("native connections retain the exact IPC descriptor and cancel requests at 
   const cancelled: string[] = []
   let invalid = false
   const bridge: Desktop.Bridge = {
+    protocolVersion: 2,
     list: async () => ({ ok: true, value: [descriptor] }),
     connect: async () => ({
       ok: true,
@@ -243,7 +275,14 @@ test("native connections retain the exact IPC descriptor and cancel requests at 
       cancelled.push(requestID)
       return { ok: true, value: undefined }
     },
-    signOut: async () => ({ ok: true, value: { ...descriptor, state: "signed_out" } }),
+    signOut: async (input) => ({
+      ok: true,
+      value: {
+        ...descriptor,
+        revision: input.requestID,
+        state: input.phase === "prepare" ? "sign_out_pending" : "signed_out",
+      },
+    }),
     memberStatus: async () => ({ ok: true, value: { connectionID: descriptor.id, state: "stopped" } }),
     startMember: async () => ({ ok: false, error: { code: "unavailable" } }),
     download: async () => ({ ok: false, error: { code: "unavailable" } }),
@@ -259,8 +298,14 @@ test("native connections retain the exact IPC descriptor and cancel requests at 
     origins: [],
     redirectUri: "https://app.example/organization.html",
     bridge,
+    signOutStore: signOutStore(),
   })
   try {
+    Reflect.deleteProperty(bridge, "protocolVersion")
+    await registry.load()
+    expect(registry.error()).toMatchObject({ code: "bridge_incompatible" })
+    expect(registry.connections).toHaveLength(0)
+    Object.defineProperty(bridge, "protocolVersion", { value: 2 })
     await registry.load()
     registry.name(key(), "Verified organization")
     registry.select(key())
@@ -334,5 +379,185 @@ test("expired Web authority still supports logout while inaccessible storage pre
     expect(saved.getItem(storedKey)).toBe(original)
   } finally {
     broken.dispose()
+  }
+})
+
+test("a Desktop logout intent survives reload before Main prepares it and cannot reopen its ready descriptor", async () => {
+  const saved = storage()
+  const descriptor: Desktop.Connection = {
+    issuer: tokens().issuer,
+    orgID: "org",
+    deploymentIncarnation: "deployment",
+    account: tokens().account,
+    id: "a".repeat(64),
+    revision: "00000000-0000-4000-8000-000000000001",
+    clientID: "desktop",
+    state: "ready",
+  }
+  const entered = Promise.withResolvers<void>()
+  const proceed = Promise.withResolvers<void>()
+  let current = descriptor
+  let calls = 0
+  let revocations = 0
+  const bridge: Desktop.Bridge = {
+    protocolVersion: 2,
+    list: async () => ({ ok: true, value: [current] }),
+    connect: async () => {
+      throw new Error("A pending logout cannot start authorization")
+    },
+    request: async () => {
+      throw new Error("A pending logout cannot request private content")
+    },
+    cancel: async () => ({ ok: true, value: undefined }),
+    signOut: async (input) => {
+      if (++calls === 1) {
+        entered.resolve()
+        await proceed.promise
+      }
+      if (input.phase === "prepare") {
+        if (current.state === "ready" && current.revision === input.expectedRevision)
+          current = { ...current, state: "sign_out_pending", revision: input.requestID }
+        if (current.state === "sign_out_pending" && current.revision === input.requestID)
+          return { ok: true, value: current }
+      }
+      if (input.phase === "commit" && current.state === "sign_out_pending" && current.revision === input.requestID) {
+        revocations++
+        current = { ...current, state: "signed_out" }
+        return { ok: true, value: current }
+      }
+      return { ok: false, error: { code: "connection_changed" } }
+    },
+    memberStatus: async () => ({ ok: false, error: { code: "unavailable" } }),
+    startMember: async () => ({ ok: false, error: { code: "unavailable" } }),
+    download: async () => ({ ok: false, error: { code: "unavailable" } }),
+    projectBinding: async () => ({ ok: false, error: { code: "unavailable" } }),
+    bindProject: async () => ({ ok: false, error: { code: "unavailable" } }),
+    memberRequest: async () => ({ ok: false, error: { code: "unavailable" } }),
+    downloadContent: async () => ({ ok: false, error: { code: "unavailable" } }),
+    downloadAttachment: async () => ({ ok: false, error: { code: "unavailable" } }),
+    commandStream: async () => ({ ok: false, error: { code: "unavailable" } }),
+  }
+  const options = { storage: saved, origins: [], redirectUri: "https://app.example/organization.html", bridge }
+  const records = new Map<string, OrganizationSignOutIntent>()
+  const original = createOrganizationConnections({ ...options, signOutStore: signOutStore(records) })
+  const restored = createOrganizationConnections({ ...options, signOutStore: signOutStore(records) })
+  let signingOut: Promise<unknown> | undefined
+  try {
+    await original.load()
+    original.select(key())
+    signingOut = original.signOut(key()).catch((error: unknown) => error)
+    await entered.promise
+    original.dispose()
+    await restored.load()
+    restored.select(key())
+    expect(current.state).toBe("ready")
+    expect(restored.connection()?.state).toBe("sign_out_pending")
+    expect(restored.client()).toBeUndefined()
+    expect(revocations).toBe(0)
+    await expect(restored.restore(key())).rejects.toMatchObject({ code: "sign_out_pending" })
+    proceed.resolve()
+    await signingOut
+    const retained = records.get(key())
+    if (!retained) throw new Error("Missing durable fixture intent")
+    await restored.signOut(key())
+    expect(restored.connection()?.state).toBe("signed_out")
+    expect(revocations).toBe(1)
+    expect([...saved.values.values()].join("")).not.toContain(tokens().accessToken)
+    await signOutStore(records).begin(retained)
+    const one = createOrganizationConnections({ ...options, signOutStore: signOutStore(records) })
+    const two = createOrganizationConnections({ ...options, signOutStore: signOutStore(records) })
+    try {
+      await Promise.all([one.load(), two.load()])
+      expect(one.connection(key())?.state).toBe("signed_out")
+      expect(two.connection(key())?.state).toBe("signed_out")
+    } finally {
+      one.dispose()
+      two.dispose()
+    }
+  } finally {
+    proceed.resolve()
+    await signingOut
+    original.dispose()
+    restored.dispose()
+  }
+})
+
+test("an older Desktop logout cannot replace a later login and explicit recovery only adopts its current descriptor", async () => {
+  const saved = storage()
+  const records = new Map<string, OrganizationSignOutIntent>()
+  let current: Desktop.Connection = {
+    issuer: target.issuer,
+    orgID: "org",
+    deploymentIncarnation: "deployment",
+    clientID: "desktop",
+    account: tokens().account,
+    id: "a".repeat(64),
+    revision: "00000000-0000-4000-8000-000000000001",
+    state: "ready",
+  }
+  const entered = Promise.withResolvers<void>()
+  const proceed = Promise.withResolvers<void>()
+  let revocations = 0
+  const unavailable = async (): Promise<never> => {
+    throw new Error("This recovery cannot authorize or start a computer")
+  }
+  const bridge: Desktop.Bridge = {
+    protocolVersion: 2,
+    list: async () => ({ ok: true, value: [current] }),
+    connect: unavailable,
+    request: unavailable,
+    cancel: async () => ({ ok: true, value: undefined }),
+    signOut: async (input) => {
+      if (input.phase === "prepare") {
+        entered.resolve()
+        await proceed.promise
+      }
+      if (current.revision !== input.expectedRevision) return { ok: false, error: { code: "connection_changed" } }
+      revocations++
+      throw new Error("The later login must not be revoked")
+    },
+    memberStatus: unavailable,
+    startMember: unavailable,
+    download: unavailable,
+    projectBinding: unavailable,
+    bindProject: unavailable,
+    memberRequest: unavailable,
+    downloadContent: unavailable,
+    downloadAttachment: unavailable,
+    commandStream: unavailable,
+  }
+  const registry = createOrganizationConnections({
+    storage: saved,
+    origins: [],
+    bridge,
+    redirectUri: "https://app.example/organization.html",
+    signOutStore: signOutStore(records),
+  })
+  let signingOut: Promise<unknown> | undefined
+  try {
+    await registry.load()
+    registry.select(key())
+    signingOut = registry.signOut(key()).catch((error: unknown) => error)
+    await entered.promise
+    current = { ...current, revision: "00000000-0000-4000-8000-000000000002" }
+    proceed.resolve()
+    expect(await signingOut).toMatchObject({ code: "connection_changed" })
+    expect(revocations).toBe(0)
+    await registry.load()
+    expect(registry.current()).toBeUndefined()
+    await expect(registry.signOut(key())).rejects.toMatchObject({ code: "connection_changed" })
+    expect(revocations).toBe(0)
+    await registry.restore(key())
+    expect(registry.current()?.key).toBe(key())
+    const connection = registry.connection()
+    if (connection?.transport !== "desktop") throw new Error("Missing current native connection")
+    expect(connection.revision).toBe(current.revision)
+    expect(current.state).toBe("ready")
+    expect(revocations).toBe(0)
+    expect(records.size).toBe(0)
+  } finally {
+    proceed.resolve()
+    await signingOut
+    registry.dispose()
   }
 })

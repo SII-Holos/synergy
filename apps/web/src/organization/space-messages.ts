@@ -11,6 +11,7 @@ export const organizationSpaceMessages = {
   },
   personalBack: { id: "organization.space.personalBack", message: "Back to personal space" },
   address: { id: "organization.space.address", message: "Organization address" },
+  addressPlaceholder: { id: "organization.space.addressPlaceholder", message: "For example: {url}" },
   client: { id: "organization.space.client", message: "Client ID" },
   clientHint: {
     id: "organization.space.clientHint",
@@ -45,6 +46,14 @@ export const organizationSpaceMessages = {
   identityChanged: {
     id: "organization.space.identityChanged",
     message: "The organization or account has changed. Connect it as a new space.",
+  },
+  connectionChanged: {
+    id: "organization.space.connectionChanged",
+    message: "The connection changed while signing out. Restore the current connection before trying again.",
+  },
+  bridgeIncompatible: {
+    id: "organization.space.bridgeIncompatible",
+    message: "Restart or update Synergy to use organization connections with this page.",
   },
   storage: {
     id: "organization.space.storage",

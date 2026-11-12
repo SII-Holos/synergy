@@ -13377,6 +13377,170 @@ msgid "note.tag.remove"
 msgstr "移除标签 {tag}"
 
 #. js-lingui-explicit-id
+msgid "organization.account.lastOwner"
+msgstr "离开组织前，请先将所有权转让给其他成员。"
+
+#. js-lingui-explicit-id
+msgid "organization.account.leave"
+msgstr "离开组织"
+
+#. js-lingui-explicit-id
+msgid "organization.account.leaveHint"
+msgstr "你将失去成员资格及组织访问权限。你之前的贡献仍会保留署名。重新加入需要新的邀请。"
+
+#. js-lingui-explicit-id
+msgid "organization.account.membership"
+msgstr "成员资格"
+
+#. js-lingui-explicit-id
+msgid "organization.account.title"
+msgstr "账户"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.artifacts"
+msgstr "读取已发布成果"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.cancel"
+msgstr "取消工作"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.configure"
+msgstr "选择会话资源"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.continue"
+msgstr "继续工作"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.create"
+msgstr "创建会话"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.input"
+msgstr "发送消息"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.pause"
+msgstr "暂停工作"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.read"
+msgstr "读取会话"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.reply"
+msgstr "回答问题及处理权限请求"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.resources"
+msgstr "读取项目资源"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.active"
+msgstr "有效"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.chooseProject"
+msgstr "选择项目"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.create"
+msgstr "创建令牌"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.days"
+msgstr "{count, plural, one {# 天} other {# 天}}"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.dismiss"
+msgstr "隐藏令牌"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.empty"
+msgstr "暂无 API 令牌。"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expired"
+msgstr "已过期"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expires"
+msgstr "于 {date} 过期"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expiry"
+msgstr "有效期"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.hint"
+msgstr "将集成连接到一个项目。每次请求都会根据你当前的权限进行检查。"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.label"
+msgstr "令牌名称"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.lost"
+msgstr "此令牌已签发，但无法获取原始值。请先撤销它，再创建替代令牌。"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.moreProjects"
+msgstr "加载更多项目"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.once"
+msgstr "请立即复制此令牌。它只会显示一次。"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.operations"
+msgstr "允许的操作"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.project"
+msgstr "项目"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.recover"
+msgstr "恢复令牌签发"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.refresh"
+msgstr "刷新令牌"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.required"
+msgstr "请输入名称、选择项目，并选择至少一项操作。"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revoke"
+msgstr "撤销令牌"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revoked"
+msgstr "已撤销"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revokeHint"
+msgstr "使用此令牌的新请求将被拒绝。已接受的工作仍可完成。"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.secret"
+msgstr "API 令牌"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.title"
+msgstr "API 令牌"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.unavailableProject"
+msgstr "项目不可用"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.unknown"
+msgstr "尚未确认令牌是否签发。创建其他令牌前，请先恢复原始请求。"
+
+#. js-lingui-explicit-id
 msgid "organization.auth.close"
 msgstr "关闭窗口"
 
@@ -13449,16 +13613,988 @@ msgid "organization.auth.working"
 msgstr "正在连接…"
 
 #. js-lingui-explicit-id
+msgid "organization.interactions.allowedAlways"
+msgstr "{name} 已选择始终允许。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.allowedOnce"
+msgstr "{name} 已允许本次操作。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.allowedSession"
+msgstr "{name} 已允许本次会话内的操作。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.answered"
+msgstr "{name} 已回答。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.check"
+msgstr "检查响应状态"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.denied"
+msgstr "{name} 已拒绝。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.dismiss"
+msgstr "关闭状态提示"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.expired"
+msgstr "此请求已过期。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.first"
+msgstr "首批请求"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.firstStatuses"
+msgstr "首批响应状态"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.handled"
+msgstr "此请求已处理。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.hostedScope"
+msgstr "保存这些规则，适用于此托管 Runtime 上所有项目中所有成员今后匹配的工作，直至规则被移除。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.memberScope"
+msgstr "保存这些规则，适用于此 Runtime 上所有项目中今后匹配的工作，直至规则被移除。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.more"
+msgstr "更多请求"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.moreStatuses"
+msgstr "更多响应状态"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.passwordLost"
+msgstr "原始密码回答仅保存在内存中。再次回答前，请先检查其状态。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.refresh"
+msgstr "刷新请求"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.retry"
+msgstr "重试原始响应"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.skipped"
+msgstr "{name} 已跳过。"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.submitted"
+msgstr "响应已于 {date} 提交"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.unknown"
+msgstr "尚未确认响应状态。"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.alreadyUsed"
+msgstr "此邀请已被使用。请在“成员”中管理该成员的访问权限。"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.consumed"
+msgstr "已使用"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.empty"
+msgstr "暂无邀请。"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.expired"
+msgstr "已过期"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.hint"
+msgstr "查看邀请状态。邀请链接仅在创建时显示。"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.identity"
+msgstr "邀请 {id}"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.invalidated"
+msgstr "邀请人的权限已变更"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.issuedBy"
+msgstr "由账户 {id} 发出"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.open"
+msgstr "可用"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revoke"
+msgstr "撤销邀请"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revoked"
+msgstr "已撤销"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revokeHint"
+msgstr "此邀请将无法再用于加入组织。现有成员的访问权限保持不变。"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.title"
+msgstr "邀请"
+
+#. js-lingui-explicit-id
+msgid "organization.knowledge.pendingUpdate"
+msgstr "有一项知识更改正在等待确认。提交其他更改前，请先重试同一项更改。"
+
+#. js-lingui-explicit-id
+msgid "organization.members.createReset"
+msgstr "创建重置链接"
+
+#. js-lingui-explicit-id
+msgid "organization.members.done"
+msgstr "完成"
+
+#. js-lingui-explicit-id
+msgid "organization.members.expires"
+msgstr "于 {date} 过期"
+
+#. js-lingui-explicit-id
+msgid "organization.members.reset"
+msgstr "重置密码"
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetFor"
+msgstr "为 {name} 重置密码"
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetHint"
+msgstr "创建一次性密码重置链接。完成重置后，此成员的现有登录将全部失效。"
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetLink"
+msgstr "密码重置链接"
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetTitle"
+msgstr "创建密码重置链接"
+
+#. js-lingui-explicit-id
+msgid "organization.members.sharePrivately"
+msgstr "请通过私密方式将此链接发送给账户所有者。"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.create"
+msgstr "创建账户"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.displayName"
+msgstr "你的姓名"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.done"
+msgstr "已准备就绪"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.doneHint"
+msgstr "返回 Synergy，使用你的账户连接此组织。"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.failed"
+msgstr "无法完成此请求。请检查链接和网络连接，然后重试。"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.invite"
+msgstr "加入组织"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.login"
+msgstr "账户名"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.organization"
+msgstr "组织名称"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.password"
+msgstr "新密码"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.passwordHint"
+msgstr "请使用至少 12 个字符。此账户仅属于当前组织。"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.reset"
+msgstr "重置密码"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.resetDone"
+msgstr "密码已更改。请返回 Synergy 重新登录。"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.save"
+msgstr "保存密码"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.setup"
+msgstr "设置组织"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.taken"
+msgstr "此账户名已被使用。请选择其他名称。"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.used"
+msgstr "此一次性链接已被使用。请向管理员索取新链接。"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.working"
+msgstr "正在设置…"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.choose"
+msgstr "选择项目文件夹"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.empty"
+msgstr "尚未选择项目文件夹。"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.hint"
+msgstr "新会话将使用此文件夹。现有会话保留各自的工作区。"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.loading"
+msgstr "正在检查项目文件夹…"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.refresh"
+msgstr "刷新文件夹绑定"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.start"
+msgstr "启动此电脑并选择文件夹"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.stopped"
+msgstr "请启动此组织的运行时，再选择本地文件夹。"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.title"
+msgstr "此电脑上的项目文件夹"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.add"
+msgstr "添加项目成员"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.empty"
+msgstr "尚未分配项目角色"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.inherited"
+msgstr "组织所有者和管理员也可通过其组织角色访问此项目。"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.remove"
+msgstr "从项目移除"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.removeHint"
+msgstr "移除此成员的项目角色。现有的组织和账户权限仍然适用。"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.search"
+msgstr "查找组织成员"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activationFailed"
+msgstr "无法激活所请求的版本。请检查运行时连接和资源访问权限，然后刷新状态。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activationPending"
+msgstr "正在等待运行时激活所请求的版本。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activeSelection"
+msgstr "当前生效的选择修订版 {revision}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.applied"
+msgstr "已应用版本 {version}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.apply"
+msgstr "应用到我的项目"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.artifactHint"
+msgstr "已发布的成果独立于来源会话，项目成员可持续访问。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.artifacts"
+msgstr "成果"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.author"
+msgstr "发布者账户 ID：{author}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.authorName"
+msgstr "由 {name} 发布"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.chooseFiles"
+msgstr "选择文件"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.chooseFolder"
+msgstr "选择文件夹"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.close"
+msgstr "关闭预览"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.desiredSelection"
+msgstr "所请求的选择修订版 {revision}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.done"
+msgstr "已发布"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.download"
+msgstr "下载"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.downloadUnsupported"
+msgstr "此浏览器不支持流式保存文件。请在 Synergy 桌面应用或支持文件保存的浏览器中打开此组织。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.empty"
+msgstr "暂无发布内容"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.emptyHint"
+msgstr "已发布的资料和 Skill 将显示在这里，并附有版本和作者信息。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.files"
+msgstr "文件"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.independentHint"
+msgstr "此会话使用自己固定的版本。更新项目选择不会改变现有会话。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.kind"
+msgstr "发布类型"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.knowledge"
+msgstr "知识与 Skill"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.latest"
+msgstr "最新"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.material"
+msgstr "资料"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.materials"
+msgstr "资料"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.memberSelectionHint"
+msgstr "此会话使用执行电脑所有者已应用的项目版本。只有该所有者可以更新这些版本。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.preview"
+msgstr "预览"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.previewUnavailable"
+msgstr "请下载此文件以打开。文本和小型图片支持内嵌预览。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.previousActive"
+msgstr "之前的选择仍然生效。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publish"
+msgstr "发布"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publishHint"
+msgstr "为团队发布一份固定副本。只有成员主动选择更新时，已应用的版本才会改变。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publishVersion"
+msgstr "发布新版本"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.reference"
+msgstr "版本引用"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.refreshStatus"
+msgstr "刷新激活状态"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.remove"
+msgstr "从我的项目移除"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.saved"
+msgstr "文件已保存"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.search"
+msgstr "搜索发布内容"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.select"
+msgstr "在此会话中使用"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selected"
+msgstr "{count} 个文件 · {bytes} 字节"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selectedVersion"
+msgstr "会话使用版本 {version}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selection"
+msgstr "会话知识"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.skill"
+msgstr "Skill"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.skillHint"
+msgstr "请选择包含 SKILL.md 的 Skill 文件夹。相对引用和脚本将保留原有目录结构。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.source"
+msgstr "打开来源会话"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.sourceUnavailable"
+msgstr "你的账户无法访问来源会话。"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.title"
+msgstr "标题"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.unselect"
+msgstr "从此会话移除"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.update"
+msgstr "更新我已应用的版本"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.uploading"
+msgstr "正在上传 {path} · {bytes} / {total} 字节"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.version"
+msgstr "版本 {version}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.versions"
+msgstr "版本历史"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.withdraw"
+msgstr "撤回发布"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.withdrawHint"
+msgstr "从目录中移除此发布内容。已发布的历史版本仍可通过获得授权的引用访问。"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.access"
+msgstr "管理访问权限"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.accounts"
+msgstr "成员"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.add"
+msgstr "添加资源"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.allow"
+msgstr "允许使用"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.allowed"
+msgstr "已允许"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.anthropic"
+msgstr "兼容 Anthropic 的模型"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.context"
+msgstr "上下文 Token 数"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disable"
+msgstr "停用"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disabled"
+msgstr "已停用"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disableHint"
+msgstr "新工作将无法再选择此资源。已接受的工作保留其记录的授权。"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.empty"
+msgstr "集中管理团队服务"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.emptyHint"
+msgstr "添加模型或业务连接，然后选择可使用它的成员和项目。"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.enable"
+msgstr "启用"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.enabled"
+msgstr "已启用"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.endpoint"
+msgstr "端点"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.endpointPlaceholder"
+msgstr "例如：{url}"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.environment"
+msgstr "云端执行环境"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.fixedHttp"
+msgstr "HTTP 连接"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.hint"
+msgstr "连接团队使用的服务。凭据保留在组织中。"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.key"
+msgstr "API 密钥"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.keyHint"
+msgstr "如果服务不需要密钥，可留空。已保存的密钥不会显示。"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.mcpHttp"
+msgstr "基于 HTTP 的 MCP"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.mcpSse"
+msgstr "基于 SSE 的 MCP"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.method"
+msgstr "HTTP 方法"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.model"
+msgstr "模型 ID"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.name"
+msgstr "资源名称"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.openai"
+msgstr "兼容 OpenAI 的模型"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.output"
+msgstr "最大输出 Token 数"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.profile"
+msgstr "资源配置档案"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.profileHint"
+msgstr "使用组织服务器上配置的资源档案。"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.projects"
+msgstr "项目"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.protocol"
+msgstr "服务类型"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revoke"
+msgstr "撤销访问权限"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revoked"
+msgstr "未允许"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revokeHint"
+msgstr "此成员或项目将无法再为新工作选择此资源。"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.save"
+msgstr "保存资源"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.title"
+msgstr "资源"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.workspace"
+msgstr "云端工作区存储"
+
+#. js-lingui-explicit-id
+msgid "organization.session.accepted"
+msgstr "请求已接受"
+
+#. js-lingui-explicit-id
+msgid "organization.session.attachmentPreview"
+msgstr "附件预览"
+
+#. js-lingui-explicit-id
+msgid "organization.session.attachmentUnavailable"
+msgstr "原始附件未完整保留，无法下载。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.bytes"
+msgstr "字节"
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancel"
+msgstr "取消工作"
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancelDownload"
+msgstr "取消下载"
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancelHint"
+msgstr "请求取消当前观察到的活跃运行。已接受的工作可能需要一些时间才能停止。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.checkStatus"
+msgstr "检查请求状态"
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseModel"
+msgstr "选择项目模型"
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseResources"
+msgstr "选择会话资源"
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseRuntime"
+msgstr "选择执行运行时"
+
+#. js-lingui-explicit-id
+msgid "organization.session.computer"
+msgstr "此电脑"
+
+#. js-lingui-explicit-id
+msgid "organization.session.computerHint"
+msgstr "开始工作时，请启动此组织的成员运行时。你的个人运行时保持独立。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.connections"
+msgstr "连接"
+
+#. js-lingui-explicit-id
+msgid "organization.session.contentPreparing"
+msgstr "内容正在准备中。请在准备就绪后重试下载。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.context"
+msgstr "添加上下文"
+
+#. js-lingui-explicit-id
+msgid "organization.session.continue"
+msgstr "继续"
+
+#. js-lingui-explicit-id
+msgid "organization.session.conversations"
+msgstr "会话"
+
+#. js-lingui-explicit-id
+msgid "organization.session.created"
+msgstr "创建于 {date}"
+
+#. js-lingui-explicit-id
+msgid "organization.session.downloading"
+msgstr "正在下载…"
+
+#. js-lingui-explicit-id
+msgid "organization.session.draftHint"
+msgstr "草稿会按当前账户、项目和会话分别保存。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.empty"
+msgstr "开始会话"
+
+#. js-lingui-explicit-id
+msgid "organization.session.emptyFilePage"
+msgstr "本页没有可见文件"
+
+#. js-lingui-explicit-id
+msgid "organization.session.emptyHint"
+msgstr "选择工作运行位置及项目资源，然后通过分享会话邀请团队协作。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.execution"
+msgstr "运行位置"
+
+#. js-lingui-explicit-id
+msgid "organization.session.firstFiles"
+msgstr "首批文件"
+
+#. js-lingui-explicit-id
+msgid "organization.session.firstParts"
+msgstr "首批消息片段"
+
+#. js-lingui-explicit-id
+msgid "organization.session.historyUnavailable"
+msgstr "此历史记录仅包含元数据，无法获取完整消息内容。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.hosted"
+msgstr "组织托管运行时"
+
+#. js-lingui-explicit-id
+msgid "organization.session.inputMode"
+msgstr "消息模式"
+
+#. js-lingui-explicit-id
+msgid "organization.session.lastSync"
+msgstr "上次同步于 {date}"
+
+#. js-lingui-explicit-id
+msgid "organization.session.latest"
+msgstr "最新消息"
+
+#. js-lingui-explicit-id
+msgid "organization.session.loadContent"
+msgstr "加载完整内容"
+
+#. js-lingui-explicit-id
+msgid "organization.session.memberKnowledge"
+msgstr "此会话使用执行电脑所有者已应用的项目版本。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.message"
+msgstr "消息"
+
+#. js-lingui-explicit-id
+msgid "organization.session.messagePlaceholder"
+msgstr "输入消息…"
+
+#. js-lingui-explicit-id
+msgid "organization.session.messageTooLarge"
+msgstr "此消息超出了支持的输入大小。草稿已保留，请缩短消息后发送。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.model"
+msgstr "模型"
+
+#. js-lingui-explicit-id
+msgid "organization.session.modelRequired"
+msgstr "请先选择模型，再向此会话发送工作。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.new"
+msgstr "新建会话"
+
+#. js-lingui-explicit-id
+msgid "organization.session.nextFiles"
+msgstr "下一批文件"
+
+#. js-lingui-explicit-id
+msgid "organization.session.nextParts"
+msgstr "下一批消息片段"
+
+#. js-lingui-explicit-id
+msgid "organization.session.noModels"
+msgstr "暂无可用模型。请联系项目管理员授权模型后再发送工作。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.offline"
+msgstr "离线"
+
+#. js-lingui-explicit-id
+msgid "organization.session.older"
+msgstr "加载更早的消息"
+
+#. js-lingui-explicit-id
+msgid "organization.session.online"
+msgstr "在线"
+
+#. js-lingui-explicit-id
+msgid "organization.session.partial"
+msgstr "仅可获取已保留的输出"
+
+#. js-lingui-explicit-id
+msgid "organization.session.pause"
+msgstr "暂停"
+
+#. js-lingui-explicit-id
+msgid "organization.session.pending"
+msgstr "此请求正在等待回执。再次提交前，请先检查其状态。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.preparing"
+msgstr "内容正在准备中。请重试以加载已验证的数据。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.private"
+msgstr "私密会话"
+
+#. js-lingui-explicit-id
+msgid "organization.session.rejected"
+msgstr "请求已拒绝"
+
+#. js-lingui-explicit-id
+msgid "organization.session.resources"
+msgstr "会话资源"
+
+#. js-lingui-explicit-id
+msgid "organization.session.resourcesHint"
+msgstr "在会话空闲时选择已授权的项目资源。凭据保留在组织服务中。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.runtime"
+msgstr "运行时"
+
+#. js-lingui-explicit-id
+msgid "organization.session.selectedModel"
+msgstr "已选模型"
+
+#. js-lingui-explicit-id
+msgid "organization.session.send"
+msgstr "发送"
+
+#. js-lingui-explicit-id
+msgid "organization.session.share"
+msgstr "分享给项目"
+
+#. js-lingui-explicit-id
+msgid "organization.session.shared"
+msgstr "已分享给项目"
+
+#. js-lingui-explicit-id
+msgid "organization.session.shareHint"
+msgstr "项目成员可以读取已同步的会话。拥有执行权限的成员可以向其在线运行时发送请求。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.start"
+msgstr "启动此电脑"
+
+#. js-lingui-explicit-id
+msgid "organization.session.starting"
+msgstr "正在启动…"
+
+#. js-lingui-explicit-id
+msgid "organization.session.steer"
+msgstr "引导当前工作"
+
+#. js-lingui-explicit-id
+msgid "organization.session.sync"
+msgstr "同步"
+
+#. js-lingui-explicit-id
+msgid "organization.session.syncFailed"
+msgstr "同步需要处理"
+
+#. js-lingui-explicit-id
+msgid "organization.session.syncPending"
+msgstr "等待同步"
+
+#. js-lingui-explicit-id
+msgid "organization.session.task"
+msgstr "新建任务"
+
+#. js-lingui-explicit-id
+msgid "organization.session.title"
+msgstr "会话标题"
+
+#. js-lingui-explicit-id
+msgid "organization.session.unavailableConnections"
+msgstr "移除不可用的连接"
+
+#. js-lingui-explicit-id
+msgid "organization.session.unavailableModel"
+msgstr "你的账户已无法使用所选模型。请选择已授权的项目模型。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.unshare"
+msgstr "设为私密"
+
+#. js-lingui-explicit-id
+msgid "organization.session.unshareHint"
+msgstr "撤销项目访问权限并结束当前分享。已发布的成果保留各自的项目访问权限。"
+
+#. js-lingui-explicit-id
+msgid "organization.session.versioned"
+msgstr "固定知识版本"
+
+#. js-lingui-explicit-id
 msgid "organization.space.address"
 msgstr "组织地址"
+
+#. js-lingui-explicit-id
+msgid "organization.space.addressPlaceholder"
+msgstr "例如：{url}"
+
+#. js-lingui-explicit-id
+msgid "organization.space.advanced"
+msgstr "连接设置"
 
 #. js-lingui-explicit-id
 msgid "organization.space.archived"
 msgstr "已归档"
 
 #. js-lingui-explicit-id
+msgid "organization.space.authorizationHint"
+msgstr "你将在组织的网站上安全登录。个人空间保持独立。"
+
+#. js-lingui-explicit-id
 msgid "organization.space.back"
 msgstr "全部项目"
+
+#. js-lingui-explicit-id
+msgid "organization.space.bridgeIncompatible"
+msgstr "请重启或更新 Synergy，以便在此页面连接组织。"
 
 #. js-lingui-explicit-id
 msgid "organization.space.client"
@@ -13477,8 +14613,16 @@ msgid "organization.space.connect"
 msgstr "连接组织"
 
 #. js-lingui-explicit-id
+msgid "organization.space.connectDescription"
+msgstr "在一个空间中集中管理团队项目、会话和共享资源。"
+
+#. js-lingui-explicit-id
 msgid "organization.space.connecting"
 msgstr "正在连接…"
+
+#. js-lingui-explicit-id
+msgid "organization.space.connectionChanged"
+msgstr "退出登录期间连接已变化。请先恢复当前连接，再重试。"
 
 #. js-lingui-explicit-id
 msgid "organization.space.disconnected"
@@ -13523,6 +14667,10 @@ msgstr "加载更多项目"
 #. js-lingui-explicit-id
 msgid "organization.space.originNotAllowed"
 msgstr "请 Web 应用管理员将此组织的 HTTPS 地址加入 server.webConnectOrigins，然后重新加载页面。"
+
+#. js-lingui-explicit-id
+msgid "organization.space.personalBack"
+msgstr "返回个人空间"
 
 #. js-lingui-explicit-id
 msgid "organization.space.popup"
@@ -13575,6 +14723,298 @@ msgstr "无法保存连接设置。请检查浏览器存储后重试。"
 #. js-lingui-explicit-id
 msgid "organization.space.unavailable"
 msgstr "无法连接组织。请检查网络连接后重试。"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.empty"
+msgstr "本页暂无任务"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.error"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.first"
+msgstr "首批任务"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.hint"
+msgstr "打开任务以阅读其会话。"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.interrupted"
+msgstr "已中断"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.main"
+msgstr "主会话"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.more"
+msgstr "更多任务"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.queued"
+msgstr "排队中"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.refresh"
+msgstr "刷新任务"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.rootMessage"
+msgstr "发送给主会话的消息"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.running"
+msgstr "工作中"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.title"
+msgstr "任务"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.unavailable"
+msgstr "此任务已不可用。"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.deferred"
+msgstr "加载内容以查看此结果。"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.error"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.generating"
+msgstr "正在接收输入"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.pending"
+msgstr "等待中"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.admin"
+msgstr "管理员"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archive"
+msgstr "归档项目"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archived"
+msgstr "已归档"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archiveHint"
+msgstr "保留项目历史和已发布成果。新工作将暂停，直到项目恢复。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.artifacts"
+msgstr "成果"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.back"
+msgstr "所有项目"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.collaborator"
+msgstr "协作者"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.conflict"
+msgstr "此项已被其他人更改。请重新加载最新版本，再保存你的更改。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.createProject"
+msgstr "创建项目"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.description"
+msgstr "描述"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.edit"
+msgstr "编辑项目"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyMemberProjectsHint"
+msgstr "项目管理员将你加入项目后，项目会显示在这里。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyProjects"
+msgstr "与团队共同推进工作"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyProjectsHint"
+msgstr "创建项目、添加团队成员，然后开始会话。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.failed"
+msgstr "无法完成此操作。你的更改已保留。请检查网络连接后重试。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.forbidden"
+msgstr "你的访问权限已变更。请重新加载此空间以查看可用内容。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.invite"
+msgstr "邀请成员"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteHint"
+msgstr "将此一次性链接分享给团队成员。他们将创建自己的账户。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteLink"
+msgstr "邀请链接"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteRole"
+msgstr "邀请角色"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.knowledge"
+msgstr "知识与 Skill"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.loading"
+msgstr "加载中…"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.maintainer"
+msgstr "维护者"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.member"
+msgstr "成员"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.members"
+msgstr "成员"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.more"
+msgstr "加载更多"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.navigation"
+msgstr "组织导航"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.noMembers"
+msgstr "未找到成员"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.offline"
+msgstr "运行此会话的电脑已离线。请重新连接后再发送新请求。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.overview"
+msgstr "概览"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.owner"
+msgstr "所有者"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.personal"
+msgstr "返回个人空间"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projectName"
+msgstr "项目名称"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projectNavigation"
+msgstr "项目导航"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projects"
+msgstr "项目"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.reader"
+msgstr "只读成员"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removed"
+msgstr "已移除"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removeHint"
+msgstr "此成员将失去组织访问权限。已接受的工作可以完成，但此账户无法再提交新请求。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removeMember"
+msgstr "移除成员"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.resources"
+msgstr "资源"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.restore"
+msgstr "恢复项目"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.restoreHint"
+msgstr "允许在此项目中开展新工作。已暂停的会话将保持暂停。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.role"
+msgstr "角色"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.save"
+msgstr "保存更改"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.sessions"
+msgstr "会话"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.settings"
+msgstr "组织设置"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.transferHint"
+msgstr "将此成员设为组织所有者。你当前的所有者角色将变为管理员。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.transferOwner"
+msgstr "转让所有权"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.unknown"
+msgstr "结果尚未确定。再次尝试前，请先检查其状态。"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.working"
+msgstr "保存中…"
 
 #. js-lingui-explicit-id
 msgid "project.entry.addFolder"
@@ -18709,12 +20149,36 @@ msgid "session.question.directAnswer"
 msgstr "回答：{option}。{description}"
 
 #. js-lingui-explicit-id
+msgid "session.question.draftLoadFailed"
+msgstr "无法加载已保存的回答。"
+
+#. js-lingui-explicit-id
+msgid "session.question.draftLoading"
+msgstr "正在加载已保存的回答…"
+
+#. js-lingui-explicit-id
+msgid "session.question.draftRemoveFailed"
+msgstr "无法清除之前保存的回答。请重试。"
+
+#. js-lingui-explicit-id
+msgid "session.question.draftSaveFailed"
+msgstr "回答尚未保存。请保持此页面打开并重试。"
+
+#. js-lingui-explicit-id
+msgid "session.question.draftSwitchFailed"
+msgstr "无法保存之前的回答。请重试后再切换问题。"
+
+#. js-lingui-explicit-id
 msgid "session.question.next"
 msgstr "下一步"
 
 #. js-lingui-explicit-id
 msgid "session.question.previous"
 msgstr "上一步"
+
+#. js-lingui-explicit-id
+msgid "session.question.retryDraft"
+msgstr "重试已保存的回答"
 
 #. js-lingui-explicit-id
 msgid "session.question.send"
@@ -26579,6 +28043,22 @@ msgstr "查看笔记本"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.notes"
 msgstr "查看笔记"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-files"
+msgstr "查看发布内容的文件"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-list"
+msgstr "组织知识"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-read"
+msgstr "读取组织知识"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-search"
+msgstr "搜索组织知识"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.paper"

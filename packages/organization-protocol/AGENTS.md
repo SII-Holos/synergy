@@ -1,6 +1,6 @@
 # Organization Protocol
 
-Own strict, versioned DTOs and bridge messages for the organization service, Runtime adapter and clients. Exclude execution, storage, HTTP and UI implementations. Reject unknown versions and fields; build strings never decide compatibility.
+Own versioned service, Runtime and client DTOs. Exclude execution, storage, HTTP and UI. Reject unknown versions/fields; build strings never decide compatibility.
 
 Run `bun run typecheck` and `bun run test`; verify mounted OpenAPI and regenerate the SDK when a schema becomes API-visible.
 
@@ -10,7 +10,7 @@ API token schemas separate one-time secrets from metadata and bind explicit proj
 
 Hash the complete strict input and target. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
 
-Desktop command stream frames separate transfer nonces from canonical logical IDs. Reuse command payload limits and Runtime chunk sizes; verify strict input/reply-only envelopes in `test/command-stream.test.ts`.
+Desktop bridge versions require revision-bound logout phases; test old-request rejection in `test/desktop.test.ts`. Command stream frames separate transfer nonces from canonical logical IDs. Reuse command payload limits and Runtime chunk sizes; verify strict input/reply-only envelopes in `test/command-stream.test.ts`.
 
 Decision digests bind request, source and answer. Interaction reads page pending owners and value-free winners. Bind permits to queries; verify decision-command/interaction suites.
 

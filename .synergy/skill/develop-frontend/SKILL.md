@@ -155,3 +155,5 @@ For live file-change presentation, verify complete totals beyond the message pro
 For experimental product UI, load [develop-feature](../develop-feature/SKILL.md). Use the feature catalog for experimental settings and effective capabilities for ordinary entrypoints. Verify disabled deep links, restored panels and reconnect responses.
 
 Browser cost and flaky fixture repairs follow [the stability workflow](../testing-guide/references/stability.md). Reuse compiled fixtures with fresh pages; measure cold and warm preparation before extending a DOM matrix.
+
+For destructive account actions, test reload before the native request arrives as well as after pending and final receipts. Keep credential-free recovery metadata in its existing connection owner, outside controlled-cache deletion. Use transactional point ownership across windows, preserve the original revision/request, and reject an older action after refresh or later login. Distinguish confirmed access loss, which clears private views, from temporary transport failure, which retains drafts.

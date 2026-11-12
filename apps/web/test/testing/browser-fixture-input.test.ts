@@ -57,6 +57,17 @@ test("fixture identity tracks Lingui configuration, HTML style sources and trans
   }
 })
 
+test("styled fixture identity includes the public assets its rendered controls use", async () => {
+  const f = await fixture()
+  const previous = await f.input()
+  await Bun.write(path.join(f.repository, "apps/web/public/brand/icon.png"), new Uint8Array([1, 2, 3]))
+  expect(await f.input()).not.toBe(previous)
+  f.recipe.styled = false
+  const unstyled = await f.input()
+  await Bun.write(path.join(f.repository, "apps/web/public/brand/icon.png"), new Uint8Array([3, 2, 1]))
+  expect(await f.input()).toBe(unstyled)
+})
+
 test("alias targets must belong to a hashed fixture or workspace source and build tree", async () => {
   const f = await fixture()
   for (const replacement of [

@@ -196,7 +196,9 @@ export function PermissionDock(props: {
           </button>
           <button type="button" class="decision-menu-row" disabled={locked()} onClick={() => respond("always")}>
             <span>{_(copy.always)}</span>
-            <span class="decision-secondary">{_(props.persistentScope ?? copy.persistentScope)}</span>
+            <span class="decision-secondary">
+              {props.persistentScope ? _(props.persistentScope) : _(copy.persistentScope)}
+            </span>
           </button>
         </Popover>
         <Button

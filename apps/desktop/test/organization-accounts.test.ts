@@ -1,5 +1,6 @@
+import { signOutAccount, prepareAccountSignOut } from "./fixture/organization-sign-out"
 import { expect, test } from "bun:test"
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -93,6 +94,91 @@ test("Desktop accounts persist only sealed refresh credentials and isolate deplo
   })
 })
 
+test("a prepared Desktop logout is durable before revocation and its receipt cannot revoke a later login", async () => {
+  await using f = await fixture()
+  const original = await f.store.accept(tokens())
+  f.response(async () => Response.json({ ok: true }))
+  const requestID = randomUUID()
+  const intent = { connectionID: original.id, expectedRevision: original.revision, requestID }
+  const pending = await f.store.signOut({ ...intent, phase: "prepare" })
+  expect(pending).toMatchObject({ state: "sign_out_pending", revision: requestID })
+  expect(f.requests).toHaveLength(0)
+  const restarted = f.restart()
+  expect((await restarted.list())[0]).toEqual(pending)
+  await expect(restarted.access(original.id)).rejects.toMatchObject({ code: "signed_out" })
+  await expect(restarted.accept(tokens())).rejects.toMatchObject({ code: "revocation_pending" })
+  const commit = { ...intent, phase: "commit" as const, expectedRevision: requestID }
+  expect(await restarted.signOut(commit)).toMatchObject({ state: "signed_out", revision: requestID })
+  expect(f.requests).toHaveLength(1)
+  expect(await f.restart().signOut(commit)).toMatchObject({ state: "signed_out", revision: requestID })
+  expect(f.requests).toHaveLength(1)
+  const next = tokens()
+  const later = await restarted.accept(next)
+  expect(later.revision).not.toBe(original.revision)
+  for (const phase of ["prepare", "commit"] as const)
+    await expect(
+      restarted.signOut({
+        ...intent,
+        phase,
+        expectedRevision: phase === "commit" ? requestID : intent.expectedRevision,
+      }),
+    ).rejects.toMatchObject({ code: "connection_changed" })
+  expect(f.requests).toHaveLength(1)
+  expect((await restarted.access(later.id)).accessToken).toBe(next.accessToken)
+})
+
+test("a Desktop refresh invalidates an older logout selector without revoking its replacement", async () => {
+  await using f = await fixture()
+  const original = await f.store.accept(tokens())
+  const replacement = tokens()
+  f.response(async () => Response.json(replacement))
+  const restored = f.restart()
+  const current = await restored.access(original.id)
+  expect(current.connection.revision).not.toBe(original.revision)
+  await expect(
+    restored.signOut({
+      phase: "prepare",
+      connectionID: original.id,
+      expectedRevision: original.revision,
+      requestID: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "connection_changed" })
+  expect(f.requests).toHaveLength(1)
+  expect((await restored.access(original.id)).accessToken).toBe(replacement.accessToken)
+})
+
+test("a legacy pending Desktop logout adopts only its actual durable revision", async () => {
+  await using f = await fixture()
+  const original = await f.store.accept(tokens())
+  const legacyRevision = randomUUID()
+  const legacy = JSON.parse(await fs.readFile(f.file(original.id), "utf8"))
+  await fs.writeFile(
+    f.file(original.id),
+    JSON.stringify({ ...legacy, state: "sign_out_pending", revision: legacyRevision }),
+  )
+  f.response(async () => Response.json({ ok: true }))
+  const restored = f.restart()
+  await expect(
+    restored.signOut({
+      phase: "prepare",
+      connectionID: original.id,
+      expectedRevision: legacyRevision,
+      requestID: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "connection_changed" })
+  expect(f.requests).toHaveLength(0)
+  const intent = { connectionID: original.id, expectedRevision: legacyRevision, requestID: legacyRevision }
+  expect(await restored.signOut({ ...intent, phase: "prepare" })).toMatchObject({
+    state: "sign_out_pending",
+    revision: legacyRevision,
+  })
+  expect(f.requests).toHaveLength(0)
+  expect(await restored.signOut({ ...intent, phase: "commit" })).toMatchObject({
+    state: "signed_out",
+    revision: legacyRevision,
+  })
+})
+
 test("concurrent Desktop callers share one rotation and only use the durably saved replacement", async () => {
   await using f = await fixture()
   const grant = tokens()
@@ -137,7 +223,7 @@ test("a lost rotation survives restart as reauthorization required and the old c
   await expect(again.access(connection.id)).rejects.toMatchObject({ code: "reauthorization_required" })
   expect(f.requests).toHaveLength(1)
   f.response(async () => Response.json({ ok: true }))
-  expect((await again.signOut(connection.id)).state).toBe("signed_out")
+  expect((await signOutAccount(again, connection.id)).state).toBe("signed_out")
   expect(f.requests).toHaveLength(2)
   expect(f.requests[1]!.url).toBe(`${authority.issuer}/org/v1/auth/revoke`)
   expect((await f.requests[1]!.json()).refreshToken).toBe(grant.refreshToken)
@@ -152,7 +238,7 @@ test("offline logout blocks local access across restart and only explicit logout
   f.response(async () => {
     throw new Error("offline")
   })
-  await expect(f.store.signOut(connection.id)).rejects.toMatchObject({ code: "revocation_pending" })
+  await expect(signOutAccount(f.store, connection.id)).rejects.toMatchObject({ code: "revocation_pending" })
   await expect(f.store.access(connection.id)).rejects.toMatchObject({ code: "signed_out" })
   expect((await f.store.access(other.id)).connection.id).toBe(other.id)
   const recovered = f.restart()
@@ -160,8 +246,8 @@ test("offline logout blocks local access across restart and only explicit logout
   await expect(recovered.access(connection.id)).rejects.toMatchObject({ code: "signed_out" })
   expect(f.requests).toHaveLength(1)
   f.response(async () => Response.json({ ok: true }))
-  expect((await recovered.signOut(connection.id)).state).toBe("signed_out")
-  expect((await recovered.signOut(connection.id)).state).toBe("signed_out")
+  expect((await signOutAccount(recovered, connection.id)).state).toBe("signed_out")
+  expect((await signOutAccount(recovered, connection.id)).state).toBe("signed_out")
   expect(f.requests).toHaveLength(2)
 })
 
@@ -179,8 +265,15 @@ test("logout wins against a late refresh response and cannot resurrect stored or
   const pending = recovered.access(connection.id)
   const rejected = pending.catch((error: unknown) => error)
   await entered.promise
-  const signOut = recovered.signOut(connection.id)
-  const same = recovered.signOut(connection.id)
+  const prepared = await prepareAccountSignOut(recovered, connection.id)
+  const request = {
+    connectionID: connection.id,
+    phase: "commit" as const,
+    expectedRevision: prepared.revision,
+    requestID: prepared.revision,
+  }
+  const signOut = recovered.signOut(request)
+  const same = recovered.signOut(request)
   expect((await signOut).state).toBe("signed_out")
   expect((await same).state).toBe("signed_out")
   response.resolve(Response.json(tokens()))
@@ -266,7 +359,7 @@ test("a refresh cannot change authority or account and late authorization cannot
   const rejected = pending.catch((error: unknown) => error)
   await entered.promise
   f.response(async () => Response.json({ ok: true }))
-  await f.store.signOut(connection.id)
+  await signOutAccount(f.store, connection.id)
   resume.resolve()
   expect(await rejected).toMatchObject({ code: "cancelled" })
   expect((await f.restart().list())[0]!.state).toBe("signed_out")

@@ -6,7 +6,11 @@ import { createServer } from "node:http"
 import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
-import { OrganizationClientAuth as Auth,OrganizationReadProtocol as Read,type OrganizationProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationClientAuth as Auth,
+  OrganizationReadProtocol as Read,
+  type OrganizationProtocol as Protocol,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { DesktopOrganizationAccounts } from "../../src/organization/accounts"
 import { DesktopOrganizationAuthorization } from "../../src/organization/authorization"
 import { DesktopOrganizationIPC, registerOrganizationIPC } from "../../src/organization/ipc"
@@ -30,8 +34,15 @@ const nativeEntered = Promise.withResolvers<void>()
 const nativeReleased = Promise.withResolvers<void>()
 const fieldBytes = Buffer.from("Native field 内容\n".repeat(20000))
 const fieldHash = createHash("sha256").update(fieldBytes).digest("hex")
-const fieldReference = {kind:"native" as const,version:"native-v1",field:"text" as const,bytes:fieldBytes.length,sha256:fieldHash,original:"partial" as const}
-let nativeBinding:Protocol.SessionBinding
+const fieldReference = {
+  kind: "native" as const,
+  version: "native-v1",
+  field: "text" as const,
+  bytes: fieldBytes.length,
+  sha256: fieldHash,
+  original: "partial" as const,
+}
+let nativeBinding: Protocol.SessionBinding
 let uploadedBytes: Uint8Array | undefined
 const server = createServer(async (request, response) => {
   if (request.url?.startsWith(binaryPath)) {
@@ -93,13 +104,37 @@ async function run() {
       assert.equal(target.origin, info.issuer)
       if (target.pathname === "/org/v1/sessions/native-session/read") {
         const query = Read.Query.parse(await request.json())
-        assert.equal(query.operation,"partContent")
+        assert.equal(query.operation, "partContent")
         if (query.operation !== "partContent") throw new Error("Unexpected native read")
-        if (query.partID === "held-native-part") {nativeEntered.resolve();await nativeReleased.promise}
-        return Response.json(Read.Result.parse({operation:"partContent",state:"ready",rootSessionID:query.rootSessionID,sourceSessionID:query.sourceSessionID ?? query.rootSessionID,binding:nativeBinding,
-          value:{messageID:query.messageID,partID:query.partID,version:"native-v1",part:{type:"text",content:fieldReference}},
-          chunk:{field:"text",offset:query.offset,nextOffset:Math.min(fieldBytes.length,query.offset+query.length),totalBytes:fieldBytes.length,sha256:fieldHash,original:"partial",data:fieldBytes.subarray(query.offset,query.offset+query.length).toString("base64url"),complete:query.offset+query.length>=fieldBytes.length},
-        }))
+        if (query.partID === "held-native-part") {
+          nativeEntered.resolve()
+          await nativeReleased.promise
+        }
+        return Response.json(
+          Read.Result.parse({
+            operation: "partContent",
+            state: "ready",
+            rootSessionID: query.rootSessionID,
+            sourceSessionID: query.sourceSessionID ?? query.rootSessionID,
+            binding: nativeBinding,
+            value: {
+              messageID: query.messageID,
+              partID: query.partID,
+              version: "native-v1",
+              part: { type: "text", content: fieldReference },
+            },
+            chunk: {
+              field: "text",
+              offset: query.offset,
+              nextOffset: Math.min(fieldBytes.length, query.offset + query.length),
+              totalBytes: fieldBytes.length,
+              sha256: fieldHash,
+              original: "partial",
+              data: fieldBytes.subarray(query.offset, query.offset + query.length).toString("base64url"),
+              complete: query.offset + query.length >= fieldBytes.length,
+            },
+          }),
+        )
       }
       const response = await fetch(
         new URL(target.pathname + target.search, target.pathname.startsWith(binaryPath) ? appURL : info.url),
@@ -178,7 +213,14 @@ async function run() {
     )
     assert.equal(connected.ok, true)
     const connection = connected.value
-    nativeBinding={schemaVersion:1,orgID:connection.orgID,projectID:"native-project",creatorID:connection.account.accountID,driverRuntimeID:"remote-native",bindingEpoch:1}
+    nativeBinding = {
+      schemaVersion: 1,
+      orgID: connection.orgID,
+      projectID: "native-project",
+      creatorID: connection.account.accountID,
+      driverRuntimeID: "remote-native",
+      bindingEpoch: 1,
+    }
     console.error("organization-native: restoring sealed account")
     assert.equal(connection.account.accountID, login.data.account.accountID)
     assert.equal(JSON.stringify(connection).includes("Token"), false)
@@ -209,16 +251,47 @@ async function run() {
     )
     assert.deepEqual(downloaded, { ok: true, value: { saved: true, bytes: 4 } })
     assert.deepEqual(new Uint8Array(await fs.readFile(path.join(root, "native-download.bin"))), binaryBytes)
-    const fieldRequest={requestID:"native-field",connectionID:connection.id,fileName:"native-field.txt",binding:nativeBinding,reference:fieldReference,query:{operation:"partContent",rootSessionID:"native-session",messageID:"native-message",partID:"native-part",version:"native-v1",field:"text",offset:0,length:131072}}
-    const field = await window.webContents.executeJavaScript(`window.synergyDesktop.organization.downloadContent(${JSON.stringify(fieldRequest)})`)
-    assert.deepEqual(field,{ok:true,value:{kind:"result",result:{saved:true,bytes:fieldBytes.length},original:"partial"}})
-    assert.deepEqual(await fs.readFile(path.join(root,"native-field.txt")),fieldBytes)
-    const heldField=window.webContents.executeJavaScript(`window.synergyDesktop.organization.downloadContent(${JSON.stringify({...fieldRequest,requestID:"native-field-held",fileName:"cancelled-field.txt",query:{...fieldRequest.query,partID:"held-native-part"}})})`)
+    const fieldRequest = {
+      requestID: "native-field",
+      connectionID: connection.id,
+      fileName: "native-field.txt",
+      binding: nativeBinding,
+      reference: fieldReference,
+      query: {
+        operation: "partContent",
+        rootSessionID: "native-session",
+        messageID: "native-message",
+        partID: "native-part",
+        version: "native-v1",
+        field: "text",
+        offset: 0,
+        length: 131072,
+      },
+    }
+    const field = await window.webContents.executeJavaScript(
+      `window.synergyDesktop.organization.downloadContent(${JSON.stringify(fieldRequest)})`,
+    )
+    assert.deepEqual(field, {
+      ok: true,
+      value: { kind: "result", result: { saved: true, bytes: fieldBytes.length }, original: "partial" },
+    })
+    assert.deepEqual(await fs.readFile(path.join(root, "native-field.txt")), fieldBytes)
+    const heldField = window.webContents.executeJavaScript(
+      `window.synergyDesktop.organization.downloadContent(${JSON.stringify({ ...fieldRequest, requestID: "native-field-held", fileName: "cancelled-field.txt", query: { ...fieldRequest.query, partID: "held-native-part" } })})`,
+    )
     await nativeEntered.promise
-    await window.webContents.executeJavaScript('window.synergyDesktop.organization.cancel({requestID:"native-field-held"})')
-    assert.deepEqual(await heldField,{ok:false,error:{code:"cancelled"}})
+    await window.webContents.executeJavaScript(
+      'window.synergyDesktop.organization.cancel({requestID:"native-field-held"})',
+    )
+    assert.deepEqual(await heldField, { ok: false, error: { code: "cancelled" } })
     nativeReleased.resolve()
-    assert.equal(await fs.stat(path.join(root,"cancelled-field.txt")).then(() => true,() => false),false)
+    assert.equal(
+      await fs.stat(path.join(root, "cancelled-field.txt")).then(
+        () => true,
+        () => false,
+      ),
+      false,
+    )
     const heldBinary = window.webContents.executeJavaScript(
       `window.synergyDesktop.organization.request(${JSON.stringify({ requestID: "binary-held", connectionID: connection.id, method: "GET", path: binaryPath + "/content?hold=1", range: "bytes=0-3" })})`,
     )
@@ -255,7 +328,12 @@ async function run() {
     await pending
     hold = false
     const signedOut = await window.webContents.executeJavaScript(
-      `window.synergyDesktop.organization.signOut(${JSON.stringify({ connectionID: connection.id })})`,
+      `(async () => {
+        const requestID = crypto.randomUUID()
+        const prepared = await window.synergyDesktop.organization.signOut({connectionID:${JSON.stringify(connection.id)},phase:"prepare",expectedRevision:${JSON.stringify(connection.revision)},requestID})
+        if (!prepared.ok) return prepared
+        return window.synergyDesktop.organization.signOut({connectionID:${JSON.stringify(connection.id)},phase:"commit",expectedRevision:prepared.value.revision,requestID})
+      })()`,
     )
     assert.equal(signedOut.ok, true)
     assert.equal(signedOut.value.state, "signed_out")

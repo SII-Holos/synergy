@@ -238,7 +238,7 @@ function ResourceEditor(props: { onCancel: () => void; onSave: () => void }) {
             onChange={setEndpoint}
             type="url"
             required
-            placeholder="https://service.example.com/v1"
+            placeholder={_(messages.endpointPlaceholder, { url: "https://service.example.com/v1" })}
           />
         }
       >

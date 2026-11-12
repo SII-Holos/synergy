@@ -350,13 +350,15 @@ export class DesktopOrganizationIPC<Event = unknown> {
         return
       }
       case "signOut": {
-        const { connectionID } = parse(Desktop.Account, input)
-        for (const request of this.requests.values())
-          if (request.connectionID === connectionID) request.controller.abort()
-        const connection = (await this.options.accounts.list()).find((connection) => connection.id === connectionID)
+        const request = parse(Desktop.SignOut, input)
         if (!current()) throw new Failure("cancelled")
-        if (connection) this.options.authorization.cancel(connection)
-        return this.options.accounts.signOut(connectionID)
+        const connection = await this.options.accounts.signOut(request)
+        if (request.phase === "prepare" && connection.state === "sign_out_pending") {
+          for (const pending of this.requests.values())
+            if (pending.connectionID === connection.id) pending.controller.abort()
+          this.options.authorization.cancel(connection)
+        }
+        return connection
       }
       case "memberStatus": {
         const { connectionID } = parse(Desktop.Account, input)
@@ -519,9 +521,10 @@ export class DesktopOrganizationIPC<Event = unknown> {
       }
       case "downloadContent":
       case "downloadAttachment": {
-        const download = action === "downloadContent"
-          ? { kind: "content" as const, request: parse(Desktop.ContentDownload, input) }
-          : { kind: "attachment" as const, request: parse(Desktop.AttachmentDownload, input) }
+        const download =
+          action === "downloadContent"
+            ? { kind: "content" as const, request: parse(Desktop.ContentDownload, input) }
+            : { kind: "attachment" as const, request: parse(Desktop.AttachmentDownload, input) }
         const request = download.request
         if (!this.options.saveFile) throw new Failure("unavailable")
         return this.run(
@@ -589,7 +592,8 @@ export class DesktopOrganizationIPC<Event = unknown> {
             const options = {
               signal,
               read,
-              save: (name: string, write: (append: (chunk: Uint8Array) => Promise<void>) => Promise<number>) => this.options.saveFile!(name, write, signal),
+              save: (name: string, write: (append: (chunk: Uint8Array) => Promise<void>) => Promise<number>) =>
+                this.options.saveFile!(name, write, signal),
             }
             return download.kind === "content"
               ? downloadOrganizationContent(download.request, options)

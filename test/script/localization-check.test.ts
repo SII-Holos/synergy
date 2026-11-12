@@ -196,6 +196,70 @@ describe("localization source contract", () => {
     expect(mixedType.map((item) => item.kind)).toEqual(["invalid-message-descriptor"])
   })
 
+  test("accepts complete static descriptor maps indexed by enums, properties, and signals", () => {
+    const source = `
+      import { invitationMessages } from "../../script/messages"
+      enum Status { Ready = "ready", Waiting = "waiting" }
+      const labels = {
+        ready: { id: "app.state.ready.label", message: "Ready" },
+        waiting: { id: "app.state.waiting.label", message: "Waiting" },
+      }
+      const invitationStates = { open: invitationMessages.open, closed: invitationMessages.closed }
+      function label(status: Status, record: { state: keyof typeof labels }, selected: () => keyof typeof labels) {
+        return [_(labels[status]), _(labels[record.state]), _(labels[selected()])]
+      }
+      function invitation(invite: { state: keyof typeof invitationStates }) {
+        return _(invitationStates[invite.state])
+      }
+    `
+
+    expect(analyzeLocalizationSource("apps/web/src/example.ts", source)).toEqual([])
+  })
+
+  test("checks every descriptor in a map at a dynamic lookup", () => {
+    const source = `
+      const labels = {
+        ready: { id: "app.state.ready.label", message: "Ready" },
+        invalidID: { id: "bad id", message: "Invalid" },
+        dynamicID: { id: selectedID, message: "Dynamic" },
+        missingDefault: { id: "app.state.missing.label" },
+        emptyDefault: { id: "app.state.empty.label", message: "" },
+        dynamicDefault: { id: "app.state.dynamic.label", message: selectedMessage },
+      }
+      function label(record: { state: keyof typeof labels }) { return _(labels[record.state]) }
+    `
+
+    expect(analyzeLocalizationSource("apps/web/src/example.ts", source).map((item) => item.kind)).toEqual([
+      "invalid-message-id",
+      "dynamic-message-id",
+      "missing-default-message",
+      "missing-default-message",
+      "missing-default-message",
+    ])
+  })
+
+  test.each([
+    "{ ...otherLabels, ready: { id: 'app.state.ready.label', message: 'Ready' } }",
+    "{ get ready() { return { id: 'app.state.ready.label', message: 'Ready' } } }",
+    "{ [selectedKey]: { id: 'app.state.ready.label', message: 'Ready' } }",
+    "Object.fromEntries(entries)",
+    "runtimeTable",
+    "createRuntimeTable()",
+    "{}",
+    "{ ready: { id: 'app.state.ready.label', message: 'Ready' }, waiting: unresolved }",
+    "{ ready: { id: 'app.state.ready.label', message: 'Ready' }, waiting: { label: 'Waiting' } }",
+  ])("rejects descriptor maps with unresolved or constructed entries: %s", (initializer) => {
+    const source = `
+      import { runtimeTable, createRuntimeTable } from "../../script/runtime-messages"
+      const labels = ${initializer}
+      function label(record: { state: keyof typeof labels }) { return _(labels[record.state]) }
+    `
+
+    expect(analyzeLocalizationSource("apps/web/src/example.ts", source).map((item) => item.kind)).toContain(
+      "invalid-message-descriptor",
+    )
+  })
+
   test("requires runtime translation calls to use static descriptors", () => {
     const source = `
       const translated = _("settings.general.language.label")
@@ -213,15 +277,15 @@ describe("localization source contract", () => {
     expect(dynamicOverride.map((item) => item.kind)).toEqual(["dynamic-message-id"])
   })
 
-  test("rejects descriptor maps indexed by unconstrained dynamic strings", () => {
-    const unsafeMapLookup = analyzeLocalizationSource(
+  test("checks static descriptor content independently of the index type", () => {
+    const staticMapLookup = analyzeLocalizationSource(
       "apps/web/src/dynamic-map.ts",
       `
         const labels = { ready: { id: "app.state.ready.label", message: "Ready" } }
         function label(key: string) { return _(labels[key]) }
       `,
     )
-    expect(unsafeMapLookup.map((item) => item.kind)).toEqual(["invalid-message-descriptor"])
+    expect(staticMapLookup).toEqual([])
   })
 
   test("rejects unknown allowlist categories", () => {

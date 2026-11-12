@@ -19,6 +19,8 @@ Read [Frontend localization](../../../../docs/architecture/localization.md) befo
 6. Keep the Settings language control global, responsive, and recoverable: Follow System, English, and Simplified Chinese apply without refresh, do not follow project Scope, and must preserve language self-names so a user can switch back after a mistake.
 7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. When removing or renaming IDs, update affected terminology assertions and include `apps/web/test/script/i18n-check.test.ts` in focused verification; do not restore unused copy to satisfy a stale assertion. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
 
+Use a local object literal of static descriptors for enum, record or signal-based message selection. Keep every table entry extractable; do not replace valid lookups with translation adapters or allowlist exceptions. Run the source-contract tests when changing how these tables are resolved, including invalid entries outside the selected state.
+
 ## Use Semantic Icons
 
 Non-tool product UI expresses meaning through `packages/ui/src/components/semantic-icon.tsx`.

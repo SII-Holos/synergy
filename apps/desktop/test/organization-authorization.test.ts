@@ -1,3 +1,4 @@
+import { signOutAccount } from "./fixture/organization-sign-out"
 import { expect, test } from "bun:test"
 import { OrganizationClientAuth as Auth } from "@ericsanchezok/synergy-organization-protocol"
 import { DesktopOrganizationAuthorization } from "../src/organization/authorization"
@@ -40,7 +41,7 @@ test("native authorization exchanges a real PKCE code, persists a sealed credent
   expect(
     (await f.api.orgAuth.session({ headers: { authorization: `Bearer ${access.accessToken}` } })).response.status,
   ).toBe(200)
-  await recovered.signOut(connection.id)
+  await signOutAccount(recovered, connection.id)
   expect(
     (await f.api.orgAuth.session({ headers: { authorization: `Bearer ${access.accessToken}` } })).response.status,
   ).toBe(401)

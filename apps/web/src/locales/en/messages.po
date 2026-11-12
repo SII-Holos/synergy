@@ -13377,6 +13377,170 @@ msgid "note.tag.remove"
 msgstr "Remove tag {tag}"
 
 #. js-lingui-explicit-id
+msgid "organization.account.lastOwner"
+msgstr "Transfer ownership to another member before leaving this organization."
+
+#. js-lingui-explicit-id
+msgid "organization.account.leave"
+msgstr "Leave organization"
+
+#. js-lingui-explicit-id
+msgid "organization.account.leaveHint"
+msgstr "Your membership and organization access will end. Your previous contributions remain attributed to you. Rejoining requires a new invitation."
+
+#. js-lingui-explicit-id
+msgid "organization.account.membership"
+msgstr "Membership"
+
+#. js-lingui-explicit-id
+msgid "organization.account.title"
+msgstr "Account"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.artifacts"
+msgstr "Read published artifacts"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.cancel"
+msgstr "Cancel work"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.configure"
+msgstr "Choose conversation resources"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.continue"
+msgstr "Continue work"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.create"
+msgstr "Create conversations"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.input"
+msgstr "Send messages"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.pause"
+msgstr "Pause work"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.read"
+msgstr "Read conversations"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.reply"
+msgstr "Answer questions and permissions"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.resources"
+msgstr "Read project resources"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.active"
+msgstr "Active"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.chooseProject"
+msgstr "Choose a project"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.create"
+msgstr "Create token"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.days"
+msgstr "{count, plural, one {# day} other {# days}}"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.dismiss"
+msgstr "Hide token"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.empty"
+msgstr "No API tokens yet."
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expired"
+msgstr "Expired"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expires"
+msgstr "Expires {date}"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expiry"
+msgstr "Expires after"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.hint"
+msgstr "Connect an integration to one project. Each request is checked against your current access."
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.label"
+msgstr "Token name"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.lost"
+msgstr "This token was issued, but its original value is unavailable. Revoke it before creating a replacement."
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.moreProjects"
+msgstr "Load more projects"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.once"
+msgstr "Copy this token now. It is shown only once."
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.operations"
+msgstr "Allowed actions"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.project"
+msgstr "Project"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.recover"
+msgstr "Recover token issuance"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.refresh"
+msgstr "Refresh tokens"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.required"
+msgstr "Enter a name, choose a project and select at least one action."
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revoke"
+msgstr "Revoke token"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revoked"
+msgstr "Revoked"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revokeHint"
+msgstr "New requests with this token will be rejected. Work already accepted may finish."
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.secret"
+msgstr "API token"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.title"
+msgstr "API tokens"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.unavailableProject"
+msgstr "Unavailable project"
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.unknown"
+msgstr "Token issuance is unconfirmed. Recover the original request before creating another token."
+
+#. js-lingui-explicit-id
 msgid "organization.auth.close"
 msgstr "Close window"
 
@@ -13449,16 +13613,988 @@ msgid "organization.auth.working"
 msgstr "Connecting…"
 
 #. js-lingui-explicit-id
+msgid "organization.interactions.allowedAlways"
+msgstr "Always allowed by {name}."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.allowedOnce"
+msgstr "Allowed once by {name}."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.allowedSession"
+msgstr "Allowed for this session by {name}."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.answered"
+msgstr "Answered by {name}."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.check"
+msgstr "Check response status"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.denied"
+msgstr "Denied by {name}."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.dismiss"
+msgstr "Dismiss status"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.expired"
+msgstr "This request has expired."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.first"
+msgstr "First requests"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.firstStatuses"
+msgstr "First response statuses"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.handled"
+msgstr "This request was handled."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.hostedScope"
+msgstr "Save these rules for future matching work by all members in every project on this hosted Runtime, until the rules are removed."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.memberScope"
+msgstr "Save these rules for future matching work in every project on this Runtime, until the rules are removed."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.more"
+msgstr "More requests"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.moreStatuses"
+msgstr "More response statuses"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.passwordLost"
+msgstr "The original password answer was kept only in memory. Check its status before answering again."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.refresh"
+msgstr "Refresh requests"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.retry"
+msgstr "Retry original response"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.skipped"
+msgstr "Skipped by {name}."
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.submitted"
+msgstr "Response submitted {date}"
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.unknown"
+msgstr "The response status is unconfirmed."
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.alreadyUsed"
+msgstr "This invitation has already been used. Manage the member's access in Members."
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.consumed"
+msgstr "Used"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.empty"
+msgstr "No invitations to show."
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.expired"
+msgstr "Expired"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.hint"
+msgstr "Review invitation status. Links are shown only when they are created."
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.identity"
+msgstr "Invitation {id}"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.invalidated"
+msgstr "Issuer access changed"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.issuedBy"
+msgstr "Issued by account {id}"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.open"
+msgstr "Available"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revoke"
+msgstr "Revoke invitation"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revoked"
+msgstr "Revoked"
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revokeHint"
+msgstr "This invitation will stop accepting new members. Existing members keep their access."
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.title"
+msgstr "Invitations"
+
+#. js-lingui-explicit-id
+msgid "organization.knowledge.pendingUpdate"
+msgstr "A knowledge change is awaiting confirmation. Retry the same change before submitting another."
+
+#. js-lingui-explicit-id
+msgid "organization.members.createReset"
+msgstr "Create reset link"
+
+#. js-lingui-explicit-id
+msgid "organization.members.done"
+msgstr "Done"
+
+#. js-lingui-explicit-id
+msgid "organization.members.expires"
+msgstr "Expires {date}"
+
+#. js-lingui-explicit-id
+msgid "organization.members.reset"
+msgstr "Reset password"
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetFor"
+msgstr "Password reset for {name}"
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetHint"
+msgstr "Create a one-time password reset link. Completing the reset revokes this member's existing sign-ins."
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetLink"
+msgstr "Password reset link"
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetTitle"
+msgstr "Create password reset link"
+
+#. js-lingui-explicit-id
+msgid "organization.members.sharePrivately"
+msgstr "Share this link privately with the account owner."
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.create"
+msgstr "Create account"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.displayName"
+msgstr "Your name"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.done"
+msgstr "You're ready to go"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.doneHint"
+msgstr "Return to Synergy and connect this organization with your account."
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.failed"
+msgstr "This request could not be completed. Check the link and your connection, then try again."
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.invite"
+msgstr "Join your organization"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.login"
+msgstr "Account name"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.organization"
+msgstr "Organization name"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.password"
+msgstr "New password"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.passwordHint"
+msgstr "Use at least 12 characters. This account belongs only to this organization."
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.reset"
+msgstr "Reset your password"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.resetDone"
+msgstr "Your password has been changed. Return to Synergy to sign in again."
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.save"
+msgstr "Save password"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.setup"
+msgstr "Set up your organization"
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.taken"
+msgstr "This account name is already in use. Choose another name."
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.used"
+msgstr "This one-time link has already been used. Ask your administrator for a new link."
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.working"
+msgstr "Setting up…"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.choose"
+msgstr "Choose project folder"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.empty"
+msgstr "No project folder selected."
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.hint"
+msgstr "New conversations use this folder. Existing conversations keep their workspace."
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.loading"
+msgstr "Checking project folder…"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.refresh"
+msgstr "Refresh folder binding"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.start"
+msgstr "Start this computer and choose folder"
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.stopped"
+msgstr "Start this organization's runtime to choose a local folder."
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.title"
+msgstr "Project folder on this computer"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.add"
+msgstr "Add project member"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.empty"
+msgstr "No project roles assigned"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.inherited"
+msgstr "Organization owners and administrators also have access through their organization role."
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.remove"
+msgstr "Remove from project"
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.removeHint"
+msgstr "Remove this member's project role. Existing organization and account permissions still apply."
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.search"
+msgstr "Find organization members"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activationFailed"
+msgstr "The requested versions could not be activated. Review runtime connectivity and resource access, then refresh the status."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activationPending"
+msgstr "Waiting for the runtime to activate the requested versions."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activeSelection"
+msgstr "Active selection revision {revision}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.applied"
+msgstr "Applied version {version}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.apply"
+msgstr "Apply to my project"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.artifactHint"
+msgstr "Published work stays available to project members independently of the source conversation."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.artifacts"
+msgstr "Artifacts"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.author"
+msgstr "Publisher account ID: {author}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.authorName"
+msgstr "Published by {name}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.chooseFiles"
+msgstr "Choose files"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.chooseFolder"
+msgstr "Choose folder"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.close"
+msgstr "Close preview"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.desiredSelection"
+msgstr "Requested selection revision {revision}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.done"
+msgstr "Published"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.download"
+msgstr "Download"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.downloadUnsupported"
+msgstr "This browser cannot save files as a stream. Open this organization in the Synergy desktop app or a browser with file saving support."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.empty"
+msgstr "No publications yet"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.emptyHint"
+msgstr "Published materials and Skills will appear here with their versions and authors."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.files"
+msgstr "Files"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.independentHint"
+msgstr "This conversation keeps its own fixed versions. Updating your project selection does not change existing conversations."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.kind"
+msgstr "Publication type"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.knowledge"
+msgstr "Knowledge and Skills"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.latest"
+msgstr "Latest"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.material"
+msgstr "Material"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.materials"
+msgstr "Materials"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.memberSelectionHint"
+msgstr "This conversation uses its executing computer owner's applied project versions. Only that owner can update these versions."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.preview"
+msgstr "Preview"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.previewUnavailable"
+msgstr "Download this file to open it. Inline preview is available for text and small images."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.previousActive"
+msgstr "The previous selection remains active."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publish"
+msgstr "Publish"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publishHint"
+msgstr "Publish a fixed copy for your team. Applied versions change only when a member chooses to update."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publishVersion"
+msgstr "Publish new version"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.reference"
+msgstr "Versioned reference"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.refreshStatus"
+msgstr "Refresh activation status"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.remove"
+msgstr "Remove from my project"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.saved"
+msgstr "File saved"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.search"
+msgstr "Search publications"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.select"
+msgstr "Use in this conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selected"
+msgstr "{count} files · {bytes} bytes"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selectedVersion"
+msgstr "Conversation uses version {version}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selection"
+msgstr "Conversation knowledge"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.skill"
+msgstr "Skill"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.skillHint"
+msgstr "Choose a Skill folder containing SKILL.md. Relative references and scripts keep their folder structure."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.source"
+msgstr "Open source conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.sourceUnavailable"
+msgstr "The source conversation is not available to your account."
+
+#. js-lingui-explicit-id
+msgid "organization.publication.title"
+msgstr "Title"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.unselect"
+msgstr "Remove from this conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.update"
+msgstr "Update my applied version"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.uploading"
+msgstr "Uploading {path} · {bytes} of {total} bytes"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.version"
+msgstr "Version {version}"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.versions"
+msgstr "Version history"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.withdraw"
+msgstr "Withdraw publication"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.withdrawHint"
+msgstr "Remove this publication from the catalog. Published historical versions remain available to authorized references."
+
+#. js-lingui-explicit-id
+msgid "organization.resources.access"
+msgstr "Manage access"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.accounts"
+msgstr "Members"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.add"
+msgstr "Add resource"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.allow"
+msgstr "Allow use"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.allowed"
+msgstr "Allowed"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.anthropic"
+msgstr "Anthropic-compatible model"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.context"
+msgstr "Context tokens"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disable"
+msgstr "Disable"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disabled"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disableHint"
+msgstr "New work can no longer select this resource. Existing accepted work keeps its recorded authority."
+
+#. js-lingui-explicit-id
+msgid "organization.resources.empty"
+msgstr "Your team's services, in one place"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.emptyHint"
+msgstr "Add a model or business connection, then choose which members and projects can use it."
+
+#. js-lingui-explicit-id
+msgid "organization.resources.enable"
+msgstr "Enable"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.enabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.endpoint"
+msgstr "Endpoint"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.endpointPlaceholder"
+msgstr "For example: {url}"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.environment"
+msgstr "Cloud execution environment"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.fixedHttp"
+msgstr "HTTP connection"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.hint"
+msgstr "Connect the services your team uses. Credentials stay with the organization."
+
+#. js-lingui-explicit-id
+msgid "organization.resources.key"
+msgstr "API key"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.keyHint"
+msgstr "Leave empty when this service does not need a key. Saved keys are never shown."
+
+#. js-lingui-explicit-id
+msgid "organization.resources.mcpHttp"
+msgstr "MCP over HTTP"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.mcpSse"
+msgstr "MCP over SSE"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.method"
+msgstr "HTTP method"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.model"
+msgstr "Model ID"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.name"
+msgstr "Resource name"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.openai"
+msgstr "OpenAI-compatible model"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.output"
+msgstr "Maximum output tokens"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.profile"
+msgstr "Resource profile"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.profileHint"
+msgstr "Use a profile configured on the organization server."
+
+#. js-lingui-explicit-id
+msgid "organization.resources.projects"
+msgstr "Projects"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.protocol"
+msgstr "Service type"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revoke"
+msgstr "Revoke access"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revoked"
+msgstr "Not allowed"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revokeHint"
+msgstr "This member or project will no longer be able to select this resource for new work."
+
+#. js-lingui-explicit-id
+msgid "organization.resources.save"
+msgstr "Save resource"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.title"
+msgstr "Resources"
+
+#. js-lingui-explicit-id
+msgid "organization.resources.workspace"
+msgstr "Cloud workspace storage"
+
+#. js-lingui-explicit-id
+msgid "organization.session.accepted"
+msgstr "Request accepted"
+
+#. js-lingui-explicit-id
+msgid "organization.session.attachmentPreview"
+msgstr "Attachment preview"
+
+#. js-lingui-explicit-id
+msgid "organization.session.attachmentUnavailable"
+msgstr "The original attachment is not retained in full and cannot be downloaded."
+
+#. js-lingui-explicit-id
+msgid "organization.session.bytes"
+msgstr "bytes"
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancel"
+msgstr "Cancel work"
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancelDownload"
+msgstr "Cancel download"
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancelHint"
+msgstr "Request cancellation of the observed active run. Accepted work may need time to stop."
+
+#. js-lingui-explicit-id
+msgid "organization.session.checkStatus"
+msgstr "Check request status"
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseModel"
+msgstr "Choose a project model"
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseResources"
+msgstr "Choose conversation resources"
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseRuntime"
+msgstr "Choose an execution runtime"
+
+#. js-lingui-explicit-id
+msgid "organization.session.computer"
+msgstr "This computer"
+
+#. js-lingui-explicit-id
+msgid "organization.session.computerHint"
+msgstr "Start this organization's member runtime when you begin work. Your personal runtime stays separate."
+
+#. js-lingui-explicit-id
+msgid "organization.session.connections"
+msgstr "Connections"
+
+#. js-lingui-explicit-id
+msgid "organization.session.contentPreparing"
+msgstr "Content is preparing. Retry the download when it is ready."
+
+#. js-lingui-explicit-id
+msgid "organization.session.context"
+msgstr "Add context"
+
+#. js-lingui-explicit-id
+msgid "organization.session.continue"
+msgstr "Continue"
+
+#. js-lingui-explicit-id
+msgid "organization.session.conversations"
+msgstr "Conversations"
+
+#. js-lingui-explicit-id
+msgid "organization.session.created"
+msgstr "Created {date}"
+
+#. js-lingui-explicit-id
+msgid "organization.session.downloading"
+msgstr "Downloading…"
+
+#. js-lingui-explicit-id
+msgid "organization.session.draftHint"
+msgstr "Your draft is kept for this account, project and conversation."
+
+#. js-lingui-explicit-id
+msgid "organization.session.empty"
+msgstr "Start the conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.session.emptyFilePage"
+msgstr "No visible files on this page"
+
+#. js-lingui-explicit-id
+msgid "organization.session.emptyHint"
+msgstr "Choose where work runs, select project resources, and invite your team by sharing a conversation."
+
+#. js-lingui-explicit-id
+msgid "organization.session.execution"
+msgstr "Run on"
+
+#. js-lingui-explicit-id
+msgid "organization.session.firstFiles"
+msgstr "First files"
+
+#. js-lingui-explicit-id
+msgid "organization.session.firstParts"
+msgstr "First message parts"
+
+#. js-lingui-explicit-id
+msgid "organization.session.historyUnavailable"
+msgstr "This historical record contains metadata only. Full message content is not available."
+
+#. js-lingui-explicit-id
+msgid "organization.session.hosted"
+msgstr "Organization-hosted runtime"
+
+#. js-lingui-explicit-id
+msgid "organization.session.inputMode"
+msgstr "Message mode"
+
+#. js-lingui-explicit-id
+msgid "organization.session.lastSync"
+msgstr "Last synchronized {date}"
+
+#. js-lingui-explicit-id
+msgid "organization.session.latest"
+msgstr "Latest messages"
+
+#. js-lingui-explicit-id
+msgid "organization.session.loadContent"
+msgstr "Load full content"
+
+#. js-lingui-explicit-id
+msgid "organization.session.memberKnowledge"
+msgstr "This conversation uses the executing computer owner's applied project versions."
+
+#. js-lingui-explicit-id
+msgid "organization.session.message"
+msgstr "Message"
+
+#. js-lingui-explicit-id
+msgid "organization.session.messagePlaceholder"
+msgstr "Write a message…"
+
+#. js-lingui-explicit-id
+msgid "organization.session.messageTooLarge"
+msgstr "This message exceeds the supported input size. Your draft is retained; send a smaller message."
+
+#. js-lingui-explicit-id
+msgid "organization.session.model"
+msgstr "Model"
+
+#. js-lingui-explicit-id
+msgid "organization.session.modelRequired"
+msgstr "Choose a model before sending work to this conversation."
+
+#. js-lingui-explicit-id
+msgid "organization.session.new"
+msgstr "New conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.session.nextFiles"
+msgstr "Next files"
+
+#. js-lingui-explicit-id
+msgid "organization.session.nextParts"
+msgstr "Next message parts"
+
+#. js-lingui-explicit-id
+msgid "organization.session.noModels"
+msgstr "No model is available. Ask a project manager to grant a model before sending work."
+
+#. js-lingui-explicit-id
+msgid "organization.session.offline"
+msgstr "Offline"
+
+#. js-lingui-explicit-id
+msgid "organization.session.older"
+msgstr "Load older messages"
+
+#. js-lingui-explicit-id
+msgid "organization.session.online"
+msgstr "Online"
+
+#. js-lingui-explicit-id
+msgid "organization.session.partial"
+msgstr "Only retained output is available"
+
+#. js-lingui-explicit-id
+msgid "organization.session.pause"
+msgstr "Pause"
+
+#. js-lingui-explicit-id
+msgid "organization.session.pending"
+msgstr "This request is waiting for a receipt. Check its status before submitting again."
+
+#. js-lingui-explicit-id
+msgid "organization.session.preparing"
+msgstr "Content is preparing. Retry to load its verified bytes."
+
+#. js-lingui-explicit-id
+msgid "organization.session.private"
+msgstr "Private conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.session.rejected"
+msgstr "Request rejected"
+
+#. js-lingui-explicit-id
+msgid "organization.session.resources"
+msgstr "Conversation resources"
+
+#. js-lingui-explicit-id
+msgid "organization.session.resourcesHint"
+msgstr "Choose authorized project resources while the conversation is idle. Credentials stay on the organization service."
+
+#. js-lingui-explicit-id
+msgid "organization.session.runtime"
+msgstr "Runtime"
+
+#. js-lingui-explicit-id
+msgid "organization.session.selectedModel"
+msgstr "Selected model"
+
+#. js-lingui-explicit-id
+msgid "organization.session.send"
+msgstr "Send"
+
+#. js-lingui-explicit-id
+msgid "organization.session.share"
+msgstr "Share with project"
+
+#. js-lingui-explicit-id
+msgid "organization.session.shared"
+msgstr "Shared with project"
+
+#. js-lingui-explicit-id
+msgid "organization.session.shareHint"
+msgstr "Project members can read the synchronized conversation. Members with execute access can send requests to its online runtime."
+
+#. js-lingui-explicit-id
+msgid "organization.session.start"
+msgstr "Start this computer"
+
+#. js-lingui-explicit-id
+msgid "organization.session.starting"
+msgstr "Starting…"
+
+#. js-lingui-explicit-id
+msgid "organization.session.steer"
+msgstr "Steer current work"
+
+#. js-lingui-explicit-id
+msgid "organization.session.sync"
+msgstr "Synchronization"
+
+#. js-lingui-explicit-id
+msgid "organization.session.syncFailed"
+msgstr "Synchronization needs attention"
+
+#. js-lingui-explicit-id
+msgid "organization.session.syncPending"
+msgstr "Waiting for synchronization"
+
+#. js-lingui-explicit-id
+msgid "organization.session.task"
+msgstr "New task"
+
+#. js-lingui-explicit-id
+msgid "organization.session.title"
+msgstr "Conversation title"
+
+#. js-lingui-explicit-id
+msgid "organization.session.unavailableConnections"
+msgstr "Remove unavailable connections"
+
+#. js-lingui-explicit-id
+msgid "organization.session.unavailableModel"
+msgstr "The selected model is no longer available to your account. Choose an authorized project model."
+
+#. js-lingui-explicit-id
+msgid "organization.session.unshare"
+msgstr "Make private"
+
+#. js-lingui-explicit-id
+msgid "organization.session.unshareHint"
+msgstr "Revoke project access and close the current sharing generation. Published artifacts keep their own project access."
+
+#. js-lingui-explicit-id
+msgid "organization.session.versioned"
+msgstr "Fixed knowledge versions"
+
+#. js-lingui-explicit-id
 msgid "organization.space.address"
 msgstr "Organization address"
+
+#. js-lingui-explicit-id
+msgid "organization.space.addressPlaceholder"
+msgstr "For example: {url}"
+
+#. js-lingui-explicit-id
+msgid "organization.space.advanced"
+msgstr "Connection settings"
 
 #. js-lingui-explicit-id
 msgid "organization.space.archived"
 msgstr "Archived"
 
 #. js-lingui-explicit-id
+msgid "organization.space.authorizationHint"
+msgstr "You'll sign in securely on your organization's website. Your personal space stays separate."
+
+#. js-lingui-explicit-id
 msgid "organization.space.back"
 msgstr "All projects"
+
+#. js-lingui-explicit-id
+msgid "organization.space.bridgeIncompatible"
+msgstr "Restart or update Synergy to use organization connections with this page."
 
 #. js-lingui-explicit-id
 msgid "organization.space.client"
@@ -13477,8 +14613,16 @@ msgid "organization.space.connect"
 msgstr "Connect organization"
 
 #. js-lingui-explicit-id
+msgid "organization.space.connectDescription"
+msgstr "Bring your team's projects, conversations and shared resources into one space."
+
+#. js-lingui-explicit-id
 msgid "organization.space.connecting"
 msgstr "Connecting…"
+
+#. js-lingui-explicit-id
+msgid "organization.space.connectionChanged"
+msgstr "The connection changed while signing out. Restore the current connection before trying again."
 
 #. js-lingui-explicit-id
 msgid "organization.space.disconnected"
@@ -13523,6 +14667,10 @@ msgstr "Load more projects"
 #. js-lingui-explicit-id
 msgid "organization.space.originNotAllowed"
 msgstr "Ask the Web app administrator to add this organization’s HTTPS address to server.webConnectOrigins, then reload."
+
+#. js-lingui-explicit-id
+msgid "organization.space.personalBack"
+msgstr "Back to personal space"
 
 #. js-lingui-explicit-id
 msgid "organization.space.popup"
@@ -13575,6 +14723,298 @@ msgstr "Connection settings could not be saved. Check browser storage and try ag
 #. js-lingui-explicit-id
 msgid "organization.space.unavailable"
 msgstr "Could not reach the organization. Check your connection and try again."
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.empty"
+msgstr "No tasks on this page"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.error"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.first"
+msgstr "First tasks"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.hint"
+msgstr "Open a task to read its conversation."
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.interrupted"
+msgstr "Interrupted"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.main"
+msgstr "Main conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.more"
+msgstr "More tasks"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.queued"
+msgstr "Queued"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.refresh"
+msgstr "Refresh tasks"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.rootMessage"
+msgstr "Message to main conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.running"
+msgstr "Working"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.title"
+msgstr "Tasks"
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.unavailable"
+msgstr "This task is no longer available."
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.deferred"
+msgstr "Load content to read this result."
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.error"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.generating"
+msgstr "Receiving input"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.pending"
+msgstr "Pending"
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.admin"
+msgstr "Administrator"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archive"
+msgstr "Archive project"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archived"
+msgstr "Archived"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archiveHint"
+msgstr "Keep the project's history and published work. New work will be paused until the project is restored."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.artifacts"
+msgstr "Artifacts"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.back"
+msgstr "All projects"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.collaborator"
+msgstr "Collaborator"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.conflict"
+msgstr "Someone changed this item. Reload the latest version before saving your changes."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.createProject"
+msgstr "Create project"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.description"
+msgstr "Description"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.edit"
+msgstr "Edit project"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyMemberProjectsHint"
+msgstr "Projects will appear here when a project manager adds you."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyProjects"
+msgstr "A shared place to move work forward"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyProjectsHint"
+msgstr "Create a project, add your team and start a conversation."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.failed"
+msgstr "This action could not be completed. Your changes are still here. Check your connection and try again."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.forbidden"
+msgstr "Your access has changed. Reload this space to see what is available."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.invite"
+msgstr "Invite member"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteHint"
+msgstr "Share this one-time link with your teammate. They will create their own account."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteLink"
+msgstr "Invitation link"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteRole"
+msgstr "Invitation role"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.knowledge"
+msgstr "Knowledge and Skills"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.loading"
+msgstr "Loading…"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.maintainer"
+msgstr "Maintainer"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.member"
+msgstr "Member"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.members"
+msgstr "Members"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.more"
+msgstr "Load more"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.navigation"
+msgstr "Organization navigation"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.noMembers"
+msgstr "No members found"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.offline"
+msgstr "The computer running this conversation is offline. Reconnect it before sending new requests."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.overview"
+msgstr "Overview"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.owner"
+msgstr "Owner"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.personal"
+msgstr "Back to personal space"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projectName"
+msgstr "Project name"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projectNavigation"
+msgstr "Project navigation"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projects"
+msgstr "Projects"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.reader"
+msgstr "Reader"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removed"
+msgstr "Removed"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removeHint"
+msgstr "This member will lose access to the organization. Work already accepted can finish, but no new requests will be accepted from this account."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removeMember"
+msgstr "Remove member"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.resources"
+msgstr "Resources"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.restore"
+msgstr "Restore project"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.restoreHint"
+msgstr "Allow new work in this project. Paused conversations will stay paused."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.role"
+msgstr "Role"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.save"
+msgstr "Save changes"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.sessions"
+msgstr "Conversations"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.settings"
+msgstr "Organization settings"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.transferHint"
+msgstr "Make this member the organization owner. Your current owner role will become administrator."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.transferOwner"
+msgstr "Transfer ownership"
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.unknown"
+msgstr "The result is not known yet. Check its status before trying again."
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.working"
+msgstr "Saving…"
 
 #. js-lingui-explicit-id
 msgid "project.entry.addFolder"
@@ -18709,12 +20149,36 @@ msgid "session.question.directAnswer"
 msgstr "Answer: {option}. {description}"
 
 #. js-lingui-explicit-id
+msgid "session.question.draftLoadFailed"
+msgstr "The saved answer could not be loaded."
+
+#. js-lingui-explicit-id
+msgid "session.question.draftLoading"
+msgstr "Loading saved answer…"
+
+#. js-lingui-explicit-id
+msgid "session.question.draftRemoveFailed"
+msgstr "The previous saved answer could not be cleared. Retry."
+
+#. js-lingui-explicit-id
+msgid "session.question.draftSaveFailed"
+msgstr "The answer has not been saved yet. Keep this page open and retry."
+
+#. js-lingui-explicit-id
+msgid "session.question.draftSwitchFailed"
+msgstr "The previous answer could not be saved. Retry before changing questions."
+
+#. js-lingui-explicit-id
 msgid "session.question.next"
 msgstr "Next"
 
 #. js-lingui-explicit-id
 msgid "session.question.previous"
 msgstr "Previous"
+
+#. js-lingui-explicit-id
+msgid "session.question.retryDraft"
+msgstr "Retry saved answer"
 
 #. js-lingui-explicit-id
 msgid "session.question.send"
@@ -26579,6 +28043,22 @@ msgstr "View notebooks"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.notes"
 msgstr "View notes"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-files"
+msgstr "View publication files"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-list"
+msgstr "Organization knowledge"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-read"
+msgstr "Read organization knowledge"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-search"
+msgstr "Search organization knowledge"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.paper"

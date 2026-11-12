@@ -7,6 +7,7 @@ import { OrganizationProtocol as Protocol } from "./core.js"
 import { OrganizationCommandStream as CommandStream } from "./command-stream.js"
 
 export namespace OrganizationDesktop {
+  export const BridgeVersion = 2
   export const ControlLimit = 65_536
   export const BinaryLimit = 4 * 1024 * 1024
   const Bytes = z
@@ -36,6 +37,7 @@ export namespace OrganizationDesktop {
   export type Connect = z.infer<typeof Connect>
   export const Connection = Auth.Authority.extend({
     id: Identity.Token,
+    revision: z.uuid(),
     clientID: Identity.ID,
     account: Identity.Account,
     state: z.enum(["ready", "reauthorization_required", "sign_out_pending", "signed_out"]),
@@ -94,6 +96,15 @@ export namespace OrganizationDesktop {
   export type Start = z.infer<typeof Start>
   export const Cancel = z.strictObject({ requestID: Identity.ID })
   export const Account = z.strictObject({ connectionID: Identity.Token })
+  export const SignOut = Account.extend({
+    phase: z.enum(["prepare", "commit"]),
+    expectedRevision: z.uuid(),
+    requestID: z.uuid(),
+  }).refine(
+    (value) => value.phase === "prepare" || value.expectedRevision === value.requestID,
+    "Committing sign-out requires its prepared revision",
+  )
+  export type SignOut = z.infer<typeof SignOut>
   export const Download = Account.extend({
     requestID: Identity.ID,
     path: z.string().min(1).max(8192),
@@ -181,6 +192,8 @@ export namespace OrganizationDesktop {
     "invalid_request",
     "invalid_response",
     "identity_changed",
+    "connection_changed",
+    "bridge_incompatible",
     "cancelled",
     "expired",
     "reauthorization_required",
@@ -197,13 +210,14 @@ export namespace OrganizationDesktop {
   export type ErrorCode = z.infer<typeof ErrorCode>
   export type Result<T> = { ok: true; value: T } | { ok: false; error: { code: ErrorCode } }
   export interface Bridge {
+    readonly protocolVersion: typeof BridgeVersion
     list(): Promise<Result<Connection[]>>
     connect(input: Start): Promise<Result<Connection>>
     request(input: Request): Promise<Result<Response>>
     commandStream(input: CommandStream.Frame): Promise<Result<CommandStreamReply>>
     download(input: Download): Promise<Result<DownloadResult>>
     cancel(input: z.infer<typeof Cancel>): Promise<Result<void>>
-    signOut(input: z.infer<typeof Account>): Promise<Result<Connection>>
+    signOut(input: SignOut): Promise<Result<Connection>>
     memberStatus(input: z.infer<typeof Account>): Promise<Result<MemberRuntime>>
     startMember(input: z.infer<typeof MemberStart>): Promise<Result<MemberRuntime>>
     projectBinding(input: z.infer<typeof ProjectBinding>): Promise<Result<ProjectBindingOutcome>>

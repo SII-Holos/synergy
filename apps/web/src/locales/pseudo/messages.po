@@ -13377,6 +13377,170 @@ msgid "note.tag.remove"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.account.lastOwner"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.account.leave"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.account.leaveHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.account.membership"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.account.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.artifacts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.configure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.input"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.pause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.read"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.reply"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.action.resources"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.active"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.chooseProject"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.days"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.dismiss"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expires"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.expiry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.lost"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.moreProjects"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.once"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.operations"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.project"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.recover"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.required"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revoke"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revoked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.revokeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.secret"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.unavailableProject"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.apiTokens.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.auth.close"
 msgstr ""
 
@@ -13449,7 +13613,971 @@ msgid "organization.auth.working"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.interactions.allowedAlways"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.allowedOnce"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.allowedSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.answered"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.check"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.denied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.dismiss"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.expired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.first"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.firstStatuses"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.handled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.hostedScope"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.memberScope"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.moreStatuses"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.passwordLost"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.skipped"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.submitted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.interactions.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.alreadyUsed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.consumed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.expired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.identity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.invalidated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.issuedBy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revoke"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revoked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.revokeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.invitations.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.knowledge.pendingUpdate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.createReset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.done"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.expires"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetFor"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetLink"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.resetTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.members.sharePrivately"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.displayName"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.done"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.doneHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.invite"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.login"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.organization"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.password"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.passwordHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.resetDone"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.setup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.taken"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.used"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.onboarding.working"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.start"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.stopped"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectBinding.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.add"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.inherited"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.removeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.projectMembers.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activationFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activationPending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.activeSelection"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.applied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.apply"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.artifactHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.artifacts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.author"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.authorName"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.chooseFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.chooseFolder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.desiredSelection"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.done"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.download"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.downloadUnsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.emptyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.files"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.independentHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.kind"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.knowledge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.latest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.material"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.materials"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.memberSelectionHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.previewUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.previousActive"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publish"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publishHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.publishVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.reference"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.refreshStatus"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.select"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selectedVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.selection"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.skill"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.skillHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.sourceUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.unselect"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.update"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.uploading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.version"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.versions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.withdraw"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.withdrawHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.access"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.accounts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.add"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.allow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.allowed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.anthropic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.context"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.disableHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.emptyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.enable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.endpoint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.endpointPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.environment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.fixedHttp"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.key"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.keyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.mcpHttp"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.mcpSse"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.method"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.model"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.openai"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.output"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.profile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.profileHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.projects"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.protocol"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revoke"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revoked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.revokeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.resources.workspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.accepted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.attachmentPreview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.attachmentUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.bytes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancelDownload"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.cancelHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.checkStatus"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseResources"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.chooseRuntime"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.computer"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.computerHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.connections"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.contentPreparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.context"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.conversations"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.created"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.downloading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.draftHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.emptyFilePage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.emptyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.execution"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.firstFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.firstParts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.historyUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.hosted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.inputMode"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.lastSync"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.latest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.loadContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.memberKnowledge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.message"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.messagePlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.messageTooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.model"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.modelRequired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.new"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.nextFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.nextParts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.noModels"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.offline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.older"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.online"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.partial"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.pause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.private"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.rejected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.resources"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.resourcesHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.runtime"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.selectedModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.send"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.share"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.shared"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.shareHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.start"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.starting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.steer"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.sync"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.syncFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.syncPending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.task"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.unavailableConnections"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.unavailableModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.unshare"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.unshareHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.session.versioned"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.space.address"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.addressPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.advanced"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13457,7 +14585,15 @@ msgid "organization.space.archived"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.space.authorizationHint"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.space.back"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.bridgeIncompatible"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13477,7 +14613,15 @@ msgid "organization.space.connect"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.space.connectDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.space.connecting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.connectionChanged"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13522,6 +14666,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "organization.space.originNotAllowed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.space.personalBack"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13574,6 +14722,298 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "organization.space.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.first"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.interrupted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.main"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.queued"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.rootMessage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.tasks.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.deferred"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.generating"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.transcript.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.admin"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archive"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.archiveHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.artifacts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.back"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.collaborator"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.conflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.createProject"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.edit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyMemberProjectsHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyProjects"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.emptyProjectsHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.forbidden"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.invite"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteLink"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.inviteRole"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.knowledge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.maintainer"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.member"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.members"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.more"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.navigation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.noMembers"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.offline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.overview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.owner"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.personal"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projectName"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projectNavigation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.projects"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.reader"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.removeMember"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.resources"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.restore"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.restoreHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.role"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.sessions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.settings"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.transferHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.transferOwner"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.workspace.working"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18709,12 +20149,36 @@ msgid "session.question.directAnswer"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.question.draftLoadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.question.draftLoading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.question.draftRemoveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.question.draftSaveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.question.draftSwitchFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.question.next"
 msgstr "⟦Next⟧"
 
 #. js-lingui-explicit-id
 msgid "session.question.previous"
 msgstr "⟦Previous⟧"
+
+#. js-lingui-explicit-id
+msgid "session.question.retryDraft"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.question.send"
@@ -26579,6 +28043,22 @@ msgstr "⟦View notebooks⟧"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.notes"
 msgstr "⟦View notes⟧"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-files"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-list"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-read"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.organization-knowledge-search"
+msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.paper"

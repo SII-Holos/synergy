@@ -21,6 +21,7 @@ export const organizationResourceMessages = {
   },
   method: { id: "organization.resources.method", message: "HTTP method" },
   endpoint: { id: "organization.resources.endpoint", message: "Endpoint" },
+  endpointPlaceholder: { id: "organization.resources.endpointPlaceholder", message: "For example: {url}" },
   model: { id: "organization.resources.model", message: "Model ID" },
   context: { id: "organization.resources.context", message: "Context tokens" },
   output: { id: "organization.resources.output", message: "Maximum output tokens" },

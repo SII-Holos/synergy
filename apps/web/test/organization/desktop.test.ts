@@ -8,6 +8,7 @@ import { createDesktopOrganizationClient, desktopOrganizationFetch } from "../..
 
 const connection: Desktop.Connection = {
   id: "a".repeat(64),
+  revision: "00000000-0000-4000-8000-000000000001",
   issuer: "https://organization.example",
   orgID: "org",
   deploymentIncarnation: "deployment",
@@ -29,6 +30,7 @@ function fixture() {
   const requests: Desktop.Request[] = []
   const cancelled: string[] = []
   const bridge: Desktop.Bridge = {
+    protocolVersion: 2,
     list: async () => ({ ok: true, value: [connection] }),
     connect: async () => ({ ok: true, value: connection }),
     signOut: async () => ({ ok: true, value: { ...connection, state: "signed_out" } }),

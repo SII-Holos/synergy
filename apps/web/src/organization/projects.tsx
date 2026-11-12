@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show, Switch, Match } from "solid-js"
+import { batch, createSignal, For, onMount, Show, Switch, Match } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -17,6 +17,7 @@ import { OrganizationProjectMembers } from "./project-members"
 import { OrganizationLocalProject } from "./local-project"
 import { OrganizationSessions } from "./sessions"
 import { organizationSessionMessages } from "./session-messages"
+import { organizationOwnerFailure } from "./owner-error"
 
 export function OrganizationProjects() {
   const space = useSpace()
@@ -41,6 +42,23 @@ export function OrganizationProjects() {
   const [description, setDescription] = createSignal("")
   const current = () => !view.signal.aborted
   const options = { throwOnError: true, signal: view.signal } as const
+  function failed(error: unknown) {
+    const failure = organizationOwnerFailure(error)
+    batch(() => {
+      if (failure) {
+        setState("projects", reconcile([]))
+        setState("project", undefined)
+        setCursor(undefined)
+        setLoaded(false)
+        setEditing(false)
+        setCreating(false)
+        setName("")
+        setDescription("")
+      }
+      setError(error)
+    })
+    if (failure === "authentication") space.authorizationRequired(view)
+  }
 
   async function load(more = false) {
     if (loading() || !current()) return
@@ -58,7 +76,7 @@ export function OrganizationProjects() {
       }
       if (current()) setLoaded(true)
     } catch (error) {
-      if (current()) setError(error)
+      if (current()) failed(error)
     } finally {
       if (current()) setLoading(false)
     }
@@ -92,7 +110,7 @@ export function OrganizationProjects() {
         if (current()) space.project(result.data.projectID)
       }
     } catch (error) {
-      if (current()) setError(error)
+      if (current()) failed(error)
     } finally {
       if (current()) setBusy(false)
     }
@@ -119,7 +137,7 @@ export function OrganizationProjects() {
           )
           if (current()) setState("project", reconcile(result.data))
         } catch (error) {
-          if (current()) setError(error)
+          if (current()) failed(error)
         } finally {
           if (current()) setBusy(false)
         }

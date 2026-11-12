@@ -48,6 +48,7 @@ export function organizationConnectionID(input: { orgID: string; accountID: stri
 function connection(value: Record): Desktop.Connection {
   return {
     id: value.id,
+    revision: value.revision,
     issuer: value.issuer,
     orgID: value.orgID,
     deploymentIncarnation: value.deploymentIncarnation,
@@ -93,7 +94,7 @@ export class DesktopOrganizationAccounts {
   private blocked = new Set<string>()
   private cache = new Map<string, Access>()
   private rotations = new Map<string, { controller: AbortController; result: Promise<Access> }>()
-  private signouts = new Map<string, Promise<Desktop.Connection>>()
+  private signouts = new Map<string, { requestID: string; result: Promise<Desktop.Connection> }>()
   private disposed = false
 
   constructor(private options: { root: string; encryption: OrganizationEncryption; fetch?: typeof fetch }) {
@@ -162,19 +163,53 @@ export class DesktopOrganizationAccounts {
     return result
   }
 
-  signOut(id: string): Promise<Desktop.Connection> {
-    if (!Identity.Token.safeParse(id).success) return Promise.reject(new Failure("invalid_request"))
+  signOut(input: Desktop.SignOut): Promise<Desktop.Connection> {
+    const parsed = Desktop.SignOut.safeParse(input)
+    if (!parsed.success) return Promise.reject(new Failure("invalid_request"))
+    const request = Object.freeze(parsed.data)
+    const id = request.connectionID
+    if (request.phase === "prepare") return this.prepareSignOut(request)
     const running = this.signouts.get(id)
-    if (running) return running
+    if (running)
+      return running.requestID === request.requestID
+        ? running.result
+        : Promise.reject(new Failure("connection_changed"))
+    const result = this.revoke(request).finally(() => {
+      if (this.signouts.get(id)?.result === result) this.signouts.delete(id)
+    })
+    this.signouts.set(id, { requestID: request.requestID, result })
+    return result
+  }
+
+  private block(id: string) {
     this.blocked.add(id)
     this.epochs.set(id, (this.epochs.get(id) ?? 0) + 1)
     this.cache.delete(id)
     this.rotations.get(id)?.controller.abort()
-    const result = this.revoke(id).finally(() => {
-      if (this.signouts.get(id) === result) this.signouts.delete(id)
+  }
+
+  private prepareSignOut(request: Desktop.SignOut): Promise<Desktop.Connection> {
+    return this.queue(request.connectionID, async () => {
+      if (this.disposed) throw new Failure("cancelled")
+      const saved = await this.required(request.connectionID)
+      if (
+        saved.revision === request.requestID &&
+        (saved.state === "sign_out_pending" || saved.state === "signed_out")
+      ) {
+        this.block(saved.id)
+        return connection(saved)
+      }
+      if (
+        saved.revision !== request.expectedRevision ||
+        saved.state === "sign_out_pending" ||
+        saved.state === "signed_out"
+      )
+        throw new Failure("connection_changed")
+      this.block(saved.id)
+      const pending: Record = { ...saved, state: "sign_out_pending", revision: request.requestID }
+      await this.write(pending)
+      return connection(pending)
     })
-    this.signouts.set(id, result)
-    return result
   }
 
   dispose() {
@@ -231,13 +266,19 @@ export class DesktopOrganizationAccounts {
     }
   }
 
-  private async revoke(id: string): Promise<Desktop.Connection> {
+  private async revoke(request: Desktop.SignOut): Promise<Desktop.Connection> {
+    const id = request.connectionID
     const saved = await this.queue(id, async () => {
+      if (this.disposed) throw new Failure("cancelled")
       const saved = await this.required(id)
-      if (saved.state === "signed_out") return saved
-      const pending: Record = { ...saved, state: "sign_out_pending", revision: randomUUID() }
-      await this.write(pending)
-      return pending
+      if (
+        request.expectedRevision !== request.requestID ||
+        saved.revision !== request.requestID ||
+        (saved.state !== "sign_out_pending" && saved.state !== "signed_out")
+      )
+        throw new Failure("connection_changed")
+      this.block(id)
+      return saved
     })
     if (saved.state === "signed_out") return connection(saved)
     try {
@@ -257,7 +298,7 @@ export class DesktopOrganizationAccounts {
         const latest = await this.required(id)
         if (latest.revision !== saved.revision || latest.state !== "sign_out_pending")
           throw new Failure("revocation_pending")
-        const signedOut: Record = { ...latest, state: "signed_out", revision: randomUUID(), encrypted: undefined }
+        const signedOut: Record = { ...latest, state: "signed_out", encrypted: undefined }
         await this.write(signedOut)
         return connection(signedOut)
       })

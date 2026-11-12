@@ -4,6 +4,8 @@ const messages = {
   invalid_request: "The organization request is invalid.",
   invalid_response: "The organization returned an invalid response.",
   identity_changed: "The organization identity changed. Connect to the organization again.",
+  connection_changed: "The organization connection changed. Review the current account before signing out.",
+  bridge_incompatible: "Restart or update Synergy to use organization connections with this page.",
   cancelled: "Organization authorization was cancelled.",
   expired: "Organization authorization expired. Start again.",
   reauthorization_required: "Authorize this organization again before continuing.",

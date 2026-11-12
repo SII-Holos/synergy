@@ -14,7 +14,7 @@ bun dev web
 bun dev app --open
 ```
 
-Vite handles hot module replacement, so changes appear in the browser immediately.
+Vite handles hot module replacement, so changes appear in the browser immediately. Organization connection recovery keeps revision-bound logout metadata across reload without retaining credentials; see [logout recovery](../../docs/decisions/implemented/bug-fix/2026-11-12-recover-native-logout-before-renderer-reload.md).
 
 Private organization tool files open through finite metadata pages and share the transcript's verified preview and streaming save actions. They use the captured Session reader; an empty visible page may still have another page. See [organization file transfers](../../docs/decisions/implemented/architecture/2026-11-11-bound-organization-desktop-file-transfers.md).
 

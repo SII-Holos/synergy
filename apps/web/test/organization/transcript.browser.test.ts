@@ -11,6 +11,7 @@ let directory: string
 const source = path.resolve(import.meta.dir, "../../src")
 const entry: Desktop.Connection = {
   id: "a".repeat(64),
+  revision: "00000000-0000-4000-8000-000000000001",
   issuer: "https://a.example",
   clientID: "desktop",
   orgID: "org-a",
@@ -63,7 +64,7 @@ beforeAll(async () => {
     import { SpaceProvider, useSpace } from ${JSON.stringify(`/@fs/${source}/context/space.tsx`)}
     import { PlatformProvider } from ${JSON.stringify(`/@fs/${source}/context/platform.tsx`)}
     import { SharedOrganizationTranscript } from ${JSON.stringify(`/@fs/${source}/organization/shared-transcript.tsx`)}
-    const platform = { platform: "web", openLink() {}, organization: { list: () => window.hostList(), request: value => window.hostRequest(value).then(result => result.ok && result.value.base64 !== undefined ? {ok:true,value:{status:result.value.status,contentType:result.value.contentType,contentRange:result.value.contentRange,bodyBytes:Uint8Array.from(atob(result.value.base64), c => c.charCodeAt(0))}} : result), download: value => window.hostDownload(value), cancel: () => Promise.resolve({ok:true}) }, fetch: async () => Response.json({ healthy: false }) }
+    const platform = { platform: "web", openLink() {}, organization: { protocolVersion: 2, list: () => window.hostList(), request: value => window.hostRequest(value).then(result => result.ok && result.value.base64 !== undefined ? {ok:true,value:{status:result.value.status,contentType:result.value.contentType,contentRange:result.value.contentRange,bodyBytes:Uint8Array.from(atob(result.value.base64), c => c.charCodeAt(0))}} : result), download: value => window.hostDownload(value), cancel: () => Promise.resolve({ok:true}) }, fetch: async () => Response.json({ healthy: false }) }
     function Fixture() { const space = useSpace(); return <Show when={space.current()?.identity.kind === "organization"}><SharedOrganizationTranscript sessionID="session-a" shareGeneration={1} invalidated={error => window.hostInvalidated?.(error)} /></Show> }
     render(() => <PlatformProvider value={platform}><AppBaseProviders><SpaceProvider><Fixture /></SpaceProvider></AppBaseProviders></PlatformProvider>, document.getElementById("root"))
   `,

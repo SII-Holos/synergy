@@ -1,3 +1,4 @@
+import { signOutAccount } from "./fixture/organization-sign-out"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { createHash, randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
@@ -308,7 +309,7 @@ test("the main registry lazily provisions independent members and deduplicates a
   const endpoint = restored.running()[0].connection
   const probe = await (await fetch(endpoint.url + "/probe", { headers: endpoint.headers })).json()
   expect(probe.home).toBe(probes.find((item) => item.identity.orgID === one.orgID).home)
-  await a.accounts.signOut(one.id)
+  await signOutAccount(a.accounts, one.id)
   await expect(restored.start(one.id)).rejects.toMatchObject({ code: "signed_out" })
   expect(restored.running()).toHaveLength(1)
 }, 30_000)

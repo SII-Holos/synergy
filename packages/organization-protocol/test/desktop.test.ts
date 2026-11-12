@@ -1,6 +1,21 @@
 import { expect, test } from "bun:test"
 import { OrganizationDesktop as Desktop } from "../src/desktop"
 
+test("native logout requires a revision-bound phase and a fixed commit receipt", () => {
+  const request = {
+    connectionID: "a".repeat(64),
+    expectedRevision: "00000000-0000-4000-8000-000000000001",
+    requestID: "00000000-0000-4000-8000-000000000002",
+  }
+  expect(Desktop.SignOut.safeParse({ connectionID: request.connectionID }).success).toBe(false)
+  expect(Desktop.SignOut.safeParse({ ...request, phase: "prepare" }).success).toBe(true)
+  expect(Desktop.SignOut.safeParse({ ...request, phase: "commit" }).success).toBe(false)
+  expect(Desktop.SignOut.safeParse({ ...request, phase: "commit", expectedRevision: request.requestID }).success).toBe(
+    true,
+  )
+  expect(Desktop.SignOut.safeParse({ ...request, phase: "prepare", token: "secret" }).success).toBe(false)
+})
+
 test("native binary messages retain bytes and reject ambiguous or unbounded payloads", () => {
   const base = {
     requestID: "request",

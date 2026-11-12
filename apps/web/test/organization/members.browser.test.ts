@@ -11,6 +11,7 @@ let directory: string
 const source = path.resolve(import.meta.dir, "../../src")
 const entries: Desktop.Connection[] = ["a", "b"].map((id) => ({
   id: id.repeat(64),
+  revision: "00000000-0000-4000-8000-000000000001",
   issuer: `https://${id}.example`,
   clientID: "desktop",
   orgID: `org-${id}`,
@@ -41,7 +42,7 @@ beforeAll(async () => {
     import { render } from "solid-js/web"
     import { AppBaseProviders, AppInterface } from ${JSON.stringify(`/@fs/${source}/app.tsx`)}
     import { PlatformProvider } from ${JSON.stringify(`/@fs/${source}/context/platform.tsx`)}
-    const platform = { platform: "web", openLink() {}, organization: {
+    const platform = { platform: "web", openLink() {}, organization: { protocolVersion: 2,
       list: () => window.hostList(), request: value => window.hostRequest(value), cancel: value => window.hostCancel(value),
       connect: value => window.hostConnect(value), signOut: value => window.hostSignOut(value),
     }, fetch: async () => Response.json({ healthy: false }) }

@@ -11,6 +11,7 @@ let directory: string
 const source = path.resolve(import.meta.dir, "../../src")
 const entries: Desktop.Connection[] = ["a", "b"].map((id) => ({
   id: id.repeat(64),
+  revision: "00000000-0000-4000-8000-000000000001",
   issuer: `https://${id}.example`,
   clientID: "desktop",
   orgID: `org-${id}`,
@@ -41,7 +42,7 @@ beforeAll(async () => {
     import { render } from "solid-js/web"
     import { AppBaseProviders, AppInterface } from ${JSON.stringify(`/@fs/${source}/app.tsx`)}
     import { PlatformProvider } from ${JSON.stringify(`/@fs/${source}/context/platform.tsx`)}
-    const platform = { platform: "web", openLink() {}, organization: {
+    const platform = { platform: "web", openLink() {}, organization: { protocolVersion: 2,
       list: () => window.hostList(), request: value => window.hostRequest(value), cancel: value => window.hostCancel(value),
       connect: value => window.hostConnect(value), signOut: value => window.hostSignOut(value),
     }, fetch: async () => Response.json({ healthy: false }) }
@@ -107,6 +108,101 @@ test("an organization owner creates a project through the shared shell without p
   }
 }, 30_000)
 
+test.each(["PERMISSION_DENIED", "permission_denied", "SERVICE_UNAVAILABLE"] as const)(
+  "project recovery (%s) distinguishes access loss from a disconnected editor",
+  async (code) => {
+    const page = await browser.newPage({ viewport: { width: 1100, height: 760 } })
+    const owner = { ...entries[0]!, account: { ...entries[0]!.account, role: "owner" as const } }
+    let denied = false
+    let restored = false
+    const project = {
+      projectID: "guarded-project",
+      orgID: "org-a",
+      name: "Confidential study",
+      description: "Private project instructions",
+      state: "active",
+      revision: 1,
+      createdAt: 0,
+      permissions: { read: true, manage: true, execute: true },
+      role: "maintainer",
+    }
+    await page.exposeFunction("hostList", () => ({ ok: true, value: [owner] }))
+    await page.exposeFunction("hostCancel", () => ({ ok: true }))
+    await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+      if (request.path === "/org/v1/projects/guarded-project" && request.method !== "GET") denied = true
+      if (request.path === "/org/v1/projects/guarded-project" && denied && !restored)
+        return code === "permission_denied"
+          ? { ok: false, error: { code } }
+          : {
+              ok: true,
+              value: {
+                status: code === "SERVICE_UNAVAILABLE" ? 503 : 403,
+                body: JSON.stringify({ code, message: "Request unavailable", retryable: false }),
+              },
+            }
+      const body =
+        request.path === "/org/v1/organization"
+          ? { orgID: "org-a", name: "Field team", revision: 1 }
+          : request.path === "/org/v1/projects/guarded-project"
+            ? restored
+              ? {
+                  ...project,
+                  name: "Current project",
+                  description: "Current readable instructions",
+                  permissions:
+                    code === "SERVICE_UNAVAILABLE"
+                      ? project.permissions
+                      : { read: true, manage: false, execute: false },
+                  role: code === "SERVICE_UNAVAILABLE" ? "maintainer" : "reader",
+                }
+              : project
+            : { items: [project] }
+      return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
+    })
+    try {
+      await page.goto(server.url)
+      await page.getByRole("button", { name: "Current space" }).click()
+      await page.getByRole("menuitem", { name: /a.example.*Member A/ }).click()
+      await page.getByRole("button", { name: /Confidential study/ }).click()
+      await page.getByRole("button", { name: "Edit project", exact: true }).click()
+      await page.getByLabel("Description", { exact: true }).fill("Private unsaved changes")
+      await page.getByRole("button", { name: "Save changes", exact: true }).click()
+      await page.getByRole("alert").waitFor()
+      const retained = code === "SERVICE_UNAVAILABLE"
+      expect(await page.getByRole("heading", { name: "Confidential study", exact: true }).count()).toBe(
+        retained ? 1 : 0,
+      )
+      expect(await page.getByLabel("Description", { exact: true }).count()).toBe(retained ? 1 : 0)
+      if (retained)
+        expect(await page.getByLabel("Description", { exact: true }).inputValue()).toBe("Private unsaved changes")
+      expect(await page.getByRole("button", { name: "Archive project", exact: true }).count()).toBe(0)
+      expect(await page.getByRole("navigation", { name: "Project navigation" }).count()).toBe(retained ? 1 : 0)
+      await page.getByRole("button", { name: "Retry", exact: true }).click()
+      await page.getByRole("alert").waitFor()
+      expect(await page.getByRole("heading", { name: "Confidential study", exact: true }).count()).toBe(
+        retained ? 1 : 0,
+      )
+      restored = true
+      await page.getByRole("button", { name: "Retry", exact: true }).click()
+      await page.getByRole("heading", { name: "Current project", exact: true }).waitFor()
+      expect(await page.getByRole("button", { name: "Edit project", exact: true }).count()).toBe(0)
+      if (retained)
+        expect(await page.getByLabel("Description", { exact: true }).inputValue()).toBe("Private unsaved changes")
+      else {
+        expect(await page.getByLabel("Description", { exact: true }).count()).toBe(0)
+        expect(await page.getByText("Current readable instructions", { exact: true }).count()).toBe(1)
+      }
+      if (process.env.SYNERGY_UI_SCREENSHOT_DIR && code === "PERMISSION_DENIED") {
+        await fs.mkdir(process.env.SYNERGY_UI_SCREENSHOT_DIR, { recursive: true })
+        await page.screenshot({ path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, "project-access-restored.png") })
+      }
+    } finally {
+      await page.close()
+    }
+  },
+  30_000,
+)
+
 test("a member explicitly applies a historical release without changing other fixed versions", async () => {
   const page = await browser.newPage({ viewport: { width: 1100, height: 760 } })
   const writes: Desktop.Request[] = []
@@ -153,31 +249,61 @@ test("a member explicitly applies a historical release without changing other fi
     totalBytes: 0,
   }))
   let nextSequence = 0
-  let change: { itemID: string; reference?: typeof selected.releases[number] } | undefined
+  let change: { itemID: string; reference?: (typeof selected.releases)[number] } | undefined
   await page.exposeFunction("hostList", () => ({ ok: true, value: [entries[0]!] }))
   await page.exposeFunction("hostCancel", () => ({ ok: true }))
   await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
     const url = new URL(request.path, "https://a.example")
     if (request.method === "POST" && url.pathname.includes("/selection-updates")) {
       writes.push(request)
-      if (url.pathname.endsWith("/pages")) { change = JSON.parse(request.body!).changes[0]; nextSequence=1 }
-      if (url.pathname.endsWith("/commit")) selected = {...selected,revision:3,releases:[...selected.releases.filter((reference) => reference.itemID !== change!.itemID),...(change?.reference ? [change.reference] : [])]}
+      if (url.pathname.endsWith("/pages")) {
+        change = JSON.parse(request.body!).changes[0]
+        nextSequence = 1
+      }
+      if (url.pathname.endsWith("/commit"))
+        selected = {
+          ...selected,
+          revision: 3,
+          releases: [
+            ...selected.releases.filter((reference) => reference.itemID !== change!.itemID),
+            ...(change?.reference ? [change.reference] : []),
+          ],
+        }
     }
-    const summary = {revision:selected.revision,manifestHash:selected.manifestHash,updatedBy:selected.updatedBy,updatedAt:selected.updatedAt,releaseCount:selected.releases.length}
+    const summary = {
+      revision: selected.revision,
+      manifestHash: selected.manifestHash,
+      updatedBy: selected.updatedBy,
+      updatedAt: selected.updatedAt,
+      releaseCount: selected.releases.length,
+    }
     const body =
       url.pathname === "/org/v1/organization"
         ? { orgID: "org-a", name: "Field team", revision: 1 }
         : url.pathname === "/org/v1/projects/project-one"
           ? project
           : url.pathname.endsWith("/knowledge/applied/references")
-            ? {selection:summary,items:selected.releases.filter((reference) => JSON.parse(request.body!).itemIDs.includes(reference.itemID))}
+            ? {
+                selection: summary,
+                items: selected.releases.filter((reference) =>
+                  JSON.parse(request.body!).itemIDs.includes(reference.itemID),
+                ),
+              }
             : url.pathname.includes("/selection-updates")
-              ? url.pathname.endsWith("/commit") ? summary : {updateID:"update-guide",target:{kind:"member",projectID:"project-one"},baseRevision:2,nextSequence,state:"draft"}
-            : url.pathname === "/org/v1/knowledge"
-              ? { items: [item] }
-              : url.pathname.endsWith("/versions")
-                ? { items: versions }
-                : { items: [] }
+              ? url.pathname.endsWith("/commit")
+                ? summary
+                : {
+                    updateID: "update-guide",
+                    target: { kind: "member", projectID: "project-one" },
+                    baseRevision: 2,
+                    nextSequence,
+                    state: "draft",
+                  }
+              : url.pathname === "/org/v1/knowledge"
+                ? { items: [item] }
+                : url.pathname.endsWith("/versions")
+                  ? { items: versions }
+                  : { items: [] }
     return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
   })
   try {
@@ -190,10 +316,16 @@ test("a member explicitly applies a historical release without changing other fi
     await page.getByRole("button", { name: "Update my applied version", exact: true }).click()
     await page.getByText("Applied version 2", { exact: true }).waitFor()
     expect(writes).toHaveLength(3)
-    expect(JSON.parse(writes[0]!.body!)).toMatchObject({target:{kind:"member",projectID:"project-one"},expectedRevision:2})
-    expect(JSON.parse(writes[1]!.body!)).toEqual({sequence:0,changes:[{itemID:"guide",reference:{itemID:"guide",version:2,manifestHash:"2".repeat(64)}}]})
-    expect(JSON.parse(writes[2]!.body!)).toEqual({expectedSequence:1})
-    expect(selected.releases).toContainEqual({itemID:"keep",version:5,manifestHash:"5".repeat(64)})
+    expect(JSON.parse(writes[0]!.body!)).toMatchObject({
+      target: { kind: "member", projectID: "project-one" },
+      expectedRevision: 2,
+    })
+    expect(JSON.parse(writes[1]!.body!)).toEqual({
+      sequence: 0,
+      changes: [{ itemID: "guide", reference: { itemID: "guide", version: 2, manifestHash: "2".repeat(64) } }],
+    })
+    expect(JSON.parse(writes[2]!.body!)).toEqual({ expectedSequence: 1 })
+    expect(selected.releases).toContainEqual({ itemID: "keep", version: 5, manifestHash: "5".repeat(64) })
     expect(await page.getByRole("button", { name: "Publish new version", exact: true }).count()).toBe(0)
   } finally {
     await page.close()

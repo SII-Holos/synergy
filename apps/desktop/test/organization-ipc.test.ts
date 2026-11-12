@@ -1,5 +1,6 @@
+import { signOutAccount } from "./fixture/organization-sign-out"
 import { expect, test } from "bun:test"
-import { randomBytes, createHash } from "node:crypto"
+import { randomBytes, createHash, randomUUID } from "node:crypto"
 import { DesktopOrganizationAuthorization } from "../src/organization/authorization"
 import { DesktopOrganizationIPC } from "../src/organization/ipc"
 import { organizationFixture } from "./fixture/organization"
@@ -49,6 +50,43 @@ function bridge(f: Awaited<ReturnType<typeof organizationFixture>>, fetcher = f.
   })
   return { trusted, ipc }
 }
+
+test("native logout IPC requires its prepared revision and retains the final receipt across retries", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const { trusted, ipc } = bridge(f)
+  try {
+    expect(await ipc.handle(trusted, "signOut", { connectionID: connection.id })).toEqual({
+      ok: false,
+      error: { code: "invalid_request" },
+    })
+    expect((await f.accounts.access(connection.id)).connection.revision).toBe(connection.revision)
+    const request = {
+      connectionID: connection.id,
+      expectedRevision: connection.revision,
+      requestID: randomUUID(),
+    }
+    expect(await ipc.handle(trusted, "signOut", { ...request, phase: "prepare" })).toMatchObject({
+      ok: true,
+      value: { state: "sign_out_pending", revision: request.requestID },
+    })
+    await expect(f.accounts.access(connection.id)).rejects.toMatchObject({ code: "signed_out" })
+    const commit = { ...request, phase: "commit", expectedRevision: request.requestID }
+    const final = await ipc.handle(trusted, "signOut", commit)
+    expect(final).toMatchObject({ ok: true, value: { state: "signed_out", revision: request.requestID } })
+    expect(await ipc.handle(trusted, "signOut", commit)).toEqual(final)
+    const staleRevision = randomUUID()
+    expect(
+      await ipc.handle(trusted, "signOut", { ...commit, expectedRevision: staleRevision, requestID: staleRevision }),
+    ).toEqual({
+      ok: false,
+      error: { code: "connection_changed" },
+    })
+    expect((await f.accounts.list())[0]).toMatchObject({ state: "signed_out", revision: request.requestID })
+  } finally {
+    ipc.dispose()
+  }
+})
 
 test("shared transcript windows and runtime availability use exact main-authenticated read paths", async () => {
   await using f = await organizationFixture()
@@ -340,7 +378,7 @@ test("the native organization bridge preserves generated SDK results and never r
   expect(requests[0]!.headers.get("authorization")).toMatch(/^Bearer [a-f0-9]{64}$/)
   expect(requests[0]!.headers.has("cookie")).toBe(false)
   expect(requests[0]!.redirect).toBe("error")
-  await f.accounts.signOut(connection.id)
+  await signOutAccount(f.accounts, connection.id)
   const denied = await ipc.handle(trusted, "request", {
     requestID: "denied",
     connectionID: connection.id,

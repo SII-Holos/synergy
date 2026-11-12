@@ -103,6 +103,7 @@ export async function browserFixtureInput(recipe: Recipe, repositoryPath = repos
     await add(path.join(repositoryRoot, file))
   await tree(path.join(repositoryRoot, "patches"), "patches")
   await tree(path.join(repositoryRoot, "apps/web/test/fixtures"), "fixtures")
+  if (recipe.styled) await tree(path.join(repositoryRoot, "apps/web/public"), "apps/web/public")
   await tree(recipe.root, "fixture")
   return hash.digest("hex")
 }
@@ -197,7 +198,7 @@ if (import.meta.main) {
     logLevel: "error",
     mode: "test",
     root: recipe.root,
-    publicDir: false,
+    publicDir: recipe.styled ? path.join(repository, "apps/web/public") : false,
     define: { "process.env.NODE_ENV": JSON.stringify("test") },
     plugins: [
       { name: "fixture-files", resolveId: (id) => (id.startsWith("/@fs/") ? id.slice(4) : undefined) },

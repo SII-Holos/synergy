@@ -27,6 +27,8 @@ function connectionError(error: unknown): keyof typeof messages {
   if (code === "storage_unavailable" || code === "credentials_unavailable" || code === "credentials_invalid")
     return "storage"
   if (code === "identity_changed" || code === "invalid_response") return "identityChanged"
+  if (code === "connection_changed") return "connectionChanged"
+  if (code === "bridge_incompatible") return "bridgeIncompatible"
   if (code === "popup_unavailable") return "popup"
   if (code === "secure_context_required") return "secure"
   if (code === "sign_out_pending") return "signOutPending"
@@ -83,7 +85,7 @@ export function OrganizationSpace() {
         </header>
       </Show>
       <main class="organization-space-content" classList={{ "organization-space-content--workspace": !!ready() }}>
-        <Show when={space.error()}>
+        <Show when={space.selected() !== "connect" && space.error()}>
           {(error) => (
             <p role="alert" class="organization-space-error">
               {_(messages[connectionError(error())])}
@@ -182,8 +184,17 @@ function Connect() {
       <Show when={!space.desktop && !space.origins.length}>
         <p role="alert">{_(messages.originNotAllowed)}</p>
       </Show>
+      <Show when={space.error()}>
+        {(error) => (
+          <p role="alert" class="organization-connect-error">
+            {_(messages[connectionError(error())])}
+          </p>
+        )}
+      </Show>
       <Show when={failed() && !space.error()}>
-        <p role="alert">{_(messages.unavailable)}</p>
+        <p role="alert" class="organization-connect-error">
+          {_(messages.unavailable)}
+        </p>
       </Show>
       <fieldset disabled={space.busy()}>
         <TextField
@@ -191,7 +202,7 @@ function Connect() {
           value={issuer()}
           onChange={setIssuer}
           type="url"
-          placeholder="https://team.example.com"
+          placeholder={_(messages.addressPlaceholder, { url: "https://team.example.com" })}
           required
           autocomplete="url"
         />

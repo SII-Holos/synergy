@@ -114,6 +114,9 @@
   color: var(--text-weak);
   font-size: 13px;
 }
+.organization-connect-error {
+  color: var(--text-error);
+}
 .organization-connect-advanced summary {
   width: fit-content;
   cursor: pointer;

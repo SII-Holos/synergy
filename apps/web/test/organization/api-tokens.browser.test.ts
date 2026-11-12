@@ -15,6 +15,7 @@ let directory: string
 const source = path.resolve(import.meta.dir, "../../src")
 const connection: Desktop.Connection = {
   id: "a".repeat(64),
+  revision: "00000000-0000-4000-8000-000000000001",
   issuer: "https://a.example",
   clientID: "desktop",
   orgID: "org-a",

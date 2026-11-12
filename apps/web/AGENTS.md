@@ -51,7 +51,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 
 ## Verification
 
-Keep tests under `test/`, mirroring their `src/` or `script/` domain; never colocate tests with implementation.
+Keep tests under `test/`, mirroring their source domain.
 
 Keep browser conditions, isolation and timeouts in `script/test-options.ts`, shared by the package runner and CI planner.
 
@@ -70,4 +70,4 @@ bun run localization:check
 
 Use the existing app or an isolated second instance for interaction checks. Verify both themes, keyboard/focus, loading/error states, session switching/reconnect when relevant, and the Desktop path for native Browser or Electron behavior. Do not bypass hooks or claim unrun checks.
 
-Retain owner-bound descendants. Hydrate drafts/files lazily; passwords stay volatile. Finite pages cannot confirm absence.
+Retain owner-bound descendants and lazy drafts/files; passwords stay volatile. Finite pages cannot confirm absence. Verify revision-bound logout across reload in organization suites.

@@ -21,7 +21,7 @@ Load `change-browser-runtime` for native Browser pages/profiles/popups and `deve
 
 ## Verify
 
-Main owns organization credentials; follow `change-server-api`. Verify owner suites and isolated `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/organization-native.test.ts`.
+Verify Main-owned credentials and revision-bound logout in account/IPC suites and isolated `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/organization-native.test.ts`.
 
 Run `bun run desktop:test`, affected `test/` suites, and root `bun run quality:quick`. Verify affected modes in an isolated home; Browser changes additionally require `test:runtime` and core/Web tests.
 

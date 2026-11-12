@@ -24,6 +24,7 @@ import type { DesktopPowerEvent, DesktopPowerSnapshot, DesktopPowerUpdate } from
 import type { OrganizationDesktop } from "@ericsanchezok/synergy-organization-protocol"
 
 const organization: OrganizationDesktop.Bridge = {
+  protocolVersion: 2,
   list: () => ipcRenderer.invoke("desktop.organization.list"),
   connect: (input) => ipcRenderer.invoke("desktop.organization.connect", input),
   request: (input) => ipcRenderer.invoke("desktop.organization.request", input),
