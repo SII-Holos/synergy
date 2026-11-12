@@ -73,7 +73,9 @@ export function OrganizationSessionResources(props: {
           orgSessionResourceChange: {
             expectedRevision: state.selection.revision,
             selection: {
-              ...state.selection.selection,
+              infrastructure: state.selection.selection
+                ? state.selection.selection.infrastructure
+                : { workspace: null, environment: null },
               modelResourceID: model(),
               connectionResourceIDs: [...state.connections],
             },

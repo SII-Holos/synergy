@@ -9,6 +9,7 @@ import { fail, revision } from "./error"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
+import { OrganizationCloud as Cloud } from "./cloud"
 
 export namespace OrganizationSessionResources {
   export async function read(session: Record.SessionDirectory) {
@@ -56,17 +57,17 @@ export namespace OrganizationSessionResources {
         fail("REVISION_CONFLICT", "Session execution must release its resource contract before changing selection")
       const ids = Execution.resourceIDs(input.selection)
       await Promise.all(
-        ids.map(async (resourceID) => {
+        Execution.resourceRoles(input.selection).map(async ({ resourceID, kind }) => {
           const { resource } = await authorize(credentials, "resource.use", {
             resourceID,
             projectID: session.projectID,
           })
-          if (resource.kind !== (resourceID === input.selection.modelResourceID ? "model" : "connection"))
-            fail("INVALID_REQUEST", "Resource kind does not match its selected role")
+          if (resource.kind !== kind) fail("INVALID_REQUEST", "Resource kind does not match its selected role")
         }),
       )
+      await Cloud.assertInfrastructure(account.orgID, session.projectID, input.selection.infrastructure)
       const contract = Record.SessionResources.parse({
-        schemaVersion: 1,
+        schemaVersion: 2,
         orgID: account.orgID,
         sessionID,
         revision: (previous?.revision ?? 0) + 1,
@@ -85,20 +86,22 @@ export namespace OrganizationSessionResources {
     })
   }
   export async function enabled(session: Record.SessionDirectory, selection: Execution.Selection) {
-    const ids = Execution.resourceIDs(selection)
-    const records = await Storage.readMany(ids.map((id) => Keys.resource(session.orgID, id)))
-    return records.map((raw, index) => {
+    const roles = Execution.resourceRoles(selection)
+    const records = await Storage.readMany(roles.map(({ resourceID }) => Keys.resource(session.orgID, resourceID)))
+    const resources = records.map((raw, index) => {
       if (!raw) fail("RESOURCE_UNAVAILABLE", "A selected resource is unavailable")
       const resource = Record.Resource.parse(raw)
       if (
         resource.orgID !== session.orgID ||
-        resource.resourceID !== ids[index] ||
-        resource.kind !== (index === 0 ? "model" : "connection") ||
+        resource.resourceID !== roles[index].resourceID ||
+        resource.kind !== roles[index].kind ||
         resource.state !== "enabled" ||
         (resource.scope.kind === "project" && resource.scope.projectID !== session.projectID)
       )
         fail("RESOURCE_UNAVAILABLE", "A selected resource is unavailable")
       return resource
     })
+    await Cloud.assertInfrastructure(session.orgID, session.projectID, selection.infrastructure)
+    return resources
   }
 }

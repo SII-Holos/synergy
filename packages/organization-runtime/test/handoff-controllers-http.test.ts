@@ -395,7 +395,11 @@ test.each([
             sessionID,
             orgSessionResourceChange: {
               expectedRevision: 0,
-              selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+              selection: {
+                modelResourceID: resource.resourceID,
+                connectionResourceIDs: [],
+                infrastructure: { workspace: null, environment: null },
+              },
             },
           },
           options,

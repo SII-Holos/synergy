@@ -18,7 +18,7 @@ Current execution observations belong beside immutable receipts. Bind their root
 
 Resource definitions declare fixed supported protocols and portable model capabilities. Keep upstream configuration, public descriptors and secret input distinct. No arbitrary Runtime options, caller-selected ownership changes or transport-routing credential headers. Verify strict contracts in `test/resource.test.ts`.
 
-Execution proofs bind the full accepted task receipt, exact native root and finite machine authority in a separate signature domain. Keep selection revisions and grant state distinct from command acceptance. Verify altered claims and bounded contracts in `test/execution.test.ts`.
+Execution proofs bind accepted task receipts, native roots and finite machine authority separately from command acceptance. Require explicit native/cloud infrastructure; classify resource roles and exclude infrastructure from business gateways. Verify altered claims and strict contracts in `test/execution*.test.ts`.
 
 Resource-description proofs establish accepted intake before materialization. Keep them separate from root authority and validate descriptor order, kinds and secret exclusion.
 

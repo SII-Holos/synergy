@@ -7204,6 +7204,41 @@
         "required": ["expectedRevision"],
         "additionalProperties": false
       },
+      "OrgExecutionInfrastructure": {
+        "type": "object",
+        "properties": {
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "workspaceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["resourceID", "workspaceID"],
+                "additionalProperties": false
+              },
+              { "type": "null" }
+            ]
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "environmentID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["resourceID", "environmentID"],
+                "additionalProperties": false
+              },
+              { "type": "null" }
+            ]
+          }
+        },
+        "required": ["workspace", "environment"],
+        "additionalProperties": false
+      },
       "OrgSessionResourceContract": {
         "type": "object",
         "properties": {
@@ -7224,9 +7259,10 @@
                     "maxItems": 32,
                     "type": "array",
                     "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                  }
+                  },
+                  "infrastructure": { "$ref": "#/components/schemas/OrgExecutionInfrastructure" }
                 },
-                "required": ["modelResourceID", "connectionResourceIDs"],
+                "required": ["modelResourceID", "connectionResourceIDs", "infrastructure"],
                 "additionalProperties": false
               },
               { "type": "null" }
@@ -7248,9 +7284,10 @@
                 "maxItems": 32,
                 "type": "array",
                 "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-              }
+              },
+              "infrastructure": { "$ref": "#/components/schemas/OrgExecutionInfrastructure" }
             },
-            "required": ["modelResourceID", "connectionResourceIDs"],
+            "required": ["modelResourceID", "connectionResourceIDs", "infrastructure"],
             "additionalProperties": false
           }
         },
@@ -13187,7 +13224,7 @@
       "OrgBoundExecutionGrant": {
         "type": "object",
         "properties": {
-          "schemaVersion": { "type": "number", "const": 4 },
+          "schemaVersion": { "type": "number", "const": 5 },
           "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "deploymentIncarnation": {
@@ -13209,9 +13246,10 @@
                 "maxItems": 32,
                 "type": "array",
                 "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-              }
+              },
+              "infrastructure": { "$ref": "#/components/schemas/OrgExecutionInfrastructure" }
             },
-            "required": ["modelResourceID", "connectionResourceIDs"],
+            "required": ["modelResourceID", "connectionResourceIDs", "infrastructure"],
             "additionalProperties": false
           },
           "limits": {
@@ -13342,7 +13380,7 @@
           {
             "type": "object",
             "properties": {
-              "schemaVersion": { "type": "number", "const": 4 },
+              "schemaVersion": { "type": "number", "const": 5 },
               "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "deploymentIncarnation": {
@@ -13369,9 +13407,10 @@
                     "maxItems": 32,
                     "type": "array",
                     "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                  }
+                  },
+                  "infrastructure": { "$ref": "#/components/schemas/OrgExecutionInfrastructure" }
                 },
-                "required": ["modelResourceID", "connectionResourceIDs"],
+                "required": ["modelResourceID", "connectionResourceIDs", "infrastructure"],
                 "additionalProperties": false
               },
               "limits": {
@@ -13448,7 +13487,7 @@
           {
             "type": "object",
             "properties": {
-              "schemaVersion": { "type": "number", "const": 4 },
+              "schemaVersion": { "type": "number", "const": 5 },
               "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
               "deploymentIncarnation": {
@@ -13475,9 +13514,10 @@
                     "maxItems": 32,
                     "type": "array",
                     "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                  }
+                  },
+                  "infrastructure": { "$ref": "#/components/schemas/OrgExecutionInfrastructure" }
                 },
-                "required": ["modelResourceID", "connectionResourceIDs"],
+                "required": ["modelResourceID", "connectionResourceIDs", "infrastructure"],
                 "additionalProperties": false
               },
               "limits": {

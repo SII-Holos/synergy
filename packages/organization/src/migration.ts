@@ -7,6 +7,7 @@ import { initializeSigningIdentity } from "./signing"
 import { executionMigration } from "./execution-migration"
 import { executionRetentionMigration } from "./execution-retention-migration"
 import { executionHandoffMigration } from "./execution-handoff-migration"
+import { executionInfrastructureMigration } from "./execution-infrastructure-migration"
 import { OrganizationExecutionIndex } from "./execution-index"
 import { OrganizationHandoffExecution } from "./handoff"
 import { sharedProjectionMigration, sharedWindowMigration, sharedWindowHistoryMigration } from "./shared-projection"
@@ -22,6 +23,7 @@ const migrations: Migration[] = [
   executionMigration,
   executionRetentionMigration,
   executionHandoffMigration,
+  executionInfrastructureMigration,
   OrganizationExecutionIndex.migration,
   OrganizationExecutionIndex.controlMigration,
   OrganizationHandoffExecution.migration,

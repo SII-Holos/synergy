@@ -7,7 +7,7 @@ import { SigningSignature, signedProtocol } from "./signature.js"
 import { OrganizationHandoffProtocol as Handoff } from "./handoff.js"
 
 export namespace OrganizationExecutionProtocol {
-  export const Selection = z
+  export const LegacySelection = z
     .strictObject({
       modelResourceID: Identity.ID,
       connectionResourceIDs: z.array(Identity.ID).max(32),
@@ -18,9 +18,43 @@ export namespace OrganizationExecutionProtocol {
         value.connectionResourceIDs.length + 1,
       "Resource selection must contain unique identities",
     )
+  export const Infrastructure = z
+    .strictObject({
+      workspace: z.strictObject({ resourceID: Identity.ID, workspaceID: Identity.ID }).nullable(),
+      environment: z.strictObject({ resourceID: Identity.ID, environmentID: Identity.ID }).nullable(),
+    })
+    .meta({ ref: "OrgExecutionInfrastructure" })
+  export type Infrastructure = z.infer<typeof Infrastructure>
+  export const Selection = LegacySelection.safeExtend({ infrastructure: Infrastructure }).refine((value) => {
+    const ids = [
+      value.modelResourceID,
+      ...value.connectionResourceIDs,
+      value.infrastructure.workspace?.resourceID,
+      value.infrastructure.environment?.resourceID,
+    ].filter((id) => id !== undefined)
+    return new Set(ids).size === ids.length
+  }, "Resource selection must contain unique identities")
   export type Selection = z.infer<typeof Selection>
-  export function resourceIDs(selection: Selection) {
+  export function callResourceIDs(selection: Selection) {
     return [selection.modelResourceID, ...selection.connectionResourceIDs]
+  }
+  export function resourceRoles(selection: Selection): Array<{
+    resourceID: string
+    kind: ReturnType<typeof Resource.kind>
+  }> {
+    return [
+      { resourceID: selection.modelResourceID, kind: "model" },
+      ...selection.connectionResourceIDs.map((resourceID) => ({ resourceID, kind: "connection" as const })),
+      ...(selection.infrastructure.workspace
+        ? [{ resourceID: selection.infrastructure.workspace.resourceID, kind: "workspace" as const }]
+        : []),
+      ...(selection.infrastructure.environment
+        ? [{ resourceID: selection.infrastructure.environment.resourceID, kind: "environment" as const }]
+        : []),
+    ]
+  }
+  export function resourceIDs(selection: Selection) {
+    return resourceRoles(selection).map((resource) => resource.resourceID)
   }
   export const Contract = z
     .strictObject({
@@ -75,7 +109,7 @@ export namespace OrganizationExecutionProtocol {
       closedAt: z.number().int().nonnegative(),
     }),
   ])
-  const GrantFields = z.strictObject({
+  const LegacyFields4 = z.strictObject({
     schemaVersion: z.literal(4),
     grantID: Identity.ID,
     orgID: Identity.ID,
@@ -85,7 +119,7 @@ export namespace OrganizationExecutionProtocol {
     runtimeID: Identity.ID,
     bindingEpoch: Protocol.Epoch,
     selectionRevision: Identity.Revision,
-    selection: Selection,
+    selection: LegacySelection,
     limits: Limits,
     actor: Command.Actor,
     admissionID: Identity.ID,
@@ -104,6 +138,7 @@ export namespace OrganizationExecutionProtocol {
       })
       .optional(),
   })
+  const GrantFields = LegacyFields4.extend({ schemaVersion: z.literal(5), selection: Selection })
   export const BoundGrant = GrantFields.extend({
     state: z.literal("bound"),
     rootID: Identity.ID,
@@ -131,7 +166,30 @@ export namespace OrganizationExecutionProtocol {
     .refine((value) => value.actor.orgID === value.orgID, "Grant actor belongs to another organization")
     .meta({ ref: "OrgExecutionGrant" })
   export type Grant = z.infer<typeof Grant>
-  const LegacyFields3 = GrantFields.omit({ provenance: true }).extend({ schemaVersion: z.literal(3) })
+  export const LegacyGrant4 = z
+    .discriminatedUnion("state", [
+      LegacyFields4.extend({ state: z.literal("provisional") }),
+      LegacyFields4.extend({
+        state: z.literal("bound"),
+        rootID: Identity.ID,
+        boundAt: z.number().int().nonnegative(),
+        retention: Retention,
+      }),
+      LegacyFields4.extend({
+        state: z.literal("closed"),
+        closedAt: z.number().int().nonnegative(),
+        handoffClosure: HandoffClosure.extend({ rootID: Identity.ID, generation: z.literal(0) }).optional(),
+        controlClosure: z
+          .strictObject({
+            rootID: Identity.ID,
+            successorGrantID: Identity.ID,
+            closedAt: z.number().int().nonnegative(),
+          })
+          .optional(),
+      }),
+    ])
+    .refine((value) => value.actor.orgID === value.orgID, "Grant actor belongs to another organization")
+  const LegacyFields3 = LegacyFields4.omit({ provenance: true }).extend({ schemaVersion: z.literal(3) })
   export const LegacyGrant3 = z.discriminatedUnion("state", [
     LegacyFields3.extend({ state: z.literal("provisional") }),
     LegacyFields3.extend({
@@ -216,14 +274,16 @@ export namespace OrganizationExecutionProtocol {
         .max(33),
     })
     .refine((value) => {
-      const ids = resourceIDs(value.grant.selection)
+      const selected = resourceRoles(value.grant.selection).filter(
+        (resource) => resource.kind === "model" || resource.kind === "connection",
+      )
       return (
         value.grant.state !== "closed" &&
-        value.resources.length === ids.length &&
+        value.resources.length === selected.length &&
         value.resources.every(
           (resource, index) =>
-            resource.resourceID === ids[index] &&
-            Resource.kind(resource.definition) === (index === 0 ? "model" : "connection"),
+            resource.resourceID === selected[index].resourceID &&
+            Resource.kind(resource.definition) === selected[index].kind,
         )
       )
     }, "Execution descriptors must match the exact active grant selection")

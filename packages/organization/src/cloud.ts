@@ -9,6 +9,7 @@ import { EnvironmentProviders, type EnvironmentProvider } from "@ericsanchezok/s
 import type { BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
 import {
   OrganizationCloudProtocol as Cloud,
+  OrganizationExecutionProtocol as Execution,
   OrganizationIdentity as Identity,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { authorize } from "./authorization"
@@ -97,6 +98,49 @@ export namespace OrganizationCloud {
 
   export function scopeID(orgID: string, projectID: string) {
     return `org_${digest([orgID, projectID])}`
+  }
+
+  export async function assertInfrastructure(orgID: string, projectID: string, value: Execution.Infrastructure) {
+    orgID = Identity.ID.parse(orgID)
+    projectID = Identity.ID.parse(projectID)
+    const input = Execution.Infrastructure.parse(value)
+    const selected = [
+      ...(input.workspace
+        ? [{ kind: "workspaces" as const, resourceID: input.workspace.resourceID, id: input.workspace.workspaceID }]
+        : []),
+      ...(input.environment
+        ? [
+            {
+              kind: "environments" as const,
+              resourceID: input.environment.resourceID,
+              id: input.environment.environmentID,
+            },
+          ]
+        : []),
+    ]
+    return Storage.snapshot(async () => {
+      const rows = await Storage.readMany(selected.map((ref) => key(ref.kind, ref.id)))
+      for (const [index, ref] of selected.entries()) {
+        const raw = rows[index]
+        if (!raw) fail("RESOURCE_UNAVAILABLE", "Selected infrastructure is unavailable")
+        const locator = Locator.parse(raw)
+        if (
+          locator.orgID !== orgID ||
+          locator.projectID !== projectID ||
+          locator.resourceID !== ref.resourceID ||
+          locator.id !== ref.id
+        )
+          fail("RESOURCE_UNAVAILABLE", "Selected infrastructure belongs to another resource or project")
+        try {
+          if (ref.kind === "workspaces") await view(locator)
+          else await Environment.get(ref.id, scopeID(orgID, projectID))
+        } catch (error) {
+          if (error instanceof Storage.NotFoundError)
+            fail("RESOURCE_UNAVAILABLE", "Selected infrastructure is unavailable")
+          throw error
+        }
+      }
+    })
   }
 
   function profiles() {

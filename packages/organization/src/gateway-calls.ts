@@ -90,7 +90,7 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
         JSON.stringify(contract.selection) !== JSON.stringify(grant.selection))
     )
       fail("REVISION_CONFLICT", "Gateway resource contract changed")
-    if (!Execution.resourceIDs(grant.selection).includes(target.resourceID))
+    if (!Execution.callResourceIDs(grant.selection).includes(target.resourceID))
       fail("PERMISSION_DENIED", "Resource is outside the root grant")
     const resource = await Record.read(Record.Resource, Keys.resource(target.orgID, target.resourceID))
     if (

@@ -44,7 +44,11 @@ test("an external API token creates a native Session, reconciles a lost HTTPS re
       sessionID,
       orgSessionResourceChange: {
         expectedRevision: 0,
-        selection: { modelResourceID: f.model.resourceID, connectionResourceIDs: [] },
+        selection: {
+          modelResourceID: f.model.resourceID,
+          connectionResourceIDs: [],
+          infrastructure: { workspace: null, environment: null },
+        },
       },
     },
     api,

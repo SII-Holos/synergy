@@ -8,7 +8,7 @@ import { cert, key } from "./fixtures/tls"
 type Service = Awaited<ReturnType<typeof openOrganizationService>>
 type Socket = Parameters<Service["websocket"]["message"]>[0]
 
-export async function fixture() {
+export async function fixture(options: Pick<Parameters<typeof openOrganizationService>[0], "cloud"> = {}) {
   const resources = testResources()
   try {
     const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "member-runtime-"))
@@ -17,6 +17,7 @@ export async function fixture() {
       home: path.join(root, "service"),
       publicOrigin: "https://organization.example",
       connections: { heartbeatMs: 25, offlineMs: 300 },
+      cloud: options.cloud,
     })
     resources.defer("organization service", () => service.close())
     const requests: Array<{ url: string; cookie: string | null; authorization: string | null; body: string }> = []

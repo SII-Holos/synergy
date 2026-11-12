@@ -34,11 +34,47 @@ export async function executionFixture(
     execution?: boolean
     knowledge?: boolean
     proofLifetimeMs?: number
+    infrastructure?: "workspace" | "environment"
   } = {},
 ) {
   const resources = testResources()
   try {
-    const f = await fixture()
+    let allocations = 0
+    const f = await fixture(
+      input.infrastructure
+        ? {
+            cloud: {
+              blobStores: {
+                "execution-files": {
+                  async put() {
+                    throw new Error("Preparation must not upload infrastructure files")
+                  },
+                  async get() {
+                    throw new Error("Preparation must not download infrastructure files")
+                  },
+                },
+              },
+              workspaceProfiles: { standard: { blobStore: "execution-files" } },
+              environmentProviders: [
+                {
+                  id: "execution-compute",
+                  async allocate() {
+                    allocations++
+                    throw new Error("Unmapped infrastructure must not allocate compute")
+                  },
+                  async inspect() {
+                    return { state: "unknown" }
+                  },
+                  async deallocate() {
+                    throw new Error("No compute allocation exists")
+                  },
+                },
+              ],
+              environmentProfiles: { standard: { provider: "execution-compute", spec: { image: "fixture" } } },
+            },
+          }
+        : {},
+    )
     resources.defer("organization fixture", () => f[Symbol.asyncDispose]())
     const member = await prepareMemberHome({
       baseDirectory: path.join(f.root, "members"),
@@ -204,6 +240,48 @@ export async function executionFixture(
       )
     ).data
     const sessionID = created.effect.sessionID
+    const infrastructure: Execution.Infrastructure = { workspace: null, environment: null }
+    if (input.infrastructure) {
+      const resource = (
+        await f.client.orgResources.create(
+          {
+            orgResourceCreate: {
+              name: "Selected infrastructure",
+              scope: { kind: "project", projectID: project.projectID },
+              configuration: {
+                protocol: input.infrastructure === "workspace" ? "workspace-storage" : "environment",
+                profile: "standard",
+              },
+              credential: { kind: "none" },
+            },
+          },
+          options,
+        )
+      ).data
+      await f.client.orgResourceGrants.set(
+        {
+          resourceID: resource.resourceID,
+          kind: "account",
+          subjectID: f.identity.accountID,
+          orgResourceGrantChange: { expectedRevision: 0, enabled: true },
+        },
+        options,
+      )
+      const create = {
+        resourceID: resource.resourceID,
+        projectID: project.projectID,
+        requestID: "execution-infrastructure",
+        name: "Execution infrastructure",
+      }
+      if (input.infrastructure === "workspace") {
+        const workspace = (await f.client.orgCloudWorkspaces.create({ orgCloudWorkspaceCreate: create }, options)).data
+        infrastructure.workspace = { resourceID: resource.resourceID, workspaceID: workspace.workspaceID }
+      } else {
+        const environment = (await f.client.orgCloudEnvironments.create({ orgCloudEnvironmentCreate: create }, options))
+          .data
+        infrastructure.environment = { resourceID: resource.resourceID, environmentID: environment.environmentID }
+      }
+    }
     await f.client.orgSessionResources.set(
       {
         sessionID,
@@ -212,6 +290,7 @@ export async function executionFixture(
           selection: {
             modelResourceID: model.resourceID,
             connectionResourceIDs: connectionResource ? [connectionResource.resourceID] : [],
+            infrastructure,
           },
         },
       },
@@ -242,6 +321,8 @@ export async function executionFixture(
       sessionID,
       model,
       connectionResource,
+      infrastructure,
+      infrastructureAllocations: () => allocations,
       get connection() {
         return connection!
       },

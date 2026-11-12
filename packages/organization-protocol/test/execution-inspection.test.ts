@@ -84,7 +84,7 @@ test.each(["handoff", "control"] as const)(
   (kind) => {
     const accepted = receipt().accepted!
     const grant = Execution.Grant.parse({
-      schemaVersion: 4,
+      schemaVersion: 5,
       state: "closed",
       grantID: accepted.permit.provisionalGrantID,
       orgID: accepted.permit.orgID,
@@ -94,7 +94,11 @@ test.each(["handoff", "control"] as const)(
       runtimeID: accepted.permit.runtimeID,
       bindingEpoch: accepted.permit.bindingEpoch,
       selectionRevision: 0,
-      selection: { modelResourceID: "model", connectionResourceIDs: [] },
+      selection: {
+        modelResourceID: "model",
+        connectionResourceIDs: [],
+        infrastructure: { workspace: null, environment: null },
+      },
       limits: { requestBytes: 1024, responseBytes: 1024 },
       actor: accepted.permit.actor,
       admissionID: accepted.permit.admissionID,

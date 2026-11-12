@@ -289,7 +289,11 @@ test("API token HTTP issuance is personal and its resource capability never beco
       headers,
       body: JSON.stringify({
         expectedRevision: 0,
-        selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+        selection: {
+          modelResourceID: resource.resourceID,
+          connectionResourceIDs: [],
+          infrastructure: { workspace: null, environment: null },
+        },
       }),
     })
   expect((await select()).status).toBe(200)
@@ -308,7 +312,11 @@ test("API token HTTP issuance is personal and its resource capability never beco
         headers,
         body: JSON.stringify({
           expectedRevision: 1,
-          selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+          selection: {
+            modelResourceID: resource.resourceID,
+            connectionResourceIDs: [],
+            infrastructure: { workspace: null, environment: null },
+          },
         }),
       })
     ).status,

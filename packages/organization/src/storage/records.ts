@@ -35,7 +35,7 @@ export namespace OrganizationRecord {
         ),
       "Gateway receipt must match its issued authority",
     )
-  export const SessionResources = Execution.Contract.extend({ schemaVersion: z.literal(1), orgID: Identity.ID }).refine(
+  export const SessionResources = Execution.Contract.extend({ schemaVersion: z.literal(2), orgID: Identity.ID }).refine(
     (value) => value.selection !== null && value.revision > 0,
     "Stored resource contracts require a selection",
   )

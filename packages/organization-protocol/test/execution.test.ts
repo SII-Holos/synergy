@@ -106,7 +106,11 @@ test("execution binding signatures cover the complete native receipt, root and f
 })
 
 test("resource selections bound each call without imposing a lifetime task quota", () => {
-  const selection = { modelResourceID: "model", connectionResourceIDs: ["business"] }
+  const selection = {
+    modelResourceID: "model",
+    connectionResourceIDs: ["business"],
+    infrastructure: { workspace: null, environment: null },
+  }
   expect(Execution.resourceIDs(Execution.Selection.parse(selection))).toEqual(["model", "business"])
   for (const changed of [
     { ...selection, connectionResourceIDs: ["model"] },

@@ -40,7 +40,7 @@ export namespace OrganizationExecutionGrants {
     if (!contract?.selection) return
     await Resources.enabled(session, contract.selection)
     const grant = Execution.Grant.parse({
-      schemaVersion: 4,
+      schemaVersion: 5,
       grantID: crypto.randomUUID(),
       orgID: session.orgID,
       deploymentIncarnation: permit.deploymentIncarnation,
@@ -240,7 +240,7 @@ export function createExecutionGrants(options: {
           fail("REVISION_CONFLICT", "Execution continuation resource selection changed")
         await Resources.enabled(session, predecessor.selection)
         const grant = Execution.Grant.parse({
-          schemaVersion: 4,
+          schemaVersion: 5,
           state: "provisional",
           grantID: crypto.randomUUID(),
           orgID: predecessor.orgID,
@@ -767,10 +767,12 @@ export function createExecutionGrants(options: {
         connection.assertCurrent()
         return Execution.Description.parse({
           grant,
-          resources: resources.map((resource) => {
-            const definition = Resource.definition(resource.configuration)
-            return { resourceID: resource.resourceID, revision: resource.revision, name: resource.name, definition }
-          }),
+          resources: resources
+            .filter((resource) => resource.kind === "model" || resource.kind === "connection")
+            .map((resource) => {
+              const definition = Resource.definition(resource.configuration)
+              return { resourceID: resource.resourceID, revision: resource.revision, name: resource.name, definition }
+            }),
         })
       })
     },

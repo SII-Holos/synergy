@@ -47,7 +47,11 @@ async function task(f: Awaited<ReturnType<typeof commandFixture>>, actor = "alic
   return f.run(async () => {
     await SessionResources.set(f.credentials.alice, f.sessionID, {
       expectedRevision: 0,
-      selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+      selection: {
+        modelResourceID: resource.resourceID,
+        connectionResourceIDs: [],
+        infrastructure: { workspace: null, environment: null },
+      },
     })
     if (actor !== "alice") {
       const session = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
@@ -240,7 +244,11 @@ test("Session resource selection uses current selection grants and an independen
       sessionID: f.sessionID,
       orgSessionResourceChange: {
         expectedRevision: 0,
-        selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+        selection: {
+          modelResourceID: resource.resourceID,
+          connectionResourceIDs: [],
+          infrastructure: { workspace: null, environment: null },
+        },
       },
     },
     { throwOnError: true },
@@ -249,10 +257,18 @@ test("Session resource selection uses current selection grants and an independen
   expect(response.data).toEqual({
     sessionID: f.sessionID,
     revision: 1,
-    selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+    selection: {
+      modelResourceID: resource.resourceID,
+      connectionResourceIDs: [],
+      infrastructure: { workspace: null, environment: null },
+    },
   })
   await f.run(async () => {
-    const selection = { modelResourceID: resource.resourceID, connectionResourceIDs: [] }
+    const selection = {
+      modelResourceID: resource.resourceID,
+      connectionResourceIDs: [],
+      infrastructure: { workspace: null, environment: null },
+    }
     const session = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
     await Storage.write(Keys.session(f.sessionID), { ...session, shareState: "shared" })
     expect((await SessionResources.get(f.credentials.bob, f.sessionID)).selection).toEqual(selection)
@@ -293,7 +309,11 @@ test("task admission reserves a bounded provisional grant with the Session resou
   await f.run(async () => {
     await SessionResources.set(f.credentials.alice, f.sessionID, {
       expectedRevision: 0,
-      selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+      selection: {
+        modelResourceID: resource.resourceID,
+        connectionResourceIDs: [],
+        infrastructure: { workspace: null, environment: null },
+      },
     })
     const request = f.request()
     request.input.mode = "task"
@@ -317,7 +337,11 @@ test("task admission reserves a bounded provisional grant with the Session resou
     await expect(
       SessionResources.set(f.credentials.alice, f.sessionID, {
         expectedRevision: 1,
-        selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+        selection: {
+          modelResourceID: resource.resourceID,
+          connectionResourceIDs: [],
+          infrastructure: { workspace: null, environment: null },
+        },
       }),
     ).rejects.toMatchObject({ data: { code: "REVISION_CONFLICT" } })
   })
@@ -555,7 +579,11 @@ test("accepted tasks keep their resource contract without a retained-grant produ
     await expect(
       SessionResources.set(f.credentials.alice, f.sessionID, {
         expectedRevision: 1,
-        selection: { modelResourceID: prepared.resource.resourceID, connectionResourceIDs: [] },
+        selection: {
+          modelResourceID: prepared.resource.resourceID,
+          connectionResourceIDs: [],
+          infrastructure: { workspace: null, environment: null },
+        },
       }),
     ).rejects.toMatchObject({ data: { code: "REVISION_CONFLICT" } })
   })
@@ -617,7 +645,11 @@ test("provisional admission, rejection and root indexes commit atomically withou
   await f.run(async () => {
     await SessionResources.set(f.credentials.alice, f.sessionID, {
       expectedRevision: 0,
-      selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+      selection: {
+        modelResourceID: resource.resourceID,
+        connectionResourceIDs: [],
+        infrastructure: { workspace: null, environment: null },
+      },
     })
     const request = f.request()
     request.input.mode = "task"
@@ -658,7 +690,11 @@ test("provisional admission, rejection and root indexes commit atomically withou
     })
     await SessionResources.set(f.credentials.alice, f.sessionID, {
       expectedRevision: 1,
-      selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+      selection: {
+        modelResourceID: resource.resourceID,
+        connectionResourceIDs: [],
+        infrastructure: { workspace: null, environment: null },
+      },
     })
     const next = f.request("another-task")
     next.input.mode = "task"

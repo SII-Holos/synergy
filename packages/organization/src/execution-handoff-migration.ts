@@ -13,6 +13,6 @@ export const executionHandoffMigration: Migration = {
       return
     Execution.LegacyGrant3.parse(record)
     record.schemaVersion = 4
-    Execution.Grant.parse(record)
+    Execution.LegacyGrant4.parse(record)
   },
 }

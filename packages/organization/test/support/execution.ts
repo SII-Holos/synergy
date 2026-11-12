@@ -66,6 +66,7 @@ export async function executionFixture(input: {
         selection: {
           modelResourceID: resource.resourceID,
           connectionResourceIDs: connection ? [connection.resourceID] : [],
+          infrastructure: { workspace: null, environment: null },
         },
       })
       const request = f.request()

@@ -336,12 +336,24 @@ export type OrgRuntimeRevoke = {
   expectedRevision: number
 }
 
+export type OrgExecutionInfrastructure = {
+  workspace: {
+    resourceID: string
+    workspaceID: string
+  } | null
+  environment: {
+    resourceID: string
+    environmentID: string
+  } | null
+}
+
 export type OrgSessionResourceContract = {
   sessionID: string
   revision: number
   selection: {
     modelResourceID: string
     connectionResourceIDs: Array<string>
+    infrastructure: OrgExecutionInfrastructure
   } | null
 }
 
@@ -350,6 +362,7 @@ export type OrgSessionResourceChange = {
   selection: {
     modelResourceID: string
     connectionResourceIDs: Array<string>
+    infrastructure: OrgExecutionInfrastructure
   }
 }
 
@@ -3223,7 +3236,7 @@ export type OrgExecutionHandoffCloseRequest = {
 }
 
 export type OrgBoundExecutionGrant = {
-  schemaVersion: 4
+  schemaVersion: 5
   grantID: string
   orgID: string
   deploymentIncarnation: string
@@ -3235,6 +3248,7 @@ export type OrgBoundExecutionGrant = {
   selection: {
     modelResourceID: string
     connectionResourceIDs: Array<string>
+    infrastructure: OrgExecutionInfrastructure
   }
   limits: {
     requestBytes: number
@@ -3291,7 +3305,7 @@ export type OrgBoundExecutionGrant = {
 
 export type OrgExecutionGrant =
   | {
-      schemaVersion: 4
+      schemaVersion: 5
       grantID: string
       orgID: string
       deploymentIncarnation: string
@@ -3303,6 +3317,7 @@ export type OrgExecutionGrant =
       selection: {
         modelResourceID: string
         connectionResourceIDs: Array<string>
+        infrastructure: OrgExecutionInfrastructure
       }
       limits: {
         requestBytes: number
@@ -3331,7 +3346,7 @@ export type OrgExecutionGrant =
     }
   | OrgBoundExecutionGrant
   | {
-      schemaVersion: 4
+      schemaVersion: 5
       grantID: string
       orgID: string
       deploymentIncarnation: string
@@ -3343,6 +3358,7 @@ export type OrgExecutionGrant =
       selection: {
         modelResourceID: string
         connectionResourceIDs: Array<string>
+        infrastructure: OrgExecutionInfrastructure
       }
       limits: {
         requestBytes: number

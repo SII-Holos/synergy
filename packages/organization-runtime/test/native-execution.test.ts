@@ -155,7 +155,11 @@ test("accepted organization tasks execute through the native loop and release re
         sessionID,
         orgSessionResourceChange: {
           expectedRevision: 0,
-          selection: { modelResourceID: model.resourceID, connectionResourceIDs: [] },
+          selection: {
+            modelResourceID: model.resourceID,
+            connectionResourceIDs: [],
+            infrastructure: { workspace: null, environment: null },
+          },
         },
       },
       options,
@@ -237,7 +241,11 @@ test("accepted organization tasks execute through the native loop and release re
           sessionID,
           orgSessionResourceChange: {
             expectedRevision: 1,
-            selection: { modelResourceID: model.resourceID, connectionResourceIDs: [] },
+            selection: {
+              modelResourceID: model.resourceID,
+              connectionResourceIDs: [],
+              infrastructure: { workspace: null, environment: null },
+            },
           },
         },
         options,

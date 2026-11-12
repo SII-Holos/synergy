@@ -2,7 +2,7 @@
 
 Own bindings, bridge, command intake, synchronization and resource adapters. Service owns identity/authorization. Verify epochs and attribution without role tables. Reuse Harness execution owners and Inbox; never duplicate scheduling. See [organization architecture](../../docs/architecture/organization.md).
 
-Compose through Agent Runtime with explicit exclusive sources and fixed gateway SDKs in both worker roles. Personal configuration, credentials, ancestor/global Skills and plugins cannot leak into organization compositions. Hosted execution excludes Desktop and Memory. Authorization derives from accepted Inbox/root evidence and current grants, never enrollment alone. Verify Runtime/execution-source suites.
+Compose through Agent Runtime with exclusive sources and fixed gateway SDKs in both worker roles. Personal configuration, credentials, ancestor/global Skills and plugins cannot leak into organization compositions. Hosted execution excludes Desktop and Memory. Authorization derives from accepted Inbox/root evidence and current grants, never enrollment alone. Reject unmapped cloud infrastructure; verify execution-source/infrastructure suites.
 
 ProjectConfig reads an explicit field allowlist; missing values never invoke personal loaders. Preserve immutable Session bindings and Cortex inheritance; adopt driver/epoch only during verified activation. Portability reader 3 requires Core publication and retains reception, actor, slots and receipts; history never authorizes execution. Verify binding/adoption/transfer storage/restart tests.
 

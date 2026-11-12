@@ -59,7 +59,11 @@ test("a lost command ACK prepares resources then binds the native root through m
     )
     await OrganizationSessionResources.set(f.credentials.alice, f.sessionID, {
       expectedRevision: 0,
-      selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+      selection: {
+        modelResourceID: resource.resourceID,
+        connectionResourceIDs: [],
+        infrastructure: { workspace: null, environment: null },
+      },
     })
   })
   await using receiver = await peer(f, runtime)

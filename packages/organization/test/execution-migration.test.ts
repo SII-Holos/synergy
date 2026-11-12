@@ -8,9 +8,18 @@ import { executionFixture } from "./support/execution"
 import { commandFixture } from "./support/commands"
 import { OrganizationExecutionProtocol as Execution } from "@ericsanchezok/synergy-organization-protocol"
 
+function selectionBeforeInfrastructure(selection: Execution.Selection) {
+  const { infrastructure: _, ...previous } = selection
+  return previous
+}
+
 test("version three grants upgrade without inventing handoff history and previous readers reject the current contract", async () => {
   await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
-  const legacy = Execution.LegacyGrant3.parse({ ...f.grant, schemaVersion: 3 })
+  const legacy = Execution.LegacyGrant3.parse({
+    ...f.grant,
+    schemaVersion: 3,
+    selection: selectionBeforeInfrastructure(f.grant.selection),
+  })
   await f.run(() => Storage.write(Keys.executionGrant(f.grant.grantID), legacy))
   await f.restart()
   await f.run(async () => {
@@ -18,7 +27,7 @@ test("version three grants upgrade without inventing handoff history and previou
     expect(await Storage.read(Keys.executionGrant(f.grant.grantID))).toEqual(legacy)
     expect(Execution.LegacyGrant3.safeParse(f.grant).success).toBe(false)
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
-    await Storage.write(Keys.executionGrant(f.grant.grantID), { ...f.grant, schemaVersion: 5 })
+    await Storage.write(Keys.executionGrant(f.grant.grantID), { ...f.grant, schemaVersion: 6 })
     await expect(Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))).rejects.toThrow()
   })
 })
@@ -63,7 +72,7 @@ test("bound grant retention upgrades from version two without rewriting stored e
   await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
   const legacy = await f.run(async () => {
     const { retention: _, ...bound } = f.grant
-    const value = { ...bound, schemaVersion: 2 }
+    const value = { ...bound, schemaVersion: 2, selection: selectionBeforeInfrastructure(bound.selection) }
     await Storage.write(Keys.executionGrant(bound.grantID), value)
     return value
   })
@@ -71,7 +80,7 @@ test("bound grant retention upgrades from version two without rewriting stored e
   await f.run(async () => {
     const current = await Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))
     expect(current).toEqual(f.grant)
-    expect(current).toMatchObject({ schemaVersion: 4, retention: { state: "held", generation: 1 } })
+    expect(current).toMatchObject({ schemaVersion: 5, retention: { state: "held", generation: 1 } })
     expect(await Storage.read(Keys.executionGrant(f.grant.grantID))).toEqual(legacy)
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
   })
@@ -86,7 +95,12 @@ test("legacy execution metadata upgrades on access without changing acceptance, 
     ))!
     const session = { ...directory, schemaVersion: 1, executionGrantIDs: [f.grant.grantID] }
     const { retention: __, ...bound } = f.grant
-    const grant = { ...bound, schemaVersion: 1, limits: { ...f.grant.limits, calls: 1024 } }
+    const grant = {
+      ...bound,
+      schemaVersion: 1,
+      selection: selectionBeforeInfrastructure(bound.selection),
+      limits: { ...f.grant.limits, calls: 1024 },
+    }
     await Storage.transaction(async () => {
       await Storage.write(Keys.session(f.sessionID), session)
       await Storage.write(Keys.executionGrant(f.grant.grantID), grant)

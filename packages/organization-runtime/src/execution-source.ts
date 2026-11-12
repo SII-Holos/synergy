@@ -103,6 +103,16 @@ function current() {
   return value
 }
 
+function assertNativeInfrastructure(selection: Execution.Selection) {
+  if (selection.infrastructure.workspace || selection.infrastructure.environment)
+    throw new OrganizationRuntimeError({
+      code: "RESOURCE_UNAVAILABLE",
+      message: "The selected organization infrastructure requires its execution mapping owner",
+      retryable: false,
+      outcome: "not_dispatched",
+    })
+}
+
 export async function withMemberExecution<T>(
   identity: RuntimeIdentity,
   input: {
@@ -134,6 +144,7 @@ export async function withMemberExecution<T>(
   if (accepted.permit.sessionID !== acceptedSessionID || accepted.effect.messageID !== acceptedRootID)
     throw denied("Member execution requires the receipt for its selected native task")
   const description = await source.resources.describe(descriptionProof, signal)
+  assertNativeInfrastructure(description.grant.selection)
   const proof = await source.intake.bindingProof(lookup, acceptedRootID)
   const lineageAccepted = lineage ?? { sessionID: session.id, rootID: acceptedRootID, actor: lookup }
   return await fn({ source, session, lineage, descriptionProof, proof, description, accepted: lineageAccepted }, signal)
@@ -238,6 +249,7 @@ export function registerMemberExecution(identity: RuntimeIdentity) {
       if (accepted.permit.sessionID !== acceptedSessionID || accepted.effect.messageID !== acceptedRootID)
         throw denied("Member execution requires the receipt for its selected native task")
       const description = await source.resources.describe(proof, signal)
+      assertNativeInfrastructure(description.grant.selection)
       const resource = description.resources.find(
         (resource) => resource.resourceID === description.grant.selection.modelResourceID,
       )!
@@ -283,6 +295,7 @@ export function registerMemberExecution(identity: RuntimeIdentity) {
       const accepted = lineage ?? { sessionID: session.id, rootID: root.id, actor: actor(root.actor, identity) }
       const proof = await source.intake.bindingProof(accepted.actor, accepted.rootID)
       const grant = await source.resources.bind(proof, signal)
+      assertNativeInfrastructure(grant.selection)
       if (input.model.providerID !== `organization-${grant.selection.modelResourceID}`)
         throw denied("Organization model call differs from its accepted resource selection")
       const issuedAt = Date.now()
