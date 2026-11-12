@@ -402,13 +402,23 @@ export namespace AuthorityJournal {
       let checkpoint: Checkpoint | undefined
       for await (const entry of StorageCheckpoint.entries({ directory, expected, keys, signal })) {
         signal?.throwIfAborted()
-        if (entry.type !== "record" || entry.key[0] !== root[0]) continue
-        if (JSON.stringify(entry.key) === JSON.stringify(headerKey)) {
+        if (entry.type !== "record") continue
+        if (entry.key[0] !== root[0]) {
+          const domain = domainFor(entry.key)
+          const value = domain && project(domain, entry.key, entry.value)
+          if (value !== undefined && domain)
+            insert.run(
+              "projected",
+              "",
+              JSON.stringify(entry.key),
+              JSON.stringify(Fingerprint.parse({ domainID: domain.id, key: entry.key, hash: digest(value) })),
+            )
+        } else if (JSON.stringify(entry.key) === JSON.stringify(headerKey)) {
           if (checkpoint) throw new StorageIntegrityError("A checkpoint contains repeated authority history")
           checkpoint = Checkpoint.parse(entry.value)
         } else {
           const [, kind, journalID] = entry.key
-          if ((kind === "baseline" || kind === "entries") && journalID !== undefined)
+          if ((kind === "baseline" || kind === "entries" || kind === "fingerprints") && journalID !== undefined)
             insert.run(kind, journalID, JSON.stringify(entry.key), JSON.stringify(entry.value))
         }
       }
@@ -416,6 +426,7 @@ export namespace AuthorityJournal {
       if (!checkpoint) throw new StorageIntegrityError("A checkpoint has no authority history")
       if (
         checkpoint.untracked ||
+        checkpoint.contractHash !== contractHash() ||
         (after &&
           (after.untracked ||
             after.sequence > checkpoint.sequence ||
@@ -428,19 +439,55 @@ export namespace AuthorityJournal {
         "SELECT entryKey,value FROM history WHERE kind=? AND journalID=? ORDER BY entryKey",
       )
       const selected = checkpoint
-      async function* history(kind: string): AsyncGenerator<ChainRow> {
-        for (const row of query.iterate(kind, selected.journalID)) {
+      async function* history(kind: string, journalID = selected.journalID): AsyncGenerator<ChainRow> {
+        for (const row of query.iterate(kind, journalID)) {
           signal?.throwIfAborted()
           yield { key: Key.parse(JSON.parse(row.entryKey)), value: JSON.parse(row.value) }
         }
       }
+      const projection = expectedProjection(database)
       if (
         !(await validChain(checkpoint, history("baseline"), history("entries"), {
           assert: () => signal?.throwIfAborted(),
           after,
+          projection: projection.projection,
         }))
       )
         throw new StorageIntegrityError("Archived authority history is incomplete or invalid")
+      if (!projection.consistent)
+        throw new StorageIntegrityError("Archived authority projections disagree with recorded changes")
+      using lookup = database.query<{ value: string }, [string, string, string]>(
+        "SELECT value FROM history WHERE kind=? AND journalID=? AND entryKey=?",
+      )
+      function fingerprint(kind: "fingerprints" | "projected", key: readonly string[]) {
+        signal?.throwIfAborted()
+        const row = lookup.get(kind, kind === "projected" ? "" : selected.journalID, JSON.stringify(key))
+        return row && Fingerprint.parse(JSON.parse(row.value))
+      }
+      for await (const row of history("fingerprints")) {
+        const retained = Fingerprint.parse(row.value)
+        const current = fingerprint("projected", retained.key)
+        if (
+          row.key.length !== 4 ||
+          row.key.at(-1) !== keyHash(retained.key) ||
+          !current ||
+          digest(current) !== digest(retained) ||
+          !projection.matches(retained)
+        )
+          throw new StorageIntegrityError("Archived authority fingerprints disagree with their current policy")
+      }
+      for (const value of projection.entries()) {
+        const retained = fingerprint("fingerprints", [...fingerprints(selected.journalID), keyHash(value.key)])
+        if (!retained || !projection.matches(retained))
+          throw new StorageIntegrityError("Archived authority history has no final policy fingerprint")
+      }
+      for await (const row of history("projected", "")) {
+        const current = Fingerprint.parse(row.value)
+        const retained = fingerprint("fingerprints", [...fingerprints(selected.journalID), keyHash(current.key)])
+        if (!retained || digest(current) !== digest(retained))
+          throw new StorageIntegrityError("Archived authority policy has no matching fingerprint")
+      }
+      signal?.throwIfAborted()
       return Checkpoint.parse(checkpoint)
     }
   }

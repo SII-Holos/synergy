@@ -92,6 +92,79 @@ test("matching current policy and fingerprints cannot conceal a lost committed a
   })
 })
 
+for (const damage of [
+  "lost-transition",
+  "changed-policy",
+  "missing-fingerprint",
+  "missing-policy",
+  "extra-policy",
+] as const)
+  test(`authenticated archive rejects ${damage} against its own projected policy`, async () => {
+    await using f = await fixture()
+    const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "journal-coverage-"))
+    const keys = {
+      async current() {
+        return { version: "fixture", key: Buffer.alloc(32, 13) }
+      },
+      async resolve() {
+        return Buffer.alloc(32, 13)
+      },
+    }
+    try {
+      await f.run(async () => {
+        const original = await AuthorityJournal.head()
+        if (damage === "lost-transition") {
+          await AuthorityJournal.transaction("policy.archive-lost-transition", async (journal) => {
+            journal.identify(actor)
+            await Storage.write(["policy", "one"], { enabled: false, revision: 2, credential: "changed-private" })
+          })
+          const { items } = await AuthorityJournal.entries({ limit: 1 })
+          await Storage.remove([
+            "storage_authority_journal",
+            "entries",
+            original.journalID,
+            String(items[0]!.sequence).padStart(16, "0"),
+          ])
+        } else if (damage === "changed-policy") {
+          await Storage.write(["policy", "one"], { enabled: false, revision: 2, credential: "changed-private" })
+        } else if (damage === "missing-policy") {
+          await Storage.remove(["policy", "one"])
+        } else if (damage === "extra-policy") {
+          await Storage.write(["policy", "unrecorded"], {
+            enabled: true,
+            revision: 1,
+            credential: "unrecorded-private",
+          })
+        } else {
+          const [fingerprint] = await Storage.queryKeys({
+            prefix: ["storage_authority_journal", "fingerprints", original.journalID],
+            limit: 1,
+          })
+          if (!fingerprint) throw new Error("Original policy fingerprint is absent")
+          await Storage.remove(fingerprint)
+        }
+        await Storage.write(["storage_authority_journal", "head"], original)
+        const observed = await AuthorityJournal.inspect()
+        expect(observed.chainValid).toBe(true)
+        expect(observed.covered).toBe(false)
+        const expected = await StorageCheckpoint.exportArchive({
+          directory,
+          archiveID: `coverage-${damage}`,
+          namespaceID: "opaque-checkpoint-namespace",
+          buildVersion: "fixture",
+          keys,
+          protect: () => true,
+        })
+        await expect(AuthorityJournal.readArchivedCheckpoint({ directory, expected, keys })).rejects.toThrow(
+          "authority",
+        )
+        expect(await AuthorityJournal.head()).toEqual(original)
+      })
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true })
+    }
+  })
+
 test("authority coverage follows recorded deletion and recreation without retaining an obsolete fingerprint", async () => {
   await using f = await fixture()
   await f.run(async () => {
