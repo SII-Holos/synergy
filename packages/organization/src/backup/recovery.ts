@@ -15,6 +15,7 @@ import { OrganizationInstallationReference } from "./installation-reference"
 import { OrganizationRecoveryPublication as Publication } from "./publication"
 import { OrganizationRecoveryWriters } from "./writers"
 import { OrganizationCurrentPolicyReceipt as Receipt, currentPolicyKey as key } from "./policy-records"
+import type { NamespaceRetirement } from "@ericsanchezok/synergy-harness/lifecycle/namespace-retirement"
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
 function fail(message: string): never {
@@ -222,7 +223,21 @@ export namespace OrganizationRecovery {
   export function completeServicePublication(installationID: string) {
     return Publication.complete(installationID)
   }
-  export async function publishServiceOnly(input: Parameters<typeof reconstructCold>[0] & { publicOrigin: string }) {
+  export function publishServiceOnly(input: Parameters<typeof reconstructCold>[0] & { publicOrigin: string }) {
+    return publish(input)
+  }
+  export function publishReconciled(
+    input: Parameters<typeof reconstructCold>[0] & {
+      publicOrigin: string
+      writers: readonly NamespaceRetirement.Inspection[]
+    },
+  ) {
+    return publish(input, [...input.writers])
+  }
+  async function publish(
+    input: Parameters<typeof reconstructCold>[0] & { publicOrigin: string },
+    writers?: readonly NamespaceRetirement.Inspection[],
+  ) {
     const source = input.source
     const target = targets.get(input.target)
     if (!target) fail("requires its original target evidence")
@@ -266,27 +281,49 @@ export namespace OrganizationRecovery {
               )
                 fail("publication settings belong to another final source")
               await target.verify()
+              const complete = (evidence?: OrganizationRecoveryWriters.Inspection) =>
+                Authority.withActivation(target.prepared, (activation) =>
+                  RuntimeMaintenance.restorationTransaction(
+                    { permit: target.permit, request: target.request },
+                    async (tx) => {
+                      assert()
+                      const policy = Receipt.parse(await Storage.read(key(target.reference.installationID)))
+                      if (
+                        hash(policy.source) !== hash(reference) ||
+                        hash(policy.target) !== hash(target.reference) ||
+                        hash(policy.checkpoint) !== hash(reference.current.checkpoint)
+                      )
+                        fail("requires its committed final current policy")
+                      if (evidence) await OrganizationRecoveryWriters.assertReconciled(evidence)
+                      else await OrganizationRecoveryWriters.assertServiceOnly()
+                      assert()
+                      return Publication.write(tx, {
+                        activation,
+                        source: inspection,
+                        native: settings,
+                        publicOrigin,
+                        writers: evidence,
+                      })
+                    },
+                    { signal, commitGuard: assert },
+                  ),
+                )
+              if (writers)
+                return OrganizationRecoveryWriters.withReconciled(
+                  {
+                    permit: target.permit,
+                    request: target.request,
+                    target: target.reference,
+                    sources: writers,
+                    namespace,
+                    keys,
+                    signal,
+                  },
+                  complete,
+                )
               await OrganizationRecoveryWriters.assertServiceOnly()
               assert()
-              return Authority.withActivation(target.prepared, (activation) =>
-                RuntimeMaintenance.restorationTransaction(
-                  { permit: target.permit, request: target.request },
-                  async (tx) => {
-                    assert()
-                    const policy = Receipt.parse(await Storage.read(key(target.reference.installationID)))
-                    if (
-                      hash(policy.source) !== hash(reference) ||
-                      hash(policy.target) !== hash(target.reference) ||
-                      hash(policy.checkpoint) !== hash(reference.current.checkpoint)
-                    )
-                      fail("requires its committed final current policy")
-                    await OrganizationRecoveryWriters.assertServiceOnly()
-                    assert()
-                    return Publication.write(tx, { activation, source: inspection, native: settings, publicOrigin })
-                  },
-                  { signal, commitGuard: assert },
-                ),
-              )
+              return complete()
             },
           )
         }),
