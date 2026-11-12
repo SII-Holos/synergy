@@ -1554,7 +1554,7 @@ for (const width of [375, 1100])
     const paths: string[] = []
     const number = (index: number) => String(index).padStart(4, "0")
     const paints: Array<{ location: string; nonBackgroundRatio: number }> = []
-    const captureReading = async (location: string, id: string) => {
+    const captureReading = async (location: string) => {
       const viewport = page.locator(".organization-transcript-viewport")
       const bounds = await viewport.boundingBox()
       if (!bounds) throw new Error("Reading viewport is absent")
@@ -1839,7 +1839,7 @@ for (const width of [375, 1100])
       expect(bounds!.x).toBeGreaterThanOrEqual(0)
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-      await captureReading("oldest", "history-0000")
+      await captureReading("oldest")
       await page.getByRole("button", { name: "Latest messages", exact: true }).click()
       await page.waitForFunction(() => !document.querySelector("button[disabled]"))
       await page.getByRole("heading", { name: "Archive note 0319", exact: true }).waitFor()
@@ -1877,7 +1877,7 @@ for (const width of [375, 1100])
       expect(
         paths.some((value) => value.endsWith("/read") || /\/(input|control|interactions\/reply)$/.test(value)),
       ).toBe(false)
-      await captureReading("latest", "history-0319")
+      await captureReading("latest")
       expect(paints.every((paint) => paint.nonBackgroundRatio > 0.001)).toBe(true)
     } finally {
       await page.close()
