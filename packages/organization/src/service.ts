@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
+import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { TransactionalStore, type StoreOptions } from "@ericsanchezok/synergy-harness/storage/transactional-store"
@@ -74,7 +75,14 @@ export async function openOrganizationServiceHomeUpgrade(
   return upgrade
 }
 
-async function openOrganizationNamespace(options: OrganizationServiceOptions, mode: "serve" | "upgrade") {
+export async function openOrganizationRecovery(options: Pick<OrganizationServiceOptions, "home" | "database">) {
+  const entry = await openOrganizationNamespace(options, "recovery")
+  if (entry.mode !== "recovery") throw new Error("Organization recovery startup selected another native mode")
+  const { mode: _, ...recovery } = entry
+  return recovery
+}
+
+async function openOrganizationNamespace(options: OrganizationServiceOptions, mode: "serve" | "upgrade" | "recovery") {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
   const home = path.resolve(options.home)
   const publicOrigin = options.publicOrigin
@@ -163,9 +171,11 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
     }
     try {
       registerConfig()
-      if (mode === "serve") OrganizationServiceHome.select()
-      else await OrganizationServiceHome.selectForUpgrade()
+      HomeRestoration.register()
+      if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
+      else OrganizationServiceHome.select()
       ownership = await ServerProcessLock.acquire()
+      if (mode !== "recovery") await HomeRestoration.assertOrdinaryStartup()
       const owned = await HomeOwnership.assert()
       const data = path.join(root, "data")
       const entries: string[] = await fs.readdir(data).catch((error: NodeJS.ErrnoException) => {
@@ -189,23 +199,20 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
       OrganizationArtifacts.registerAuthorityHistory()
       OrganizationCloud.registerAuthorityHistory()
       registerOrganizationMigrations()
-      await OrganizationServiceHome.assertStartupOwner()
-      OrganizationServiceMaintenance.register()
-      OrganizationServiceHome.registerNamespaceIdentity()
-      OrganizationCloud.register(cloud)
-      if (mode === "serve")
-        OrganizationServiceNative.register({ ...settings, publicOrigin, web: webOptions, database, cloud })
-      OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
-        if (!connections) throw new Error("Organization Runtime presence is unavailable")
-        return connections.availability(runtimeID)
-      })
+      if (mode !== "recovery") {
+        await OrganizationServiceHome.assertStartupOwner()
+        OrganizationServiceMaintenance.register()
+        OrganizationServiceHome.registerNamespaceIdentity()
+        OrganizationCloud.register(cloud)
+        if (mode === "serve")
+          OrganizationServiceNative.register({ ...settings, publicOrigin, web: webOptions, database, cloud })
+        OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
+          if (!connections) throw new Error("Organization Runtime presence is unavailable")
+          return connections.availability(runtimeID)
+        })
+      }
       MigrationRegistry.lock()
       RuntimeContext.sealComposition()
-      await ensureMigrations({ output: "silent" })
-      await HomeOwnership.assert({ required: true })
-      const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
-      const signing = await loadSigningAuthority(deployment)
-      await OrganizationAuthorityHistory.attach(deployment)
       const maintenance = Object.freeze({
         async run<T>(body: () => Promise<T>): Promise<T> {
           if (!ready) throw new Error("Organization service is closed")
@@ -218,6 +225,15 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
           }
         },
       })
+      if (mode === "recovery") {
+        ready = true
+        return { mode: "recovery" as const, home, run: maintenance.run, close, [Symbol.asyncDispose]: close }
+      }
+      await ensureMigrations({ output: "silent" })
+      await HomeOwnership.assert({ required: true })
+      const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
+      const signing = await loadSigningAuthority(deployment)
+      await OrganizationAuthorityHistory.attach(deployment)
       if (mode === "upgrade") {
         ready = true
         RuntimeContext.setReady(true)

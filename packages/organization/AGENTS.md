@@ -12,7 +12,7 @@ Page authorized creator/shared Session indexes before records. Capacity exposes 
 
 Client grants bind login, callback and deployment. Consume codes atomically; refresh replay revokes before error. API tokens bind one project, operations, expiry and current authority. Routes supply trusted purposes; receipts never redisclose secrets. Preserve signed token attribution and current stream authorization. Verify client-auth/api-tokens suites and generated contracts.
 
-Register config, CLI, history and Home owners before startup. Require absolute dedicated Homes and organization config. Use v2 service readers; legacy upgrades require frozen native maintenance, never HTTP. Preserve signing identities and atomic history baselines. Unknown history/readers require recovery; journals never grant access. Verify service-home/authority-history/configuration/CLI/signing suites.
+Register config/CLI/history/Home owners before startup; use dedicated absolute Homes and organization config. Preserve v2 readers, signing identities and atomic history baselines. Legacy upgrades require frozen native maintenance. Restricted recovery skips migrations/auth/transports; unfinished intents block ordinary startup. Unknown history/readers require recovery; journals never authorize. Verify service-{home,recovery}, authority-history/configuration/CLI/signing suites.
 
 Machine sockets preserve registration/account checks, fences and commit guards. Handoff permits bind Directory source ownership. Object relays verify fresh destination signatures, consent and participants before/after forwarding; retain no content. Heartbeat expiry signals availability. Hosted authority is human-independent; member account fences differ. Verify connection, hosted and handoff-dispatch/object suites.
 

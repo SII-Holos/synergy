@@ -6,11 +6,12 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { OrganizationCommandProtocol as Command } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "../src/storage/records"
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
 import { initializeSigningIdentity, loadSigningAuthority } from "../src/signing"
-import { openOrganizationService } from "../src/service"
+import { openOrganizationService, openOrganizationServiceHomeUpgrade } from "../src/service"
 import { digest } from "../src/auth/secret"
 import { directoryFixture } from "./support/session-directory"
 
@@ -57,6 +58,25 @@ test("the central signing migration upgrades the prior service ledger without re
     env: { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME },
     selected: { schemaVersion: 1, owner: "organization", identity: digest("synergy.organization.service.v1") },
   }).persist()
+  await using native = await openOrganizationServiceHomeUpgrade({ home: f.home })
+  const lease = await native.maintenance.run(async () => {
+    const selected = await RuntimeMaintenance.begin({
+      purpose: "organization-backup",
+      requestID: "upgrade-signing-home",
+      actor: {
+        kind: "system",
+        subjectID: "host-operator",
+        displayName: "Host operator",
+        clientKind: "system",
+        requestID: "upgrade-signing-home",
+      },
+    })
+    await RuntimeMaintenance.freeze(selected, await RuntimeMaintenance.drain(selected))
+    return selected
+  })
+  await native.upgrade({ lease })
+  await native.maintenance.run(() => RuntimeMaintenance.release(lease))
+  await native.close()
   const upgraded = await f.open()
   expect(await upgraded.deployment()).toEqual(deployment)
   await upgraded.close()
