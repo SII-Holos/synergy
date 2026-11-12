@@ -356,6 +356,14 @@ export class StoreTransaction {
     this.mutationGuard = guard
   }
 
+  addMutationGuard(guard: (keys: string[][], tree: boolean) => Promise<void>) {
+    const previous = this.mutationGuard
+    this.mutationGuard = async (keys, tree) => {
+      await previous?.(keys, tree)
+      await guard(keys, tree)
+    }
+  }
+
   restrictToPublishedOwners() {
     this.publishedOnly = this.admission.pending
   }

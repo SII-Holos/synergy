@@ -5,9 +5,11 @@ import { ObservabilityWriter } from "../../src/observability/writer"
 import { Log } from "../../src/util/log"
 import { runtimeHome } from "./runtime-home"
 
-export async function storageTestRuntime(options: { home?: string } = {}) {
+export async function storageTestRuntime(
+  options: { home?: string; environment?: Record<string, string | undefined> } = {},
+) {
   const home = await runtimeHome(options)
-  const context = RuntimeContext.create(home.host)
+  const context = RuntimeContext.create({ ...home.host, env: { ...home.host.env, ...options.environment } })
   return {
     run: context.run,
     async close() {

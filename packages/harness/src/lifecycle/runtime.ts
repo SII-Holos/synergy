@@ -11,6 +11,7 @@ import { ProviderCatalog } from "../provider/catalog"
 import { ProviderCatalogSource } from "../provider/catalog-source"
 import { RuntimeContext, type RuntimeHost } from "./context"
 import { HomeRestoration } from "./home-restoration"
+import { NamespaceRetirement } from "./namespace-retirement"
 import { HomeOwnership } from "./home-ownership"
 import { SessionStaging } from "../session/staging"
 import { ContextUsageEstimator } from "../session/context-usage-estimator"
@@ -202,6 +203,7 @@ export namespace RuntimeHandle {
           }
         }
         await cleanup(closeAdmission)
+        await cleanup(() => NamespaceRetirement.stop())
         await cleanup(async () => {
           const { SnapshotCheckpoint } = await import("../session/snapshot-checkpoint")
           await SnapshotCheckpoint.stop()

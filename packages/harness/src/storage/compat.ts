@@ -70,6 +70,15 @@ export namespace StorageCompat {
     counts: { pending: number; partial: number; imported: number; quarantined: number; total: number }
   }
 
+  export function emptyInitialization(backupID?: string): Info {
+    return {
+      boundary,
+      backupID,
+      counts: { pending: 0, partial: 0, imported: 0, quarantined: 0, total: 0 },
+      discovered: true,
+    }
+  }
+
   export const infoKey = ["compat_import", "info"]
   export const catalogKey = (locator: Locator) => [
     "compat_catalog",
@@ -141,7 +150,7 @@ export namespace StorageCompat {
   export async function seedLocators(store: TransactionalStore, dataRoot: string, backupID?: string) {
     const [previous] = await store.readMany<Info>([infoKey])
     if (previous?.discovered) return 0
-    const counts = previous?.counts ?? { pending: 0, partial: 0, imported: 0, quarantined: 0, total: 0 }
+    const counts = previous?.counts ?? emptyInitialization(backupID).counts
     if (!previous?.counts) {
       for (const locator of await store.readMany<Locator>(await store.list(locatorRoot))) {
         if (!locator) continue

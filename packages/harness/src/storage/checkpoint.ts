@@ -1,3 +1,5 @@
+import { StorageBootstrapBase } from "./bootstrap-base"
+import { bootstrapPhysicalRecordRoots } from "./bootstrap-layout"
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -435,8 +437,10 @@ export namespace StorageCheckpoint {
     expected?: Manifest
     signal?: AbortSignal
     commitGuard?: () => void
+    base?: StorageBootstrapBase.Evidence
     finalize(tx: StoreTransaction, evidence: ImportEvidence): Promise<void>
   }) {
+    const base = input.base
     const restoreID = ID.parse(input.restoreID)
     const expected = input.expected ? Manifest.parse(input.expected) : undefined
     const directory = input.directory
@@ -470,6 +474,7 @@ export namespace StorageCheckpoint {
     }
     const commitGuard = () => {
       assertOwner()
+      if (base) StorageBootstrapBase.assert(base)
       guard?.()
       for (const nativeGuard of nativeGuards) nativeGuard()
       assertOwner()
@@ -494,7 +499,7 @@ export namespace StorageCheckpoint {
       for (;;) {
         const page = await tx.queryKeys({ prefix: [], after, limit: 128 })
         for (const key of page)
-          if (!owns(key) && !physical(key[0]))
+          if (!owns(key) && !physical(key[0]) && !(base && StorageBootstrapBase.contains(base, key)))
             throw new StorageConflictError("Checkpoint restoration requires an independent empty namespace")
         if (page.length < 128) break
         after = page.at(-1)
@@ -503,6 +508,13 @@ export namespace StorageCheckpoint {
         if (!owns(entry.key))
           throw new StorageConflictError("Checkpoint restoration requires an independent empty namespace")
       for await (const entry of tx.exportEntries()) {
+        if (
+          base &&
+          entry.type === "record" &&
+          StorageBootstrapBase.contains(base, entry.key) &&
+          !StorageBootstrapBase.accepts(base, entry)
+        )
+          throw new StorageConflictError("Checkpoint restoration target base changed")
         if (entry.type === "event")
           throw new StorageConflictError("Checkpoint restoration requires an independent empty namespace")
         if (entry.type !== "receipt") continue
@@ -546,6 +558,7 @@ export namespace StorageCheckpoint {
       async beforeImport(tx) {
         nativeGuards.length = 0
         await assertEmpty(tx)
+        if (base) nativeGuards.push(await StorageBootstrapBase.protect(base, tx))
       },
       async transform(stored, tx) {
         assertOwner()
@@ -557,7 +570,9 @@ export namespace StorageCheckpoint {
           throw new StorageIntegrityError("Prepared restore bytes do not match their checkpoint reference")
         return { ...entry, location }
       },
-      accept: (entry) => entry.type !== "record" || !physical(entry.key[0]),
+      accept: (entry) =>
+        entry.type !== "record" ||
+        (!physical(entry.key[0]) && !(base && bootstrapPhysicalRecordRoots.has(entry.key[0]))),
       commitGuard,
       async afterImport(tx) {
         assertOwner()
