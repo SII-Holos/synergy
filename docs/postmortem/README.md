@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0129](0129-vcs-observation-retained-startup-authority.md)
+
 - [0126](0126-native-materialization-replaced-a-competing-directory.md)
 
 - [0128](0128-workspace-http-request-lost-its-resource-origin.md)

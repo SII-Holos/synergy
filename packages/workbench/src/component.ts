@@ -54,6 +54,7 @@ export function workbench(): RuntimeComponent {
     },
     adapters: { cli: new URL("./cli-adapter.ts", import.meta.url), http: new URL("./http.ts", import.meta.url) },
     register() {
+      Vcs.register()
       BusEvent.register(
         ...Object.values(Vcs.Event),
         ...Object.values(Ide.Event),
