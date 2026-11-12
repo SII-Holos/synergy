@@ -1,6 +1,15 @@
 import { expect, test } from "bun:test"
 import { createContentSubscriptions, projectContentSummary } from "../../src/context/content-subscriptions"
 
+test("retiring personal presentation clears implicit active content even while document visibility hides it", () => {
+  const subscriptions = createContentSubscriptions(() => {})
+  subscriptions.active("scope", "session")
+  subscriptions.hidden(true)
+  subscriptions.active()
+  subscriptions.hidden(false)
+  expect(subscriptions.current().active).toBeUndefined()
+})
+
 test("execution demands merge dependencies and downgrade after the final detail reader leaves", () => {
   const subscriptions = createContentSubscriptions(() => {})
   const root = subscriptions.view({ kind: "execution", scopeID: "scope", sessionID: "session", demands: ["root"] })

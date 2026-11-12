@@ -22,6 +22,7 @@ import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider, useGlobalSDK } from "@/context/global-sdk"
 import { ServerProvider, ServerView, useServer } from "@/context/server"
 import { NotificationProvider } from "@/context/notification"
+import { Toast } from "@ericsanchezok/synergy-ui/toast"
 import { CommandProvider } from "@/context/command"
 import { ProductUpdateProvider } from "@/context/product-update"
 import { SessionTransitionProvider } from "@/context/session-transition"
@@ -157,7 +158,12 @@ function SpaceApp() {
   const server = useServer()
   return (
     <SpaceProvider personalRuntimeID={server.runtimeID}>
-      <SpacePages />
+      <GlobalSDKProvider retained>
+        <NotificationProvider>
+          <SpacePages />
+          <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />
+        </NotificationProvider>
+      </GlobalSDKProvider>
     </SpaceProvider>
   )
 }
@@ -273,9 +279,7 @@ function ConnectedApp() {
                                           <PluginThemeConfigBridge />
                                           <PluginTextInteractionBridge />
                                           <GlobalPluginThemesRegistrar />
-                                          <NotificationProvider>
-                                            <Layout>{props.children}</Layout>
-                                          </NotificationProvider>
+                                          <Layout>{props.children}</Layout>
                                         </PluginHostProvider>
                                       </WorkbenchPanelsProvider>
                                     </ViewResidencyProvider>

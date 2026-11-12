@@ -5630,6 +5630,10 @@ msgid "app.notification.error.fallback"
 msgstr "发生错误"
 
 #. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.openSession"
+msgstr "打开会话"
+
+#. ── Notifications ────────────────────────────────────────────────────────────
 msgid "app.notification.response.ready"
 msgstr "回复已生成"
 

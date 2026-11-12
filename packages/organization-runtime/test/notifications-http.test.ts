@@ -2,6 +2,9 @@ import { expect, test } from "bun:test"
 import path from "node:path"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
+import { OrganizationNotificationProtocol as Notification } from "@ericsanchezok/synergy-organization-protocol"
+import { subscribeOrganizationNotifications } from "../../../apps/web/src/organization/notification-subscription"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
 import { readMemberRegistration } from "../src/registration"
@@ -22,49 +25,55 @@ async function within<T>(work: Promise<T>, milliseconds: number) {
   }
 }
 
-function frames(reader: ReadableStreamDefaultReader<Uint8Array>) {
-  const decoder = new TextDecoder()
-  let pending = ""
-  return () =>
-    within(
-      (async () => {
-        while (true) {
-          const boundary = pending.indexOf("\n\n")
-          if (boundary >= 0) {
-            const frame = pending.slice(0, boundary)
-            pending = pending.slice(boundary + 2)
-            const data = frame.split("\n").find((line) => line.startsWith("data: "))
-            if (data) {
-              const value: unknown = JSON.parse(data.slice(6))
-              return value
-            }
-            continue
-          }
-          const chunk = await reader.read()
-          if (chunk.done) throw new Error("Notification stream ended before its frame")
-          pending += decoder.decode(chunk.value, { stream: true })
-          if (pending.length > 16_384) throw new Error("Notification frame exceeded its transport bound")
-        }
-      })(),
-      5000,
-    )
-}
-
-test("a real native completion reaches an authenticated ephemeral HTTPS notification stream without private content", async () => {
+test("a real native completion reaches the Web adapter through authenticated WSS and HTTPS without private content", async () => {
   await using service = await fixture()
   const transport = new Bun.FetchSession({ tls: { ca: service.ca, rejectUnauthorized: true }, proxy: false })
-  const controller = new AbortController()
-  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  let subscription: ReturnType<typeof subscribeOrganizationNotifications> | undefined
+  let signal: AbortSignal | undefined
   try {
-    const response = await transport.fetch(`${service.origin}/org/v1/notifications`, {
-      headers: service.headers,
-      signal: controller.signal,
+    const options = { headers: service.headers, throwOnError: true as const }
+    const { account } = (await service.client.orgAuth.session(options)).data
+    const deployment = await service.service.deployment()
+    const opened = Promise.withResolvers<void>()
+    const delivered = Promise.withResolvers<Notification.Observation>()
+    void delivered.promise.catch(() => {})
+    subscription = subscribeOrganizationNotifications({
+      audience: {
+        orgID: account.orgID,
+        accountID: account.accountID,
+        authRevision: account.authRevision,
+        deploymentIncarnation: deployment.deploymentIncarnation,
+      },
+      source: {
+        kind: "web",
+        client(original, project) {
+          signal = original
+          return createOrganizationClient({
+            baseUrl: service.origin,
+            headers: service.headers,
+            redirect: "error",
+            fetch: Object.assign(
+              async (input: RequestInfo | URL, init?: RequestInit) => {
+                const response = await transport.fetch(new Request(input, { ...init, signal: original }))
+                expect(response.status).toBe(200)
+                expect(response.headers.get("content-type")).toStartWith("text/event-stream")
+                const result = project(response)
+                opened.resolve()
+                return result
+              },
+              { preconnect() {} },
+            ),
+          })
+        },
+      },
+      current: () => true,
+      receive: (notice) => delivered.resolve(notice),
+      failed(error) {
+        opened.reject(error)
+        delivered.reject(error)
+      },
     })
-    expect(response.status).toBe(200)
-    expect(response.headers.get("content-type")).toStartWith("text/event-stream")
-    reader = response.body!.getReader()
-    const next = frames(reader)
-    expect(await next()).toMatchObject({ type: "ready", sequence: 0, accountID: service.identity.accountID })
+    await within(opened.promise, 5000)
     expect((await transport.fetch(`${service.origin}/org/v1/notifications`)).status).toBe(401)
     expect(
       (
@@ -85,7 +94,6 @@ test("a real native completion reaches an authenticated ephemeral HTTPS notifica
       ca: service.ca,
     })
     const registration = (await readMemberRegistration(member.home, member.identity))!
-    const options = { headers: service.headers, throwOnError: true as const }
     const project = (
       await service.client.orgProjects.create({ orgProjectCreate: { name: "Notifications", description: "" } }, options)
     ).data
@@ -128,28 +136,26 @@ test("a real native completion reaches an authenticated ephemeral HTTPS notifica
         fn: () => Session.recordCompletionNotice(sessionID),
       })
     })
-    const notice = await next()
+    const notice = await within(delivered.promise, 5000)
     expect(notice).toMatchObject({
-      type: "notice",
-      sequence: 1,
-      notice: {
-        kind: "completion",
-        sessionID,
-        binding: {
-          orgID: member.identity.orgID,
-          projectID: project.projectID,
-          creatorID: member.identity.accountID,
-          driverRuntimeID: registration.runtimeID,
-          bindingEpoch: 1,
-        },
+      kind: "completion",
+      sessionID,
+      binding: {
+        orgID: member.identity.orgID,
+        projectID: project.projectID,
+        creatorID: member.identity.accountID,
+        driverRuntimeID: registration.runtimeID,
+        bindingEpoch: 1,
       },
     })
     expect(JSON.stringify(notice)).not.toContain("Private title")
     expect(JSON.stringify(notice)).not.toContain(member.home)
+    subscription.dispose()
+    await subscription.closed
+    expect(signal?.aborted).toBe(true)
   } finally {
-    controller.abort()
-    await reader?.cancel().catch(() => {})
-    reader?.releaseLock()
+    subscription?.dispose()
+    await subscription?.closed
     await transport.close()
   }
 })

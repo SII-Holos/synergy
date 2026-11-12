@@ -1,10 +1,44 @@
 import { describe, expect, test } from "bun:test"
-import { resolveNotificationEvent } from "../../src/context/notification-event"
+import { resolveNotificationEvent, resolveOrganizationNotice } from "../../src/context/notification-event"
 const copy = {
   responseReady: "Response ready",
   sessionError: "Session error",
   errorFallback: "An error occurred",
 }
+
+test("a live shared organization notice targets its recipient space rather than its creator or a personal Scope", () => {
+  const organization = {
+    identity: { kind: "organization" as const, orgID: "org", accountID: "reader", deploymentIncarnation: "deployment" },
+    projectID: "project",
+    name: "Organization · Reader",
+  }
+  const notice = {
+    noticeID: "00000000-0000-4000-8000-000000000001",
+    kind: "completion" as const,
+    sessionID: "session",
+    binding: {
+      schemaVersion: 1 as const,
+      orgID: "org",
+      projectID: "project",
+      creatorID: "different-author",
+      driverRuntimeID: "runtime",
+      bindingEpoch: 1,
+    },
+    occurredAt: 1,
+  }
+  const result = resolveOrganizationNotice({ notice, organization, copy })
+  expect(result).toMatchObject({ type: "turn-complete", sessionID: "session", organization, title: copy.responseReady })
+  expect(result?.href).toBe("/organization/org/reader/deployment/projects/project/sessions/session")
+  organization.identity.accountID = "later-account"
+  expect(result?.organization?.identity.accountID).toBe("reader")
+  expect(
+    resolveOrganizationNotice({
+      notice: { ...notice, binding: { ...notice.binding, projectID: "foreign" } },
+      organization,
+      copy,
+    }),
+  ).toBeUndefined()
+})
 
 describe("notification event semantics", () => {
   test("does not interpret lifecycle idle as a completed response", () => {

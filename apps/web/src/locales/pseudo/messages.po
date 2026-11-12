@@ -5630,6 +5630,10 @@ msgid "app.notification.error.fallback"
 msgstr "⟦An error occurred⟧"
 
 #. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.openSession"
+msgstr ""
+
+#. ── Notifications ────────────────────────────────────────────────────────────
 msgid "app.notification.response.ready"
 msgstr "⟦Response ready⟧"
 

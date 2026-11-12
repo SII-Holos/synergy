@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { OrganizationNotificationProtocol as Notification } from "@ericsanchezok/synergy-organization-protocol"
 import type { OrgClientTokens } from "@ericsanchezok/synergy-sdk/organization"
 import { createOrganizationConnections } from "../../src/organization/connections"
+import type { OrganizationNotificationSource } from "../../src/organization/notification-sources"
 
 const target = { issuer: "https://organization.example", clientID: "web" }
 function token(
@@ -303,6 +304,32 @@ test("a retired consumer cannot be called after an earlier listener yields while
     expect(f.requests[0].cancelled).toBe(false)
   } finally {
     release.resolve()
+    f.dispose()
+  }
+})
+
+test("a delivered notification keeps its original source proof across a same-account replacement login", async () => {
+  const f = fixture()
+  const owners: OrganizationNotificationSource[] = []
+  try {
+    const key = await f.registry.connect(target)
+    f.registry.subscribeNotifications(key, (_notice, owner) => {
+      owners.push(owner)
+      f.wake()
+    })
+    await f.until(() => f.requests.length === 1)
+    f.requests[0].controller.enqueue(Notification.encode(f.notice(0)))
+    await f.until(() => owners.length === 1)
+    expect(owners[0].current()).toBe(true)
+    f.next(token("account-a", "deployment-a", "c".repeat(64)))
+    await f.registry.connect(target)
+    await f.until(() => f.requests.length === 2)
+    expect(owners[0].current()).toBe(false)
+    f.requests[1].controller.enqueue(Notification.encode(f.notice(1)))
+    await f.until(() => owners.length === 2)
+    expect(owners[1].current()).toBe(true)
+    expect(owners[1].audience).toEqual(owners[0].audience)
+  } finally {
     f.dispose()
   }
 })

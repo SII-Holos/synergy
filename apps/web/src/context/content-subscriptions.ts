@@ -197,13 +197,18 @@ export function createContentSubscriptions(send: (state: State) => void, changed
         }
       }
     },
-    active(scopeID: string, sessionID?: string) {
-      if (active?.scopeID === scopeID && active.sessionID === sessionID) return
-      active = sessionID
-        ? { scopeID, sessionID, generation: ++generation }
-        : active?.scopeID === scopeID
-          ? undefined
-          : active
+    active(scopeID?: string, sessionID?: string) {
+      if (scopeID === undefined) {
+        if (!active) return
+        active = undefined
+      } else {
+        if (active?.scopeID === scopeID && active.sessionID === sessionID) return
+        active = sessionID
+          ? { scopeID, sessionID, generation: ++generation }
+          : active?.scopeID === scopeID
+            ? undefined
+            : active
+      }
       for (const key of versions.keys())
         if (!interests.has(key)) {
           versions.delete(key)

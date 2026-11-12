@@ -15,7 +15,7 @@ import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { usePlatform } from "@/context/platform"
 import { createStore } from "solid-js/store"
-import { showToast, Toast, toaster, setToastConfig } from "@ericsanchezok/synergy-ui/toast"
+import { showToast, toaster, setToastConfig } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -505,7 +505,6 @@ function LayoutContent(
         />
       </SkinRoot>
       <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
-      <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />
     </div>
   )
 }

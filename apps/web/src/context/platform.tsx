@@ -37,6 +37,8 @@ export type BrowserNativeViewBridge = {
   onEvent?(listener: (event: BrowserNativeViewEvent) => void): () => void
 }
 
+export type NotificationActivation = { activate(): void; current(): boolean }
+
 export type DesktopThemeSource = "system" | "light" | "dark"
 export type DesktopThemeEffective = "light" | "dark"
 export type DesktopShellSkinColors = {
@@ -196,7 +198,13 @@ export type Platform = {
   restart(): Promise<void>
 
   /** Send a system notification (optional deep link; tag collapses duplicates) */
-  notify(title: string, description?: string, href?: string, tag?: string): Promise<void>
+  notify(
+    title: string,
+    description?: string,
+    href?: string,
+    tag?: string,
+    activation?: NotificationActivation,
+  ): Promise<void>
 
   /** Open directory picker dialog; portal denial resolves as plain { denied: true; message } data */
   openDirectoryPickerDialog?(opts?: {

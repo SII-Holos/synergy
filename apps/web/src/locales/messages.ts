@@ -688,6 +688,7 @@ export const appShell = {
 // ── Notifications ────────────────────────────────────────────────────────────
 
 export const notification = {
+  openSession: { id: "app.notification.openSession", message: "Open session" },
   responseReady: { id: "app.notification.response.ready", message: "Response ready" },
   sessionError: { id: "app.notification.session.error", message: "Session error" },
   errorFallback: { id: "app.notification.error.fallback", message: "An error occurred" },

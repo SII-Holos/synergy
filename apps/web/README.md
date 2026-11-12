@@ -18,6 +18,8 @@ Vite handles hot module replacement, so changes appear in the browser immediatel
 
 Private organization tool files open through finite metadata pages and share the transcript's verified preview and streaming save actions. They use the captured Session reader; an empty visible page may still have another page. See [organization file transfers](../../docs/decisions/implemented/architecture/2026-11-11-bound-organization-desktop-file-transfers.md).
 
+Background completion and error notifications keep their original personal Runtime or organization account while another space is open. Their shared App surface opens that source only after checking its current identity; reconnect does not replay missed organization notices. See [notification presentation ownership](../../docs/decisions/implemented/architecture/2026-11-12-retain-notification-presentation-outside-space-views.md).
+
 Frontend colors and selectable themes follow the repository's [semantic theme contract](../../docs/reference/frontend-theming.md). Product components must consume canonical tokens rather than Tailwind palette colors, literal colors, or component-local theme maps.
 
 ## Build

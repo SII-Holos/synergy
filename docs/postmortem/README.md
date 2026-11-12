@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0138](0138-space-local-notification-hosts-lost-background-actions.md)
+
 - [0139](0139-authenticated-archive-policy-disagreed-with-its-journal.md)
 
 - [0136](0136-default-workspace-writer-rejected-paged-heads.md)

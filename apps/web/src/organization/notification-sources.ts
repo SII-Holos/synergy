@@ -3,7 +3,8 @@ import type { OrganizationNotificationProtocol as Notification } from "@ericsanc
 
 type Subscription = Parameters<typeof subscribeOrganizationNotifications>[0]
 type Capture = Pick<Subscription, "audience" | "source" | "current"> & { expiresAt?: number }
-type Listener = (notice: Notification.Observation) => void | Promise<void>
+export type OrganizationNotificationSource = { readonly audience: Notification.Audience; current(): boolean }
+type Listener = (notice: Notification.Observation, owner: OrganizationNotificationSource) => void | Promise<void>
 type Record = { listeners: Set<Listener>; active?: { current(): boolean; dispose(): void } }
 
 export function createOrganizationNotificationSources(input: {
@@ -24,7 +25,9 @@ export function createOrganizationNotificationSources(input: {
     const controller = new AbortController()
     let subscription: ReturnType<typeof subscribeOrganizationNotifications> | undefined
     let expiration: ReturnType<typeof setTimeout> | undefined
-    const current = () => !disposed && !controller.signal.aborted && records.get(key) === record && source.current()
+    const owns = () => !disposed && !controller.signal.aborted && records.get(key) === record && source.current()
+    const current = () => owns() && (source.expiresAt === undefined || source.expiresAt > Date.now())
+    const owner = Object.freeze({ audience: Object.freeze({ ...source.audience }), current })
     const dispose = () => {
       controller.abort()
       clearTimeout(expiration)
@@ -34,7 +37,7 @@ export function createOrganizationNotificationSources(input: {
     if (source.expiresAt !== undefined)
       expiration = setTimeout(
         () => {
-          if (current()) unauthorized(key)
+          if (owns()) unauthorized(key)
           dispose()
         },
         Math.min(2_147_483_647, Math.max(0, source.expiresAt - Date.now())),
@@ -61,7 +64,7 @@ export function createOrganizationNotificationSources(input: {
             for (const listener of [...record.listeners]) {
               if (!current()) return
               if (!record.listeners.has(listener)) continue
-              await listener(structuredClone(notice))
+              await listener(structuredClone(notice), owner)
             }
           },
           failed(error) {

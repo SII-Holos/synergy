@@ -20,6 +20,7 @@ import {
   type OrganizationView,
 } from "../organization/route"
 import { assetPath, proxyPrefix } from "../utils/proxy"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
 declare global {
   interface Window {
@@ -106,6 +107,11 @@ function createSpace(props: { personalRuntimeID?: string }) {
     },
     personal() {
       navigate(personalLocation)
+    },
+    openPersonal(runtimeID: string, scopeID: string, sessionID?: string) {
+      if (props.personalRuntimeID !== runtimeID) return false
+      navigate(assetPath(`/${base64Encode(scopeID)}${sessionID ? `/session/${encodeURIComponent(sessionID)}` : ""}`))
+      return true
     },
     open,
     add() {
