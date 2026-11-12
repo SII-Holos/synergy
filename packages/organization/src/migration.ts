@@ -18,6 +18,7 @@ import { sharedBlobMigration } from "./shared-blob"
 import { organizationAuthorityMigration } from "./authority-history"
 import { sharedTaskMigration } from "./shared-tasks"
 import { OrganizationServiceHome } from "./service-home"
+import { OrganizationLoginSessions } from "./auth/login-sessions"
 
 const migrations: Migration[] = [
   executionMigration,
@@ -87,5 +88,6 @@ export function registerOrganizationMigrations() {
         .filter((migration) => !migration.execution || migration.execution === "startup")
         .map((migration) => migration.id),
     },
+    OrganizationLoginSessions.migration,
   ])
 }

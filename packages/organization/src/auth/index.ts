@@ -178,8 +178,10 @@ export async function createAuthentication(
         fail("AUTHENTICATION_REQUIRED", "Invalid login name or password")
       return Storage.transaction(async () => {
         const current = await account(value.accountID)
+        const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
         if (
           current.state !== "active" ||
+          current.orgID !== deployment.orgID ||
           current.authRevision !== value.authRevision ||
           current.passwordHash !== value.passwordHash
         )
@@ -187,7 +189,9 @@ export async function createAuthentication(
         const secret = token()
         const csrfToken = fingerprint(secret, ["csrf"])
         const login = Record.Login.parse({
-          schemaVersion: 1,
+          schemaVersion: 2,
+          orgID: deployment.orgID,
+          deploymentIncarnation: deployment.deploymentIncarnation,
           tokenHash: digest(secret),
           csrfHash: digest(csrfToken),
           accountID: current.accountID,

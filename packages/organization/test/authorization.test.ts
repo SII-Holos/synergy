@@ -28,6 +28,12 @@ async function fixture() {
   const credentials = Object.fromEntries(["owner", "admin", "member", "foreign"].map((id) => [id, { token: token() }]))
   await context.run(() =>
     Storage.transaction(async () => {
+      await Storage.write(Keys.deployment(), {
+        schemaVersion: 1,
+        orgID: "org",
+        deploymentIncarnation: "deployment",
+        createdAt: 1,
+      })
       for (const [id, credential] of Object.entries(credentials)) {
         await Storage.write(
           Keys.account(id),
@@ -48,7 +54,9 @@ async function fixture() {
         await Storage.write(
           Keys.login(digest(credential.token)),
           Record.Login.parse({
-            schemaVersion: 1,
+            schemaVersion: 2,
+            orgID: id === "foreign" ? "other-org" : "org",
+            deploymentIncarnation: "deployment",
             tokenHash: digest(credential.token),
             csrfHash: digest("fixture-csrf"),
             accountID: id,

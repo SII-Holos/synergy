@@ -193,7 +193,7 @@ test("resource selection combines current project roles with explicit grants and
       value.role = "admin"
     })
     await expect(Resources.get(f.credentials.foreign, resource.resourceID)).rejects.toMatchObject({
-      data: { code: "NOT_FOUND" },
+      data: { code: "AUTHENTICATION_REQUIRED" },
     })
     await Resources.update(f.credentials.admin, resource.resourceID, { expectedRevision: 1, state: "disabled" })
     expect(

@@ -45,6 +45,12 @@ export async function directoryFixture() {
   }
   await run(() =>
     Storage.transaction(async () => {
+      await Storage.write(Keys.deployment(), {
+        schemaVersion: 1,
+        orgID: "org",
+        deploymentIncarnation: "deployment",
+        createdAt: 1,
+      })
       for (const id of ids) {
         const orgID = id === "foreign" ? "other-org" : "org"
         await Storage.write(
@@ -66,7 +72,9 @@ export async function directoryFixture() {
         await Storage.write(
           Keys.login(digest(credentials[id].token)),
           Record.Login.parse({
-            schemaVersion: 1,
+            schemaVersion: 2,
+            orgID,
+            deploymentIncarnation: "deployment",
             tokenHash: digest(credentials[id].token),
             csrfHash: digest("f".repeat(64)),
             accountID: id,

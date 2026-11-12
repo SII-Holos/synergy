@@ -91,8 +91,8 @@ test("private Session access always checks the stored project, creator and curre
     })
   })
   for (const id of ["owner", "admin", "bob", "reader", "outsider", "foreign"]) {
-    expect((await f.request(id, "/sessions/session-a")).status).toBe(404)
-    expect((await f.request(id, "/sessions/missing")).status).toBe(404)
+    expect((await f.request(id, "/sessions/session-a")).status).toBe(id === "foreign" ? 401 : 404)
+    expect((await f.request(id, "/sessions/missing")).status).toBe(id === "foreign" ? 401 : 404)
   }
   expect((await fetch(new URL("/org/v1/sessions/session-a", f.baseUrl))).status).toBe(401)
   await f.run(async () => {

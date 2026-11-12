@@ -78,11 +78,25 @@ export async function authenticateHuman(credentials: Credentials) {
 }
 
 export async function authenticateLogin(hash: string) {
-  const login = await Record.read(Record.Login, Keys.login(hash))
-  if (!login || login.revokedAt || login.expiresAt <= Date.now())
+  const [raw] = await Storage.readMany<unknown>([Keys.login(hash)])
+  const parsed = Record.Login.safeParse(raw)
+  if (!parsed.success || parsed.data.tokenHash !== hash) fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")
+  const login = parsed.data
+  const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
+  if (
+    login.orgID !== deployment.orgID ||
+    login.deploymentIncarnation !== deployment.deploymentIncarnation ||
+    login.revokedAt ||
+    login.expiresAt <= Date.now()
+  )
     fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")
   const account = await Record.read(Record.Account, Keys.account(login.accountID))
-  if (!account || account.state !== "active" || account.authRevision !== login.authRevision)
+  if (
+    !account ||
+    account.orgID !== login.orgID ||
+    account.state !== "active" ||
+    account.authRevision !== login.authRevision
+  )
     fail("AUTHENTICATION_REQUIRED", "Sign in to the organization")
   return { account, login }
 }

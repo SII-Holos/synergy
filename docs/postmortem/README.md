@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0146](0146-browser-logins-survived-deployment-incarnation.md)
+
 - [0145](0145-workspace-move-release-outpaced-native-admission.md)
 
 - [0142](0142-publication-identity-disappeared-on-reload.md)

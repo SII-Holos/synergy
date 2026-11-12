@@ -132,7 +132,7 @@ test("receipts bind the authenticated account and the complete original request 
     expect(response.status).toBe(409)
   }
   expect((await receipt(f, "knowledge", input, "bob")).status).toBe(404)
-  expect((await receipt(f, "knowledge", input, "foreign")).status).toBe(404)
+  expect((await receipt(f, "knowledge", input, "foreign")).status).toBe(401)
   expect((await receipt(f, "knowledge", { ...input, credential: "private" })).status).toBe(400)
   await f.run(() => Storage.remove(OrganizationStoragePath.projectMember("project", "alice")))
   const denied = await receipt(f, "knowledge", input)

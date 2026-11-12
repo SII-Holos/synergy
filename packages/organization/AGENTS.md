@@ -10,7 +10,7 @@ Invitation management reads authorized metadata indexes, never token digests or 
 
 Page authorized creator/shared Session indexes before records. Capacity exposes counts only. Creation atomically reserves directory metadata with admission; metadata cannot grant execution. Verify `test/session-directory.test.ts` for rollback, revocation and mixed-owner pagination.
 
-Client grants bind login, callback and deployment. Consume codes atomically; refresh replay revokes before error. API tokens bind one project, operations, expiry and current authority. Routes supply trusted purposes; receipts never redisclose secrets. Preserve signed token attribution and current stream authorization. Verify client-auth/api-tokens suites and generated contracts.
+Logins bind actual deployments; grants bind logins/callbacks/deployments. Consume codes atomically; refresh replay revokes before error. API tokens bind one project, operations, expiry and current authority. Routes supply trusted purposes; receipts never redisclose secrets. Preserve signed token attribution and current stream authorization. Verify auth-login-incarnation/client-auth/api-tokens suites and generated contracts.
 
 Register config/CLI/history/Home owners before startup. Preserve identities/history. Upgrades require frozen maintenance. Restricted recovery retains holds, skipping migrations/auth/transports. Reserve source retirement before format 4 fencing; cold completion grants no authority. Reconstruct policy under recovery-held. Format 3 installation fences persist. Unknown readers/history block. Verify service-{home,recovery}, backup/{authority,current-authority,source-retirement}, history/configuration/CLI/signing suites.
 

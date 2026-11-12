@@ -134,7 +134,9 @@ export namespace OrganizationRecord {
     authRevision: Identity.Revision,
   })
   export const Login = z.strictObject({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
+    orgID: Identity.ID,
+    deploymentIncarnation: Identity.ID,
     tokenHash: Identity.Token,
     accountID: Identity.ID,
     authRevision: Identity.Revision,
