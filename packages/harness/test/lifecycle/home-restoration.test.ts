@@ -6,6 +6,8 @@ import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { fileLockPath, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { RuntimeContext } from "../../src/lifecycle/context"
 import { HomeRestoration } from "../../src/lifecycle/home-restoration"
+import { HomeOwnership } from "../../src/lifecycle/home-ownership"
+import { testRuntime } from "../support/runtime"
 import { HomeOwnershipFile } from "../../src/lifecycle/home-ownership-file"
 import { Storage } from "../../src/storage/storage"
 import { TransactionalStore } from "../../src/storage/transactional-store"
@@ -470,5 +472,44 @@ test("native Home owner evidence is freshly verified in each actual installation
   } finally {
     await cold.close()
     await fs.rm(first.home, { recursive: true, force: true })
+  }
+})
+
+test("ordinary Runtime startup refuses the actual staged Home before migrations or services", async () => {
+  const selected = await fixture(undefined, "../authority.sqlite")
+  let ownership: HomeOwnershipFile.RestorationInfo | undefined
+  await selected.run(async () => {
+    const target = await HomeRestoration.begin(request)
+    await HomeRestoration.withTarget(target, async (permit) => {
+      ownership = await HomeRestoration.installOwner(permit, {
+        identity: "a".repeat(64),
+        readerContract: "native-recovery-runtime-v1",
+      })
+    })
+  })
+  await selected.close()
+  if (!ownership) throw new Error("Missing actual installed target owner")
+  const expected = ownership
+  let opened: Awaited<ReturnType<typeof testRuntime>> | undefined
+  try {
+    const outcome = await testRuntime({
+      home: selected.home,
+      namespace: "restoration",
+      register() {
+        HomeOwnership.select(expected)
+      },
+    }).then(
+      (value) => {
+        opened = value
+        return undefined
+      },
+      (error: unknown) => error,
+    )
+    expect(outcome).toBeInstanceOf(Error)
+    if (!(outcome instanceof Error)) throw new Error("Staged Home incorrectly reached ordinary Runtime readiness")
+    expect(outcome.message).toContain("restoration is incomplete")
+  } finally {
+    await opened?.close()
+    await fs.rm(selected.home, { recursive: true, force: true })
   }
 })

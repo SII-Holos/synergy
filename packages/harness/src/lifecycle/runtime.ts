@@ -10,6 +10,7 @@ import { EnvironmentMaintenance } from "../environment/maintenance"
 import { ProviderCatalog } from "../provider/catalog"
 import { ProviderCatalogSource } from "../provider/catalog-source"
 import { RuntimeContext, type RuntimeHost } from "./context"
+import { HomeRestoration } from "./home-restoration"
 import { HomeOwnership } from "./home-ownership"
 import { SessionStaging } from "../session/staging"
 import { ContextUsageEstimator } from "../session/context-usage-estimator"
@@ -350,6 +351,7 @@ export namespace RuntimeHandle {
         report(0)
         return report
       }
+      await HomeRestoration.assertOrdinaryStartup()
       await SessionStaging.recover(storageProgress("staging"))
       startupStage("migrations")
       const migration = await ensureMigrations({

@@ -1,76 +1,40 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { constants } from "node:fs"
-import { createHash, randomUUID } from "node:crypto"
+import { randomUUID } from "node:crypto"
 import { z } from "zod"
+import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import { RuntimeContext } from "./context"
 import { HomeOwnershipFile } from "./home-ownership-file"
+import {
+  ID,
+  Hash,
+  RestorationRequest,
+  Physical,
+  StagingDisk,
+  CompletedDisk,
+  StagingInfo,
+  CompletedInfo,
+  digest,
+  filename,
+  RestorationError,
+  staging,
+  completion,
+  decode,
+  physical,
+  read,
+  inspectCompleted as inspectCompletedFile,
+  Disk,
+  type Artifacts,
+} from "./home-restoration-file"
 import { Storage } from "../storage/storage"
 import { StorageMutationGuard } from "../storage/mutation-guard"
 import { ServerProcessLock } from "../util/server-process-lock"
 
-const ID = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/)
-const Hash = z.string().regex(/^[a-f0-9]{64}$/)
-const RestorationRequest = z.strictObject({
-  restoreID: ID,
-  owner: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
-  sourceHash: Hash,
-  payload: JsonValue,
-})
 const FenceRequest = HomeOwnershipFile.FencedInfo.omit({ schemaVersion: true, owner: true })
-const Physical = z.strictObject({ device: z.string().regex(/^\d+$/), inode: z.string().regex(/^\d+$/) })
-const Artifacts = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("present"), directory: z.string(), identity: Physical }),
-  z.strictObject({
-    kind: z.literal("future"),
-    directory: z.string(),
-    parent: z.string(),
-    parentIdentity: Physical,
-  }),
-])
-type Artifacts = z.infer<typeof Artifacts>
-const StagingDisk = z.strictObject({
-  schemaVersion: z.literal(1),
-  restoreID: ID,
-  owner: RestorationRequest.shape.owner,
-  sourceHash: Hash,
-  requestHash: Hash,
-  installationID: z.uuid(),
-  incarnation: z.uuid(),
-  phase: z.literal("staging"),
-  target: z.strictObject({
-    home: z.string(),
-    root: z.string(),
-    homeIdentity: Physical,
-    rootIdentity: Physical,
-    storageHash: Hash,
-    artifacts: Artifacts,
-  }),
-})
-const Completion = z.strictObject({
-  schemaVersion: z.literal(2),
-  phase: z.literal("completed"),
-  intentHash: Hash,
-  publicationHash: Hash,
-})
-const CompletedDisk = StagingDisk.extend({
-  schemaVersion: z.literal(2),
-  phase: z.literal("completed"),
-  publicationHash: Hash,
-})
-const Disk = z.discriminatedUnion("schemaVersion", [StagingDisk, CompletedDisk])
-const StagingInfo = StagingDisk.omit({ target: true })
-const CompletedInfo = CompletedDisk.omit({ target: true })
-type Disk = z.infer<typeof Disk>
-const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
-const filename = (root: string) => path.join(root, "home-restoration.json")
 const lockDirectory = (root: string) => path.join(root, "state", ".locks")
-class RestorationError extends Error {
-  override readonly name = "HomeRestorationBlocked"
-}
 interface Binding {
   runtime: RuntimeContext.Instance
   handle: Storage.Handle
@@ -101,48 +65,6 @@ const state = RuntimeContext.state(() => ({
   publicationOwners: new Map<string, HomeRestoration.PublicationOwner>(),
 }))
 
-function staging(record: Disk) {
-  const { publicationHash: _, ...base } = { publicationHash: undefined, ...record }
-  return StagingDisk.parse({ ...base, schemaVersion: 1, phase: "staging" })
-}
-function completion(record: Disk, publicationHash: string) {
-  return (
-    JSON.stringify(
-      Completion.parse({
-        schemaVersion: 2,
-        phase: "completed",
-        intentHash: digest(staging(record)),
-        publicationHash,
-      }),
-    ) + "\n"
-  )
-}
-function decode(bytes: Uint8Array, publicationHash?: string, baseOnly = false): Disk {
-  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
-  try {
-    return StagingDisk.parse(JSON.parse(text))
-  } catch {}
-  const boundary = text.indexOf("\n")
-  const base = StagingDisk.parse(JSON.parse(text.slice(0, boundary)))
-  if (boundary < 0 || text.slice(0, boundary + 1) !== JSON.stringify(base) + "\n")
-    throw new RestorationError("Native restoration intent has no canonical original frame")
-  const tail = text.slice(boundary + 1)
-  try {
-    const committed = Completion.parse(JSON.parse(tail))
-    if (committed.intentHash !== digest(base) || tail !== completion(base, committed.publicationHash))
-      throw new RestorationError("Native restoration completion belongs to another original intent")
-    return CompletedDisk.parse({
-      ...base,
-      schemaVersion: 2,
-      phase: "completed",
-      publicationHash: committed.publicationHash,
-    })
-  } catch (error) {
-    if (baseOnly || (publicationHash && completion(base, publicationHash).startsWith(tail))) return base
-    throw error
-  }
-}
-
 function assertPrimary(binding: Binding) {
   if (RuntimeContext.current() !== binding.runtime)
     throw new RestorationError("Installation belongs to another Runtime")
@@ -160,12 +82,7 @@ function assertPrimary(binding: Binding) {
     throw new RestorationError("Installation requires its original primary Store and artifact configuration")
   ServerProcessLock.assertCurrent(binding.writer)
 }
-async function physical(directory: string) {
-  const info = await fs.lstat(directory, { bigint: true })
-  if (!info.isDirectory() || info.isSymbolicLink())
-    throw new RestorationError("Installation requires an independent canonical native target")
-  return Physical.parse({ device: info.dev.toString(), inode: info.ino.toString() })
-}
+
 async function artifacts(expected?: Artifacts): Promise<Artifacts> {
   const requested = path.resolve(Storage.current().artifactDirectory)
   let anchor = requested
@@ -209,8 +126,9 @@ async function targetIdentity(expectedArtifacts?: Artifacts) {
     options.backend === "sqlite"
       ? { filename: await fs.realpath(options.filename), identity: await fs.stat(options.filename, { bigint: true }) }
       : undefined
+  const { readonly: _readonly, recover: _recover, mustExist: _mustExist, ...dataset } = options
   const storageHash = digest({
-    options,
+    options: dataset,
     ...(database
       ? {
           file: database.filename,
@@ -236,48 +154,7 @@ async function target(expectedArtifacts?: Artifacts) {
     throw new RestorationError("Installation target native identity is unavailable")
   }
 }
-async function read(root: string, publicationHash?: string, baseOnly = false): Promise<Disk | undefined> {
-  let file: Awaited<ReturnType<typeof fs.open>>
-  try {
-    const before = await fs.lstat(filename(root))
-    if (!before.isFile() || before.isSymbolicLink() || before.size > 8192)
-      throw new RestorationError("Native restoration intent is invalid or unsupported")
-    file = await fs.open(filename(root), constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
-    try {
-      const initial = await file.stat()
-      if (initial.dev !== before.dev || initial.ino !== before.ino || initial.size !== before.size)
-        throw new RestorationError("Native restoration intent changed while opening")
-      const bytes = new Uint8Array(initial.size + 1)
-      let used = 0
-      for (;;) {
-        const next = await file.read(bytes, used, bytes.byteLength - used, used)
-        if (!next.bytesRead) break
-        used += next.bytesRead
-        if (used > initial.size) throw new RestorationError("Native restoration intent changed while reading")
-      }
-      const final = await file.stat()
-      const retained = await fs.lstat(filename(root))
-      if (
-        used !== initial.size ||
-        final.mtimeMs !== initial.mtimeMs ||
-        final.ctimeMs !== initial.ctimeMs ||
-        retained.dev !== initial.dev ||
-        retained.ino !== initial.ino
-      )
-        throw new RestorationError("Native restoration intent changed while reading")
-      try {
-        return decode(bytes.subarray(0, used), publicationHash, baseOnly)
-      } catch {
-        throw new RestorationError("Native restoration intent is invalid or unsupported")
-      }
-    } finally {
-      await file.close()
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
-    throw error
-  }
-}
+
 function install() {
   if (state().installed) return
   StorageMutationGuard.register("home-restoration", async () => {
@@ -323,13 +200,17 @@ export namespace HomeRestoration {
   })
   export interface PublicationOwner {
     read(info: Info): Promise<z.infer<typeof PublicationStatus>>
+    inspect?(info: Info, subject: string): Promise<z.infer<typeof JsonValue>>
   }
   export function registerPublicationOwner(owner: string, contribution: PublicationOwner) {
     RuntimeContext.assertCompositionOpen("native Home publication owner")
     const id = RestorationRequest.shape.owner.parse(owner)
     if (state().publicationOwners.has(id))
       throw new RestorationError("Native Home publication owner is already registered")
-    state().publicationOwners.set(id, { read: contribution.read.bind(contribution) })
+    state().publicationOwners.set(id, {
+      read: contribution.read.bind(contribution),
+      ...(contribution.inspect ? { inspect: contribution.inspect.bind(contribution) } : {}),
+    })
   }
   export function register() {
     RuntimeContext.assertCompositionOpen("native Home restoration")
@@ -508,6 +389,8 @@ export namespace HomeRestoration {
     installedOwners.delete(permit)
     const selected = FenceRequest.parse(input)
     const frame = permits.get(permit)!
+    if (frame.binding.store.options.readonly)
+      throw new RestorationError("Native installation requires its writable primary Store")
     const record = frame.binding.record
     const ownership = HomeOwnershipFile.RestorationInfo.parse({
       ...selected,
@@ -582,12 +465,84 @@ export namespace HomeRestoration {
     return proof
   }
   export function assertPublication(permit: PublicationPermit) {
-    publication(permit)
+    const proof = publication(permit)
+    if (proof.frame.binding.store.options.readonly)
+      throw new RestorationError("Native publication requires its writable primary Store")
   }
   export function describePublication(permit: PublicationPermit) {
     const proof = publication(permit)
     const { target: _, ...info } = proof.frame.binding.record
     return { installation: Info.parse(info), publicationHash: proof.hash }
+  }
+  export interface PublicationInspection {
+    readonly kind: "home-publication-inspection"
+  }
+  const publicationInspections = new WeakMap<
+    PublicationInspection,
+    {
+      installation: Info
+      publicationHash: string
+      status: z.infer<typeof PublicationStatus>
+      subject: string
+      facts: z.infer<typeof JsonValue>
+      assert(): void
+    }
+  >()
+  export async function withPublicationInspection<T>(
+    permit: PublicationPermit,
+    subject: string,
+    body: (inspection: PublicationInspection) => Promise<T>,
+  ) {
+    const selected = ID.parse(subject)
+    const proof = publication(permit)
+    const binding = proof.frame.binding
+    const owner = state().publicationOwners.get(binding.record.owner)
+    if (!owner?.inspect) throw new RestorationError("Publication inspection requires its installed domain reader")
+    const inspect = owner.inspect.bind(owner)
+    const status = await verifyPublication(permit)
+    const description = describePublication(permit)
+    const facts = JsonValue.parse(await inspect(description.installation, selected))
+    publication(permit)
+    let open = true
+    const inspection: PublicationInspection = Object.freeze({ kind: "home-publication-inspection" })
+    const assert = () => {
+      if (
+        !open ||
+        !proof.frame.open ||
+        binding.runtime.storage !== binding.handle ||
+        binding.handle.store !== binding.store ||
+        digest(binding.store.options) !== binding.storeConfigHash ||
+        binding.handle.artifactDirectory !== binding.artifacts ||
+        binding.handle.artifactObjects !== undefined
+      )
+        throw new RestorationError("Publication inspection requires its original open native owner")
+      ServerProcessLock.assertLive(binding.writer)
+    }
+    publicationInspections.set(inspection, { ...description, status, subject: selected, facts, assert })
+    try {
+      assert()
+      const result = await body(inspection)
+      if (digest(JsonValue.parse(await inspect(description.installation, selected))) !== digest(facts))
+        throw new RestorationError("Publication facts changed during inspection")
+      if (digest(await verifyPublication(permit)) !== digest(status))
+        throw new RestorationError("Publication status changed during inspection")
+      assert()
+      return result
+    } finally {
+      open = false
+    }
+  }
+  export function inspectPublication(inspection: PublicationInspection) {
+    const proof = publicationInspections.get(inspection)
+    if (!proof) throw new RestorationError("Publication requires its actual native inspection")
+    proof.assert()
+    return {
+      installation: Info.parse(proof.installation),
+      publicationHash: proof.publicationHash,
+      status: PublicationStatus.parse(proof.status),
+      subject: proof.subject,
+      facts: JsonValue.parse(structuredClone(proof.facts)),
+    }
   }
   async function verifyPublicationOwner(binding: Binding) {
     await verify(binding)
@@ -674,22 +629,22 @@ export namespace HomeRestoration {
   export async function inspectCompleted() {
     requireRegistered()
     const runtime = RuntimeContext.current()
-    const record = await read(runtime.host.root)
-    if (!record || record.phase !== "completed") throw new RestorationError("Native Home restoration is incomplete")
+    const result = await inspectCompletedFile({
+      home: runtime.host.home,
+      root: runtime.host.root,
+      env: runtime.host.env,
+    })
     const ownership = HomeOwnershipFile.RestorationInfo.parse(
-      await HomeOwnershipFile.open({
-        root: runtime.host.root,
-        env: runtime.host.env,
-      }).read(),
+      await HomeOwnershipFile.open({ root: runtime.host.root, env: runtime.host.env }).read(),
     )
     await assertPendingOwner(ownership)
-    const retained = await read(runtime.host.root)
-    if (RuntimeContext.current() !== runtime || digest(retained) !== digest(record))
-      throw new RestorationError("Native Home completion changed during inspection")
-    const { target: _, ...info } = record
-    return CompletedInfo.parse(info)
+    if (RuntimeContext.current() !== runtime)
+      throw new RestorationError("Restored Home ownership belongs to another Runtime")
+    return result
   }
+
   export async function completePublication(permit: PublicationPermit) {
+    assertPublication(permit)
     const status = await verifyPublication(permit)
     if (!status.nativeReady) throw new RestorationError("Publication requires confirmed current native settings")
     const proof = publication(permit)

@@ -31,7 +31,18 @@ export namespace ServerProcessLock {
     return current
   }
 
+  export function assertLive(proof: Ownership) {
+    const entry = proofs.get(proof)
+    if (
+      !entry ||
+      !entry.native.active ||
+      entry.native.runtime.storage?.store !== entry.store ||
+      !entry.store.readiness.readerReady
+    )
+      throw new Error("Installed writer native ownership has been released")
+  }
   export function assertCurrent(proof: Ownership) {
+    assertLive(proof)
     const entry = proofs.get(proof)
     if (!entry) throw new Error("Installed writer evidence has no native ownership")
     if (entry.native.runtime !== RuntimeContext.current())

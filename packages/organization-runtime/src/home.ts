@@ -2,6 +2,10 @@ import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
+import {
+  inspectCompleted,
+  read as readRestoration,
+} from "@ericsanchezok/synergy-harness/lifecycle/home-restoration-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { createCredentials, readCredentials } from "./credentials.js"
 import { MemberHomeError, readRecord, writeRecord } from "./record.js"
@@ -22,6 +26,7 @@ export interface RuntimeHome {
   identity: RuntimeIdentity
   origin: string
   publicKey: string
+  restoration?: HomeOwnershipFile.RestorationInfo
 }
 export interface MemberHome extends RuntimeHome {
   identity: MemberIdentity
@@ -74,18 +79,24 @@ async function entries(directory: string) {
 async function withOwner<T>(
   home: string,
   identity: RuntimeIdentity,
-  body: (root: string, owner: ReturnType<typeof HomeOwnershipFile.open>) => Promise<T>,
+  body: (
+    root: string,
+    owner: ReturnType<typeof HomeOwnershipFile.open>,
+    restoration?: HomeOwnershipFile.RestorationInfo,
+  ) => Promise<T>,
 ) {
   const root = path.join(home, ".synergy")
+  const env = { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME }
+  const selected = HomeOwnershipFile.FencedInfo.parse({
+    schemaVersion: 2,
+    owner: "organization-runtime",
+    identity: runtimeIdentityDigest(identity),
+    readerContract: NativeHomeReaderContract,
+  })
   const owner = HomeOwnershipFile.open({
     root,
-    env: { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME },
-    selected: {
-      schemaVersion: 2,
-      owner: "organization-runtime",
-      identity: runtimeIdentityDigest(identity),
-      readerContract: NativeHomeReaderContract,
-    },
+    env,
+    selected,
   })
   for (const directory of [home, root]) {
     const stat = await fs.lstat(directory).catch((error: NodeJS.ErrnoException) => {
@@ -93,6 +104,21 @@ async function withOwner<T>(
       throw error
     })
     if (stat?.isSymbolicLink()) throw new MemberHomeError("Member Runtime Home cannot be a symbolic link")
+  }
+  const current = await owner.read()
+  if (current?.schemaVersion === 4) throw new MemberHomeError("Retired Runtime Home cannot resume ordinary startup")
+  const installation = await readRestoration(root)
+  if (current?.schemaVersion === 3 || installation) {
+    const completed = await inspectCompleted({ home, root, env })
+    const restoration = HomeOwnershipFile.RestorationInfo.parse({
+      ...selected,
+      schemaVersion: 3,
+      installationID: completed.installationID,
+      incarnation: completed.incarnation,
+    })
+    const restored = HomeOwnershipFile.open({ root, env, selected: restoration })
+    await restored.assert({ required: true })
+    return body(root, restored, restoration)
   }
   return body(root, owner)
 }
@@ -103,23 +129,35 @@ function checkIdentity(current: Binding, identity: RuntimeIdentity) {
   runtimeHomeOrigin(current.origin)
 }
 
-async function ready(home: string, root: string, current: Binding): Promise<RuntimeHome> {
+async function ready(
+  home: string,
+  root: string,
+  current: Binding,
+  restoration?: HomeOwnershipFile.RestorationInfo,
+): Promise<RuntimeHome> {
   if (current.state !== "ready") throw new MemberHomeError("Member Runtime provisioning is incomplete")
   const credentials = await readCredentials(root)
   if (!credentials || credentials.publicKey !== current.publicKey)
     throw new MemberHomeError("Member Runtime credentials are missing or do not match its identity")
-  return { home, root, identity: current.identity, origin: current.origin, publicKey: current.publicKey }
+  return {
+    home,
+    root,
+    identity: current.identity,
+    origin: current.origin,
+    publicKey: current.publicKey,
+    ...(restoration ? { restoration } : {}),
+  }
 }
 
 export async function readRuntimeHome(input: string, expected: RuntimeIdentity) {
   const home = absolute(input)
   const identity = RuntimeIdentity.parse(expected)
-  return withOwner(home, identity, async (root, owner) => {
+  return withOwner(home, identity, async (root, owner, restoration) => {
     await owner.assert({ required: true })
     const current = await readRecord(filename(root), Binding, "identity records")
     if (!current) throw new MemberHomeError("Member Runtime identity is missing")
     checkIdentity(current, identity)
-    return ready(home, root, current)
+    return ready(home, root, current, restoration)
   })
 }
 
@@ -129,7 +167,7 @@ async function prepareRuntimeHome(input: { baseDirectory: string; identity: Runt
   const address = runtimeHomeOrigin(input.origin)
   const digest = runtimeIdentityDigest(identity)
   const home = path.join(baseDirectory, digest)
-  return withOwner(home, identity, (root, ownership) =>
+  return withOwner(home, identity, (root, ownership, restoration) =>
     withFileLock({ directory: path.join(baseDirectory, ".locks"), key: digest }, async () => {
       const owner = await ownership.assert()
       if (!owner) {
@@ -160,11 +198,12 @@ async function prepareRuntimeHome(input: { baseDirectory: string; identity: Runt
       }
       checkIdentity(current, identity)
       if (current.origin !== address) throw new MemberHomeError("Organization address changed; update it explicitly")
-      if (current.state === "ready") return ready(home, root, current)
+      if (current.state === "ready") return ready(home, root, current, restoration)
+      if (restoration) throw new MemberHomeError("Restored Runtime identity provisioning is incomplete")
       const credentials = (await readCredentials(root)) ?? (await createCredentials(root))
       const complete = { ...current, state: "ready" as const, publicKey: credentials.publicKey }
       await writeRecord(filename(root), complete)
-      return ready(home, root, complete)
+      return ready(home, root, complete, restoration)
     }),
   )
 }

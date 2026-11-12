@@ -404,6 +404,7 @@
     "./lifecycle/namespace-identity": "./src/lifecycle/namespace-identity.ts",
     "./lifecycle/home-ownership": "./src/lifecycle/home-ownership.ts",
     "./lifecycle/home-ownership-file": "./src/lifecycle/home-ownership-file.ts",
+    "./lifecycle/home-restoration-file": "./src/lifecycle/home-restoration-file.ts",
     "./lifecycle/home-restoration": "./src/lifecycle/home-restoration.ts",
     "./test/migration/fixture": "./test/migration/fixture.ts",
     "./test/support/runtime": "./test/support/runtime.ts",

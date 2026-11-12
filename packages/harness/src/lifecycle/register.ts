@@ -25,6 +25,7 @@ import { registerSnapshotOwnershipMigrations } from "../session/snapshot-ownersh
 import { registerStoredSnapshotMigrations } from "../session/stored-snapshot-maintenance"
 import { registerSessionChildIndexMigrations } from "../session/child-index-migration"
 import { registerSessionCortexIndexMigrations } from "../session/cortex-index-migration"
+import { HomeRestoration } from "./home-restoration"
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { registerSessionMaintenanceOwner } from "../session/maintenance"
 import { registerEnvironmentMaintenanceOwner } from "../environment/maintenance-owner"
@@ -53,6 +54,7 @@ export function registerHarness() {
   EnvironmentExecution.registerRecovery()
   WorkspaceOperations.register()
   WorkspaceMove.register()
+  HomeRestoration.register()
   RuntimeMaintenance.registerProtection()
   registerSessionMaintenanceOwner()
   LoopJob.registerMaintenanceOwner()

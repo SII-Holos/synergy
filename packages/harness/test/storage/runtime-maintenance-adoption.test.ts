@@ -16,7 +16,7 @@ const manifestHash = (value: StorageCheckpoint.Manifest) =>
   createHash("sha256")
     .update(JSON.stringify(StorageCheckpoint.Manifest.parse(value)))
     .digest("hex")
-async function targetFixture(home?: string, publication = false) {
+async function targetFixture(home?: string, publication = false, readonly = false) {
   const selected = await fs.realpath(
     home ?? (await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "maintenance-adoption-"))),
   )
@@ -26,6 +26,15 @@ async function targetFixture(home?: string, publication = false) {
     RuntimeMaintenance.registerProtection()
     if (publication)
       HomeRestoration.registerPublicationOwner("organization-runtime", {
+        async inspect(info, subject) {
+          return {
+            subject,
+            row: await Storage.read<{ hash: string; settingsHash: string; installationID: string }>([
+              "publication",
+              info.installationID,
+            ]),
+          }
+        },
         async read(info) {
           const row = await Storage.read<{ hash: string; settingsHash: string; installationID: string }>([
             "publication",
@@ -53,6 +62,8 @@ async function targetFixture(home?: string, publication = false) {
     backend: "sqlite",
     filename: path.join(root, "data", "restore.sqlite"),
     namespace: "target",
+    readonly,
+    mustExist: readonly,
   })
   const lock = await runtime.run(async () => {
     RuntimeContext.current().storage = { store, artifactDirectory: path.join(root, "data", "artifacts") }
@@ -200,6 +211,30 @@ test("only a committed publication with current native settings completes and re
         expect(await RuntimeMaintenance.restoration(installationID)).toEqual(retained)
         expect(await RuntimeMaintenance.operation(source.source.maintenanceID)).toEqual(source.source)
       })
+      const observer = await storageTestRuntime()
+      let escaped: HomeRestoration.PublicationInspection | undefined
+      try {
+        await HomeRestoration.withPublication({ installationID, publicationHash: hash }, (permit) =>
+          HomeRestoration.withPublicationInspection(permit, "hosted-runtime", async (inspection) => {
+            escaped = inspection
+            await observer.run(async () => {
+              expect(HomeRestoration.inspectPublication(inspection)).toMatchObject({
+                subject: "hosted-runtime",
+                installation: { installationID },
+                publicationHash: hash,
+                status: { nativeReady: true, released: true },
+                facts: { subject: "hosted-runtime", row: { installationID, hash } },
+              })
+              expect(() => HomeRestoration.assertPublication(permit)).toThrow()
+            })
+          }),
+        )
+        if (!escaped) throw new Error("Missing actual publication inspection")
+        const ended = escaped
+        await observer.run(async () => expect(() => HomeRestoration.inspectPublication(ended)).toThrow("original open"))
+      } finally {
+        await observer.close()
+      }
       await HomeRestoration.assertOrdinaryStartup()
       await Storage.write(["canonical", "ready"], true)
       expect(() => HomeRestoration.assertPublication(expired!)).toThrow("callback")
@@ -207,6 +242,28 @@ test("only a committed publication with current native settings completes and re
     })
     await target.close()
     targetClosed = true
+    const reader = await targetFixture(target.home, true, true)
+    try {
+      await reader.run(async () => {
+        await HomeRestoration.assertOrdinaryStartup()
+        const original = await HomeRestoration.begin(request)
+        await HomeRestoration.withTarget(original, async (permit) => {
+          await expect(
+            HomeRestoration.installOwner(permit, {
+              identity: "a".repeat(64),
+              readerContract: "native-recovery-fixture-v1",
+            }),
+          ).rejects.toThrow("writable")
+        })
+        await HomeRestoration.withPublication({ installationID, publicationHash: hash }, async (permit) => {
+          expect(() => HomeRestoration.assertPublication(permit)).toThrow("writable")
+          await expect(HomeRestoration.completePublication(permit)).rejects.toThrow("writable")
+          await expect(RuntimeMaintenance.releaseRestoration(permit)).rejects.toThrow("writable")
+        })
+      })
+    } finally {
+      await reader.close()
+    }
     const cold = await targetFixture(target.home, true)
     try {
       await cold.run(async () => {
