@@ -13642,7 +13642,7 @@ msgstr "取消迁移"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.cancelHint"
-msgstr "取消准备，将对话保持在源端暂停。请等待源端确认后再恢复工作。"
+msgstr "请求取消本次迁移。你还需要单独确认源端取消，对话会继续保持暂停。"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.cancelled"
@@ -13703,6 +13703,10 @@ msgstr "目标运行时"
 #. js-lingui-explicit-id
 msgid "organization.handoff.finishCancel"
 msgstr "确认源端取消"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.finishCancelHint"
+msgstr "停止原有准备，并在源端确认取消。对话会继续保持暂停。"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.folder"

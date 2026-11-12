@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { OrganizationHandoffProtocol as Handoff } from "@ericsanchezok/synergy-organization-protocol"
 import { Persist } from "@/utils/persist"
+import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 
 export const OrganizationHandoffAction = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("prepare"), body: Handoff.CurrentPrepare }),
@@ -11,6 +12,14 @@ export const OrganizationHandoffAction = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("cancel") }),
 ])
 export type OrganizationHandoffAction = z.infer<typeof OrganizationHandoffAction>
+const Cancellation = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("cancel") }),
+  z.strictObject({
+    kind: z.literal("drive"),
+    body: Handoff.Drive.safeExtend({ operation: z.literal("cancel-source") }),
+  }),
+])
+export type OrganizationHandoffCancellation = z.infer<typeof Cancellation>
 const Saved = z
   .strictObject({
     version: z.literal(1),
@@ -18,6 +27,8 @@ const Saved = z
     sessionID: z.string().min(1),
     handoffID: z.string().min(1),
     pending: OrganizationHandoffAction.optional(),
+    cancellation: Cancellation.optional(),
+    cancellationNonce: z.uuid().optional(),
   })
   .refine(
     (value) => value.pending?.kind !== "prepare" || value.pending.body.handoffID === value.handoffID,
@@ -47,11 +58,20 @@ export function createOrganizationHandoffState(input: {
     save(handoffID: string, pending?: OrganizationHandoffAction) {
       const previous = read()
       if (
-        previous?.pending &&
-        (previous.handoffID !== handoffID || JSON.stringify(previous.pending) !== JSON.stringify(pending))
+        (previous?.cancellation && previous.handoffID !== handoffID) ||
+        (previous?.pending &&
+          (previous.handoffID !== handoffID || JSON.stringify(previous.pending) !== JSON.stringify(pending)))
       )
         throw new Error("Inspect the original handoff operation before replacing it")
-      const saved = Saved.parse({ version: 1, projectID, sessionID, handoffID, pending })
+      const saved = Saved.parse({
+        version: 1,
+        projectID,
+        sessionID,
+        handoffID,
+        pending,
+        cancellation: previous?.cancellation,
+        cancellationNonce: previous?.cancellationNonce,
+      })
       storage.setItem(key, JSON.stringify(saved))
       return saved
     },
@@ -59,6 +79,44 @@ export function createOrganizationHandoffState(input: {
       const previous = read()
       if (previous?.handoffID !== handoffID) throw new Error("Handoff recovery has another request")
       const saved = Saved.parse({ ...previous, pending: undefined })
+      storage.setItem(key, JSON.stringify(saved))
+      return saved
+    },
+    cancel(handoffID: string, action: OrganizationHandoffCancellation, retry?: string) {
+      const previous = read()
+      if (previous?.handoffID !== handoffID) throw new Error("Inspect the original cancellation before replacing it")
+      if (previous.cancellation) {
+        if (
+          action.kind === "drive" &&
+          retry &&
+          previous.cancellationNonce === retry &&
+          JSON.stringify(previous.cancellation) === JSON.stringify(action)
+        )
+          return { accepted: true as const, retained: true as const, nonce: retry, saved: previous }
+        return { accepted: false as const, retained: true as const, saved: previous }
+      }
+      if (retry) return { accepted: false as const, retained: false as const, saved: previous }
+      const nonce = generateSecureUUID()
+      const saved = Saved.parse({ ...previous, cancellation: Cancellation.parse(action), cancellationNonce: nonce })
+      storage.setItem(key, JSON.stringify(saved))
+      return { accepted: true as const, retained: false as const, nonce, saved }
+    },
+    cancelUnsent(handoffID: string, nonce: string) {
+      const previous = read()
+      if (
+        previous?.handoffID !== handoffID ||
+        previous.cancellationNonce !== nonce ||
+        previous.cancellation?.kind !== "cancel"
+      )
+        return previous
+      const saved = Saved.parse({ ...previous, cancellation: undefined, cancellationNonce: undefined })
+      storage.setItem(key, JSON.stringify(saved))
+      return saved
+    },
+    cancelConfirmed(handoffID: string) {
+      const previous = read()
+      if (previous?.handoffID !== handoffID) throw new Error("Handoff recovery has another request")
+      const saved = Saved.parse({ ...previous, cancellation: undefined, cancellationNonce: undefined })
       storage.setItem(key, JSON.stringify(saved))
       return saved
     },
@@ -74,6 +132,8 @@ export function organizationHandoffOutcomeKnown(action: OrganizationHandoffActio
   if (action.kind === "accept") return view.targetAccepted
   if (action.kind === "cancel")
     return view.cancelRequested || ["surrendered", "committed", "activation_permitted"].includes(view.phase)
+  if (action.kind === "drive" && action.body.operation === "cancel-source")
+    return ["surrendered", "committed", "activation_permitted"].includes(view.phase)
   if (action.kind === "commit") return ["committed", "activation_permitted"].includes(view.phase)
   if (action.kind === "permit")
     return action.body.purpose === "handoff-activation"

@@ -69,7 +69,7 @@ async function capture(page: Page, name: string) {
   const output = process.env.SYNERGY_UI_SCREENSHOT_DIR
   if (!output) return
   await fs.mkdir(output, { recursive: true })
-  await page.screenshot({ path: path.join(output, name) })
+  await page.screenshot({ path: path.join(output, name), animations: "disabled" })
 }
 
 beforeAll(async () => {
@@ -87,8 +87,9 @@ beforeAll(async () => {
     import {PlatformProvider} from ${JSON.stringify(`/@fs/${source}/context/platform.tsx`)};
     import {OrganizationHandoff} from ${JSON.stringify(`/@fs/${source}/organization/handoff.tsx`)};
     import {useConfirm} from ${JSON.stringify(`/@fs/${source}/components/dialog/confirm-dialog.tsx`)};
+    import {useLingui} from "@lingui/solid"; import {organizationHandoffMessages as copy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-messages.ts`)};
     const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{protocolVersion:2,list:()=>window.hostList(),request:async value=>{const result=await window.hostRequest(value);window.handoffResponses=(window.handoffResponses??0)+1;return result},cancel:()=>Promise.resolve({ok:true}),startMember:()=>{throw new Error("No automatic runtime start")}}};
-    function Fixture(){const space=useSpace();const [execute,setExecute]=createSignal(true);const other=useConfirm();window.revoke=()=>setExecute(false);window.openOther=()=>other.show({title:"Unrelated confirmation",description:"Keep this dialog",confirmLabel:"Confirm",tone:"neutral",onConfirm(){}});const session={sessionID:"session-a",projectID:"project-a",creatorID:new URLSearchParams(location.search).has("cloud")?"account-a":"different-creator",driverRuntimeID:"source",bindingEpoch:7,shareState:"shared",resourceIDs:[],createdAt:0,get permissions(){return {read:true,execute:execute(),stop:true}},runtime:{runtimeID:"source",runtimeKind:"member",ownerID:"account-a",state:"online",connectionEpoch:1}};return <Show when={space.current()?.key} keyed>{()=> <OrganizationHandoff session={session} changed={()=>window.hostChanged()} compact={new URLSearchParams(location.search).has("compact")} />}</Show>}
+    function Fixture(){const {_}=useLingui();window.handoffCopy=key=>_(copy[key]);const space=useSpace();const [execute,setExecute]=createSignal(true);const other=useConfirm();window.revoke=()=>setExecute(false);window.openOther=()=>other.show({title:"Unrelated confirmation",description:"Keep this dialog",confirmLabel:"Confirm",tone:"neutral",onConfirm(){}});const session={sessionID:"session-a",projectID:"project-a",creatorID:new URLSearchParams(location.search).has("cloud")?"account-a":"different-creator",driverRuntimeID:"source",bindingEpoch:7,shareState:"shared",resourceIDs:[],createdAt:0,get permissions(){return {read:true,execute:execute(),stop:true}},runtime:{runtimeID:"source",runtimeKind:"member",ownerID:"account-a",state:"online",connectionEpoch:1}};return <Show when={space.current()?.key} keyed>{()=> <OrganizationHandoff session={session} changed={()=>window.hostChanged()} compact={new URLSearchParams(location.search).has("compact")} />}</Show>}
     render(()=> <PlatformProvider value={platform}><AppBaseProviders><SpaceProvider><Fixture/></SpaceProvider></AppBaseProviders></PlatformProvider>,document.getElementById("root"));
   `,
   )
@@ -119,14 +120,22 @@ async function open(
     rejectPrepare?: boolean
     denyStorage?: boolean
     blocked?: boolean
+    unrecoverable?: boolean
+    holdNative?: { operation: "prepare-source"; pending: Promise<void> }
+    surrenderOnCancel?: boolean
+    dropCancelSource?: boolean
+    holdCancel?: Promise<void>
+    cancelResponses?: Array<"unknown" | "not_dispatched">
+    cancelSourceResponses?: Array<"blocked" | "unknown">
     holdOptions?: Promise<void>
   } = {},
 ) {
-  const page = await browser.newPage({
+  const context = await browser.newContext({
     viewport: input.viewport ?? { width: 1100, height: 760 },
     colorScheme: input.colorScheme ?? "light",
     locale: input.locale ?? "en-US",
   })
+  const page = await context.newPage()
   page.setDefaultTimeout(5000)
   if (input.denyStorage)
     await page.addInitScript(() => {
@@ -139,6 +148,7 @@ async function open(
     })
   const requests: Array<{ path: string; method: string; body: unknown }> = []
   const errors: string[] = []
+  const cancellationRequested = Promise.withResolvers<void>()
   page.on("pageerror", (error) => errors.push(error.message))
   let view: Handoff.View | undefined
   let dropped = false
@@ -147,6 +157,9 @@ async function open(
   let rejected = false
   let controlRevision = 11
   let blockedOnce = false
+  let cancellationDropped = false
+  let cancellationAttempt = 0
+  let sourceCancellationAttempt = 0
   const permits = new Map<string, unknown>()
   const target = input.cloud
     ? {
@@ -158,17 +171,17 @@ async function open(
         deviceID: undefined,
       }
     : runtime("target")
-  await page.exposeFunction("hostList", () => ({
+  await page.context().exposeFunction("hostList", () => ({
     ok: true,
     value: [
       entry,
       { ...entry, id: "b".repeat(64), orgID: "org-b", account: { ...account, orgID: "org-b", accountID: "account-b" } },
     ],
   }))
-  await page.exposeFunction("hostChanged", () => {
+  await page.context().exposeFunction("hostChanged", () => {
     changed++
   })
-  await page.exposeFunction("hostRequest", async (request: Desktop.Request) => {
+  await page.context().exposeFunction("hostRequest", async (request: Desktop.Request) => {
     const url = new URL(request.path, entry.issuer)
     const body = request.body ? JSON.parse(request.body) : undefined
     requests.push({ path: url.pathname + url.search, method: request.method, body })
@@ -339,17 +352,40 @@ async function open(
       return result(view)
     }
     if (view && url.pathname.endsWith("/cancel")) {
+      cancellationRequested.resolve()
+      const response = input.cancelResponses?.[cancellationAttempt++]
+      if (response === "unknown") return { ok: false, error: { code: "unavailable" } }
+      if (response === "not_dispatched")
+        return {
+          ok: true,
+          value: {
+            status: 409,
+            body: JSON.stringify({
+              code: "REVISION_CONFLICT",
+              outcome: "not_dispatched",
+              retryable: false,
+              message: "The cancellation was not dispatched",
+            }),
+          },
+        }
+      if (input.surrenderOnCancel) view = { ...view, phase: "surrendered", canCancel: false, cancelRequested: false }
+      if (view.phase === "surrendered") return { ok: false, error: { code: "HANDOFF_BLOCKED" } }
       view = { ...view, cancelRequested: true }
       if (input.drop === "cancel" && !dropped) {
         dropped = true
         return { ok: false, error: { code: "unavailable" } }
+      }
+      if (input.holdCancel) {
+        const original = view
+        await input.holdCancel
+        return result(original)
       }
       return result(view)
     }
     if (view && url.pathname.endsWith("/drive")) {
       const operation = Handoff.Drive.parse(body)
       if (
-        input.blocked &&
+        (input.blocked || input.unrecoverable) &&
         ((operation.operation === "prepare-source" && !blockedOnce) || operation.operation === "inspect-source")
       ) {
         blockedOnce = true
@@ -365,7 +401,7 @@ async function open(
             {
               code: operation.cursor ? "second" : "first",
               label: operation.cursor ? "Second native requirement" : "First native requirement",
-              recoverable: true,
+              recoverable: !input.unrecoverable,
             },
           ],
           ...(!operation.cursor ? { requirementsCursor: "requirements-two" } : {}),
@@ -393,6 +429,26 @@ async function open(
         view = { ...view, phase: "completed", canContinue: true }
       }
       if (operation.operation === "cancel-source") {
+        const response = input.cancelSourceResponses?.[sourceCancellationAttempt++]
+        if (response === "unknown") return { ok: false, error: { code: "unavailable" } }
+        if (response === "blocked")
+          return result({
+            handoffID: view.handoffID,
+            requestID: operation.requestID,
+            runtimeID: "source",
+            operation: "cancel-source",
+            state: "blocked",
+            stage: "source-frozen",
+            revision: "f".repeat(64),
+            requirements: [
+              { code: "cancel_dependency", label: "The original cancellation dependency remains", recoverable: true },
+            ],
+            facts: [],
+          })
+        if (input.dropCancelSource && !cancellationDropped) {
+          cancellationDropped = true
+          return { ok: false, error: { code: "unavailable" } }
+        }
         stage = "source-cancelled"
         view = { ...view, phase: "cancelled", canCancel: false }
       }
@@ -404,6 +460,7 @@ async function open(
         dropped = true
         return { ok: false, error: { code: "unavailable" } }
       }
+      if (input.holdNative?.operation === operation.operation) await input.holdNative.pending
       return result({
         handoffID: view.handoffID,
         requestID: operation.requestID,
@@ -435,9 +492,24 @@ async function open(
   await dialog.waitFor()
   return {
     page,
+    close: () => context.close(),
     dialog,
     requests,
     errors,
+    cancellationRequested: cancellationRequested.promise,
+    copy(key: "accept" | "prepareSource" | "prepareTarget" | "surrender" | "cancel" | "finishCancel" | "check") {
+      return page.evaluate((key) => {
+        const translate = Reflect.get(window, "handoffCopy")
+        if (typeof translate !== "function") throw new Error("The real locale owner is unavailable")
+        const result = translate(key)
+        if (typeof result !== "string") throw new Error("The real locale owner returned no label")
+        return result
+      }, key)
+    },
+    finishCancellation() {
+      if (!view?.cancelRequested) throw new Error("Cancellation has no original service intent")
+      view = { ...view, phase: "cancelled", canCancel: false }
+    },
     get changed() {
       return changed
     },
@@ -499,7 +571,7 @@ test("native move pages real directory choices, retains source files and activat
     ).toBe(false)
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
 }, 45_000)
 
@@ -529,15 +601,28 @@ test("keep-cloud uses the inspected existing resource without requesting a new p
       ),
     ).toBe(true)
     await capture(f.page, "handoff-cloud-dark-375.png")
-    await f.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await f.dialog.getByRole("button", { name: "Cancel move", exact: true }).focus()
+    await f.page.keyboard.press("Enter")
     await f.page
       .getByRole("dialog", { name: "Cancel move", exact: true })
       .getByRole("button", { name: "Cancel move", exact: true })
       .click()
+    await f.page.getByRole("dialog", { name: "Cancel move", exact: true }).waitFor({ state: "detached" })
+    expect(await f.dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+    await f.dialog.getByRole("button", { name: "Confirm source cancellation", exact: true }).focus()
+    await f.page.keyboard.press("Enter")
+    await f.page
+      .getByRole("dialog", { name: "Confirm source cancellation", exact: true })
+      .getByRole("button", { name: "Confirm source cancellation", exact: true })
+      .click()
     await f.dialog.getByRole("heading", { name: "Move cancelled; source remains paused" }).waitFor()
+    await f.page
+      .getByRole("dialog", { name: "Confirm source cancellation", exact: true })
+      .waitFor({ state: "detached" })
+    expect(await f.dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
 }, 45_000)
 
@@ -588,7 +673,7 @@ test("unknown preparation survives reload and unknown native work is inspected i
         ).toBe(true)
       expect(f.errors).toEqual([])
     } finally {
-      await f.page.close()
+      await f.close()
     }
   }
 }, 45_000)
@@ -618,7 +703,7 @@ test("a lost permit response requires explicit retrieval and a new release confi
     expect(f.issued).toBe(1)
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
 }, 45_000)
 
@@ -644,7 +729,7 @@ test("empty, keyboard and narrow layouts stay reachable in both themes without o
       expect(f.requests.filter((request) => request.method === "POST")).toHaveLength(0)
       expect(f.errors).toEqual([])
     } finally {
-      await f.page.close()
+      await f.close()
     }
   }
 }, 30_000)
@@ -663,19 +748,54 @@ test("a late preflight cannot reopen a move after switching organization owner",
     })
     await f.dialog.waitFor({ state: "detached" })
     const received = await f.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+    const next = f.page.getByRole("button", { name: "Move conversation", exact: true })
+    await next.focus()
     held.resolve()
     await f.page.waitForFunction(
       (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) > received,
       received,
     )
-    await f.page.getByRole("button", { name: "Move conversation", exact: true }).focus()
     await f.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
     expect(await f.page.getByRole("dialog").count()).toBe(0)
+    expect(await next.evaluate((element) => element === document.activeElement)).toBe(true)
     expect(f.requests.filter((request) => request.method === "POST")).toHaveLength(0)
     expect(f.errors).toEqual([])
   } finally {
     held.resolve()
-    await f.page.close()
+    await f.close()
+  }
+  const cancelled = Promise.withResolvers<void>()
+  const pending = await open({ holdCancel: cancelled.promise })
+  try {
+    await prepare(pending)
+    await pending.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    const confirmation = pending.page.getByRole("dialog", { name: "Cancel move", exact: true })
+    await confirmation.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await pending.cancellationRequested
+    await pending.page.evaluate(() => {
+      history.pushState(null, "", "/organization/org-b/account-b/deployment-a")
+      window.dispatchEvent(new PopStateEvent("popstate"))
+    })
+    await pending.dialog.waitFor({ state: "detached" })
+    await confirmation.waitFor({ state: "detached" })
+    await pending.page.evaluate("window.openOther()")
+    const other = pending.page.getByRole("dialog", { name: "Unrelated confirmation", exact: true })
+    const focused = other.getByRole("button", { name: "Cancel", exact: true })
+    await focused.focus()
+    const received = await pending.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+    cancelled.resolve()
+    await pending.page.waitForFunction(
+      (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) > received,
+      received,
+    )
+    await pending.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+    expect(await other.isVisible()).toBe(true)
+    expect(await focused.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(await pending.page.getByRole("dialog", { name: "Move conversation", exact: true }).count()).toBe(0)
+    expect(pending.errors).toEqual([])
+  } finally {
+    cancelled.resolve()
+    await pending.close()
   }
 }, 30_000)
 
@@ -694,7 +814,7 @@ test("a definite unsent preparation is re-inspected while an unavailable durable
     expect(bodies[0].handoffID).not.toBe(bodies[1].handoffID)
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
   const unavailable = await open({ denyStorage: true })
   try {
@@ -705,7 +825,7 @@ test("a definite unsent preparation is re-inspected while an unavailable durable
     expect(unavailable.requests.filter((request) => request.method === "POST")).toHaveLength(0)
     expect(unavailable.errors).toEqual([])
   } finally {
-    await unavailable.page.close()
+    await unavailable.close()
   }
 }, 30_000)
 
@@ -747,7 +867,7 @@ test("object storage mapping requires the actual authorized resource, dormant wo
     expect(await f.dialog.getByText("Project storage", { exact: true }).isVisible()).toBe(true)
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
 }, 30_000)
 
@@ -767,7 +887,7 @@ test("execute revocation retires only this move's confirmation and never release
     expect(f.requests.filter((request) => request.path.endsWith("/permit"))).toHaveLength(0)
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
 }, 30_000)
 
@@ -782,7 +902,7 @@ test("the compact conversation menu hands dialog focus back to its connected tri
     expect(await f.page.getByRole("button", { name: "Move conversation", exact: true }).count()).toBe(0)
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
 }, 30_000)
 
@@ -821,7 +941,7 @@ test("blocked native requirements page against the same revision and explicit re
     expect(attempts[1]).toEqual(attempts[0])
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
 }, 30_000)
 
@@ -864,7 +984,7 @@ test("a lost cancellation acknowledgement survives reload and needs explicit ori
     expect(f.changed).toBe(1)
     expect(f.errors).toEqual([])
   } finally {
-    await f.page.close()
+    await f.close()
   }
 }, 30_000)
 
@@ -887,17 +1007,10 @@ test("the real Chinese catalog keeps desktop and narrow light and dark move plan
       await f.page.locator('[role="listbox"]').waitFor({ state: "hidden" })
       await f.dialog.locator('button[data-variant="primary"]').click()
       await f.dialog.locator('h3[aria-live="polite"]').waitFor()
-      if (!variant.cloud) {
-        const acceptance = f.dialog.locator('button[data-variant="primary"]')
-        await acceptance.click()
-        await acceptance.waitFor({ state: "detached" })
-      }
-      const sourcePreparation = f.dialog.locator(".organization-handoff-actions").getByRole("button").first()
-      const sourceLabel = await sourcePreparation.innerText()
-      await sourcePreparation.click()
-      await f.dialog.getByRole("button", { name: sourceLabel, exact: true }).waitFor({ state: "detached" })
-      await f.dialog.locator(".organization-handoff-actions").getByRole("button").first().click()
-      await f.dialog.locator('.organization-handoff-actions button[data-variant="primary"]').waitFor()
+      if (!variant.cloud) await f.dialog.getByRole("button", { name: await f.copy("accept"), exact: true }).click()
+      await f.dialog.getByRole("button", { name: await f.copy("prepareSource"), exact: true }).click()
+      await f.dialog.getByRole("button", { name: await f.copy("prepareTarget"), exact: true }).click()
+      await f.dialog.getByRole("button", { name: await f.copy("surrender"), exact: true }).waitFor()
       expect(await f.dialog.locator('h3[aria-live="polite"]').innerText()).toMatch(/[\u3400-\u9fff]/)
       expect(await f.dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
       expect(
@@ -916,8 +1029,361 @@ test("the real Chinese catalog keeps desktop and narrow light and dark move plan
       expect(close && close.y >= 0 && close.y + close.height <= variant.viewport.height).toBe(true)
       expect(f.errors).toEqual([])
       await capture(f.page, `handoff-zh-${variant.viewport.width}-${variant.colorScheme}.png`)
+      if (variant.viewport.width === 375) {
+        const cancelLabel = await f.copy("cancel")
+        await f.dialog.getByRole("button", { name: cancelLabel, exact: true }).click()
+        await f.page
+          .getByRole("dialog", { name: cancelLabel, exact: true })
+          .getByRole("button", { name: cancelLabel, exact: true })
+          .click()
+        await f.page.getByRole("dialog", { name: cancelLabel, exact: true }).waitFor({ state: "detached" })
+        expect(await f.dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+        if (variant.colorScheme === "dark") {
+          const label = await f.copy("check")
+          const check = f.dialog.getByRole("button", { name: label, exact: true })
+          const inspections = () =>
+            f.requests.filter(
+              (request) =>
+                request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "inspect-source",
+            ).length
+          const before = inspections()
+          const received = await f.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+          await check.scrollIntoViewIfNeeded()
+          await check.click()
+          await f.page.waitForFunction(
+            (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) >= received + 3,
+            received,
+          )
+          await f.page.waitForFunction(
+            (label) =>
+              [...document.querySelectorAll("button")].some(
+                (button) => button.textContent?.trim() === label && !button.disabled,
+              ),
+            label,
+          )
+          expect(inspections()).toBe(before + 1)
+          expect(f.errors).toEqual([])
+        }
+        const finishLabel = await f.copy("finishCancel")
+        const finish = f.dialog.getByRole("button", { name: finishLabel, exact: true })
+        expect(
+          f.requests.filter(
+            (request) =>
+              request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "cancel-source",
+          ),
+        ).toHaveLength(0)
+        await finish.click()
+        const confirmation = f.page.getByRole("dialog", { name: finishLabel, exact: true })
+        await confirmation.waitFor()
+        expect(await confirmation.locator(".confirm-dialog-copy").innerText()).toMatch(/[\u3400-\u9fff]/)
+        const button = await confirmation.getByRole("button", { name: finishLabel, exact: true }).boundingBox()
+        expect(button && button.y >= 0 && button.y + button.height <= variant.viewport.height).toBe(true)
+        await capture(f.page, `handoff-cancel-zh-375-${variant.colorScheme}.png`)
+        await confirmation.getByRole("button", { name: finishLabel, exact: true }).click()
+        await confirmation.waitFor({ state: "detached" })
+        expect(await f.dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+        expect(f.errors).toEqual([])
+      }
     } finally {
-      await f.page.close()
+      await f.close()
     }
   }
 }, 45_000)
+
+test("an unrecoverable native dependency retains its original body beside a lost cancellation intent across reload", async () => {
+  const f = await open({ unrecoverable: true, drop: "cancel", dropCancelSource: true })
+  try {
+    await choose(f)
+    await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).click()
+    await f.dialog.getByRole("button", { name: "Accept this move", exact: true }).click()
+    await f.dialog.getByRole("button", { name: "Pause and prepare the source", exact: true }).click()
+    await f.dialog.getByText("First native requirement", { exact: true }).waitFor()
+    const original = Handoff.Drive.parse(
+      f.requests.find(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "prepare-source",
+      )!.body,
+    )
+    await f.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await f.dialog.getByText(/no confirmed outcome/).waitFor()
+    const persisted = await f.page.evaluate(
+      () => Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))?.[1],
+    )
+    const saved = JSON.parse(persisted!)
+    expect(saved.pending).toEqual({ kind: "drive", body: original })
+    expect(saved.cancellation).toEqual({ kind: "cancel" })
+    await f.page.reload()
+    await f.page.getByRole("button", { name: "Move conversation", exact: true }).click()
+    const dialog = f.page.getByRole("dialog", { name: "Move conversation", exact: true })
+    await dialog.getByRole("button", { name: "Confirm source cancellation", exact: true }).waitFor()
+    const native = () =>
+      f.requests
+        .filter((request) => request.path.endsWith("/drive"))
+        .map((request) => Handoff.Drive.parse(request.body))
+    expect(native().filter((request) => request.operation === "prepare-source")).toEqual([original])
+    expect(native().filter((request) => request.operation === "cancel-source")).toHaveLength(0)
+    expect(f.changed).toBe(0)
+    expect(await dialog.getByRole("button", { name: "Retry the same operation", exact: true }).count()).toBe(0)
+    await dialog.getByRole("button", { name: "Confirm source cancellation", exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: "Confirm source cancellation", exact: true })
+      .getByRole("button", { name: "Confirm source cancellation", exact: true })
+      .click()
+    await dialog.getByText(/no confirmed outcome/).waitFor()
+    const retained = await f.page.evaluate(
+      () => Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))?.[1],
+    )
+    const pending = JSON.parse(retained!)
+    const cancelBody = Handoff.Drive.parse(native().find((request) => request.operation === "cancel-source"))
+    expect(pending.pending).toEqual({ kind: "drive", body: original })
+    expect(pending.cancellation).toEqual({ kind: "drive", body: cancelBody })
+    expect(f.changed).toBe(0)
+    await f.page.reload()
+    await f.page.getByRole("button", { name: "Move conversation", exact: true }).click()
+    const restored = f.page.getByRole("dialog", { name: "Move conversation", exact: true })
+    await restored.getByText(/no confirmed outcome/).waitFor()
+    const received = await f.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+    await restored.getByRole("button", { name: "Check move status", exact: true }).click()
+    await f.page.waitForFunction(
+      (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) >= received + 3,
+      received,
+    )
+    await f.page.waitForFunction(() =>
+      [...document.querySelectorAll("button")].some(
+        (button) => button.textContent?.trim() === "Check move status" && !button.disabled,
+      ),
+    )
+    expect(await restored.getByRole("button", { name: "Retry the same operation", exact: true }).count()).toBe(0)
+    expect(native().some((request) => request.operation === "inspect-source")).toBe(true)
+    expect(native().filter((request) => request.operation === "cancel-source")).toEqual([cancelBody])
+    expect(f.changed).toBe(0)
+    f.finishCancellation()
+    await restored.getByRole("button", { name: "Check move status", exact: true }).click()
+    await restored.getByRole("heading", { name: "Move cancelled; source remains paused", exact: true }).waitFor()
+    expect(native().filter((request) => request.operation === "cancel-source")).toHaveLength(1)
+    expect(f.requests.filter((request) => request.path.endsWith("/cancel"))).toHaveLength(1)
+    expect(f.changed).toBe(1)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+
+  const unsent = await open({ unrecoverable: true, cancelResponses: ["not_dispatched"] })
+  try {
+    await choose(unsent)
+    await unsent.dialog.getByRole("button", { name: "Prepare move", exact: true }).click()
+    await unsent.dialog.getByRole("button", { name: "Accept this move", exact: true }).click()
+    await unsent.dialog.getByRole("button", { name: "Pause and prepare the source", exact: true }).click()
+    await unsent.dialog.getByText("First native requirement", { exact: true }).waitFor()
+    const original = Handoff.Drive.parse(
+      unsent.requests.find(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "prepare-source",
+      )!.body,
+    )
+    await unsent.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await unsent.page
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await unsent.page.getByRole("dialog", { name: "Cancel move", exact: true }).waitFor({ state: "detached" })
+    const saved = JSON.parse(
+      (await unsent.page.evaluate(
+        () => Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))?.[1],
+      ))!,
+    )
+    expect(saved.pending).toEqual({ kind: "drive", body: original })
+    expect(saved.cancellation).toBeUndefined()
+    expect(await unsent.dialog.getByRole("button", { name: "Cancel move", exact: true }).isEnabled()).toBe(true)
+    await unsent.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await unsent.page
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await unsent.dialog.getByRole("button", { name: "Confirm source cancellation", exact: true }).waitFor()
+    expect(unsent.requests.filter((request) => request.path.endsWith("/cancel"))).toHaveLength(2)
+    expect(
+      unsent.requests
+        .filter(
+          (request) =>
+            request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "prepare-source",
+        )
+        .map((request) => Handoff.Drive.parse(request.body)),
+    ).toEqual([original])
+    expect(unsent.errors).toEqual([])
+  } finally {
+    await unsent.close()
+  }
+  const raced = await open({ unrecoverable: true, cancelResponses: ["unknown"] })
+  let sibling: Page | undefined
+  try {
+    await choose(raced)
+    await raced.dialog.getByRole("button", { name: "Prepare move", exact: true }).click()
+    await raced.dialog.getByRole("button", { name: "Accept this move", exact: true }).click()
+    await raced.dialog.getByRole("button", { name: "Pause and prepare the source", exact: true }).click()
+    await raced.dialog.getByText("First native requirement", { exact: true }).waitFor()
+    const original = Handoff.Drive.parse(
+      raced.requests.find(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "prepare-source",
+      )!.body,
+    )
+    sibling = await raced.page.context().newPage()
+    sibling.setDefaultTimeout(5000)
+    await sibling.goto(raced.page.url())
+    await sibling.getByRole("button", { name: "Move conversation", exact: true }).click()
+    const other = sibling.getByRole("dialog", { name: "Move conversation", exact: true })
+    await other.getByRole("button", { name: "Cancel move", exact: true }).waitFor()
+    await raced.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await other.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await sibling
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await other.getByText(/no confirmed outcome/).waitFor()
+    await raced.page
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await raced.page.getByRole("dialog", { name: "Cancel move", exact: true }).waitFor({ state: "detached" })
+    const saved = JSON.parse(
+      (await raced.page.evaluate(
+        () => Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))?.[1],
+      ))!,
+    )
+    expect(saved.pending).toEqual({ kind: "drive", body: original })
+    expect(saved.cancellation).toEqual({ kind: "cancel" })
+    expect(await raced.dialog.getByRole("button", { name: "Cancel move", exact: true }).isDisabled()).toBe(true)
+    expect(raced.requests.filter((request) => request.path.endsWith("/cancel"))).toHaveLength(1)
+    expect(
+      raced.requests.some(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "inspect-source",
+      ),
+    ).toBe(true)
+    await raced.page.reload()
+    await raced.page.getByRole("button", { name: "Move conversation", exact: true }).click()
+    const restored = raced.page.getByRole("dialog", { name: "Move conversation", exact: true })
+    await restored.getByRole("button", { name: "Cancel move", exact: true }).waitFor()
+    expect(await restored.getByRole("button", { name: "Cancel move", exact: true }).isDisabled()).toBe(true)
+    expect(raced.requests.filter((request) => request.path.endsWith("/cancel"))).toHaveLength(1)
+    expect(raced.errors).toEqual([])
+  } finally {
+    await sibling?.close()
+    await raced.close()
+  }
+}, 30_000)
+
+test("an in-flight native preparation can be cancelled without a late reply replacing the cancelled owner", async () => {
+  const held = Promise.withResolvers<void>()
+  const f = await open({ holdNative: { operation: "prepare-source", pending: held.promise } })
+  try {
+    await choose(f)
+    await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).click()
+    await f.dialog.getByRole("button", { name: "Accept this move", exact: true }).click()
+    await f.dialog.getByRole("button", { name: "Pause and prepare the source", exact: true }).click()
+    await f.dialog.getByText("Updating this move…", { exact: true }).waitFor()
+    await f.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await f.dialog.getByRole("button", { name: "Confirm source cancellation", exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: "Confirm source cancellation", exact: true })
+      .getByRole("button", { name: "Confirm source cancellation", exact: true })
+      .click()
+    await f.dialog.getByRole("heading", { name: "Move cancelled; source remains paused", exact: true }).waitFor()
+    const received = await f.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+    held.resolve()
+    await f.page.waitForFunction(
+      (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) > received,
+      received,
+    )
+    expect(
+      await f.dialog.getByRole("heading", { name: "Move cancelled; source remains paused", exact: true }).isVisible(),
+    ).toBe(true)
+    expect(
+      f.requests.filter(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "prepare-source",
+      ),
+    ).toHaveLength(1)
+    expect(f.changed).toBe(1)
+    expect(f.errors).toEqual([])
+  } finally {
+    held.resolve()
+    await f.close()
+  }
+
+  const retried = await open({ cancelSourceResponses: ["blocked", "unknown"] })
+  try {
+    await prepare(retried)
+    await retried.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await retried.page
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await retried.dialog.getByRole("button", { name: "Confirm source cancellation", exact: true }).click()
+    await retried.page
+      .getByRole("dialog", { name: "Confirm source cancellation", exact: true })
+      .getByRole("button", { name: "Confirm source cancellation", exact: true })
+      .click()
+    await retried.dialog.getByText("The original cancellation dependency remains", { exact: true }).waitFor()
+    const before = JSON.parse(
+      (await retried.page.evaluate(
+        () => Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))?.[1],
+      ))!,
+    )
+    await retried.dialog.getByRole("button", { name: "Retry the same operation", exact: true }).click()
+    await retried.dialog.getByText(/no confirmed outcome/).waitFor()
+    const after = JSON.parse(
+      (await retried.page.evaluate(
+        () => Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))?.[1],
+      ))!,
+    )
+    expect(after.cancellation).toEqual(before.cancellation)
+    expect(after.cancellationNonce).toBe(before.cancellationNonce)
+    expect(await retried.dialog.getByRole("button", { name: "Retry the same operation", exact: true }).count()).toBe(0)
+    expect(await retried.dialog.getByRole("button", { name: "Check move status", exact: true }).isEnabled()).toBe(true)
+    expect(
+      retried.requests
+        .filter(
+          (request) =>
+            request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "cancel-source",
+        )
+        .map((request) => request.body),
+    ).toEqual([before.cancellation.body, before.cancellation.body])
+    expect(retried.errors).toEqual([])
+  } finally {
+    await retried.close()
+  }
+}, 30_000)
+
+test("a native surrender winning a cancellation race never sends cancellation to the surrendered source", async () => {
+  const f = await open({ surrenderOnCancel: true })
+  try {
+    await prepare(f)
+    await f.dialog.getByRole("button", { name: "Cancel move", exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: "Cancel move", exact: true })
+      .getByRole("button", { name: "Cancel move", exact: true })
+      .click()
+    await f.dialog.getByRole("button", { name: "Check move status", exact: true }).click()
+    await f.dialog.getByRole("heading", { name: "Source released; waiting to finish", exact: true }).waitFor()
+    expect(await f.dialog.getByRole("button", { name: "Cancel move", exact: true }).count()).toBe(0)
+    expect(
+      f.requests.filter(
+        (request) => request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "cancel-source",
+      ),
+    ).toHaveLength(0)
+    expect(f.requests.filter((request) => request.path.endsWith("/cancel"))).toHaveLength(1)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 30_000)

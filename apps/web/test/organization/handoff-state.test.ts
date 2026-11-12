@@ -58,6 +58,9 @@ test("a read cancellation intent acknowledges only its service request, includin
   expect(organizationHandoffOutcomeKnown({ kind: "cancel" }, { ...view, phase: "surrendered", canCancel: false })).toBe(
     true,
   )
+  const source = { kind: "drive" as const, body: { operation: "cancel-source" as const, requestID: "cancel" } }
+  expect(organizationHandoffOutcomeKnown(source, { ...view, cancelRequested: true })).toBe(false)
+  expect(organizationHandoffOutcomeKnown(source, { ...view, phase: "surrendered", canCancel: false })).toBe(true)
 })
 
 test("reload retains the exact pending body and another account or incarnation cannot claim it", () => {
@@ -89,4 +92,100 @@ test("reload retains the exact pending body and another account or incarnation c
   expect(reloaded.read()?.pending).toBeUndefined()
   reloaded.clear(prepare.handoffID)
   expect(reloaded.read()).toBeUndefined()
+})
+
+test("cancellation retains an unresolved native request through reload and acknowledges each original slot independently", () => {
+  const values = new Map<string, string>()
+  const input = {
+    storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
+    },
+    owner: '["organization","org","account","inc"]',
+    projectID: "project",
+    sessionID: "session",
+  }
+  const native = {
+    kind: "drive" as const,
+    body: { operation: "prepare-source" as const, requestID: "original-native" },
+  }
+  const state = createOrganizationHandoffState(input)
+  state.save(prepare.handoffID, native)
+  state.cancel(prepare.handoffID, { kind: "cancel" })
+  const reloaded = createOrganizationHandoffState(input)
+  expect(reloaded.read()?.pending).toEqual(native)
+  expect(reloaded.read()?.cancellation).toEqual({ kind: "cancel" })
+  expect(() => reloaded.cancel("another-move", { kind: "cancel" })).toThrow("original")
+  reloaded.cancelConfirmed(prepare.handoffID)
+  expect(reloaded.read()?.pending).toEqual(native)
+  expect(reloaded.read()?.cancellation).toBeUndefined()
+  const cancel = { kind: "drive" as const, body: { operation: "cancel-source" as const, requestID: "original-cancel" } }
+  reloaded.cancel(prepare.handoffID, cancel)
+  expect(
+    reloaded.cancel(prepare.handoffID, { ...cancel, body: { ...cancel.body, requestID: "replacement-cancel" } })
+      .accepted,
+  ).toBe(false)
+  reloaded.confirmed(prepare.handoffID)
+  expect(reloaded.read()?.pending).toBeUndefined()
+  expect(reloaded.read()?.cancellation).toEqual(cancel)
+  expect(() => reloaded.save("another-move")).toThrow("original")
+  expect(
+    createOrganizationHandoffState({ ...input, owner: '["organization","org","account","new-inc"]' }).read(),
+  ).toBeUndefined()
+  expect([...values.values()].join()).not.toContain("signature")
+  const [key, raw] = [...values.entries()][0]
+  values.set(key, JSON.stringify({ ...JSON.parse(raw), cancellation: { ...cancel, signature: "private-proof" } }))
+  expect(() => reloaded.read()).toThrow()
+  values.set(key, raw)
+  reloaded.cancelConfirmed(prepare.handoffID)
+  reloaded.clear(prepare.handoffID)
+  expect(reloaded.read()).toBeUndefined()
+})
+
+test("an unsent cancellation reply cannot clear a newer or legacy unknown intent", () => {
+  const values = new Map<string, string>()
+  const input = {
+    storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
+    },
+    owner: '["organization","org","account","inc"]',
+    projectID: "project",
+    sessionID: "session",
+  }
+  const state = createOrganizationHandoffState(input)
+  const native = {
+    kind: "drive" as const,
+    body: { operation: "prepare-source" as const, requestID: "original-native" },
+  }
+  state.save(prepare.handoffID, native)
+  const first = state.cancel(prepare.handoffID, { kind: "cancel" })
+  expect(first.accepted).toBe(true)
+  if (!first.accepted) throw new Error("No first cancellation identity")
+  expect(state.cancel(prepare.handoffID, { kind: "cancel" }).accepted).toBe(false)
+  expect(state.cancel(prepare.handoffID, { kind: "cancel" }, first.nonce).accepted).toBe(false)
+  state.cancelUnsent(prepare.handoffID, first.nonce)
+  expect(state.read()?.cancellation).toBeUndefined()
+  expect(state.read()?.pending).toEqual(native)
+  const later = state.cancel(prepare.handoffID, { kind: "cancel" })
+  expect(later.accepted).toBe(true)
+  if (!later.accepted) throw new Error("No later cancellation identity")
+  expect(later.nonce).not.toBe(first.nonce)
+  expect(state.cancelUnsent(prepare.handoffID, first.nonce)?.cancellationNonce).toBe(later.nonce)
+  expect(state.read()?.pending).toEqual(native)
+  const [key, raw] = [...values.entries()][0]
+  const legacy = JSON.parse(raw)
+  delete legacy.cancellationNonce
+  values.set(key, JSON.stringify(legacy))
+  const before = values.get(key)
+  const reloaded = createOrganizationHandoffState(input)
+  const retained = reloaded.cancel(prepare.handoffID, { kind: "cancel" })
+  expect(retained.accepted).toBe(false)
+  expect(retained.retained).toBe(true)
+  expect(retained.saved.cancellationNonce).toBeUndefined()
+  reloaded.cancelUnsent(prepare.handoffID, later.nonce)
+  expect(values.get(key)).toBe(before)
+  expect(reloaded.read()?.pending).toEqual(native)
 })

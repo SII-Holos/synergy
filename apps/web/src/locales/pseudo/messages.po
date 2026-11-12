@@ -13705,6 +13705,10 @@ msgid "organization.handoff.finishCancel"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.finishCancelHint"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.folder"
 msgstr ""
 

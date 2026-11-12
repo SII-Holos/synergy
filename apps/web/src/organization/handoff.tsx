@@ -28,6 +28,7 @@ import {
   organizationHandoffMachineKnown,
   organizationHandoffOutcomeKnown,
   type OrganizationHandoffAction,
+  type OrganizationHandoffCancellation,
   type OrganizationHandoffSaved,
 } from "./handoff-state"
 import "./handoff.css"
@@ -105,6 +106,7 @@ export function OrganizationHandoff(props: { session: Session.View; changed: () 
 
 export function OrganizationHandoffDialog(props: { session: Session.View; changed: () => void; close: () => void }) {
   const { _, i18n } = useLingui()
+  const dialog = useDialog()
   const space = useSpace()
   const api = space.client()!
   const owner = space.current()!
@@ -128,6 +130,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     view?: Handoff.View
     preview?: Handoff.Options
     machine?: Handoff.MachineResult
+    cancellationMachine?: Handoff.MachineResult
   }>({ runtimes: [], history: [], resources: [], workspaces: [] })
   const [saved, setSaved] = createSignal<OrganizationHandoffSaved>()
   const [destination, setDestination] = createSignal("")
@@ -140,6 +143,8 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   const [resourceCursor, setResourceCursor] = createSignal<string>()
   const [workspaceCursor, setWorkspaceCursor] = createSignal<string>()
   const [busy, setBusy] = createSignal(false)
+  const [cancelling, setCancelling] = createSignal(false)
+  const [inspecting, setInspecting] = createSignal(false)
   const [listing, setListing] = createSignal(false)
   const [checking, setChecking] = createSignal(false)
   const [resourcesLoading, setResourcesLoading] = createSignal(false)
@@ -164,8 +169,11 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     space.connection()?.account.state === "active" &&
     space.connection()?.orgID === orgID &&
     space.connection()?.deploymentIncarnation === incarnation
-  const allowed = () => current() && !busy() && !storageFailed() && !accessLost() && props.session.permissions.execute
+  const actionable = () => current() && !storageFailed() && !accessLost() && props.session.permissions.execute
+  const allowed = () =>
+    actionable() && !busy() && !cancelling() && !inspecting() && !cancellation() && !state.view?.cancelRequested
   const pending = () => saved()?.pending
+  const cancellation = () => saved()?.cancellation
   const sourceOwner = () =>
     props.session.runtime?.runtimeKind === "member"
       ? props.session.runtime.ownerID === accountID
@@ -208,6 +216,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       if (previous !== id) {
         handoffRevision++
         setState("machine", undefined)
+        setState("cancellationMachine", undefined)
         setRetryable(false)
       }
       setSaved(value)
@@ -221,6 +230,14 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     try {
       if (saved()?.handoffID === id) setSaved(recovery.confirmed(id))
       setRetryable(false)
+    } catch (error) {
+      setStorageFailed(true)
+      throw error
+    }
+  }
+  function cancellationConfirmed(id: string) {
+    try {
+      if (saved()?.handoffID === id) setSaved(recovery.cancelConfirmed(id))
     } catch (error) {
       setStorageFailed(true)
       throw error
@@ -247,6 +264,8 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     )
       throw new Error("Handoff returned another original plan")
     if (action && organizationHandoffOutcomeKnown(action, view)) confirmed(view.handoffID)
+    const cancelled = cancellation()
+    if (cancelled && organizationHandoffOutcomeKnown(cancelled, view)) cancellationConfirmed(view.handoffID)
     setState("view", reconcile(view))
     if (terminal(view)) {
       try {
@@ -459,13 +478,14 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       failure(error)
       return false
     }
+    const revision = handoffRevision
     setBusy(true)
     setError(undefined)
     setRetryable(false)
     try {
       if (action.kind === "drive") {
         const response = await api.orgHandoff.drive({ handoffID: id, orgHandoffDrive: action.body }, options)
-        if (!current()) return false
+        if (!current() || revision !== handoffRevision) return false
         const result = Handoff.MachineResult.parse(response.data)
         const runtimeID = action.body.operation.endsWith("-source")
           ? state.view?.sourceRuntimeID
@@ -485,7 +505,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       }
       if (action.kind === "permit") {
         const response = await api.orgHandoff.permit({ handoffID: id, orgHandoffPermitRequest: action.body }, options)
-        if (!current()) return false
+        if (!current() || revision !== handoffRevision) return false
         const result = Handoff.SignedPermit.parse(response.data).permit
         if (
           result.handoffID !== id ||
@@ -507,13 +527,14 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
             : action.kind === "commit"
               ? await api.orgHandoff.commit({ handoffID: id, body: {} }, options)
               : await api.orgHandoff.cancel({ handoffID: id, body: {} }, options)
-      if (!current()) return false
+      if (!current() || revision !== handoffRevision) return false
       acceptView(response.data)
       if (saved()?.handoffID === id) confirmed(id)
       return true
     } catch (error) {
       if (
         current() &&
+        revision === handoffRevision &&
         !retained &&
         action.kind !== "drive" &&
         error &&
@@ -532,10 +553,74 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
           failure(error)
         }
       }
-      failure(error)
+      if (revision === handoffRevision) failure(error)
       return false
     } finally {
       if (current()) setBusy(false)
+    }
+  }
+  async function performCancellation(action: OrganizationHandoffCancellation, id: string, retry?: string) {
+    if (!actionable() || cancelling() || !state.view?.canCancel || state.view.handoffID !== id || !sourceCanDrive())
+      return
+    let attempt: ReturnType<typeof recovery.cancel>
+    try {
+      attempt = recovery.cancel(id, action, retry)
+      setSaved(attempt.saved)
+    } catch (error) {
+      setStorageFailed(true)
+      failure(error)
+      return
+    }
+    if (!attempt.accepted) {
+      handoffRevision++
+      await check()
+      return
+    }
+    const revision = ++handoffRevision
+    setState("cancellationMachine", undefined)
+    setCancelling(true)
+    setError(undefined)
+    try {
+      if (action.kind === "cancel") {
+        const result = await api.orgHandoff.cancel({ handoffID: id, body: {} }, options)
+        if (current() && revision === handoffRevision) acceptView(result.data)
+        return
+      }
+      const response = await api.orgHandoff.drive({ handoffID: id, orgHandoffDrive: action.body }, options)
+      if (!current() || revision !== handoffRevision) return
+      const result = Handoff.MachineResult.parse(response.data)
+      if (
+        result.handoffID !== id ||
+        result.requestID !== action.body.requestID ||
+        result.operation !== action.body.operation ||
+        result.runtimeID !== state.view?.sourceRuntimeID
+      )
+        throw new Error("Handoff cancellation returned another participant")
+      setState("cancellationMachine", reconcile(result))
+      if (organizationHandoffMachineKnown(action, result)) cancellationConfirmed(id)
+      await refresh()
+    } catch (error) {
+      if (
+        current() &&
+        revision === handoffRevision &&
+        !attempt.retained &&
+        action.kind === "cancel" &&
+        error &&
+        typeof error === "object" &&
+        "outcome" in error &&
+        error.outcome === "not_dispatched"
+      ) {
+        try {
+          const saved = recovery.cancelUnsent(id, attempt.nonce)
+          if (saved?.handoffID === id) setSaved(saved)
+        } catch (error) {
+          setStorageFailed(true)
+          failure(error)
+        }
+      }
+      if (revision === handoffRevision) failure(error)
+    } finally {
+      if (current()) setCancelling(false)
     }
   }
   function drive(operation: Handoff.Drive["operation"]) {
@@ -556,23 +641,29 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     }
   }
   async function check(cursor?: string) {
-    if (busy() || !current()) return
-    setBusy(true)
+    if (inspecting() || cancelling() || !current()) return
+    const inspection = handoffRevision
+    setInspecting(true)
     setError(undefined)
     try {
       const view = await refresh()
-      if (!current() || !view || terminal(view)) return
-      const original = pending()
-      if (original?.kind !== "drive" && original?.kind !== "cancel") return
-      const role = original.kind === "cancel" || original.body.operation.endsWith("-source") ? "source" : "target"
-      const revision = state.machine?.revision
+      if (!current() || inspection !== handoffRevision || !view || terminal(view)) return
+      const original = cancellation() ?? pending()
+      if (original?.kind !== "drive" && original?.kind !== "cancel" && !view.cancelRequested) return
+      const role =
+        view.cancelRequested ||
+        original?.kind === "cancel" ||
+        (original?.kind === "drive" && original.body.operation.endsWith("-source"))
+          ? "source"
+          : "target"
+      const revision = machine()?.revision
       const request = {
         requestID: generateSecureUUID(),
         operation: role === "source" ? ("inspect-source" as const) : ("inspect-target" as const),
         ...(cursor && revision ? { cursor, expectedRevision: revision } : {}),
       }
       const response = await api.orgHandoff.drive({ handoffID: view.handoffID, orgHandoffDrive: request }, options)
-      if (!current()) return
+      if (!current() || inspection !== handoffRevision) return
       const result = Handoff.MachineResult.parse(response.data)
       if (
         result.handoffID !== view.handoffID ||
@@ -582,14 +673,20 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       )
         throw new Error("Handoff inspection returned another participant")
       if (cursor && result.revision !== revision) throw { code: "REVISION_CONFLICT" }
-      setState("machine", reconcile(result))
-      setRetryable(result.state === "blocked")
-      if (organizationHandoffMachineKnown(original, result)) confirmed(view.handoffID)
+      const cancel = cancellation()
+      if (view.cancelRequested || cancel) setState("cancellationMachine", reconcile(result))
+      else {
+        setState("machine", reconcile(result))
+        setRetryable(result.state === "blocked")
+      }
+      if (cancel && organizationHandoffMachineKnown(cancel, result)) cancellationConfirmed(view.handoffID)
+      const native = pending()
+      if (native && organizationHandoffMachineKnown(native, result)) confirmed(view.handoffID)
       await refresh()
     } catch (error) {
-      failure(error)
+      if (inspection === handoffRevision) failure(error)
     } finally {
-      if (current()) setBusy(false)
+      if (current()) setInspecting(false)
     }
   }
   async function begin() {
@@ -633,18 +730,42 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       },
     })
   }
-  function cancel() {
+  function cancel(trigger: HTMLButtonElement) {
     const captured = state.view
-    if (!captured?.canCancel || !allowed() || pending()) return
+    if (!captured?.canCancel || !actionable() || cancelling() || cancellation() || !sourceCanDrive()) return
+    const parent = dialog.active?.id
+    if (!parent) return
+    const source = captured.cancelRequested
+    trigger.focus({ preventScroll: true })
     confirm.show({
-      title: captured.cancelRequested ? messages.finishCancel : messages.cancel,
-      description: messages.cancelHint,
-      confirmLabel: captured.cancelRequested ? messages.finishCancel : messages.cancel,
+      title: source ? messages.finishCancel : messages.cancel,
+      description: source ? messages.finishCancelHint : messages.cancelHint,
+      confirmLabel: source ? messages.finishCancel : messages.cancel,
       tone: "warning",
+      onConfirmed() {
+        if (!current() || state.view?.handoffID !== captured.handoffID || dialog.active?.id !== parent) return
+        const target = trigger.isConnected && !trigger.disabled ? trigger : first
+        target?.focus({ preventScroll: true })
+      },
       async onConfirm() {
-        if (!allowed() || state.view?.handoffID !== captured.handoffID || !state.view.canCancel) return
-        if (state.view.cancelRequested || (await perform({ kind: "cancel" }, captured.handoffID)))
-          await drive("cancel-source")
+        if (
+          !actionable() ||
+          cancelling() ||
+          state.view?.handoffID !== captured.handoffID ||
+          !state.view.canCancel ||
+          state.view.cancelRequested !== source ||
+          cancellation()
+        )
+          return
+        await performCancellation(
+          source
+            ? {
+                kind: "drive",
+                body: { operation: "cancel-source", requestID: generateSecureUUID() },
+              }
+            : { kind: "cancel" },
+          captured.handoffID,
+        )
       },
     })
   }
@@ -713,15 +834,16 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   })
   const phase = () =>
     state.view?.phase === "activation_permitted" ? messages.committed : messages[state.view?.phase ?? "preparing"]
+  const machine = () => (state.view?.cancelRequested || cancellation() ? state.cancellationMachine : state.machine)
   const requirements = () => {
     const action = pending()
     if (
       state.view?.cancelRequested &&
-      state.machine?.operation !== "cancel-source" &&
+      machine()?.operation !== "cancel-source" &&
       !(action?.kind === "drive" && action.body.operation === "cancel-source")
     )
       return []
-    return state.machine?.requirements.length ? state.machine.requirements : (state.view?.missingRequirements ?? [])
+    return machine()?.requirements.length ? machine()!.requirements : (state.view?.missingRequirements ?? [])
   }
   const sourceMissing = () =>
     state.view?.missingRequirements.some((requirement) => requirement.code === "source_freeze")
@@ -997,12 +1119,16 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                   </For>
                 </ul>
               </Show>
-              <Show when={requirements().length && state.machine?.requirementsCursor}>
-                <Button variant="ghost" disabled={busy()} onClick={() => void check(state.machine?.requirementsCursor)}>
+              <Show when={requirements().length && machine()?.requirementsCursor}>
+                <Button
+                  variant="ghost"
+                  disabled={inspecting() || cancelling()}
+                  onClick={() => void check(machine()?.requirementsCursor)}
+                >
                   {_(messages.moreRequirements)}
                 </Button>
               </Show>
-              <Show when={state.machine?.progress}>
+              <Show when={machine()?.progress}>
                 {(progress) => (
                   <p>
                     {_({
@@ -1087,11 +1213,6 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                         {_(messages.activate)}
                       </Button>
                     </Show>
-                    <Show when={view().canCancel}>
-                      <Button variant="ghost" disabled={!allowed()} onClick={cancel}>
-                        {_(view().cancelRequested ? messages.finishCancel : messages.cancel)}
-                      </Button>
-                    </Show>
                     <Show
                       when={
                         ["surrendered", "committed", "activation_permitted"].includes(view().phase) &&
@@ -1103,13 +1224,42 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                         {_(messages.retire)}
                       </Button>
                     </Show>
+                    <Show when={view().canCancel && sourceCanDrive()}>
+                      <Button
+                        variant="ghost"
+                        disabled={!actionable() || cancelling() || !!cancellation()}
+                        onClick={(event: MouseEvent & { currentTarget: HTMLButtonElement }) =>
+                          cancel(event.currentTarget)
+                        }
+                      >
+                        {_(view().cancelRequested ? messages.finishCancel : messages.cancel)}
+                      </Button>
+                    </Show>
                   </div>
                 }
               >
-                <p role="status">{_(busy() ? messages.working : retryable() ? messages.blocked : messages.unknown)}</p>
+                <Show when={!view().cancelRequested && !cancellation()}>
+                  <p role="status">
+                    {_(busy() ? messages.working : retryable() ? messages.blocked : messages.unknown)}
+                  </p>
+                </Show>
+              </Show>
+              <Show when={pending() && view().canCancel && sourceCanDrive()}>
+                <div class="organization-handoff-actions">
+                  <Button
+                    variant="ghost"
+                    disabled={!actionable() || cancelling() || !!cancellation()}
+                    onClick={(event: MouseEvent & { currentTarget: HTMLButtonElement }) => cancel(event.currentTarget)}
+                  >
+                    {_(view().cancelRequested ? messages.finishCancel : messages.cancel)}
+                  </Button>
+                </div>
+              </Show>
+              <Show when={cancellation()}>
+                <p role="status">{_(cancelling() ? messages.working : messages.unknown)}</p>
               </Show>
               <Show when={!terminal(view())}>
-                <Button variant="ghost" disabled={busy()} onClick={() => void check()}>
+                <Button variant="ghost" disabled={inspecting() || cancelling()} onClick={() => void check()}>
                   {_(messages.check)}
                 </Button>
               </Show>
@@ -1122,7 +1272,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
             {_(messages.check)}
           </Button>
         </Show>
-        <Show when={pending()?.kind === "permit"}>
+        <Show when={pending()?.kind === "permit" && !cancellation() && !state.view?.cancelRequested}>
           <p>{_(messages.retryPermitHint)}</p>
           <Button
             disabled={!allowed()}
@@ -1134,12 +1284,30 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
             {_(messages.retryPermit)}
           </Button>
         </Show>
-        <Show when={retryable() && pending()?.kind === "drive"}>
+        <Show when={retryable() && pending()?.kind === "drive" && !cancellation() && !state.view?.cancelRequested}>
           <Button
             disabled={!allowed()}
             onClick={() => {
               const action = pending()
               if (action?.kind === "drive") void perform(action)
+            }}
+          >
+            {_(messages.retryOperation)}
+          </Button>
+        </Show>
+        <Show
+          when={
+            cancellation()?.kind === "drive" &&
+            state.cancellationMachine?.operation === "cancel-source" &&
+            state.cancellationMachine.state === "blocked"
+          }
+        >
+          <Button
+            disabled={!actionable() || cancelling()}
+            onClick={() => {
+              const action = cancellation()
+              const id = saved()?.handoffID
+              if (action?.kind === "drive" && id) void performCancellation(action, id, saved()?.cancellationNonce)
             }}
           >
             {_(messages.retryOperation)}
@@ -1153,7 +1321,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
               {(view) => (
                 <Button
                   variant="ghost"
-                  disabled={busy() || !!pending()}
+                  disabled={busy() || cancelling() || inspecting() || !!pending() || !!cancellation()}
                   onClick={() => {
                     try {
                       retain(view.handoffID)

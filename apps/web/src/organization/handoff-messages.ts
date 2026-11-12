@@ -93,7 +93,12 @@ export const organizationHandoffMessages = {
   cancelHint: {
     id: "organization.handoff.cancelHint",
     message:
-      "Cancel preparation and keep the conversation paused on its source. Wait for the source's confirmation before resuming work.",
+      "Request cancellation of this move. The source stays paused until you separately confirm source cancellation.",
+  },
+  finishCancelHint: {
+    id: "organization.handoff.finishCancelHint",
+    message:
+      "Stop the original preparation and confirm cancellation on its source. The conversation will remain paused.",
   },
   retire: { id: "organization.handoff.retire", message: "Retire destination copy" },
   retireHint: {

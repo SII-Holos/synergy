@@ -13642,7 +13642,7 @@ msgstr "Cancel move"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.cancelHint"
-msgstr "Cancel preparation and keep the conversation paused on its source. Wait for the source's confirmation before resuming work."
+msgstr "Request cancellation of this move. The source stays paused until you separately confirm source cancellation."
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.cancelled"
@@ -13703,6 +13703,10 @@ msgstr "Destination"
 #. js-lingui-explicit-id
 msgid "organization.handoff.finishCancel"
 msgstr "Confirm source cancellation"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.finishCancelHint"
+msgstr "Stop the original preparation and confirm cancellation on its source. The conversation will remain paused."
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.folder"
