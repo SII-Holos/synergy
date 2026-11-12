@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomic-write"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -22,6 +23,10 @@ import { OrganizationStoragePath as Keys } from "../../src/storage/path"
 import { openOrganizationRecovery, openOrganizationSourceRetirement } from "../../src/service"
 import { OrganizationSourceRetirement as Retirement } from "../../src/backup/source-retirement"
 import * as Signing from "../../src/signing"
+import { openOrganizationService } from "../../src/service"
+import { ORGANIZATION_CONFIG_FILENAME } from "../../src/config-schema"
+import { OrganizationIdentity } from "@ericsanchezok/synergy-organization-protocol"
+import { authenticateHuman } from "../../src/auth/session"
 import { fixture as organizationFixture, password } from "../support/organization"
 
 const hash = (value: unknown) =>
@@ -57,12 +62,25 @@ let snapshot: StorageCheckpoint.Manifest
 let h0: Awaited<ReturnType<typeof AuthorityJournal.head>>
 let h1: typeof h0
 
-async function captureFixture() {
+async function captureFixture(change: "password" | "project" = "password") {
   const directory = await fs.realpath(
     await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "recovery-authority-")),
   )
   const source = await organizationFixture(undefined, { clientAuthentication: { clients } })
   const owner = await source.initialize()
+  const login = await source.service.fetch(
+    new Request("https://organization.example/org/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://organization.example" },
+      body: JSON.stringify({ loginName: "owner", password }),
+    }),
+  )
+  expect(login.status).toBe(200)
+  const cookie = login.headers.get("set-cookie")?.split(";")[0]
+  if (!cookie) throw new Error("The original service did not retain its actual login cookie")
+  const payload = Buffer.from("Canonical service-only recovery bytes")
+  const payloadKey = ["organization", "recovery-proof", "bytes"]
+  if (change === "project") await source.service.maintenance.run(() => Storage.writeBinary(payloadKey, payload))
   const encrypted = path.join(directory, "encrypted")
   const report = await Cohort.capture({
     service: Cohort.service(source.service.maintenance),
@@ -82,11 +100,27 @@ async function captureFixture() {
     },
   })
   const h0 = await source.service.maintenance.run(() => AuthorityJournal.head())
-  const changed = await owner.request("POST", "/auth/password", {
-    currentPassword: password,
-    password: "new source password after checkpoint",
-  })
+  const changed =
+    change === "password"
+      ? await owner.request("POST", "/auth/password", {
+          currentPassword: password,
+          password: "new source password after checkpoint",
+        })
+      : await owner.request("POST", "/projects", { name: "Current policy project" })
   expect(changed.status).toBe(200)
+  const project = change === "project" ? OrganizationIdentity.ProjectView.parse(await changed.json()) : undefined
+  if (change === "project") {
+    const config = path.join(source.service.home, ".synergy", "config", "synergy.d", ORGANIZATION_CONFIG_FILENAME)
+    await fs.mkdir(path.dirname(config), { recursive: true })
+    await fs.writeFile(
+      config,
+      JSON.stringify({
+        organization: {
+          clientAuthentication: { clients: [{ ...clients[0], clientID: "not-the-effective-runtime-client" }] },
+        },
+      }),
+    )
+  }
   const h1 = await source.service.maintenance.run(() => AuthorityJournal.head())
   const opened = path.join(directory, "opened")
   await Archive.open({ directory: encrypted, outputDirectory: opened, keys: sourceKeys })
@@ -112,7 +146,18 @@ async function captureFixture() {
       },
     }),
   }
-  return { directory, source, input, snapshot, h0, h1 }
+  return {
+    directory,
+    source,
+    input,
+    snapshot,
+    h0,
+    h1,
+    cookie,
+    project,
+    payloadKey,
+    payloadHash: createHash("sha256").update(payload).digest("hex"),
+  }
 }
 beforeAll(async () => {
   const captured = await captureFixture()
@@ -447,7 +492,7 @@ test("the original H0 target adopts the real H1 private policy only after its cu
 }, 20_000)
 
 test("closed source and target callbacks reconstruct fixed H1 policy cold without replacing inactive material", async () => {
-  const captured = await captureFixture()
+  const captured = await captureFixture("project")
   const finalDirectory = path.join(captured.directory, "final-policy")
   let coldSource: Awaited<ReturnType<typeof openOrganizationSourceRetirement>> | undefined
   try {
@@ -473,7 +518,8 @@ test("closed source and target callbacks reconstruct fixed H1 policy cold withou
         const material = await fs.readFile(materialFile)
         const accountID = Record.Info.parse(await Storage.read(Keys.info())).owners[0]
         if (!accountID) throw new Error("The original target has no owner")
-        const account = await captured.source.service.maintenance.run(() => Storage.read(Keys.account(accountID)))
+        const factKey = captured.project ? Keys.project(captured.project.projectID) : Keys.account(accountID)
+        const account = await captured.source.service.maintenance.run(() => Storage.read(factKey))
         const reference = await captured.source.service.maintenance.run(async () => {
           const lease = await RuntimeMaintenance.begin({
             purpose: "organization-backup",
@@ -497,7 +543,7 @@ test("closed source and target callbacks reconstruct fixed H1 policy cold withou
           )
         })
         expect(await AuthorityJournal.head()).toEqual(captured.h0)
-        return { reference, info, materialFile, material, accountID, account }
+        return { reference, info, materialFile, material, accountID, account, factKey }
       },
       true,
       captured,
@@ -629,7 +675,7 @@ test("closed source and target callbacks reconstruct fixed H1 policy cold withou
             await accepted.work
           }
           expect(await AuthorityJournal.head()).toEqual(captured.h0)
-          expect(await Storage.read(Keys.account(original.accountID))).not.toEqual(original.account)
+          expect((await Storage.readMany([original.factKey]))[0]).not.toEqual(original.account)
           boundary.mockRestore()
           coldSource = await openOrganizationSourceRetirement({
             home: captured.source.service.home,
@@ -641,7 +687,7 @@ test("closed source and target callbacks reconstruct fixed H1 policy cold withou
             Recovery.reconstructCold({ source: resumedPhysical, target: selected, namespace, native, keys: readKeys }),
           )
           expect(await AuthorityJournal.head()).toEqual(captured.h1)
-          expect(await Storage.read(Keys.account(original.accountID))).toEqual(original.account)
+          expect(await Storage.read(original.factKey)).toEqual(original.account)
           return receipt
         })
       },
@@ -706,12 +752,259 @@ test("closed source and target callbacks reconstruct fixed H1 policy cold withou
         } finally {
           await fs.rename(original.materialFile + ".missing", original.materialFile)
         }
+        const token = captured.cookie.split("=").slice(1).join("=")
+        expect((await authenticateHuman({ token })).account.accountID).toBe(original.accountID)
+        const publicationKey = ["organization-recovery", "publication", original.info.reference.installationID]
+        const cancelled = new AbortController()
+        const reason = new Error("Fresh authority publication cancelled after the actual last write")
+        const actualWrite = StoreTransaction.prototype.write
+        using lastPublication = spyOn(StoreTransaction.prototype, "write").mockImplementation(async function (
+          this: StoreTransaction,
+          ...args: Parameters<StoreTransaction["write"]>
+        ) {
+          await actualWrite.apply(this, args)
+          if (JSON.stringify(args[0]) === JSON.stringify(publicationKey)) cancelled.abort(reason)
+        })
+        await expect(
+          Recovery.withTarget({ ...context, prepared, request: captured.input.request }, (selected) =>
+            secondSource.run(() =>
+              Recovery.publishServiceOnly({
+                source: reopenedPhysical,
+                target: selected,
+                namespace,
+                native,
+                keys: readKeys,
+                publicOrigin: "https://recovered.example",
+                signal: cancelled.signal,
+              }),
+            ),
+          ),
+        ).rejects.toBe(reason)
+        expect((await Storage.readMany([publicationKey]))[0]).toBeUndefined()
+        expect((await authenticateHuman({ token })).account.accountID).toBe(original.accountID)
+        expect(await fs.readFile(original.materialFile)).toEqual(original.material)
+        lastPublication.mockRestore()
+        const observer = new AbortController()
+        await Recovery.withTarget({ ...context, prepared, request: captured.input.request }, async (selected) => {
+          const input = {
+            source: reopenedPhysical,
+            target: selected,
+            namespace,
+            native,
+            keys: readKeys,
+            publicOrigin: "https://recovered.example",
+            signal: observer.signal,
+          }
+          const publication = await secondSource.run(() => Recovery.publishServiceOnly(input))
+          expect(await secondSource.run(() => Recovery.publishServiceOnly(input))).toEqual(publication)
+        })
+        observer.abort(new Error("Original publication observer has left after commit"))
       },
       false,
       captured,
     )
     expect(generation).toHaveBeenCalledTimes(0)
     expect(freshKeyRequests).toBe(0)
+    await secondSource.close()
+    const swappingCompletion = await openOrganizationRecovery({ home: path.join(captured.directory, "cold-target") })
+    const root = path.join(captured.directory, "cold-target", ".synergy")
+    const retainedRoot = root + ".before-settings"
+    const config = path.join(root, "config", "synergy.d", ORGANIZATION_CONFIG_FILENAME)
+    const sentinel = JSON.stringify({ organization: { connections: { heartbeatMs: 16000, offlineMs: 64000 } } })
+    const writeSettings = FileAtomicWrite.write
+    let moved = false
+    let replacementValue: string | undefined
+    const verifyPublication = HomeRestoration.verifyPublication
+    using restoreAfterActualRefusal = spyOn(HomeRestoration, "verifyPublication").mockImplementation(
+      async (...args: Parameters<typeof HomeRestoration.verifyPublication>) => {
+        try {
+          return await verifyPublication(...args)
+        } catch (error) {
+          if (moved) {
+            replacementValue = await fs.readFile(config, "utf8")
+            await fs.rm(root, { recursive: true, force: true })
+            await fs.rename(retainedRoot, root)
+            moved = false
+          }
+          throw error
+        }
+      },
+    )
+    using swapConfigRoot = spyOn(FileAtomicWrite, "write").mockImplementation(
+      async (...args: Parameters<typeof FileAtomicWrite.write>) => {
+        if (args[1].at(-1) === ORGANIZATION_CONFIG_FILENAME && !moved) {
+          await fs.rename(root, retainedRoot)
+          moved = true
+          await fs.mkdir(path.dirname(config), { recursive: true })
+          await fs.writeFile(config, sentinel)
+        }
+        return writeSettings(...args)
+      },
+    )
+    try {
+      await expect(
+        swappingCompletion.run(() => Recovery.completeServicePublication(original.info.reference.installationID)),
+      ).rejects.toThrow(/Installation target native identity/)
+      expect(replacementValue).toBe(sentinel)
+    } finally {
+      swapConfigRoot.mockRestore()
+      restoreAfterActualRefusal.mockRestore()
+      if (moved) {
+        await fs.rm(root, { recursive: true, force: true })
+        await fs.rename(retainedRoot, root)
+      }
+      await swappingCompletion.close().catch(() => {})
+    }
+    const failedCompletion = await openOrganizationRecovery({ home: path.join(captured.directory, "cold-target") })
+    const lostSettingsReply = new Error("Current native settings were written but acknowledgement was lost")
+    const publishSettings = FileAtomicWrite.write
+    using lostNativeReply = spyOn(FileAtomicWrite, "write").mockImplementation(
+      async (...args: Parameters<typeof FileAtomicWrite.write>) => {
+        const result = await publishSettings(...args)
+        if (args[1].at(-1) === ORGANIZATION_CONFIG_FILENAME) throw lostSettingsReply
+        return result
+      },
+    )
+    await expect(
+      failedCompletion.run(() => Recovery.completeServicePublication(original.info.reference.installationID)),
+    ).rejects.toBe(lostSettingsReply)
+    await expect(failedCompletion.close()).rejects.toThrow("Organization service cleanup failed")
+    lostNativeReply.mockRestore()
+    await expect(
+      openOrganizationService({
+        home: path.join(captured.directory, "cold-target"),
+        publicOrigin: "https://recovered.example",
+      }),
+    ).rejects.toThrow("incomplete")
+    await using completion = await openOrganizationRecovery({ home: path.join(captured.directory, "cold-target") })
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const writeFile = FileAtomicWrite.write
+    using nativeSettings = spyOn(FileAtomicWrite, "write").mockImplementation(
+      async (...args: Parameters<typeof FileAtomicWrite.write>) => {
+        if (args[1].at(-1) === ORGANIZATION_CONFIG_FILENAME) {
+          entered.resolve()
+          await release.promise
+        }
+        return writeFile(...args)
+      },
+    )
+    const accepted = await completion.run(async () => ({
+      work: Recovery.completeServicePublication(original.info.reference.installationID),
+    }))
+    try {
+      await Promise.race([
+        entered.promise,
+        accepted.work.then(() => {
+          throw new Error("Native completion ended before its actual settings write")
+        }),
+      ])
+      let closed = false
+      const closing = completion.close().then(() => {
+        closed = true
+      })
+      await Promise.resolve()
+      expect(closed).toBe(false)
+      release.resolve()
+      await accepted.work
+      await closing
+    } finally {
+      release.resolve()
+      await accepted.work
+    }
+    nativeSettings.mockRestore()
+    await using normal = await openOrganizationService({
+      home: path.join(captured.directory, "cold-target"),
+      publicOrigin: "https://recovered.example",
+    })
+    expect((await normal.deployment()).deploymentIncarnation).toBe(original.info.identity.deploymentIncarnation)
+    expect(
+      (
+        await normal.fetch(
+          new Request("https://recovered.example/org/v1/auth/session", { headers: { cookie: captured.cookie } }),
+        )
+      ).status,
+    ).toBe(401)
+    const login = await normal.fetch(
+      new Request("https://recovered.example/org/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "https://recovered.example" },
+        body: JSON.stringify({ loginName: "owner", password }),
+      }),
+    )
+    expect(login.status).toBe(200)
+    const currentLogin = OrganizationIdentity.LoginResult.parse(await login.json())
+    const cookie = login.headers.get("set-cookie")?.split(";")[0]
+    const authority = await normal.deployment()
+    const authorize = await normal.fetch(
+      new Request("https://recovered.example/org/v1/auth/authorize", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://recovered.example",
+          cookie: cookie ?? "",
+          "x-csrf-token": currentLogin.csrfToken,
+        },
+        body: JSON.stringify({
+          issuer: "https://recovered.example",
+          orgID: authority.orgID,
+          deploymentIncarnation: authority.deploymentIncarnation,
+          clientID: "desktop",
+          redirectUri: "synergy://organization-auth/callback",
+          codeChallenge: createHash("sha256").update("recovery-verifier").digest("base64url"),
+          codeChallengeMethod: "S256",
+          state: createHash("sha256").update("recovery-state").digest("base64url"),
+        }),
+      }),
+    )
+    expect(authorize.status).toBe(200)
+    await expect(
+      normal.maintenance.run(() =>
+        Storage.write(["organization-recovery", "publication", original.info.reference.installationID], {}),
+      ),
+    ).rejects.toThrow("owning publication")
+    const bytes = await normal.maintenance.run(() => Storage.readBinary(captured.payloadKey))
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(captured.payloadHash)
+    expect((await normal.capabilities()).executesAgents).toBe(false)
+    await normal.maintenance.run(async () => {
+      const lease = await RuntimeMaintenance.begin({
+        purpose: "organization-backup",
+        requestID: "after-restored-publication",
+        actor: {
+          kind: "system",
+          subjectID: "operator",
+          displayName: "Host operator",
+          clientKind: "system",
+          requestID: "after-restored-publication",
+        },
+      })
+      await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+      await RuntimeMaintenance.release(lease)
+    })
+    await normal.close()
+    const filename = path.join(
+      captured.directory,
+      "cold-target",
+      ".synergy",
+      "config",
+      "synergy.d",
+      ORGANIZATION_CONFIG_FILENAME,
+    )
+    await AtomicFile.writeJsonAtomic(
+      filename,
+      JSON.stringify({
+        organization: { clientAuthentication: { clients }, connections: { heartbeatMs: 15000, offlineMs: 60000 } },
+      }),
+      { durable: true, private: true },
+    )
+    await using changed = await openOrganizationService({
+      home: path.join(captured.directory, "cold-target"),
+      publicOrigin: "https://recovered.example",
+    })
+    expect((await changed.deployment()).deploymentIncarnation).toBe(original.info.identity.deploymentIncarnation)
+    await changed.maintenance.run(() => Recovery.completeServicePublication(original.info.reference.installationID))
+    const configAfterRetry = JSON.parse(await fs.readFile(filename, "utf8"))
+    expect(configAfterRetry.organization.connections.heartbeatMs).toBe(15000)
   } finally {
     await coldSource?.close()
     await captured.source[Symbol.asyncDispose]()

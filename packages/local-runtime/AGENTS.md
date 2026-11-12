@@ -7,7 +7,7 @@
 - `Skill.snapshot` reuses canonical parsing/collision rules for host-authorized roots without resetting Scope caches; test `test/skill/snapshot.test.ts`.
 - Question owns pending windows and answers; decide/reconcile uses native Session receipts. Restore Scope for deferred settlement and redact private answers. Verify question decision-receipt/pending-window suites.
 
-Typecheck; run focused tests and package/dependency checks.
+Typecheck; verify tests and dependencies.
 
 Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClient` requires Runtime Handle/Scope. Workers use selected entrypoints. HTTP/in-process clients share `session-api.ts`; preserve Scope, Inbox scheduling and cancellation. Never import CLI, server or product implementations.
 
@@ -23,11 +23,11 @@ Workspace removal and reclamation share the lifecycle gate and native retirement
 
 Workspace coordination owns physical overlap and process identity. Bind before commands; retain through saving. Original tokens prove release; recovered exclusive claims require unchanged physical roots. Move intents retain unknown claims and never undo published data. Verify `test/process/owned-process.test.ts`, `test/workspace/{move,access-maintenance,bash-footprint}.test.ts` and Windows suites.
 
-Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
+Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions are Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
 Use public `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports. Preserve byte versions, native link kinds and exclusive publication. Snapshots use Harness link encoding. Acquire resource pins before activation; Sandbox grants never imply writer exclusion. Versioned Executor inputs separate resource use, capture and concrete mutations.
 
-Use `native/ffi` internally; verify both JIT modes with `test/process/native-bindings.test.ts`.
+Use `native/ffi` and descriptor-relative `file/atomic-write`; preflight retirement. Verify `test/{process/native-bindings,file/atomic-write}.test.ts` with/without JIT.
 
 Expose composition through `./component`; registration remains side-effect free until selection. Declare component dependencies, optional ordering, worker roles and lazy HTTP adapters. Reload and lifecycle contributions preserve instance isolation and failed-start cleanup.
 

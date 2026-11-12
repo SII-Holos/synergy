@@ -190,6 +190,22 @@ export namespace OrganizationServiceHome {
     const native = await inspectRetirement(marker)
     HomeOwnership.select(native.status === "source" ? native.marker.source : native.marker)
   }
+  export async function selectForStartup() {
+    const current = await owner().files.read()
+    if (current?.schemaVersion !== 3) {
+      select()
+      return false
+    }
+    if (
+      current.owner !== selected.owner ||
+      current.identity !== selected.identity ||
+      current.readerContract !== recoveryReaderContract
+    )
+      fail("Service startup Home belongs to another native recovery owner")
+    await HomeRestoration.inspectCompleted()
+    HomeOwnership.select(current)
+    return true
+  }
   export async function selectForRecovery() {
     const current = await owner().files.read()
     if (current?.schemaVersion !== 3) return select()

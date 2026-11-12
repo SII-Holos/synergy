@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
-import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomic-write"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -99,9 +99,9 @@ test("service native installation publishes permanent recovery ownership before 
         incarnation = (await HomeRestoration.inspect(install)).incarnation
         await HomeRestoration.withTarget(install, async (permit) => {
           let observed = false
-          const write = AtomicFile.writeFileAtomic
-          const intercepted = spyOn(AtomicFile, "writeFileAtomic").mockImplementation(async (...args) => {
-            if (path.basename(String(args[0])) === ORGANIZATION_CONFIG_FILENAME) {
+          const write = FileAtomicWrite.write
+          const intercepted = spyOn(FileAtomicWrite, "write").mockImplementation(async (...args) => {
+            if (args[1].at(-1) === ORGANIZATION_CONFIG_FILENAME) {
               const fence = await Bun.file(path.join(home, ".synergy", "home-ownership.json")).json()
               expect(fence).toMatchObject({
                 schemaVersion: 3,

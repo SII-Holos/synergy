@@ -20,6 +20,9 @@ import { OrganizationStoragePath as Keys } from "../storage/path"
 import { prepareSigningMaterial, validateSigningMaterial, OrganizationSigningMaterial } from "../signing"
 import { OrganizationServiceNative as Native } from "./service-native"
 import { OrganizationInstallationReference as Reference } from "./installation-reference"
+import { OrganizationLoginSessions } from "../auth/login-sessions"
+import { OrganizationSourceRetirement } from "./source-retirement"
+import { OrganizationCurrentPolicyReceipt, currentPolicyKey } from "./policy-records"
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
 const Info = z.strictObject({
@@ -127,7 +130,93 @@ export namespace OrganizationRecoveryAuthority {
   export interface Prepared {
     readonly kind: "organization-recovery-prepared-signing"
   }
-  const prepared = new WeakMap<Prepared, { info: Info; assert(): void; verify(): Promise<void> }>()
+  export interface Activation {
+    readonly kind: "organization-recovery-activation"
+  }
+  const activations = new WeakMap<Activation, { signing: OrganizationSigningMaterial; info: Info; assert(): void }>()
+  const prepared = new WeakMap<
+    Prepared,
+    {
+      info: Info
+      assert(): void
+      verify(): Promise<void>
+      activate<T>(body: (activation: Activation) => Promise<T>): Promise<T>
+    }
+  >()
+  export async function withActivation<T>(value: Prepared, body: (activation: Activation) => Promise<T>) {
+    assertPrepared(value)
+    return prepared.get(value)!.activate(body)
+  }
+  export function inspectActivation(value: Activation) {
+    const original = activations.get(value)
+    if (!original) fail("requires its original inactive signing activation")
+    original.assert()
+    return Info.parse(original.info)
+  }
+  export async function publish(value: Activation, source: OrganizationSourceRetirement.Inspection) {
+    const original = activations.get(value)
+    if (!original) fail("requires its original inactive signing activation")
+    original.assert()
+    if (!Storage.inWriteTransaction()) fail("publication requires its original restoration transaction")
+    let complete = false
+    return Storage.transaction(
+      async () => {
+        const reference = OrganizationSourceRetirement.inspect(source)
+        const receipt = OrganizationCurrentPolicyReceipt.parse(
+          await Storage.read(currentPolicyKey(original.info.reference.installationID)),
+        )
+        const history = await AuthorityJournal.inspect()
+        if (
+          hash(reference.target) !== hash(original.info.reference) ||
+          hash(receipt.source) !== hash(reference) ||
+          hash(receipt.target) !== hash(original.info.reference) ||
+          hash(receipt.checkpoint) !== hash(reference.current.checkpoint) ||
+          !history.covered ||
+          hash(history.head) !== hash(reference.current.checkpoint)
+        )
+          fail("requires its actual reconstructed final current authority and source fence")
+        const before = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
+        const stored = Record.SigningIdentity.parse(await Storage.read(Keys.signingIdentity()))
+        const info = original.info
+        original.assert()
+        if (
+          before.orgID !== info.sourceIdentity.orgID ||
+          before.deploymentIncarnation !== info.sourceIdentity.deploymentIncarnation ||
+          stored.keyID !== info.sourceIdentity.keyID ||
+          stored.publicKey !== info.sourceIdentity.publicKey
+        )
+          fail("publication requires the original restored deployment and signing identity")
+        await OrganizationLoginSessions.retireLegacyLogins(before)
+        original.assert()
+        await Storage.write(
+          Keys.signingIdentity(),
+          Record.SigningIdentity.parse({
+            ...info.identity,
+            ...original.signing,
+            schemaVersion: 2,
+            historyContractHash: AuthorityJournal.definition().hash,
+          }),
+        )
+        await Storage.write(
+          Keys.deployment(),
+          OrganizationProtocol.Deployment.parse({
+            ...before,
+            deploymentIncarnation: info.identity.deploymentIncarnation,
+          }),
+        )
+        original.assert()
+        complete = true
+      },
+      {
+        commitGuard() {
+          original.assert()
+          OrganizationSourceRetirement.inspect(source)
+          if (!complete) fail("signing publication did not complete")
+        },
+      },
+    )
+  }
+
   export function assertPrepared(value: Prepared) {
     const original = prepared.get(value)
     if (!original) fail("requires its original prepared evidence")
@@ -354,6 +443,44 @@ export namespace OrganizationRecoveryAuthority {
     prepared.set(evidence, {
       info: Info.parse(info),
       assert,
+      async activate(body) {
+        assert()
+        const retained = await read(filename, assert)
+        if (!retained || hash(retained) !== expected) fail("prepared material changed")
+        await validate(retained)
+        const secret = Buffer.from(await keys.resolve(retained.envelope.keyVersion))
+        let plaintext: Buffer | undefined
+        let open = true
+        try {
+          assert()
+          plaintext = SecretEnvelope.open({
+            ...envelopeIdentity(info),
+            keyVersion: retained.envelope.keyVersion,
+            key: secret,
+            envelope: retained.envelope,
+          })
+          const signing = OrganizationSigningMaterial.parse(JSON.parse(plaintext.toString("utf8")))
+          const activation: Activation = Object.freeze({ kind: "organization-recovery-activation" })
+          activations.set(activation, {
+            signing,
+            info,
+            assert() {
+              if (!open) fail("activation callback has ended")
+              assert()
+            },
+          })
+          try {
+            return await body(activation)
+          } finally {
+            activations.delete(activation)
+            signing.pkcs8 = ""
+          }
+        } finally {
+          open = false
+          secret.fill(0)
+          plaintext?.fill(0)
+        }
+      },
       async verify() {
         assert()
         await Native.verifyInstalled(native)

@@ -48,6 +48,8 @@ import { OrganizationServiceMaintenance } from "./service-maintenance"
 import { OrganizationServiceHome } from "./service-home"
 import { OrganizationServiceNative } from "./backup/service-native"
 import { OrganizationSourceRetirement } from "./backup/source-retirement"
+import { OrganizationRecoveryPublication } from "./backup/publication"
+import { readOrganizationConfiguration } from "./configuration"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -103,11 +105,11 @@ async function openOrganizationNamespace(
 ) {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
   const home = path.resolve(options.home)
-  const publicOrigin = options.publicOrigin
+  let publicOrigin = options.publicOrigin
   const webOptions = options.web ? { ...options.web } : undefined
   const database = options.database ? { ...options.database } : undefined
   const cloud = options.cloud
-  const settings = OrganizationSettings.parse({
+  let settings = OrganizationSettings.parse({
     authentication: options.authentication,
     clientAuthentication: options.clientAuthentication,
     registration: options.registration,
@@ -134,6 +136,7 @@ async function openOrganizationNamespace(
     let ownership: Awaited<ReturnType<typeof ServerProcessLock.acquire>> | undefined
     let store: TransactionalStore | undefined
     let ready = false
+    let restored = false
     let closing: Promise<void> | undefined
     let connections: RuntimeConnections | undefined
     let notifications: OrganizationNotifications | undefined
@@ -164,6 +167,7 @@ async function openOrganizationNamespace(
         const errors: unknown[] = []
         try {
           await OrganizationSourceRetirement.drain()
+          await OrganizationRecoveryPublication.drain()
         } catch (error) {
           errors.push(error)
         }
@@ -197,15 +201,16 @@ async function openOrganizationNamespace(
     try {
       registerConfig()
       HomeRestoration.register()
+      OrganizationRecoveryPublication.register()
       RuntimeMaintenance.registerProtection()
       if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
       else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()
       else if (mode === "retirement") {
         if (!retirement) throw new Error("Source retirement requires its original reference")
         await OrganizationServiceHome.selectForRetirement(OrganizationSourceRetirement.marker(retirement))
-      } else OrganizationServiceHome.select()
+      } else restored = await OrganizationServiceHome.selectForStartup()
       ownership = await ServerProcessLock.acquire()
-      if (mode !== "recovery" && mode !== "retirement") await HomeRestoration.assertOrdinaryStartup()
+      if (mode !== "recovery" && mode !== "retirement" && !restored) await HomeRestoration.assertOrdinaryStartup()
       const owned = mode === "retirement" ? undefined : await HomeOwnership.assert()
       const data = path.join(root, "data")
       const entries: string[] = await fs.readdir(data).catch((error: NodeJS.ErrnoException) => {
@@ -229,6 +234,16 @@ async function openOrganizationNamespace(
       OrganizationArtifacts.registerAuthorityHistory()
       OrganizationCloud.registerAuthorityHistory()
       registerOrganizationMigrations()
+      if (restored) {
+        const completed = await HomeRestoration.inspectCompleted()
+        await HomeRestoration.assertOrdinaryStartup()
+        publicOrigin ??= (await OrganizationRecoveryPublication.read(completed.installationID)).publicOrigin
+        const configuration = await readOrganizationConfiguration(home)
+        settings = OrganizationSettings.parse({
+          ...configuration,
+          ...Object.fromEntries(Object.entries(settings).filter(([, value]) => value !== undefined)),
+        })
+      }
       if (mode !== "recovery" && mode !== "retirement") {
         await OrganizationServiceHome.assertStartupOwner()
         OrganizationServiceMaintenance.register()

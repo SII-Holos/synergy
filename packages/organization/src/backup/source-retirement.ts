@@ -124,9 +124,20 @@ export namespace OrganizationSourceRetirement {
     await original.verify()
     original.assert()
   }
+  export interface Inspection {
+    readonly reference: Reference
+    assertLive(): void
+  }
+  const inspections = new WeakMap<Inspection, { reference: Reference; assertLive(): void }>()
+  export function inspect(inspection: Inspection) {
+    const original = inspections.get(inspection)
+    if (!original) fail("requires its original physical source inspection")
+    original.assertLive()
+    return Reference.parse(original.reference)
+  }
   export function withVerified<T>(
     receipt: Receipt,
-    body: (inspection: { reference: Reference; assertLive(): void }) => Promise<T>,
+    body: (inspection: Inspection) => Promise<T>,
     options: { signal?: AbortSignal } = {},
   ): Promise<T> {
     const original = receipts.get(receipt)
@@ -147,7 +158,9 @@ export namespace OrganizationSourceRetirement {
         try {
           await original.verify()
           assertLive()
-          const result = await body({ reference: Reference.parse(reference), assertLive })
+          const inspection: Inspection = Object.freeze({ reference: Reference.parse(reference), assertLive })
+          inspections.set(inspection, { reference, assertLive })
+          const result = await body(inspection)
           assertLive()
           await original.verify()
           assertLive()

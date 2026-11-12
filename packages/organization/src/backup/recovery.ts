@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { z } from "zod"
+import type { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
@@ -12,16 +12,11 @@ import { OrganizationRecoveryAuthority as Authority } from "./authority"
 import { OrganizationServiceNative as Native } from "./service-native"
 import { OrganizationSourceRetirement as Retirement } from "./source-retirement"
 import { OrganizationInstallationReference } from "./installation-reference"
+import { OrganizationRecoveryPublication as Publication } from "./publication"
+import { OrganizationRecoveryWriters } from "./writers"
+import { OrganizationCurrentPolicyReceipt as Receipt, currentPolicyKey as key } from "./policy-records"
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
-const Receipt = z.strictObject({
-  version: z.literal(1),
-  target: OrganizationInstallationReference,
-  source: Retirement.Reference,
-  checkpoint: AuthorityJournal.Checkpoint,
-  appliedAt: z.number().int().nonnegative().safe(),
-})
-const key = (installationID: string) => ["organization-recovery", "current-policy", installationID]
 function fail(message: string): never {
   throw new Error("Organization current-policy recovery " + message)
 }
@@ -33,6 +28,7 @@ type TargetBinding = {
   permit: HomeRestoration.InstallPermit
   reference: z.infer<typeof OrganizationInstallationReference>
   checkpoint: AuthorityJournal.Checkpoint
+  prepared: Authority.Prepared
 }
 
 export namespace OrganizationRecovery {
@@ -153,7 +149,16 @@ export namespace OrganizationRecovery {
       )
         fail("requires the same original installed target and prepared signer")
       const target: Target = Object.freeze({ kind: "organization-recovery-policy-target" })
-      targets.set(target, { assert, verify, run: runtime.run, permit, request, reference, checkpoint: info.checkpoint })
+      targets.set(target, {
+        assert,
+        verify,
+        run: runtime.run,
+        permit,
+        request,
+        reference,
+        checkpoint: info.checkpoint,
+        prepared,
+      })
       const result = await body(target)
       await verify()
       return result
@@ -213,6 +218,80 @@ export namespace OrganizationRecovery {
         )
       })
     })
+  }
+  export function completeServicePublication(installationID: string) {
+    return Publication.complete(installationID)
+  }
+  export async function publishServiceOnly(input: Parameters<typeof reconstructCold>[0] & { publicOrigin: string }) {
+    const source = input.source
+    const target = targets.get(input.target)
+    if (!target) fail("requires its original target evidence")
+    const publicOrigin = input.publicOrigin
+    const origin = new URL(publicOrigin)
+    if (origin.origin !== publicOrigin || origin.protocol !== "https:") fail("requires an explicit HTTPS public origin")
+    const signal = input.signal
+    const namespace = {
+      directory: input.namespace.directory,
+      expected: StorageCheckpoint.Manifest.parse(input.namespace.expected),
+    }
+    const native = {
+      directory: input.native.directory,
+      expected: StorageCheckpoint.Manifest.parse(input.native.expected),
+    }
+    const provider = input.keys
+    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    await reconstructCold({ source, target: input.target, namespace, native, keys, signal })
+    return Retirement.withVerified(
+      source,
+      (inspection) =>
+        target.run(async () => {
+          const assert = () => {
+            signal?.throwIfAborted()
+            inspection.assertLive()
+            target.assert()
+          }
+          const reference = Retirement.Reference.parse(inspection.reference)
+          if (hash(reference.target) !== hash(target.reference))
+            fail("publication source belongs to another original target")
+          return Native.withPublicationSettings(
+            { ...native, source: namespace.expected, keys, signal },
+            async (settings) => {
+              assert()
+              const verified = Native.inspectPublicationSettings(settings)
+              if (
+                Native.sourceHash(namespace.expected) !== reference.current.namespaceHash ||
+                Native.sourceHash(native.expected) !== reference.current.nativeHash ||
+                hash(verified.manifest.startup.settings.clientAuthentication.clients) !==
+                  reference.current.clientDefinitionsHash
+              )
+                fail("publication settings belong to another final source")
+              await target.verify()
+              await OrganizationRecoveryWriters.assertServiceOnly()
+              assert()
+              return Authority.withActivation(target.prepared, (activation) =>
+                RuntimeMaintenance.restorationTransaction(
+                  { permit: target.permit, request: target.request },
+                  async (tx) => {
+                    assert()
+                    const policy = Receipt.parse(await Storage.read(key(target.reference.installationID)))
+                    if (
+                      hash(policy.source) !== hash(reference) ||
+                      hash(policy.target) !== hash(target.reference) ||
+                      hash(policy.checkpoint) !== hash(reference.current.checkpoint)
+                    )
+                      fail("requires its committed final current policy")
+                    await OrganizationRecoveryWriters.assertServiceOnly()
+                    assert()
+                    return Publication.write(tx, { activation, source: inspection, native: settings, publicOrigin })
+                  },
+                  { signal, commitGuard: assert },
+                ),
+              )
+            },
+          )
+        }),
+      { signal },
+    )
   }
   export function reconstructCold(input: {
     source: Retirement.Receipt

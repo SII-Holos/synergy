@@ -27,7 +27,7 @@ import {
 import { readOrganizationConfigurationSnapshot, parseOrganizationConfiguration } from "../configuration"
 import { OrganizationServiceHome } from "../service-home"
 import type { OrganizationServiceOptions } from "../service"
-import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomic-write"
 
 export namespace OrganizationServiceNative {
   const Settings = z.strictObject({
@@ -356,6 +356,99 @@ export namespace OrganizationServiceNative {
       namespace: StorageCheckpoint.Manifest.parse(current.namespace),
     }
   }
+  export interface PublicationSettings {
+    readonly kind: "organization-recovery-native-settings"
+  }
+  const publicationSettings = new WeakMap<
+    PublicationSettings,
+    { manifest: Manifest; namespace: StorageCheckpoint.Manifest; assert(): void }
+  >()
+  export function inspectPublicationSettings(value: PublicationSettings) {
+    const original = publicationSettings.get(value)
+    if (!original) fail("requires its actual verified native settings")
+    original.assert()
+    return {
+      manifest: Manifest.parse(original.manifest),
+      namespace: StorageCheckpoint.Manifest.parse(original.namespace),
+    }
+  }
+  export async function withPublicationSettings<T>(
+    input: Parameters<typeof verify>[0],
+    body: (settings: PublicationSettings) => Promise<T>,
+  ) {
+    const provider = input.keys
+    const selected = {
+      directory: input.directory,
+      signal: input.signal,
+      keys: Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) }),
+      expected: StorageCheckpoint.Manifest.parse(input.expected),
+      source: StorageCheckpoint.Manifest.parse(input.source),
+    }
+    const runtime = RuntimeContext.current()
+    const primary = Storage.current()
+    const store = primary.store
+    const artifacts = primary.artifactDirectory
+    const objects = primary.artifactObjects
+    const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
+    const config = JSON.stringify(store.options)
+    let open = true
+    const assert = () => {
+      if (
+        !open ||
+        RuntimeContext.current() !== runtime ||
+        Storage.current().store !== store ||
+        Storage.current().artifactDirectory !== artifacts ||
+        Storage.current().artifactObjects !== objects ||
+        runtime.storage !== primary ||
+        primary.store !== store ||
+        primary.artifactDirectory !== artifacts ||
+        primary.artifactObjects !== objects ||
+        objects?.blobs !== ports?.blobs ||
+        objects?.writerID !== ports?.writerID ||
+        objects?.now !== ports?.now ||
+        JSON.stringify(store.options) !== config
+      )
+        fail("native settings require their original callback and primary Store")
+      selected.signal?.throwIfAborted()
+    }
+    const verified = await verify(selected)
+    try {
+      assert()
+      const settings: PublicationSettings = Object.freeze({ kind: "organization-recovery-native-settings" })
+      const { rawConfiguration: _, ...manifest } = verified
+      publicationSettings.set(settings, { manifest: Manifest.parse(manifest), namespace: selected.expected, assert })
+      return await body(settings)
+    } finally {
+      open = false
+      verified.rawConfiguration?.fill(0)
+    }
+  }
+  export async function publicationReady(value: z.infer<typeof Settings>, released = false) {
+    const settings = Settings.parse(value)
+    const current = await readOrganizationConfigurationSnapshot(RuntimeContext.current().host.home)
+    if (released) return true
+    return (
+      current.present &&
+      hash(Buffer.from(JSON.stringify(current.settings))) === hash(Buffer.from(JSON.stringify(settings)))
+    )
+  }
+  export async function publishSettings(permit: HomeRestoration.PublicationPermit, value: z.infer<typeof Settings>) {
+    const settings = Settings.parse(structuredClone(value))
+    HomeRestoration.assertPublication(permit)
+    const runtime = RuntimeContext.current()
+    await FileAtomicWrite.withRoot(runtime.host.root, async (root) => {
+      await HomeRestoration.verifyPublication(permit)
+      await FileAtomicWrite.write(
+        root,
+        ["config", "synergy.d", ORGANIZATION_CONFIG_FILENAME],
+        Buffer.from(JSON.stringify({ organization: settings }) + "\n"),
+      )
+      HomeRestoration.assertPublication(permit)
+    })
+    await HomeRestoration.verifyPublication(permit)
+    if (!(await publicationReady(settings))) fail("current native settings did not complete")
+    HomeRestoration.assertPublication(permit)
+  }
   export async function adoptRestoration(
     tx: StoreTransaction,
     input: {
@@ -395,6 +488,7 @@ export namespace OrganizationServiceNative {
     input: Parameters<typeof verify>[0] & { permit: HomeRestoration.InstallPermit; request: InstallationRequest },
     body: (installed: Installed) => Promise<T>,
   ): Promise<T> {
+    FileAtomicWrite.assertSupported()
     const permit = input.permit
     const directory = input.directory
     const expected = StorageCheckpoint.Manifest.parse(input.expected)
@@ -430,7 +524,6 @@ export namespace OrganizationServiceNative {
         fail("installation belongs to another original cohort participant")
       const ownership = await OrganizationServiceHome.installOwner(permit)
       assert()
-      const filename = path.join(home, ".synergy", "config", "synergy.d", ORGANIZATION_CONFIG_FILENAME)
       let current = await readOrganizationConfigurationSnapshot(home, { signal })
       assert()
       const matches = (value: typeof current) =>
@@ -439,12 +532,16 @@ export namespace OrganizationServiceNative {
           (value.bytes.byteLength === manifest.configuration.raw?.bytes &&
             hash(value.bytes) === manifest.configuration.raw.sha256))
       if (!current.present && rawConfiguration) {
-        await fs.mkdir(path.dirname(filename), { recursive: true, mode: 0o700 })
-        assert()
         current = await readOrganizationConfigurationSnapshot(home, { signal })
         assert()
         if (!current.present) {
-          await AtomicFile.writeFileAtomic(filename, rawConfiguration, { private: true, durable: true })
+          await FileAtomicWrite.withRoot(runtime.host.root, async (root) => {
+            await HomeRestoration.verifyCurrent(permit)
+            assert()
+            await FileAtomicWrite.write(root, ["config", "synergy.d", ORGANIZATION_CONFIG_FILENAME], rawConfiguration)
+            assert()
+          })
+          await HomeRestoration.verifyCurrent(permit)
           assert()
         } else if (!matches(current)) fail("target configuration conflicts with the fixed native material")
       } else if (!matches(current)) fail("target configuration conflicts with the fixed native material")

@@ -26,8 +26,17 @@ const types = new Map<number | string, string>([
 export function openNativeLibrary<const Fns extends Record<string, FFIFunction>>(
   filename: string,
   functions: Fns,
+  options?: { variadic?: Readonly<Record<string, number>> },
 ): Library<Fns> {
-  if (!["0", "false"].includes(process.env.BUN_JSC_useJIT ?? "")) return dlopen(filename, functions)
+  // Variadic calls use the C bridge so the compiler supplies the platform calling convention.
+  // Provenance: https://man7.org/linux/man-pages/man2/openat.2.html (the trailing mode argument).
+  const variadic = { ...options?.variadic }
+  for (const [name, fixed] of Object.entries(variadic)) {
+    const count = functions[name]?.args?.length ?? 0
+    if (!Number.isInteger(fixed) || fixed < 1 || fixed >= count) throw new Error("Invalid native variadic binding")
+  }
+  if (!["0", "false"].includes(process.env.BUN_JSC_useJIT ?? "") && !Object.keys(variadic).length)
+    return dlopen(filename, functions)
   // Provenance: https://github.com/oven-sh/bun/issues/28792
   // Bun 1.4's engine FFI requires JavaScript JIT; its bundled C compiler still supports explicit JITless runs.
   const entries = Object.entries(functions)
@@ -52,7 +61,9 @@ export function openNativeLibrary<const Fns extends Record<string, FFIFunction>>
     const called = args.map((_value, index) => `arg${index}`).join(",")
     const wrapper = `synergy_ffi_call_${index}`
     symbols[wrapper] = fn
-    return `static ${result} (*target_${index})(${signature});
+    const fixed = variadic[name]
+    const target = fixed === undefined ? signature : args.slice(0, fixed).join(",") + ", ..."
+    return `static ${result} (*target_${index})(${target});
 ${result} ${wrapper}(${signature}) { ${result === "void" ? "" : "return "}target_${index}(${called}); }`
   })
   const loader =
