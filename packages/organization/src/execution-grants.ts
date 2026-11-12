@@ -347,7 +347,7 @@ export function createExecutionGrants(options: {
     }
     return value
   }
-  async function ownedSession(proof: ReceiptProof, publicKey: string) {
+  async function receivedSession(proof: ReceiptProof, publicKey: string) {
     const { runtime, account } = await machine(proof)
     if (runtime.publicKey !== publicKey) fail("PERMISSION_DENIED", "Execution binding identity changed")
     const accepted = proof.receipt.accepted!
@@ -358,9 +358,7 @@ export function createExecutionGrants(options: {
       !session ||
       session.sessionID !== permit.sessionID ||
       session.orgID !== proof.orgID ||
-      session.projectID !== permit.projectID ||
-      session.driverRuntimeID !== runtime.runtimeID ||
-      session.bindingEpoch !== (control?.permit.bindingEpoch ?? permit.bindingEpoch)
+      session.projectID !== permit.projectID
     )
       fail("STALE_BINDING", "Execution grant Session binding changed")
     await original(proof)
@@ -373,6 +371,16 @@ export function createExecutionGrants(options: {
         fail("PERMISSION_DENIED", "Execution control does not match canonical acceptance")
     }
     return { session, runtime, account }
+  }
+  async function ownedSession(proof: ReceiptProof, publicKey: string) {
+    const received = await receivedSession(proof, publicKey)
+    const permit = proof.continuation?.receipt.accepted!.permit ?? proof.receipt.accepted!.permit
+    if (
+      received.session.driverRuntimeID !== received.runtime.runtimeID ||
+      received.session.bindingEpoch !== permit.bindingEpoch
+    )
+      fail("STALE_BINDING", "Execution grant Session binding changed")
+    return received
   }
   async function resolve(
     proof: ReceiptProof,
@@ -466,9 +474,10 @@ export function createExecutionGrants(options: {
     const connection = capture(proof, registered.runtime)
     await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
     return Storage.snapshot(async () => {
-      const { session } = await ownedSession(proof, registered.runtime.publicKey)
+      const { session } = await receivedSession(proof, registered.runtime.publicKey)
       const accepted = proof.receipt.accepted!
       const control = proof.continuation?.receipt.accepted
+      const bindingEpoch = control?.permit.bindingEpoch ?? accepted.permit.bindingEpoch
       const envelope = {
         schemaVersion: 1,
         orgID: proof.orgID,
@@ -476,7 +485,7 @@ export function createExecutionGrants(options: {
         runtimeID: proof.runtimeID,
         connectionEpoch: proof.connectionEpoch,
         sessionID: session.sessionID,
-        bindingEpoch: session.bindingEpoch,
+        bindingEpoch,
         rootID: proof.rootID,
         originGrantID: accepted.permit.provisionalGrantID!,
         controlAdmissionID: control?.permit.admissionID,
@@ -486,7 +495,7 @@ export function createExecutionGrants(options: {
       }
       let grantID = proof.grantID ?? accepted.permit.provisionalGrantID!
       if (proof.grantID === undefined && control) {
-        const located = await Index.control(session.sessionID, session.bindingEpoch, control.permit.admissionID)
+        const located = await Index.control(session.sessionID, bindingEpoch, control.permit.admissionID)
         if (located === undefined) {
           const origin = await Record.read(
             Record.ExecutionGrant,
@@ -506,7 +515,7 @@ export function createExecutionGrants(options: {
             fail("SERVICE_UNAVAILABLE", "Cleanup absence lacks its canonical original grant")
           const pointer = await Record.read(
             Record.RootGrant,
-            Keys.rootGrant(session.sessionID, session.bindingEpoch, proof.rootID),
+            Keys.rootGrant(session.sessionID, bindingEpoch, proof.rootID),
           )
           if (pointer) {
             const current = await Record.read(Record.ExecutionGrant, Keys.executionGrant(pointer.grantID))
@@ -514,7 +523,7 @@ export function createExecutionGrants(options: {
               !current ||
               current.grantID !== pointer.grantID ||
               current.sessionID !== session.sessionID ||
-              current.bindingEpoch !== session.bindingEpoch ||
+              current.bindingEpoch !== bindingEpoch ||
               current.orgID !== proof.orgID ||
               current.deploymentIncarnation !== proof.deploymentIncarnation ||
               current.runtimeID !== proof.runtimeID ||

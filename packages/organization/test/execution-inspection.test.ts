@@ -557,3 +557,85 @@ test("control allocation and immutable locator roll back together and incomplete
     expect(await c.execution.retention(inspection)).toMatchObject({ state: "known", grant: { grantID: grant.grantID } })
   })
 })
+
+test.each(["describe", "bind"] as const)(
+  "a delayed %s cannot allocate after its original signed commit window closes",
+  async (operation) => {
+    await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+    using c = await continued(f)
+    await f.run(() => Index.controlMigration.up(() => {}))
+    const control = await c.control("delayed-allocation", 0)
+    const request = await inspect(f, {
+      connectionEpoch: 2,
+      continuation: control,
+      grantID: undefined,
+      generation: undefined,
+    })
+    const describe = description(request.proof)
+    describe.expiresAt = describe.issuedAt + 500
+    const binding = Execution.BindingProof.parse({
+      ...f.binding.proof,
+      connectionEpoch: 2,
+      continuation: control,
+      issuedAt: describe.issuedAt,
+      expiresAt: describe.expiresAt,
+    })
+    const entered = Promise.withResolvers<void>()
+    const resume = Promise.withResolvers<void>()
+    const verifyDescription = Execution.verifyDescription
+    const verifyBinding = Execution.verifyBinding
+    const verification =
+      operation === "describe"
+        ? spyOn(Execution, "verifyDescription").mockImplementationOnce(async (...args) => {
+            const valid = await verifyDescription(...args)
+            entered.resolve()
+            await resume.promise
+            return valid
+          })
+        : spyOn(Execution, "verifyBinding").mockImplementationOnce(async (...args) => {
+            const valid = await verifyBinding(...args)
+            entered.resolve()
+            await resume.promise
+            return valid
+          })
+    const work = Promise.resolve(
+      f.run(async () =>
+        operation === "describe"
+          ? c.execution.describe({
+              proof: describe,
+              signature: await Execution.signDescription(describe, f.machineKeys.privateKey),
+            })
+          : c.execution.bind({
+              proof: binding,
+              signature: await Execution.signBinding(binding, f.machineKeys.privateKey),
+            }),
+      ),
+    )
+    void work.catch(() => {})
+    try {
+      await entered.promise
+      expect(await f.run(() => c.execution.retention(request))).toMatchObject({ state: "absent" })
+      const clock = spyOn(Date, "now").mockImplementation(() => describe.expiresAt + 1)
+      try {
+        resume.resolve()
+        await expect(work).rejects.toThrow("validity window")
+      } finally {
+        clock.mockRestore()
+      }
+      const refreshed = await inspect(f, {
+        connectionEpoch: 2,
+        continuation: control,
+        grantID: undefined,
+        generation: undefined,
+      })
+      expect(await f.run(() => c.execution.retention(refreshed))).toMatchObject({ state: "absent" })
+      expect(
+        (await f.run(() => Record.read(Record.SessionDirectory, Keys.session(f.sessionID))))!.retainedExecutionGrants,
+      ).toBe(1)
+    } finally {
+      resume.resolve()
+      verification.mockRestore()
+      await work.catch(() => {})
+    }
+  },
+)

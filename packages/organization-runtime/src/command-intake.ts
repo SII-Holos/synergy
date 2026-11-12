@@ -29,6 +29,7 @@ import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import { boundSessionSource } from "./session-source"
 import { OrganizationCommandRecords as IntakeRecords } from "./command-records"
+import { OrganizationExecutionLeases as Leases } from "./execution-leases"
 
 const { Request, State, Slot, Counter, Lookup, ControlState, Release, identity } = IntakeRecords
 export async function readCommandControlVersion(orgID: string, sessionID: string) {
@@ -202,6 +203,7 @@ export function createCommandIntake(options: {
           state: "pending",
         }),
       )
+      await Leases.original(Command.InputAccepted.parse(accepted))
     }
     if (
       advance &&
@@ -888,6 +890,97 @@ export function createCommandIntake(options: {
     },
     descriptionProof(value: z.infer<typeof Lookup>): Promise<Execution.DescriptionProof> {
       return resourceProof(value, "execution")
+    },
+    async cleanupProof(
+      value: Leases.Authority,
+      selector?: { grantID: string; generation?: number },
+    ): Promise<Execution.InspectionProof> {
+      assertStandalone()
+      const reference = Leases.Authority.parse(value)
+      if (
+        reference.orgID !== authority.orgID ||
+        reference.deploymentIncarnation !== authority.deploymentIncarnation ||
+        reference.runtimeID !== runtimeID
+      )
+        throw failure("PERMISSION_DENIED", "Cleanup authority belongs to another Runtime")
+      return Storage.snapshot(async () => {
+        const request = await read(
+          Request,
+          Keys.request(authority.orgID, reference.input.subjectID, reference.input.requestID),
+        )
+        const accepted = Command.InputAccepted.parse(request?.accepted)
+        const permit = accepted.permit
+        const original = await records(permit)
+        const session = await Session.get(reference.sessionID)
+        if (
+          permit.orgID !== reference.orgID ||
+          permit.deploymentIncarnation !== reference.deploymentIncarnation ||
+          permit.sessionID !== reference.sessionID ||
+          permit.projectID !== reference.projectID ||
+          permit.admissionID !== reference.input.admissionID ||
+          permit.attemptID !== reference.input.attemptID ||
+          permit.provisionalGrantID !== reference.originGrantID ||
+          accepted.effect.messageID !== reference.rootID ||
+          accepted.effect.mode !== "task" ||
+          Leases.acceptedHash(accepted) !== reference.input.acceptedHash ||
+          !original.matches ||
+          original.attempt?.status !== "accepted" ||
+          original.slot?.attemptID !== permit.attemptID ||
+          session.scope.id !== reference.projectID ||
+          session.organization?.orgID !== reference.orgID ||
+          session.organization.driverRuntimeID !== runtimeID ||
+          session.organization.bindingEpoch !== reference.bindingEpoch
+        )
+          throw failure("PROTOCOL_MISMATCH", "Cleanup lacks its canonical original reception and current binding")
+        let continuation: Execution.Continuation | undefined
+        if (reference.control) {
+          const selected = reference.control
+          const request = await read(Request, Keys.request(authority.orgID, selected.subjectID, selected.requestID))
+          const control = Command.ControlAccepted.parse(request?.accepted)
+          assertAuthority(control.permit)
+          const current = await records(control.permit)
+          if (
+            control.effect.operation !== "continue" ||
+            control.effect.rootID !== reference.rootID ||
+            control.permit.sessionID !== reference.sessionID ||
+            control.permit.projectID !== reference.projectID ||
+            control.permit.bindingEpoch !== reference.bindingEpoch ||
+            control.permit.connectionEpoch > connectionEpoch ||
+            control.permit.admissionID !== selected.admissionID ||
+            control.permit.attemptID !== selected.attemptID ||
+            Leases.acceptedHash(control) !== selected.acceptedHash ||
+            !current.matches ||
+            current.attempt?.status !== "accepted" ||
+            current.slot?.attemptID !== control.permit.attemptID ||
+            !stateMatches(control.permit, current.state)
+          )
+            throw failure("PROTOCOL_MISMATCH", "Cleanup lacks its exact historical native control")
+          continuation = Execution.Continuation.parse({
+            handoffID: selected.handoffID,
+            receipt: result(current, current.attempt),
+          })
+        } else {
+          assertAuthority(permit)
+          if (permit.bindingEpoch !== reference.bindingEpoch || permit.connectionEpoch > connectionEpoch)
+            throw failure("STALE_BINDING", "Original cleanup belongs to another Runtime binding")
+        }
+        assertActive()
+        const issuedAt = Date.now()
+        return Execution.InspectionProof.parse({
+          schemaVersion: 1,
+          purpose: "execution-retention-inspection",
+          orgID: authority.orgID,
+          deploymentIncarnation: authority.deploymentIncarnation,
+          runtimeID,
+          connectionEpoch,
+          rootID: reference.rootID,
+          receipt: result(original, original.attempt),
+          continuation,
+          ...selector,
+          issuedAt,
+          expiresAt: issuedAt + 30_000,
+        })
+      })
     },
     async bindingProof(value: z.infer<typeof Lookup>, root: string): Promise<Execution.BindingProof> {
       assertStandalone()

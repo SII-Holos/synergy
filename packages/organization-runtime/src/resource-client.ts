@@ -24,6 +24,7 @@ export interface MemberResourceClient {
   ): Promise<Execution.HandoffInventoryPage>
   closeHandoff(proof: Execution.HandoffCloseProof, signal?: AbortSignal): Promise<Execution.HandoffCloseReceipt>
   retention(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Grant>
+  inspectRetention(proof: Execution.InspectionProof, signal?: AbortSignal): Promise<Execution.Inspection>
   describe(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Description>
   bind(proof: Execution.BindingProof, signal?: AbortSignal): Promise<Execution.BoundGrant>
   release(proof: Execution.ReleaseProof, signal?: AbortSignal): Promise<Execution.ReleaseReceipt>
@@ -88,6 +89,7 @@ type Proof =
   | Execution.ReleaseProof
   | Execution.HandoffInventoryProof
   | Execution.HandoffCloseProof
+  | Execution.InspectionProof
   | Gateway.Proof
   | Objects.Proof
 
@@ -253,7 +255,7 @@ export function createMemberResourceClient(options: {
     )
     return pending
   }
-  function grant(proof: Execution.DescriptionProof | Execution.BindingProof, value: Execution.Grant) {
+  function grant(proof: Pick<Execution.DescriptionProof, "receipt" | "continuation">, value: Execution.Grant) {
     const permit = proof.receipt.accepted!.permit
     const control = proof.continuation?.receipt.accepted
     const authority = control?.permit ?? permit
@@ -551,6 +553,40 @@ export function createMemberResourceClient(options: {
         signal,
       )
     },
+    async inspectRetention(value, signal) {
+      const proof = Execution.InspectionProof.parse(value)
+      return invoke(
+        proof,
+        Execution.Inspection,
+        async (signal) =>
+          client.orgExecution.retention(
+            {
+              orgExecutionRetentionRequest: { proof, signature: await Execution.signInspection(proof, options.key) },
+            },
+            { signal },
+          ),
+        (result) => {
+          const original = proof.receipt.accepted!
+          const control = proof.continuation?.receipt.accepted
+          if (
+            result.orgID !== proof.orgID ||
+            result.deploymentIncarnation !== proof.deploymentIncarnation ||
+            result.runtimeID !== proof.runtimeID ||
+            result.connectionEpoch !== proof.connectionEpoch ||
+            result.sessionID !== original.permit.sessionID ||
+            result.bindingEpoch !== (control?.permit.bindingEpoch ?? original.permit.bindingEpoch) ||
+            result.rootID !== proof.rootID ||
+            result.originGrantID !== original.permit.provisionalGrantID ||
+            result.controlAdmissionID !== control?.permit.admissionID ||
+            result.requestedGrantID !== proof.grantID ||
+            result.requestedGeneration !== proof.generation
+          )
+            throw failure("PROTOCOL_MISMATCH", "Cleanup inspection belongs to another exact native intent")
+          if (result.state === "known") grant(proof, result.grant)
+        },
+        signal,
+      )
+    },
     async retention(value, signal) {
       const proof = Execution.DescriptionProof.parse(value)
       return invoke(
@@ -559,7 +595,7 @@ export function createMemberResourceClient(options: {
         async (signal) =>
           client.orgExecution.retention(
             {
-              orgExecutionDescriptionRequest: { proof, signature: await Execution.signDescription(proof, options.key) },
+              orgExecutionRetentionRequest: { proof, signature: await Execution.signDescription(proof, options.key) },
             },
             { signal },
           ),

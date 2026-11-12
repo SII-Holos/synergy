@@ -19,6 +19,7 @@ import type { RuntimeIdentity } from "./home"
 import type { MemberConnection } from "./connection"
 import type { createCommandIntake } from "./command-intake"
 import { OrganizationRuntimeError } from "./error"
+import { OrganizationExecutionLeases as Leases } from "./execution-leases"
 import { createMemberModelProvider, MemberModelContext } from "./model-provider"
 
 interface Connection {
@@ -62,11 +63,34 @@ export function attachMemberExecution(input: Connection) {
   input.signal.throwIfAborted()
   const current = state()
   if (current.connection) throw denied("Member execution already has a current connection")
-  current.connection = input
+  const resource = input.resources
+  const tracked: Connection = {
+    ...input,
+    resources: {
+      ...resource,
+      async describe(value, signal) {
+        const proof = Execution.DescriptionProof.parse(value)
+        await input.intake.cleanupProof(Leases.reference(proof))
+        const intent = await Leases.begin(proof)
+        const result = await resource.describe(proof, signal)
+        await Leases.confirm(intent, result.grant)
+        return result
+      },
+      async bind(value, signal) {
+        const proof = Execution.BindingProof.parse(value)
+        await input.intake.cleanupProof(Leases.reference(proof))
+        const intent = await Leases.begin(proof)
+        const grant = await resource.bind(proof, signal)
+        await Leases.confirm(intent, grant)
+        return grant
+      },
+    },
+  }
+  current.connection = tracked
   input.signal.addEventListener(
     "abort",
     () => {
-      if (current.connection === input) current.connection = undefined
+      if (current.connection === tracked) current.connection = undefined
     },
     { once: true },
   )
@@ -115,7 +139,11 @@ export async function withMemberExecution<T>(
   return await fn({ source, session, lineage, descriptionProof, proof, description, accepted: lineageAccepted }, signal)
 }
 
-function assertBinding(session: Awaited<ReturnType<typeof Session.get>>, identity: RuntimeIdentity, source: Connection) {
+function assertBinding(
+  session: Awaited<ReturnType<typeof Session.get>>,
+  identity: RuntimeIdentity,
+  source: Connection,
+) {
   if (
     !session.organization ||
     session.time.archived ||
@@ -188,6 +216,7 @@ function actor(value: unknown, identity: RuntimeIdentity) {
 }
 
 export function registerMemberExecution(identity: RuntimeIdentity) {
+  Leases.register(identity.orgID)
   ProviderCatalogSource.register({ providers: async () => Object.fromEntries(models()) })
   SessionExecutionSource.register({
     async authorize(input) {

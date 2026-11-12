@@ -33,6 +33,7 @@ export async function executionFixture(
     connectionProtocol?: "fixed-http" | "mcp-http" | "mcp-sse"
     execution?: boolean
     knowledge?: boolean
+    proofLifetimeMs?: number
   } = {},
 ) {
   const resources = testResources()
@@ -86,6 +87,19 @@ export async function executionFixture(
             connectionEpoch: current.connectionEpoch,
             signal,
           })
+          if (input.proofLifetimeMs !== undefined) {
+            const describe = intake.descriptionProof
+            const bind = intake.bindingProof
+            const lifetime = input.proofLifetimeMs
+            intake.descriptionProof = async (...args) => {
+              const proof = await describe(...args)
+              return { ...proof, expiresAt: proof.issuedAt + lifetime }
+            }
+            intake.bindingProof = async (...args) => {
+              const proof = await bind(...args)
+              return { ...proof, expiresAt: proof.issuedAt + lifetime }
+            }
+          }
           if (input.execution)
             context.bind(() =>
               attachMemberExecution({

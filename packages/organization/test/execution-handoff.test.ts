@@ -338,6 +338,23 @@ for (const mode of ["cancel", "transfer"] as const)
               data: { code: mode === "cancel" ? "HANDOFF_BLOCKED" : "STALE_BINDING" },
             })
             expect(await execution.closeHandoff(signed)).toEqual(receipt)
+            const cleanup = Execution.InspectionProof.parse({
+              ...original,
+              purpose: "execution-retention-inspection",
+              grantID: f.grant.grantID,
+              generation: 1,
+            })
+            expect(
+              await execution.retention({
+                proof: cleanup,
+                signature: await Execution.signInspection(cleanup, f.machineKeys.privateKey),
+              }),
+            ).toMatchObject({
+              state: "known",
+              runtimeID: f.grant.runtimeID,
+              bindingEpoch: 1,
+              grant: { retention: { state: "handoff_closed", generation: 1 } },
+            })
             expect(
               (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants,
             ).toBe(0)

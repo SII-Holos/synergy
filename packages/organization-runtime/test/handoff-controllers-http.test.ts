@@ -9,6 +9,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -36,6 +37,9 @@ import {
 import { enrollMemberRuntime, enrollHostedRuntime } from "../src/enrollment"
 import { openMemberConnection } from "../src/connection"
 import { createCommandIntake, readCommandControlVersion } from "../src/command-intake"
+import { attachMemberExecution, registerMemberExecution, withMemberExecution } from "../src/execution-source"
+import { startExecutionReleaseObserver } from "../src/release-observer"
+import { OrganizationExecutionLeases as NativeLeases } from "../src/execution-leases"
 import { registerSessionSchema } from "../src/session-schema"
 import { registerOrganizationTransferOwner } from "../src/session-transfer"
 import { OrganizationHandoffSource as Source } from "../src/handoff-source"
@@ -135,6 +139,7 @@ test.each([
       Core.register()
       if (withWorkspace) Files.register()
       registerSessionSchema({ orgID: identity.orgID })
+      if (withResources) registerMemberExecution(identity)
       registerOrganizationTransferOwner()
     }
     await using source = await testRuntime({ home: member.home, register: () => register(member.identity) })
@@ -188,7 +193,7 @@ test.each([
       identity: member.identity,
       ca: f.ca,
       buildVersion: "actual-source-controller",
-      commands(connection, signal) {
+      commands(connection, signal, resources) {
         const intake = createCommandIntake({
           identity: connection.signingIdentity,
           runtimeID: connection.runtimeID,
@@ -197,6 +202,8 @@ test.each([
           signal,
         })
         sourceIntake = intake
+        if (withResources)
+          source.run(() => attachMemberExecution({ connection, signal, resources, intake, origin: f.origin, ca: f.ca }))
         return {
           create: (delivery) => source.run(() => intake.create(delivery)),
           input: (delivery) => source.run(() => intake.input(delivery)),
@@ -245,7 +252,7 @@ test.each([
       identity: hosted.identity,
       ca: f.ca,
       buildVersion: "actual-target-controller",
-      commands(connection, signal) {
+      commands(connection, signal, resources) {
         const intake = createCommandIntake({
           identity: connection.signingIdentity,
           runtimeID: connection.runtimeID,
@@ -253,6 +260,8 @@ test.each([
           signal,
         })
         targetIntake = intake
+        if (withResources)
+          target.run(() => attachMemberExecution({ connection, signal, resources, intake, origin: f.origin, ca: f.ca }))
         return {
           create: (delivery) => target.run(() => intake.create(delivery)),
           input: (delivery) => target.run(() => intake.input(delivery)),
@@ -472,7 +481,18 @@ test.each([
         const description = await current.run(() => intake.descriptionProof(lookup))
         expect(description.receipt.accepted).toEqual(accepted)
         expect(description.continuation?.receipt.accepted).toEqual(continued)
-        const resources = await connection.resources.describe(description)
+        const prepared = await current.run(() =>
+          withMemberExecution(
+            epoch === 1 ? member.identity : hosted.identity,
+            { sessionID },
+            async ({ source, description, proof }, signal) => ({
+              description,
+              binding: proof,
+              bound: await source.resources.bind(proof, signal),
+            }),
+          ),
+        )
+        const resources = prepared.description
         expect(resources.grant).toMatchObject({
           runtimeID: connection.connected.runtimeID,
           bindingEpoch: epoch,
@@ -482,8 +502,7 @@ test.each([
           provenance: { originGrantID: originalGrant!.grantID, rootID: accepted.effect.messageID, control: continued },
         })
         expect(resources.grant.grantID).not.toBe(originalGrant!.grantID)
-        const binding = await current.run(() => intake.bindingProof(lookup, accepted.effect.messageID))
-        const bound = await connection.resources.bind(binding)
+        const { binding, bound } = prepared
         expect(bound).toMatchObject({
           grantID: resources.grant.grantID,
           rootID: accepted.effect.messageID,
@@ -495,11 +514,47 @@ test.each([
             (await MessageV2.readInfo({ scopeID: session.scope.id, sessionID, messageID: accepted.effect.messageID }))
               .actor,
           ).toEqual(accepted.permit.actor)
-          await ScopeContext.provide({
-            scope: session.scope,
-            workspace: null,
-            fn: () => RolloutLedger.finishRun(RolloutLifecycle.owner(session), accepted.effect.messageID, "completed"),
+          const settled = Promise.withResolvers<void>()
+          const write = Storage.write
+          const observer = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+            await write(key, value)
+            const row = NativeLeases.Entry.safeParse(value)
+            if (
+              key[0] === "organization-execution-leases" &&
+              key[1] === "entries" &&
+              row.success &&
+              row.data.hint?.grantID === bound.grantID &&
+              row.data.state === "settled" &&
+              row.data.settlement?.kind === "terminal"
+            )
+              Storage.afterCommit(() => settled.resolve())
           })
+          const close = startExecutionReleaseObserver({
+            connection: connection.connected,
+            intake,
+            resources: connection.resources,
+            signal: new AbortController().signal,
+          })
+          try {
+            await ScopeContext.provide({
+              scope: session.scope,
+              workspace: null,
+              fn: () =>
+                RolloutLedger.finishRun(RolloutLifecycle.owner(session), accepted.effect.messageID, "completed"),
+            })
+            const timeout = setTimeout(
+              () => settled.reject(new Error("Fresh independent control generation did not automatically release")),
+              3000,
+            )
+            try {
+              await settled.promise
+            } finally {
+              clearTimeout(timeout)
+            }
+          } finally {
+            await close()
+            observer.mockRestore()
+          }
         })
         const release = Execution.ReleaseProof.parse({
           ...binding,
@@ -508,6 +563,7 @@ test.each([
           rootID: bound.rootID,
           generation: bound.retention.generation,
           outcome: "completed",
+          materialized: true,
         })
         expect(await connection.resources.release(release)).toMatchObject({
           grantID: bound.grantID,
@@ -815,6 +871,54 @@ test.each([
         expect(new Uint8Array(await Bun.file(path.join(sourceDirectory, "private.bin")).arrayBuffer())).toEqual(
           workspaceBytes,
         )
+      if (mode === "resource-transfer") {
+        await source.run(async () => {
+          const reconciled = Promise.withResolvers<void>()
+          const write = Storage.write
+          const settlement = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+            await write(key, value)
+            const row = NativeLeases.Entry.safeParse(value)
+            if (
+              key[0] === "organization-execution-leases" &&
+              key[1] === "entries" &&
+              row.success &&
+              row.data.authority.runtimeID === sourceRegistration.runtimeID &&
+              row.data.state === "settled" &&
+              row.data.settlement?.kind === "closed" &&
+              row.data.settlement.reason === "handoff_closed"
+            )
+              Storage.afterCommit(() => reconciled.resolve())
+          })
+          let terminalReleases = 0
+          f.interceptHTTP((request) => {
+            if (new URL(request.url).pathname.endsWith("/execution/release")) terminalReleases++
+          })
+          const close = startExecutionReleaseObserver({
+            connection: sourceConnection.connected,
+            intake: sourceIntake!,
+            resources: sourceConnection.resources,
+            signal: new AbortController().signal,
+          })
+          try {
+            const timeout = setTimeout(
+              () => reconciled.reject(new Error("Old source did not reconcile its permanently closed generation")),
+              3000,
+            )
+            try {
+              await reconciled.promise
+            } finally {
+              clearTimeout(timeout)
+            }
+            expect((await NativeLeases.page(sourceRegistration.runtimeID)).items).toEqual([])
+            expect(terminalReleases).toBe(0)
+            expect((await sourceIntake!.releaseEntries()).length).toBe(1)
+          } finally {
+            await close()
+            settlement.mockRestore()
+            f.interceptHTTP(undefined)
+          }
+        })
+      }
       if (withResources) await resumeResources(target, targetIntake!, targetConnection, 2)
     } finally {
       sourceResume.resolve()
