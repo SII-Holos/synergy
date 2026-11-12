@@ -4,7 +4,7 @@ import { constants } from "node:fs"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
-import { HomeOwnershipFile } from "./home-ownership-file"
+import { HomeOwnershipFile } from "./home-ownership-file.js"
 
 export const ID = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/)
 export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
