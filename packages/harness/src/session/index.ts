@@ -1420,7 +1420,24 @@ export namespace Session {
     return acknowledgeCompletionNotice(id, Number.MAX_SAFE_INTEGER)
   }
 
-  export async function recordCompletionNotice(id: string, options?: { publishEvent?: boolean }) {
+  export function notificationSource(info: Info) {
+    try {
+      return SessionSchemaRegistry.captureNotificationSource(info)
+    } catch {
+      log.warn("Session notification source is unavailable")
+      return undefined
+    }
+  }
+
+  export async function recordCompletionNotice(
+    id: string,
+    options?: { publishEvent?: boolean; source?: SessionSchemaRegistry.NotificationSource },
+  ) {
+    const publishEvent = options?.publishEvent
+    const hasSource = !!options && Object.hasOwn(options, "source")
+    const capturedSource = options?.source
+      ? SessionSchemaRegistry.snapshotNotificationSource(options.source)
+      : undefined
     await SessionCompat.requireImported(id)
     return serializeCompletionNoticeMutation(id, () =>
       Storage.transaction(async () => {
@@ -1433,8 +1450,9 @@ export namespace Session {
           draft.completionNotice.unreadCount = next
           if (next !== current) unreadCount = next
         })
-        if (unreadCount !== undefined && options?.publishEvent !== false) {
-          await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount })
+        if (unreadCount !== undefined && publishEvent !== false) {
+          const source = hasSource ? capturedSource : notificationSource(result)
+          await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount, ...(source ? { source } : {}) })
         }
         return result
       }),

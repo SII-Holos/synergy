@@ -1,5 +1,7 @@
 import type { Event, EventSessionError, Session } from "@ericsanchezok/synergy-sdk/client"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import type { SpaceIdentity } from "./space-state"
+import { organizationRoute } from "../organization/route"
 
 type SessionSummary = Pick<Session, "id" | "title" | "parentID">
 type NotificationCopy = {
@@ -7,8 +9,13 @@ type NotificationCopy = {
   sessionError: string
   errorFallback: string
 }
+export type OrganizationNotificationOrigin = {
+  identity: Extract<SpaceIdentity, { kind: "organization" }>
+  projectID: string
+  name: string
+}
 
-export type ResolvedNotificationEvent =
+export type ResolvedNotificationEvent = (
   | {
       type: "turn-complete"
       sessionID: string
@@ -24,14 +31,26 @@ export type ResolvedNotificationEvent =
       description: string
       href: string
     }
+) & { organization?: OrganizationNotificationOrigin }
 
-export function resolveNotificationEvent(input: {
-  directory: string
-  event: Event
-  session?: SessionSummary
-  copy: NotificationCopy
-}): ResolvedNotificationEvent | undefined {
-  const scopeHref = `/${base64Encode(input.directory)}`
+export function resolveNotificationEvent(
+  input: {
+    event: Event
+    session?: SessionSummary
+    copy: NotificationCopy
+  } & (
+    | { organization: OrganizationNotificationOrigin; directory?: string }
+    | { organization?: undefined; directory: string }
+  ),
+): ResolvedNotificationEvent | undefined {
+  const organization = input.organization
+    ? { ...input.organization, identity: { ...input.organization.identity } }
+    : undefined
+  const scopeHref = input.organization ? "" : `/${base64Encode(input.directory)}`
+  const href = (sessionID?: string) =>
+    organization
+      ? organizationRoute(organization.identity, organization.projectID, "", "sessions", sessionID)
+      : `${scopeHref}${sessionID ? `/session/${sessionID}` : ""}`
 
   switch (input.event.type) {
     case "session.completion": {
@@ -41,11 +60,13 @@ export function resolveNotificationEvent(input: {
         type: "turn-complete",
         sessionID,
         title: input.copy.responseReady,
-        description: input.session?.title ?? sessionID,
-        href: `${scopeHref}/session/${sessionID}`,
+        description: organization?.name ?? input.session?.title ?? sessionID,
+        href: href(sessionID),
+        ...(organization ? { organization } : {}),
       }
     }
     case "session.error": {
+      if (organization && !input.event.properties.sessionID) return undefined
       if (input.session?.parentID) return undefined
       const sessionID = input.event.properties.sessionID ?? "global"
       const error = input.event.properties.error
@@ -54,8 +75,10 @@ export function resolveNotificationEvent(input: {
         sessionID,
         error,
         title: input.copy.sessionError,
-        description: input.session?.title ?? (typeof error === "string" ? error : input.copy.errorFallback),
-        href: input.event.properties.sessionID ? `${scopeHref}/session/${sessionID}` : scopeHref,
+        description:
+          organization?.name ?? input.session?.title ?? (typeof error === "string" ? error : input.copy.errorFallback),
+        href: href(input.event.properties.sessionID),
+        ...(organization ? { organization } : {}),
       }
     }
     default:

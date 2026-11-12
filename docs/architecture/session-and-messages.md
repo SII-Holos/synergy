@@ -74,6 +74,8 @@ The frontend clears one session through `Session.clearCompletionNotice()`, which
 
 The `session.completion` event is the durable success-notification signal. It is emitted once per successfully completed root task, independently of the lifecycle `session.idle` event. A session that completes a task, remains busy for additional work, and then finally idles will fire `session.completion` for each successful root task and `session.idle` once when the loop releases ownership.
 
+Optional notification sources are captured synchronously from the producer's original Session Info through `SessionSchemaRegistry`. The strict envelope contains only Scope/Session/actual-parent identity and bounded, versioned scalar owner references; it neither copies private Info nor grants access. Invocation and processor errors retain that snapshot across asynchronous work. Missing owners leave personal events unchanged, and invalid optional completion metadata cannot roll back the completion notice. See [notification source capture](../decisions/implemented/architecture/2026-11-12-capture-notification-sources-at-native-publication.md).
+
 Legacy persisted records that have `unread === true` and `silent !== true` but lack `unreadCount` are normalized to `unreadCount = 1` at the read boundary and by the persisted `SessionMigration.migrateSessionCompletionNotice` upgrade. Fresh sessions start with `unreadCount = 0`.
 
 ## Rollback Feedback Acknowledgment

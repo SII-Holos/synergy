@@ -18,7 +18,7 @@ Verify deployment signing identity before checkpoints; signatures never bypass a
 
 Knowledge sources verify paged releases before atomic per-Session manifest selection. Headers exclude full release collections; exact hashes reuse immutable seals. Machine reads refresh accepted proofs and check exact versions. Reuse canonical Skill parsing/resolution; local sources include only member Home and selected project roots. Hosted Sessions exclude filesystem Skills and global latest directories. Reauthorize content/reference reads and preserve prior manifests and edited files on failure. Verify knowledge, upgrade and signed execution suites plus Local Runtime Skill snapshot/catalog suites.
 
-Shared transcript export uses portable DTOs, ordered durable outboxes, generation/hash checkpoints and authorized chunk references. Private bodies remain local. Verify exporter/transcript migrations, restart and lost-ACK tests.
+Shared export owns durable ordered DTOs and authenticated chunks; private bodies stay local. Notification references capture original bindings, never grant authority. Verify exporter/transcript restart/ACK and `test/notification-source.test.ts`.
 
 Private history and interactions use distinct signed permits, canonical Scope/lineage and binding fences. Attachments require native producer evidence, never bare hashes. Reuse pending windows and decision receipts; omit metadata/answers. Bound ranges/preparation/provenance. Verify session-read/attachment-read/interactions suites; regenerate SDKs after contract changes.
 

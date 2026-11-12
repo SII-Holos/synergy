@@ -5,6 +5,23 @@ import type { SessionExtensionShape } from "./types"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 export namespace SessionSchemaRegistry {
+  const SourceID = z.string().min(1).max(256)
+  const SourceScalar = z.union([z.string().max(512), z.number().finite(), z.boolean(), z.null()])
+  export const NotificationReference = z.strictObject({
+    version: z.number().int().positive().max(65_535),
+    fields: z.record(SourceID, SourceScalar).refine((value) => Object.keys(value).length <= 32),
+  })
+  export type NotificationReference = z.infer<typeof NotificationReference>
+  export const NotificationSource = z
+    .strictObject({
+      scopeID: SourceID,
+      sessionID: SourceID,
+      parentID: SourceID.optional(),
+      references: z.record(SourceID, NotificationReference).refine((value) => Object.keys(value).length <= 16),
+    })
+    .refine((value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 8192)
+    .meta({ ref: "SessionNotificationSource" })
+  export type NotificationSource = z.infer<typeof NotificationSource>
   export interface TransferMutation {
     source: Readonly<Record<string, unknown>>
     previous?: Readonly<Record<string, unknown>>
@@ -33,6 +50,7 @@ export namespace SessionSchemaRegistry {
      * synchronously inside session transactions, so it may only read the
      * already-parsed session. */
     navIdentity?(input: Record<string, unknown>): Record<string, unknown> | undefined
+    notificationReference?(input: Readonly<Record<string, unknown>>): NotificationReference | undefined
     normalizeImport?(input: Record<string, unknown>, mode: "transcript" | "archive"): void
     adoptTransfer?(input: TransferMutation): Record<string, unknown> | Promise<Record<string, unknown>>
     validateTransfer?(input: TransferMutation & { next: Readonly<Record<string, unknown>> }): void | Promise<void>
@@ -134,6 +152,34 @@ export namespace SessionSchemaRegistry {
     const projected = projectInput(input) as Record<string, unknown>
     for (const owner of state().owners.values()) Object.assign(result, owner.navIdentity?.(projected))
     return result
+  }
+
+  export function captureNotificationSource(input: object): NotificationSource | undefined {
+    const references = new Map<string, NotificationReference>()
+    for (const [id, owner] of state().owners) {
+      const reference = owner.notificationReference?.(input as Readonly<Record<string, unknown>>)
+      if (reference !== undefined) references.set(id, NotificationReference.parse(reference))
+    }
+    if (!references.size) return
+    const identity = z
+      .object({ id: SourceID, parentID: SourceID.optional(), scope: z.object({ id: SourceID }) })
+      .parse(input)
+    return snapshotNotificationSource({
+      scopeID: identity.scope.id,
+      sessionID: identity.id,
+      ...(identity.parentID ? { parentID: identity.parentID } : {}),
+      references: Object.fromEntries(references),
+    })
+  }
+
+  export function snapshotNotificationSource(input: unknown): NotificationSource {
+    const captured = NotificationSource.parse(input)
+    for (const reference of Object.values(captured.references)) {
+      Object.freeze(reference.fields)
+      Object.freeze(reference)
+    }
+    Object.freeze(captured.references)
+    return Object.freeze(captured)
   }
 
   export async function created(input: object): Promise<void> {

@@ -24,6 +24,10 @@ export function registerSessionSchema(member?: { orgID: string }) {
     shape: fields,
     transferOwner: "organization-runtime",
     inherit: ["organization"],
+    notificationReference(info) {
+      const binding = fields.organization.parse(info.organization)
+      return binding ? { version: 1, fields: { ...binding } } : undefined
+    },
     async adoptTransfer(input) {
       if (input.source.organization === undefined && input.previous?.organization === undefined && !member) return {}
       return { organization: await OrganizationSessionAdoption.binding(input) }

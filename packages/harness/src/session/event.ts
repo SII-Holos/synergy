@@ -4,6 +4,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { Info, StatusInfo } from "./types"
 import { SessionNavEntry } from "./nav"
 import { CortexTypes } from "../cortex/types"
+import { SessionSchemaRegistry } from "./schema-registry"
 
 export function isSessionResourceTerminalEvent(event: {
   type: string
@@ -45,6 +46,7 @@ export const SessionEvent = {
     z.object({
       sessionID: z.string().optional(),
       error: z.unknown().optional(),
+      source: SessionSchemaRegistry.NotificationSource.optional(),
     }),
   ),
   Status: BusEvent.define(
@@ -59,6 +61,7 @@ export const SessionEvent = {
     z.object({
       sessionID: z.string(),
       unreadCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      source: SessionSchemaRegistry.NotificationSource.optional(),
     }),
   ),
   Idle: BusEvent.define(

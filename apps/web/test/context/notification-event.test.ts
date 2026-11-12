@@ -62,4 +62,54 @@ describe("notification event semantics", () => {
       href: "/L3Byb2plY3Q/session/ses_a",
     })
   })
+
+  test("a native organization completion keeps its full space identity instead of borrowing a personal Scope route", () => {
+    const organization = {
+      identity: {
+        kind: "organization" as const,
+        orgID: "org-a",
+        accountID: "account-a",
+        deploymentIncarnation: "deployment-a",
+      },
+      projectID: "project-a",
+      name: "Team A",
+    }
+    const notification = resolveNotificationEvent({
+      directory: "/personal-project",
+      event: { type: "session.completion", properties: { sessionID: "session-a", unreadCount: 1 } },
+      copy,
+      ...{ organization },
+    })
+    expect(notification?.href).toBe("/organization/org-a/account-a/deployment-a/projects/project-a/sessions/session-a")
+    expect(notification).toMatchObject({ organization, sessionID: "session-a" })
+  })
+
+  test("an organization error without an actual Session target cannot become a global organization notice", () => {
+    expect(
+      resolveNotificationEvent({
+        organization: {
+          identity: {
+            kind: "organization",
+            orgID: "org-a",
+            accountID: "account-a",
+            deploymentIncarnation: "deployment-a",
+          },
+          projectID: "project-a",
+          name: "Team A",
+        },
+        event: { type: "session.error", properties: { error: "Global failure" } },
+        copy,
+      }),
+    ).toBeUndefined()
+  })
+
+  test("a personal global error retains its original Scope recovery destination", () => {
+    expect(
+      resolveNotificationEvent({
+        directory: "/project",
+        event: { type: "session.error", properties: { error: "Global failure" } },
+        copy,
+      }),
+    ).toMatchObject({ type: "error", href: "/L3Byb2plY3Q", description: "Global failure" })
+  })
 })
