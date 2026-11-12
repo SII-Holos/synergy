@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0134](0134-authenticated-checkpoint-contained-invalid-authority-history.md)
+
 - [0131](0131-service-recovery-request-omitted-its-snapshot-facet.md)
 
 - [0132](0132-paged-workspace-attachment-used-a-legacy-parser.md)

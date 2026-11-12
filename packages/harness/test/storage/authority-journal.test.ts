@@ -26,6 +26,129 @@ const actor: ActorStamp.Info = {
   requestID: "policy-change",
 }
 
+test("an authenticated namespace archive cannot certify a corrupted authority chain", async () => {
+  await using f = await fixture()
+  const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "journal-corruption-"))
+  const keys = {
+    async current() {
+      return { version: "fixture", key: Buffer.alloc(32, 9) }
+    },
+    async resolve() {
+      return Buffer.alloc(32, 9)
+    },
+  }
+  try {
+    await f.run(async () => {
+      await AuthorityJournal.transaction("policy.before-corruption", async (journal) => {
+        journal.identify(actor)
+        await Storage.write(["policy", "one"], { enabled: false, revision: 2, credential: "fixture-private" })
+      })
+      const { head, items } = await AuthorityJournal.entries({ limit: 1 })
+      const entry = items[0]
+      if (!entry) throw new Error("The real policy mutation did not produce authority history")
+      await Storage.write(
+        ["storage_authority_journal", "entries", head.journalID, String(entry.sequence).padStart(16, "0")],
+        { ...entry, hash: "0".repeat(64) },
+      )
+      expect((await AuthorityJournal.inspect()).chainValid).toBe(false)
+      const expected = await StorageCheckpoint.exportArchive({
+        directory,
+        archiveID: "corrupted-authority",
+        namespaceID: "opaque-checkpoint-namespace",
+        buildVersion: "fixture",
+        keys,
+        protect: () => true,
+      })
+      await expect(AuthorityJournal.readArchivedCheckpoint({ directory, expected, keys })).rejects.toThrow("authority")
+    })
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("an archived continuation proves its fixed earlier head across pages without reading the later live head", async () => {
+  await using f = await fixture()
+  const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "journal-continuation-"))
+  const keys = {
+    async current() {
+      return { version: "fixture", key: Buffer.alloc(32, 11) }
+    },
+    async resolve() {
+      return Buffer.alloc(32, 11)
+    },
+  }
+  try {
+    await f.run(async () => {
+      const initial = await AuthorityJournal.head()
+      await AuthorityJournal.transaction("policy.continuation-anchor", async (journal) => {
+        journal.identify(actor)
+        await Storage.write(["policy", "one"], { enabled: true, revision: 2, credential: "anchor-private" })
+      })
+      const before = await AuthorityJournal.head()
+      await AuthorityJournal.transaction("policy.continuation", async (journal) => {
+        journal.identify(actor)
+        for (let index = 0; index < 130; index++)
+          await Storage.write(["policy", `continued-${index}`], { enabled: false, revision: 1, credential: "private" })
+      })
+      const captured = await AuthorityJournal.head()
+      const expected = await StorageCheckpoint.exportArchive({
+        directory,
+        archiveID: "continued-authority",
+        namespaceID: "opaque-checkpoint-namespace",
+        buildVersion: "fixture",
+        keys,
+        protect: () => true,
+      })
+      await AuthorityJournal.transaction("policy.after-capture", async (journal) => {
+        journal.identify(actor)
+        await Storage.write(["policy", "one"], { enabled: false, revision: 2, credential: "newer-private" })
+      })
+      expect((await AuthorityJournal.head()).sequence).toBeGreaterThan(captured.sequence)
+      const after = structuredClone(before)
+      const reading = AuthorityJournal.readArchivedCheckpoint({ directory, expected, keys, after })
+      after.tailHash = "0".repeat(64)
+      expect(await reading).toEqual(captured)
+      expect(await AuthorityJournal.readArchivedCheckpoint({ directory, expected, keys, after: initial })).toEqual(
+        captured,
+      )
+      expect(await AuthorityJournal.readArchivedCheckpoint({ directory, expected, keys, after: captured })).toEqual(
+        captured,
+      )
+      for (const changed of [
+        { ...before, tailHash: "0".repeat(64) },
+        { ...before, journalID: "foreign" },
+        { ...before, namespaceID: "foreign" },
+        { ...before, contractHash: "0".repeat(64) },
+        { ...before, sequence: captured.sequence + 1 },
+        { ...before, untracked: true },
+      ])
+        await expect(
+          AuthorityJournal.readArchivedCheckpoint({ directory, expected, keys, after: changed }),
+        ).rejects.toThrow("authority")
+      const controller = new AbortController()
+      const reason = new Error("Original archived authority read cancelled")
+      await expect(
+        AuthorityJournal.readArchivedCheckpoint({
+          directory,
+          expected,
+          after: before,
+          signal: controller.signal,
+          keys: {
+            current: keys.current,
+            async resolve() {
+              const key = await keys.resolve()
+              controller.abort(reason)
+              return key
+            },
+          },
+        }),
+      ).rejects.toBe(reason)
+    })
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("archived authority checkpoints retain their historical head and require complete authenticated EOF", async () => {
   await using f = await fixture()
   const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "journal-checkpoint-"))

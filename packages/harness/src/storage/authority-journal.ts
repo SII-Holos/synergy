@@ -1,5 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash, randomUUID } from "node:crypto"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { tmpdir } from "node:os"
+import { Database } from "bun:sqlite"
 import { z } from "zod"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
@@ -9,6 +13,7 @@ import { StorageMutationGuard } from "./mutation-guard"
 import { StorageCheckpoint } from "./checkpoint"
 import type { VaultKeyProvider } from "../secrets/encrypted-store"
 import { StorageConflictError, StorageIntegrityError } from "./errors"
+import { initializeSqliteEngine } from "./sqlite-engine"
 import type { StoreTransaction, TransactionOptions } from "./transactional-store"
 
 const ID = z.string().min(1).max(128)
@@ -69,6 +74,60 @@ const Entry = z.strictObject({
   hash: Hash,
 })
 type Entry = z.infer<typeof Entry>
+type ChainRow = { key: readonly string[]; value: unknown }
+
+async function validChain(
+  head: Header,
+  baselineRows: AsyncIterable<ChainRow>,
+  entryRows: AsyncIterable<ChainRow>,
+  assert: () => void = () => {},
+  after?: Header,
+) {
+  const baseline = createHash("sha256").update(
+    JSON.stringify(["synergy-authority-baseline-v1", head.journalID, head.namespaceID, head.contractHash]),
+  )
+  let count = 0
+  let valid = true
+  for await (const row of baselineRows) {
+    assert()
+    const entry = Baseline.parse(row.value)
+    if (
+      row.key.length !== 4 ||
+      row.key[0] !== root[0] ||
+      row.key[1] !== "baseline" ||
+      row.key[2] !== head.journalID ||
+      entry.sequence !== ++count ||
+      row.key.at(-1) !== ordinal(count)
+    )
+      valid = false
+    baseline.update(JSON.stringify(entry.fingerprint))
+  }
+  valid = valid && count === head.baselineEntries && baseline.digest("hex") === head.baselineHash
+  let previous = head.baselineHash
+  let sequence = 0
+  let anchored = !after || (after.sequence === 0 && after.tailHash === previous)
+  for await (const row of entryRows) {
+    assert()
+    const entry = Entry.parse(row.value)
+    const { hash, ...body } = entry
+    if (
+      entry.journalID !== head.journalID ||
+      row.key.length !== 4 ||
+      row.key[0] !== root[0] ||
+      row.key[1] !== "entries" ||
+      row.key[2] !== head.journalID ||
+      entry.sequence !== ++sequence ||
+      entry.previousHash !== previous ||
+      digest(body) !== hash ||
+      row.key.at(-1) !== ordinal(sequence)
+    )
+      valid = false
+    previous = hash
+    if (after?.sequence === sequence && after.tailHash === hash) anchored = true
+  }
+  assert()
+  return valid && anchored && sequence === head.sequence && previous === head.tailHash
+}
 interface Domain {
   id: string
   version: number
@@ -235,21 +294,69 @@ export namespace AuthorityJournal {
     expected: StorageCheckpoint.Manifest
     keys: VaultKeyProvider
     signal?: AbortSignal
+    after?: Checkpoint
   }): Promise<Checkpoint> {
     const directory = input.directory
     const expected = StorageCheckpoint.Manifest.parse(input.expected)
     const signal = input.signal
+    const after = input.after && Checkpoint.parse(input.after)
     const provider = input.keys
     const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
-    let checkpoint: Checkpoint | undefined
-    for await (const entry of StorageCheckpoint.entries({ directory, expected, keys, signal })) {
-      if (entry.type !== "record" || JSON.stringify(entry.key) !== JSON.stringify(headerKey)) continue
-      if (checkpoint) throw new StorageIntegrityError("A checkpoint contains repeated authority history")
-      checkpoint = Checkpoint.parse(entry.value)
-    }
     signal?.throwIfAborted()
-    if (!checkpoint) throw new StorageIntegrityError("A checkpoint has no authority history")
-    return Checkpoint.parse(checkpoint)
+    initializeSqliteEngine()
+    const temporary = await fs.mkdtemp(path.join(tmpdir(), "synergy-authority-"))
+    let database: Database | undefined
+    try {
+      signal?.throwIfAborted()
+      database = new Database(path.join(temporary, "journal.sqlite"))
+      database.exec(
+        "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE history(kind TEXT NOT NULL,journalID TEXT NOT NULL,entryKey TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(kind,journalID,entryKey))",
+      )
+      using insert = database.query("INSERT INTO history VALUES(?,?,?,?)")
+      let checkpoint: Checkpoint | undefined
+      for await (const entry of StorageCheckpoint.entries({ directory, expected, keys, signal })) {
+        signal?.throwIfAborted()
+        if (entry.type !== "record" || entry.key[0] !== root[0]) continue
+        if (JSON.stringify(entry.key) === JSON.stringify(headerKey)) {
+          if (checkpoint) throw new StorageIntegrityError("A checkpoint contains repeated authority history")
+          checkpoint = Checkpoint.parse(entry.value)
+        } else {
+          const [, kind, journalID] = entry.key
+          if ((kind === "baseline" || kind === "entries") && journalID !== undefined)
+            insert.run(kind, journalID, JSON.stringify(entry.key), JSON.stringify(entry.value))
+        }
+      }
+      signal?.throwIfAborted()
+      if (!checkpoint) throw new StorageIntegrityError("A checkpoint has no authority history")
+      if (
+        checkpoint.untracked ||
+        (after &&
+          (after.untracked ||
+            after.sequence > checkpoint.sequence ||
+            ["journalID", "namespaceID", "contractHash", "baselineHash", "baselineEntries", "startedAt"].some(
+              (key) => Reflect.get(after, key) !== Reflect.get(checkpoint, key),
+            )))
+      )
+        throw new StorageIntegrityError("Archived authority history cannot continue the selected checkpoint")
+      using query = database.query<{ entryKey: string; value: string }, [string, string]>(
+        "SELECT entryKey,value FROM history WHERE kind=? AND journalID=? ORDER BY entryKey",
+      )
+      const selected = checkpoint
+      async function* history(kind: string): AsyncGenerator<ChainRow> {
+        for (const row of query.iterate(kind, selected.journalID)) {
+          signal?.throwIfAborted()
+          yield { key: Key.parse(JSON.parse(row.entryKey)), value: JSON.parse(row.value) }
+        }
+      }
+      if (
+        !(await validChain(checkpoint, history("baseline"), history("entries"), () => signal?.throwIfAborted(), after))
+      )
+        throw new StorageIntegrityError("Archived authority history is incomplete or invalid")
+      return Checkpoint.parse(checkpoint)
+    } finally {
+      database?.close()
+      await fs.rm(temporary, { recursive: true, force: true })
+    }
   }
   export type Contribution = Domain
   export function selected() {
@@ -423,32 +530,11 @@ export namespace AuthorityJournal {
             const expected = await read(tx, Fingerprint, [...fingerprints(head.journalID), keyHash(row.key)])
             if (!expected) fingerprintGaps++
           }
-      const baseline = createHash("sha256").update(
-        JSON.stringify(["synergy-authority-baseline-v1", head.journalID, head.namespaceID, head.contractHash]),
+      const chainValid = await validChain(
+        head,
+        rows(tx, [...root, "baseline", head.journalID]),
+        rows(tx, records(head.journalID)),
       )
-      let count = 0
-      let chainValid = true
-      for await (const row of rows(tx, [...root, "baseline", head.journalID])) {
-        const entry = Baseline.parse(row.value)
-        if (entry.sequence !== ++count || row.key.at(-1) !== ordinal(count)) chainValid = false
-        baseline.update(JSON.stringify(entry.fingerprint))
-      }
-      chainValid = chainValid && count === head.baselineEntries && baseline.digest("hex") === head.baselineHash
-      let previous = head.baselineHash
-      let sequence = 0
-      for await (const row of rows(tx, records(head.journalID))) {
-        const entry = Entry.parse(row.value)
-        const { hash, ...body } = entry
-        if (
-          entry.sequence !== ++sequence ||
-          entry.previousHash !== previous ||
-          digest(body) !== hash ||
-          row.key.at(-1) !== ordinal(sequence)
-        )
-          chainValid = false
-        previous = hash
-      }
-      chainValid = chainValid && sequence === head.sequence && previous === head.tailHash
       return {
         head,
         initialized: true,
