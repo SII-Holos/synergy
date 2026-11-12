@@ -233,7 +233,7 @@ for (const scenario of [
         baseUrl: `http://127.0.0.1:${listener.port}`,
         headers: { authorization: `Bearer ${token}` },
       })
-      return { runtime, client, registration, headers: account.headers }
+      return { runtime, client, registration, headers: account.headers, sockets }
     }
     const source = await member("native-source", "a".repeat(64))
     const target = await member("cloud-target", "b".repeat(64), recipient)
@@ -420,15 +420,43 @@ for (const scenario of [
       return
     }
     let publishes = 0
+    let publishedReceipt: WorkspaceMove.Receipt | undefined
     if (scenario === "lost-publish") {
       let lose = true
+      const observer = new AbortController()
+      const entered = Promise.withResolvers<void>()
+      const permit = Promise.withResolvers<void>()
+      const committed = Promise.withResolvers<WorkspaceMove.Receipt>()
+      const finished = Promise.withResolvers<Extract<Runtime.ClientFrame, { type: "receipt" }>["reply"]>()
+      let observe = true
+      f.interceptFrames((socket, raw) => {
+        const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
+        if (source.sockets.has(socket) && frame.type === "receipt") finished.resolve(frame.reply)
+        return false
+      })
+      resources.defer("release original publication observer", async () => {
+        permit.resolve()
+        observer.abort()
+        f.interceptFrames(undefined)
+      })
       f.interceptHTTP(async (request) => {
-        if (new URL(request.url).pathname !== "/runtime/v1/handoffs/workspace") return
+        const route = new URL(request.url).pathname
+        if (route === `/org/v1/handoffs/${handoffID}/drive` && observe) {
+          observe = false
+          return f.service.fetch(new Request(request, { signal: observer.signal }))
+        }
+        if (route !== "/runtime/v1/handoffs/workspace") return
         const body = Cloud.HandoffWorkspaceRequest.parse(await request.clone().json())
         if (body.proof.operation.action !== "publish") return
         publishes++
+        entered.resolve()
+        await permit.promise
         const response = await f.service.fetch(request)
         if (lose && response.status === 200) {
+          const result = Cloud.HandoffWorkspaceResult.parse(await response.clone().json())
+          if (result.action !== "publish") throw new Error("Publication returned another operation")
+          publishedReceipt = WorkspaceMove.Receipt.parse(result.receipt)
+          committed.resolve(publishedReceipt)
           lose = false
           return Response.json(
             {
@@ -442,9 +470,70 @@ for (const scenario of [
         }
         return response
       })
-      await expect(drive("prepare-source")).rejects.toMatchObject({ outcome: "unknown" })
+      const publication = Promise.race([
+        committed.promise,
+        finished.promise.then((reply) => {
+          if (!publishedReceipt)
+            throw reply.kind === "error"
+              ? reply.error
+              : new Error("Native source settled without a publication receipt")
+          return publishedReceipt
+        }),
+      ])
+      void publication.catch(() => {})
+      let firstError: unknown
+      const first = drive("prepare-source").then(
+        (value) => ({ value, error: undefined }),
+        (error: unknown) => {
+          firstError = error
+          return { value: undefined, error }
+        },
+      )
+      const bounded = async <T>(producer: Promise<T>, stage: string): Promise<T> => {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          return await Promise.race([
+            producer,
+            first.then((settled) => {
+              if (settled.value) throw new Error("Source completed without the injected acknowledgement loss")
+              if (!z.object({ outcome: z.literal("unknown") }).safeParse(settled.error).success) throw settled.error
+              return producer
+            }),
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(() => reject(new Error(`Original publication did not reach ${stage}`)), 10_000)
+            }),
+          ])
+        } catch (error) {
+          if (firstError !== undefined && firstError !== error)
+            throw new AggregateError([firstError, error], `Original publication failed during ${stage}`)
+          throw error
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+      try {
+        await bounded(entered.promise, "native dispatch")
+        observer.abort()
+        expect((await first).error).toMatchObject({ outcome: "unknown" })
+        expect((await f.client.orgCloudWorkspaces.get({ workspaceID: cloud.workspaceID }, options)).data.revision).toBe(
+          before.revision,
+        )
+      } finally {
+        permit.resolve()
+        publishedReceipt = await bounded(publication, "committed receipt")
+        expect(await bounded(finished.promise, "original native completion")).toMatchObject({
+          kind: "error",
+          error: { outcome: "unknown" },
+        })
+        f.interceptFrames(undefined)
+      }
+      expect(publishes).toBe(1)
+      expect(publishedReceipt).toMatchObject({
+        id: mapping.moveID,
+        target: { workspaceID: cloud.workspaceID, path: mapping.target.path, revision: before.revision + 1 },
+      })
       expect((await f.client.orgCloudWorkspaces.get({ workspaceID: cloud.workspaceID }, options)).data.revision).toBe(
-        before.revision + 1,
+        publishedReceipt.target.revision,
       )
     }
     const frozen = (await drive("prepare-source")).facts[0]?.proof
@@ -496,6 +585,7 @@ for (const scenario of [
       return z.object({ workspaceMoveReceipt: WorkspaceMove.Receipt }).parse(header?.value).workspaceMoveReceipt
     })
     expect(WorkspaceMove.receiptHash(receipt)).toBe(frozen.workspaceMoveReceiptHash!)
+    if (scenario === "lost-publish") expect(receipt).toEqual(publishedReceipt!)
     expect(receipt).toMatchObject({
       id: mapping.moveID,
       mappingRevision: 1,
