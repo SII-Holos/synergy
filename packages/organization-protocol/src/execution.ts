@@ -280,11 +280,14 @@ export namespace OrganizationExecutionProtocol {
       return (
         value.grant.state !== "closed" &&
         value.resources.length === selected.length &&
-        value.resources.every(
-          (resource, index) =>
-            resource.resourceID === selected[index].resourceID &&
-            Resource.kind(resource.definition) === selected[index].kind,
-        )
+        value.resources.every((resource, index) => {
+          const expected = selected[index]
+          return (
+            expected !== undefined &&
+            resource.resourceID === expected.resourceID &&
+            Resource.kind(resource.definition) === expected.kind
+          )
+        })
       )
     }, "Execution descriptors must match the exact active grant selection")
     .meta({ ref: "OrgExecutionDescription" })
