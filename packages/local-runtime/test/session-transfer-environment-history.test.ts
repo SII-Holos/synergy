@@ -28,7 +28,7 @@ const register = () => {
   Environments.register()
 }
 
-test("a completed native Session operation retains original facts and all saved output on another Home", async () => {
+test("source preparation saves an exited native operation and retains its original history on another Home", async () => {
   await using targetDirectory = await tmpdir()
   const values = new Map<string, Uint8Array>()
   const store = {
@@ -123,19 +123,16 @@ test("a completed native Session operation retains original facts and all saved 
           execution = await EnvironmentExecution.reconcile(execution.id, "home")
         }
         expect(execution.state).toBe("exited")
-        const completed = await EnvironmentExecution.complete(execution.id, "home")
-        expect(completed.state).toBe("completed")
-        expect(completed.outputCursor).toBeGreaterThan(1)
-        const originalKey = ["environment_execution", "home", completed.id]
+        const originalKey = ["environment_execution", "home", execution.id]
         const stored = z.record(z.string(), z.unknown()).parse(await Storage.read(originalKey))
-        const original = {
+        const pendingRecord = {
           ...stored,
           execution: {
             ...z.record(z.string(), z.unknown()).parse(stored.execution),
             retainedOwnerFields: { nested: { original: "preserved exactly" } },
           },
         }
-        await Storage.write(originalKey, original)
+        await Storage.write(originalKey, pendingRecord)
         await RolloutLedger.writeTool({ ...tool, status: "completed", ended: Date.now() })
         const secondary = {
           ...tool,
@@ -157,6 +154,11 @@ test("a completed native Session operation retains original facts and all saved 
           toEpoch: 2,
         }
         const prepared = await Source.prepare({ binding, store, signal, async verify() {} })
+        const completed = await EnvironmentExecution.get(execution.id, "home")
+        expect(completed.state).toBe("completed")
+        expect(completed.outputCursor).toBeGreaterThan(1)
+        const original = await Storage.read(originalKey)
+        expect(original).toHaveProperty("execution.retainedOwnerFields.nested.original", "preserved exactly")
         expect(prepared.root.owners["session-environments"]).toBe(2)
         return {
           session: await Session.get(session.id),

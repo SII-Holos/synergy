@@ -42,7 +42,7 @@ export namespace EnvironmentExecutionPortable {
     }
   }
 
-  export function parse(key: readonly string[], value: unknown, input: Owner): Completed {
+  function record(key: readonly string[], value: unknown, input: Owner, phase: "discovery" | "publication"): Completed {
     const owner = Owner.parse(input)
     const record = EnvironmentExecutionSchema.Record.parse(value)
     const info = record.execution
@@ -55,19 +55,27 @@ export namespace EnvironmentExecutionPortable {
     )
       throw new Error("Portable Environment operation belongs to another canonical Session")
     if (
-      info.state !== "completed" ||
+      !(phase === "publication"
+        ? info.state === "completed"
+        : ["completed", "exited", "unsaved", "saved"].includes(info.state)) ||
       !info.status ||
       !ExecutionProtocol.terminal(info.status) ||
       info.status.id !== info.id ||
       info.status.digest !== info.digest ||
       !EnvironmentSchema.sameTarget(info.status.target, info.target) ||
-      Count.parse(info.outputCursor) !== Count.parse(info.status.cursor)
+      (info.state === "completed"
+        ? Count.parse(info.outputCursor) !== Count.parse(info.status.cursor)
+        : Count.parse(info.outputCursor) > Count.parse(info.status.cursor))
     )
       throw new Error("Portable Environment operation requires terminal receipt and complete saved output")
     return { ...record, execution: { ...info, origin: info.origin } }
   }
 
-  export function records(input: Owner, signal: AbortSignal) {
+  export function parse(key: readonly string[], value: unknown, input: Owner): Completed {
+    return record(key, value, input, "publication")
+  }
+
+  function iterate(input: Owner, signal: AbortSignal, phase: "discovery" | "publication") {
     const owner = Owner.parse(input)
     const assertOwner = guard(signal)
     return (async function* () {
@@ -75,13 +83,16 @@ export namespace EnvironmentExecutionPortable {
       for await (const info of EnvironmentExecution.sessionEntries(owner, signal)) {
         assertOwner()
         const key = StoragePath.environmentExecution(info.scopeID, info.id)
-        const record = parse(key, await Storage.read(key), owner)
+        const value = record(key, await Storage.read(key), owner, phase)
         assertOwner()
-        yield { key, value: record }
+        yield { key, value }
       }
       assertOwner()
     })()
   }
+
+  export const records = (input: Owner, signal: AbortSignal) => iterate(input, signal, "publication")
+  export const discoverRecords = (input: Owner, signal: AbortSignal) => iterate(input, signal, "discovery")
 
   export function outputKey(record: Completed, cursor: number) {
     Count.positive().parse(cursor)

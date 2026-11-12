@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0148](0148-terminal-executions-never-reached-transfer-drainage.md)
+
 - [0147](0147-portable-child-list-skipped-prefix-siblings.md)
 
 - [0146](0146-browser-logins-survived-deployment-incarnation.md)

@@ -61,9 +61,9 @@ export namespace SessionTransferEnvironments {
       descriptor: provider.portableDescriptor(info.spec),
     })
   }
-  async function historyCount(scopeID: string, sessionID: string, signal: AbortSignal) {
+  async function historyCount(scopeID: string, sessionID: string, signal: AbortSignal, read = Portable.records) {
     let count = 0
-    for await (const { value } of Portable.records({ scopeID, sessionID }, signal)) {
+    for await (const { value } of read({ scopeID, sessionID }, signal)) {
       await inspectSessionEnvironmentOrigin(value.execution.origin)
       signal.throwIfAborted()
       count = z
@@ -93,7 +93,7 @@ export namespace SessionTransferEnvironments {
     assertOwner()
     const requirements: Owners.Requirement[] = []
     try {
-      await historyCount(session.scope.id, session.id, context.signal)
+      await historyCount(session.scope.id, session.id, context.signal, Portable.discoverRecords)
       await selection(session.environmentID, session.scope.id)
     } catch (error) {
       assertOwner()
@@ -419,7 +419,7 @@ export namespace SessionTransferEnvironments {
         const current = await Session.get(session.id)
         let count = 0
         try {
-          count = await historyCount(current.scope.id, current.id, signal)
+          count = await historyCount(current.scope.id, current.id, signal, Portable.discoverRecords)
           await selection(current.environmentID, current.scope.id)
         } catch (error) {
           signal.throwIfAborted()

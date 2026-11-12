@@ -187,3 +187,42 @@ test("native output validation retains original JSON bytes and snapshots a reusa
     expect(reusable.every((byte) => byte === 0)).toBe(true)
   }
 })
+
+test("discovery admits only original terminal work awaiting its native final save", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const original = completed()
+    const key = StoragePath.environmentExecution("home", original.execution.id)
+    const signal = new AbortController().signal
+    for (const state of ["exited", "unsaved", "saved"] as const) {
+      const value = { ...original, execution: { ...original.execution, state, outputCursor: 1 } }
+      await Storage.transaction(async () => {
+        await Storage.write(key, value)
+        await EnvironmentExecutionOriginIndex.update(value.execution)
+      })
+      const reader = Portable.discoverRecords(owner, signal)
+      const discovered: unknown = (await reader.next()).value
+      expect(discovered).toEqual({ key, value })
+      await reader.return(undefined)
+      await expect(Portable.records(owner, signal).next()).rejects.toThrow("terminal receipt")
+      await expect(Storage.transaction(() => Portable.install(value, owner))).rejects.toThrow("terminal receipt")
+      expect(await Storage.read(key)).toEqual(value)
+    }
+    for (const patch of [
+      { state: "running" },
+      { state: "unknown" },
+      { state: "cancel_requested" },
+      { state: "submitted" },
+      { state: "exited", status: { ...original.execution.status, streamsDrained: false } },
+      { state: "exited", status: { ...original.execution.status, treeDrained: false } },
+      { state: "exited", status: { ...original.execution.status, digest: "b".repeat(64) } },
+      { state: "exited", outputCursor: 3 },
+      { state: "completed", outputCursor: 1 },
+    ]) {
+      const value = { ...original, execution: { ...original.execution, ...patch } }
+      await Storage.write(key, value)
+      await expect(Portable.discoverRecords(owner, signal).next()).rejects.toThrow("terminal receipt")
+      expect(await Storage.read(key)).toEqual(value)
+    }
+  })
+})
