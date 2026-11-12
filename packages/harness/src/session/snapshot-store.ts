@@ -120,6 +120,18 @@ export namespace SnapshotStore {
     )
   }
 
+  export function archivedRepository(input: { scopeID: string; layout: "native" | "stored" | "legacy"; name: string }) {
+    component(input.scopeID)
+    if (input.layout !== "legacy") {
+      if (input.layout === "native" && input.name !== "store")
+        throw new StorageError("Invalid native Snapshot repository")
+      if (input.layout === "stored") component(input.name)
+      return repository(input.scopeID)
+    }
+    if (input.name !== ".shared.old") component(input.name)
+    return path.join(Storage.current().artifactDirectory, "snapshot", input.scopeID, input.name)
+  }
+
   export function cache(scopeID: string, sessionID?: string) {
     return path.join(
       Global.Path.cache,

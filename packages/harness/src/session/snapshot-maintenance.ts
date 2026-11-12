@@ -17,12 +17,16 @@ import { SnapshotPool } from "./snapshot-pool"
 import { SnapshotProtection } from "./snapshot-protection"
 import { SnapshotCheckpoint } from "./snapshot-checkpoint"
 import { StoredSnapshotMaintenance } from "./stored-snapshot-maintenance"
+import { SnapshotRestoration } from "./snapshot-restoration"
 
 export namespace SnapshotMaintenance {
   export type ArchiveEvidence = SnapshotCheckpoint.ArchiveEvidence
   export const withCapture = SnapshotCheckpoint.withCapture
   export const assertArchive = SnapshotCheckpoint.assertArchive
   export const withRestoredSegment = SnapshotCheckpoint.withRestoredSegment
+  export const withInstalledSegment = SnapshotRestoration.withInstalled
+  export const assertInstalledSegment = SnapshotRestoration.assertInstalled
+  export const verifyInstalledSegment = SnapshotRestoration.verifyInstalled
   export const collectStoredPreparations = StoredSnapshotMaintenance.collect
   const Journal = z.object({
     version: z.literal(2),

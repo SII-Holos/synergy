@@ -79,6 +79,8 @@ export namespace SnapshotSegment {
 
   export interface Restored {
     readonly manifest: Readonly<Manifest>
+    readonly signal: AbortSignal
+    assertCurrent(): void
     repositories(): AsyncGenerator<{ info: Readonly<Repository>; repository: string }>
   }
   export async function withRestored<T>(
@@ -285,6 +287,8 @@ export namespace SnapshotSegment {
           throw new SnapshotStore.StorageError("Snapshot segment footer count mismatch")
       const port: Restored = {
         manifest: Object.freeze({ ...manifest, namespaceRecords: Object.freeze({ ...manifest.namespaceRecords }) }),
+        signal: input.signal,
+        assertCurrent,
         repositories() {
           const held: { reader?: AsyncGenerator<{ info: Repository; repository: string }> } = {}
           const reader = (async function* () {

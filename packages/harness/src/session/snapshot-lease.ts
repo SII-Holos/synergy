@@ -9,6 +9,7 @@ import { StoragePath } from "../storage/path"
 
 export namespace SnapshotLease {
   const admitted = new AsyncLocalStorage<ReadonlyMap<string, string>>()
+  const homeFrames = new AsyncLocalStorage<{ open: boolean; dataRoot: string }>()
   const Owner = z.object({
     token: z.string(),
     pid: z.number().int().positive(),
@@ -117,6 +118,24 @@ export namespace SnapshotLease {
     return admit("", true, { ...options, dataRoot })
   }
 
+  export async function withHome<T>(dataRoot: string, body: () => Promise<T>, options: Omit<Options, "dataRoot"> = {}) {
+    if (Storage.inTransaction())
+      throw new Error("Snapshot Home lease requires its native boundary outside a storage transaction")
+    const signal = options.signal
+    signal?.throwIfAborted()
+    await using home = await acquireHome(dataRoot, { signal, timeoutMs: options.timeoutMs })
+    const parents = new Map(admitted.getStore())
+    parents.set(`${dataRoot}\0`, home.token)
+    const frame = { open: true, dataRoot }
+    try {
+      const result = await homeFrames.run(frame, () => admitted.run(parents, body))
+      signal?.throwIfAborted()
+      return result
+    } finally {
+      frame.open = false
+    }
+  }
+
   async function admit(
     scopeID: string,
     exclusive: boolean,
@@ -124,6 +143,11 @@ export namespace SnapshotLease {
     deadline = Date.now() + (options.timeoutMs ?? 15_000),
   ) {
     const dataRoot = options.dataRoot ?? Storage.current().artifactDirectory
+    const frame = homeFrames.getStore()
+    const assertFrame = () => {
+      if (frame?.dataRoot === dataRoot && !frame.open) throw new Error("Snapshot Home callback is closed")
+    }
+    assertFrame()
     const parent = admitted.getStore()?.get(`${dataRoot}\0${scopeID}`)
     const owner: Owner = {
       token: randomUUID(),
@@ -148,11 +172,13 @@ export namespace SnapshotLease {
     }
     try {
       for (;;) {
+        assertFrame()
         options.signal?.throwIfAborted()
         const ready = await update(
           dataRoot,
           scopeID,
           (state) => {
+            assertFrame()
             options.signal?.throwIfAborted()
             if (Date.now() >= deadline) throw new BusyError()
             const nested = !exclusive && state.owners.some((entry) => entry.token === parent)
@@ -169,6 +195,7 @@ export namespace SnapshotLease {
         await pause(options.signal)
       }
       options.signal?.throwIfAborted()
+      assertFrame()
       return { token: owner.token, [Symbol.asyncDispose]: release }
     } catch (error) {
       await release()
