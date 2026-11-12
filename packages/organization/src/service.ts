@@ -51,6 +51,7 @@ import { OrganizationSourceRetirement } from "./backup/source-retirement"
 import { OrganizationRecoveryPublication } from "./backup/publication"
 import { readOrganizationConfiguration } from "./configuration"
 import { OrganizationHealth } from "./health"
+import { OrganizationRetention } from "./retention"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -259,17 +260,35 @@ async function openOrganizationNamespace(
       }
       MigrationRegistry.lock()
       RuntimeContext.sealComposition()
+      async function runMaintenance<T>(body: () => Promise<T>): Promise<T> {
+        if (!ready) throw new Error("Organization service is closed")
+        const pending = context.run(body)
+        active.add(pending)
+        try {
+          return await pending
+        } finally {
+          active.delete(pending)
+        }
+      }
       const maintenance = Object.freeze({
-        async run<T>(body: () => Promise<T>): Promise<T> {
-          if (!ready) throw new Error("Organization service is closed")
-          const pending = context.run(body)
-          active.add(pending)
-          try {
-            return await pending
-          } finally {
-            active.delete(pending)
-          }
-        },
+        run: runMaintenance,
+        retention: Object.freeze({
+          async status(input: OrganizationRetention.TargetInput) {
+            if (mode !== "serve") throw new Error("Retention requires an ordinary organization service")
+            const original = structuredClone(input)
+            return runMaintenance(() => OrganizationRetention.status(original))
+          },
+          async mark(input: OrganizationRetention.MarkInput) {
+            if (mode !== "serve") throw new Error("Retention requires an ordinary organization service")
+            const original = structuredClone(input)
+            return runMaintenance(() => OrganizationRetention.mark(original))
+          },
+          async collect(input: OrganizationRetention.TargetInput) {
+            if (mode !== "serve") throw new Error("Retention requires an ordinary organization service")
+            const original = structuredClone(input)
+            return runMaintenance(() => OrganizationRetention.collect(original))
+          },
+        }),
       })
       if (mode === "recovery") {
         ready = true

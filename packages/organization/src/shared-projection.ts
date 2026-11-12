@@ -84,6 +84,7 @@ function identity(rootSessionID: string, event: Sync.Event) {
 }
 
 export namespace OrganizationSharedProjection {
+  export const generationPrefix = base
   export const root = (sessionID: string, generation: number) => [...base(sessionID, generation), "current-v2"]
   export const messages = (sessionID: string, generation: number, sourceSessionID: string) => [
     ...base(sessionID, generation),

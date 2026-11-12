@@ -6,12 +6,27 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
 
-const Header = z.strictObject({ version: z.literal(1), sessionID: z.string(), generation: z.number().int().nonnegative(), sequence: z.number().int().nonnegative().safe() })
+const Header = z.strictObject({
+  version: z.literal(1),
+  sessionID: z.string(),
+  generation: z.number().int().nonnegative(),
+  sequence: z.number().int().nonnegative().safe(),
+})
 const Sequence = z.strictObject({ sequence: Sync.Sequence })
 const Child = z.strictObject({ sessionID: z.string().min(1) })
-const root = (sessionID: string, generation: number) => ["organization", "task-projection", sessionID, String(generation)]
+const root = (sessionID: string, generation: number) => [
+  "organization",
+  "task-projection",
+  sessionID,
+  String(generation),
+]
 const head = (sessionID: string, generation: number) => [...root(sessionID, generation), "checkpoint"]
-const version = (sessionID: string, generation: number, kind: "session" | "cortex", child: string) => [...root(sessionID, generation), "versions", kind, child]
+const version = (sessionID: string, generation: number, kind: "session" | "cortex", child: string) => [
+  ...root(sessionID, generation),
+  "versions",
+  kind,
+  child,
+]
 const ordinal = (value: number) => String(value).padStart(16, "0")
 
 export const sharedTaskMigration: Migration = {
@@ -26,13 +41,18 @@ export const sharedTaskMigration: Migration = {
 }
 
 export namespace OrganizationSharedTasks {
+  export const generationPrefix = root
   async function checkpoint(sessionID: string, generation: number) {
     const value = await Record.read(Header, head(sessionID, generation))
     if (value && (value.sessionID !== sessionID || value.generation !== generation))
       fail("SERVICE_UNAVAILABLE", "Task metadata checkpoint has another owner")
     return value?.sequence ?? 0
   }
-  export const parents = (sessionID: string, generation: number, parentSessionID: string) => [...root(sessionID, generation), "parents", parentSessionID]
+  export const parents = (sessionID: string, generation: number, parentSessionID: string) => [
+    ...root(sessionID, generation),
+    "parents",
+    parentSessionID,
+  ]
 
   export async function prepare(input: {
     sessionID: string
@@ -52,7 +72,7 @@ export namespace OrganizationSharedTasks {
       if (!keys.length) fail("SERVICE_UNAVAILABLE", "Shared task history has an uncommitted sequence gap")
       await Storage.transaction(async () => {
         await input.authorize()
-        if (await checkpoint(input.sessionID, input.generation) !== current) return
+        if ((await checkpoint(input.sessionID, input.generation)) !== current) return
         let sequence = current
         for (const key of keys) {
           const stored = await Record.read(Record.SharedEvent, key)
@@ -64,29 +84,58 @@ export namespace OrganizationSharedTasks {
           sequence = event.sequence
           if (event.type !== "session" && event.type !== "cortex") continue
           const child = event.type === "session" ? event.session.sessionID : event.sessionID
-          await Storage.write([...version(input.sessionID, input.generation, event.type, child), ordinal(sequence)], { sequence })
+          await Storage.write([...version(input.sessionID, input.generation, event.type, child), ordinal(sequence)], {
+            sequence,
+          })
           if (event.type === "cortex")
-            await Storage.write([...parents(input.sessionID, input.generation, event.parentSessionID), child], { sessionID: child })
+            await Storage.write([...parents(input.sessionID, input.generation, event.parentSessionID), child], {
+              sessionID: child,
+            })
         }
         if (sequence === current) fail("SERVICE_UNAVAILABLE", "Shared task preparation could not reach its checkpoint")
-        await Storage.write(head(input.sessionID, input.generation), Header.parse({ version: 1, sessionID: input.sessionID, generation: input.generation, sequence }))
+        await Storage.write(
+          head(input.sessionID, input.generation),
+          Header.parse({ version: 1, sessionID: input.sessionID, generation: input.generation, sequence }),
+        )
       })
     }
   }
 
-  async function at(sessionID: string, generation: number, kind: "session" | "cortex", child: string, watermark: number) {
+  async function at(
+    sessionID: string,
+    generation: number,
+    kind: "session" | "cortex",
+    child: string,
+    watermark: number,
+  ) {
     const prefix = version(sessionID, generation, kind, child)
-    const rows = await Storage.query({ prefix, after: [...prefix, ordinal(watermark) + "~"], descending: true, limit: 1 })
+    const rows = await Storage.query({
+      prefix,
+      after: [...prefix, ordinal(watermark) + "~"],
+      descending: true,
+      limit: 1,
+    })
     if (!rows.length) return
     const { sequence } = Sequence.parse(rows[0]!.value)
     const stored = await Record.read(Record.SharedEvent, Keys.sharedEvent(sessionID, generation, sequence))
-    if (!stored || stored.event.type !== kind || stored.event.sequence !== sequence ||
-      (stored.event.type === "session" ? stored.event.session.sessionID : stored.event.sessionID) !== child)
+    if (
+      !stored ||
+      stored.event.type !== kind ||
+      stored.event.sequence !== sequence ||
+      (stored.event.type === "session" ? stored.event.session.sessionID : stored.event.sessionID) !== child
+    )
       fail("SERVICE_UNAVAILABLE", "Shared task version has another canonical event")
     return stored.event
   }
 
-  export async function page(input: { sessionID: string; generation: number; parentSessionID: string; watermark: number; after?: string; limit: number }) {
+  export async function page(input: {
+    sessionID: string
+    generation: number
+    parentSessionID: string
+    watermark: number
+    after?: string
+    limit: number
+  }) {
     const prefix = parents(input.sessionID, input.generation, input.parentSessionID)
     const items: Sync.TaskSummary[] = []
     let after = input.after
@@ -101,9 +150,13 @@ export namespace OrganizationSharedTasks {
           fail("SERVICE_UNAVAILABLE", "Shared task row has another child identity")
         const task = await at(input.sessionID, input.generation, "cortex", child, input.watermark)
         const source = await at(input.sessionID, input.generation, "session", child, input.watermark)
-        const visible = task?.type === "cortex" && source?.type === "session" &&
-          task.parentSessionID === input.parentSessionID && source.session.parentSessionID === input.parentSessionID &&
-          source.session.cortex?.taskID === task.taskID && source.session.cortex.parentSessionID === input.parentSessionID &&
+        const visible =
+          task?.type === "cortex" &&
+          source?.type === "session" &&
+          task.parentSessionID === input.parentSessionID &&
+          source.session.parentSessionID === input.parentSessionID &&
+          source.session.cortex?.taskID === task.taskID &&
+          source.session.cortex.parentSessionID === input.parentSessionID &&
           source.session.cortex.visibility !== "hidden"
         if (visible) {
           if (items.length === input.limit) return { items, cursor: after }
