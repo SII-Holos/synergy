@@ -5,6 +5,7 @@ import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Server } from "../../src/server/server"
 import { testRuntime } from "../support/runtime"
+import { registerHttp } from "../../src/http"
 
 test("file browsing starts Workspace resources without waiting for Scope recovery; writes retain the barrier", async () => {
   const entered = Promise.withResolvers<void>()
@@ -12,6 +13,7 @@ test("file browsing starts Workspace resources without waiting for Scope recover
   let workspaceReady = false
   let scopeDisposed = false
   await using runtime = await testRuntime(undefined, () => {
+    registerHttp()
     ScopeStartup.register({
       name: "held-scope-recovery",
       phase: "core",

@@ -10,8 +10,9 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { testRuntime } from "../support/runtime"
+import { registerHttp } from "../../src/http"
 
-const runtime = await testRuntime()
+const runtime = await testRuntime(undefined, registerHttp)
 afterAll(() => runtime.close())
 
 test("busy sessions reject Workspace changes with a conflict and preserve their selection", () =>

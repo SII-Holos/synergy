@@ -230,6 +230,8 @@ The server middleware resolves a request into one Scope before the route handler
 - Directory-based requests use `Scope.fromDirectory()`.
 - The resolved Scope is installed in `ScopeContext` for the complete handler.
 
+Workspace-file middleware captures the resolved Scope, Workspace selectors, original cancellation signal and request method before resource resolution. HTTP composition supplies its registered Host origin only when no resource frame exists. An existing frame retains its original origin; missing provenance rejects before file reads. Dormant object-backed browsing requires files, not execution, and does not allocate an Environment. See [the ownership decision](../decisions/implemented/bug-fix/2026-11-12-preserve-workspace-http-request-origins.md).
+
 GET responses produced inside a Scope advertise the current event watermark through `x-synergy-seq` and `x-synergy-epoch`. These headers describe the Scope runtime that produced the snapshot; see [Frontend data sync](frontend-data-sync.md).
 
 ## Session Execution Context

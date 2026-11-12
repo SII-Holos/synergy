@@ -3,12 +3,17 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceBlobs } from "@ericsanchezok/synergy-harness/workspace/content"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Server } from "../../src/server/server"
 import { testRuntime } from "../support/runtime"
+import { registerHttp } from "../../src/http"
 
 test("HTTP file operations use logical Workspace generations for dormant and live views", async () => {
+  let host: ReturnType<typeof EnvironmentOrigin.registerHost> | undefined
   await using runtime = await testRuntime(undefined, () => {
+    registerHttp()
+    host = EnvironmentOrigin.registerHost("workspace-http-fixture")
     WorkspaceBlobs.register("fixture", {
       put: (hash, bytes) => Storage.writeBinary(["fixture", hash], bytes),
       get: (hash) => Storage.readBinary(["fixture", hash]),
@@ -33,8 +38,10 @@ test("HTTP file operations use logical Workspace generations for dormant and liv
           : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
       )
     for (const live of [false, true]) {
+      if (!host) throw new Error("Workspace HTTP fixture Host was not composed")
       await using resources = await EnvironmentResources.resolve({
         ...reference,
+        origin: host.capture(live ? "live-files" : "dormant-files"),
         workspaceGeneration: workspace.binding.generation,
         environmentID: environment.id,
         needs: live ? { execution: "exec" } : { workspace: true },

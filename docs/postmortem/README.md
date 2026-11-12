@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0128](0128-workspace-http-request-lost-its-resource-origin.md)
+
 - [0127](0127-imported-link-followed-its-source-root-name.md)
 
 - [0125](0125-snapshot-retention-outlived-its-source-reader.md)
