@@ -1,6 +1,24 @@
 import { expect, test } from "bun:test"
 import { OrganizationDesktop as Desktop } from "../src/desktop"
 
+test("native live subscriptions select only a revision-bound account and exact frame acknowledgements", () => {
+  const input = { requestID: crypto.randomUUID(), connectionID: "a".repeat(64), revision: crypto.randomUUID() }
+  expect(Desktop.NotificationStart.safeParse(input).success).toBe(true)
+  expect(Desktop.NotificationStart.safeParse({ ...input, path: "/untrusted" }).success).toBe(false)
+  expect(
+    Desktop.NotificationStart.safeParse({ requestID: input.requestID, connectionID: input.connectionID }).success,
+  ).toBe(false)
+  const ack = {
+    requestID: input.requestID,
+    connectionID: input.connectionID,
+    streamID: crypto.randomUUID(),
+    sequence: 0,
+  }
+  expect(Desktop.NotificationAck.safeParse(ack).success).toBe(true)
+  expect(Desktop.NotificationAck.safeParse({ ...ack, sequence: -1 }).success).toBe(false)
+  expect(Desktop.NotificationAck.safeParse({ ...ack, token: "secret" }).success).toBe(false)
+})
+
 test("native logout requires a revision-bound phase and a fixed commit receipt", () => {
   const request = {
     connectionID: "a".repeat(64),

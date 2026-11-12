@@ -117,24 +117,24 @@ export function createOrganizationNotifications(input: {
       offer(notice, connection) {
         const bytes = Notification.encode({ type: "notice", streamID, sequence: sequence + 1, notice }).byteLength
         queue(bytes, async () => {
-          const allowed = await run(async () => {
-            if (!active || signal.aborted) return false
+          await run(async () => {
+            if (!active || signal.aborted) return
             await audience(credentials, captured)
             try {
               connection.assertCurrent()
               const { session } = await authorize(credentials, "session.read", { sessionID: notice.sessionID })
               connection.assertCurrent()
-              return matches(session, notice)
+              if (matches(session, notice) && active && !signal.aborted)
+                write({ type: "notice", streamID, sequence: ++sequence, notice })
             } catch (error) {
               if (
                 error instanceof OrganizationError &&
                 ["NOT_FOUND", "PERMISSION_DENIED", "STALE_CONNECTION", "RUNTIME_OFFLINE"].includes(error.data.code)
               )
-                return false
+                return
               throw error
             }
           })
-          if (allowed && active && !signal.aborted) write({ type: "notice", streamID, sequence: ++sequence, notice })
         })
       },
     }
@@ -154,8 +154,10 @@ export function createOrganizationNotifications(input: {
     timer = setInterval(
       () =>
         queue(256, async () => {
-          await run(() => audience(credentials, captured))
-          if (active && !signal.aborted) write({ type: "heartbeat", streamID, sequence: ++sequence })
+          await run(async () => {
+            await audience(credentials, captured)
+            if (active && !signal.aborted) write({ type: "heartbeat", streamID, sequence: ++sequence })
+          })
         }),
       heartbeatMs,
     )

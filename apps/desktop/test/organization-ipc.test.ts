@@ -4,6 +4,7 @@ import { randomBytes, createHash, randomUUID } from "node:crypto"
 import { DesktopOrganizationAuthorization } from "../src/organization/authorization"
 import { DesktopOrganizationIPC } from "../src/organization/ipc"
 import { organizationFixture } from "./fixture/organization"
+import { OrganizationDesktop as Desktop } from "@ericsanchezok/synergy-organization-protocol"
 
 async function authorized(f: Awaited<ReturnType<typeof organizationFixture>>) {
   const verifier = randomBytes(32).toString("base64url")
@@ -35,7 +36,11 @@ async function authorized(f: Awaited<ReturnType<typeof organizationFixture>>) {
   )
   return f.accounts.accept(result.data)
 }
-function bridge(f: Awaited<ReturnType<typeof organizationFixture>>, fetcher = f.transport) {
+function bridge(
+  f: Awaited<ReturnType<typeof organizationFixture>>,
+  fetcher = f.transport,
+  emitNotification?: (event: unknown, value: Desktop.NotificationEvent) => void,
+) {
   const trusted = {}
   const authorization = new DesktopOrganizationAuthorization({
     accounts: f.accounts,
@@ -46,10 +51,61 @@ function bridge(f: Awaited<ReturnType<typeof organizationFixture>>, fetcher = f.
     accounts: f.accounts,
     authorization,
     fetch: fetcher,
+    emitNotification,
     trusted: (event) => event === trusted,
   })
   return { trusted, ipc }
 }
+
+test("real native notification IPC authenticates the fixed service stream and binds ACK and shutdown to its original document", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const events: Desktop.NotificationEvent[] = []
+  const { trusted, ipc } = bridge(f, f.transport, (_event, value) => events.push(value))
+  try {
+    const input = { requestID: randomUUID(), connectionID: connection.id, revision: connection.revision }
+    expect(await ipc.handle({}, "notificationStart", input)).toMatchObject({
+      ok: false,
+      error: { code: "untrusted_sender" },
+    })
+    expect(
+      await ipc.handle(trusted, "request", {
+        requestID: randomUUID(),
+        connectionID: connection.id,
+        method: "GET",
+        path: "/org/v1/notifications",
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid_request" } })
+    expect(await ipc.handle(trusted, "notificationStart", input)).toEqual({ ok: true, value: undefined })
+    const ready = events[0]
+    if (ready?.type !== "frame") throw new Error("Missing native ready frame")
+    expect(ready.frame).toMatchObject({
+      type: "ready",
+      orgID: connection.orgID,
+      accountID: connection.account.accountID,
+      deploymentIncarnation: connection.deploymentIncarnation,
+      authRevision: connection.account.authRevision,
+      sequence: 0,
+    })
+    const ack = {
+      requestID: input.requestID,
+      connectionID: input.connectionID,
+      streamID: ready.frame.streamID,
+      sequence: ready.frame.sequence,
+    }
+    expect(await ipc.handle(trusted, "notificationAck", { ...ack, sequence: 1 })).toMatchObject({
+      ok: false,
+      error: { code: "invalid_request" },
+    })
+    expect(await ipc.handle(trusted, "notificationAck", ack)).toEqual({ ok: true, value: undefined })
+    ipc.invalidate()
+    expect(await ipc.handle(trusted, "notificationAck", ack)).toMatchObject({ ok: false, error: { code: "cancelled" } })
+    expect(events.filter((event) => event.type === "frame")).toHaveLength(1)
+    expect(JSON.stringify(events)).not.toContain("accessToken")
+  } finally {
+    ipc.dispose()
+  }
+})
 
 test("native logout IPC requires its prepared revision and retains the final receipt across retries", async () => {
   await using f = await organizationFixture()

@@ -18,8 +18,9 @@ import { DesktopOrganizationError as Failure } from "./error.js"
 import { downloadOrganizationAttachment, downloadOrganizationContent } from "./content-download.js"
 import { downloadIdleDeadline } from "./transfer-deadline.js"
 import { DesktopOrganizationCommandStream, type DesktopCommandLease } from "./command-stream.js"
+import { DesktopOrganizationNotifications } from "./notification-stream.js"
 
-type Action = keyof Desktop.Bridge
+type Action = keyof Desktop.Bridge | "notificationAck"
 class NativeReadFailure extends Error {
   constructor(readonly kind: "not_found" | "revision_conflict" | "binding_changed") {
     super(kind)
@@ -205,6 +206,7 @@ export class DesktopOrganizationIPC<Event = unknown> {
   private disposed = false
   private requests = new Map<string, { controller: AbortController; connectionID?: string }>()
   private commandStreams: DesktopOrganizationCommandStream
+  private notifications: DesktopOrganizationNotifications
 
   constructor(
     private options: {
@@ -214,6 +216,7 @@ export class DesktopOrganizationIPC<Event = unknown> {
       fetch?: typeof fetch
       requestTimeoutMs?: number
       transferIdleMs?: number
+      emitNotification?(event: Event, value: Desktop.NotificationEvent): void
       chooseDirectory?: () => Promise<string | undefined>
       saveFile?: (
         fileName: string,
@@ -223,6 +226,11 @@ export class DesktopOrganizationIPC<Event = unknown> {
       trusted(event: Event): boolean
     },
   ) {
+    this.notifications = new DesktopOrganizationNotifications({
+      reserve: (requestID, connectionID, current) => this.reserve(requestID, connectionID, "transfer", current),
+      access: (connectionID) => this.options.accounts.access(connectionID),
+      fetch: this.options.fetch,
+    })
     this.commandStreams = new DesktopOrganizationCommandStream({
       reserve: (requestID, connectionID, current) => this.reserve(requestID, connectionID, "request", current),
       connection: async (connectionID) => (await this.options.accounts.access(connectionID)).connection,
@@ -260,7 +268,10 @@ export class DesktopOrganizationIPC<Event = unknown> {
     const current = () => !this.disposed && generation === this.generation && this.options.trusted(event)
     try {
       if (!current()) throw new Failure("cancelled")
-      const value = await this.dispatch(action, input, current)
+      const value =
+        action === "notificationStart"
+          ? await this.startNotifications(event, input, current)
+          : await this.dispatch(action, input, current)
       if (!current()) throw new Failure("cancelled")
       return { ok: true, value }
     } catch (error) {
@@ -289,8 +300,21 @@ export class DesktopOrganizationIPC<Event = unknown> {
     return this.options.accounts.settle()
   }
 
+  private async startNotifications(event: Event, input: unknown, current: () => boolean) {
+    const emit = this.options.emitNotification
+    if (!emit) throw new Failure("unavailable")
+    await this.notifications.start(input, current, (value) => {
+      if (!current()) throw new Failure("cancelled")
+      emit(event, value)
+    })
+  }
+
   private async dispatch(action: Action, input: unknown, current: () => boolean) {
     switch (action) {
+      case "notificationStop":
+        return this.notifications.stop(input, current)
+      case "notificationAck":
+        return this.notifications.ack(input, current)
       case "list":
         parse(z.undefined(), input)
         return this.options.accounts.list()
@@ -857,6 +881,9 @@ export function registerOrganizationIPC<Event>(
     "connect",
     "request",
     "commandStream",
+    "notificationStart",
+    "notificationStop",
+    "notificationAck",
     "cancel",
     "signOut",
     "memberStatus",

@@ -1382,6 +1382,10 @@ async function start() {
     accounts: organizationAccounts,
     authorization: organizationAuthorization,
     members: memberRuntimes,
+    emitNotification: (event, value) => {
+      if (!trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null)) return
+      event.senderFrame?.send("desktop.organization.notification", value)
+    },
     chooseDirectory: async () => {
       const options = { properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory"> }
       const selected =

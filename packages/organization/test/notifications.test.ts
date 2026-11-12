@@ -303,3 +303,32 @@ test("the mounted contract exposes a strict event stream and standard authentica
   })
   for (const status of ["400", "401", "403", "503"]) expect(operation?.responses?.[status]).toBeDefined()
 })
+
+test("authorized publication finishes inside its admitted callback before that operation can retire the subscription", async () => {
+  await using f = await fixture()
+  const controller = new AbortController()
+  const owner = createOrganizationNotifications({
+    run: async (body) => {
+      try {
+        return await f.run(body)
+      } finally {
+        owner.close()
+      }
+    },
+  })
+  try {
+    const observed = reader(
+      await f.run(() => owner.open(f.credentials.alice, controller.signal)),
+      "alice",
+      controller.signal,
+    )
+    await observed.next()
+    const notice = f.notice("private")
+    await f.run(() => owner.publish(f.connection, notice))
+    expect((await nextNotice(observed)).value).toMatchObject({ type: "notice", notice })
+    expect((await observed.next()).done).toBe(true)
+  } finally {
+    owner.close()
+    controller.abort()
+  }
+})

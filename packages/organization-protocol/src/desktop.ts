@@ -5,6 +5,7 @@ import { OrganizationLocalProjectProtocol as LocalProject } from "./local-projec
 import { OrganizationReadProtocol as Read } from "./read.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
 import { OrganizationCommandStream as CommandStream } from "./command-stream.js"
+import { OrganizationNotificationProtocol as Notification } from "./notification.js"
 
 export namespace OrganizationDesktop {
   export const BridgeVersion = 2
@@ -96,6 +97,16 @@ export namespace OrganizationDesktop {
   export type Start = z.infer<typeof Start>
   export const Cancel = z.strictObject({ requestID: Identity.ID })
   export const Account = z.strictObject({ connectionID: Identity.Token })
+  export const NotificationVersion = 1
+  export const NotificationSubscription = Account.extend({ requestID: z.uuid() })
+  export type NotificationSubscription = z.infer<typeof NotificationSubscription>
+  export const NotificationStart = NotificationSubscription.extend({ revision: z.uuid() })
+  export type NotificationStart = z.infer<typeof NotificationStart>
+  export const NotificationAck = NotificationSubscription.extend({
+    streamID: z.uuid(),
+    sequence: z.number().int().nonnegative().safe(),
+  })
+  export type NotificationAck = z.infer<typeof NotificationAck>
   export const SignOut = Account.extend({
     phase: z.enum(["prepare", "commit"]),
     expectedRevision: z.uuid(),
@@ -208,9 +219,18 @@ export namespace OrganizationDesktop {
     "permission_denied",
   ])
   export type ErrorCode = z.infer<typeof ErrorCode>
+  export const NotificationEvent = z.discriminatedUnion("type", [
+    NotificationStart.extend({ type: z.literal("frame"), frame: Notification.Frame }),
+    NotificationStart.extend({ type: z.literal("closed"), code: ErrorCode }),
+  ])
+  export type NotificationEvent = z.infer<typeof NotificationEvent>
   export type Result<T> = { ok: true; value: T } | { ok: false; error: { code: ErrorCode } }
   export interface Bridge {
     readonly protocolVersion: typeof BridgeVersion
+    readonly notificationVersion?: typeof NotificationVersion
+    notificationStart?(input: NotificationStart): Promise<Result<void>>
+    notificationStop?(input: NotificationSubscription): Promise<Result<void>>
+    onNotification?(listener: (event: NotificationEvent) => void | Promise<void>): () => void
     list(): Promise<Result<Connection[]>>
     connect(input: Start): Promise<Result<Connection>>
     request(input: Request): Promise<Result<Response>>

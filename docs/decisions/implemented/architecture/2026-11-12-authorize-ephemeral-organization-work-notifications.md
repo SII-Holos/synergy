@@ -14,7 +14,7 @@ The service checks the machine connection and current Directory binding before o
 
 `GET /org/v1/notifications` emits strict metadata-only SSE frames. A ready frame binds a new random stream ID to the exact organization, account, deployment and authorization revision. Notice and heartbeat frames retain that stream ID and contiguous sequence numbers. The decoder rejects changed identities, gaps, invalid UTF-8, truncated frames and oversized input; cancellation is checked before further reads. Individual frames are at most 16 KiB. Separate 64 KiB queue and transport budgets close a slow subscriber without blocking its Runtime or healthy subscribers.
 
-Subscriptions are live observations. Reconnection creates a new stream ID and sequence zero; there is no retained inbox, replay cursor or offline delivery guarantee. Current Session/history interfaces remain authoritative after a disconnect. Service shutdown closes subscriptions before draining active operations. Long-lived response bodies do not retain a maintenance tail; each queued authorization read enters the existing service maintenance owner independently.
+Subscriptions are live observations. Reconnection creates a new stream ID and sequence zero; there is no retained inbox, replay cursor or offline delivery guarantee. Current Session/history interfaces remain authoritative after a disconnect. Service shutdown closes subscriptions before draining active operations. Long-lived response bodies do not retain a maintenance tail; each queued authorization read and its actual enqueue complete inside the same existing service maintenance callback. Releasing that operation cannot leave a separately scheduled authorized write.
 
 ## Alternatives considered
 
