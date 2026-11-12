@@ -378,8 +378,8 @@ export namespace SessionTransferStream {
     const putEntry = database.query("INSERT INTO entries (id, value) VALUES (?, ?)")
     const putChunk = database.query("INSERT INTO chunks (id, ordinal, offset, hash, bytes) VALUES (?, ?, ?, ?, ?)")
     const getEntry = database.query<{ value: string }, [string]>("SELECT value FROM entries WHERE id = ?")
-    const nextEntry = database.query<{ id: string; value: string }, [string, string]>(
-      "SELECT id, value FROM entries WHERE id >= ? AND id > ? ORDER BY id LIMIT 1",
+    const nextEntry = database.query<{ id: string; value: string }, [string, string, string, string]>(
+      "SELECT id, value FROM entries WHERE id >= MAX(?, ?, ?) AND id != ? ORDER BY id LIMIT 1",
     )
     type ChunkRow = { ordinal: number; offset: number; hash: string; bytes: number }
     const firstChunk = database.query<ChunkRow, [string, number]>(
@@ -418,14 +418,17 @@ export namespace SessionTransferStream {
       const row = getEntry.get(id)
       return row ? descriptor(row.value) : undefined
     }
-    function indexedEntries(options: { after?: string; prefix?: string } = {}): AsyncGenerator<Descriptor> {
+    function indexedEntries(
+      options: { after?: string; prefix?: string; from?: string } = {},
+    ): AsyncGenerator<Descriptor> {
       const after = options.after
       const prefix = options.prefix
+      const from = options.from
       return (async function* () {
         let cursor = after ?? ""
         while (true) {
           assertIndexed()
-          const row = nextEntry.get(prefix ?? "", cursor)
+          const row = nextEntry.get(prefix ?? "", from ?? "", cursor, cursor)
           if (!row) return
           cursor = row.id
           if (prefix !== undefined && !row.id.startsWith(prefix)) return

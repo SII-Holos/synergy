@@ -98,6 +98,10 @@ test("portable metadata indexing crosses pages without fetching file bodies and 
   const selected: string[] = []
   for await (const entry of index.entries({ prefix: "files/00051", after: "files/000510" })) selected.push(entry.id)
   expect(selected).toEqual(["files/000511", "files/000512"])
+  const from = async (start: string) =>
+    (await Array.fromAsync(index.entries({ prefix: "files/00051", from: start }))).map((entry) => entry.id)
+  expect(await from("files/000512")).toEqual(["files/000512"])
+  expect(await from("a")).toEqual(["files/000510", "files/000511", "files/000512"])
   const chunks: Uint8Array[] = []
   for await (const chunk of index.read("files/000512")) chunks.push(chunk)
   expect(Buffer.concat(chunks).toString()).toBe("body-512")

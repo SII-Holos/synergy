@@ -86,6 +86,26 @@ export namespace WorkspacePortableTree {
           for await (const entry of source) yield describe(entry)
         })()
       }
+      function children(directory: string) {
+        if (directory) WorkspaceTree.Path.parse(directory)
+        return (async function* () {
+          if (directory && (await get(directory))?.kind !== "directory") return
+          const prefix = directory ? directory + "/" : ""
+          let from = prefix
+          let after: string | undefined
+          for (;;) {
+            const source = index.entries({ prefix, from, after })
+            const next = await source.next()
+            await source.return(undefined)
+            if (next.done) return
+            const entry = describe(next.value)
+            after = entry.path
+            // "0" is the exclusive upper bound of the descendant "/" prefix in SQLite's binary order.
+            if (entry.kind === "directory") from = entry.path + "0"
+            yield entry
+          }
+        })()
+      }
       function read(filename: string, options: { offset?: number; length?: number } = {}) {
         const range = { offset: options.offset, length: options.length }
         return (async function* () {
@@ -99,6 +119,7 @@ export namespace WorkspacePortableTree {
         get,
         resolve,
         entries,
+        children,
         read,
         objects: index.objects,
         close: reader.close,

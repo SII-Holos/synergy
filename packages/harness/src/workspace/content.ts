@@ -121,7 +121,10 @@ export namespace WorkspaceContent {
     return stored(info, store)
   }
 
-  export type Tree = Pick<Awaited<ReturnType<typeof Portable.open>>, "get" | "resolve" | "entries" | "read"> & {
+  export type Tree = Pick<
+    Awaited<ReturnType<typeof Portable.open>>,
+    "get" | "resolve" | "entries" | "children" | "read"
+  > & {
     readonly mode: number
   }
   const Position = z.number().int().nonnegative().safe()
@@ -148,6 +151,12 @@ export namespace WorkspaceContent {
           for (const entry of tree.entries)
             if ((prefix === undefined || entry.path.startsWith(prefix)) && (after === undefined || entry.path > after))
               yield header(entry)
+        })()
+      },
+      children(directory) {
+        if (directory) WorkspaceTree.Path.parse(directory)
+        return (async function* () {
+          for (const entry of WorkspaceTree.children(tree, directory)) yield header(entry)
         })()
       },
       read(filename, options = {}) {
@@ -283,6 +292,10 @@ export namespace WorkspaceContent {
           entries(options?: { prefix?: string; after?: string }) {
             current()
             return guarded(source.entries(options))
+          },
+          children(directory: string) {
+            current()
+            return guarded(source.children(directory))
           },
           read(filename: string, options?: { offset?: number; length?: number }) {
             current()

@@ -41,6 +41,50 @@ async function fixture(entries: AsyncIterable<Stream.Input>) {
 }
 const empty = async function* () {}
 
+test("paged children list immediate entries across pages without following links or reading bodies", async () => {
+  await using temporary = await tmpdir()
+  const f = await fixture(
+    (async function* (): AsyncGenerator<Stream.Input> {
+      for (const id of ["a", "a/sub", "a0", "a00", "目录"])
+        yield { id, kind: "record", metadata: { version: 1, kind: "directory", mode: 0o750 }, content: empty() }
+      for (let ordinal = 0; ordinal < 513; ordinal++)
+        yield {
+          id: `a/sub/file-${ordinal}`,
+          kind: "file",
+          metadata: { version: 1, kind: "file", mode: 0o640 },
+          content: (async function* () {
+            yield new Uint8Array([17])
+          })(),
+        }
+      yield { id: "a/file", kind: "file", metadata: { version: 1, kind: "file", mode: 0o640 }, content: empty() }
+      yield { id: "a/sub0", kind: "file", metadata: { version: 1, kind: "file", mode: 0o640 }, content: empty() }
+      yield {
+        id: "link",
+        kind: "record",
+        metadata: { version: 1, kind: "symlink", mode: 0o777, target: "a" },
+        content: empty(),
+      }
+    })(),
+  )
+  await using view = await Portable.open({ ...f, directory: temporary.path })
+  const names = async (directory: string) =>
+    (await Array.fromAsync(view.children(directory))).map((entry) => entry.path)
+  expect(await names("")).toEqual(["a", "a0", "a00", "link", "目录"])
+  expect(await names("a")).toEqual(["a/file", "a/sub", "a/sub0"])
+  expect(await names("a/sub")).toHaveLength(513)
+  expect(await names("missing")).toEqual([])
+  expect(await names("link")).toEqual([])
+  expect(f.bodyReads()).toBe(0)
+  const listing = view.children("")
+  const first = await listing.next()
+  if (first.done) throw new Error("Workspace has no first child")
+  first.value.path = "目录"
+  expect((await Array.fromAsync(listing)).map((entry) => entry.path)).toEqual(["a0", "a00", "link", "目录"])
+  const escaped = view.children("")
+  await view.close()
+  await expect(escaped.next()).rejects.toThrow("closed")
+})
+
 test("paged Workspace metadata resolves directories and links without reading unrelated file content", async () => {
   await using temporary = await tmpdir()
   const f = await fixture(

@@ -12,6 +12,8 @@ The existing `SessionTransferStream` reader offers an exclusive metadata-indexin
 
 `WorkspacePortableTree.open` consumes that index and checks every native metadata record, contained symbolic link and directory parent before returning a file view. Parent validation is independent of input order. Directory and link metadata must carry no content. File descriptors expose their size and digest without exposing a whole chunk array. The view resolves links and reads selected files through the same canonical index.
 
+Immediate directory children use that same index with an inclusive lower bound and exclusive prior cursor. The SQLite seek combines those bounds with the requested prefix before looking up the next identity. After a directory entry, the reader seeks past its entire descendant prefix, preserving an adjacent sibling at the exact upper bound. It neither enumerates descendants to filter them out nor creates another directory inventory. The cursor is retained before yielding mutable display metadata. `WorkspaceContent.withTree` exposes this operation through its existing callback lifetime; bounded legacy manifests use their canonical child index. Local Runtime file browsing consumes the same operation.
+
 Metadata indexing leaves complete-content verification false. A byte window verifies each selected chunk; a complete file read additionally checks its file digest at completion. An absent unrelated body does not invalidate an already verified metadata graph. Neither indexing nor a file digest grants native access, changes a Workspace head or supplies a transfer receipt. The composing owner remains responsible for authorization, retention and publication.
 
 ## Alternatives considered
@@ -27,3 +29,5 @@ Metadata indexing leaves complete-content verification false. A byte window veri
 Metadata indexing requires disk space and work proportional to the graph, and the caller must close the reader. The graph is immutable and does not need a persisted-state migration. The saved Workspace content, archive, mount and move owners still require their own integration; this reader alone does not migrate their active heads.
 
 Tests cross manifest pages without body reads, resolve a directory link, select a single byte window, reject malformed metadata and parents, reject altered content, and preserve the captured window and original cancellation while an actual blob read is held. Existing complete-stream verification remains independently tested.
+
+Directory tests cover multi-page descendants, adjacent directory names at the seek boundary, non-ASCII siblings, absent paths, links without implicit traversal and retired iterators. Changing returned entry metadata cannot redirect the next cursor. Canonical Workspace callback tests retain the child iterator's lifetime; selected paged and bounded array FileView tests retain directory browsing without compute allocation.

@@ -144,10 +144,13 @@ test("indexed Workspace callbacks cannot escape, change Store namespaces or use 
     let retained: WorkspaceContent.Tree | undefined
     let content: AsyncIterator<Uint8Array> | undefined
     let entries: AsyncIterator<Portable.Entry> | undefined
+    let children: AsyncIterator<Portable.Entry> | undefined
     await WorkspaceContent.withTree(info, store, async (tree) => {
       retained = tree
       content = tree.read("file")[Symbol.asyncIterator]()
       entries = tree.entries()[Symbol.asyncIterator]()
+      expect((await Array.fromAsync(tree.children(""))).map((entry) => entry.path)).toEqual(["file"])
+      children = tree.children("")[Symbol.asyncIterator]()
       await foreign.run(() => expect(tree.get("file")).rejects.toThrow("another Runtime"))
       const handle = Storage.current()
       await Storage.provide({ ...handle, artifactDirectory: handle.artifactDirectory + "-foreign" }, () =>
@@ -161,10 +164,11 @@ test("indexed Workspace callbacks cannot escape, change Store namespaces or use 
         handle.store.options.namespace = namespace
       }
     })
-    if (!retained || !content || !entries) throw new Error("Workspace reader was not opened")
+    if (!retained || !content || !entries || !children) throw new Error("Workspace reader was not opened")
     await expect(retained.get("file")).rejects.toThrow("ended")
     await expect(content.next()).rejects.toThrow("ended")
     await expect(entries.next()).rejects.toThrow("ended")
+    await expect(children.next()).rejects.toThrow("ended")
   })
 })
 

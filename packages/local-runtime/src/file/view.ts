@@ -263,8 +263,7 @@ export namespace FileView {
       const directory = await tree.resolve(name)
       if (directory.path && directory.entry?.kind !== "directory") throw new Error("Workspace path is not a directory")
       const result: WorkspaceProtocol.Item[] = []
-      for await (const entry of tree.entries({ prefix: directory.path ? directory.path + "/" : undefined })) {
-        if (path.posix.dirname(entry.path) !== (directory.path || ".")) continue
+      for await (const entry of tree.children(directory.path)) {
         result.push(item(info, entry, name ? `${name}/${path.posix.basename(entry.path)}` : entry.path))
       }
       return result
