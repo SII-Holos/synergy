@@ -176,7 +176,12 @@ export namespace SessionTransferStream {
   }
 
   export async function open(input: { root: Root; store: BlobStore; directory: string; signal?: AbortSignal }) {
-    const root = Root.parse(input.root)
+    const selected = Root.parse(input.root)
+    const root = Object.freeze({ ...selected, owners: Object.freeze(selected.owners) })
+    const signal = input.signal
+    signal?.throwIfAborted()
+    const provider = input.store
+    const store = Object.freeze({ put: provider.put.bind(provider), get: provider.get.bind(provider) })
     const directory = await fs.mkdtemp(path.join(input.directory, "portable-reader-"))
     const database = new Database(path.join(directory, "index.sqlite"))
     database.exec("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048")
@@ -193,6 +198,16 @@ export namespace SessionTransferStream {
     let verified = false
     let started = false
     let closed = false
+    function assertOpen() {
+      if (closed) throw new Rejected({ message: "Portable reader is closed" })
+      signal?.throwIfAborted()
+    }
+    async function read<T>(key: string, schema: z.ZodType<T>) {
+      assertOpen()
+      const value = await get(store, key, schema)
+      assertOpen()
+      return value
+    }
     async function index<T extends { index: number; previous: string | null }>(
       chain: z.infer<typeof Chain>,
       schema: z.ZodType<T>,
@@ -200,9 +215,9 @@ export namespace SessionTransferStream {
     ) {
       let key = chain.head
       for (let position = chain.pages - 1; position >= 0; position--) {
-        input.signal?.throwIfAborted()
+        assertOpen()
         if (!key) throw new Rejected({ message: "Portable page chain ended early" })
-        const page = await get(input.store, key, schema)
+        const page = await read(key, schema)
         if (page.index !== position) throw new Rejected({ message: "Portable page order is inconsistent" })
         addPage.run(prefix, position, key)
         key = page.previous
@@ -211,10 +226,11 @@ export namespace SessionTransferStream {
     }
     async function* pages<T>(length: number, schema: z.ZodType<T>, prefix: string) {
       for (let position = 0; position < length; position++) {
-        input.signal?.throwIfAborted()
+        assertOpen()
         const record = readPage.get(prefix, position)
         if (!record) throw new Rejected({ message: "Portable page index is incomplete" })
-        yield await get(input.store, record.hash, schema)
+        yield await read(record.hash, schema)
+        assertOpen()
         removePage.run(prefix, position)
       }
     }
@@ -226,21 +242,23 @@ export namespace SessionTransferStream {
       let totalBytes = 0
       for await (const page of pages(root.pages, Page, "page-"))
         for (const entry of page.items) {
-          input.signal?.throwIfAborted()
+          assertOpen()
           if (addIdentity.run(entry.id).changes !== 1)
             throw new Rejected({ message: "Duplicate portable entry identity" })
           await index(entry.chunks, ChunkPage, "chunk-")
           let consumed = false
           async function* content() {
             if (consumed) throw new Rejected({ message: "Portable entry content is single-use" })
+            assertOpen()
             consumed = true
             const digest = createHash("sha256")
             let size = 0
             let chunks = 0
             for await (const list of pages(entry.chunks.pages, ChunkPage, "chunk-"))
               for (const chunk of list.items) {
-                input.signal?.throwIfAborted()
-                const data = await input.store.get(chunk.hash, chunk.bytes)
+                assertOpen()
+                const data = await store.get(chunk.hash, chunk.bytes)
+                assertOpen()
                 if (data.length !== chunk.bytes || hash(data) !== chunk.hash)
                   throw new Rejected({ message: "Portable content chunk checksum mismatch" })
                 size = count(size, data.length)
@@ -248,6 +266,7 @@ export namespace SessionTransferStream {
                 digest.update(data)
                 yield data
               }
+            assertOpen()
             if (size !== entry.bytes || chunks !== entry.chunks.count || digest.digest("hex") !== entry.hash)
               throw new Rejected({ message: "Portable entry totals or checksum mismatch" })
             totalBytes = count(totalBytes, size)
@@ -269,6 +288,7 @@ export namespace SessionTransferStream {
         }
       if (received !== root.entries || totalBytes !== root.bytes)
         throw new Rejected({ message: "Portable manifest totals mismatch" })
+      assertOpen()
       database.exec("COMMIT")
       verified = true
     }

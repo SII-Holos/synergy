@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0114](0114-portable-reader-forgot-original-cancellation.md)
+
 - [0113](0113-native-identity-reader-followed-linked-records.md)
 
 - [0112](0112-cancelled-reader-retained-artifact-pin.md)
