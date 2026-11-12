@@ -2086,6 +2086,402 @@ export type OrgCloudEnvironmentCreate = {
   name: string
 }
 
+export type OrgCloudFileReference = {
+  orgID: string
+  projectID: string
+  resourceID: string
+  workspaceID: string
+  generation: number
+  revision: number
+}
+
+export type OrgCloudFileResult = {
+  reference: OrgCloudFileReference
+  result:
+    | {
+        action: "describe"
+      }
+    | {
+        action: "canonical"
+        path: string | ""
+      }
+    | {
+        action: "stat"
+        item?: {
+          path: string | ""
+          entryVersion: string
+          identity?: string
+          ctime: number
+          mtime: number
+          kind: "file" | "directory" | "symlink" | "unknown"
+          size: number
+          mode: number
+        }
+      }
+    | {
+        action: "list"
+        items: Array<{
+          path: string | ""
+          entryVersion: string
+          identity?: string
+          ctime: number
+          mtime: number
+          kind: "file" | "directory" | "symlink" | "unknown"
+          size: number
+          mode: number
+        }>
+        cursor?: string
+        revision: number
+      }
+    | {
+        action: "read"
+        data: string
+        version: string
+        size: number
+        mode: number
+      }
+    | {
+        action: "write"
+        checkpoint: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          manifest: string | null
+          beforeManifest?: string
+          isolated?: boolean
+        }
+      }
+    | {
+        action: "mutate"
+        checkpoint: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          manifest: string | null
+          beforeManifest?: string
+          isolated?: boolean
+        }
+      }
+    | {
+        action: "receipt"
+        status?: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          state: "pending" | "failed" | "saved" | "released"
+          checkpoint?: {
+            id: string
+            mount: {
+              id: string
+              workspaceID: string
+              generation: number
+            }
+            manifest: string | null
+            beforeManifest?: string
+            isolated?: boolean
+          }
+          error?: string
+        }
+      }
+    | {
+        action: "acknowledge"
+        id: string
+      }
+}
+
+export type OrgCommandPermit = {
+  schemaVersion: 1
+  purpose: "session-command"
+  orgID: string
+  deploymentIncarnation: string
+  keyID: string
+  requestID: string
+  payloadHash: string
+  sessionID: string
+  projectID: string
+  runtimeID: string
+  bindingEpoch: number
+  connectionEpoch: number
+  commandSeq: number
+  shareGeneration: number
+  controlRevision: number
+  authRevision: number
+  admissionID: string
+  attemptID: string
+  actor: {
+    subjectID: string
+    displayName: string
+    clientKind: "web" | "desktop" | "cli" | "api"
+    requestID: string
+    kind: "account"
+    orgID: string
+    tokenID?: string
+  }
+  operation: "create" | "input" | "pause" | "continue" | "cancel" | "decision"
+  authorizedAt: number
+  deadline: number
+  provisionalGrantID?: string
+}
+
+export type OrgCommandInputAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect: {
+    kind: "inbox"
+    itemID: string
+    messageID: string
+    mode: "task" | "steer" | "context"
+  }
+}
+
+export type OrgCommandControlAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect:
+    | {
+        kind: "control"
+        controlVersion: number
+        pausedSince: number
+        operation: "pause"
+        changed: boolean
+      }
+    | {
+        kind: "control"
+        controlVersion: number
+        pausedSince: number
+        operation: "continue"
+        itemID: string
+        messageID: string
+        rootID?: string
+      }
+    | {
+        kind: "control"
+        operation: "cancel"
+        controlVersion: number
+        runID: string
+        runStatusAtReception: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+        cancelRequestedAt?: number
+      }
+}
+
+export type OrgExecutionBindingProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  continuation?: {
+    handoffID: string
+    receipt: {
+      attempt:
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "accepted"
+            acceptedAttemptID: string
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "rejected"
+            reason:
+              | "EXPIRED_PERMIT"
+              | "STALE_CONNECTION"
+              | "STALE_BINDING"
+              | "SESSION_UNAVAILABLE"
+              | "TRANSFER_BLOCKED"
+              | "SEQUENCE_GAP"
+              | "SEQUENCE_CLOSED"
+              | "REQUEST_CONFLICT"
+              | "PAYLOAD_MISMATCH"
+              | "CONTROL_CONFLICT"
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "skipped"
+          }
+      accepted?: OrgCommandControlAccepted
+      skip?: {
+        schemaVersion: 1
+        permit: {
+          schemaVersion: 1
+          purpose: "session-command-skip"
+          command: OrgCommandPermit
+          connectionEpoch: number
+          authorizedAt: number
+          deadline: number
+        }
+        receivedAt: number
+      }
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+  purpose: "execution-root-binding"
+  rootID: string
+}
+
+export type OrgExecutionBindingRequest = {
+  proof: OrgExecutionBindingProof
+  signature: string
+}
+
+export type OrgCloudFileRequest = {
+  proof: {
+    purpose: "organization-workspace-file"
+    authority: OrgExecutionBindingRequest
+    reference?: OrgCloudFileReference
+    operation:
+      | {
+          action: "describe"
+        }
+      | {
+          action: "canonical"
+          path: string | ""
+          follow: boolean
+        }
+      | {
+          action: "stat"
+          path: string | ""
+          follow?: boolean
+        }
+      | {
+          action: "list"
+          path: string | ""
+          cursor?: string
+          revision?: number
+          limit?: number
+        }
+      | {
+          action: "read"
+          path: string
+          offset?: number
+          maximumBytes?: number
+          expectedVersion?: string
+        }
+      | {
+          action: "write"
+          id: string
+          path: string
+          data: string
+          expectedVersion: string | null
+          expectedEntryVersion?: string | null
+          protectSensitive?: boolean
+          mode?: number
+        }
+      | {
+          action: "mutate"
+          id: string
+          change:
+            | {
+                kind: "replace"
+                path: string
+                data: string
+                mode: "100644" | "100755" | "120000"
+                expectedVersion: string | null
+                expectedContentVersion?: string
+              }
+            | {
+                kind: "mkdir"
+                path: string
+                createParents?: boolean
+                mode?: number
+              }
+            | {
+                kind: "remove"
+                path: string
+                expectedVersion: string
+                recursive?: boolean
+              }
+            | {
+                kind: "move"
+                from: string
+                to: string
+                expectedVersion: string
+              }
+            | {
+                kind: "copy"
+                from: string
+                to: string
+                expectedVersion: string
+              }
+          protectSensitive?: boolean
+        }
+      | {
+          action: "receipt"
+          id: string
+        }
+      | {
+          action: "acknowledge"
+          id: string
+        }
+  }
+  signature: string
+}
+
 export type OrgHandoffView = {
   schemaVersion: 1
   orgID: string
@@ -2399,85 +2795,6 @@ export type OrgKnowledgeExecutionPage = {
   }
   items: Array<OrgKnowledgeRelease>
   cursor?: string
-}
-
-export type OrgCommandPermit = {
-  schemaVersion: 1
-  purpose: "session-command"
-  orgID: string
-  deploymentIncarnation: string
-  keyID: string
-  requestID: string
-  payloadHash: string
-  sessionID: string
-  projectID: string
-  runtimeID: string
-  bindingEpoch: number
-  connectionEpoch: number
-  commandSeq: number
-  shareGeneration: number
-  controlRevision: number
-  authRevision: number
-  admissionID: string
-  attemptID: string
-  actor: {
-    subjectID: string
-    displayName: string
-    clientKind: "web" | "desktop" | "cli" | "api"
-    requestID: string
-    kind: "account"
-    orgID: string
-    tokenID?: string
-  }
-  operation: "create" | "input" | "pause" | "continue" | "cancel" | "decision"
-  authorizedAt: number
-  deadline: number
-  provisionalGrantID?: string
-}
-
-export type OrgCommandInputAccepted = {
-  schemaVersion: 1
-  permit: OrgCommandPermit
-  acceptedAt: number
-  intakeSeq: number
-  effect: {
-    kind: "inbox"
-    itemID: string
-    messageID: string
-    mode: "task" | "steer" | "context"
-  }
-}
-
-export type OrgCommandControlAccepted = {
-  schemaVersion: 1
-  permit: OrgCommandPermit
-  acceptedAt: number
-  intakeSeq: number
-  effect:
-    | {
-        kind: "control"
-        controlVersion: number
-        pausedSince: number
-        operation: "pause"
-        changed: boolean
-      }
-    | {
-        kind: "control"
-        controlVersion: number
-        pausedSince: number
-        operation: "continue"
-        itemID: string
-        messageID: string
-        rootID?: string
-      }
-    | {
-        kind: "control"
-        operation: "cancel"
-        controlVersion: number
-        runID: string
-        runStatusAtReception: "running" | "completed" | "failed" | "cancelled" | "interrupted"
-        cancelRequestedAt?: number
-      }
 }
 
 export type OrgExecutionDescriptionProof = {
@@ -3659,118 +3976,6 @@ export type OrgExecutionDescription = {
           protocol: "environment"
         }
   }>
-}
-
-export type OrgExecutionBindingProof = {
-  schemaVersion: 1
-  orgID: string
-  deploymentIncarnation: string
-  runtimeID: string
-  connectionEpoch: number
-  receipt: {
-    attempt:
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "accepted"
-          acceptedAttemptID: string
-        }
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "rejected"
-          reason:
-            | "EXPIRED_PERMIT"
-            | "STALE_CONNECTION"
-            | "STALE_BINDING"
-            | "SESSION_UNAVAILABLE"
-            | "TRANSFER_BLOCKED"
-            | "SEQUENCE_GAP"
-            | "SEQUENCE_CLOSED"
-            | "REQUEST_CONFLICT"
-            | "PAYLOAD_MISMATCH"
-            | "CONTROL_CONFLICT"
-        }
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "skipped"
-        }
-    accepted?: OrgCommandInputAccepted
-    skip?: {
-      schemaVersion: 1
-      permit: {
-        schemaVersion: 1
-        purpose: "session-command-skip"
-        command: OrgCommandPermit
-        connectionEpoch: number
-        authorizedAt: number
-        deadline: number
-      }
-      receivedAt: number
-    }
-  }
-  continuation?: {
-    handoffID: string
-    receipt: {
-      attempt:
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "accepted"
-            acceptedAttemptID: string
-          }
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "rejected"
-            reason:
-              | "EXPIRED_PERMIT"
-              | "STALE_CONNECTION"
-              | "STALE_BINDING"
-              | "SESSION_UNAVAILABLE"
-              | "TRANSFER_BLOCKED"
-              | "SEQUENCE_GAP"
-              | "SEQUENCE_CLOSED"
-              | "REQUEST_CONFLICT"
-              | "PAYLOAD_MISMATCH"
-              | "CONTROL_CONFLICT"
-          }
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "skipped"
-          }
-      accepted?: OrgCommandControlAccepted
-      skip?: {
-        schemaVersion: 1
-        permit: {
-          schemaVersion: 1
-          purpose: "session-command-skip"
-          command: OrgCommandPermit
-          connectionEpoch: number
-          authorizedAt: number
-          deadline: number
-        }
-        receivedAt: number
-      }
-    }
-  }
-  issuedAt: number
-  expiresAt: number
-  purpose: "execution-root-binding"
-  rootID: string
-}
-
-export type OrgExecutionBindingRequest = {
-  proof: OrgExecutionBindingProof
-  signature: string
 }
 
 export type OrgExecutionReleaseProof = {
@@ -8610,6 +8815,51 @@ export type OrgCloudEnvironmentsGetResponses = {
 }
 
 export type OrgCloudEnvironmentsGetResponse = OrgCloudEnvironmentsGetResponses[keyof OrgCloudEnvironmentsGetResponses]
+
+export type OrgCloudFilesRequestData = {
+  body: OrgCloudFileRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/workspaces/files"
+}
+
+export type OrgCloudFilesRequestErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudFilesRequestError = OrgCloudFilesRequestErrors[keyof OrgCloudFilesRequestErrors]
+
+export type OrgCloudFilesRequestResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudFileResult
+}
+
+export type OrgCloudFilesRequestResponse = OrgCloudFilesRequestResponses[keyof OrgCloudFilesRequestResponses]
 
 export type OrgHandoffListData = {
   body?: never

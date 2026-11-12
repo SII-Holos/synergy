@@ -62,6 +62,9 @@ import type {
   OrgCloudEnvironmentsCreateResponses,
   OrgCloudEnvironmentsGetErrors,
   OrgCloudEnvironmentsGetResponses,
+  OrgCloudFileRequest,
+  OrgCloudFilesRequestErrors,
+  OrgCloudFilesRequestResponses,
   OrgCloudWorkspaceCreate,
   OrgCloudWorkspaceRead,
   OrgCloudWorkspacesCreateErrors,
@@ -3640,6 +3643,34 @@ export class OrgCloudEnvironments extends HeyApiClient {
   }
 }
 
+export class OrgCloudFiles extends HeyApiClient {
+  /**
+   * Access the one authoritative Workspace through an accepted native root
+   */
+  public request<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudFileRequest: OrgCloudFileRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgCloudFileRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgCloudFilesRequestResponses,
+      OrgCloudFilesRequestErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/workspaces/files",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgHandoff extends HeyApiClient {
   /**
    * List handoff facts without retrying an unknown result
@@ -4547,6 +4578,8 @@ export class OrganizationClient extends HeyApiClient {
   orgCloudWorkspaces = new OrgCloudWorkspaces({ client: this.client })
 
   orgCloudEnvironments = new OrgCloudEnvironments({ client: this.client })
+
+  orgCloudFiles = new OrgCloudFiles({ client: this.client })
 
   orgHandoff = new OrgHandoff({ client: this.client })
 

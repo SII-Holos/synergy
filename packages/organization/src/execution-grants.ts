@@ -1,9 +1,11 @@
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationExecutionProtocol as Execution,
   OrganizationResourceProtocol as Resource,
   OrganizationHandoffProtocol as Handoff,
+  OrganizationCloudProtocol as Cloud,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationSessionResources as Resources } from "./session-resources"
 import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
@@ -23,8 +25,29 @@ async function saveGrant(grant: Execution.Grant) {
   await Storage.write(Keys.executionGrant(grant.grantID), grant)
   await Index.update(grant)
 }
+interface WorkspaceAuthorityFrame {
+  grant: Execution.BoundGrant
+  request: Cloud.FileProof
+  assert(): void
+  recheck(): Promise<void>
+}
+const workspaceAuthorities = new WeakMap<OrganizationExecutionGrants.WorkspaceAuthority, WorkspaceAuthorityFrame>()
 
 export namespace OrganizationExecutionGrants {
+  export interface WorkspaceAuthority {
+    readonly kind: "organization-workspace-authority"
+  }
+  export function workspaceAuthority(evidence: WorkspaceAuthority) {
+    const frame = workspaceAuthorities.get(evidence)
+    if (!frame) fail("PERMISSION_DENIED", "Workspace files require their original accepted authority")
+    frame.assert()
+    return {
+      grant: Execution.BoundGrant.parse(frame.grant),
+      request: Cloud.FileProof.parse(frame.request),
+      assert: frame.assert,
+      recheck: frame.recheck,
+    }
+  }
   export async function provision(session: Record.SessionDirectory, permit: Command.Permit) {
     if (!Storage.inTransaction()) fail("INVALID_REQUEST", "Execution grants must join command admission")
     if (
@@ -114,6 +137,11 @@ export function createExecutionGrants(options: {
   assertResourcesDrained(grantID: string): void
   handoffs?: Pick<ReturnType<typeof createHandoffs>, "executionAuthority" | "continuationAuthority">
 }) {
+  const fileCalls = new Map<string, number>()
+  function assertResourcesDrained(grantID: string) {
+    if (fileCalls.get(grantID)) fail("RESOURCE_UNAVAILABLE", "Accepted Workspace file operations are still draining")
+    options.assertResourcesDrained(grantID)
+  }
   function window(proof: MachineProof) {
     if (proof.issuedAt > Date.now() || proof.expiresAt <= Date.now())
       fail("PERMISSION_DENIED", "Execution binding proof is outside its validity window")
@@ -229,7 +257,7 @@ export function createExecutionGrants(options: {
           (predecessor.state === "bound" && predecessor.retention.state === "held")
         if (held && !session.retainedExecutionGrants)
           fail("PROTOCOL_MISMATCH", "Retained execution count is inconsistent")
-        options.assertResourcesDrained(predecessor.grantID)
+        assertResourcesDrained(predecessor.grantID)
         predecessorID = predecessor.grantID
         const contract = await Resources.read(session)
         if (
@@ -300,7 +328,7 @@ export function createExecutionGrants(options: {
         commitGuard() {
           window(proof)
           connection.assertCurrent()
-          if (predecessorID) options.assertResourcesDrained(predecessorID)
+          if (predecessorID) assertResourcesDrained(predecessorID)
         },
       },
     )
@@ -562,6 +590,72 @@ export function createExecutionGrants(options: {
     })
   }
   return {
+    async withWorkspace<T>(
+      value: Cloud.FileRequest,
+      signal: AbortSignal | undefined,
+      body: (authority: OrganizationExecutionGrants.WorkspaceAuthority) => Promise<T>,
+    ): Promise<T> {
+      if (Storage.inTransaction())
+        fail("INVALID_REQUEST", "Workspace file authority must precede its write transaction")
+      const request = Cloud.FileRequest.parse(value)
+      const { proof, signature } = request.proof.authority
+      const owner = WorkspaceContent.captureOwner(signal)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      owner()
+      if (
+        !(await Execution.verifyBinding(proof, signature, registered.runtime.publicKey)) ||
+        !(await Cloud.verifyFile(request.proof, request.signature, registered.runtime.publicKey))
+      )
+        fail("PERMISSION_DENIED", "Workspace file request requires its complete signed operation")
+      owner()
+      const connection = capture(proof, registered.runtime)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
+      let open = true
+      let retained: Execution.BoundGrant | undefined
+      const assert = () => {
+        owner()
+        window(proof)
+        connection.assertCurrent()
+        if (!open) fail("PERMISSION_DENIED", "Workspace file authority callback has ended")
+      }
+      const recheck = async () => {
+        assert()
+        await Storage.snapshot(async () => {
+          const { session, grant, account } = await resolve(proof, registered.runtime.publicKey)
+          await enabled(session, grant, account)
+          const current = Execution.BoundGrant.parse(grant)
+          const root = await Record.read(
+            Record.RootGrant,
+            Keys.rootGrant(session.sessionID, session.bindingEpoch, proof.rootID),
+          )
+          if (
+            root?.grantID !== current.grantID ||
+            current.retention.state !== "held" ||
+            (retained && (retained.grantID !== current.grantID || !same(retained.retention, current.retention)))
+          )
+            fail("PERMISSION_DENIED", "Workspace file request lost its original retained root")
+          retained ??= current
+          assert()
+        })
+        assert()
+      }
+      await recheck()
+      const grant = Execution.BoundGrant.parse(retained)
+      const evidence: OrganizationExecutionGrants.WorkspaceAuthority = Object.freeze({
+        kind: "organization-workspace-authority",
+      })
+      workspaceAuthorities.set(evidence, { grant, request: request.proof, assert, recheck })
+      fileCalls.set(grant.grantID, (fileCalls.get(grant.grantID) ?? 0) + 1)
+      try {
+        return await body(evidence)
+      } finally {
+        open = false
+        const remaining = (fileCalls.get(grant.grantID) ?? 1) - 1
+        if (remaining) fileCalls.set(grant.grantID, remaining)
+        else fileCalls.delete(grant.grantID)
+      }
+    },
     retention,
     async handoffInventory(value: Execution.HandoffInventoryRequest) {
       if (Storage.inTransaction()) fail("INVALID_REQUEST", "Handoff inventory must own its read boundary")
@@ -710,7 +804,7 @@ export function createExecutionGrants(options: {
             fail("REVISION_CONFLICT", "Unbound source grant has another generation")
           if (!session.retainedExecutionGrants)
             fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
-          options.assertResourcesDrained(grant.grantID)
+          assertResourcesDrained(grant.grantID)
           const closure = {
             handoffID: proof.handoffID,
             manifestHash: proof.manifestHash,
@@ -745,7 +839,7 @@ export function createExecutionGrants(options: {
             window(proof)
             connection.assertCurrent()
             guard?.()
-            options.assertResourcesDrained(proof.grantID)
+            assertResourcesDrained(proof.grantID)
           },
         },
       )
@@ -887,7 +981,7 @@ export function createExecutionGrants(options: {
             fail("RESOURCE_UNAVAILABLE", "Unbound execution release lacks materialized root evidence")
           if (session.retainedExecutionGrants === 0)
             fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
-          options.assertResourcesDrained(grant.grantID)
+          assertResourcesDrained(grant.grantID)
           releasingGrantID = grant.grantID
           await saveGrant(
             Execution.Grant.parse(
@@ -919,7 +1013,7 @@ export function createExecutionGrants(options: {
           commitGuard() {
             window(proof)
             connection.assertCurrent()
-            if (releasingGrantID) options.assertResourcesDrained(releasingGrantID)
+            if (releasingGrantID) assertResourcesDrained(releasingGrantID)
           },
         },
       )

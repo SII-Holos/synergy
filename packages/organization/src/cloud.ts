@@ -3,6 +3,8 @@ import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentProviders, type EnvironmentProvider } from "@ericsanchezok/synergy-harness/environment/provider"
@@ -17,6 +19,7 @@ import type { Credentials } from "./auth/session"
 import { fail, revision } from "./error"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
+import { OrganizationExecutionGrants } from "./execution-grants"
 
 export interface OrganizationCloudOptions {
   blobStores?: Record<string, BlobStore>
@@ -37,6 +40,12 @@ export namespace OrganizationCloud {
   })
   const Receipt = z.strictObject({ schemaVersion: z.literal(1), digest: z.string(), result: Cloud.Workspace })
   const EnvironmentReceipt = z.strictObject({ schemaVersion: z.literal(1), digest: z.string(), id: Identity.ID })
+  const FileReceipt = z.strictObject({
+    version: z.literal(1),
+    digest: Cloud.Hash,
+    reference: Cloud.FileReference,
+    result: Cloud.FileResult,
+  })
   const key = (kind: "workspaces" | "environments", id: string) => ["organization", "cloud", kind, id]
   const receiptKey = (workspaceID: string, operationID: string) => [
     "organization",
@@ -329,6 +338,240 @@ export namespace OrganizationCloud {
       await Storage.write(operation, Receipt.parse({ schemaVersion: 1, digest: hash, result }))
       return result
     })
+  }
+
+  export async function file(
+    evidence: OrganizationExecutionGrants.WorkspaceAuthority,
+    signal?: AbortSignal,
+  ): Promise<Cloud.FileResult> {
+    const authority = OrganizationExecutionGrants.workspaceAuthority(evidence)
+    const input = authority.request
+    const selected = authority.grant.selection.infrastructure.workspace
+    if (!selected) fail("RESOURCE_UNAVAILABLE", "The accepted Session has no organization Workspace")
+    const grant = authority.grant
+    const ref = input.reference
+    if (
+      ref &&
+      (ref.orgID !== grant.orgID ||
+        ref.projectID !== grant.projectID ||
+        ref.resourceID !== selected.resourceID ||
+        ref.workspaceID !== selected.workspaceID)
+    )
+      fail("PERMISSION_DENIED", "Workspace file reference belongs to another accepted resource")
+    const scope = scopeID(grant.orgID, grant.projectID)
+    async function current() {
+      await authority.recheck()
+      const [raw] = await Storage.readMany([key("workspaces", selected!.workspaceID)])
+      if (!raw) fail("RESOURCE_UNAVAILABLE", "Organization Workspace is unavailable")
+      const locator = Locator.parse(raw)
+      if (
+        locator.orgID !== grant.orgID ||
+        locator.projectID !== grant.projectID ||
+        locator.resourceID !== selected!.resourceID ||
+        locator.id !== selected!.workspaceID
+      )
+        fail("PERMISSION_DENIED", "Workspace file resource attribution changed")
+      const info = await WorkspaceCatalog.assertActive(locator.id, scope)
+      if (info.backend?.provider !== "objects" || info.activeMount || info.binding.state !== "bound")
+        fail("RESOURCE_UNAVAILABLE", "Workspace files require their dormant object owner")
+      if (ref && ref.generation !== info.binding.generation)
+        fail("REVISION_CONFLICT", "Workspace binding generation changed")
+      authority.assert()
+      return info
+    }
+    function reference(info: WorkspaceCatalog.Info): Cloud.FileReference {
+      return Cloud.FileReference.parse({
+        orgID: grant.orgID,
+        projectID: grant.projectID,
+        resourceID: selected!.resourceID,
+        workspaceID: info.id,
+        generation: info.binding.generation,
+        revision: info.revision,
+      })
+    }
+    function item(info: WorkspaceCatalog.Info, header: WorkspaceTree.Header, path: string) {
+      return Cloud.FileItem.parse({
+        path,
+        kind: header.kind,
+        entryVersion: WorkspaceTree.entryVersion(header, info.content?.revision),
+        size: header.kind === "file" ? header.size : 0,
+        mode: header.mode,
+        mtime: info.updatedAt,
+        ctime: info.createdAt,
+      })
+    }
+    const operation = input.operation
+    const info = await current()
+    const finish = async (result: Cloud.FileResult["result"]) => {
+      await current()
+      authority.assert()
+      return Cloud.FileResult.parse({ reference: reference(info), result })
+    }
+    if (operation.action === "describe") return finish({ action: "describe" })
+    if (!ref) fail("INVALID_REQUEST", "File operations require their original Workspace version")
+    const id =
+      "id" in operation
+        ? "file_" +
+          digest([
+            grant.orgID,
+            grant.projectID,
+            grant.sessionID,
+            grant.runtimeID,
+            grant.bindingEpoch,
+            grant.admissionID,
+            grant.attemptID,
+            grant.rootID,
+            operation.id,
+          ])
+        : undefined
+    const operationKey = id ? [...receiptKey(info.id, "file"), id] : undefined
+    if (operation.action === "receipt" || operation.action === "acknowledge") {
+      const [raw] = await Storage.readMany([operationKey!])
+      const saved = raw === undefined ? undefined : FileReceipt.parse(raw)
+      if (saved && JSON.stringify(saved.reference) !== JSON.stringify(ref))
+        fail("REVISION_CONFLICT", "File receipt belongs to another original Workspace version")
+      const result = saved?.result.result
+      const checkpoint =
+        result && (result.action === "write" || result.action === "mutate") ? result.checkpoint : undefined
+      if (operation.action === "acknowledge") {
+        if (!checkpoint) fail("RESOURCE_UNAVAILABLE", "File publication has no confirmed receipt")
+        return finish({ action: "acknowledge", id: operation.id })
+      }
+      return finish({
+        action: "receipt",
+        status: checkpoint ? { id: operation.id, mount: checkpoint.mount, state: "saved", checkpoint } : undefined,
+      })
+    }
+    if (operation.action === "write" || operation.action === "mutate") {
+      const requestHash = digest({ reference: ref, operation })
+      const [raw] = await Storage.readMany([operationKey!])
+      if (raw !== undefined) {
+        const previous = FileReceipt.parse(raw)
+        if (previous.digest !== requestHash)
+          fail("REVISION_CONFLICT", "File operation identity already has different input")
+        await current()
+        return previous.result
+      }
+      revision(ref.revision, info.revision)
+      const selection = { workspaceID: info.id, scopeID: scope, generation: ref.generation, signal }
+      let prepared: WorkspaceContent.Prepared
+      try {
+        if (operation.action === "write") {
+          const data = Buffer.from(operation.data, "base64")
+          if (data.toString("base64") !== operation.data) fail("INVALID_REQUEST", "File bytes must be canonical base64")
+          prepared = await WorkspaceContent.prepareWrite(selection, { ...operation, data })
+        } else {
+          if (
+            operation.change.kind === "replace" &&
+            Buffer.from(operation.change.data, "base64").toString("base64") !== operation.change.data
+          )
+            fail("INVALID_REQUEST", "File bytes must be canonical base64")
+          prepared = await WorkspaceContent.prepareChange(selection, operation.change, operation.protectSensitive)
+        }
+      } catch (error) {
+        if (error instanceof WorkspaceErrors.ConflictError) fail("REVISION_CONFLICT", error.message)
+        if (error instanceof WorkspaceErrors.AccessDeniedError) fail("PERMISSION_DENIED", error.message)
+        throw error
+      }
+      authority.assert()
+      return Storage.transaction(
+        async () => {
+          const latest = await current()
+          const [existing] = await Storage.readMany([operationKey!])
+          if (existing !== undefined) {
+            const previous = FileReceipt.parse(existing)
+            if (previous.digest !== requestHash)
+              fail("REVISION_CONFLICT", "File operation identity already has different input")
+            return previous.result
+          }
+          revision(ref.revision, latest.revision)
+          const published = await prepared.publish()
+          const result = Cloud.FileResult.parse({
+            reference: reference(published),
+            result: {
+              action: operation.action,
+              checkpoint: {
+                id: operation.id,
+                mount: { id: info.id, workspaceID: info.id, generation: ref.generation },
+                manifest: prepared.manifest,
+                beforeManifest: prepared.info.content?.manifest ?? undefined,
+                isolated: true,
+              },
+            },
+          })
+          await Storage.write(
+            operationKey!,
+            FileReceipt.parse({ version: 1, digest: requestHash, reference: ref, result }),
+          )
+          authority.assert()
+          return result
+        },
+        { commitGuard: authority.assert },
+      )
+    }
+    const { store } = await WorkspaceContent.resolve({
+      workspaceID: info.id,
+      scopeID: scope,
+      generation: ref.generation,
+      signal,
+    })
+    const result = await WorkspaceContent.withTree(
+      info,
+      store,
+      async (tree) => {
+        const resolved = await tree.resolve(
+          operation.path,
+          operation.action === "canonical" ? operation.follow : operation.action === "stat" ? operation.follow : true,
+        )
+        const header = resolved.path ? resolved.entry : { kind: "directory" as const, path: "", mode: tree.mode }
+        if (operation.action === "canonical") return { action: "canonical" as const, path: resolved.path }
+        if (operation.action === "stat")
+          return { action: "stat" as const, item: header ? item(info, header, operation.path) : undefined }
+        if (operation.action === "list") {
+          if (operation.cursor !== undefined && operation.revision === undefined)
+            fail("INVALID_REQUEST", "Workspace list cursors require their original revision")
+          if (operation.revision !== undefined) revision(operation.revision, info.revision)
+          if (header?.kind !== "directory") fail("INVALID_REQUEST", "Workspace path is not a directory")
+          if (
+            operation.cursor !== undefined &&
+            operation.cursor.slice(0, Math.max(0, operation.cursor.lastIndexOf("/"))) !== resolved.path
+          )
+            fail("INVALID_REQUEST", "Workspace cursor is not a direct child of its canonical directory")
+          const entries: z.infer<typeof Cloud.FileItem>[] = []
+          for await (const child of tree.children(resolved.path, { after: operation.cursor })) {
+            entries.push(item(info, child, child.path))
+            if (entries.length > operation.limit) break
+          }
+          return {
+            action: "list" as const,
+            items: entries.slice(0, operation.limit),
+            cursor: entries.length > operation.limit ? entries[operation.limit - 1]?.path : undefined,
+            revision: info.revision,
+          }
+        }
+        if (header?.kind !== "file") fail("NOT_FOUND", "Workspace file is absent")
+        const version = `sha256:${header.hash}`
+        if (operation.expectedVersion !== undefined && operation.expectedVersion !== version)
+          fail("REVISION_CONFLICT", "Workspace file version changed")
+        const length = Math.min(operation.maximumBytes, Math.max(0, header.size - operation.offset))
+        const bytes = new Uint8Array(length)
+        let offset = 0
+        for await (const chunk of tree.read(resolved.path, { offset: operation.offset, length })) {
+          bytes.set(chunk, offset)
+          offset += chunk.length
+        }
+        if (offset !== length) fail("RESOURCE_UNAVAILABLE", "Workspace file output is incomplete")
+        return {
+          action: "read" as const,
+          data: Buffer.from(bytes).toString("base64"),
+          version,
+          size: header.size,
+          mode: header.mode,
+        }
+      },
+      { signal },
+    )
+    return finish(result)
   }
 
   export async function createEnvironment(credentials: Credentials, value: Cloud.CreateEnvironment) {

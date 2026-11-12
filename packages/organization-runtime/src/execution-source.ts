@@ -15,7 +15,7 @@ import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/e
 import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
-import type { RuntimeIdentity } from "./home"
+import { RuntimeIdentity } from "./home"
 import type { MemberConnection } from "./connection"
 import type { createCommandIntake } from "./command-intake"
 import { OrganizationRuntimeError } from "./error"
@@ -47,7 +47,10 @@ export interface MemberExecutionResolution {
   accepted: ExecutionLineage
 }
 
-const state = RuntimeContext.state(() => ({ connection: undefined as Connection | undefined }))
+const state = RuntimeContext.state(() => ({
+  connection: undefined as Connection | undefined,
+  identity: undefined as RuntimeIdentity | undefined,
+}))
 const models = ScopedState.create(() => new Map<string, Provider.Info>())
 
 export function denied(message: string) {
@@ -123,6 +126,35 @@ export async function withMemberExecution<T>(
   },
   fn: (resolution: MemberExecutionResolution, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  return withMemberResolution(identity, input, fn, true)
+}
+
+export async function withMemberFiles<T>(
+  input: { sessionID: string; scopeID?: string; parentSessionID?: string; signal?: AbortSignal },
+  fn: (resolution: MemberExecutionResolution, signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const identity = state().identity
+  if (!identity) throw denied("Organization Workspace file resolution is not registered")
+  return withMemberResolution(
+    identity,
+    input,
+    async (resolution, signal) => {
+      if (!resolution.description.grant.selection.infrastructure.workspace)
+        throw denied("The accepted Session has no organization Workspace file owner")
+      return fn(resolution, signal)
+    },
+    false,
+  )
+}
+
+async function withMemberResolution<T>(
+  identity: RuntimeIdentity,
+  input: { sessionID: string; scopeID?: string; parentSessionID?: string; signal?: AbortSignal },
+  fn: (resolution: MemberExecutionResolution, signal: AbortSignal) => Promise<T>,
+  nativeOnly: boolean,
+): Promise<T> {
+  identity = RuntimeIdentity.parse(identity)
+  input = { ...input }
   const source = current()
   const signal = input.signal ? AbortSignal.any([source.signal, input.signal]) : source.signal
   using held = await Lock.writeWithSignal(`organization-execution:${input.sessionID}`, signal)
@@ -144,7 +176,7 @@ export async function withMemberExecution<T>(
   if (accepted.permit.sessionID !== acceptedSessionID || accepted.effect.messageID !== acceptedRootID)
     throw denied("Member execution requires the receipt for its selected native task")
   const description = await source.resources.describe(descriptionProof, signal)
-  assertNativeInfrastructure(description.grant.selection)
+  if (nativeOnly) assertNativeInfrastructure(description.grant.selection)
   const proof = await source.intake.bindingProof(lookup, acceptedRootID)
   const lineageAccepted = lineage ?? { sessionID: session.id, rootID: acceptedRootID, actor: lookup }
   return await fn({ source, session, lineage, descriptionProof, proof, description, accepted: lineageAccepted }, signal)
@@ -227,6 +259,7 @@ function actor(value: unknown, identity: RuntimeIdentity) {
 }
 
 export function registerMemberExecution(identity: RuntimeIdentity) {
+  state().identity = RuntimeIdentity.parse(identity)
   Leases.register(identity.orgID)
   ProviderCatalogSource.register({ providers: async () => Object.fromEntries(models()) })
   SessionExecutionSource.register({

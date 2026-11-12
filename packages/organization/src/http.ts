@@ -29,6 +29,7 @@ import { publicationRoutes } from "./routes/publications"
 import { knowledgeRoutes } from "./routes/knowledge"
 import { artifactRoutes } from "./routes/artifacts"
 import { cloudRoutes } from "./routes/cloud"
+import { cloudFileRoutes } from "./routes/cloud-files"
 import { handoffRoutes, handoffMachineRoutes } from "./routes/handoff"
 import type { Handoffs } from "./handoff"
 import { knowledgeExecutionRoutes } from "./routes/knowledge-execution"
@@ -118,7 +119,9 @@ export function organizationApp(
             ? 4 * 1024 * 1024
             : c.req.method === "POST" && /^\/org\/v1\/cloud\/workspaces\/[^/]+\/write$/.test(c.req.path)
               ? 6 * 1024 * 1024
-              : 64 * 1024
+              : c.req.method === "POST" && c.req.path === "/runtime/v1/workspaces/files"
+                ? 12 * 1024 * 1024
+                : 64 * 1024
       return bodyLimit({ maxSize, onError: () => fail("INVALID_REQUEST", "Request body is too large") })(c, next)
     })
     .onError((error, c) => {
@@ -180,6 +183,13 @@ export function organizationApp(
     .route("/org/v1", knowledgeRoutes(publicOrigin))
     .route("/org/v1", artifactRoutes(publicOrigin))
     .route("/org/v1", cloudRoutes(publicOrigin))
+    .route(
+      "/runtime/v1",
+      cloudFileRoutes(() => {
+        if (!execution) fail("SERVICE_UNAVAILABLE", "Workspace file authority is unavailable")
+        return execution
+      }),
+    )
     .route(
       "/org/v1",
       handoffRoutes(() => {

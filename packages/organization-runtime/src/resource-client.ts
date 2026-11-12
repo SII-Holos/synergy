@@ -8,11 +8,17 @@ import {
   OrganizationPublicationProtocol as Publication,
   OrganizationHandoffProtocol as Handoff,
   OrganizationHandoffObjectProtocol as Objects,
+  OrganizationCloudProtocol as Cloud,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationRuntimeError } from "./error"
 
 export interface MemberResourceClient {
+  workspaceFiles(
+    proof: Execution.BindingProof,
+    input: Cloud.LocalFileRequest,
+    signal?: AbortSignal,
+  ): Promise<Cloud.FileResult>
   handoffObject(
     reference: HandoffObjectReference,
     range: z.infer<typeof Handoff.ObjectRange>,
@@ -142,9 +148,12 @@ export function createMemberResourceClient(options: {
         let bytes = 0
         try {
           const pathname = new URL(input instanceof Request ? input.url : String(input), options.origin).pathname
-          const maximum = /\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(pathname)
-            ? 16 * 1024 * 1024
-            : 256 * 1024
+          const maximum =
+            pathname === "/runtime/v1/workspaces/files"
+              ? 6 * 1024 * 1024
+              : /\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(pathname)
+                ? 16 * 1024 * 1024
+                : 256 * 1024
           while (true) {
             const next = await reader.read()
             if (next.done) break
@@ -333,6 +342,77 @@ export function createMemberResourceClient(options: {
     return permit
   }
   const resources: MemberResourceClient = {
+    async workspaceFiles(value, input, signal) {
+      const proof = Execution.BindingProof.parse(value)
+      const selected = Cloud.LocalFileRequest.parse(input)
+      const file = Cloud.FileProof.parse({
+        purpose: "organization-workspace-file",
+        authority: { proof, signature: await Execution.signBinding(proof, options.key) },
+        ...selected,
+      })
+      const request = Cloud.FileRequest.parse({ proof: file, signature: await Cloud.signFile(file, options.key) })
+      return invoke(
+        proof,
+        Cloud.FileResult,
+        (signal) => client.orgCloudFiles.request({ orgCloudFileRequest: request }, { signal }),
+        (result) => {
+          const ref = result.reference
+          const expected = selected.reference
+          if (
+            ref.orgID !== proof.orgID ||
+            ref.projectID !== proof.receipt.accepted!.permit.projectID ||
+            result.result.action !== selected.operation.action ||
+            (expected &&
+              (ref.resourceID !== expected.resourceID ||
+                ref.workspaceID !== expected.workspaceID ||
+                ref.generation !== expected.generation))
+          )
+            throw failure("PROTOCOL_MISMATCH", "Workspace file response belongs to another original resource")
+          const operation = selected.operation
+          const id = "id" in operation ? operation.id : undefined
+          const mountMatches = (mount: z.infer<typeof Cloud.FileCheckpoint>["mount"]) =>
+            expected !== undefined &&
+            mount.id === expected.workspaceID &&
+            mount.workspaceID === expected.workspaceID &&
+            mount.generation === expected.generation
+          const checkpointMatches = (checkpoint: z.infer<typeof Cloud.FileCheckpoint>) =>
+            checkpoint.id === id && mountMatches(checkpoint.mount)
+          const answer = result.result
+          if ((answer.action === "write" || answer.action === "mutate") && !checkpointMatches(answer.checkpoint))
+            throw failure("PROTOCOL_MISMATCH", "Workspace checkpoint belongs to another original operation")
+          if (
+            answer.action === "receipt" &&
+            answer.status &&
+            (answer.status.id !== id ||
+              !mountMatches(answer.status.mount) ||
+              (answer.status.checkpoint && !checkpointMatches(answer.status.checkpoint)) ||
+              (answer.status.state === "saved" && !answer.status.checkpoint))
+          )
+            throw failure("PROTOCOL_MISMATCH", "Workspace receipt belongs to another original operation")
+          if (answer.action === "acknowledge" && answer.id !== id)
+            throw failure("PROTOCOL_MISMATCH", "Workspace acknowledgment belongs to another original operation")
+          if (result.result.action === "read") {
+            const bytes = Buffer.from(result.result.data, "base64")
+            if (
+              bytes.toString("base64") !== result.result.data ||
+              selected.operation.action !== "read" ||
+              bytes.length !==
+                Math.min(
+                  selected.operation.maximumBytes,
+                  Math.max(0, result.result.size - selected.operation.offset),
+                ) ||
+              (selected.operation.expectedVersion !== undefined &&
+                selected.operation.expectedVersion !== result.result.version)
+            )
+              throw failure(
+                "PROTOCOL_MISMATCH",
+                "Workspace file response does not complete its original version and byte window",
+              )
+          }
+        },
+        signal,
+      )
+    },
     async handoffObject(reference, range, signal) {
       const issuedAt = Date.now()
       const proof = Objects.Proof.parse({

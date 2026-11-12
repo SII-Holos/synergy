@@ -402,6 +402,7 @@ import type {
   NoteUpdateResponses,
   ObservabilityDiagnosticsSummaryErrors,
   ObservabilityDiagnosticsSummaryResponses,
+  OrgCloudLocalFileRequest,
   OrgLocalProjectBind,
   OrgLocalProjectBindErrors,
   OrgLocalProjectBindResponses,
@@ -409,6 +410,8 @@ import type {
   OrgLocalProjectGetResponses,
   OrgLocalSessionReadErrors,
   OrgLocalSessionReadResponses,
+  OrgLocalWorkspaceFilesRequestErrors,
+  OrgLocalWorkspaceFilesRequestResponses,
   OrgPrivateReadQuery,
   Part as Part2,
   PartDeleteErrors,
@@ -7040,6 +7043,45 @@ export class OrgLocalProject extends HeyApiClient {
         },
       },
     )
+  }
+}
+
+export class OrgLocalWorkspaceFiles extends HeyApiClient {
+  /**
+   * Access the remote Workspace selected by this accepted Session
+   */
+  public request<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgCloudLocalFileRequest: OrgCloudLocalFileRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgCloudLocalFileRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgLocalWorkspaceFilesRequestResponses,
+      OrgLocalWorkspaceFilesRequestErrors,
+      ThrowOnError
+    >({
+      url: "/organization/sessions/{sessionID}/workspace-files",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
   }
 }
 
@@ -16624,6 +16666,8 @@ export class SynergyClient extends HeyApiClient {
   storage = new Storage({ client: this.client })
 
   orgLocalProject = new OrgLocalProject({ client: this.client })
+
+  orgLocalWorkspaceFiles = new OrgLocalWorkspaceFiles({ client: this.client })
 
   orgLocalSession = new OrgLocalSession({ client: this.client })
 

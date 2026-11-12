@@ -8,6 +8,8 @@ Strict schemas shared by the standalone organization service, Runtime bridge and
 
 Use the public package entry for schemas and inferred types. Storage and execution implementations belong to their respective owners.
 
+Cloud file requests bind a complete bounded operation and original resource/generation/revision reference to the accepted root proof in a separate signing domain. Strict schemas exclude native paths, compute, mounts and imports. Results distinguish file checkpoints from operation receipt observations. Verify `test/cloud-files.test.ts`; see [remote file ownership](../../docs/decisions/implemented/architecture/2026-11-12-share-organization-workspaces-through-owned-file-hosts.md).
+
 Machine proofs and command permits use separate versioned Ed25519 signing domains over strictly validated claims. Command actor fields reuse the portable account attribution schema. A valid signature establishes the signed claims; execution owners must still validate the current target, connection, binding, deadline and admission receipt. Compile the protocol and Util packages before importing their JavaScript entries from Node.
 
 Input and control digests bind the logical request, organization, complete target and payload. Continue requires the observed native pause and Runtime control version; cancel requires an explicit run and observed version; pause supplies no caller-selected identity or force flag. Skip proofs use their own signing domain and retain the original command while authorizing reconciliation on a current connection. Accepted effects and terminal attempts have separate schemas; rejecting an attempt does not make the logical request permanently unexecutable.

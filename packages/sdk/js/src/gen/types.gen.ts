@@ -3182,6 +3182,206 @@ export type OrgLocalProjectBind = {
   directory: string
 }
 
+export type OrgCloudFileReference = {
+  orgID: string
+  projectID: string
+  resourceID: string
+  workspaceID: string
+  generation: number
+  revision: number
+}
+
+export type OrgCloudFileResult = {
+  reference: OrgCloudFileReference
+  result:
+    | {
+        action: "describe"
+      }
+    | {
+        action: "canonical"
+        path: string | ""
+      }
+    | {
+        action: "stat"
+        item?: {
+          path: string | ""
+          entryVersion: string
+          identity?: string
+          ctime: number
+          mtime: number
+          kind: "file" | "directory" | "symlink" | "unknown"
+          size: number
+          mode: number
+        }
+      }
+    | {
+        action: "list"
+        items: Array<{
+          path: string | ""
+          entryVersion: string
+          identity?: string
+          ctime: number
+          mtime: number
+          kind: "file" | "directory" | "symlink" | "unknown"
+          size: number
+          mode: number
+        }>
+        cursor?: string
+        revision: number
+      }
+    | {
+        action: "read"
+        data: string
+        version: string
+        size: number
+        mode: number
+      }
+    | {
+        action: "write"
+        checkpoint: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          manifest: string | null
+          beforeManifest?: string
+          isolated?: boolean
+        }
+      }
+    | {
+        action: "mutate"
+        checkpoint: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          manifest: string | null
+          beforeManifest?: string
+          isolated?: boolean
+        }
+      }
+    | {
+        action: "receipt"
+        status?: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          state: "pending" | "failed" | "saved" | "released"
+          checkpoint?: {
+            id: string
+            mount: {
+              id: string
+              workspaceID: string
+              generation: number
+            }
+            manifest: string | null
+            beforeManifest?: string
+            isolated?: boolean
+          }
+          error?: string
+        }
+      }
+    | {
+        action: "acknowledge"
+        id: string
+      }
+}
+
+export type OrgCloudLocalFileRequest = {
+  reference?: OrgCloudFileReference
+  operation:
+    | {
+        action: "describe"
+      }
+    | {
+        action: "canonical"
+        path: string | ""
+        follow: boolean
+      }
+    | {
+        action: "stat"
+        path: string | ""
+        follow?: boolean
+      }
+    | {
+        action: "list"
+        path: string | ""
+        cursor?: string
+        revision?: number
+        limit?: number
+      }
+    | {
+        action: "read"
+        path: string
+        offset?: number
+        maximumBytes?: number
+        expectedVersion?: string
+      }
+    | {
+        action: "write"
+        id: string
+        path: string
+        data: string
+        expectedVersion: string | null
+        expectedEntryVersion?: string | null
+        protectSensitive?: boolean
+        mode?: number
+      }
+    | {
+        action: "mutate"
+        id: string
+        change:
+          | {
+              kind: "replace"
+              path: string
+              data: string
+              mode: "100644" | "100755" | "120000"
+              expectedVersion: string | null
+              expectedContentVersion?: string
+            }
+          | {
+              kind: "mkdir"
+              path: string
+              createParents?: boolean
+              mode?: number
+            }
+          | {
+              kind: "remove"
+              path: string
+              expectedVersion: string
+              recursive?: boolean
+            }
+          | {
+              kind: "move"
+              from: string
+              to: string
+              expectedVersion: string
+            }
+          | {
+              kind: "copy"
+              from: string
+              to: string
+              expectedVersion: string
+            }
+        protectSensitive?: boolean
+      }
+    | {
+        action: "receipt"
+        id: string
+      }
+    | {
+        action: "acknowledge"
+        id: string
+      }
+}
+
 export type OrgSessionBinding = {
   schemaVersion: 1
   orgID: string
@@ -17995,6 +18195,39 @@ export type OrgLocalProjectBindResponses = {
 }
 
 export type OrgLocalProjectBindResponse = OrgLocalProjectBindResponses[keyof OrgLocalProjectBindResponses]
+
+export type OrgLocalWorkspaceFilesRequestData = {
+  body: OrgCloudLocalFileRequest
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/organization/sessions/{sessionID}/workspace-files"
+}
+
+export type OrgLocalWorkspaceFilesRequestErrors = {
+  /**
+   * Workspace version conflict
+   */
+  409: OrgError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type OrgLocalWorkspaceFilesRequestError =
+  OrgLocalWorkspaceFilesRequestErrors[keyof OrgLocalWorkspaceFilesRequestErrors]
+
+export type OrgLocalWorkspaceFilesRequestResponses = {
+  /**
+   * Original Workspace file result
+   */
+  200: OrgCloudFileResult
+}
+
+export type OrgLocalWorkspaceFilesRequestResponse =
+  OrgLocalWorkspaceFilesRequestResponses[keyof OrgLocalWorkspaceFilesRequestResponses]
 
 export type OrgLocalSessionReadData = {
   body: OrgPrivateReadQuery

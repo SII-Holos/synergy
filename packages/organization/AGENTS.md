@@ -26,6 +26,6 @@ Creator-only history and collaborative pending reads use distinct signed transie
 
 Publications verify release chunks; reconcile read-authorized receipts. Knowledge stages pages before one authorized CAS pointer; member/project and hosted collections retain their owners. Machine reads require exact versions and grants. Shared blobs page receipts, verify before completion and restrict browser uploads to creators. Artifact lifetime follows project access independently of source. Reuse ConfigMarkdown/SkillManifest and Storage binaries. Verify publication, knowledge, shared-blob and artifact suites.
 
-Cloud locators own attribution only. Keep file CAS and operation receipts atomic and compose explicit infrastructure without personal configuration. Verify `test/cloud.test.ts`.
+Cloud locators own attribution. File CAS/receipts retain root/namespace commit guards and drain before release. Verify cloud and Runtime workspace-files suites.
 
 Maintenance retains accepted completions and freezes rosters; incomplete segments block completion. Installation requests bind native/Snapshot; both owners guard adoption commits. Verify service-maintenance/cohort/service-native*/service-snapshot-install with isolated Homes.
