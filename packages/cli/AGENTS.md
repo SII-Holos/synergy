@@ -14,7 +14,7 @@ Model setup writes optional Library and Anima defaults only when their configura
 
 Command contributions may select maintenance storage from parsed positionals; HTTP-only subcommands must not acquire the local Home lock.
 
-An independent service contribution declares `initialization: "owner"` to own its Home, store, logs and cleanup. The parser must not create ambient configuration or mirror failures into ambient telemetry for it. Keep the single parser and verify failure paths before ownership is acquired.
+An independent service contribution declares `initialization: "owner"` to own its Home, store, logs and cleanup. The parser must not create ambient configuration or mirror failures into ambient telemetry for it. Independent executables use `commandsOnly` with owner-initialized contributions and explicit registration. Keep the single parser; verify rejected input before ownership and the installed entry outside the checkout.
 
 Workspace and Environment commands require an attached server and explicit Scope, use generated SDK operations, and retain mutation preconditions and structured errors. Verify with `bun test test/cli/resources.test.ts`.
 

@@ -55,6 +55,8 @@ For startup, daemon, port, Web, Desktop, auth, or data movement changes, test th
 
 ## Installed component runner lifecycle
 
+For an independent service executable, reuse `runCli({ commandsOnly: true, name, register, commands, runtimeFactory })` with only owner-initialized contributions. Keep its authoritative command definitions in the service owner and supply a Runtime factory that rejects accidental Agent startup. Test help, unknown commands and rejected parameters without an ambient Home, then exercise the packed executable outside the checkout. This is an explicit embedding entry; managed component dispatch still requires the generation verification below.
+
 Use this workflow for metadata-owned subprocess runners. Read [Installable packages](../../../docs/reference/installable-packages.md#trusted-host-components), [Runtime and Scope](../../../docs/architecture/runtime-and-scope.md#composition-and-migration-registration), and the [bootstrap IPC decision](../../../docs/decisions/implemented/bug-fix/2026-10-07-replay-component-runner-bootstrap-ipc.md) before changing dispatch.
 
 1. Keep optional runners in the owning component's `synergy.runners` metadata. Verify the installed launcher selects the declared export from its parent's pinned, sealed generation; do not add an optional runner to `CORE_RUNNERS` or load full product composition to obtain dispatch.

@@ -1,0 +1,55 @@
+x-organization: &organization
+  image: ${SYNERGY_ORGANIZATION_IMAGE:?Set the exact organization image tag or digest}
+  environment:
+    SYNERGY_HOME: /var/lib/synergy
+  volumes:
+    - organization-data:/var/lib/synergy
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  organization:
+    <<: *organization
+    command:
+      [
+        "serve",
+        "--origin",
+        "${SYNERGY_ORGANIZATION_ORIGIN:?Set the exact public HTTPS origin}",
+        "--hostname",
+        "0.0.0.0",
+        "--port",
+        "4080",
+      ]
+    ports:
+      - "127.0.0.1:${SYNERGY_ORGANIZATION_PORT:-4080}:4080"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "--no-install",
+          "-e",
+          "const r=await fetch('http://127.0.0.1:4080/org/v1/ready');if(!r.ok||!(await r.json()).ready)process.exit(1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+  initialize:
+    <<: *organization
+    profiles: ["setup"]
+    command: ["init", "--output", "/bootstrap/initialization.json"]
+    volumes:
+      - organization-data:/var/lib/synergy
+      - ${SYNERGY_ORGANIZATION_BOOTSTRAP:?Set an absolute bootstrap directory owned by UID 1000}:/bootstrap
+
+volumes:
+  organization-data:

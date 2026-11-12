@@ -1,6 +1,6 @@
 # Organization Service
 
-Own identity, authorization, resources, publication/projection storage, forwarding and handoff. Never run Agent loops or import Runtime presets. Preserve native Execution/Workspace/Environment owners. See [organization architecture](../../docs/architecture/organization.md).
+Own identity, authorization, resources, publications/projections, forwarding and handoff. `synergy-org` reuses CLI. Never run Agents or import Runtime presets. Preserve native Execution/Workspace/Environment owners. See [organization architecture](../../docs/architecture/organization.md).
 
 Use isolated Storage Handles, central migrations and owner-local keys. Commit authorization with admission; Runtime acceptance is separate. Prepare binaries before transactions. Reauthorize downloads/receipts. Keep private member bodies Runtime-owned.
 

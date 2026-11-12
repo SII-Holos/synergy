@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { cmd, type CommandModule } from "@ericsanchezok/synergy-util/cli-command"
 import { openOrganizationService } from "../service"
 import { readOrganizationConfiguration } from "../configuration"
 
@@ -17,7 +17,10 @@ export const OrganizationCommand = cmd({
   command: "org",
   aliases: ["organization"],
   describe: "initialize or serve an organization in an explicit SYNERGY_HOME",
-  builder: (yargs) => yargs.command(OrganizationInitCommand).command(OrganizationServeCommand).demandCommand(),
+  builder: (yargs) => {
+    for (const command of organizationCommands) yargs.command(command)
+    return yargs.demandCommand()
+  },
   handler() {},
 })
 
@@ -131,3 +134,5 @@ export const OrganizationServeCommand = cmd({
     }
   },
 })
+
+export const organizationCommands = [OrganizationInitCommand, OrganizationServeCommand] as unknown as CommandModule[]

@@ -21,7 +21,13 @@
   "packages/sdk/js": [],
   "packages/secret-detection": [],
   "packages/organization-protocol": ["packages/util"],
-  "packages/organization": ["packages/organization-protocol", "packages/harness", "packages/util"],
+  "packages/organization": [
+    "packages/organization-protocol",
+    "packages/harness",
+    "packages/local-runtime",
+    "packages/cli",
+    "packages/util"
+  ],
   "packages/organization-runtime": [
     "packages/cli",
     "packages/agent-runtime",

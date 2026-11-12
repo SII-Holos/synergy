@@ -1,0 +1,4 @@
+SYNERGY_ORGANIZATION_IMAGE=synergy-organization:local
+SYNERGY_ORGANIZATION_ORIGIN=https://organization.example.org
+SYNERGY_ORGANIZATION_BOOTSTRAP=/absolute/private/organization-bootstrap
+SYNERGY_ORGANIZATION_PORT=4080

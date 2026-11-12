@@ -51,6 +51,8 @@ export interface CliOptions {
   register?(): void
   runtimeFactory: typeof openLocalRuntime
   commands?: CommandEntry[]
+  commandsOnly?: boolean
+  name?: string
   dataCommands?(): Promise<CommandModule[]>
   defaultCommand?: string
   argv?: string[]
@@ -59,6 +61,11 @@ export interface CliOptions {
 }
 
 export async function runCli(options: CliOptions): Promise<void> {
+  if (
+    options.commandsOnly &&
+    (!options.register || options.commands?.some((entry) => entry.initialization !== "owner") || options.pluginCommands)
+  )
+    throw new Error("An independent CLI requires explicit registration and owner-initialized commands")
   const host = createLocalHost()
   const context = RuntimeContext.create(host)
   try {
@@ -73,12 +80,13 @@ export async function runCli(options: CliOptions): Promise<void> {
           })
         const argv = options.argv ?? hideBin(process.argv)
         if (
-          (argv.includes("migration") &&
+          !options.commandsOnly &&
+          ((argv.includes("migration") &&
             argv.includes("run") &&
             argv.some((arg) => arg === "--maintenance" || arg === "--maintenance=true")) ||
-          (argv.includes("data") &&
-            argv.includes("storage") &&
-            (argv.includes("reclaim") || argv.includes("prune") || argv.includes("compact-rollout")))
+            (argv.includes("data") &&
+              argv.includes("storage") &&
+              (argv.includes("reclaim") || argv.includes("prune") || argv.includes("compact-rollout"))))
         )
           await withCliMaintenance(() => run())
         else await run()
@@ -115,7 +123,10 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
   let storage:
     | Awaited<ReturnType<typeof import("@ericsanchezok/synergy-harness/storage/maintenance").StorageMaintenance.open>>
     | undefined
-  const builtinCommands = [...coreCommands(options.runtimeFactory, options.dataCommands), ...(options.commands ?? [])]
+  const builtinCommands = [
+    ...(options.commandsOnly ? [] : coreCommands(options.runtimeFactory, options.dataCommands)),
+    ...(options.commands ?? []),
+  ]
   const commandNames = new Set<string>()
   for (const entry of builtinCommands) {
     for (const name of (Array.isArray(entry.command) ? entry.command : [entry.command]).map(
@@ -139,7 +150,7 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
   const cli = yargs(argv)
     .exitProcess(false)
     .parserConfiguration({ "populate--": true })
-    .scriptName("synergy")
+    .scriptName(options.name ?? "synergy")
     .wrap(100)
     .help("help", "show help")
     .alias("help", "h")
@@ -161,7 +172,7 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
           (name) => name.split(" ")[0] === selectedCommand,
         ),
       )
-      if (entry?.initialization === "owner") return
+      if (options.commandsOnly || entry?.initialization === "owner") return
       const storageMode = typeof entry?.storage === "function" ? entry.storage(opts._) : entry?.storage
       if (storageMode === "maintenance" && !storage) {
         const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
@@ -209,13 +220,15 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
     argv.some((arg) => ["--help", "-h", "--version", "-v"].includes(arg))
   const requestedCommand = firstPositionalArg()
   const selectedCommand = requestedCommand ?? (informational ? undefined : options.defaultCommand)
-  const ownsInitialization = builtinCommands.some(
-    (entry) =>
-      entry.initialization === "owner" &&
-      (Array.isArray(entry.command) ? entry.command : [entry.command]).some(
-        (name) => name.split(" ")[0] === selectedCommand,
-      ),
-  )
+  const ownsInitialization =
+    options.commandsOnly ||
+    builtinCommands.some(
+      (entry) =>
+        entry.initialization === "owner" &&
+        (Array.isArray(entry.command) ? entry.command : [entry.command]).some(
+          (name) => name.split(" ")[0] === selectedCommand,
+        ),
+    )
   const logger = ownsInitialization ? Log.create({ service: "cli", mirror: false }) : Log.Default
   const hasCommand = builtinCommands.some((entry) =>
     (Array.isArray(entry.command) ? entry.command : [entry.command]).some(
@@ -352,7 +365,7 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
       UI.error("Unexpected error, check log file at " + Log.file() + " for more details" + EOL)
       console.error(e)
     }
-    if (firstPositionalArg() === "send") {
+    if (!options.commandsOnly && firstPositionalArg() === "send") {
       const { findRecordingError } = await import("@ericsanchezok/synergy-harness/session/rollout/error")
       process.exitCode = findRecordingError(e) ? 5 : process.exitCode || 2
     } else process.exitCode = 1

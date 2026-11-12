@@ -1121,11 +1121,15 @@
     "packages/organization": {
       "name": "@ericsanchezok/synergy-organization",
       "version": "1.1.26",
+      "bin": {
+        "synergy-org": "./dist/entry.js",
+      },
       "dependencies": {
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-organization-protocol": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
+        "@hono/standard-validator": "0.4.0",
         "@modelcontextprotocol/sdk": "1.32.1",
         "hono": "catalog:",
         "hono-openapi": "catalog:",
@@ -1141,6 +1145,12 @@
         "@types/node": "catalog:",
         "typescript": "catalog:",
       },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-cli": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-cli",
+      ],
     },
     "packages/organization-protocol": {
       "name": "@ericsanchezok/synergy-organization-protocol",
