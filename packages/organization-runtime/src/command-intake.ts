@@ -928,10 +928,10 @@ export function createCommandIntake(options: {
           original.slot?.attemptID !== permit.attemptID ||
           session.scope.id !== reference.projectID ||
           session.organization?.orgID !== reference.orgID ||
-          session.organization.driverRuntimeID !== runtimeID ||
-          session.organization.bindingEpoch !== reference.bindingEpoch
+          session.organization.projectID !== reference.projectID ||
+          session.organization.bindingEpoch < reference.bindingEpoch
         )
-          throw failure("PROTOCOL_MISMATCH", "Cleanup lacks its canonical original reception and current binding")
+          throw failure("PROTOCOL_MISMATCH", "Cleanup lacks its canonical original reception and native Scope")
         let continuation: Execution.Continuation | undefined
         if (reference.control) {
           const selected = reference.control
@@ -951,8 +951,7 @@ export function createCommandIntake(options: {
             Leases.acceptedHash(control) !== selected.acceptedHash ||
             !current.matches ||
             current.attempt?.status !== "accepted" ||
-            current.slot?.attemptID !== control.permit.attemptID ||
-            !stateMatches(control.permit, current.state)
+            current.slot?.attemptID !== control.permit.attemptID
           )
             throw failure("PROTOCOL_MISMATCH", "Cleanup lacks its exact historical native control")
           continuation = Execution.Continuation.parse({

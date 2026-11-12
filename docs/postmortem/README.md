@@ -210,3 +210,7 @@
 Only append corrections.
 
 - [0115: Renewed cleanup intent reused an old generation](0115-renewed-cleanup-intent-reused-an-old-generation.md)
+
+- [0116: Native cleanup rejected returned Session history](0116-native-cleanup-rejected-returned-session-history.md)
+
+- [0117: Renderer reload reopened pending logout](0117-renderer-reload-reopened-pending-logout.md)

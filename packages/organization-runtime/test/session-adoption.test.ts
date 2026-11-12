@@ -1,9 +1,14 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationCommandProtocol as Command,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -14,12 +19,14 @@ import {
   SessionTransferEpochs as Epochs,
   SessionTransferOwners as Owners,
 } from "@ericsanchezok/synergy-harness/session/transfer"
+import { createCommandIntake } from "../src/command-intake"
+import { OrganizationExecutionLeases as Leases } from "../src/execution-leases"
 import { registerSessionSchema, SessionBindingError } from "../src/session-schema"
 import { OrganizationSessionAdoption as Adoption } from "../src/session-adoption"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { registerOrganizationTransferOwner } from "../src/session-transfer"
 
-test("verified paused destination adoption changes only driver and epoch through canonical Core publication", async () => {
+async function roundtrip(mode: "original" | "continued") {
   const sourceBinding = {
     schemaVersion: 1,
     orgID: "adoption-org",
@@ -28,8 +35,20 @@ test("verified paused destination adoption changes only driver and epoch through
     driverRuntimeID: "runtime-a",
     bindingEpoch: 1,
   } as const
+  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
+  const publicKey = Buffer.from(await crypto.subtle.exportKey("raw", keys.publicKey)).toString("hex")
+  const identity = {
+    schemaVersion: 1 as const,
+    orgID: sourceBinding.orgID,
+    deploymentIncarnation: "deployment",
+    keyID: "key",
+    publicKey,
+  }
+  using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+  const targetEpoch = mode === "continued" ? 3 : 2
   const register = () => {
     Core.register()
+    Leases.register(sourceBinding.orgID)
     registerSessionSchema(sourceBinding)
     registerOrganizationTransferOwner()
   }
@@ -58,6 +77,102 @@ test("verified paused destination adoption changes only driver and epoch through
       fn: async () => {
         const root = await Session.create({ organization: sourceBinding, workspaceID: null, environmentID: null })
         const child = await Session.create({ parentID: root.id, workspaceID: null, environmentID: null })
+        await Session.update(root.id, (draft) => {
+          draft.modelOverride = { providerID: "test", modelID: "test" }
+        })
+        const intake = createCommandIntake({
+          identity,
+          runtimeID: sourceBinding.driverRuntimeID,
+          accountID: sourceBinding.creatorID,
+          connectionEpoch: 1,
+          signal: new AbortController().signal,
+        })
+        const input: Command.Input = {
+          operation: "input",
+          mode: "task",
+          parts: [{ type: "text", text: "Retain the actual original native reception" }],
+        }
+        const permit = Command.Permit.parse({
+          schemaVersion: 1,
+          purpose: "session-command",
+          orgID: sourceBinding.orgID,
+          deploymentIncarnation: identity.deploymentIncarnation,
+          keyID: identity.keyID,
+          sessionID: root.id,
+          projectID: scope.id,
+          runtimeID: sourceBinding.driverRuntimeID,
+          bindingEpoch: 1,
+          connectionEpoch: 1,
+          commandSeq: 1,
+          shareGeneration: 0,
+          controlRevision: 0,
+          authRevision: 1,
+          requestID: "roundtrip-original",
+          admissionID: "roundtrip-admission",
+          attemptID: "roundtrip-attempt",
+          operation: "input",
+          actor: {
+            kind: "account",
+            orgID: sourceBinding.orgID,
+            subjectID: sourceBinding.creatorID,
+            displayName: "Original creator",
+            clientKind: "web",
+            requestID: "roundtrip-original",
+          },
+          provisionalGrantID: "roundtrip-original-grant",
+          payloadHash: "0".repeat(64),
+          authorizedAt: Date.now(),
+          deadline: Date.now() + 30000,
+        })
+        permit.payloadHash = await Command.digestInput(Command.inputRequest(permit, input))
+        const received = await intake.input({
+          authorization: { permit, signature: await Command.sign(permit, keys.privateKey) },
+          input,
+        })
+        const accepted = Command.InputAccepted.parse(received.accepted)
+        expect((await SessionInbox.materializeNextTask(root.id)).status).toBe("materialized")
+        await RolloutLedger.beginRun(RolloutLifecycle.owner(root), accepted.effect.messageID)
+        const lookup = { subjectID: permit.actor.subjectID, requestID: permit.requestID }
+        if (mode === "continued") {
+          const cancelled = {
+            sessionID: root.id,
+            scopeID: scope.id,
+            handoffID: "old-native-cancellation",
+            sourceID: "runtime-a",
+            targetID: "runtime-b",
+            fromEpoch: 1,
+            toEpoch: 2,
+          }
+          await Source.prepare({ binding: cancelled, store, signal: new AbortController().signal, async verify() {} })
+          await Source.cancel({ binding: cancelled, store, signal: new AbortController().signal, async verify() {} })
+          const control: Command.Control = {
+            operation: "continue",
+            pausedSince: (await Session.get(root.id)).paused!.since,
+            controlVersion: 0,
+          }
+          const current = Command.Permit.parse({
+            ...permit,
+            operation: "continue",
+            commandSeq: 2,
+            provisionalGrantID: undefined,
+            requestID: "old-native-control",
+            admissionID: "old-control-admission",
+            attemptID: "old-control-attempt",
+            actor: { ...permit.actor, requestID: "old-native-control" },
+          })
+          current.payloadHash = await Command.digestControl(Command.controlRequest(current, control))
+          const continued = await intake.control({
+            authorization: { permit: current, signature: await Command.sign(current, keys.privateKey) },
+            control,
+          })
+          expect(continued.accepted?.effect).toMatchObject({
+            operation: "continue",
+            rootID: accepted.effect.messageID,
+          })
+        }
+        const oldProof = await intake.bindingProof(lookup, accepted.effect.messageID)
+        const pending = await Leases.begin(oldProof)
+        expect(oldProof.continuation?.handoffID).toBe(mode === "continued" ? "old-native-cancellation" : undefined)
         await Storage.write(["sessions", scope.id, root.id, "portable_fixture", "obsolete"], { value: "old" })
         await Storage.writeBinary(
           ["sessions", scope.id, root.id, "portable_fixture", "old-body"],
@@ -70,7 +185,7 @@ test("verified paused destination adoption changes only driver and epoch through
           sourceID: "runtime-a",
           targetID: "runtime-b",
           fromEpoch: 1,
-          toEpoch: 2,
+          toEpoch: targetEpoch,
         }
         const prepared = await Source.prepare({
           binding,
@@ -78,12 +193,17 @@ test("verified paused destination adoption changes only driver and epoch through
           signal: new AbortController().signal,
           async verify() {},
         })
-        return { prepared, binding, sessions: [await Session.get(root.id), await Session.get(child.id)] }
+        return {
+          prepared,
+          binding,
+          sessions: [await Session.get(root.id), await Session.get(child.id)],
+          oldProof,
+          pending,
+          lookup,
+        }
       },
     })
   })
-  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
-  const publicKey = Buffer.from(await crypto.subtle.exportKey("raw", keys.publicKey)).toString("hex")
   const connection = Runtime.Connected.parse({
     type: "handshake",
     protocolVersion: 1,
@@ -110,7 +230,7 @@ test("verified paused destination adoption changes only driver and epoch through
     sourceRuntimeID: "runtime-a",
     targetRuntimeID: "runtime-b",
     fromEpoch: 1,
-    toEpoch: 2,
+    toEpoch: targetEpoch,
     mappingPlanRevision: 1,
     shareGeneration: 0,
     purpose: "handoff-activation",
@@ -179,7 +299,11 @@ test("verified paused destination adoption changes only driver and epoch through
     )
     for (const session of exported.sessions) {
       const current = await Session.get(session.id)
-      expect(current.organization).toEqual({ ...sourceBinding, driverRuntimeID: "runtime-b", bindingEpoch: 2 })
+      expect(current.organization).toEqual({
+        ...sourceBinding,
+        driverRuntimeID: "runtime-b",
+        bindingEpoch: targetEpoch,
+      })
       expect(current.paused).toBeDefined()
       await expect(
         Session.update(session.id, (draft) => {
@@ -212,8 +336,8 @@ test("verified paused destination adoption changes only driver and epoch through
           handoffID: "return-handoff",
           sourceID: "runtime-b",
           targetID: "runtime-a",
-          fromEpoch: 2,
-          toEpoch: 3,
+          fromEpoch: targetEpoch,
+          toEpoch: targetEpoch + 1,
         }
         const prepared = await Source.prepare({
           binding,
@@ -234,10 +358,10 @@ test("verified paused destination adoption changes only driver and epoch through
     handoffID: returned.binding.handoffID,
     sourceRuntimeID: "runtime-b",
     targetRuntimeID: "runtime-a",
-    fromEpoch: 2,
-    toEpoch: 3,
+    fromEpoch: targetEpoch,
+    toEpoch: targetEpoch + 1,
     manifestHash: returned.prepared.manifestHash,
-    sourceBinding: { ...sourceBinding, driverRuntimeID: "runtime-b", bindingEpoch: 2 },
+    sourceBinding: { ...sourceBinding, driverRuntimeID: "runtime-b", bindingEpoch: targetEpoch },
   })
   await source.run(async () => {
     await Staging.receive({ handoffID: backPermit.handoffID, root: returned.prepared.root, store })
@@ -277,7 +401,7 @@ test("verified paused destination adoption changes only driver and epoch through
     )
     for (const session of exported.sessions) {
       const current = await Session.get(session.id)
-      expect(current.organization).toEqual({ ...sourceBinding, bindingEpoch: 3 })
+      expect(current.organization).toEqual({ ...sourceBinding, bindingEpoch: targetEpoch + 1 })
       expect(current.paused).toBeDefined()
       expect(
         (
@@ -289,6 +413,41 @@ test("verified paused destination adoption changes only driver and epoch through
         ).phase,
       ).toBe("surrendered")
     }
+    const oldIntent = (await Leases.page("runtime-a")).items.find((entry) => entry.entryID === exported.pending.entryID)
+    expect(oldIntent).toEqual(exported.pending)
+    const intake = createCommandIntake({
+      identity,
+      runtimeID: "runtime-a",
+      accountID: sourceBinding.creatorID,
+      connectionEpoch: 2,
+      signal: new AbortController().signal,
+    })
+    const cleanup = await intake.cleanupProof(exported.pending.authority)
+    expect(cleanup).toMatchObject({
+      purpose: "execution-retention-inspection",
+      runtimeID: "runtime-a",
+      connectionEpoch: 2,
+      rootID: exported.oldProof.rootID,
+      receipt: { accepted: exported.oldProof.receipt.accepted },
+      continuation: exported.oldProof.continuation,
+    })
+    await expect(intake.descriptionProof(exported.lookup)).rejects.toThrow()
+    await expect(intake.bindingProof(exported.lookup, exported.oldProof.rootID)).rejects.toThrow()
+    for (const changed of [
+      { ...exported.pending.authority, runtimeID: "runtime-b" },
+      { ...exported.pending.authority, rootID: "unrelated-root" },
+      { ...exported.pending.authority, projectID: "unrelated-scope" },
+      { ...exported.pending.authority, bindingEpoch: targetEpoch + 2 },
+      { ...exported.pending.authority, input: { ...exported.pending.authority.input, acceptedHash: "f".repeat(64) } },
+    ])
+      await expect(intake.cleanupProof(changed)).rejects.toThrow()
+    if (exported.pending.authority.control)
+      await expect(
+        intake.cleanupProof({
+          ...exported.pending.authority,
+          control: { ...exported.pending.authority.control, acceptedHash: "f".repeat(64) },
+        }),
+      ).rejects.toThrow()
     expect(
       (
         await Storage.readMany([
@@ -303,4 +462,10 @@ test("verified paused destination adoption changes only driver and epoch through
       }),
     ).toEqual([])
   })
-}, 20000)
+}
+
+test.each(["original", "continued"] as const)(
+  "verified paused roundtrip retains historical %s cleanup without reviving execution",
+  roundtrip,
+  20000,
+)
