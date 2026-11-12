@@ -404,6 +404,9 @@ export function OrganizationProjects() {
                 <Match when={projectView === "members" && project().permissions.manage}>
                   <OrganizationProjectMembers projectID={projectID!} changed={() => void load()} invalidated={failed} />
                 </Match>
+                <Match when={projectView === "members" && !project().permissions.manage}>
+                  <WorkspaceError error={{ code: "PERMISSION_DENIED" }} />
+                </Match>
               </Switch>
             </>
           )}

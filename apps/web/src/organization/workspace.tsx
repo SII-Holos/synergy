@@ -8,6 +8,7 @@ import { OrganizationResources } from "./resources"
 import { OrganizationKnowledge } from "./knowledge"
 import { OrganizationAccount } from "./account"
 import { OrganizationWorkspaceShell } from "./workspace-shell"
+import { WorkspaceError } from "./workspace-error"
 import { organizationMemberMessages } from "./member-messages"
 import { organizationWorkspaceMessages as messages } from "./workspace-messages"
 import "./workspace.css"
@@ -92,6 +93,14 @@ export function OrganizationWorkspace(props: { footer: JSX.Element; signOut: () 
           </Match>
           <Match when={route()?.view === "resources" && !route()?.projectID && managing()}>
             <OrganizationResources />
+          </Match>
+          <Match
+            when={!route()?.projectID && !managing() && (route()?.view === "members" || route()?.view === "resources")}
+          >
+            <WorkspaceError error={{ code: "PERMISSION_DENIED" }} />
+            <Button variant="ghost" onClick={() => space.page()}>
+              {_(messages.back)}
+            </Button>
           </Match>
           <Match when={!route()?.view || route()?.projectID}>
             <OrganizationProjects />

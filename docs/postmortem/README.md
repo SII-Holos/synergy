@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0140](0140-project-publication-used-management-permission.md)
+
 - [0138](0138-space-local-notification-hosts-lost-background-actions.md)
 
 - [0139](0139-authenticated-archive-policy-disagreed-with-its-journal.md)

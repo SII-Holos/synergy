@@ -1,4 +1,4 @@
-import { batch, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { batch, createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import type {
@@ -70,6 +70,10 @@ export function OrganizationKnowledge(props: {
   const [blocked, setBlocked] = createSignal(false)
   let generation = 0
   const current = (version = generation) => !signal.aborted && version === generation
+  const canPublish = () => (props.projectID ? props.canExecute : props.canManage)
+  createEffect(() => {
+    if (!canPublish()) setPublishing(false)
+  })
   function failed(error: unknown) {
     const failure = organizationOwnerFailure(error)
     batch(() => {
@@ -267,7 +271,7 @@ export function OrganizationKnowledge(props: {
             )}
           </p>
         </div>
-        <Show when={props.canManage && !blocked() && !publishing()}>
+        <Show when={canPublish() && !blocked() && !publishing()}>
           <Button
             ref={(element: HTMLButtonElement) => {
               publicationTrigger = element
@@ -320,7 +324,7 @@ export function OrganizationKnowledge(props: {
             </section>
           )}
         </Show>
-        <Show when={publishing()}>
+        <Show when={canPublish() && publishing()}>
           <PublicationEditor
             invalidated={failed}
             titleRef={(element) => {
@@ -395,7 +399,6 @@ export function OrganizationKnowledge(props: {
                   <KnowledgeDetail
                     invalidated={failed}
                     item={item}
-                    canManage={props.canManage}
                     canExecute={props.canExecute}
                     selectionMode={props.selectionMode}
                     runtimeOwnerID={props.runtimeOwnerID}
@@ -428,7 +431,6 @@ export function OrganizationKnowledge(props: {
 function KnowledgeDetail(props: {
   invalidated: (error: unknown) => void
   item: OrgKnowledgeItem
-  canManage?: boolean
   canExecute?: boolean
   selectionMode?: "member" | "hosted"
   runtimeOwnerID?: string
@@ -445,14 +447,15 @@ function KnowledgeDetail(props: {
   const api = space.client()!
   const confirm = useConfirm()
   const managing = () =>
-    props.item.scope.kind === "organization" ? space.connection()?.account.role !== "member" : props.canManage
+    props.item.scope.kind === "organization" ? space.connection()?.account.role !== "member" : props.canExecute
   const applying = () =>
     props.canExecute &&
     (!props.sessionID ||
       props.selectionMode !== "member" ||
       props.runtimeOwnerID === space.connection()?.account.accountID)
   const controller = new AbortController()
-  const signal = AbortSignal.any([space.current()!.signal, controller.signal])
+  const view = space.current()!
+  const signal = AbortSignal.any([view.signal, controller.signal])
   onCleanup(() => controller.abort())
   const options = { throwOnError: true, signal } as const
   const [state, setState] = createStore({ versions: [] as OrgKnowledgeRelease[] })
@@ -463,6 +466,15 @@ function KnowledgeDetail(props: {
   let publicationTrigger: HTMLButtonElement | undefined
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal<unknown>()
+  let permissionGeneration = 0
+  createEffect(() => {
+    if (managing()) return
+    permissionGeneration++
+    confirm.closeOwned()
+    setPublishing(false)
+  })
+  const writable = (version = permissionGeneration) =>
+    !signal.aborted && space.current() === view && permissionGeneration === version && managing()
   async function load(more = false) {
     setLoading(true)
     setError(undefined)
@@ -485,17 +497,21 @@ function KnowledgeDetail(props: {
     }
   }
   function withdraw() {
+    if (!writable()) return
+    const version = permissionGeneration
+    const target = { itemID: props.item.itemID, expectedRevision: props.item.revision }
     confirm.show({
       title: messages.withdraw,
       description: messages.withdrawHint,
       confirmLabel: messages.withdraw,
       tone: "warning",
       async onConfirm() {
+        if (!writable(version)) return
         try {
-          await api.orgKnowledge.withdraw({ itemID: props.item.itemID, expectedRevision: props.item.revision }, options)
-          if (!signal.aborted) props.updated()
+          await api.orgKnowledge.withdraw(target, options)
+          if (writable(version)) props.updated()
         } catch (error) {
-          if (!signal.aborted) {
+          if (writable(version)) {
             if (organizationOwnerFailure(error)) props.invalidated(error)
             else setError(error)
           }
@@ -594,7 +610,7 @@ function KnowledgeDetail(props: {
           <Button onClick={withdraw}>{_(messages.withdraw)}</Button>
         </div>
       </Show>
-      <Show when={publishing()}>
+      <Show when={managing() && publishing()}>
         <PublicationEditor
           invalidated={props.invalidated}
           titleRef={(element) => {
