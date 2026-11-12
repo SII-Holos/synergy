@@ -114,7 +114,7 @@ export namespace OrganizationPendingSource {
       )
         fail("original Target callback or primary changed")
     }
-    const verifyTarget = () =>
+    const verifyTarget = (inventory = true) =>
       targetRuntime.run(async () => {
         assert()
         HomeRestoration.assertRequest(target.permit, target.request)
@@ -128,14 +128,15 @@ export namespace OrganizationPendingSource {
           hash(prepared.checkpoint) !== hash(reference.current.after)
         )
           fail("another original Target or H0 anchor")
-        await Writers.preflight({
-          permit: target.permit,
-          request: target.request,
-          target: reference.target,
-          namespace,
-          keys,
-          signal,
-        })
+        if (inventory)
+          await Writers.preflight({
+            permit: target.permit,
+            request: target.request,
+            target: reference.target,
+            namespace,
+            keys,
+            signal,
+          })
         assert()
       })
     let completed: Retirement.Receipt | undefined
@@ -191,28 +192,47 @@ export namespace OrganizationPendingSource {
             return RuntimeMaintenance.withRetirementSource({ evidence: admission, signal }, (lease) =>
               RuntimeMaintenance.withFrozen(
                 lease,
-                async () => {
-                  await verifyTarget()
-                  const actual = await Retirement.reference(reference.current, reference.target)
-                  if (hash(actual) !== hash(reference)) fail("original physical Source reference changed")
-                  assert()
-                  const referenceHash = Retirement.marker(reference).referenceHash
-                  try {
-                    await Storage.transaction(() => RuntimeMaintenance.reserveRetirement(lease, referenceHash), {
-                      commitGuard: assert,
-                    })
-                  } catch (error) {
-                    const reserved = await RuntimeMaintenance.retirement(reference.current.maintenance.maintenanceID)
-                    if (
-                      !reserved ||
-                      reserved.referenceHash !== referenceHash ||
-                      hash(reserved.source) !== hash(reference.current.maintenance)
-                    )
-                      throw error
-                  }
-                  completed = await Retirement.complete(reference)
-                  return completed
-                },
+                () =>
+                  targetRuntime.run(() =>
+                    Writers.withPreflight(
+                      {
+                        permit: target.permit,
+                        request: target.request,
+                        target: reference.target,
+                        namespace,
+                        keys,
+                        signal,
+                      },
+                      () =>
+                        source.runtime.run(async () => {
+                          await verifyTarget(false)
+                          const actual = await Retirement.reference(reference.current, reference.target)
+                          if (hash(actual) !== hash(reference)) fail("original physical Source reference changed")
+                          assert()
+                          const referenceHash = Retirement.marker(reference).referenceHash
+                          try {
+                            await Storage.transaction(
+                              () => RuntimeMaintenance.reserveRetirement(lease, referenceHash),
+                              {
+                                commitGuard: assert,
+                              },
+                            )
+                          } catch (error) {
+                            const reserved = await RuntimeMaintenance.retirement(
+                              reference.current.maintenance.maintenanceID,
+                            )
+                            if (
+                              !reserved ||
+                              reserved.referenceHash !== referenceHash ||
+                              hash(reserved.source) !== hash(reference.current.maintenance)
+                            )
+                              throw error
+                          }
+                          completed = await Retirement.complete(reference)
+                          return completed
+                        }),
+                    ),
+                  ),
                 { signal },
               ),
             )

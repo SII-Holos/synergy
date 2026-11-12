@@ -107,6 +107,18 @@ SYNERGY_HOME=/absolute/restoration-home ./node_modules/.bin/synergy-org restore 
 
 Archive authentication and supported inventory checks precede target initialization. Output `state: recovery-held` means native bytes and inactive signing material are installed; `executionEnabled` remains false. The target cannot serve or Continue until original current-policy, source-retirement and writer owners complete fresh publication. Exact retries preserve the same installation and key. This command refuses multi-namespace archives without their original installation participants; it cannot recover missing key material or bypass unknown writers. See [administrative ownership](../decisions/implemented/feature/2026-11-13-install-organization-backups-through-original-native-owners.md).
 
+### Explicit service recovery
+
+After held restoration, `recover` verifies final current authority and permanently retires the original service Source before publishing the same Target. Stop that Source through its normal supervisor first. Use the original archive and restore UUID, and keep the independent private work directory for exact retries:
+
+```sh
+SYNERGY_HOME=/absolute/restoration-home ./node_modules/.bin/synergy-org recover --input /absolute/new-backup --key-file /absolute/private/recovery-keys.json --restore-id 267aa4b3-4872-4308-b842-472f7d595b6f --source-home /absolute/service-home --source-origin https://organization.example.org --work /absolute/private/recovery-work --origin https://recovered.example.org
+```
+
+Supply `--source-origin` when the original effective client settings require it. `--origin` selects the recovered service's exact HTTPS origin. The work directory retains authenticated fixed H1 archives and the original retirement Reference; it cannot grant recovery authority by itself. Retry with the same arguments and retained material after an unknown result. Incomplete work stays blocked rather than creating another request or signing key.
+
+Output `state: ready` confirms ordinary startup and readiness for the fresh deployment; this short command does not leave a server running. Start the recovered Target with `serve`. The original Source remains permanently retired, and no Agent task is continued. Changed, missing or corrupt canonical binaries block before retirement; this path supports stable service-only native data and refuses unsupported multi-namespace, Publications, Library and external-writer owners. See [explicit recovery](../decisions/implemented/feature/2026-11-13-recover-service-authority-through-an-explicit-cli.md) and [binary verification](../decisions/implemented/bug-fix/2026-11-13-verify-fixed-namespace-binaries-before-source-retirement.md).
+
 ## Additional infrastructure
 
 The executable reads optional `organization.infrastructure` from its dedicated `150-organization.jsonc`. Start from [infrastructure.example.jsonc](../../packages/organization/deploy/infrastructure.example.jsonc), remove unused entries, and set private file references for each backend. The service package's `./infrastructure` export provides `loadOrganizationInfrastructure()` for programmatic hosts. No personal resource configuration is read.

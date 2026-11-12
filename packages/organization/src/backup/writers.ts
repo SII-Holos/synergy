@@ -40,9 +40,12 @@ type Inventory = {
   sources: Map<string, { proof: NamespaceRetirement.Inspection; reference: NamespaceRetirement.Reference }>
   assertTarget(): void
   assert(): void
+  checkpoint?: Storage.ArtifactCheckpoint
 }
 type Frame = Inventory & { target: Reference; namespaceHash: string }
 const inspections = new WeakMap<OrganizationRecoveryWriters.Inspection, Frame>()
+const preflights = RuntimeContext.createAsyncContext<Frame>()
+const preflightSeals = new WeakMap<StoreTransaction, { frame: Frame; complete: boolean; failed: boolean }>()
 const sealed = new WeakMap<StoreTransaction, { frame: Frame; failed: boolean }>()
 const mutations = RuntimeContext.createAsyncContext<{
   frame: Frame
@@ -396,7 +399,41 @@ export namespace OrganizationRecoveryWriters {
     })
   }
   export function preflight(input: Omit<Input, "sources">) {
-    return withInventory({ ...input, sources: [] }, "preflight", assertInventoryMatches)
+    return withPreflight(input, async () => {})
+  }
+  export function withPreflight<T>(input: Omit<Input, "sources">, body: () => Promise<T>) {
+    return withInventory({ ...input, sources: [] }, "preflight", async (selected) => {
+      await assertInventoryMatches(selected)
+      return preflights.run(selected, body)
+    })
+  }
+  export async function sealPreflight(tx: StoreTransaction) {
+    const selected = preflights.getStore()
+    if (!selected || !Storage.inWriteTransaction() || Storage.current().transaction !== tx)
+      blocked("missing original preflight transaction")
+    const previous = preflightSeals.get(tx)
+    if (previous && (previous.frame !== selected || previous.failed)) blocked("changed artifact preflight transaction")
+    const seal = previous ?? { frame: selected, complete: false, failed: false }
+    if (!previous) {
+      preflightSeals.set(tx, seal)
+      tx.addMutationGuard(() => {
+        seal.failed = true
+        blocked("writes after final artifact preflight")
+      })
+    }
+    await Storage.transaction(async () => {}, {
+      commitGuard() {
+        selected.assert()
+        if (!seal.complete || seal.failed) blocked("failed final artifact preflight")
+      },
+    })
+    try {
+      await assertInventoryMatches(selected)
+      seal.complete = true
+    } catch (error) {
+      seal.failed = true
+      throw error
+    }
   }
   async function withInventory<T>(input: Input, kind: Inventory["kind"], body: (selected: Frame) => Promise<T>) {
     const permit = input.permit
@@ -488,14 +525,30 @@ export namespace OrganizationRecoveryWriters {
     }
     try {
       database.exec(
-        "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL)",
+        "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY)",
       )
       using insert = database.query("INSERT INTO records VALUES(?,?,'metadata')")
+      using artifact = database.query("INSERT INTO artifacts VALUES(?,?,?)")
+      using blob = database.query<{ size: number }, [string]>("SELECT size FROM blobs WHERE sha256=?")
+      using verifiedBlob = database.query("INSERT INTO blobs VALUES(?,?)")
       let unsafe: string | undefined
       for await (const entry of StorageCheckpoint.entries({ ...namespace, keys, signal })) {
         assertTarget()
         if (entry.type === "record") insert.run(JSON.stringify(entry.key), JSON.stringify(entry.value))
-        else if (entry.type === "event") unsafe = "unreconciled historical events"
+        else if (entry.type === "artifact") {
+          artifact.run(JSON.stringify(entry.key), entry.location.sha256, entry.location.size)
+          const before = blob.get(entry.location.sha256)
+          if (before && before.size !== entry.location.size) blocked("inconsistent H1 artifact size")
+          if (!before) {
+            for await (const _bytes of StorageCheckpoint.streamArtifact({
+              directory: namespace.directory,
+              location: entry.location,
+              signal,
+            }))
+              assertTarget()
+            verifiedBlob.run(entry.location.sha256, entry.location.size)
+          }
+        } else if (entry.type === "event") unsafe = "unreconciled historical events"
         else if (
           entry.type === "receipt" &&
           !entry.operationID.startsWith("storage-checkpoint:") &&
@@ -511,9 +564,16 @@ export namespace OrganizationRecoveryWriters {
         assertTarget()
         update.run(await classify(selected, JSON.parse(row.key), JSON.parse(row.value)), row.key)
       }
-      const result = await body(selected)
-      assert()
-      return result
+      return await Storage.withArtifactCheckpoint(
+        async (checkpoint) => {
+          selected.checkpoint = checkpoint
+          await verifyTargetArtifacts(selected, checkpoint)
+          const result = await body(selected)
+          assert()
+          return result
+        },
+        { signal },
+      )
     } finally {
       open = false
       database.close()
@@ -551,7 +611,15 @@ export namespace OrganizationRecoveryWriters {
   }
   async function assertInventoryMatches(selected: Frame) {
     return Storage.snapshot(async (tx) => {
+      using wantedArtifact = selected.database.query<{ sha256: string; size: number }, [string]>(
+        "SELECT sha256,size FROM artifacts WHERE key=?",
+      )
+      using verifiedArtifact = selected.database.query<{ location: string }, [string]>(
+        "SELECT location FROM verified WHERE key=?",
+      )
+      using artifactCount = selected.database.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM artifacts")
       let count = 0
+      let artifacts = 0
       const found = new Set<string>()
       for await (const entry of tx.exportEntries()) {
         selected.assertTarget()
@@ -573,6 +641,18 @@ export namespace OrganizationRecoveryWriters {
             count++
             if (mode === "runtime") found.add(Record.RuntimeRegistration.parse(entry.value).runtimeID)
           }
+        } else if (entry.type === "artifact") {
+          const wanted = wantedArtifact.get(JSON.stringify(entry.key))
+          const verified = verifiedArtifact.get(JSON.stringify(entry.key))
+          if (
+            !wanted ||
+            wanted.sha256 !== entry.location.sha256 ||
+            wanted.size !== entry.location.size ||
+            !verified ||
+            verified.location !== hash(entry.location)
+          )
+            blocked("H0 artifact differs from the actual H1 owner")
+          artifacts++
         } else if (entry.type === "event") blocked("unreconciled historical events")
         else if (
           entry.type === "receipt" &&
@@ -586,13 +666,63 @@ export namespace OrganizationRecoveryWriters {
         "SELECT key FROM records WHERE mode<>'metadata' ORDER BY key",
       )
       for (const row of rows.iterate()) if (selected.kind !== "preflight" || !projected(JSON.parse(row.key))) expected++
+      const expectedArtifacts = artifactCount.get()?.count
       if (
         count !== expected ||
+        artifacts !== expectedArtifacts ||
         (selected.kind === "publication" &&
           (found.size !== selected.sources.size || [...selected.sources.keys()].some((id) => !found.has(id))))
       )
         blocked("incomplete H1 canonical roster or owner facts")
+      if (Storage.inWriteTransaction()) {
+        const checkpoint = selected.checkpoint
+        if (!checkpoint) blocked("missing actual artifact checkpoint")
+        using packs = selected.database.query<{ key: string }, []>("SELECT MIN(key) AS key FROM verified GROUP BY pack")
+        for (const pack of packs.iterate()) {
+          const location = await Storage.retainCheckpointArtifact(checkpoint, JSON.parse(pack.key))
+          const verified = verifiedArtifact.get(pack.key)
+          if (hash(location) !== verified?.location) blocked("artifact changed before actual commit")
+        }
+      }
       selected.assert()
+    })
+  }
+  async function verifyTargetArtifacts(selected: Frame, checkpoint: Storage.ArtifactCheckpoint) {
+    return Storage.snapshot(async (tx) => {
+      let count = 0
+      using wanted = selected.database.query<{ sha256: string; size: number }, [string]>(
+        "SELECT sha256,size FROM artifacts WHERE key=?",
+      )
+      using verified = selected.database.query("INSERT INTO verified VALUES(?,?,?)")
+      using blob = selected.database.query<{ location: string }, [string]>(
+        "SELECT location FROM target_blobs WHERE location=?",
+      )
+      using verifiedBlob = selected.database.query("INSERT INTO target_blobs VALUES(?)")
+      using artifactCount = selected.database.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM artifacts")
+      for await (const entry of tx.artifacts()) {
+        selected.assert()
+        const source = wanted.get(JSON.stringify(entry.key))
+        if (!source || source.sha256 !== entry.location.sha256 || source.size !== entry.location.size)
+          blocked("H0 artifact differs from the actual H1 owner")
+        const location = hash(entry.location)
+        if (!blob.get(location)) {
+          let size = 0
+          const digest = createHash("sha256")
+          for await (const bytes of checkpoint.stream(entry.location)) {
+            selected.assert()
+            size += bytes.byteLength
+            if (size > source.size) blocked("target artifact bytes exceed their H1 identity")
+            digest.update(bytes)
+          }
+          if (size !== source.size || digest.digest("hex") !== source.sha256)
+            blocked("target artifact bytes differ from H1")
+          verifiedBlob.run(location)
+        }
+        verified.run(JSON.stringify(entry.key), location, entry.location.pack)
+        count++
+      }
+      const expected = artifactCount.get()?.count
+      if (count !== expected) blocked("incomplete H1 artifact inventory")
     })
   }
   export async function publish(evidence: Inspection, tx: StoreTransaction) {

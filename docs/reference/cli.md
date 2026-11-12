@@ -731,6 +731,20 @@ create one invitation over HTTPS and retain its token in a new private file
 | `--role` | role granted when the invitation is consumed |
 | `--output` (string) | absolute new private token file; existing files are never reused |
 
+## org recover
+
+explicitly recover an installed service-only Target and permanently retire its original Source; never Continue
+
+| Option | Description |
+| --- | --- |
+| `--input` (string) | absolute original encrypted H0 archive directory |
+| `--restore-id` (string) | original held installation UUID; never creates another installation |
+| `--key-file` (string) | absolute private version-one recovery keys |
+| `--source-home` (string) | absolute original Source Home to verify and permanently fence |
+| `--source-origin` (string) | original Source effective HTTPS origin when it has registered clients |
+| `--work` (string) | absolute independent private work directory; retain its fixed H1 and Reference for retries |
+| `--origin` (string) | exact HTTPS origin for the recovered service |
+
 ## org restore
 
 verify and install archived service bytes into an independent recovery-held Home; never enable execution

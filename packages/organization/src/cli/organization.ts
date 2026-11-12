@@ -6,6 +6,7 @@ import { readOrganizationConfiguration } from "../configuration"
 import { loadOrganizationInfrastructure } from "../infrastructure"
 import { OrganizationInviteCommand } from "./invite"
 import { OrganizationBackupCommand, OrganizationRestoreCommand } from "./backup"
+import { OrganizationRecoverCommand } from "./recover"
 import { explicitOrganizationHome as explicitHome } from "./home"
 
 export const OrganizationCommand = cmd({
@@ -141,4 +142,5 @@ export const organizationCommands = [
   OrganizationInviteCommand,
   OrganizationBackupCommand,
   OrganizationRestoreCommand,
+  OrganizationRecoverCommand,
 ] as unknown as CommandModule[]

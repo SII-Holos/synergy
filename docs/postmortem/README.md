@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0170](0170-service-recovery-skipped-retained-binary-changes.md)
 - [0169](0169-old-handoff-proofs-disclosed-current-private-bindings.md)
 - [0168](0168-workspace-move-release-escaped-an-outer-transaction.md)
 - [0167](0167-project-archive-stranded-a-pending-handoff.md)

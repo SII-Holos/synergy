@@ -687,6 +687,30 @@ export namespace Storage {
     ): Promise<{ count: number; sha256: string }>
     stream(location: ArtifactLocation): AsyncGenerator<Uint8Array>
   }
+  const checkpointPins = new WeakMap<
+    ArtifactCheckpoint,
+    {
+      assert(): void
+      retain(tx: StoreTransaction, location: ArtifactLocation, settled: NonNullable<Context["settled"]>): void
+    }
+  >()
+  export async function retainCheckpointArtifact(checkpoint: ArtifactCheckpoint, key: string[]) {
+    const pin = checkpointPins.get(checkpoint)
+    const handle = current()
+    const transaction = handle.transaction
+    const settled = handle.settled
+    const guards = handle.commitGuards
+    if (!pin || !transaction || !settled || !guards || !inWriteTransaction())
+      throw new StorageConflictError(
+        "Checkpoint retention requires its original native checkpoint and write transaction",
+      )
+    pin.assert()
+    const location = await transaction.artifact([...key])
+    pin.assert()
+    pin.retain(transaction, location, settled)
+    guards.push(pin.assert)
+    return location
+  }
 
   export async function withArtifactCheckpoint<T>(
     body: (checkpoint: ArtifactCheckpoint) => Promise<T>,
@@ -695,12 +719,31 @@ export namespace Storage {
     const runtime = RuntimeContext.current()
     const handle = current()
     if (handle.transaction) throw new StorageConflictError("An artifact checkpoint requires committed storage")
+    const store = handle.store
+    const directory = handle.artifactDirectory
+    const objects = handle.artifactObjects
+    const configuration = JSON.stringify(store.options)
+    const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
     const state = artifactPack(["storage"])
     const scope = new AbortController()
     const signal = options.signal ? AbortSignal.any([scope.signal, options.signal]) : scope.signal
     let active = true
     function assertCurrent() {
-      if (!active || RuntimeContext.current() !== runtime || current().store !== handle.store)
+      const selected = current()
+      if (
+        !active ||
+        RuntimeContext.current() !== runtime ||
+        selected.store !== store ||
+        handle.store !== store ||
+        JSON.stringify(store.options) !== configuration ||
+        handle.artifactDirectory !== directory ||
+        selected.artifactDirectory !== directory ||
+        handle.artifactObjects !== objects ||
+        selected.artifactObjects !== objects ||
+        objects?.blobs !== ports?.blobs ||
+        objects?.writerID !== ports?.writerID ||
+        objects?.now !== ports?.now
+      )
         throw new StorageConflictError("The artifact checkpoint is no longer active")
       signal.throwIfAborted()
     }
@@ -745,6 +788,30 @@ export namespace Storage {
               return reader
             },
           }
+          const retained = new WeakMap<StoreTransaction, Set<string>>()
+          checkpointPins.set(checkpoint, {
+            assert() {
+              assertCurrent()
+              if (state.objects)
+                throw new StorageConflictError("Object checkpoint retention requires its owning object permit")
+            },
+            retain(tx, location, settled) {
+              let packs = retained.get(tx)
+              if (!packs) {
+                packs = new Set()
+                retained.set(tx, packs)
+              }
+              if (packs.has(location.pack)) return
+              packs.add(location.pack)
+              state.prepared.set(location.pack, (state.prepared.get(location.pack) ?? 0) + 1)
+              settled.push((outcome) => {
+                if (outcome === "unknown") return
+                const count = (state.prepared.get(location.pack) ?? 1) - 1
+                if (count) state.prepared.set(location.pack, count)
+                else state.prepared.delete(location.pack)
+              })
+            },
+          })
           try {
             const result = await body(checkpoint)
             if (readers.size || exports.size)

@@ -1,15 +1,19 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { createHash } from "node:crypto"
 import { z } from "zod"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { OrganizationBackupCohort as Cohort } from "./cohort"
 import { OrganizationRecoveryArchive as Archive } from "./archive"
 import { OrganizationServiceNative as Native } from "./service-native"
 import { OrganizationRecoveryAuthority as Authority } from "./authority"
+import { OrganizationRecovery as Recovery } from "./recovery"
 import { OrganizationServiceHome } from "../service-home"
 import { readOrganizationConfiguration } from "../configuration"
 import { loadOrganizationInfrastructure } from "../infrastructure"
@@ -25,6 +29,91 @@ async function directoryEntries(directory: string, expected: string[]) {
 }
 
 export namespace OrganizationBackupAdministration {
+  type OriginalTarget = Parameters<typeof Recovery.withTarget>[0]
+  export async function withExistingTarget<T>(
+    input: {
+      home: string
+      directory: string
+      restoreID: string
+      keys: VaultKeyProvider
+      signal?: AbortSignal
+    },
+    body: (context: {
+      info: Pick<HomeRestoration.Info, "installationID" | "incarnation" | "restoreID" | "sourceHash" | "requestHash">
+      request: Native.InstallationRequest
+      withPrepared<R>(body: (original: OriginalTarget, target: Recovery.Target) => Promise<R>): Promise<R>
+    }) => Promise<T>,
+  ) {
+    const { home: providedHome, directory, restoreID, signal } = input
+    const keys = Object.freeze({
+      current: input.keys.current.bind(input.keys),
+      resolve: input.keys.resolve.bind(input.keys),
+    })
+    const home = await fs.realpath(providedHome)
+    return withServiceArchive(
+      { directory, restoreID, keys, signal },
+      async ({ base, inventory, expectedNative, request }) => {
+        await using runtime = await openOrganizationRecovery({ home })
+        return await runtime.run(async () => {
+          const owner = HomeOwnershipFile.RestorationInfo.parse(await HomeOwnership.assert({ required: true }))
+          const retained = await RuntimeMaintenance.restoration(owner.installationID)
+          const requestHash = createHash("sha256")
+            .update(JSON.stringify(HomeRestoration.Request.parse(request)))
+            .digest("hex")
+          if (
+            !retained ||
+            retained.incarnation !== owner.incarnation ||
+            retained.restoreID !== request.restoreID ||
+            retained.sourceHash !== request.sourceHash ||
+            retained.requestHash !== requestHash
+          )
+            throw new Error("Recovery requires its actual original Target installation receipt and H0 request")
+          const info = {
+            installationID: owner.installationID,
+            incarnation: owner.incarnation,
+            restoreID: retained.restoreID,
+            sourceHash: retained.sourceHash,
+            requestHash: retained.requestHash,
+          }
+          return await body({
+            info,
+            request,
+            withPrepared: async (action) => {
+              const selected = await HomeRestoration.begin(request, { signal })
+              return HomeRestoration.withTarget(
+                selected,
+                (permit) =>
+                  Native.withInstalled(
+                    {
+                      directory: path.join(base, "native"),
+                      expected: expectedNative,
+                      source: inventory.namespace,
+                      keys,
+                      permit,
+                      request,
+                      signal,
+                    },
+                    async (native) => {
+                      const prepared = await Authority.reopen({
+                        permit,
+                        request,
+                        native,
+                        namespaceDirectory: path.join(base, "records"),
+                        keys,
+                        signal,
+                      })
+                      const original = { permit, request, native, prepared }
+                      return Recovery.withTarget(original, (target) => action(original, target))
+                    },
+                  ),
+                { signal },
+              )
+            },
+          })
+        })
+      },
+    )
+  }
   export async function capture(input: {
     home: string
     directory: string
@@ -80,18 +169,27 @@ export namespace OrganizationBackupAdministration {
       },
     })
   }
-  export async function install(input: {
-    home: string
-    directory: string
-    restoreID: string
-    keys: VaultKeyProvider
-    signal?: AbortSignal
-  }) {
-    const { home, directory, restoreID, keys, signal } = input
-    signal?.throwIfAborted()
-    if (!path.isAbsolute(home) || !path.isAbsolute(directory)) throw new Error("Restore requires absolute native paths")
+  export async function withServiceArchive<T>(
+    input: {
+      directory: string
+      restoreID: string
+      keys: VaultKeyProvider
+      signal?: AbortSignal
+    },
+    body: (archive: {
+      base: string
+      inventory: Cohort.NamespaceInventory
+      expectedNative: StorageCheckpoint.Manifest
+      request: Native.InstallationRequest
+    }) => Promise<T>,
+  ) {
+    const { directory, restoreID, signal } = input
+    const keys = Object.freeze({
+      current: input.keys.current.bind(input.keys),
+      resolve: input.keys.resolve.bind(input.keys),
+    })
+    if (!path.isAbsolute(directory)) throw new Error("Restore requires an absolute archive directory")
     z.uuid().parse(restoreID)
-
     const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-organization-restore-"))
     try {
       const opened = path.join(temporary, "opened")
@@ -125,72 +223,91 @@ export namespace OrganizationBackupAdministration {
           source: { orgID: cohort.orgID, deploymentIncarnation: cohort.deploymentIncarnation },
         },
       })
-      await fs.mkdir(home, { recursive: true, mode: 0o700 })
-      await using runtime = await openOrganizationRecovery({ home: await fs.realpath(home) })
-      const receipt = await runtime.run(async () => {
-        const selected = await HomeRestoration.begin(request, { signal })
-        return HomeRestoration.withTarget(
-          selected,
-          (permit) =>
-            Native.withInstalled(
-              {
-                directory: path.join(base, "native"),
-                expected: expectedNative,
-                source: inventory.namespace,
-                keys,
-                permit,
-                request,
-                signal,
-              },
-              (native) =>
-                SnapshotMaintenance.withInstalledSegment(
-                  {
-                    directory: path.join(base, "snapshots"),
-                    namespaceDirectory: path.join(base, "records"),
-                    source: inventory.namespace,
-                    expected: inventory.segment.namespace,
-                    keys,
-                    permit,
-                    request,
-                    signal,
-                  },
-                  async (snapshot) => {
-                    await StorageCheckpoint.restoreArchive({
-                      directory: path.join(base, "records"),
-                      expected: inventory.namespace,
-                      keys,
-                      signal,
-                      restoreID: request.restoreID,
-                      finalize: (tx, archive) =>
-                        Native.adoptRestoration(tx, { permit, request, native, snapshot, archive }).then(() => {}),
-                    })
-                    const prepared = await Authority.prepare({
-                      permit,
-                      request,
-                      signal,
-                      native,
-                      namespaceDirectory: path.join(base, "records"),
-                      keys,
-                    })
-                    const info = HomeRestoration.describe(permit)
-                    return {
-                      state: "recovery-held",
-                      executionEnabled: false,
-                      restoreID: request.restoreID,
-                      installationID: info.installationID,
-                      incarnation: info.incarnation,
-                      sourceHash: info.sourceHash,
-                      prepared: Authority.describe(prepared).identity,
-                    }
-                  },
-                ),
-            ),
-          { signal },
-        )
-      })
-      return receipt
+      return await body({ base, inventory, expectedNative, request })
     } finally {
       await fs.rm(temporary, { recursive: true, force: true })
     }
+  }
+  export async function install(input: {
+    home: string
+    directory: string
+    restoreID: string
+    keys: VaultKeyProvider
+    signal?: AbortSignal
+  }) {
+    const { home, directory, restoreID, keys, signal } = input
+    signal?.throwIfAborted()
+    if (!path.isAbsolute(home) || !path.isAbsolute(directory)) throw new Error("Restore requires absolute native paths")
+    z.uuid().parse(restoreID)
+
+    return withServiceArchive(
+      { directory, restoreID, keys, signal },
+      async ({ base, inventory, expectedNative, request }) => {
+        await fs.mkdir(home, { recursive: true, mode: 0o700 })
+        await using runtime = await openOrganizationRecovery({ home: await fs.realpath(home) })
+        const receipt = await runtime.run(async () => {
+          const selected = await HomeRestoration.begin(request, { signal })
+          return HomeRestoration.withTarget(
+            selected,
+            (permit) =>
+              Native.withInstalled(
+                {
+                  directory: path.join(base, "native"),
+                  expected: expectedNative,
+                  source: inventory.namespace,
+                  keys,
+                  permit,
+                  request,
+                  signal,
+                },
+                (native) =>
+                  SnapshotMaintenance.withInstalledSegment(
+                    {
+                      directory: path.join(base, "snapshots"),
+                      namespaceDirectory: path.join(base, "records"),
+                      source: inventory.namespace,
+                      expected: inventory.segment.namespace,
+                      keys,
+                      permit,
+                      request,
+                      signal,
+                    },
+                    async (snapshot) => {
+                      await StorageCheckpoint.restoreArchive({
+                        directory: path.join(base, "records"),
+                        expected: inventory.namespace,
+                        keys,
+                        signal,
+                        restoreID: request.restoreID,
+                        finalize: (tx, archive) =>
+                          Native.adoptRestoration(tx, { permit, request, native, snapshot, archive }).then(() => {}),
+                      })
+                      const prepared = await Authority.prepare({
+                        permit,
+                        request,
+                        signal,
+                        native,
+                        namespaceDirectory: path.join(base, "records"),
+                        keys,
+                      })
+                      const info = HomeRestoration.describe(permit)
+                      return {
+                        state: "recovery-held",
+                        executionEnabled: false,
+                        restoreID: request.restoreID,
+                        installationID: info.installationID,
+                        incarnation: info.incarnation,
+                        sourceHash: info.sourceHash,
+                        prepared: Authority.describe(prepared).identity,
+                      }
+                    },
+                  ),
+              ),
+            { signal },
+          )
+        })
+        return receipt
+      },
+    )
   }
 }

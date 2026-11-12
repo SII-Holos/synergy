@@ -11,7 +11,10 @@ function absoluteFiles(...files: string[]) {
   if (files.some((file) => !path.isAbsolute(file))) throw new Error("Recovery file paths must be absolute")
   return true
 }
-async function operation<T>(keyFile: string, body: (keys: VaultKeyProvider, signal: AbortSignal) => Promise<T>) {
+export async function withRecoveryOperation<T>(
+  keyFile: string,
+  body: (keys: VaultKeyProvider, signal: AbortSignal) => Promise<T>,
+) {
   const controller = new AbortController()
   const stop = () => controller.abort(new Error("Organization recovery command cancelled"))
   process.on("SIGINT", stop)
@@ -52,7 +55,7 @@ export const OrganizationBackupCommand = cmd({
     const { version: buildVersion } = z
       .object({ version: z.string().min(1).max(200) })
       .parse(await Bun.file(new URL("../../package.json", import.meta.url)).json())
-    const result = await operation(args["key-file"], (keys, signal) =>
+    const result = await withRecoveryOperation(args["key-file"], (keys, signal) =>
       OrganizationBackupAdministration.capture({
         home,
         directory: args.output,
@@ -88,7 +91,7 @@ export const OrganizationRestoreCommand = cmd({
       }),
   async handler(args) {
     const home = explicitOrganizationHome()
-    const result = await operation(args["key-file"], (keys, signal) =>
+    const result = await withRecoveryOperation(args["key-file"], (keys, signal) =>
       OrganizationBackupAdministration.install({
         home,
         directory: args.input,

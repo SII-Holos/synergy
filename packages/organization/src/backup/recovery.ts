@@ -63,6 +63,7 @@ export namespace OrganizationRecovery {
             fail("publication receipt belongs to another original recovery")
           await AuthorityJournal.adopt(tx, evidence)
           assert()
+          await OrganizationRecoveryWriters.sealPreflight(tx)
           return receipt
         }
         await AuthorityJournal.adopt(tx, evidence)
@@ -75,6 +76,7 @@ export namespace OrganizationRecovery {
           appliedAt: Date.now(),
         })
         await tx.write(address, receipt)
+        await OrganizationRecoveryWriters.sealPreflight(tx)
         return receipt
       },
       { signal, commitGuard: assert },
@@ -193,37 +195,42 @@ export namespace OrganizationRecovery {
         fail("captured policy belongs to another current source")
       return target.run(async () => {
         assert()
-        await OrganizationRecoveryWriters.preflight({
-          permit: target.permit,
-          request: target.request,
-          target: target.reference,
-          namespace: captured.namespace,
-          keys: captured.keys,
-          signal: cancellation,
-        })
-        assert()
-        return AuthorityJournal.withAdoption(
-          { ...captured.namespace, keys: captured.keys, after: target.checkpoint, signal: cancellation },
-          async (evidence) => {
+        return OrganizationRecoveryWriters.withPreflight(
+          {
+            permit: target.permit,
+            request: target.request,
+            target: target.reference,
+            namespace: captured.namespace,
+            keys: captured.keys,
+            signal: cancellation,
+          },
+          async () => {
             assert()
-            const checkpoint = AuthorityJournal.describeAdoption(evidence)
-            if (hash(checkpoint) !== hash(current.checkpoint))
-              fail("prepared policy has another final authority checkpoint")
-            const address = key(target.reference.installationID)
-            const retained = await Storage.readMany([address]).then(([value]) =>
-              value === undefined ? undefined : Receipt.parse(value),
+            return AuthorityJournal.withAdoption(
+              { ...captured.namespace, keys: captured.keys, after: target.checkpoint, signal: cancellation },
+              async (evidence) => {
+                assert()
+                const checkpoint = AuthorityJournal.describeAdoption(evidence)
+                if (hash(checkpoint) !== hash(current.checkpoint))
+                  fail("prepared policy has another final authority checkpoint")
+                const address = key(target.reference.installationID)
+                const retained = await Storage.readMany([address]).then(([value]) =>
+                  value === undefined ? undefined : Receipt.parse(value),
+                )
+                const reference =
+                  retained?.source ??
+                  (await sourceRuntime.run(() => Current.retirementReference(source, target.reference)))
+                if (hash(reference.current) !== hash(current) || hash(reference.target) !== hash(target.reference))
+                  fail("source reference belongs to another original target or current checkpoint")
+                const retired = await sourceRuntime.run(() =>
+                  retained ? Retirement.complete(reference) : Current.retire(source, reference),
+                )
+                await sourceRuntime.run(() => Retirement.verify(retired))
+                cancellation?.throwIfAborted()
+                await target.verify()
+                return apply(target, evidence, reference, assert, cancellation)
+              },
             )
-            const reference =
-              retained?.source ?? (await sourceRuntime.run(() => Current.retirementReference(source, target.reference)))
-            if (hash(reference.current) !== hash(current) || hash(reference.target) !== hash(target.reference))
-              fail("source reference belongs to another original target or current checkpoint")
-            const retired = await sourceRuntime.run(() =>
-              retained ? Retirement.complete(reference) : Current.retire(source, reference),
-            )
-            await sourceRuntime.run(() => Retirement.verify(retired))
-            cancellation?.throwIfAborted()
-            await target.verify()
-            return apply(target, evidence, reference, assert, cancellation)
           },
         )
       })
@@ -334,13 +341,15 @@ export namespace OrganizationRecovery {
                       if (evidence) await OrganizationRecoveryWriters.assertReconciled(evidence)
                       else await OrganizationRecoveryWriters.assertServiceOnly()
                       assert()
-                      return Publication.write(tx, {
+                      const receipt = await Publication.write(tx, {
                         activation,
                         source: inspection,
                         native: settings,
                         publicOrigin,
                         writers: evidence,
                       })
+                      if (!evidence) await OrganizationRecoveryWriters.sealPreflight(tx)
+                      return receipt
                     },
                     { signal, commitGuard: assert },
                   ),
@@ -360,7 +369,17 @@ export namespace OrganizationRecovery {
                 )
               await OrganizationRecoveryWriters.assertServiceOnly()
               assert()
-              return complete()
+              return OrganizationRecoveryWriters.withPreflight(
+                {
+                  permit: target.permit,
+                  request: target.request,
+                  target: target.reference,
+                  namespace,
+                  keys,
+                  signal,
+                },
+                () => complete(),
+              )
             },
           )
         }),
@@ -425,17 +444,28 @@ export namespace OrganizationRecovery {
         return target.run(async () => {
           await target.verify()
           assert()
-          return AuthorityJournal.withAdoption(
-            { ...namespace, keys, after: target.checkpoint, signal },
-            async (evidence) => {
-              assert()
-              if (hash(AuthorityJournal.describeAdoption(evidence)) !== hash(current.checkpoint))
-                fail("cold archive has another final authority checkpoint")
-              await sourceRuntime.run(() => Retirement.verify(source))
-              assert()
-              await target.verify()
-              return apply(target, evidence, reference, assert, signal)
+          return OrganizationRecoveryWriters.withPreflight(
+            {
+              permit: target.permit,
+              request: target.request,
+              target: target.reference,
+              namespace,
+              keys,
+              signal,
             },
+            () =>
+              AuthorityJournal.withAdoption(
+                { ...namespace, keys, after: target.checkpoint, signal },
+                async (evidence) => {
+                  assert()
+                  if (hash(AuthorityJournal.describeAdoption(evidence)) !== hash(current.checkpoint))
+                    fail("cold archive has another final authority checkpoint")
+                  await sourceRuntime.run(() => Retirement.verify(source))
+                  assert()
+                  await target.verify()
+                  return apply(target, evidence, reference, assert, signal)
+                },
+              ),
           )
         })
       },

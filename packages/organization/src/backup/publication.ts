@@ -106,6 +106,12 @@ async function writeHosted(tx: StoreTransaction, evidence: Writers.Inspection, r
 
 export namespace OrganizationRecoveryPublication {
   export type Receipt = z.infer<typeof Receipt>
+  export function readIfPresent(installationID: string) {
+    return Storage.snapshot(async (tx) => {
+      const [value] = await tx.readMany([key(installationID)])
+      return value === undefined ? undefined : read(installationID)
+    })
+  }
   export async function read(installationID: string) {
     const receipt = Receipt.parse(await Storage.read(key(installationID)))
     if (
