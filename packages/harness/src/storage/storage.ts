@@ -669,14 +669,12 @@ export namespace Storage {
           yield chunk
         }
       } finally {
-        await runtime.run(() =>
-          provide(handle, () =>
-            state.gate.run(async () => {
-              const remaining = (state.prepared.get(location.pack) ?? 1) - 1
-              if (remaining) state.prepared.set(location.pack, remaining)
-              else state.prepared.delete(location.pack)
-            }),
-          ),
+        runtime.run(() =>
+          provide(handle, () => {
+            const remaining = (state.prepared.get(location.pack) ?? 1) - 1
+            if (remaining) state.prepared.set(location.pack, remaining)
+            else state.prepared.delete(location.pack)
+          }),
         )
       }
     })()

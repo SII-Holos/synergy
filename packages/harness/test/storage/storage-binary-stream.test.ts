@@ -5,6 +5,7 @@ import { Storage } from "../../src/storage/storage"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { storageTestRuntime } from "../support/storage-runtime"
 import { storageTestOptions } from "../support/storage-backends"
+import { withStorageQueueOptions } from "../../src/storage/queue"
 
 const runtime = await storageTestRuntime()
 afterAll(() => runtime.close())
@@ -50,6 +51,37 @@ test("prepared binary streams publish atomically and retain their original artif
         expect(keys.every((key) => key[0] === "selected")).toBe(true)
         await Storage.transaction(() => Storage.publishBinaryReference(keys[0], ["restored", "file"]))
         expect(await Storage.readBinary(["restored", "file"])).toEqual(new Uint8Array([0]))
+      })
+    } finally {
+      await store.close()
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  }))
+
+test("an aborted read scope releases its open binary stream pin before garbage collection", () =>
+  runtime.run(async () => {
+    const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "cancelled-storage-stream-"))
+    const store = await TransactionalStore.open(
+      storageTestOptions({ namespace: crypto.randomUUID(), filename: path.join(root, "db") }),
+    )
+    try {
+      await Storage.provide({ store, artifactDirectory: path.join(root, "content") }, async () => {
+        const key = ["evidence", "cancelled-stream"]
+        const bytes = new Uint8Array([0, 255, 37, 128, 10])
+        await Storage.writeBinary(key, bytes)
+        const scope = new AbortController()
+        const closed = await withStorageQueueOptions({ signal: scope.signal }, async () => {
+          const reader = Storage.readBinaryStream(key)
+          const first = await reader.next()
+          expect(first.done).toBe(false)
+          expect(first.value).toEqual(bytes)
+          await Storage.removeTree(["evidence"])
+          expect(await Storage.collectArtifactGarbage()).toBe(0)
+          scope.abort(new Error("The caller cancelled its read scope"))
+          return Promise.allSettled([reader.return(undefined)])
+        })
+        expect(await Storage.collectArtifactGarbage()).toBe(1)
+        expect(closed).toEqual([{ status: "fulfilled", value: { value: undefined, done: true } }])
       })
     } finally {
       await store.close()
