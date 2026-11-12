@@ -147,6 +147,7 @@ test("indexed Workspace callbacks cannot escape, change Store namespaces or use 
     let children: AsyncIterator<Portable.Entry> | undefined
     await WorkspaceContent.withTree(info, store, async (tree) => {
       retained = tree
+      tree.assertCurrent()
       content = tree.read("file")[Symbol.asyncIterator]()
       entries = tree.entries()[Symbol.asyncIterator]()
       expect((await Array.fromAsync(tree.children(""))).map((entry) => entry.path)).toEqual(["file"])
@@ -159,13 +160,16 @@ test("indexed Workspace callbacks cannot escape, change Store namespaces or use 
       const namespace = handle.store.options.namespace
       try {
         handle.store.options.namespace = "foreign-namespace"
+        expect(() => tree.assertCurrent()).toThrow("Store")
         await expect(tree.get("file")).rejects.toThrow("Store")
       } finally {
         handle.store.options.namespace = namespace
       }
     })
     if (!retained || !content || !entries || !children) throw new Error("Workspace reader was not opened")
-    await expect(retained.get("file")).rejects.toThrow("ended")
+    const original = retained
+    await expect(original.get("file")).rejects.toThrow("ended")
+    expect(() => original.assertCurrent()).toThrow("ended")
     await expect(content.next()).rejects.toThrow("ended")
     await expect(entries.next()).rejects.toThrow("ended")
     await expect(children.next()).rejects.toThrow("ended")

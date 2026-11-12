@@ -121,19 +121,20 @@ export namespace WorkspaceContent {
     return stored(info, store)
   }
 
-  export type Tree = Pick<
+  type TreeSource = Pick<
     Awaited<ReturnType<typeof Portable.open>>,
     "get" | "resolve" | "entries" | "children" | "read"
   > & {
     readonly mode: number
   }
+  export type Tree = TreeSource & { assertCurrent(): void }
   const Position = z.number().int().nonnegative().safe()
   function header(entry: WorkspaceTree.Entry): Portable.Entry {
     if (entry.kind !== "file") return { ...entry }
     const { chunks: _, ...value } = entry
     return value
   }
-  function legacy(tree: WorkspaceTree.Manifest, store: BlobStore): Tree {
+  function legacy(tree: WorkspaceTree.Manifest, store: BlobStore): TreeSource {
     const resolve = async (filename: string, follow = true) => {
       const resolved = WorkspaceTree.resolve(tree, filename, follow)
       return { path: resolved.path, entry: resolved.entry ? header(resolved.entry) : undefined }
@@ -264,7 +265,7 @@ export namespace WorkspaceContent {
       current()
       const tree = await stored(info, store, bound)
       current()
-      let source: Tree
+      let source: TreeSource
       if ("entries" in tree) source = legacy(tree, bound)
       else {
         const directory = path.join(runtime.host.root, "cache", "workspace-readers")
@@ -277,6 +278,7 @@ export namespace WorkspaceContent {
       const result = await body(
         Object.freeze({
           mode: source.mode,
+          assertCurrent: current,
           async get(filename: string) {
             current()
             const value = await source.get(filename)

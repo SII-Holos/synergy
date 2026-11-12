@@ -68,9 +68,15 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
         ])
       })
     },
-    async retain(scopeID, retentionID, root, repository, signal, ownerSessionID) {
-      signal?.throwIfAborted()
-      if (await read(scopeID, retentionID, root)) return
+    async retain(scopeID, retentionID, root, repository, signal, ownerSessionID, commitGuard) {
+      const assert = () => {
+        signal?.throwIfAborted()
+        commitGuard?.()
+      }
+      assert()
+      const retained = await read(scopeID, retentionID, root)
+      assert()
+      if (retained) return
       return SnapshotLease.use(
         scopeID,
         false,
@@ -78,18 +84,24 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
           withFileLock(
             { directory: SnapshotLease.directory(), key: `snapshot-content:${scopeID}:${retentionID}:${root}`, signal },
             async () => {
-              if (await read(scopeID, retentionID, root)) return
+              assert()
+              const retained = await read(scopeID, retentionID, root)
+              assert()
+              if (retained) return
               const intent = await Maintenance.begin(scopeID, retentionID, root, ownerSessionID)
               const { contentID } = intent
               const content = { root, contentID }
               let published = false
               let unknown = false
               try {
+                assert()
                 await temporary(scopeID, async (directory) => {
                   const target = path.join(directory, "store.git")
                   await SnapshotStore.initializeBareRepository(target)
+                  assert()
                   await using catalog = await SnapshotTransfer.Catalog.create(target, signal)
                   const imported = await catalog.import(repository, { roots: [root], requiredTrees: [root], signal })
+                  assert()
                   if (!imported.keep) throw new Error("Durable snapshot capture produced no pack")
                   const filename = path.join(target, "objects", "pack", `pack-${imported.keep}.pack`)
                   const file = await fs.open(filename, "r")
@@ -99,8 +111,9 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
                     const buffer = Buffer.allocUnsafe(Content.chunkBytes)
                     let index = 0
                     for (;;) {
-                      signal?.throwIfAborted()
+                      assert()
                       const { bytesRead } = await file.read(buffer, 0, buffer.length, null)
+                      assert()
                       if (!bytesRead) break
                       bytes += bytesRead
                       if (maxBytes !== undefined && bytes > maxBytes)
@@ -116,21 +129,37 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
                         [...Content.contentKey(scopeID, retentionID, content), "packs", "0", String(ref.index)],
                         chunk,
                       )
-                      await Storage.transaction(() => Storage.publishPreparedBinary(prepared))
+                      assert()
+                      await Storage.transaction(
+                        () => {
+                          assert()
+                          return Storage.publishPreparedBinary(prepared)
+                        },
+                        { commitGuard: assert },
+                      )
+                      assert()
                       await writer.append(ref)
+                      assert()
                     }
                   } finally {
                     await file.close()
                   }
                   const header = await writer.seal()
-                  signal?.throwIfAborted()
-                  published = await Maintenance.publish(intent, header, undefined, signal)
+                  assert()
+                  published = await Maintenance.publish(intent, header, undefined, signal, commitGuard)
+                  assert()
                 })
               } catch (error) {
                 unknown = error instanceof Storage.CommitUnknownError
                 throw error
               } finally {
-                if (!published && !unknown) await Maintenance.discard(intent)
+                let current = true
+                try {
+                  commitGuard?.()
+                } catch {
+                  current = false
+                }
+                if (!published && !unknown && current) await Maintenance.discard(intent)
               }
             },
           ),

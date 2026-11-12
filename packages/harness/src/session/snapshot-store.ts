@@ -29,6 +29,7 @@ export namespace SnapshotStore {
       repository: string,
       signal?: AbortSignal,
       ownerSessionID?: string,
+      commitGuard?: () => void,
     ): Promise<void>
     restore(
       scopeID: string,
@@ -615,22 +616,29 @@ export namespace SnapshotStore {
   // Provenance: https://docs.jj-vcs.dev/latest/technical/architecture/#gitbackend
   // Local adaptation: retain each session's tree before publishing its hash;
   // GC must see every historical root, not just the newest tree or reflog.
-  export async function retainCurrent(hash: string, signal?: AbortSignal) {
+  export async function retainCurrent(hash: string, signal?: AbortSignal, commitGuard?: () => void) {
+    commitGuard?.()
     const operation = current()
     if (operation.backend === "legacy") return true
     const retention = await retentionID(operation.scopeID, operation.sessionID)
+    commitGuard?.()
     const result = await withReferences(
       operation.scopeID,
       operation.sessionID,
-      () =>
-        SnapshotGit.run(
+      async () => {
+        commitGuard?.()
+        const result = await SnapshotGit.run(
           ["git", "--git-dir", operation.repository, "update-ref", reference(retention, hash), hash],
           path.dirname(operation.repository),
           undefined,
           signal,
-        ),
+        )
+        commitGuard?.()
+        return result
+      },
       signal,
     )
+    commitGuard?.()
     if (result.exitCode !== 0)
       log.warn("snapshot retention failed", { exitCode: result.exitCode, stderr: result.stderr })
     if (result.exitCode === 0)
@@ -641,7 +649,9 @@ export namespace SnapshotStore {
         operation.repository,
         signal,
         operation.sessionID,
+        commitGuard,
       )
+    commitGuard?.()
     return result.exitCode === 0
   }
 

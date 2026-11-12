@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0125](0125-snapshot-retention-outlived-its-source-reader.md)
+
 - [0124](0124-latest-shared-history-did-not-navigate.md)
 
 - [0114](0114-portable-reader-forgot-original-cancellation.md)

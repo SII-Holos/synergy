@@ -51,13 +51,18 @@ export namespace StoredSnapshotMaintenance {
     header: Content.Header,
     expected?: Content.LegacyManifest,
     signal?: AbortSignal,
+    commitGuard?: () => void,
   ) {
-    signal?.throwIfAborted()
+    const assert = () => {
+      signal?.throwIfAborted()
+      commitGuard?.()
+    }
+    assert()
     if (header.root !== intent.root || header.contentID !== intent.contentID)
       throw new Error("Snapshot publication belongs to another preparation")
     return Storage.transaction(
       async (tx) => {
-        signal?.throwIfAborted()
+        assert()
         if (intent.ownerSessionID) {
           const owner = await SnapshotStore.owner(intent.scopeID, intent.ownerSessionID)
           if (!owner || owner.retentionID !== intent.retentionID)
@@ -79,7 +84,7 @@ export namespace StoredSnapshotMaintenance {
         await Storage.remove(pendingKey(intent))
         return true
       },
-      { commitGuard: () => signal?.throwIfAborted() },
+      { commitGuard: assert },
     )
   }
   export async function discard(intent: Intent) {

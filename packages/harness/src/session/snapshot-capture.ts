@@ -10,7 +10,7 @@ import { SnapshotGit } from "./snapshot-git"
 import { SnapshotObjects } from "./snapshot-objects"
 import type { SnapshotStore } from "./snapshot-store"
 import { WorkspaceTree } from "../workspace/tree"
-import type { BlobStore } from "../workspace/content"
+import type { WorkspaceContent } from "../workspace/content"
 import type { SnapshotSchema } from "./snapshot-schema"
 import { ObservabilityMetrics } from "../observability/metrics"
 
@@ -104,7 +104,7 @@ export namespace SnapshotCapture {
     }
   }
 
-  export type Content = { tree: WorkspaceTree.Manifest; store: BlobStore }
+  export type Content = WorkspaceContent.Tree
   export type Dirty = { paths: readonly string[]; omissions?: SnapshotSchema.Omission[] }
   export async function refresh(
     operation: SnapshotStore.Operation,
@@ -347,17 +347,18 @@ export namespace SnapshotCapture {
         await Promise.allSettled(captures)
       }
     }
-    const readContent = async (entry: WorkspaceTree.Entry) => {
+    const readContent = async (entry: WorkspaceTree.Header) => {
       if (entry.kind !== "file" || entry.size > MAX_FILE_BYTES) return undefined
       const bytes = new Uint8Array(entry.size)
       let offset = 0
-      for (const chunk of entry.chunks) {
+      for await (const data of content!.read(entry.path)) {
         abort.throwIfAborted()
-        const data = WorkspaceTree.verify(chunk.hash, await content!.store.get(chunk.hash, chunk.size), chunk.size)
-        if (data.length !== chunk.size) throw new Error("Snapshot content chunk is incomplete")
+        if (offset + data.byteLength > entry.size) throw new Error("Snapshot content exceeds its declared size")
         bytes.set(data, offset)
         offset += data.length
       }
+      abort.throwIfAborted()
+      if (offset !== entry.size) throw new Error("Snapshot content is incomplete")
       return Buffer.from(WorkspaceTree.verify(entry.hash, bytes, MAX_FILE_BYTES))
     }
     const visitContent = async (
@@ -369,8 +370,7 @@ export namespace SnapshotCapture {
       abort.throwIfAborted()
       if (depth > MAX_DEPTH) throw new Error("Snapshot directory depth exceeds limit")
       const rules = [...inherited]
-      const children = WorkspaceTree.children(content!.tree, relative)
-      const ignored = children.find((entry) => path.posix.basename(entry.path) === ".gitignore")
+      const ignored = await content!.get(relative ? relative + "/.gitignore" : ".gitignore")
       if (ignored?.kind === "file") {
         const bytes = await readContent(ignored)
         if (!bytes) throw new Error("Snapshot ignore file exceeds limit")
@@ -379,7 +379,7 @@ export namespace SnapshotCapture {
           matcher: ignore({ ignorecase: false }).add(bytes.toString("utf8")),
         })
       }
-      for (const entry of children) {
+      for await (const entry of content!.children(relative)) {
         abort.throwIfAborted()
         if (++count > MAX_ENTRIES) throw new Error("Snapshot entry count exceeds limit")
         const name = path.posix.basename(entry.path)
@@ -399,20 +399,13 @@ export namespace SnapshotCapture {
           if (entry.kind === "symlink")
             await retain(entry.path, "120000", SnapshotLink.encode({ target: entry.target }))
           else {
-            let bytes: Buffer | undefined
-            try {
-              const started = performance.now()
-              peak = Math.max(peak, objects.bufferedBytes + 2 * Math.min(entry.size, MAX_FILE_BYTES))
-              bytes = await readContent(entry)
-              timing.read += performance.now() - started
-              if (!bytes) {
-                if (onOmissions) omit(entry.path, "size_limit")
-                else if (previous.has(entry.path)) throw new Error("A recorded file exceeds the snapshot size limit")
-              }
-            } catch (error) {
-              abort.throwIfAborted()
-              if (!onOmissions) throw error
-              omit(entry.path, "read_failed")
+            const started = performance.now()
+            peak = Math.max(peak, objects.bufferedBytes + 2 * Math.min(entry.size, MAX_FILE_BYTES))
+            const bytes = await readContent(entry)
+            timing.read += performance.now() - started
+            if (!bytes) {
+              if (onOmissions) omit(entry.path, "size_limit")
+              else if (previous.has(entry.path)) throw new Error("A recorded file exceeds the snapshot size limit")
             }
             if (bytes) await retain(entry.path, entry.mode & 0o111 ? "100755" : "100644", bytes)
           }
