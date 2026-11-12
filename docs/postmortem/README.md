@@ -221,4 +221,6 @@ Only append corrections.
 
 - [0120](0120-workspace-readers-outlived-their-selected-storage.md)
 
+- [0121](0121-environment-admission-outlived-session-authority.md)
+
 - [0122](0122-shared-host-admission-outlived-its-task.md)

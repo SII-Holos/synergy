@@ -58,6 +58,14 @@ export namespace EnvironmentProcess {
   export async function prepare(input: Input) {
     input.signal?.throwIfAborted()
     const environment = input.resources.environment
+    const selectedOrigin = input.resources.origin
+    if (!selectedOrigin)
+      throw new Environment.Unavailable({
+        environmentID: environment?.id ?? "",
+        message: "Process requires an owned execution origin",
+      })
+    const origin = selectedOrigin
+    origin.assertCurrent()
     if (!environment || !input.resources.runtime)
       throw new Environment.Unavailable({ environmentID: "", message: "Process requires resolved execution resources" })
     const command = ExecutionProtocol.Command.parse(input.command)
@@ -231,6 +239,7 @@ export namespace EnvironmentProcess {
             id: input.id,
             scopeID: input.scopeID,
             environmentID: environment!.id,
+            origin,
             command,
             intentDigest: input.intentDigest,
             workspaces,

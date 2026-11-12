@@ -6,6 +6,7 @@ import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration/types"
 import { StoragePath } from "../storage/path"
 import { EnvironmentExecution } from "./execution"
+import { executionOriginRecordMigration, executionOriginPhysicalMigration } from "./execution-origin-migration"
 
 export async function migrateSessionEnvironment(
   owner: { scopeID: string; sessionID: string },
@@ -49,15 +50,17 @@ export const environmentMigrations: Migration[] = [
     scope: "global",
     description: "Index unfinished Environment operations for receipt and checkpoint recovery",
     async up(progress) {
-      const keys = await Storage.list(["environment_execution"])
-      for (let index = 0; index < keys.length; index++) {
+      let count = 0
+      for await (const row of Storage.records({ prefix: ["environment_execution"], limit: 64 })) {
+        if (row.key.length !== 3) throw new Error("Environment execution index found an unknown record address")
         await Storage.transaction(async () => {
-          const info = EnvironmentExecution.Info.parse(await Storage.read(keys[index]))
+          const info = await EnvironmentExecution.get(row.key[2], row.key[1])
           if (info.state !== "completed")
             await Storage.write(StoragePath.environmentExecutionActive(info.scopeID, info.id), true)
         })
-        progress(index + 1, keys.length)
+        progress(++count, 0)
       }
+      progress(count, count)
     },
   },
   {
@@ -79,6 +82,8 @@ export const environmentMigrations: Migration[] = [
       }
     },
   },
+  executionOriginRecordMigration,
+  executionOriginPhysicalMigration,
 ]
 
 export function registerEnvironmentMigrations() {

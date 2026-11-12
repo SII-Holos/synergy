@@ -8,6 +8,7 @@ import { SessionTransferEpochs } from "./transfer-epochs"
 import { SessionTransferFreezeAuthority } from "./transfer-freeze-authority"
 import type { SessionTransferStream } from "./transfer-stream"
 import { SessionSchemaRegistry } from "./schema-registry"
+import { EnvironmentExecution } from "../environment/execution"
 
 export namespace SessionTransferOwners {
   export type FreezeReceipt = SessionTransferFreezeAuthority.Receipt
@@ -236,6 +237,14 @@ export namespace SessionTransferOwners {
   export async function selected(context: SourceContext, required: readonly string[] = []) {
     const raw = await Storage.read(["sessions", context.session.scope.id, context.session.id, "info"])
     const ids = new Set([...required, ...requiredFromInfo(raw)])
+    if (!ids.has("session-environments"))
+      for await (const _ of EnvironmentExecution.sessionEntries(
+        { scopeID: context.session.scope.id, sessionID: context.session.id },
+        context.signal,
+      )) {
+        ids.add("session-environments")
+        break
+      }
     for (const [id, owner] of state()) {
       context.signal.throwIfAborted()
       if (await owner.applies(context.session)) ids.add(id)

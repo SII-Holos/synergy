@@ -77293,9 +77293,82 @@
           },
           "updatedAt": {
             "type": "number"
+          },
+          "origin": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "rootID": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "runID": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "messageID": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "callID": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "tool": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["kind", "scopeID", "sessionID", "rootID", "runID", "messageID", "callID", "tool"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "host"
+                  },
+                  "owner": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "invocationID": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["kind", "owner", "invocationID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "legacy-unknown"
+                  }
+                },
+                "required": ["kind"],
+                "additionalProperties": false
+              }
+            ]
           }
         },
-        "required": ["id", "scopeID", "target", "digest", "state", "outputCursor", "createdAt", "updatedAt"]
+        "required": ["id", "scopeID", "target", "digest", "state", "outputCursor", "createdAt", "updatedAt", "origin"]
       },
       "EnvironmentActivity": {
         "type": "object",

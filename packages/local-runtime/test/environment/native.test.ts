@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
@@ -40,6 +40,7 @@ test("native admission neither captures nor blocks unrelated mounted object view
     await Storage.write(["workspace_environment", foreign.id, workspace.id], "other")
     const marker = path.join(temporary.path, "should-not-run")
     let execution = await EnvironmentExecution.start({
+      origin: runtime.origin("native-execution"),
       id: "foreign-write",
       scopeID: "scope",
       environmentID: environment.id,
@@ -86,6 +87,7 @@ test("native provider uses the durable execution path and saves output outside i
       useRoots: [],
     }
     let execution = await EnvironmentExecution.start({
+      origin: runtime.origin("native-execution"),
       id: "command",
       scopeID: "scope",
       environmentID: environment.id,

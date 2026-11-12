@@ -15,7 +15,8 @@ import { SandboxDetector } from "../../enforcement/sandbox-detector"
 import { startDenialLogger, type DenialLoggerSession } from "../../sandbox/macos-diagnostics"
 import { controlledTempRoot } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { AttachmentDiscovery } from "../attachment-discovery"
-import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
 import type { BashParams } from "@ericsanchezok/synergy-harness/tool/bash-contract"
 import type { BashContext } from "@ericsanchezok/synergy-harness/tool/bash-contract"
 import type { BashResult } from "@ericsanchezok/synergy-harness/tool/bash-contract"
@@ -29,6 +30,7 @@ import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-
 import path from "node:path"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import type { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { createHash, randomUUID } from "node:crypto"
 import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
 import { StringDecoder } from "node:string_decoder"
@@ -201,10 +203,36 @@ export function withLinuxChildOomPreference(command: string, platform = process.
 }
 
 export namespace LocalBashBackend {
+  async function executionOrigin(ctx: BashContext): Promise<EnvironmentOrigin.Session> {
+    const rollout = RolloutContext.current()
+    const scopeID = ScopeContext.current.scope.id
+    const message = await MessageV2.readInfo({ scopeID, sessionID: ctx.sessionID, messageID: ctx.messageID })
+    if (
+      !rollout ||
+      rollout.owner.kind !== "session" ||
+      rollout.owner.scopeID !== scopeID ||
+      rollout.owner.sessionID !== ctx.sessionID ||
+      message.role !== "assistant" ||
+      !message.rootID ||
+      !ctx.callID
+    )
+      throw new Error("Bash execution requires its canonical native Session, Run and tool origin")
+    return {
+      kind: "session",
+      scopeID,
+      sessionID: ctx.sessionID,
+      rootID: message.rootID,
+      runID: rollout.runID,
+      messageID: ctx.messageID,
+      callID: ctx.callID,
+      tool: "bash",
+    }
+  }
   export async function execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
     await using admission = ctx.resources
       ? null
       : await EnvironmentResources.select({
+          origin: await executionOrigin(ctx),
           scopeID: ScopeContext.current.scope.id,
           ownerID: ctx.sessionID,
           environmentID: ctx.environmentID,

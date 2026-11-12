@@ -11,6 +11,7 @@ import type { Migration } from "../migration/types"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { SessionTransferFreezeAuthority } from "./transfer-freeze-authority"
 import { SessionInteraction } from "./interaction"
+import { EnvironmentExecution } from "../environment/execution"
 
 export namespace SessionTransferEpochs {
   export const Rejected = NamedError.create("SessionTransferEpochRejected", z.object({ message: z.string() }))
@@ -425,6 +426,13 @@ export namespace SessionTransferEpochs {
     return Storage.transaction(
       async () => {
         await options.verify?.()
+        const [currentSession] = await Storage.readMany<Record<string, unknown>>([
+          ["sessions", binding.scopeID, binding.sessionID, "info"],
+        ])
+        const currentInfo = Session.PersistedInfo.parse({ ...currentSession, workspace: null })
+        if (currentInfo.id !== binding.sessionID || currentInfo.scope.id !== binding.scopeID)
+          fail("source Session identity changed")
+        await EnvironmentExecution.assertSessionDrained(binding.scopeID, binding.sessionID, currentInfo.environmentID)
         const previous = await optional(State, stateKey(binding))
         if (previous) {
           if (!matches(previous.binding, binding) || previous.role !== "source" || previous.phase === "cancelled")
@@ -460,7 +468,11 @@ export namespace SessionTransferEpochs {
       },
       {
         commitGuard: () => {
-          if (SessionManager.isRunning(binding.sessionID) || LoopJob.activeBackgroundCount(binding.sessionID))
+          if (
+            SessionManager.isRunning(binding.sessionID) ||
+            LoopJob.activeBackgroundCount(binding.sessionID) ||
+            EnvironmentExecution.hasSessionPending(binding.scopeID, binding.sessionID)
+          )
             fail("requires drained execution before freeze publication")
         },
       },

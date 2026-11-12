@@ -7,6 +7,7 @@ import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceMounts } from "../workspace/mount"
 import { RuntimeContext } from "../lifecycle/context"
 import { WorkspaceTree } from "../workspace/tree"
+import { EnvironmentOrigin } from "./origin"
 
 export namespace EnvironmentResources {
   /** A model-facing file namespace, separate from any live Environment mount location. */
@@ -58,6 +59,7 @@ export namespace EnvironmentResources {
   export interface Resolved extends AsyncDisposable {
     kind: "none" | "objects" | "native" | "execution"
     selection?: Selection
+    origin?: EnvironmentOrigin.Captured
     workspace?: WorkspaceCatalog.Info
     environment?: Environment.Info
     executor?: Executor
@@ -73,7 +75,27 @@ export namespace EnvironmentResources {
     return { ...value, release, [Symbol.asyncDispose]: release }
   }
 
-  export async function select(input: Selection & { ownerID: string; needs: Needs; signal?: AbortSignal }) {
+  export async function select(
+    input: Selection & { ownerID: string; origin?: EnvironmentOrigin.Input; needs: Needs; signal?: AbortSignal },
+  ) {
+    input = { ...input, needs: { ...input.needs } }
+    if (input.needs.workspace || input.needs.execution) {
+      const origin = EnvironmentOrigin.selected(input.origin)
+      const selection = { ...input, origin }
+      return EnvironmentOrigin.request(origin, async () => {
+        input.signal?.throwIfAborted()
+        await EnvironmentOrigin.assertAdmission(origin, {
+          scopeID: selection.scopeID,
+          environmentID: selection.environmentID ?? undefined,
+        })
+        return selectResources(selection)
+      })
+    }
+    return selectResources(input)
+  }
+  async function selectResources(
+    input: Selection & { ownerID: string; origin?: EnvironmentOrigin.Input; needs: Needs; signal?: AbortSignal },
+  ) {
     if (input.workspaceID) virtualRoot(await WorkspaceCatalog.get(input.workspaceID, input.scopeID))
     const environment = input.needs.execution ? await Environment.select(input) : undefined
     return resolve({ ...input, environmentID: environment?.id ?? input.environmentID, needs: input.needs })
@@ -95,15 +117,33 @@ export namespace EnvironmentResources {
     return { ...wrapper, intentDigest, cleanup: () => executor.releaseSandbox!(wrapper.id) }
   }
 
-  export async function resolve(input: Selection & { needs: Needs; signal?: AbortSignal }): Promise<Resolved> {
-    const resolved = await resolveSelection(input)
-    resolved.selection = {
-      scopeID: input.scopeID,
-      environmentID: input.environmentID,
-      workspaceID: input.workspaceID,
-      workspaceGeneration: input.workspaceGeneration,
+  export async function resolve(
+    input: Selection & { origin?: EnvironmentOrigin.Input; needs: Needs; signal?: AbortSignal },
+  ): Promise<Resolved> {
+    input = { ...input, needs: { ...input.needs } }
+    const origin = input.needs.workspace || input.needs.execution ? EnvironmentOrigin.selected(input.origin) : undefined
+    async function perform() {
+      input.signal?.throwIfAborted()
+      const target = { scopeID: input.scopeID, environmentID: input.environmentID ?? undefined }
+      if (origin) await EnvironmentOrigin.assertAdmission(origin, target)
+      const resolved = await resolveSelection(input)
+      try {
+        if (origin) await EnvironmentOrigin.assertAdmission(origin, target)
+        input.signal?.throwIfAborted()
+        resolved.origin = origin
+        resolved.selection = {
+          scopeID: input.scopeID,
+          environmentID: input.environmentID,
+          workspaceID: input.workspaceID,
+          workspaceGeneration: input.workspaceGeneration,
+        }
+        return resolved
+      } catch (error) {
+        await resolved.release()
+        throw error
+      }
     }
-    return resolved
+    return origin ? EnvironmentOrigin.request(origin, perform) : perform()
   }
 
   async function resolveSelection(input: Selection & { needs: Needs; signal?: AbortSignal }): Promise<Resolved> {

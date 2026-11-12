@@ -12764,6 +12764,25 @@ export type EnvironmentExecutionInfo = {
   outputCursor: number
   createdAt: number
   updatedAt: number
+  origin:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+        rootID: string
+        runID: string
+        messageID: string
+        callID: string
+        tool: string
+      }
+    | {
+        kind: "host"
+        owner: string
+        invocationID: string
+      }
+    | {
+        kind: "legacy-unknown"
+      }
 }
 
 export type EnvironmentActivity = {

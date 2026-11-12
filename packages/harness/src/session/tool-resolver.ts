@@ -1,5 +1,6 @@
 import { RuntimeContext } from "../lifecycle/context"
 import { RolloutTool } from "./rollout/tool"
+import { RolloutContext } from "./rollout/context"
 import Ajv2020 from "ajv/dist/2020"
 import { Global } from "../global"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, type JSONSchema7 } from "ai"
@@ -1778,7 +1779,19 @@ export namespace ToolResolver {
               }
               const workspaceInfo = needs.workspace || needs.execution ? ScopeContext.current.workspace : null
               if (needs.execution || needs.workspace) {
+                const rollout = RolloutContext.current()
+                if (!rollout) throw new Error("Tool resources require their native Run owner")
                 resources = await EnvironmentResources.select({
+                  origin: {
+                    kind: "session",
+                    scopeID: ScopeContext.current.scope.id,
+                    sessionID: ctx.sessionID,
+                    rootID: runtimeInput.processor.message.rootID ?? runtimeInput.processor.message.parentID,
+                    runID: rollout.runID,
+                    messageID: runtimeInput.processor.message.id,
+                    callID: options.toolCallId,
+                    tool: item.id,
+                  },
                   scopeID: ScopeContext.current.scope.id,
                   ownerID: ctx.sessionID,
                   environmentID: ctx.environmentID,
