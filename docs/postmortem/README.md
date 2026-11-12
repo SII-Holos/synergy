@@ -215,4 +215,6 @@ Only append corrections.
 
 - [0117: Renderer reload reopened pending logout](0117-renderer-reload-reopened-pending-logout.md)
 
+- [0118: Organization view recovery retained old requests](0118-organization-view-recovery-retained-old-requests.md)
+
 - [0119: Portable writer retained mutable inputs](0119-portable-writer-retained-mutable-inputs.md)

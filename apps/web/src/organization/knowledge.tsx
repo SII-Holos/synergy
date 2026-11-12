@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { batch, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import type {
@@ -13,6 +13,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { useSpace } from "@/context/space"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { organizationOwnerFailure } from "./owner-error"
 import { WorkspaceError } from "./workspace-error"
 import { PublicationEditor } from "./publication-editor"
 import { PublicationFiles } from "./publication-files"
@@ -46,7 +47,11 @@ export function OrganizationKnowledge(props: {
     selectedReferences: OrgKnowledgeSelectionPage["items"]
     status?: OrgKnowledgeStatus
   }>({ items: [], appliedReferences: [], selectedReferences: [] })
-  const ledger = createKnowledgeUpdate(localStorage, view.key, `${props.projectID ?? "organization"}:${props.sessionID ?? "project"}`)
+  const ledger = createKnowledgeUpdate(
+    localStorage,
+    view.key,
+    `${props.projectID ?? "organization"}:${props.sessionID ?? "project"}`,
+  )
   const [pending, setPending] = createSignal<ReturnType<typeof ledger.pending>>()
   const [referencesBusy, setReferencesBusy] = createSignal(false)
   let referencesRevision = 0
@@ -60,33 +65,82 @@ export function OrganizationKnowledge(props: {
   const [query, setQuery] = createSignal("")
   const [selected, setSelected] = createSignal<string>()
   const [publishing, setPublishing] = createSignal(false)
+  const [blocked, setBlocked] = createSignal(false)
+  let generation = 0
+  const current = (version = generation) => !signal.aborted && version === generation
+  function failed(error: unknown) {
+    const failure = organizationOwnerFailure(error)
+    batch(() => {
+      if (failure) {
+        generation++
+        referencesRevision++
+        setBlocked(true)
+        setState(
+          reconcile({
+            items: [],
+            applied: undefined,
+            selected: undefined,
+            appliedReferences: [],
+            selectedReferences: [],
+            status: undefined,
+          }),
+        )
+        setCursor(undefined)
+        setSelected(undefined)
+        setPublishing(false)
+        setQ("")
+        setQuery("")
+        setPending(undefined)
+        setReferencesBusy(false)
+        setStatusBusy(false)
+        setLoading(false)
+        setBusy(false)
+        setLoaded(false)
+      }
+      setError(error)
+    })
+    if (failure === "authentication") space.authorizationRequired(view)
+  }
   function storeReferences(target: "applied" | "selected", page: OrgKnowledgeSelectionPage, itemIDs: string[]) {
     if (page.selection.revision < (state[target]?.revision ?? 0)) return
     const key = target === "applied" ? "appliedReferences" : "selectedReferences"
     const previous = state[target]?.manifestHash === page.selection.manifestHash ? state[key] : []
     const requested = new Set(itemIDs)
-    setState(key, reconcile([...previous.filter((entry) => !requested.has(entry.itemID)), ...page.items], { key: "itemID" }))
+    setState(
+      key,
+      reconcile([...previous.filter((entry) => !requested.has(entry.itemID)), ...page.items], { key: "itemID" }),
+    )
     setState(target, reconcile(page.selection))
   }
   async function selectionReferences(itemIDs: string[]) {
+    const ownerVersion = generation
     const version = ++referencesRevision
     const ids = [...new Set(itemIDs)]
-    const pages = ids.length ? Array.from({length:Math.ceil(ids.length/100)},(_,index) => ids.slice(index*100,(index+1)*100)) : [[]]
+    const pages = ids.length
+      ? Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) => ids.slice(index * 100, (index + 1) * 100))
+      : [[]]
     setReferencesBusy(true)
     try {
       for (const ids of pages) {
         const [applied, selected] = await Promise.all([
-          props.projectID ? api.orgKnowledge.appliedReferences({projectID:props.projectID,itemIDs:ids},options) : undefined,
-          props.sessionID ? api.orgKnowledge.sessionSelectionReferences({sessionID:props.sessionID,itemIDs:ids},options) : undefined,
+          props.projectID
+            ? api.orgKnowledge.appliedReferences({ projectID: props.projectID, itemIDs: ids }, options)
+            : undefined,
+          props.sessionID
+            ? api.orgKnowledge.sessionSelectionReferences({ sessionID: props.sessionID, itemIDs: ids }, options)
+            : undefined,
         ])
-        if (signal.aborted || version !== referencesRevision) return
-        if (applied) storeReferences("applied",applied.data,ids)
-        if (selected) storeReferences("selected",selected.data,ids)
+        if (!current(ownerVersion) || version !== referencesRevision) return
+        if (applied) storeReferences("applied", applied.data, ids)
+        if (selected) storeReferences("selected", selected.data, ids)
       }
-    } finally { if (!signal.aborted && version === referencesRevision) setReferencesBusy(false) }
+    } finally {
+      if (current(ownerVersion) && version === referencesRevision) setReferencesBusy(false)
+    }
   }
   async function load(more = false) {
-    if (loading()) return
+    if (loading() || !current()) return
+    const version = generation
     setLoading(true)
     setError(undefined)
     try {
@@ -99,59 +153,96 @@ export function OrganizationKnowledge(props: {
             { projectID: props.projectID, limit: 50, cursor: more ? cursor() : undefined },
             options,
           )
-      if (signal.aborted) return
+      if (!current(version)) return
+      setBlocked(false)
+      setPending(ledger.pending())
       setState("items", reconcile(more ? [...state.items, ...result.data.items] : result.data.items))
       setCursor(result.data.cursor)
       setLoaded(true)
       await selectionReferences(result.data.items.map((item) => item.itemID))
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      if (current(version)) failed(error)
     } finally {
-      if (!signal.aborted) setLoading(false)
+      if (current(version)) setLoading(false)
     }
   }
   async function apply(release: OrgKnowledgeRelease, target: "project" | "session", remove = false) {
-    const current = target === "project" ? state.applied : state.selected
-    if (busy() || pending() || referencesBusy() || !current || !props.projectID || (target === "session" && !props.sessionID)) return
+    const version = generation
+    const selection = target === "project" ? state.applied : state.selected
+    if (
+      !current() ||
+      blocked() ||
+      busy() ||
+      pending() ||
+      referencesBusy() ||
+      !selection ||
+      !props.projectID ||
+      (target === "session" && !props.sessionID)
+    )
+      return
     try {
-      ledger.begin({requestID:generateUUID(),target:target === "project" ? {kind:"member",projectID:props.projectID} : {kind:"session",sessionID:props.sessionID!},expectedRevision:current.revision,change:{itemID:release.itemID,...(remove ? {} : {reference:{itemID:release.itemID,version:release.version,manifestHash:release.manifestHash}})}})
+      ledger.begin({
+        requestID: generateUUID(),
+        target:
+          target === "project"
+            ? { kind: "member", projectID: props.projectID }
+            : { kind: "session", sessionID: props.sessionID! },
+        expectedRevision: selection.revision,
+        change: {
+          itemID: release.itemID,
+          ...(remove
+            ? {}
+            : { reference: { itemID: release.itemID, version: release.version, manifestHash: release.manifestHash } }),
+        },
+      })
       setPending(ledger.pending())
       await resume()
-    } catch (error) { if (!signal.aborted) setError(error) }
+    } catch (error) {
+      if (current(version)) failed(error)
+    }
   }
   async function resume() {
-    if (busy()) return
+    if (busy() || blocked() || !current()) return
+    const version = generation
     setBusy(true)
     setError(undefined)
     try {
       const request = ledger.pending()
       if (!request) return
-      const summary = await ledger.execute(api,signal)
-      if (signal.aborted) return
+      const summary = await ledger.execute(api, signal)
+      if (!current(version)) return
       setPending(undefined)
-      setState(request.target.kind === "member" ? "applied" : "selected",reconcile(summary))
+      setState(request.target.kind === "member" ? "applied" : "selected", reconcile(summary))
       await selectionReferences([request.change.itemID])
       if (props.sessionID) await status()
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      if (current(version)) failed(error)
     } finally {
-      if (!signal.aborted) { setBusy(false); setPending(ledger.pending()) }
+      if (current(version)) {
+        setBusy(false)
+        setPending(ledger.pending())
+      }
     }
   }
   async function status() {
-    if (!props.sessionID || statusBusy()) return
+    if (!props.sessionID || statusBusy() || blocked() || !current()) return
+    const version = generation
     setStatusBusy(true)
     try {
       const result = await api.orgKnowledge.status({ sessionID: props.sessionID }, options)
-      if (!signal.aborted) setState("status", reconcile(result.data))
+      if (current(version)) setState("status", reconcile(result.data))
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      if (current(version)) failed(error)
     } finally {
-      if (!signal.aborted) setStatusBusy(false)
+      if (current(version)) setStatusBusy(false)
     }
   }
   onMount(() => {
-    try { setPending(ledger.pending()) } catch (error) { setError(error) }
+    try {
+      setPending(ledger.pending())
+    } catch (error) {
+      setError(error)
+    }
     void load()
     if (props.sessionID) {
       void status()
@@ -174,7 +265,7 @@ export function OrganizationKnowledge(props: {
             )}
           </p>
         </div>
-        <Show when={props.canManage}>
+        <Show when={props.canManage && !blocked()}>
           <Button
             size="large"
             variant="primary"
@@ -188,118 +279,142 @@ export function OrganizationKnowledge(props: {
         </Show>
       </div>
       <WorkspaceError error={error()} retry={() => void load()} />
-      <Show when={pending()}><div class="organization-workspace-error" role="status"><p>{_({id:"organization.knowledge.pendingUpdate",message:"A knowledge change is awaiting confirmation. Retry the same change before submitting another."})}</p><Button disabled={busy()} onClick={() => void resume()}>{_(common.retry)}</Button></div></Show>
-      <Show when={state.status}>
-        {(value) => (
-          <section class="organization-selection-status" aria-live="polite">
-            <p>{_({ ...messages.desiredSelection, values: { revision: value().desired.revision } })}</p>
-            <Show when={value().activated}>
-              {(active) => <p>{_({ ...messages.activeSelection, values: { revision: active().revision } })}</p>}
-            </Show>
-            <Show when={value().state !== "active"}>
-              <p>{_(value().state === "failed" ? messages.activationFailed : messages.activationPending)}</p>
-              <Show when={value().state === "failed" && value().activated}>
-                <p>{_(messages.previousActive)}</p>
-              </Show>
-              <Button onClick={() => void status()}>{_(messages.refreshStatus)}</Button>
-            </Show>
-          </section>
-        )}
-      </Show>
-      <Show when={publishing()}>
-        <PublicationEditor
-          purpose="knowledge"
-          scope={props.projectID ? { kind: "project", projectID: props.projectID } : { kind: "organization" }}
-          cancel={() => setPublishing(false)}
-          published={() => {
-            setPublishing(false)
-            void load()
-          }}
-        />
-      </Show>
-      <form
-        class="organization-search"
-        onSubmit={(event) => {
-          event.preventDefault()
-          setSelected(undefined)
-          setQuery(q())
-          void load()
-        }}
-      >
-        <TextField
-          label={_(messages.search)}
-          hideLabel
-          value={q()}
-          onChange={setQ}
-          maxLength={256}
-          placeholder={_(messages.search)}
-        />
-        <Button type="submit" disabled={loading()}>
-          {_(messages.search)}
-        </Button>
-      </form>
       <Show when={loading()}>
         <p role="status">{_(common.loading)}</p>
       </Show>
-      <Show when={loaded() && !state.items.length}>
-        <div class="organization-empty">
-          <h3>{_(messages.empty)}</h3>
-          <p>{_(messages.emptyHint)}</p>
-        </div>
-      </Show>
-      <ul class="organization-publication-list">
-        <For each={state.items}>
-          {(item) => (
-            <li>
-              <button
-                class="organization-publication-entry"
-                data-selected={selected() === item.itemID}
-                aria-expanded={selected() === item.itemID}
-                onClick={async () => {
-                  setPublishing(false)
-                  setSelected(selected() === item.itemID ? undefined : item.itemID)
-                  if (selected()) try { await selectionReferences([item.itemID]) } catch (error) { if (!signal.aborted) setError(error) }
-                }}
-              >
-                <span>
-                  <strong>{item.title}</strong>
-                  <span>{_(item.kind === "skill" ? messages.skill : messages.material)}</span>
-                </span>
-                <span>{_({ ...messages.version, values: { version: item.latestVersion } })}</span>
-              </button>
-              <Show when={selected() === item.itemID}>
-                <KnowledgeDetail
-                  item={item}
-                  canManage={props.canManage}
-                  canExecute={props.canExecute}
-                  selectionMode={props.selectionMode}
-                  runtimeOwnerID={props.runtimeOwnerID}
-                  projectID={props.projectID}
-                  sessionID={props.sessionID}
-                  busy={busy() || !!pending() || referencesBusy()}
-                  applied={state.appliedReferences.find((entry) => entry.itemID === item.itemID)?.version}
-                  selected={state.selectedReferences.find((entry) => entry.itemID === item.itemID)?.version}
-                  apply={apply}
-                  updated={() => {
-                    setSelected(undefined)
-                    void load()
-                  }}
-                />
+      <Show when={!blocked()}>
+        <Show when={pending()}>
+          <div class="organization-workspace-error" role="status">
+            <p>
+              {_({
+                id: "organization.knowledge.pendingUpdate",
+                message:
+                  "A knowledge change is awaiting confirmation. Retry the same change before submitting another.",
+              })}
+            </p>
+            <Button disabled={busy()} onClick={() => void resume()}>
+              {_(common.retry)}
+            </Button>
+          </div>
+        </Show>
+        <Show when={state.status}>
+          {(value) => (
+            <section class="organization-selection-status" aria-live="polite">
+              <p>{_({ ...messages.desiredSelection, values: { revision: value().desired.revision } })}</p>
+              <Show when={value().activated}>
+                {(active) => <p>{_({ ...messages.activeSelection, values: { revision: active().revision } })}</p>}
               </Show>
-            </li>
+              <Show when={value().state !== "active"}>
+                <p>{_(value().state === "failed" ? messages.activationFailed : messages.activationPending)}</p>
+                <Show when={value().state === "failed" && value().activated}>
+                  <p>{_(messages.previousActive)}</p>
+                </Show>
+                <Button onClick={() => void status()}>{_(messages.refreshStatus)}</Button>
+              </Show>
+            </section>
           )}
-        </For>
-      </ul>
-      <Show when={cursor()}>
-        <Button disabled={loading()} onClick={() => void load(true)}>
-          {_(common.more)}
-        </Button>
+        </Show>
+        <Show when={publishing()}>
+          <PublicationEditor
+            invalidated={failed}
+            purpose="knowledge"
+            scope={props.projectID ? { kind: "project", projectID: props.projectID } : { kind: "organization" }}
+            cancel={() => setPublishing(false)}
+            published={() => {
+              setPublishing(false)
+              void load()
+            }}
+          />
+        </Show>
+        <form
+          class="organization-search"
+          onSubmit={(event) => {
+            event.preventDefault()
+            setSelected(undefined)
+            setQuery(q())
+            void load()
+          }}
+        >
+          <TextField
+            label={_(messages.search)}
+            hideLabel
+            value={q()}
+            onChange={setQ}
+            maxLength={256}
+            placeholder={_(messages.search)}
+          />
+          <Button type="submit" disabled={loading()}>
+            {_(messages.search)}
+          </Button>
+        </form>
+        <Show when={loaded() && !state.items.length}>
+          <div class="organization-empty">
+            <h3>{_(messages.empty)}</h3>
+            <p>{_(messages.emptyHint)}</p>
+          </div>
+        </Show>
+        <ul class="organization-publication-list">
+          <For each={state.items}>
+            {(item) => (
+              <li>
+                <button
+                  class="organization-publication-entry"
+                  data-selected={selected() === item.itemID}
+                  aria-expanded={selected() === item.itemID}
+                  onClick={async () => {
+                    setPublishing(false)
+                    setSelected(selected() === item.itemID ? undefined : item.itemID)
+                    const version = generation
+                    if (selected())
+                      try {
+                        await selectionReferences([item.itemID])
+                      } catch (error) {
+                        if (current(version)) failed(error)
+                      }
+                  }}
+                >
+                  <span>
+                    <strong>{item.title}</strong>
+                    <span>{_(item.kind === "skill" ? messages.skill : messages.material)}</span>
+                  </span>
+                  <span>{_({ ...messages.version, values: { version: item.latestVersion } })}</span>
+                </button>
+                <Show when={selected() === item.itemID}>
+                  <KnowledgeDetail
+                    invalidated={failed}
+                    item={item}
+                    canManage={props.canManage}
+                    canExecute={props.canExecute}
+                    selectionMode={props.selectionMode}
+                    runtimeOwnerID={props.runtimeOwnerID}
+                    projectID={props.projectID}
+                    sessionID={props.sessionID}
+                    busy={busy() || !!pending() || referencesBusy()}
+                    applied={state.appliedReferences.find((entry) => entry.itemID === item.itemID)?.version}
+                    selected={state.selectedReferences.find((entry) => entry.itemID === item.itemID)?.version}
+                    apply={apply}
+                    updated={() => {
+                      setSelected(undefined)
+                      void load()
+                    }}
+                  />
+                </Show>
+              </li>
+            )}
+          </For>
+        </ul>
+        <Show when={cursor()}>
+          <Button disabled={loading()} onClick={() => void load(true)}>
+            {_(common.more)}
+          </Button>
+        </Show>
       </Show>
     </section>
   )
 }
 
 function KnowledgeDetail(props: {
+  invalidated: (error: unknown) => void
   item: OrgKnowledgeItem
   canManage?: boolean
   canExecute?: boolean
@@ -347,7 +462,10 @@ function KnowledgeDetail(props: {
       setCursor(result.data.cursor)
       if (!release()) setRelease(result.data.items[0])
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      if (!signal.aborted) {
+        if (organizationOwnerFailure(error)) props.invalidated(error)
+        else setError(error)
+      }
     } finally {
       if (!signal.aborted) setLoading(false)
     }
@@ -363,7 +481,10 @@ function KnowledgeDetail(props: {
           await api.orgKnowledge.withdraw({ itemID: props.item.itemID, expectedRevision: props.item.revision }, options)
           if (!signal.aborted) props.updated()
         } catch (error) {
-          if (!signal.aborted) setError(error)
+          if (!signal.aborted) {
+            if (organizationOwnerFailure(error)) props.invalidated(error)
+            else setError(error)
+          }
         }
       },
     })
@@ -437,7 +558,7 @@ function KnowledgeDetail(props: {
                 </Show>
               </div>
             </Show>
-            <KnowledgeFiles release={version} />
+            <KnowledgeFiles release={version} invalidated={props.invalidated} />
           </>
         )}
       </Show>
@@ -449,6 +570,7 @@ function KnowledgeDetail(props: {
       </Show>
       <Show when={publishing()}>
         <PublicationEditor
+          invalidated={props.invalidated}
           purpose="knowledge"
           scope={props.item.scope}
           existing={{
@@ -465,7 +587,7 @@ function KnowledgeDetail(props: {
   )
 }
 
-function KnowledgeFiles(props: { release: OrgKnowledgeRelease }) {
+function KnowledgeFiles(props: { release: OrgKnowledgeRelease; invalidated: (error: unknown) => void }) {
   const space = useSpace()
   const api = space.client()!
   const controller = new AbortController()
@@ -487,7 +609,10 @@ function KnowledgeFiles(props: { release: OrgKnowledgeRelease }) {
       setState("files", reconcile([...state.files, ...result.data.items]))
       setCursor(result.data.cursor)
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      if (!signal.aborted) {
+        if (organizationOwnerFailure(error)) props.invalidated(error)
+        else setError(error)
+      }
     } finally {
       if (!signal.aborted) setLoading(false)
     }
@@ -495,8 +620,9 @@ function KnowledgeFiles(props: { release: OrgKnowledgeRelease }) {
   onMount(() => void load())
   return (
     <>
-      <WorkspaceError error={error()} />
+      <WorkspaceError error={error()} retry={() => void load()} />
       <PublicationFiles
+        invalidated={props.invalidated}
         files={state.files}
         target={{ kind: "knowledge", itemID: props.release.itemID, version: props.release.version }}
         loading={loading()}

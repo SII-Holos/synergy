@@ -202,7 +202,7 @@ function Connect() {
           value={issuer()}
           onChange={setIssuer}
           type="url"
-          placeholder={_(messages.addressPlaceholder, { url: "https://team.example.com" })}
+          placeholder={_({ ...messages.addressPlaceholder, values: { url: "https://team.example.com" } })}
           required
           autocomplete="url"
         />

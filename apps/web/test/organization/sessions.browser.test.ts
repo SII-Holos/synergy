@@ -197,7 +197,11 @@ test("the project conversation route shows the private title and keeps send cont
                   ? {
                       sessionID: "session-a",
                       revision: 1,
-                      selection: { modelResourceID: "model-a", connectionResourceIDs: [] },
+                      selection: {
+                        modelResourceID: "model-a",
+                        connectionResourceIDs: [],
+                        infrastructure: { workspace: null, environment: null },
+                      },
                     }
                   : query?.operation === "timeline"
                     ? {
@@ -1089,7 +1093,11 @@ test("resource reconciliation updates the revision without overwriting an unsave
         body: JSON.stringify({
           sessionID: "session-a",
           revision: reads === 1 ? 4 : 5,
-          selection: { modelResourceID: "model-A", connectionResourceIDs: [] },
+          selection: {
+            modelResourceID: "model-A",
+            connectionResourceIDs: [],
+            infrastructure: { workspace: null, environment: null },
+          },
         }),
       },
     }
@@ -1292,7 +1300,11 @@ test("native task navigation uses the captured member reader while input, contro
       body = {
         sessionID: "session-a",
         revision: 1,
-        selection: { modelResourceID: "model-a", connectionResourceIDs: [] },
+        selection: {
+          modelResourceID: "model-a",
+          connectionResourceIDs: [],
+          infrastructure: { workspace: null, environment: null },
+        },
       }
     } else body = { items: [] }
     return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
@@ -1428,7 +1440,11 @@ test("a read-only project member opens synchronized child tasks without requesti
       body = {
         sessionID: "session-a",
         revision: 1,
-        selection: { modelResourceID: "model-a", connectionResourceIDs: [] },
+        selection: {
+          modelResourceID: "model-a",
+          connectionResourceIDs: [],
+          infrastructure: { workspace: null, environment: null },
+        },
       }
     else if (url.pathname.endsWith("/sync/tasks"))
       body = {

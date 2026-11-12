@@ -1,6 +1,6 @@
 # Web Application Rules
 
-These rules apply under `apps/web`. Root [AGENTS.md](../../AGENTS.md) and [PRODUCT.md](PRODUCT.md) still apply.
+Root [AGENTS.md](../../AGENTS.md) and [PRODUCT.md](PRODUCT.md) apply.
 
 Load `develop-frontend`; server contracts also require `change-server-api`, Channel surfaces `change-channel-runtime`, Browser controls `change-browser-runtime`, and plugin hosts/registries `change-plugin-runtime`.
 
@@ -70,4 +70,4 @@ bun run localization:check
 
 Use the existing app or an isolated second instance for interaction checks. Verify both themes, keyboard/focus, loading/error states, session switching/reconnect when relevant, and the Desktop path for native Browser or Electron behavior. Do not bypass hooks or claim unrun checks.
 
-Retain owner-bound descendants and lazy drafts/files; passwords stay volatile. Finite pages cannot confirm absence. Verify revision-bound logout across reload in organization suites.
+Retain owner-bound descendants and lazy drafts/files; keep passwords volatile. Finite pages cannot confirm absence. Retire owned confirmations on access loss. Verify revision-bound logout across reload.

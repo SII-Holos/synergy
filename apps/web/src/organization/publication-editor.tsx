@@ -7,6 +7,7 @@ import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import type { OrganizationPublicationProtocol as Publication } from "@ericsanchezok/synergy-organization-protocol"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useSpace } from "@/context/space"
+import { organizationOwnerFailure } from "./owner-error"
 import { WorkspaceError } from "./workspace-error"
 import { publicationMessages as messages } from "./publication-messages"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
@@ -19,6 +20,7 @@ export function PublicationEditor(props: {
   existing?: { id: string; revision: number; title: string; kind?: "material" | "skill" }
   cancel: () => void
   published: () => void
+  invalidated?: (error: unknown) => void
 }) {
   const space = useSpace()
   const { _, i18n } = useLingui()
@@ -90,7 +92,10 @@ export function PublicationEditor(props: {
       }
       if (!signal.aborted) props.published()
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      if (!signal.aborted) {
+        if (organizationOwnerFailure(error) && props.invalidated) props.invalidated(error)
+        else setError(error)
+      }
     } finally {
       if (!signal.aborted) setBusy(false)
     }

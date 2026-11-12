@@ -1,10 +1,11 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { batch, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import type { OrgArtifactVersion, OrgPublicationFile } from "@ericsanchezok/synergy-sdk/organization"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { useSpace } from "@/context/space"
+import { organizationOwnerFailure } from "./owner-error"
 import { WorkspaceError } from "./workspace-error"
 import { PublicationEditor } from "./publication-editor"
 import { PublicationFiles } from "./publication-files"
@@ -17,7 +18,10 @@ export function OrganizationArtifacts(props: { projectID: string; sessionID?: st
   const space = useSpace()
   const api = space.client()!
   const view = space.current()!
-  const options = { throwOnError: true, signal: view.signal } as const
+  const controller = new AbortController()
+  const signal = AbortSignal.any([view.signal, controller.signal])
+  onCleanup(() => controller.abort())
+  const options = { throwOnError: true, signal } as const
   const [state, setState] = createStore({ items: [] as OrgArtifactVersion[] })
   const [cursor, setCursor] = createSignal<string>()
   const [loading, setLoading] = createSignal(false)
@@ -25,8 +29,29 @@ export function OrganizationArtifacts(props: { projectID: string; sessionID?: st
   const [error, setError] = createSignal<unknown>()
   const [selected, setSelected] = createSignal<string>()
   const [publishing, setPublishing] = createSignal(false)
+  const [blocked, setBlocked] = createSignal(false)
+  let generation = 0
+  const current = (version = generation) => !signal.aborted && version === generation
+  function failed(error: unknown) {
+    const failure = organizationOwnerFailure(error)
+    batch(() => {
+      if (failure) {
+        generation++
+        setBlocked(true)
+        setState("items", reconcile([]))
+        setCursor(undefined)
+        setSelected(undefined)
+        setPublishing(false)
+        setLoaded(false)
+        setLoading(false)
+      }
+      setError(error)
+    })
+    if (failure === "authentication") space.authorizationRequired(view)
+  }
   async function load(more = false) {
-    if (loading()) return
+    if (loading() || !current()) return
+    const version = generation
     setLoading(true)
     setError(undefined)
     try {
@@ -34,14 +59,15 @@ export function OrganizationArtifacts(props: { projectID: string; sessionID?: st
         { projectID: props.projectID, limit: 50, cursor: more ? cursor() : undefined },
         options,
       )
-      if (view.signal.aborted) return
+      if (!current(version)) return
+      setBlocked(false)
       setState("items", reconcile(more ? [...state.items, ...result.data.items] : result.data.items))
       setCursor(result.data.cursor)
       setLoaded(true)
     } catch (error) {
-      if (!view.signal.aborted) setError(error)
+      if (current(version)) failed(error)
     } finally {
-      if (!view.signal.aborted) setLoading(false)
+      if (current(version)) setLoading(false)
     }
   }
   function published() {
@@ -57,71 +83,76 @@ export function OrganizationArtifacts(props: { projectID: string; sessionID?: st
           <h2>{_(messages.artifacts)}</h2>
           <p>{_(messages.artifactHint)}</p>
         </div>
-        <Show when={props.sessionID && props.canPublish}>
+        <Show when={props.sessionID && props.canPublish && !blocked()}>
           <Button size="large" variant="primary" onClick={() => setPublishing(true)}>
             {_(messages.publish)}
           </Button>
         </Show>
       </div>
       <WorkspaceError error={error()} retry={() => void load()} />
-      <Show when={publishing()}>
-        <PublicationEditor
-          purpose="artifact"
-          scope={{ kind: "project", projectID: props.projectID }}
-          sourceSessionID={props.sessionID}
-          cancel={() => setPublishing(false)}
-          published={published}
-        />
-      </Show>
       <Show when={loading()}>
         <p role="status">{_(common.loading)}</p>
       </Show>
-      <Show when={loaded() && !state.items.length}>
-        <div class="organization-empty">
-          <h3>{_(messages.empty)}</h3>
-          <p>{_(messages.artifactHint)}</p>
-        </div>
-      </Show>
-      <ul class="organization-publication-list">
-        <For each={state.items}>
-          {(item) => (
-            <li>
-              <button
-                class="organization-publication-entry"
-                data-selected={selected() === item.artifactID}
-                aria-expanded={selected() === item.artifactID}
-                onClick={() => setSelected(selected() === item.artifactID ? undefined : item.artifactID)}
-              >
-                <span>
-                  <strong>{item.title}</strong>
+      <Show when={!blocked()}>
+        <Show when={publishing()}>
+          <PublicationEditor
+            invalidated={failed}
+            purpose="artifact"
+            scope={{ kind: "project", projectID: props.projectID }}
+            sourceSessionID={props.sessionID}
+            cancel={() => setPublishing(false)}
+            published={published}
+          />
+        </Show>
+        <Show when={loaded() && !state.items.length}>
+          <div class="organization-empty">
+            <h3>{_(messages.empty)}</h3>
+            <p>{_(messages.artifactHint)}</p>
+          </div>
+        </Show>
+        <ul class="organization-publication-list">
+          <For each={state.items}>
+            {(item) => (
+              <li>
+                <button
+                  class="organization-publication-entry"
+                  data-selected={selected() === item.artifactID}
+                  aria-expanded={selected() === item.artifactID}
+                  onClick={() => setSelected(selected() === item.artifactID ? undefined : item.artifactID)}
+                >
                   <span>
-                    {new Intl.DateTimeFormat(i18n().locale, { dateStyle: "medium" }).format(item.publishedAt)}
+                    <strong>{item.title}</strong>
+                    <span>
+                      {new Intl.DateTimeFormat(i18n().locale, { dateStyle: "medium" }).format(item.publishedAt)}
+                    </span>
                   </span>
-                </span>
-                <span>{_({ ...messages.version, values: { version: item.version } })}</span>
-              </button>
-              <Show when={selected() === item.artifactID}>
-                <ArtifactDetail
-                  item={item}
-                  sessionID={props.sessionID}
-                  canPublish={props.canPublish}
-                  updated={published}
-                />
-              </Show>
-            </li>
-          )}
-        </For>
-      </ul>
-      <Show when={cursor()}>
-        <Button disabled={loading()} onClick={() => void load(true)}>
-          {_(common.more)}
-        </Button>
+                  <span>{_({ ...messages.version, values: { version: item.version } })}</span>
+                </button>
+                <Show when={selected() === item.artifactID}>
+                  <ArtifactDetail
+                    invalidated={failed}
+                    item={item}
+                    sessionID={props.sessionID}
+                    canPublish={props.canPublish}
+                    updated={published}
+                  />
+                </Show>
+              </li>
+            )}
+          </For>
+        </ul>
+        <Show when={cursor()}>
+          <Button disabled={loading()} onClick={() => void load(true)}>
+            {_(common.more)}
+          </Button>
+        </Show>
       </Show>
     </section>
   )
 }
 
 function ArtifactDetail(props: {
+  invalidated: (error: unknown) => void
   item: OrgArtifactVersion
   sessionID?: string
   canPublish?: boolean
@@ -151,7 +182,10 @@ function ArtifactDetail(props: {
       setCursor(result.data.cursor)
       if (!release()) setRelease(result.data.items[0])
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      if (!signal.aborted) {
+        if (organizationOwnerFailure(error)) props.invalidated(error)
+        else setError(error)
+      }
     } finally {
       if (!signal.aborted) setLoading(false)
     }
@@ -159,7 +193,7 @@ function ArtifactDetail(props: {
   onMount(() => void load())
   return (
     <div class="organization-publication-detail">
-      <WorkspaceError error={error()} />
+      <WorkspaceError error={error()} retry={() => void load()} />
       <div class="organization-actions">
         <h3>{_(messages.versions)}</h3>
         <For each={state.versions}>
@@ -195,7 +229,7 @@ function ArtifactDetail(props: {
                 {_(messages.source)}
               </Button>
             </Show>
-            <ArtifactFiles release={version} />
+            <ArtifactFiles release={version} invalidated={props.invalidated} />
           </>
         )}
       </Show>
@@ -204,6 +238,7 @@ function ArtifactDetail(props: {
       </Show>
       <Show when={publishing()}>
         <PublicationEditor
+          invalidated={props.invalidated}
           purpose="artifact"
           scope={{ kind: "project", projectID: props.item.projectID }}
           sourceSessionID={props.sessionID}
@@ -216,7 +251,7 @@ function ArtifactDetail(props: {
   )
 }
 
-function ArtifactFiles(props: { release: OrgArtifactVersion }) {
+function ArtifactFiles(props: { release: OrgArtifactVersion; invalidated: (error: unknown) => void }) {
   const { _ } = useLingui()
   const space = useSpace()
   const api = space.client()!
@@ -248,7 +283,10 @@ function ArtifactFiles(props: { release: OrgArtifactVersion }) {
         }),
       )
     } catch (error) {
-      if (!signal.aborted) setError(error)
+      if (!signal.aborted) {
+        if (organizationOwnerFailure(error)) props.invalidated(error)
+        else setError(error)
+      }
     } finally {
       if (!signal.aborted) setLoading(false)
     }
@@ -256,11 +294,12 @@ function ArtifactFiles(props: { release: OrgArtifactVersion }) {
   onMount(() => void load())
   return (
     <>
-      <WorkspaceError error={error()} />
+      <WorkspaceError error={error()} retry={() => void load()} />
       <Show when={reference()}>
         <TextField label={_(messages.reference)} value={reference()} copyable readOnly />
       </Show>
       <PublicationFiles
+        invalidated={props.invalidated}
         files={state.files}
         target={{ kind: "artifact", artifactID: props.release.artifactID, version: props.release.version }}
         loading={loading()}

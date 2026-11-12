@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show } from "solid-js"
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -11,17 +11,21 @@ import type {
 } from "@ericsanchezok/synergy-sdk/organization"
 import { useSpace } from "@/context/space"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { organizationOwnerFailure } from "./owner-error"
 import { WorkspaceError } from "./workspace-error"
 import { organizationResourceMessages as messages } from "./resource-messages"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
 
-export function ResourceAccess(props: { resource: OrgResourceAdminView }) {
+export function ResourceAccess(props: { resource: OrgResourceAdminView; invalidated: (error: unknown) => void }) {
   const space = useSpace()
   const { _ } = useLingui()
   const confirm = useConfirm()
   const api = space.client()!
   const view = space.current()!
-  const options = { throwOnError: true, signal: view.signal } as const
+  const controller = new AbortController()
+  const signal = AbortSignal.any([view.signal, controller.signal])
+  onCleanup(() => controller.abort())
+  const options = { throwOnError: true, signal } as const
   const [kind, setKind] = createSignal<"account" | "project">("account")
   const [state, setState] = createStore({
     accounts: [] as OrgAccount[],
@@ -33,7 +37,11 @@ export function ResourceAccess(props: { resource: OrgResourceAdminView }) {
   const [error, setError] = createSignal<unknown>()
   const [cursor, setCursor] = createSignal<string>()
   const [subjectCursor, setSubjectCursor] = createSignal<string>()
-  const current = () => !view.signal.aborted
+  const current = () => !signal.aborted
+  function failed(error: unknown) {
+    if (organizationOwnerFailure(error)) props.invalidated(error)
+    else setError(error)
+  }
   async function load(selected = kind(), more = false) {
     setLoading(true)
     setError(undefined)
@@ -84,7 +92,7 @@ export function ResourceAccess(props: { resource: OrgResourceAdminView }) {
           ]),
         )
     } catch (error) {
-      if (current() && selected === kind()) setError(error)
+      if (current() && selected === kind()) failed(error)
     } finally {
       if (current() && selected === kind()) setLoading(false)
     }
@@ -106,7 +114,7 @@ export function ResourceAccess(props: { resource: OrgResourceAdminView }) {
       if (current())
         setState("grants", reconcile([...state.grants.filter((entry) => entry.subject.id !== subjectID), result.data]))
     } catch (error) {
-      if (current()) setError(error)
+      if (current()) failed(error)
     } finally {
       if (current()) setBusy(false)
     }
