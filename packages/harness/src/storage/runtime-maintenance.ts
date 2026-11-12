@@ -30,6 +30,14 @@ const mutation = RuntimeContext.createAsyncContext<{
   runtime: RuntimeContext.Instance
   store: Storage.Handle["store"]
 }>()
+const restorationWrites = RuntimeContext.createAsyncContext<{
+  runtime: RuntimeContext.Instance
+  store: Storage.Handle["store"]
+  transaction: StoreTransaction
+  permit: HomeRestoration.InstallPermit
+  request: HomeRestoration.Request
+  open: boolean
+}>()
 function mutate<T>(body: (tx: StoreTransaction) => Promise<T>, options?: TransactionOptions) {
   return mutation.run({ runtime: RuntimeContext.current(), store: Storage.current().store }, () =>
     Storage.transaction(body, options),
@@ -184,6 +192,21 @@ export namespace RuntimeMaintenance {
         )
         return
       }
+      const recovery = restorationWrites.getStore()
+      if (info.phase === "recovery-held" && recovery) {
+        if (
+          !recovery.open ||
+          recovery.runtime !== RuntimeContext.current() ||
+          recovery.store !== Storage.current().store ||
+          recovery.transaction !== tx
+        )
+          throw new Blocked({ message: "Recovery history writes require their original native transaction callback" })
+        HomeRestoration.assertCurrent(recovery.permit)
+        HomeRestoration.assertInstalledOwner(recovery.permit)
+        HomeRestoration.assertRequest(recovery.permit, recovery.request)
+        recovery.store.assertWriteTransaction(tx)
+        return
+      }
       throw new Blocked({
         maintenanceID: info.maintenanceID,
         message: "Maintenance freezes ordinary canonical mutations",
@@ -250,6 +273,79 @@ export namespace RuntimeMaintenance {
     z.uuid().parse(installationID)
     return Storage.snapshot((tx) => read(tx, Restoration, restorationKey(installationID)))
   }
+  async function requireRestoration(tx: StoreTransaction, target: HomeRestoration.Info) {
+    const retained = await read(tx, Restoration, restorationKey(target.installationID))
+    const held = await current(tx)
+    if (
+      !retained ||
+      retained.installationID !== target.installationID ||
+      retained.incarnation !== target.incarnation ||
+      retained.restoreID !== target.restoreID ||
+      retained.requestHash !== target.requestHash ||
+      retained.sourceHash !== target.sourceHash ||
+      retained.source.purpose !== "organization-backup" ||
+      retained.source.phase !== "frozen" ||
+      held?.maintenanceID !== target.installationID ||
+      held.purpose !== "organization-restore" ||
+      held.requestHash !== target.requestHash ||
+      held?.phase !== "recovery-held" ||
+      digest(held) !== digest(retained.target)
+    )
+      throw new Blocked({ message: "Recovery history requires its original retained native installation" })
+    const source = await read(tx, Info, operationKey(retained.source.maintenanceID))
+    if (digest(source) !== digest(retained.source))
+      throw new Blocked({ message: "Archived maintenance history changed" })
+    return retained
+  }
+  export async function restorationTransaction<T>(
+    input: { permit: HomeRestoration.InstallPermit; request: HomeRestoration.Request },
+    body: (tx: StoreTransaction) => Promise<T>,
+    options?: Omit<TransactionOptions, "operationID" | "requestHash">,
+  ): Promise<T> {
+    if (Storage.inTransaction())
+      throw new Blocked({ message: "Recovery history must open its own native write transaction" })
+    if (options && ("operationID" in options || "requestHash" in options))
+      throw new Blocked({ message: "Recovery history idempotency belongs to its domain publication receipt" })
+    const permit = input.permit
+    const request = HomeRestoration.Request.parse(structuredClone(input.request))
+    const selected = options && { ...options }
+    const externalGuard = selected?.commitGuard
+    const runtime = RuntimeContext.current()
+    const store = Storage.current().store
+    const assertNative = () => {
+      selected?.signal?.throwIfAborted()
+      HomeRestoration.assertCurrent(permit)
+      HomeRestoration.assertRequest(permit, request)
+      if (!state().installed || RuntimeContext.current() !== runtime || Storage.current().store !== store)
+        throw new Blocked({ message: "Recovery history requires its original protected Runtime and Store" })
+    }
+    assertNative()
+    await HomeRestoration.verifyInstalledOwner(permit)
+    assertNative()
+    const target = HomeRestoration.describe(permit)
+    return Storage.transaction(
+      async (tx) => {
+        assertNative()
+        HomeRestoration.assertInstalledOwner(permit)
+        await requireRestoration(tx, target)
+        assertNative()
+        const frame = { runtime, store, transaction: tx, permit, request, open: true }
+        try {
+          return await restorationWrites.run(frame, () => body(tx))
+        } finally {
+          frame.open = false
+        }
+      },
+      {
+        ...selected,
+        commitGuard() {
+          externalGuard?.()
+          assertNative()
+          HomeRestoration.assertInstalledOwner(permit)
+        },
+      },
+    )
+  }
   export async function adoptRestoration(
     tx: StoreTransaction,
     input: {
@@ -290,19 +386,8 @@ export namespace RuntimeMaintenance {
     const retained = await read(tx, Restoration, restorationKey(target.installationID))
     assert()
     if (retained) {
-      if (
-        retained.installationID !== target.installationID ||
-        retained.incarnation !== target.incarnation ||
-        retained.restoreID !== target.restoreID ||
-        retained.requestHash !== target.requestHash ||
-        retained.sourceHash !== target.sourceHash ||
-        digest(previous) !== digest(retained.target)
-      )
-        throw new Blocked({ message: "Native maintenance recovery reference changed" })
-      const source = await read(tx, Info, operationKey(retained.source.maintenanceID))
+      await requireRestoration(tx, target)
       assert()
-      if (digest(source) !== digest(retained.source))
-        throw new Blocked({ message: "Archived maintenance history changed" })
       return retained.target
     }
     if (!previous || previous.purpose !== "organization-backup" || previous.phase !== "frozen")

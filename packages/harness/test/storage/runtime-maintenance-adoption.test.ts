@@ -178,6 +178,135 @@ test("raw namespace restoration atomically retains source maintenance history an
   }
 }, 15_000)
 
+test("recovery history transactions retain native ownership and the execution hold through their final commit", async () => {
+  const source = await sourceFixture()
+  const target = await targetFixture()
+  const request = HomeRestoration.Request.parse({
+    restoreID: "recovery-history",
+    owner: "organization-runtime",
+    sourceHash: manifestHash(source.manifest),
+    payload: {},
+  })
+  let expired: HomeRestoration.InstallPermit | undefined
+  let pending: Promise<unknown> | undefined
+  const entered = Promise.withResolvers<void>()
+  const finish = Promise.withResolvers<void>()
+  const write = StoreTransaction.prototype.write
+  const barrier = spyOn(StoreTransaction.prototype, "write").mockImplementation(async function (
+    this: StoreTransaction,
+    key,
+    value,
+  ) {
+    const result = await write.call(this, key, value)
+    if (key[0] === "canonical" && key[1] === "delayed-policy") {
+      entered.resolve()
+      await finish.promise
+    }
+    return result
+  })
+  try {
+    await target.run(async () => {
+      const selected = await HomeRestoration.begin(request)
+      await HomeRestoration.withTarget(selected, async (permit) => {
+        expired = permit
+        await HomeRestoration.installOwner(permit, {
+          identity: "a".repeat(64),
+          readerContract: "native-recovery-fixture-v1",
+        })
+        await expect(
+          RuntimeMaintenance.restorationTransaction({ permit, request }, async () => {
+            throw new Error("An unadopted target must not invoke its writer")
+          }),
+        ).rejects.toThrow("retained native installation")
+        await StorageCheckpoint.restoreArchive({
+          directory: source.directory,
+          expected: source.manifest,
+          keys: source.keys,
+          restoreID: request.restoreID,
+          async finalize(tx, archive) {
+            await RuntimeMaintenance.adoptRestoration(tx, { permit, request, archive })
+          },
+        })
+        const held = await RuntimeMaintenance.status()
+        await expect(Storage.write(["canonical", "policy"], { unsafe: true })).rejects.toThrow()
+        await expect(
+          RuntimeMaintenance.restorationTransaction({ permit: { ...permit }, request }, async () => {}),
+        ).rejects.toThrow()
+        await expect(
+          Storage.transaction(() => RuntimeMaintenance.restorationTransaction({ permit, request }, async () => {})),
+        ).rejects.toThrow("transaction")
+        await RuntimeMaintenance.restorationTransaction({ permit, request }, async (tx) => {
+          target.store.assertWriteTransaction(tx)
+          await Storage.write(["canonical", "policy"], { revision: 1 })
+          await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+          await expect(Storage.write(["runtime_maintenance", "current"], { maintenanceID: "forged" })).rejects.toThrow()
+        })
+        expect(await Storage.read(["canonical", "policy"])).toEqual({ revision: 1 })
+        expect(await RuntimeMaintenance.status()).toEqual(held)
+        const failure = new Error("native recovery history final commit refused")
+        await expect(
+          RuntimeMaintenance.restorationTransaction(
+            { permit, request },
+            async () => {
+              await Storage.write(["canonical", "policy"], { revision: 2 })
+              await Storage.write(["canonical", "publication-receipt"], { published: true })
+            },
+            {
+              commitGuard() {
+                throw failure
+              },
+            },
+          ),
+        ).rejects.toBe(failure)
+        expect(await Storage.read(["canonical", "policy"])).toEqual({ revision: 1 })
+        expect(await Storage.readMany([["canonical", "publication-receipt"]])).toEqual([undefined])
+        expect(await RuntimeMaintenance.status()).toEqual(held)
+        expect(await RuntimeMaintenance.operation(source.source.maintenanceID)).toEqual(source.source)
+        const controller = new AbortController()
+        const cancelled = new Error("recovery callback invalidated at final commit")
+        await expect(
+          RuntimeMaintenance.restorationTransaction(
+            { permit, request },
+            async () => {
+              await Storage.write(["canonical", "policy"], { revision: 3 })
+            },
+            {
+              signal: controller.signal,
+              commitGuard() {
+                controller.abort(cancelled)
+              },
+            },
+          ),
+        ).rejects.toBe(cancelled)
+        expect(await Storage.read(["canonical", "policy"])).toEqual({ revision: 1 })
+        await expect(Storage.write(["canonical", "policy"], { revision: 3 })).rejects.toThrow()
+        pending = RuntimeMaintenance.restorationTransaction({ permit, request }, async () => {
+          await Storage.write(["canonical", "delayed-policy"], { revision: 4 })
+        }).then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+        await entered.promise
+      })
+      finish.resolve()
+      const outcome = await pending
+      expect(outcome).toBeInstanceOf(Error)
+      expect(String(outcome)).toContain("callback")
+      expect(await Storage.readMany([["canonical", "delayed-policy"]])).toEqual([undefined])
+      await expect(
+        RuntimeMaintenance.restorationTransaction({ permit: expired!, request }, async () => {}),
+      ).rejects.toThrow("callback")
+      await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+    })
+  } finally {
+    finish.resolve()
+    await pending
+    barrier.mockRestore()
+    await Promise.all([source.close(), target.close()])
+    await fs.rm(target.home, { recursive: true, force: true })
+  }
+}, 15_000)
+
 test("native import evidence rejects fake, snapshot, foreign and expired transaction consumers", async () => {
   const source = await sourceFixture()
   const target = await targetFixture()
