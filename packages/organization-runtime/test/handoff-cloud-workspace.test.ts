@@ -289,6 +289,64 @@ for (const scenario of [
     )
     const original = await source.runtime.run(() => Session.get(sessionID))
     expect(original.workspaceID).toBe(native.workspaceID)
+    if (scenario === "complete") {
+      const query = { sessionID, requestID: "generated-inspection", targetRuntimeID: target.registration.runtimeID }
+      const generated = await f.client.orgHandoff.options(query, { headers: f.headers })
+      expect(generated.response.status, JSON.stringify(generated.error)).toBe(200)
+      const held = Promise.withResolvers<void>()
+      let deliver: (() => unknown) | undefined
+      f.interceptFrames((socket, raw) => {
+        const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
+        if (
+          frame.type !== "receipt" ||
+          frame.reply.kind !== "handoff-inspection" ||
+          frame.reply.result.role !== "target"
+        )
+          return false
+        deliver = () => f.service.websocket.message(socket, typeof raw === "string" ? raw : Buffer.from(raw))
+        held.resolve()
+        return true
+      })
+      const stale = f.client.orgHandoff.options(
+        { sessionID, requestID: "inspect-before-share", targetRuntimeID: target.registration.runtimeID },
+        { headers: f.headers },
+      )
+      await held.promise
+      await f.client.orgSessions.share({ sessionID, orgShareChange: { expectedShareGeneration: 0 } }, options)
+      f.interceptFrames(undefined)
+      deliver!()
+      const invalidated = await stale
+      expect(invalidated.response.status).toBe(409)
+      expect(invalidated.error).toMatchObject({ code: "STALE_BINDING" })
+      const inspect = await f.client.orgHandoff.options(
+        { sessionID, requestID: "inspect-before-prepare", targetRuntimeID: target.registration.runtimeID },
+        { headers: f.headers },
+      )
+      expect(inspect.response.status, JSON.stringify(inspect.error)).toBe(200)
+      const selection = Handoff.Options.parse(inspect.data)
+      expect(selection).toMatchObject({
+        sessionID,
+        projectID: project.projectID,
+        bindingEpoch: 1,
+        controlRevision: 0,
+        sourceRuntimeID: source.registration.runtimeID,
+        targetRuntimeID: target.registration.runtimeID,
+        source: { kind: "native", reference: { workspaceID: native.workspaceID, generation: native.generation } },
+        native: null,
+      })
+      expect(JSON.stringify(selection)).not.toContain(directory)
+      expect((await f.client.orgHandoff.list({ sessionID }, options)).data.items).toEqual([])
+      expect((await source.runtime.run(() => Session.get(sessionID))).paused).toEqual(original.paused)
+      expect(allocations).toBe(0)
+    }
+    if (scenario === "recipient") {
+      const response = await f.client.orgHandoff.options(
+        { sessionID, requestID: "recipient-inspection", targetRuntimeID: target.registration.runtimeID },
+        { headers: target.headers },
+      )
+      expect(response.response.status).toBe(403)
+      expect(response.error).toMatchObject({ code: "PERMISSION_DENIED" })
+    }
     const handoffID = "native-to-cloud"
     const mapping = {
       kind: "organization-object" as const,
@@ -505,6 +563,31 @@ for (const scenario of [
     expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("completed")
     expect(await Bun.file(path.join(directory, "private.bin")).bytes()).toEqual(bytes)
     expect(allocations).toBe(0)
+    if (scenario === "recipient") {
+      const response = await f.client.orgHandoff.options(
+        { sessionID, requestID: "shared-driver-inspection", targetRuntimeID: source.registration.runtimeID },
+        { headers: target.headers },
+      )
+      expect(response.response.status, JSON.stringify(response.error)).toBe(200)
+      const selected = Handoff.Options.parse(response.data)
+      expect(selected).toMatchObject({
+        sourceRuntimeID: target.registration.runtimeID,
+        source: { kind: "organization" },
+        native: {
+          reference: { workspaceID: native.workspaceID, generation: native.generation },
+          label: "Project directory",
+        },
+      })
+      expect(JSON.stringify(selected)).not.toContain(directory)
+      expect(
+        (
+          await f.client.orgHandoff.options(
+            { sessionID, requestID: "old-driver-inspection", targetRuntimeID: source.registration.runtimeID },
+            { headers: source.headers },
+          )
+        ).response.status,
+      ).toBe(403)
+    }
     if (scenario === "return-cloud") {
       const changedBytes = new Uint8Array([255, 0, 99, 100, 10, 128])
       const head = (await f.client.orgCloudWorkspaces.get({ workspaceID: cloud.workspaceID }, options)).data
@@ -530,6 +613,39 @@ for (const scenario of [
         const workspace = await WorkspaceCatalog.get(current.workspaceID!, project.projectID)
         return { workspaceID: workspace.id, generation: workspace.binding.generation }
       })
+      const response = await f.client.orgHandoff.options(
+        { sessionID, requestID: "return-inspection", targetRuntimeID: source.registration.runtimeID },
+        { headers: target.headers },
+      )
+      expect(response.response.status, JSON.stringify(response.error)).toBe(200)
+      const inspected = Handoff.Options.parse(response.data)
+      const nativeCatalog = await source.runtime.run(() => WorkspaceCatalog.get(native.workspaceID, project.projectID))
+      expect(inspected).toMatchObject({
+        controlRevision: 3,
+        bindingEpoch: 2,
+        source: {
+          reference: remoteSource,
+          kind: "organization",
+          resource: {
+            resourceID: resource.resourceID,
+            workspaceID: cloud.workspaceID,
+            generation: cloud.generation,
+            path: "received",
+          },
+        },
+        native: {
+          reference: {
+            workspaceID: native.workspaceID,
+            generation: native.generation,
+            revision: nativeCatalog.revision,
+          },
+          projectRevision: (
+            await source.client.orgLocalProject.get({ projectID: project.projectID }, { throwOnError: true })
+          ).data.revision,
+        },
+        choices: [{ kind: "organization-live", requiresDifference: false }],
+      })
+      expect(JSON.stringify(inspected)).not.toContain(directory)
       const returning = await f.client.orgHandoff.prepare(
         {
           sessionID,

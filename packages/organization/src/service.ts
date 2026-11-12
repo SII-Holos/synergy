@@ -273,6 +273,23 @@ async function openOrganizationNamespace(
       const maintenance = Object.freeze({
         run: runMaintenance,
         retention: Object.freeze({
+          uploads: Object.freeze({
+            async status(input: OrganizationRetention.Uploads.TargetInput) {
+              if (mode !== "serve") throw new Error("Retention requires an ordinary organization service")
+              const original = structuredClone(input)
+              return runMaintenance(() => OrganizationRetention.Uploads.status(original))
+            },
+            async mark(input: OrganizationRetention.Uploads.MarkInput) {
+              if (mode !== "serve") throw new Error("Retention requires an ordinary organization service")
+              const original = structuredClone(input)
+              return runMaintenance(() => OrganizationRetention.Uploads.mark(original))
+            },
+            async collect(input: OrganizationRetention.Uploads.TargetInput) {
+              if (mode !== "serve") throw new Error("Retention requires an ordinary organization service")
+              const original = structuredClone(input)
+              return runMaintenance(() => OrganizationRetention.Uploads.collect(original))
+            },
+          }),
           async status(input: OrganizationRetention.TargetInput) {
             if (mode !== "serve") throw new Error("Retention requires an ordinary organization service")
             const original = structuredClone(input)

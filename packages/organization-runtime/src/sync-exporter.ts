@@ -138,7 +138,8 @@ export function startMemberSyncExporter(input: {
   const drain = async () => {
     await Promise.allSettled([startup, ...tails.values(), ...(running ? [running] : [])])
   }
-  exporters().add(drain)
+  const registeredExporters = exporters()
+  registeredExporters.add(drain)
 
   function queue(sessionID: string, work: () => Promise<void>) {
     if (closed || signal.aborted) return
@@ -986,7 +987,7 @@ export function startMemberSyncExporter(input: {
       partWorkers.clear()
       tails.clear()
       sessions.clear()
-      exporters().delete(drain)
+      registeredExporters.delete(drain)
       const errors = settled.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
       if (errors.length) throw new AggregateError(errors, "Shared transcript exporter cleanup failed")
     })()

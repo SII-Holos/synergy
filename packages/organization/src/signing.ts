@@ -122,6 +122,16 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
   const identity = Object.freeze(Command.SigningIdentity.parse({ ...publicFields, schemaVersion: 1 }))
   return {
     identity,
+    async signHandoffInspection(value: Handoff.InspectionPlan): Promise<Handoff.SignedInspectionPlan> {
+      const plan = Handoff.InspectionPlan.parse(value)
+      if (
+        plan.orgID !== identity.orgID ||
+        plan.deploymentIncarnation !== identity.deploymentIncarnation ||
+        plan.keyID !== identity.keyID
+      )
+        fail("PROTOCOL_MISMATCH", "Handoff inspection belongs to another signing identity")
+      return { plan, signature: await Handoff.signInspection(plan, privateKey) }
+    },
     async signHandoffMachine(value: Handoff.MachinePlan): Promise<Handoff.SignedMachinePlan> {
       const plan = Handoff.MachinePlan.parse(value)
       if (

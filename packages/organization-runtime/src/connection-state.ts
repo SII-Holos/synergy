@@ -18,6 +18,16 @@ const Checkpoint = z.strictObject({
   connectionEpoch: OrganizationProtocol.Revision,
 })
 
+export function connectionRecord(registration: OrganizationRuntimeProtocol.Registration, connectionEpoch: number) {
+  return Checkpoint.parse({
+    schemaVersion: 1,
+    orgID: registration.orgID,
+    deploymentIncarnation: registration.deploymentIncarnation,
+    runtimeID: registration.runtimeID,
+    connectionEpoch,
+  })
+}
+
 export function verifyConnectionRecord(bytes: Uint8Array, registration: OrganizationRuntimeProtocol.Registration) {
   const current = parseRecord(bytes, Checkpoint, "connection records")
   assertIdentity(current, registration)
@@ -59,13 +69,7 @@ export function connectionState(member: RuntimeHome, registration: OrganizationR
               retryable: false,
               outcome: "not_dispatched",
             })
-          await writeRecord(filename, {
-            schemaVersion: 1,
-            orgID: registration.orgID,
-            deploymentIncarnation: registration.deploymentIncarnation,
-            runtimeID: registration.runtimeID,
-            connectionEpoch: epoch,
-          })
+          await writeRecord(filename, connectionRecord(registration, epoch))
         },
       )
     },

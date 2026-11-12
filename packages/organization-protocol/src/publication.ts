@@ -60,6 +60,18 @@ export namespace OrganizationPublicationProtocol {
       "Artifact uploads require their source Session and project",
     )
   export type Create = z.infer<typeof Create>
+  export const Abandon = z.strictObject({ requestID: Identity.ID })
+  export const Abandonment = z
+    .strictObject({
+      uploadID: Identity.ID,
+      requestID: Identity.ID,
+      authorID: Identity.ID,
+      state: z.literal("abandoned"),
+      from: z.enum(["open", "sealing"]),
+      abandonedAt: z.number().int().nonnegative().safe(),
+    })
+    .meta({ ref: "OrgPublicationAbandonment" })
+  export type Abandonment = z.infer<typeof Abandonment>
   export const Upload = z
     .strictObject({
       uploadID: Identity.ID,
@@ -68,11 +80,12 @@ export namespace OrganizationPublicationProtocol {
       scope: Scope,
       sourceSessionID: Identity.ID.optional(),
       authorID: Identity.ID,
-      state: z.enum(["open", "sealing", "sealed"]),
+      state: z.enum(["open", "sealing", "sealed", "abandoned"]),
       fileCount: z.number().int().nonnegative().safe(),
       totalBytes: z.number().int().nonnegative().safe(),
       manifestHash: Protocol.Digest.optional(),
       createdAt: z.number().int().nonnegative(),
+      abandonment: Abandonment.optional(),
     })
     .meta({ ref: "OrgPublicationUpload" })
   export type Upload = z.infer<typeof Upload>

@@ -512,9 +512,15 @@ export namespace OrganizationCommandProtocol {
     z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit }),
     z.strictObject({ kind: z.literal("interactions"), authorization: Interactions.SignedPermit }),
     z.strictObject({ kind: z.literal("handoff"), authorization: Handoff.SignedMachinePlan }),
+    z.strictObject({ kind: z.literal("handoff-inspection"), authorization: Handoff.SignedInspectionPlan }),
   ])
   export type Delivery = z.infer<typeof Delivery>
   export const Reply = z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("handoff-inspection"),
+      authorization: Handoff.SignedInspectionPlan,
+      result: Handoff.InspectionResult,
+    }),
     z.strictObject({ kind: z.literal("result"), result: Result }),
     z.strictObject({ kind: z.literal("query"), query: QueryResult }),
     z.strictObject({ kind: z.literal("read"), authorization: Read.SignedPermit, result: Read.Result }),

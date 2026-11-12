@@ -6,7 +6,11 @@ import { readRuntimeRegistration } from "./registration"
 import { MemberHomeError } from "./record"
 import { OrganizationRuntimeError } from "./error"
 
-export async function assertHandoffHome(identity: RuntimeIdentity, runtimeID: string, plan: Handoff.MachinePlan) {
+export async function assertHandoffHome(
+  identity: RuntimeIdentity,
+  runtimeID: string,
+  plan: Pick<Handoff.MachinePlan, "runtimeID" | "orgID" | "deploymentIncarnation">,
+) {
   const fail = (): never => {
     throw new OrganizationRuntimeError({
       code: "HANDOFF_BLOCKED",

@@ -6,6 +6,7 @@ import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import {
   OrganizationIdentity as Identity,
   OrganizationProtocol as Protocol,
+  OrganizationPublicationProtocol as Publication,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationServiceMaintenance as Admission } from "./service-maintenance"
 import { OrganizationRecord as Record } from "./storage/records"
@@ -13,6 +14,7 @@ import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationSharedProjection } from "./shared-projection"
 import { OrganizationSharedTasks } from "./shared-tasks"
 import { fail } from "./error"
+import { OrganizationPublications as Publications } from "./publications"
 
 const Target = z.strictObject({
   sessionID: Identity.ID,
@@ -45,6 +47,29 @@ const Candidate = Target.extend({
   removedArtifacts: z.number().int().nonnegative().safe(),
 }).refine((value) => value.notBefore === value.markedAt + value.delayMs, "Retention delay changed")
 type Candidate = z.infer<typeof Candidate>
+const UploadTarget = z.strictObject({ uploadID: Identity.ID, requestID: Identity.ID })
+const UploadMark = UploadTarget.extend({ actor: Operator, delayMs: Mark.shape.delayMs })
+const UploadCandidate = UploadTarget.extend({
+  version: z.literal(1),
+  orgID: Identity.ID,
+  deploymentIncarnation: Identity.ID,
+  abandonment: Publication.Abandonment,
+  actor: Operator,
+  delayMs: z.number().int().positive().safe(),
+  markedAt: z.number().int().nonnegative().safe(),
+  notBefore: z.number().int().nonnegative().safe(),
+  phase: z.enum(["marked", "collected"]),
+  removedArtifacts: z.number().int().nonnegative().safe(),
+}).refine(
+  (value) => value.notBefore === value.markedAt + value.delayMs && value.abandonment.uploadID === value.uploadID,
+  "Publication retention evidence changed",
+)
+type UploadCandidate = z.infer<typeof UploadCandidate>
+const uploadKey = (value: z.infer<typeof UploadTarget>) => [
+  "organization-retention",
+  "publication-uploads",
+  value.requestID,
+]
 type Reason =
   | "missing_session"
   | "current_generation"
@@ -163,6 +188,106 @@ function original(candidate: Candidate, target: z.infer<typeof Target>) {
 export namespace OrganizationRetention {
   export type MarkInput = z.input<typeof Mark>
   export type TargetInput = z.input<typeof Target>
+
+  export namespace Uploads {
+    export type TargetInput = z.input<typeof UploadTarget>
+    export type MarkInput = z.input<typeof UploadMark>
+
+    function original(candidate: UploadCandidate, target: TargetInput) {
+      if (candidate.uploadID !== target.uploadID || candidate.requestID !== target.requestID)
+        fail("REVISION_CONFLICT", "Publication retention requires its original mark request")
+    }
+
+    async function eligible(target: TargetInput, candidate?: UploadCandidate) {
+      const deployment = await Record.read(Protocol.Deployment, Keys.deployment())
+      if (!deployment) return { reason: "unknown_state" as const }
+      if (
+        candidate &&
+        (candidate.orgID !== deployment.orgID || candidate.deploymentIncarnation !== deployment.deploymentIncarnation)
+      )
+        return { reason: "deployment" as const }
+      const upload = await Publications.abandoned(target.uploadID)
+      if (!upload) return { reason: "not_abandoned" as const }
+      if (upload.orgID !== deployment.orgID) return { reason: "deployment" as const }
+      if (candidate && !same(upload.abandonment, candidate.abandonment)) return { reason: "unknown_state" as const }
+      return { deployment, abandonment: upload.abandonment! }
+    }
+
+    export async function status(input: TargetInput) {
+      const value = UploadTarget.parse(input)
+      const candidate = await Record.read(UploadCandidate, uploadKey(value))
+      if (!candidate) return { state: "blocked" as const, reason: "missing_mark" as const }
+      original(candidate, value)
+      return { state: candidate.phase, candidate }
+    }
+
+    export async function mark(input: MarkInput) {
+      const value = UploadMark.parse(input)
+      return operation((assert) =>
+        Storage.transaction(
+          async () => {
+            const current = await Record.read(UploadCandidate, uploadKey(value))
+            if (current) {
+              original(current, value)
+              if (current.delayMs !== value.delayMs || !same(current.actor, value.actor))
+                fail("REVISION_CONFLICT", "Publication retention mark input changed")
+              return { state: current.phase, candidate: current }
+            }
+            const observed = await eligible(value)
+            if ("reason" in observed) return { state: "blocked" as const, reason: observed.reason }
+            if (!(await Publications.inspectAbandoned(value.uploadID)))
+              return { state: "blocked" as const, reason: "unknown_state" as const }
+            const markedAt = Date.now()
+            const candidate = UploadCandidate.parse({
+              ...value,
+              version: 1,
+              orgID: observed.deployment.orgID,
+              deploymentIncarnation: observed.deployment.deploymentIncarnation,
+              abandonment: observed.abandonment,
+              markedAt,
+              notBefore: markedAt + value.delayMs,
+              phase: "marked",
+              removedArtifacts: 0,
+            })
+            await Storage.write(uploadKey(value), candidate)
+            return { state: candidate.phase, candidate }
+          },
+          { commitGuard: assert },
+        ),
+      )
+    }
+
+    export async function collect(input: TargetInput) {
+      const value = UploadTarget.parse(input)
+      return operation(async (assert) => {
+        const observed = await Record.read(UploadCandidate, uploadKey(value))
+        if (!observed) return { state: "blocked" as const, reason: "missing_mark" as const }
+        original(observed, value)
+        return Storage.transaction(
+          async () => {
+            const candidate = await Record.read(UploadCandidate, uploadKey(value))
+            if (!candidate || !same(candidate, observed))
+              fail("REVISION_CONFLICT", "Publication retention mark changed")
+            if (candidate.phase === "collected") return { state: candidate.phase, candidate }
+            if (Date.now() < candidate.notBefore) return { state: "waiting" as const, candidate }
+            const current = await eligible(value, candidate)
+            if ("reason" in current) return { state: "blocked" as const, reason: current.reason }
+            const inspected = await Publications.inspectAbandoned(value.uploadID)
+            if (!inspected) return { state: "blocked" as const, reason: "unknown_state" as const }
+            await Storage.removeTree(Publications.bytesPrefix(value.uploadID))
+            const collected = UploadCandidate.parse({
+              ...candidate,
+              phase: "collected",
+              removedArtifacts: inspected.artifacts,
+            })
+            await Storage.write(uploadKey(value), collected)
+            return { state: collected.phase, candidate: collected }
+          },
+          { commitGuard: assert },
+        )
+      })
+    }
+  }
 
   export async function status(input: TargetInput) {
     const value = Target.parse(input)

@@ -1813,6 +1813,15 @@ export type OrgResourcePage = {
   cursor?: string
 }
 
+export type OrgPublicationAbandonment = {
+  uploadID: string
+  requestID: string
+  authorID: string
+  state: "abandoned"
+  from: "open" | "sealing"
+  abandonedAt: number
+}
+
 export type OrgPublicationUpload = {
   uploadID: string
   orgID: string
@@ -1827,11 +1836,12 @@ export type OrgPublicationUpload = {
       }
   sourceSessionID?: string
   authorID: string
-  state: "open" | "sealing" | "sealed"
+  state: "open" | "sealing" | "sealed" | "abandoned"
   fileCount: number
   totalBytes: number
   manifestHash?: string
   createdAt: number
+  abandonment?: OrgPublicationAbandonment
 }
 
 export type OrgPublicationFile = {
@@ -2613,6 +2623,43 @@ export type OrgCloudFileInspectionRequest = {
         }
   }
   signature: string
+}
+
+export type OrgHandoffOptions = {
+  sessionID: string
+  projectID: string
+  bindingEpoch: number
+  controlRevision: number
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  source: {
+    reference: {
+      workspaceID: string
+      generation: number
+      revision: number
+    }
+    kind: "native" | "organization" | "unsupported"
+    label: string
+    resource?: {
+      resourceID: string
+      workspaceID: string
+      generation: number
+      path: string
+    }
+  } | null
+  native: {
+    reference: {
+      workspaceID: string
+      generation: number
+      revision: number
+    }
+    projectRevision: string
+    label: string
+  } | null
+  choices: Array<{
+    kind: "native" | "organization-object" | "organization-live" | "organization-native"
+    requiresDifference: boolean
+  }>
 }
 
 export type OrgHandoffView = {
@@ -7334,6 +7381,55 @@ export type OrgPublicationsPutChunkResponses = {
 
 export type OrgPublicationsPutChunkResponse = OrgPublicationsPutChunkResponses[keyof OrgPublicationsPutChunkResponses]
 
+export type OrgPublicationsAbandonData = {
+  body: {
+    requestID: string
+  }
+  path: {
+    uploadID: string
+  }
+  query?: never
+  url: "/org/v1/publications/uploads/{uploadID}/abandon"
+}
+
+export type OrgPublicationsAbandonErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgPublicationsAbandonError = OrgPublicationsAbandonErrors[keyof OrgPublicationsAbandonErrors]
+
+export type OrgPublicationsAbandonResponses = {
+  /**
+   * Success
+   */
+  200: OrgPublicationAbandonment
+}
+
+export type OrgPublicationsAbandonResponse = OrgPublicationsAbandonResponses[keyof OrgPublicationsAbandonResponses]
+
 export type OrgPublicationsSealData = {
   body: {
     fileCount: number
@@ -9142,6 +9238,56 @@ export type OrgCloudFilesInspectResponses = {
 }
 
 export type OrgCloudFilesInspectResponse = OrgCloudFilesInspectResponses[keyof OrgCloudFilesInspectResponses]
+
+export type OrgHandoffOptionsData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    requestID: string
+    targetRuntimeID: string
+  }
+  url: "/org/v1/sessions/{sessionID}/handoff-options"
+}
+
+export type OrgHandoffOptionsErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffOptionsError = OrgHandoffOptionsErrors[keyof OrgHandoffOptionsErrors]
+
+export type OrgHandoffOptionsResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffOptions
+}
+
+export type OrgHandoffOptionsResponse = OrgHandoffOptionsResponses[keyof OrgHandoffOptionsResponses]
 
 export type OrgHandoffListData = {
   body?: never

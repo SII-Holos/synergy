@@ -12,6 +12,10 @@ import { MemberHomeError, readRecordSnapshot, parseRecord } from "./record.js"
 
 const Enrollment = z.strictObject({ schemaVersion: z.literal(1), registration: Protocol.Registration })
 
+export function registrationRecord(registration: Protocol.Registration) {
+  return Enrollment.parse({ schemaVersion: 1, registration })
+}
+
 export function registrationFilename(root: string) {
   return path.join(root, "organization-registration.json")
 }

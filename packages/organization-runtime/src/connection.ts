@@ -76,7 +76,12 @@ export interface MemberConnectionOptions {
     signal: AbortSignal,
     resources: MemberResourceClient,
   ) => Promise<Handoff.MachineExecution>
-  handoffVersion?: 1 | 2 | 3
+  handoffInspection?: (
+    authorization: Handoff.SignedInspectionPlan,
+    connection: Connected,
+    signal: AbortSignal,
+  ) => Promise<Handoff.InspectionResult>
+  handoffVersion?: 1 | 2 | 3 | 4
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
   interactions?: (
     authorization: Interactions.SignedPermit,
@@ -289,19 +294,29 @@ async function attempt(input: {
     heartbeatTimer.unref()
   }
   function dispatchCommand(frame: Extract<Protocol.ServerFrame, { type: "command" }>, bytes: number) {
-    if (!connected || (!commands && frame.command.kind !== "handoff") || frame.connectionEpoch !== epoch)
+    if (
+      !connected ||
+      (!commands && frame.command.kind !== "handoff" && frame.command.kind !== "handoff-inspection") ||
+      frame.connectionEpoch !== epoch
+    )
       throw failure("PROTOCOL_MISMATCH", "Command does not match an active intake connection")
     if (work.signal.aborted) return
     if (executing.has(frame.exchangeID)) throw failure("PROTOCOL_MISMATCH", "Duplicate active command exchange")
     const window =
       frame.command.kind === "query" || frame.command.kind === "skip"
         ? windows.reconciliation
-        : frame.command.kind === "read" || frame.command.kind === "interactions" || frame.command.kind === "handoff"
+        : frame.command.kind === "read" ||
+            frame.command.kind === "interactions" ||
+            frame.command.kind === "handoff" ||
+            frame.command.kind === "handoff-inspection"
           ? windows.read
           : windows.command
     if (
       window.count >=
-        (frame.command.kind === "read" || frame.command.kind === "interactions" || frame.command.kind === "handoff"
+        (frame.command.kind === "read" ||
+        frame.command.kind === "interactions" ||
+        frame.command.kind === "handoff" ||
+        frame.command.kind === "handoff-inspection"
           ? 4
           : 16) ||
       window.bytes + bytes > frameLimit * 4
@@ -460,6 +475,29 @@ async function attempt(input: {
     let reply: Command.Reply
     try {
       const command = frame.command
+      if (command.kind === "handoff-inspection") {
+        if (!options.handoffInspection || !connected)
+          throw failure("PROTOCOL_MISMATCH", "Handoff inspection is unavailable")
+        const { plan, signature } = command.authorization
+        if (
+          plan.orgID !== connected.orgID ||
+          plan.deploymentIncarnation !== connected.deploymentIncarnation ||
+          plan.keyID !== connected.signingIdentity.keyID ||
+          plan.runtimeID !== connected.runtimeID ||
+          plan.connectionEpoch !== connected.connectionEpoch ||
+          plan.issuedAt > Date.now() ||
+          plan.expiresAt <= Date.now() ||
+          !(await Handoff.verifyInspection(plan, signature, connected.signingIdentity.publicKey))
+        )
+          throw failure("PERMISSION_DENIED", "Handoff inspection does not match this finite connection")
+        const result = Handoff.InspectionResult.parse(
+          await options.handoffInspection(command.authorization, connected, work.signal),
+        )
+        if (!Handoff.matchesInspection(plan, result))
+          throw failure("PROTOCOL_MISMATCH", "Handoff inspection returned another participant")
+        respond({ kind: "handoff-inspection", authorization: command.authorization, result })
+        return
+      }
       if (command.kind === "handoff") {
         if (!options.handoff || !connected || !resources)
           throw failure("PROTOCOL_MISMATCH", "Native handoff control is unavailable")

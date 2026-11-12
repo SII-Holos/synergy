@@ -10,6 +10,7 @@ import { OrganizationHandoffTarget as Target } from "./handoff-target"
 import { OrganizationRuntimeError } from "./error"
 import { RuntimeIdentity } from "./home"
 import type { MemberConnectionOptions } from "./connection"
+import { createHandoffInspection } from "./handoff-inspection"
 
 export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtimeID: string }) {
   const identity = RuntimeIdentity.parse(input.identity)
@@ -90,5 +91,9 @@ export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtime
       facts: [fact],
     })
   }
-  return { dispatch, close: source.close }
+  return {
+    dispatch,
+    inspection: createHandoffInspection({ identity, runtimeID: input.runtimeID }),
+    close: source.close,
+  }
 }

@@ -19,6 +19,9 @@
 
 ## Index
 
+- [0163](0163-hosted-publication-outlived-its-restricted-runtime.md)
+- [0162](0162-recycled-agent-workers-outlived-runtime-shutdown.md)
+- [0160](0160-detached-bridge-cleanup-lost-its-native-owner.md)
 - [0159](0159-publication-chunks-prepared-bytes-before-qualification.md)
 - [0158](0158-invitation-output-lost-private-or-durable-state.md)
 - [0157](0157-private-credentials-trusted-preopen-permissions.md)

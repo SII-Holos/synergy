@@ -30,6 +30,7 @@ import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { OrganizationResources } from "./resources"
 
 const LegacyStored = Handoff.LegacyView.omit({
   missingRequirements: true,
@@ -325,6 +326,47 @@ export function createHandoffs(options: {
     .min(1)
     .max(30_000)
     .parse(options.timeoutMs ?? 5000)
+  let inspections = 0
+
+  async function inspectionAccess(credentials: Credentials, sessionID: string, targetRuntimeID: string) {
+    const access = await authorize(credentials, "session.read", { sessionID })
+    await authorize(credentials, "project.execute", { projectID: access.session.projectID })
+    const current = access.session
+    if (current.handoffID) fail("HANDOFF_BLOCKED", "The current handoff already owns this Session")
+    const [source, target] = await Promise.all([
+      Record.read(Record.RuntimeRegistration, Keys.runtime(current.driverRuntimeID)),
+      Record.read(Record.RuntimeRegistration, Keys.runtime(targetRuntimeID)),
+    ])
+    if (
+      !source ||
+      !target ||
+      source.orgID !== current.orgID ||
+      target.orgID !== current.orgID ||
+      source.runtimeID === target.runtimeID
+    )
+      fail("NOT_FOUND", "Handoff destination is unavailable")
+    if (access.account.accountID !== (source.runtimeKind === "member" ? source.accountID : current.creatorID))
+      fail("PERMISSION_DENIED", "Only the current execution owner can inspect its handoff choices")
+    if (target.runtimeKind === "member" && target.accountID !== current.creatorID && current.shareState !== "shared")
+      fail("HANDOFF_BLOCKED", "Share this Session before handing it to another member")
+    for (const runtime of [source, target]) {
+      if (runtime.runtimeKind === "member") await accountExecution(runtime.accountID, current)
+      const connection = options.connections.captureHandoff(runtime.runtimeID)
+      if (connection.handshake.schemas.handoffs < 4)
+        fail("HANDOFF_BLOCKED", "Both Runtimes must support exact handoff inspection")
+      const authority = await runtimeAuthority({
+        runtimeID: runtime.runtimeID,
+        orgID: current.orgID,
+        deploymentIncarnation: options.signing.identity.deploymentIncarnation,
+        connectionEpoch: connection.handshake.connectionEpoch,
+      })
+      assertRuntimeConnection(authority.runtime, connection.handshake)
+      if (authority.runtime.publicKey !== runtime.publicKey)
+        fail("PERMISSION_DENIED", "Handoff machine identity changed")
+      connection.assertCurrent()
+    }
+    return { ...access, source, target }
+  }
   async function load(id: string) {
     const [value] = await Storage.readMany([key(Identity.ID.parse(id))])
     if (!value) fail("NOT_FOUND", "Handoff not found")
@@ -540,6 +582,171 @@ export function createHandoffs(options: {
   }
 
   const api = {
+    async options(
+      credentials: Credentials,
+      sessionID: string,
+      value: Handoff.OptionsQuery,
+      input: { signal: AbortSignal },
+    ): Promise<Handoff.Options> {
+      credentials = { ...credentials }
+      sessionID = Identity.ID.parse(sessionID)
+      const request = Handoff.OptionsQuery.parse(value)
+      const signal = AbortSignal.any([input.signal, AbortSignal.timeout(timeoutMs)])
+      if (inspections >= 32) fail("SERVICE_UNAVAILABLE", "Handoff inspection capacity is currently busy")
+      inspections++
+      try {
+        const admitted = await Storage.snapshot(async () => {
+          signal.throwIfAborted()
+          const access = await inspectionAccess(credentials, sessionID, request.targetRuntimeID)
+          const issuedAt = Date.now()
+          const expiresAt = Math.min(issuedAt + timeoutMs, access.expiresAt)
+          if (expiresAt <= issuedAt) fail("AUTHENTICATION_REQUIRED", "Handoff inspection authorization expired")
+          const participants = await Promise.all(
+            (["source", "target"] as const).map(async (role) => {
+              const runtime = access[role]
+              const connection = options.connections.captureHandoff(runtime.runtimeID)
+              const authorization = await options.signing.signHandoffInspection(
+                Handoff.InspectionPlan.parse({
+                  schemaVersion: 1,
+                  purpose: "handoff-inspection",
+                  requestID: request.requestID,
+                  keyID: options.signing.identity.keyID,
+                  orgID: access.session.orgID,
+                  deploymentIncarnation: options.signing.identity.deploymentIncarnation,
+                  projectID: access.session.projectID,
+                  sessionID,
+                  sourceRuntimeID: access.source.runtimeID,
+                  targetRuntimeID: access.target.runtimeID,
+                  runtimeID: runtime.runtimeID,
+                  connectionEpoch: connection.handshake.connectionEpoch,
+                  bindingEpoch: access.session.bindingEpoch,
+                  controlRevision: access.session.controlRevision,
+                  role,
+                  actor: {
+                    kind: "account",
+                    orgID: access.account.orgID,
+                    subjectID: access.account.accountID,
+                    displayName: access.account.displayName,
+                    clientKind: access.clientKind,
+                    requestID: request.requestID,
+                    ...("tokenID" in access ? { tokenID: access.tokenID } : {}),
+                  },
+                  issuedAt,
+                  expiresAt,
+                }),
+              )
+              connection.assertCurrent()
+              return { connection, authorization }
+            }),
+          )
+          return { access, participants }
+        })
+        const observed = await Promise.allSettled(
+          admitted.participants.map(async ({ connection, authorization }) => {
+            const reply = await connection.exchange(
+              { kind: "handoff-inspection", authorization },
+              { signal, deadline: authorization.plan.expiresAt },
+            )
+            signal.throwIfAborted()
+            connection.assertCurrent()
+            if (reply.kind === "error") throw new OrganizationError(reply.error)
+            if (reply.kind !== "handoff-inspection" || !Handoff.matchesInspection(authorization.plan, reply.result))
+              fail("PROTOCOL_MISMATCH", "Handoff inspection returned another participant selection")
+            return reply.result
+          }),
+        )
+        const results = observed.map((result) => {
+          if (result.status === "rejected") throw result.reason
+          return result.value
+        })
+        return await Storage.snapshot(async () => {
+          signal.throwIfAborted()
+          const current = await inspectionAccess(credentials, sessionID, request.targetRuntimeID)
+          const original = admitted.access
+          if (
+            [
+              "orgID",
+              "projectID",
+              "driverRuntimeID",
+              "bindingEpoch",
+              "controlRevision",
+              "shareGeneration",
+              "handoffID",
+            ].some(
+              (field) =>
+                current.session[field as keyof Record.SessionDirectory] !==
+                original.session[field as keyof Record.SessionDirectory],
+            ) ||
+            current.account.accountID !== original.account.accountID ||
+            current.source.publicKey !== original.source.publicKey ||
+            current.target.publicKey !== original.target.publicKey
+          )
+            fail("STALE_BINDING", "Handoff choices changed during inspection")
+          const source = results[0]!.workspace
+          const native = results[1]!.native
+          const choices: Handoff.Options["choices"] = []
+          if (!source || source.kind === "native") {
+            if (current.target.runtimeKind === "member") choices.push({ kind: "native", requiresDifference: false })
+            let cursor: string | undefined
+            do {
+              const page = await OrganizationResources.available(credentials, current.session.projectID, {
+                limit: 100,
+                cursor,
+              })
+              if (
+                source &&
+                page.items.some(
+                  (resource) =>
+                    resource.state === "enabled" &&
+                    resource.definition.protocol === "workspace-storage" &&
+                    resource.permissions.use,
+                )
+              ) {
+                choices.push({ kind: "organization-object", requiresDifference: false })
+                break
+              }
+              cursor = page.cursor
+              signal.throwIfAborted()
+            } while (cursor)
+          } else if (source?.kind === "organization" && source.resource) {
+            const contract = await OrganizationSessionResources.read(current.session)
+            const selected = contract?.selection?.infrastructure.workspace
+            if (
+              selected?.resourceID !== source.resource.resourceID ||
+              selected.workspaceID !== source.resource.workspaceID
+            )
+              fail("PROTOCOL_MISMATCH", "Handoff source no longer matches its Session Workspace resource")
+            await OrganizationSessionResources.enabled(current.session, contract!.selection!)
+            const catalog = await WorkspaceCatalog.get(
+              source.resource.workspaceID,
+              OrganizationCloud.scopeID(current.session.orgID, current.session.projectID),
+            )
+            if (catalog.activeMount || catalog.binding.generation !== source.resource.generation)
+              fail("RESOURCE_UNAVAILABLE", "Handoff source requires its current dormant Workspace generation")
+            choices.push({ kind: "organization-live", requiresDifference: false })
+          }
+          for (const participant of admitted.participants) {
+            signal.throwIfAborted()
+            participant.connection.assertCurrent()
+            if (participant.authorization.plan.expiresAt <= Date.now())
+              fail("PERMISSION_DENIED", "Handoff inspection authorization expired")
+          }
+          return Handoff.Options.parse({
+            sessionID,
+            projectID: current.session.projectID,
+            bindingEpoch: current.session.bindingEpoch,
+            controlRevision: current.session.controlRevision,
+            sourceRuntimeID: current.source.runtimeID,
+            targetRuntimeID: current.target.runtimeID,
+            source,
+            native,
+            choices,
+          })
+        })
+      } finally {
+        inspections--
+      }
+    },
     async withWorkspace<T>(
       value: Cloud.HandoffWorkspaceRequest,
       signal: AbortSignal | undefined,

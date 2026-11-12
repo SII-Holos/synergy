@@ -100,6 +100,9 @@ export async function fixture(options: Pick<Parameters<typeof openOrganizationSe
       headers,
       requests,
       ca: cert,
+      stopListener() {
+        return server.stop(true)
+      },
       interceptFrames(value: typeof intercept) {
         intercept = value
       },

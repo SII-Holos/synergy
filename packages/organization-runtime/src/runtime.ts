@@ -94,7 +94,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
       ...organizationRuntime(),
       workers: { agent: new URL("./worker.ts", import.meta.url), policy: new URL("./worker.ts", import.meta.url) },
       register() {
-        registerMemberSources(member.identity)
+        registerMemberSources(member.identity, member.restoration)
         RuntimeMaintenance.register("organization-bridge", {
           version: 1,
           order: 200,
@@ -191,7 +191,13 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
               }
             }),
             sync: true,
-            ...(handoff ? { handoff: context.bind(handoff.dispatch), handoffVersion: 3 as const } : {}),
+            ...(handoff
+              ? {
+                  handoff: context.bind(handoff.dispatch),
+                  handoffInspection: context.bind(handoff.inspection),
+                  handoffVersion: 4 as const,
+                }
+              : {}),
             notifications: true,
             read: context.bind(OrganizationSessionReads.remote),
             interactions: context.bind(OrganizationSessionReads.interactions),

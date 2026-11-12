@@ -175,6 +175,129 @@ export namespace OrganizationHandoffProtocol {
     ])
     .meta({ ref: "OrgHandoffAccept" })
   export type Accept = z.infer<typeof Accept>
+  export const OptionsQuery = z.strictObject({ requestID: Identity.ID, targetRuntimeID: Identity.ID })
+  export type OptionsQuery = z.infer<typeof OptionsQuery>
+  export const WorkspaceReference = z.strictObject({
+    workspaceID: Identity.ID,
+    generation: OrganizationProtocol.Epoch,
+    revision: Identity.Revision.positive(),
+  })
+  export const RemoteWorkspace = z.strictObject({
+    resourceID: Identity.ID,
+    workspaceID: Identity.ID,
+    generation: OrganizationProtocol.Epoch,
+    path: WorkspacePath,
+  })
+  export const SourceWorkspace = z
+    .strictObject({
+      reference: WorkspaceReference,
+      kind: z.enum(["native", "organization", "unsupported"]),
+      label: z.string().min(1).max(255),
+      resource: RemoteWorkspace.optional(),
+    })
+    .refine(
+      (value) => (value.kind === "organization") === (value.resource !== undefined),
+      "Only an organization Workspace carries its remote resource",
+    )
+  export type SourceWorkspace = z.infer<typeof SourceWorkspace>
+  export const NativeTarget = z.strictObject({
+    reference: WorkspaceReference,
+    projectRevision: Hash,
+    label: z.string().min(1).max(255),
+  })
+  export type NativeTarget = z.infer<typeof NativeTarget>
+  export const InspectionPlan = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      purpose: z.literal("handoff-inspection"),
+      requestID: Identity.ID,
+      keyID: Identity.ID,
+      orgID: Identity.ID,
+      deploymentIncarnation: Identity.ID,
+      projectID: Identity.ID,
+      sessionID: Identity.ID,
+      sourceRuntimeID: Identity.ID,
+      targetRuntimeID: Identity.ID,
+      runtimeID: Identity.ID,
+      connectionEpoch: OrganizationProtocol.Epoch,
+      bindingEpoch: OrganizationProtocol.Epoch,
+      controlRevision: Identity.Revision,
+      role: z.enum(["source", "target"]),
+      actor: ActorStamp.Info,
+      issuedAt: z.number().int().nonnegative().safe(),
+      expiresAt: z.number().int().positive().safe(),
+    })
+    .refine(
+      (value) =>
+        value.actor.kind === "account" &&
+        value.actor.orgID === value.orgID &&
+        value.actor.requestID === value.requestID &&
+        value.runtimeID === (value.role === "source" ? value.sourceRuntimeID : value.targetRuntimeID) &&
+        value.expiresAt > value.issuedAt &&
+        value.expiresAt - value.issuedAt <= 30_000,
+      "Inspection requires its account, current participant and finite window",
+    )
+  export type InspectionPlan = z.infer<typeof InspectionPlan>
+  export const SignedInspectionPlan = z.strictObject({ plan: InspectionPlan, signature: SigningSignature })
+  export type SignedInspectionPlan = z.infer<typeof SignedInspectionPlan>
+  const inspectionSigning = signedProtocol(InspectionPlan, "synergy.organization.handoff.inspection.v1\n")
+  export const signInspection = inspectionSigning.sign
+  export const verifyInspection = inspectionSigning.verify
+  export const InspectionResult = z
+    .strictObject({
+      requestID: Identity.ID,
+      orgID: Identity.ID,
+      deploymentIncarnation: Identity.ID,
+      projectID: Identity.ID,
+      sessionID: Identity.ID,
+      runtimeID: Identity.ID,
+      connectionEpoch: OrganizationProtocol.Epoch,
+      bindingEpoch: OrganizationProtocol.Epoch,
+      controlRevision: Identity.Revision,
+      role: z.enum(["source", "target"]),
+      workspace: SourceWorkspace.nullable(),
+      native: NativeTarget.nullable(),
+    })
+    .refine(
+      (value) => (value.role === "source" ? value.native === null : value.workspace === null),
+      "Inspection returns only its selected participant metadata",
+    )
+  export type InspectionResult = z.infer<typeof InspectionResult>
+  export function matchesInspection(plan: InspectionPlan, result: InspectionResult) {
+    return (
+      [
+        "requestID",
+        "orgID",
+        "deploymentIncarnation",
+        "projectID",
+        "sessionID",
+        "runtimeID",
+        "connectionEpoch",
+        "bindingEpoch",
+        "controlRevision",
+        "role",
+      ] as const
+    ).every((key) => plan[key] === result[key])
+  }
+  export const Options = z
+    .strictObject({
+      sessionID: Identity.ID,
+      projectID: Identity.ID,
+      bindingEpoch: OrganizationProtocol.Epoch,
+      controlRevision: Identity.Revision,
+      sourceRuntimeID: Identity.ID,
+      targetRuntimeID: Identity.ID,
+      source: SourceWorkspace.nullable(),
+      native: NativeTarget.nullable(),
+      choices: z.array(
+        z.strictObject({
+          kind: z.enum(["native", "organization-object", "organization-live", "organization-native"]),
+          requiresDifference: z.boolean(),
+        }),
+      ),
+    })
+    .meta({ ref: "OrgHandoffOptions" })
+  export type Options = z.infer<typeof Options>
   export const LegacyView = Binding.extend({
     phase: Phase,
     initiator: Identity.ID,

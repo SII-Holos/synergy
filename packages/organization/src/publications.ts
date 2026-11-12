@@ -13,11 +13,27 @@ import { authorizePublicationScope } from "./publication-access"
 import { fail } from "./error"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 
-const Upload = Publication.Upload.extend({
+const LegacyUpload = Publication.Upload.extend({
   schemaVersion: z.literal(1),
+  state: z.enum(["open", "sealing", "sealed"]),
+  abandonment: z.never().optional(),
   requestHash: z.string(),
   seal: Publication.Seal.optional(),
 })
+const Upload = Publication.Upload.extend({
+  schemaVersion: z.literal(2),
+  requestHash: z.string(),
+  seal: Publication.Seal.optional(),
+}).refine(
+  (value) =>
+    (value.state === "sealed") === !!value.manifestHash &&
+    (value.state === "abandoned"
+      ? !!value.abandonment &&
+        value.abandonment.uploadID === value.uploadID &&
+        value.abandonment.authorID === value.authorID
+      : !value.abandonment),
+  "Publication lifecycle evidence is inconsistent",
+)
 type Upload = z.infer<typeof Upload>
 const File = Publication.File.extend({
   schemaVersion: z.literal(1),
@@ -59,6 +75,35 @@ const parentPaths = (value: string) =>
     .split("/")
     .slice(0, -1)
     .map((_, index, segments) => segments.slice(0, index + 1).join("/"))
+
+export const publicationLifecycleMigration: Migration = {
+  id: "20261113-organization-publication-lifecycle",
+  description: "Version terminal publication upload lifecycle evidence without changing bytes or receipts",
+  scope: "global",
+  execution: "startup",
+  async up(progress) {
+    let after: string[] | undefined
+    while (true) {
+      const next = await Storage.transaction(async () => {
+        const rows = await Storage.query({ prefix: ["organization-publications", "uploads"], after, limit: 100 })
+        for (const row of rows) {
+          const current = Upload.safeParse(row.value)
+          if (current.success) {
+            if (current.data.uploadID !== row.key.at(-1)) throw new Error("Publication upload identity changed")
+            continue
+          }
+          const legacy = LegacyUpload.parse(row.value)
+          if (legacy.uploadID !== row.key.at(-1)) throw new Error("Publication upload identity changed")
+          await Storage.write(row.key, Upload.parse({ ...legacy, schemaVersion: 2 }))
+        }
+        return { done: rows.length < 100, after: rows.at(-1)?.key }
+      })
+      if (next.done) break
+      after = next.after
+    }
+    progress(1, 1)
+  },
+}
 
 export const publicationMigration: Migration = {
   id: "20261111-organization-publication-paths",
@@ -117,6 +162,7 @@ async function chunkTarget(
   chunk: z.infer<typeof Chunk>,
 ) {
   const upload = await access(credentials, uploadID, true)
+  if (upload.state === "abandoned") fail("REVISION_CONFLICT", "Publication upload was abandoned")
   const file = await read(File, keys.file(uploadID, fileID))
   if (!file) fail("NOT_FOUND", "Publication file not found")
   if (chunk.bytes !== Math.min(Publication.chunkBytes, file.bytes - offset))
@@ -157,7 +203,7 @@ export namespace OrganizationPublications {
         return view(await access(credentials, prior.uploadID, true))
       }
       const upload = Upload.parse({
-        schemaVersion: 1,
+        schemaVersion: 2,
         uploadID: crypto.randomUUID(),
         orgID: account.orgID,
         purpose: input.purpose,
@@ -178,6 +224,74 @@ export namespace OrganizationPublications {
 
   export async function status(credentials: Credentials, uploadID: string) {
     return Storage.snapshot(async () => view(await access(credentials, uploadID)))
+  }
+
+  export async function abandon(
+    credentials: Credentials,
+    uploadID: string,
+    value: z.infer<typeof Publication.Abandon>,
+  ) {
+    const input = Publication.Abandon.parse(value)
+    return Storage.transaction(async () => {
+      const upload = await access(credentials, uploadID, true)
+      if (upload.state === "abandoned") {
+        if (upload.abandonment!.requestID !== input.requestID)
+          fail("REVISION_CONFLICT", "Publication abandonment requires its original request")
+        return upload.abandonment!
+      }
+      if (upload.state === "sealed" || upload.manifestHash)
+        fail("REVISION_CONFLICT", "A verified publication cannot be abandoned")
+      const abandonment = Publication.Abandonment.parse({
+        ...input,
+        uploadID,
+        authorID: upload.authorID,
+        state: "abandoned",
+        from: upload.state,
+        abandonedAt: Date.now(),
+      })
+      await Storage.write(keys.upload(uploadID), Upload.parse({ ...upload, state: "abandoned", abandonment }))
+      return abandonment
+    })
+  }
+
+  export async function abandoned(uploadID: string) {
+    const value = await read(Upload, keys.upload(Identity.ID.parse(uploadID)))
+    return value?.state === "abandoned" ? value : undefined
+  }
+
+  export const bytesPrefix = (uploadID: string) => ["organization-publications", "bytes", Identity.ID.parse(uploadID)]
+
+  export async function inspectAbandoned(uploadID: string) {
+    if (!Storage.inTransaction()) throw new Error("Publication retention requires its owning transaction")
+    const prefix = bytesPrefix(uploadID)
+    if ((await Storage.queryKeys({ prefix, limit: 1 })).length) return undefined
+    let artifacts = 0
+    for await (const artifact of Storage.current().transaction!.artifacts(prefix)) {
+      if (artifact.key.length !== prefix.length + 2) return undefined
+      const fileID = artifact.key.at(-2)!
+      const offset = Number(artifact.key.at(-1))
+      if (
+        !Number.isSafeInteger(offset) ||
+        offset < 0 ||
+        offset % Publication.chunkBytes ||
+        String(offset) !== artifact.key.at(-1)
+      )
+        return undefined
+      const file = await read(File, keys.file(uploadID, fileID))
+      const chunk = await read(Chunk, keys.chunk(uploadID, fileID, offset))
+      if (
+        !file ||
+        file.fileID !== fileID ||
+        hash(file.path) !== fileID ||
+        !chunk ||
+        chunk.bytes !== Math.min(Publication.chunkBytes, file.bytes - offset) ||
+        artifact.location.size !== chunk.bytes ||
+        artifact.location.sha256 !== chunk.sha256
+      )
+        return undefined
+      artifacts++
+    }
+    return { artifacts }
   }
 
   export async function putFile(
@@ -287,6 +401,7 @@ export namespace OrganizationPublications {
     using lock = await Lock.write(`organization-publication:${uploadID}`)
     const upload = await Storage.transaction(async () => {
       const current = await access(credentials, uploadID, true)
+      if (current.state === "abandoned") fail("REVISION_CONFLICT", "Publication upload was abandoned")
       if (current.fileCount !== input.fileCount || current.totalBytes !== input.totalBytes)
         fail("REVISION_CONFLICT", "Publication manifest counts changed")
       if (current.seal && JSON.stringify(current.seal) !== JSON.stringify(input))

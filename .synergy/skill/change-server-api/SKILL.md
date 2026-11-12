@@ -109,3 +109,5 @@ Report route and operation ID, Scope ownership, schema/errors, generated method,
 Verify optional schema fields from both the full product and a minimal consumer type graph. An unavailable exact field must match its runtime rejection type; do not import an unrelated optional owner, cast the generated SDK call or drop input merely to satisfy an augmentation-dependent type.
 
 Verify service probes through the real transport and outer admission layer during maintenance, release and close. Liveness must not depend on storage admission; readiness reads must retain their declared response without creating an accepted-operation tail. Restrict admission exceptions to exact read-only probe paths.
+
+With the current hono-openapi validator, keep a multi-field query object inline instead of attaching a schema-component reference to the whole query DTO. Verify every required path and query field in the mounted OpenAPI operation, then call the freshly generated SDK against the real route. A successful SDK build cannot establish that every query field was serialized; test actual request data rather than bypassing a missing generated parameter with raw fetch or casts.

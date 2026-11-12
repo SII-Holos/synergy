@@ -11,7 +11,7 @@ import { executionInfrastructureMigration } from "./execution-infrastructure-mig
 import { OrganizationExecutionIndex } from "./execution-index"
 import { OrganizationHandoffExecution } from "./handoff"
 import { sharedProjectionMigration, sharedWindowMigration, sharedWindowHistoryMigration } from "./shared-projection"
-import { publicationMigration } from "./publications"
+import { publicationMigration, publicationLifecycleMigration } from "./publications"
 import { inviteCatalogMigration } from "./auth/invite-migration"
 import { knowledgeSelectionMigration } from "./knowledge-selection"
 import { sharedBlobMigration } from "./shared-blob"
@@ -34,6 +34,7 @@ const migrations: Migration[] = [
   sharedWindowHistoryMigration,
   sharedTaskMigration,
   publicationMigration,
+  publicationLifecycleMigration,
   inviteCatalogMigration,
   knowledgeSelectionMigration,
   sharedBlobMigration,

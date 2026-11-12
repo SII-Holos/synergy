@@ -360,6 +360,17 @@ export namespace AgentTurn {
     return { ...stats, ...RuntimeResources.poolStatus("model") }
   }
 
+  export async function drainRetiring(signal: AbortSignal): Promise<void> {
+    const pool = runtimeState().pool
+    if (pool instanceof AgentWorkerPool) await pool.drainRetiring(signal)
+    signal.throwIfAborted()
+  }
+
+  export function hasRetiringWorkers(): boolean {
+    const pool = runtimeState().pool
+    return pool instanceof AgentWorkerPool && pool.hasRetiringWorkers()
+  }
+
   export async function stop(): Promise<void> {
     const instanceState = runtimeState()
 

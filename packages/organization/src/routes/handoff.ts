@@ -15,6 +15,22 @@ export function handoffRoutes(handoffs: () => Handoffs, publicOrigin?: string) {
   const session = z.strictObject({ sessionID: Identity.ID })
   const target = z.strictObject({ handoffID: Identity.ID })
   return new Hono()
+    .get(
+      "/sessions/:sessionID/handoff-options",
+      operation(
+        "orgHandoff.options",
+        "Inspect current Workspace references and available handoff choices",
+        Handoff.Options,
+      ),
+      validator("param", session, validation),
+      validator("query", Handoff.OptionsQuery, validation),
+      async (c) =>
+        c.json(
+          await handoffs().options(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"), {
+            signal: c.req.raw.signal,
+          }),
+        ),
+    )
     .post(
       "/sessions/:sessionID/handoffs",
       operation(

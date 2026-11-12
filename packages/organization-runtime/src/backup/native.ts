@@ -4,6 +4,7 @@ import { createHash } from "node:crypto"
 import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
+import { NamespaceRetirement } from "@ericsanchezok/synergy-harness/lifecycle/namespace-retirement"
 import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
@@ -22,6 +23,10 @@ import { connectionState, verifyConnectionRecord } from "../connection-state"
 import { MemberHomeError, readRecordSnapshot, parseRecord } from "../record"
 
 export namespace OrganizationRuntimeNative {
+  const NativeOwner = z.discriminatedUnion("schemaVersion", [
+    HomeOwnershipFile.FencedInfo,
+    HomeOwnershipFile.RestorationInfo,
+  ])
   const Role = z.enum(["owner", "binding", "credentials", "registration", "connection"])
   type Role = z.infer<typeof Role>
   const File = z.strictObject({
@@ -46,6 +51,10 @@ export namespace OrganizationRuntimeNative {
   })
   export type Manifest = z.infer<typeof Manifest>
   const state = RuntimeContext.state(() => ({ startup: undefined as z.infer<typeof Startup> | undefined }))
+  const captured = new WeakMap<
+    object,
+    { archive: SnapshotMaintenance.ArchiveEvidence; namespace: StorageCheckpoint.Manifest; assert(): void }
+  >()
   const metadataKey = ["runtime-native", "manifest"]
   const fileKey = (role: Role) => ["runtime-native", "file", role]
   const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
@@ -57,11 +66,20 @@ export namespace OrganizationRuntimeNative {
     RuntimeContext.assertCompositionOpen("Hosted native recovery")
     if (state().startup) fail("startup is already registered")
     state().startup = Startup.parse({ identity: input.identity, ca: input.ca === undefined ? null : [input.ca].flat() })
+    NamespaceRetirement.registerSource({
+      owner: "organization-runtime",
+      inspect(native, archive) {
+        const selected = captured.get(native)
+        if (!selected || selected.archive !== archive) fail("requires its actual captured native segment")
+        selected.assert()
+        return digest(Buffer.from(JSON.stringify(selected.namespace)))
+      },
+    })
   }
 
   async function records(files: ReadonlyMap<Role, Uint8Array>, startup: z.infer<typeof Startup>) {
     const required = (role: Role) => files.get(role) ?? fail("is missing " + role)
-    const owner = parseRecord(required("owner"), HomeOwnershipFile.FencedInfo, "Home ownership", 4096)
+    const owner = parseRecord(required("owner"), NativeOwner, "Home ownership", 4096)
     const binding = parseRecord(required("binding"), ArchivedHostedBinding, "identity records")
     if (
       binding.state !== "ready" ||
@@ -149,12 +167,10 @@ export namespace OrganizationRuntimeNative {
         await frozen()
         const current = await read(() => readHostedHome(home.home, home.identity))
         const owner = await read(() =>
-          readRecordSnapshot(
-            path.join(home.root, "home-ownership.json"),
-            HomeOwnershipFile.FencedInfo,
-            "Home ownership",
-            { signal, maxBytes: 4096 },
-          ),
+          readRecordSnapshot(path.join(home.root, "home-ownership.json"), NativeOwner, "Home ownership", {
+            signal,
+            maxBytes: 4096,
+          }),
         )
         const binding = await read(() =>
           readRecordSnapshot(path.join(home.root, "organization.json"), HostedBinding, "identity records", { signal }),
@@ -223,7 +239,9 @@ export namespace OrganizationRuntimeNative {
           await NativeNamespaceIdentity.verify(proof)
           await frozen()
           complete = true
-          return { directory, namespace }
+          const result = Object.freeze({ directory, namespace })
+          captured.set(result, { archive, namespace: StorageCheckpoint.Manifest.parse(namespace), assert })
+          return result
         } finally {
           await store?.close()
           await fs.rm(temporary, { recursive: true, force: true })
@@ -234,13 +252,13 @@ export namespace OrganizationRuntimeNative {
     return task()
   }
 
-  export async function verify(input: {
+  async function material(input: {
     directory: string
     expected: StorageCheckpoint.Manifest
     source: StorageCheckpoint.Manifest
     keys: VaultKeyProvider
     signal?: AbortSignal
-  }): Promise<Manifest> {
+  }) {
     const directory = input.directory
     const expected = StorageCheckpoint.Manifest.parse(input.expected)
     const source = StorageCheckpoint.Manifest.parse(input.source)
@@ -285,6 +303,65 @@ export namespace OrganizationRuntimeNative {
       verified.connectionEpoch !== manifest.connectionEpoch
     )
       fail("has inconsistent registration or connection state")
-    return manifest
+    return { manifest, files }
+  }
+  export async function verify(input: Parameters<typeof material>[0]): Promise<Manifest> {
+    return (await material(input)).manifest
+  }
+  export async function withMaterial<T>(
+    input: Parameters<typeof material>[0],
+    body: (material: Material) => Promise<T>,
+  ) {
+    const runtime = RuntimeContext.current()
+    const primary = Storage.current()
+    const store = primary.store
+    const artifacts = primary.artifactDirectory
+    const objects = primary.artifactObjects
+    const objectConfiguration = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
+    const configuration = digest(Buffer.from(JSON.stringify(store.options)))
+    let open = true
+    const assert = () => {
+      if (
+        !open ||
+        RuntimeContext.current() !== runtime ||
+        runtime.storage !== primary ||
+        Storage.current().store !== store ||
+        primary.store !== store ||
+        Storage.current().artifactDirectory !== artifacts ||
+        primary.artifactDirectory !== artifacts ||
+        Storage.current().artifactObjects !== objects ||
+        primary.artifactObjects !== objects ||
+        objects?.blobs !== objectConfiguration?.blobs ||
+        objects?.writerID !== objectConfiguration?.writerID ||
+        objects?.now !== objectConfiguration?.now ||
+        digest(Buffer.from(JSON.stringify(store.options))) !== configuration
+      )
+        fail("material belongs to another native callback or Store")
+    }
+    assert()
+    const selected = await material(input)
+    assert()
+    const proof: Material = Object.freeze({ kind: "hosted-native-material" })
+    materials.set(proof, { ...selected, assert })
+    try {
+      const result = await body(proof)
+      assert()
+      return result
+    } finally {
+      open = false
+    }
+  }
+  export interface Material {
+    readonly kind: "hosted-native-material"
+  }
+  const materials = new WeakMap<Material, { manifest: Manifest; files: Map<Role, Uint8Array>; assert(): void }>()
+  export function inspectMaterial(material: Material) {
+    const selected = materials.get(material)
+    if (!selected) fail("requires its original verified native material")
+    selected.assert()
+    return {
+      manifest: Manifest.parse(selected.manifest),
+      files: new Map([...selected.files].map(([role, bytes]) => [role, new Uint8Array(bytes)])),
+    }
   }
 }

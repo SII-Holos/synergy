@@ -44,7 +44,7 @@ test("the Node Home reader preflights completed native Home3 before credentials 
       let credentialReads = 0;
       fs.open = async (filename,...args) => { if (filename === credentialFile) credentialReads++; return open(filename,...args); };
       const ready = await readHostedHome(home.home,input.identity);
-      assert.deepEqual(ready,{...home,restoration});
+      assert.deepEqual(ready,{...home,home:await fs.realpath(home.home),root:await fs.realpath(home.root),restoration});
       assert.ok(credentialReads > 0);
       assert.deepEqual(await prepareHostedHome(input),ready);
       async function denied() {

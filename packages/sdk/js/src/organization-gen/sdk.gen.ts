@@ -144,6 +144,8 @@ import type {
   OrgHandoffObjectReadErrors,
   OrgHandoffObjectReadResponses,
   OrgHandoffObjectRequest,
+  OrgHandoffOptionsErrors,
+  OrgHandoffOptionsResponses,
   OrgHandoffPermitErrors,
   OrgHandoffPermitRequest,
   OrgHandoffPermitResponses,
@@ -262,6 +264,8 @@ import type {
   OrgProjectsMembersResponses,
   OrgProjectsUpdateErrors,
   OrgProjectsUpdateResponses,
+  OrgPublicationsAbandonErrors,
+  OrgPublicationsAbandonResponses,
   OrgPublicationsCreateUploadErrors,
   OrgPublicationsCreateUploadResponses,
   OrgPublicationsFilesErrors,
@@ -2493,6 +2497,43 @@ export class OrgPublications extends HeyApiClient {
   }
 
   /**
+   * Abandon this author's never-verified publication upload
+   */
+  public abandon<ThrowOnError extends boolean = false>(
+    parameters: {
+      uploadID: string
+      requestID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "uploadID" },
+            { in: "body", key: "requestID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgPublicationsAbandonResponses,
+      OrgPublicationsAbandonErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/publications/uploads/{uploadID}/abandon",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Verify every declared file and freeze the publication manifest
    */
   public seal<ThrowOnError extends boolean = false>(
@@ -3708,6 +3749,36 @@ export class OrgCloudFiles extends HeyApiClient {
 }
 
 export class OrgHandoff extends HeyApiClient {
+  /**
+   * Inspect current Workspace references and available handoff choices
+   */
+  public options<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      requestID: string
+      targetRuntimeID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "requestID" },
+            { in: "query", key: "targetRuntimeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgHandoffOptionsResponses, OrgHandoffOptionsErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/handoff-options",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * List handoff facts without retrying an unknown result
    */

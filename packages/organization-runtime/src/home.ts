@@ -140,8 +140,8 @@ async function ready(
   if (!credentials || credentials.publicKey !== current.publicKey)
     throw new MemberHomeError("Member Runtime credentials are missing or do not match its identity")
   return {
-    home,
-    root,
+    home: restoration ? await fs.realpath(home) : home,
+    root: restoration ? await fs.realpath(root) : root,
     identity: current.identity,
     origin: current.origin,
     publicKey: current.publicKey,

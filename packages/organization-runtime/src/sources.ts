@@ -1,4 +1,6 @@
 import { ConfigSource } from "@ericsanchezok/synergy-harness/config/source"
+import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
+import { OrganizationHostedPublication } from "./backup/publication"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { InstructionSource } from "@ericsanchezok/synergy-harness/session/instruction-source"
 import { SkillSelection } from "@ericsanchezok/synergy-local-runtime/skill/selection"
@@ -14,13 +16,24 @@ import { createMemberKnowledgeTool } from "./tools/knowledge"
 import { registerOrganizationHomeMigration } from "./home-migration"
 import { registerOrganizationNamespaceIdentity } from "./namespace-identity"
 
-export function registerMemberSources(identity: RuntimeIdentity) {
+export function registerMemberSources(identity: RuntimeIdentity, restoration?: HomeOwnershipFile.RestorationInfo) {
   registerSessionSchema({ orgID: identity.orgID })
-  HomeOwnership.select({
-    owner: "organization-runtime",
-    identity: runtimeIdentityDigest(identity),
-    readerContract: NativeHomeReaderContract,
-  })
+  if (restoration) {
+    const selected = HomeOwnershipFile.RestorationInfo.parse(structuredClone(restoration))
+    if (
+      selected.owner !== "organization-runtime" ||
+      selected.identity !== runtimeIdentityDigest(identity) ||
+      selected.readerContract !== NativeHomeReaderContract
+    )
+      throw new Error("Restored Runtime ownership does not match its verified native identity")
+    HomeOwnership.select(selected)
+  } else
+    HomeOwnership.select({
+      owner: "organization-runtime",
+      identity: runtimeIdentityDigest(identity),
+      readerContract: NativeHomeReaderContract,
+    })
+  OrganizationHostedPublication.register()
   registerOrganizationHomeMigration(identity)
   registerOrganizationNamespaceIdentity(identity)
   ConfigSource.register({

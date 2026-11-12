@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationHandoffProtocol as Handoff } from "../../organization-protocol/src/handoff"
@@ -160,7 +160,29 @@ test("signed source and target facts commit once and activation remains a separa
     await expect(f.handoffs.commit(f.credentials.alice, state.handoffID)).rejects.toMatchObject({
       data: { code: "HANDOFF_BLOCKED" },
     })
-    const surrender = await f.handoffs.permit(f.credentials.alice, state.handoffID, { purpose: "handoff-surrender" })
+    const surrender = await (async () => {
+      const sign = f.signing.signHandoff
+      const issued = spyOn(f.signing, "signHandoff").mockImplementation(sign)
+      try {
+        const lost = new Error("The committed permit response was lost")
+        await expect(
+          (async () => {
+            await f.handoffs.permit(f.credentials.alice, state.handoffID, { purpose: "handoff-surrender" })
+            throw lost
+          })(),
+        ).rejects.toBe(lost)
+        const recovered = await f.handoffs.permit(f.credentials.alice, state.handoffID, {
+          purpose: "handoff-surrender",
+        })
+        expect(await f.handoffs.permit(f.credentials.alice, state.handoffID, { purpose: "handoff-surrender" })).toEqual(
+          recovered,
+        )
+        expect(issued).toHaveBeenCalledTimes(1)
+        return recovered
+      } finally {
+        issued.mockRestore()
+      }
+    })()
     const directory = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
     expect(surrender.permit.sourceBinding).toEqual({
       schemaVersion: 1,

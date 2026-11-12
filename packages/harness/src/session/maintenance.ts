@@ -1,6 +1,7 @@
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionManager } from "./manager"
+import { AgentTurn } from "./agent-turn"
 
 export function registerSessionMaintenanceOwner() {
   RuntimeMaintenance.register("sessions", {
@@ -18,11 +19,19 @@ export function registerSessionMaintenanceOwner() {
       await RuntimeMaintenance.assertDraining(context.lease)
       for (const runtime of SessionManager.listRunningRuntimes())
         await SessionManager.waitForIdle(runtime.sessionID, context.signal)
+      await AgentTurn.drainRetiring(context.signal)
     },
     async inspect(context) {
       context.signal.throwIfAborted()
-      return SessionManager.listRunningRuntimes().length
-        ? [{ code: "native_turns_active", owner: "sessions", label: "Wait for native Agent turns and their final saves to finish", recoverable: true }]
+      return SessionManager.listRunningRuntimes().length || AgentTurn.hasRetiringWorkers()
+        ? [
+            {
+              code: "native_turns_active",
+              owner: "sessions",
+              label: "Wait for native Agent turns and their final saves to finish",
+              recoverable: true,
+            },
+          ]
         : []
     },
     async release(context) {

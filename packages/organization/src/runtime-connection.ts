@@ -142,7 +142,7 @@ export function createRuntimeConnections(input: {
       fail("PROTOCOL_MISMATCH", "Runtime does not support live work notifications")
     if (
       requireCommands === "handoffs" &&
-      (!handshake.capabilities.includes("handoffs") || ![1, 2, 3].includes(handshake.schemas.handoffs))
+      (!handshake.capabilities.includes("handoffs") || ![1, 2, 3, 4].includes(handshake.schemas.handoffs))
     )
       fail("PROTOCOL_MISMATCH", "Runtime does not support the native handoff reader contract")
     Object.freeze(handshake.capabilities)
@@ -292,7 +292,10 @@ export function createRuntimeConnections(input: {
       return
     }
     if (frame.data.type === "receipt") {
-      const connection = captureSocket(socket, frame.data.reply.kind === "handoff" ? "handoffs" : true)
+      const connection = captureSocket(
+        socket,
+        frame.data.reply.kind === "handoff" || frame.data.reply.kind === "handoff-inspection" ? "handoffs" : true,
+      )
       if (frame.data.connectionEpoch !== connection.handshake.connectionEpoch)
         stale(connection.handshake.connectionEpoch)
       const transport = transports.get(socket)!
