@@ -432,7 +432,12 @@ export namespace SessionTransferEpochs {
         const currentInfo = Session.PersistedInfo.parse({ ...currentSession, workspace: null })
         if (currentInfo.id !== binding.sessionID || currentInfo.scope.id !== binding.scopeID)
           fail("source Session identity changed")
-        await EnvironmentExecution.assertSessionDrained(binding.scopeID, binding.sessionID, currentInfo.environmentID)
+        await EnvironmentExecution.assertSessionDrained(
+          binding.scopeID,
+          binding.sessionID,
+          currentInfo.environmentID,
+          currentInfo.workspaceID,
+        )
         const previous = await optional(State, stateKey(binding))
         if (previous) {
           if (!matches(previous.binding, binding) || previous.role !== "source" || previous.phase === "cancelled")

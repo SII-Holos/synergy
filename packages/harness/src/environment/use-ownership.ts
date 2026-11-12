@@ -26,13 +26,16 @@ export namespace EnvironmentUseOwnership {
     ownership: Schema.Current
     verify(target?: Readonly<EnvironmentSchema.Target>): Promise<void>
   }
+  export interface Inspection {
+    origin?: Readonly<EnvironmentOrigin.Info>
+  }
   export interface Contribution<Input> {
     capture(input: Input, phase: Phase): Proof
     inspect(
       ownership: Schema.Resource,
       selector: Readonly<Selector>,
       target: Readonly<EnvironmentSchema.Target>,
-    ): Promise<void>
+    ): Promise<Inspection | void>
   }
   interface Evidence {
     phase: Phase
@@ -189,11 +192,20 @@ export namespace EnvironmentUseOwnership {
   export async function inspect(use: EnvironmentSchema.Use, scopeID: string) {
     const info = use.ownership
     if (info.kind === "legacy-unknown") throw new Error("Environment Use has unknown historical ownership")
-    if (info.kind === "admission") return
+    if (info.kind === "admission") {
+      if (info.origin.kind === "session" && info.origin.scopeID !== scopeID)
+        throw new Error("Environment Use origin belongs to another Scope")
+      return { origin: info.origin }
+    }
     const owner = owners().get(owning(info))
     if (!owner) throw new Error("Environment Use requires its registered canonical owner")
     const current = captureStorage()
-    await owner.inspect(info, { scopeID, environmentID: use.target.environmentID, useID: use.id }, use.target)
+    const inspected = await owner.inspect(
+      info,
+      { scopeID, environmentID: use.target.environmentID, useID: use.id },
+      use.target,
+    )
     current()
+    return inspected?.origin ? { origin: EnvironmentOrigin.Info.parse(inspected.origin) } : undefined
   }
 }

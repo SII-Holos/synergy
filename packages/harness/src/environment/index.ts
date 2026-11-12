@@ -322,7 +322,58 @@ export namespace Environment {
     const current = await readUse(info.id, use.id)
     if (!current || JSON.stringify(EnvironmentSchema.Use.parse(current)) !== JSON.stringify(use))
       throw new Error("Environment Use changed before its owning inspection")
-    await EnvironmentUseOwnership.inspect(current, info.scopeID)
+    return EnvironmentUseOwnership.inspect(current, info.scopeID)
+  }
+
+  export async function assertSessionUsesDrained(input: {
+    scopeID: string
+    sessionID: string
+    environmentID?: string | null
+    workspaceID?: string | null
+  }) {
+    input = { ...input }
+    const current = EnvironmentUseOwnership.captureStorage()
+    for await (const use of useEntries()) {
+      current()
+      const ownership = use.ownership
+      const selected =
+        use.target.environmentID === input.environmentID ||
+        ("workspaceID" in ownership &&
+          ownership.scopeID === input.scopeID &&
+          ownership.workspaceID === input.workspaceID)
+      if (ownership.kind === "legacy-unknown") {
+        if (!selected) continue
+        throw new Busy({
+          environmentID: use.target.environmentID,
+          message: "Selected Environment Use has unknown Session ownership",
+        })
+      }
+      if ("scopeID" in ownership && ownership.scopeID !== input.scopeID && !selected) continue
+      if (
+        ownership.kind !== "admission" &&
+        ownership.kind !== "execution-preparation" &&
+        !selected &&
+        ownership.kind !== "execution"
+      )
+        continue
+      const inspection = await inspectUse(use)
+      current()
+      const origin = inspection?.origin
+      if (origin?.kind === "host") continue
+      if (origin?.kind === "session") {
+        if (origin.scopeID !== input.scopeID || origin.sessionID !== input.sessionID) continue
+        throw new Busy({
+          environmentID: use.target.environmentID,
+          message: "Environment Session Use requires its original native owner to release it",
+        })
+      }
+      if (!selected) continue
+      throw new Busy({
+        environmentID: use.target.environmentID,
+        message: "Selected Environment Use has unknown Session ownership",
+      })
+    }
+    current()
   }
 
   export async function retainUse(

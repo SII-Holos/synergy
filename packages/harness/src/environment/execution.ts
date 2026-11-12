@@ -79,7 +79,12 @@ export namespace EnvironmentExecution {
   export const sessionEntries = EnvironmentExecutionOriginIndex.sessionEntries
   export const environmentEntries = EnvironmentExecutionOriginIndex.environmentEntries
 
-  export async function assertSessionDrained(scopeID: string, sessionID: string, environmentID?: string | null) {
+  export async function assertSessionDrained(
+    scopeID: string,
+    sessionID: string,
+    environmentID?: string | null,
+    workspaceID?: string | null,
+  ) {
     if (hasSessionPending(scopeID, sessionID))
       throw new Environment.Busy({ environmentID: "", message: "Environment Session admission is still pending" })
     for await (const info of sessionEntries({ scopeID, sessionID }))
@@ -88,6 +93,7 @@ export namespace EnvironmentExecution {
           environmentID: info.target.environmentID,
           message: "Environment Session operation requires native receipt and output drainage",
         })
+    await Environment.assertSessionUsesDrained({ scopeID, sessionID, environmentID, workspaceID })
     if (environmentID) {
       for await (const info of environmentEntries(environmentID))
         if (info.origin.kind === "legacy-unknown")
@@ -205,6 +211,15 @@ export namespace EnvironmentExecution {
       async inspect(ownership, selector, target) {
         if (ownership.kind !== "execution" && ownership.kind !== "execution-preparation")
           throw new Error("Execution Use has another owner")
+        if (ownership.kind === "execution-preparation") {
+          if (
+            ownership.scopeID !== selector.scopeID ||
+            useID(ownership.scopeID, ownership.operationID) !== selector.useID ||
+            (ownership.origin.kind === "session" && ownership.origin.scopeID !== selector.scopeID)
+          )
+            throw new Error("Execution Use differs from its original admission")
+          return { origin: ownership.origin }
+        }
         const info = await stored(ownership.operationID, ownership.scopeID)
         if (
           info.scopeID !== selector.scopeID ||
@@ -212,6 +227,7 @@ export namespace EnvironmentExecution {
           !Environment.sameTarget(info.target, target)
         )
           throw new Error("Execution Use differs from its canonical receipt")
+        return { origin: info.origin }
       },
     })
     StorageRecovery.register("environment-execution", recover)
