@@ -76,7 +76,7 @@ export namespace FileView {
         await (await WorkspaceMounts.connect(info)).canonical(WorkspaceMounts.reference(info), name, follow),
       )
     const { store } = await WorkspaceContent.resolve(selection(info))
-    return resolve(WorkspaceTree.resolve(await WorkspaceContent.manifest(info, store), name, follow).path)
+    return WorkspaceContent.withTree(info, store, async (tree) => resolve((await tree.resolve(name, follow)).path))
   }
 
   export function display(filename: string) {
@@ -142,30 +142,31 @@ export namespace FileView {
     const info = native() ? undefined : await selected()
     if (info && !info.activeMount) {
       const { store } = await WorkspaceContent.resolve(selection(info))
-      const tree = await WorkspaceContent.manifest(info, store)
-      const resolved = WorkspaceTree.resolve(tree, relative(filename), false)
-      const parents = relative(filename)
-        .split("/")
-        .slice(0, -1)
-        .map((_, index, parts) => WorkspaceTree.resolve(tree, parts.slice(0, index + 1).join("/")))
-      const entry = resolved.entry
-      const bytes =
-        entry?.kind === "file"
-          ? await WorkspaceContent.read(selection(info), relative(filename), 64 * 1024 * 1024)
-          : undefined
-      if (bytes && entry?.kind === "file" && WorkspaceTree.hash(bytes) !== entry.hash)
-        throw new NativeFileMutation.ConflictError()
-      signal?.throwIfAborted()
-      return {
-        canonical: resolve(resolved.path),
-        fingerprint: JSON.stringify(resolved),
-        parents: Object.fromEntries(
-          parents.filter((parent) => parent.entry).map((parent) => [parent.path, JSON.stringify(parent)]),
-        ),
-        entry: entry ? item(info, entry, relative(filename)) : undefined,
-        bytes,
-        version: entry?.kind === "file" ? `sha256:${entry.hash}` : null,
-      }
+      return WorkspaceContent.withTree(
+        info,
+        store,
+        async (tree) => {
+          const name = relative(filename)
+          const resolved = await tree.resolve(name, false)
+          const parts = name.split("/").slice(0, -1)
+          const parents: Record<string, string> = {}
+          for (let index = 0; index < parts.length; index++) {
+            const parent = await tree.resolve(parts.slice(0, index + 1).join("/"))
+            if (parent.entry) parents[parent.path] = JSON.stringify(parent)
+          }
+          const entry = resolved.entry
+          const bytes = entry?.kind === "file" ? await contentBytes(tree, name, undefined, 64 * 1024 * 1024) : undefined
+          return {
+            canonical: resolve(resolved.path),
+            fingerprint: JSON.stringify(resolved),
+            parents,
+            entry: entry ? item(info, entry, name) : undefined,
+            bytes,
+            version: entry?.kind === "file" ? `sha256:${entry.hash}` : null,
+          }
+        },
+        { signal },
+      )
     }
     const parents: Record<string, string> = {}
     let ancestor = dirname(filename)
@@ -226,13 +227,14 @@ export namespace FileView {
     if (info.activeMount)
       return (await WorkspaceMounts.connect(info)).stat(WorkspaceMounts.reference(info), name, follow)
     const { store } = await WorkspaceContent.resolve(selection(info))
-    const tree = await WorkspaceContent.manifest(info, store)
-    const resolved = WorkspaceTree.resolve(tree, name, follow)
-    const entry = resolved.path ? resolved.entry : { kind: "directory" as const, path: "", mode: 0o755 }
-    return entry ? item(info, entry, name) : undefined
+    return WorkspaceContent.withTree(info, store, async (tree) => {
+      const resolved = await tree.resolve(name, follow)
+      const entry = resolved.path ? resolved.entry : { kind: "directory" as const, path: "", mode: tree.mode }
+      return entry ? item(info, entry, name) : undefined
+    })
   }
 
-  function item(info: WorkspaceCatalog.Info, entry: WorkspaceTree.Entry, filename: string): WorkspaceProtocol.Item {
+  function item(info: WorkspaceCatalog.Info, entry: WorkspaceTree.Header, filename: string): WorkspaceProtocol.Item {
     return {
       path: filename,
       kind: entry.kind,
@@ -257,12 +259,36 @@ export namespace FileView {
     const name = relative(filename)
     if (info.activeMount) return (await WorkspaceMounts.connect(info)).list(WorkspaceMounts.reference(info), name)
     const { store } = await WorkspaceContent.resolve(selection(info))
-    const tree = await WorkspaceContent.manifest(info, store)
-    const directory = WorkspaceTree.resolve(tree, name)
-    if (directory.path && directory.entry?.kind !== "directory") throw new Error("Workspace path is not a directory")
-    return WorkspaceTree.children(tree, directory.path).map((entry) =>
-      item(info, entry, name ? `${name}/${path.posix.basename(entry.path)}` : entry.path),
-    )
+    return WorkspaceContent.withTree(info, store, async (tree) => {
+      const directory = await tree.resolve(name)
+      if (directory.path && directory.entry?.kind !== "directory") throw new Error("Workspace path is not a directory")
+      const result: WorkspaceProtocol.Item[] = []
+      for await (const entry of tree.entries({ prefix: directory.path ? directory.path + "/" : undefined })) {
+        if (path.posix.dirname(entry.path) !== (directory.path || ".")) continue
+        result.push(item(info, entry, name ? `${name}/${path.posix.basename(entry.path)}` : entry.path))
+      }
+      return result
+    })
+  }
+
+  async function contentBytes(
+    tree: WorkspaceContent.Tree,
+    filename: string,
+    range: { offset: number; length: number } | undefined,
+    maximumBytes: number,
+  ) {
+    const entry = (await tree.resolve(filename)).entry
+    if (entry?.kind !== "file") throw new Error("Workspace file is absent or is not a regular file")
+    const length = Math.min(range?.length ?? entry.size, Math.max(0, entry.size - (range?.offset ?? 0)))
+    if (length > maximumBytes) throw new Error("Workspace file exceeds the read limit")
+    const data = new Uint8Array(length)
+    let offset = 0
+    for await (const chunk of tree.read(entry.path, range)) {
+      data.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    if (offset !== length) throw new Error("Workspace file read is incomplete")
+    return data
   }
 
   export async function bytes(
@@ -270,6 +296,17 @@ export namespace FileView {
     range?: { offset: number; length: number },
     maximumBytes = 64 * 1024 * 1024,
   ): Promise<Uint8Array> {
+    range = range && { offset: range.offset, length: range.length }
+    if (
+      !Number.isSafeInteger(maximumBytes) ||
+      maximumBytes < 0 ||
+      (range &&
+        (!Number.isSafeInteger(range.offset) ||
+          range.offset < 0 ||
+          !Number.isSafeInteger(range.length) ||
+          range.length < 0))
+    )
+      throw new Error("Invalid Workspace read range")
     if (native()) {
       const file = Bun.file(resolve(filename))
       const size = (await file.stat()).size
@@ -279,29 +316,8 @@ export namespace FileView {
     const info = await selected()
     const name = relative(filename)
     if (!info.activeMount) {
-      if (!range) return WorkspaceContent.read(selection(info), name, maximumBytes)
-      if (range.length > maximumBytes) throw new Error("Workspace file exceeds the read limit")
-      const first = await WorkspaceContent.readRange(
-        selection(info),
-        name,
-        range.offset,
-        Math.min(range.length, WorkspaceTree.chunkBytes),
-      )
-      const length = Math.min(range.length, Math.max(0, first.size - range.offset))
-      const result = new Uint8Array(length)
-      result.set(first.bytes)
-      for (let offset = first.bytes.length; offset < length;) {
-        const next = await WorkspaceContent.readRange(
-          selection(info),
-          name,
-          range.offset + offset,
-          Math.min(length - offset, WorkspaceTree.chunkBytes),
-        )
-        if (next.version !== first.version || !next.bytes.length) throw new NativeFileMutation.ConflictError()
-        result.set(next.bytes, offset)
-        offset += next.bytes.length
-      }
-      return result
+      const { store } = await WorkspaceContent.resolve(selection(info))
+      return WorkspaceContent.withTree(info, store, (tree) => contentBytes(tree, name, range, maximumBytes))
     }
     const files = await WorkspaceMounts.connect(info)
     const mount = WorkspaceMounts.reference(info)

@@ -433,7 +433,8 @@ export namespace SessionTransferStream {
         const entry = await indexedEntry(selectedID)
         assertIndexed()
         if (!entry) throw new Rejected({ message: "Portable entry is absent" })
-        const end = Math.min(entry.bytes, count(offset, length ?? Math.max(0, entry.bytes - offset)))
+        const start = Math.min(offset, entry.bytes)
+        const end = start + Math.min(length ?? entry.bytes - start, entry.bytes - start)
         const complete = offset === 0 && end === entry.bytes
         const digest = complete ? createHash("sha256") : undefined
         const first = firstChunk.get(selectedID, offset)

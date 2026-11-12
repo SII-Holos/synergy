@@ -61,6 +61,7 @@ export namespace WorkspaceTree {
     z.object({ path: Path, kind: z.literal("symlink"), mode: Mode, target: z.string().min(1).max(4096) }),
   ])
   export type Entry = z.infer<typeof Entry>
+  export type Header = Exclude<Entry, { kind: "file" }> | Omit<Extract<Entry, { kind: "file" }>, "chunks">
   export const Manifest = z
     .object({ version: z.literal(1), entries: z.array(Entry).max(100_000) })
     .superRefine((value, context) => {
@@ -113,6 +114,9 @@ export namespace WorkspaceTree {
   export function children(manifest: Manifest, directory: string): readonly Entry[] {
     return index(manifest).children.get(directory) ?? []
   }
+  export function get(manifest: Manifest, filename: string): Entry | undefined {
+    return index(manifest).entries.get(filename)
+  }
 
   export function resolve(
     manifest: Manifest,
@@ -139,8 +143,14 @@ export namespace WorkspaceTree {
     throw new Error("Workspace symbolic link cycle")
   }
 
-  export function entryVersion(entry: Entry, revision?: number) {
-    return `entry:${hash(new TextEncoder().encode(JSON.stringify([entry, revision])))}`
+  export function entryVersion(entry: Header, revision?: number) {
+    const metadata =
+      entry.kind === "file"
+        ? { path: entry.path, kind: entry.kind, mode: entry.mode, size: entry.size, hash: entry.hash }
+        : entry.kind === "directory"
+          ? { path: entry.path, kind: entry.kind, mode: entry.mode }
+          : { path: entry.path, kind: entry.kind, mode: entry.mode, target: entry.target }
+    return `entry:${hash(new TextEncoder().encode(JSON.stringify([metadata, revision])))}`
   }
 
   export function hash(bytes: Uint8Array) {

@@ -26,8 +26,7 @@ export namespace WorkspacePortableTree {
       "Portable Workspace files require their own versioned owner",
     )
   export type Root = z.infer<typeof Root>
-  export type Entry =
-    Exclude<WorkspaceTree.Entry, { kind: "file" }> | Omit<Extract<WorkspaceTree.Entry, { kind: "file" }>, "chunks">
+  export type Entry = WorkspaceTree.Header
 
   function describe(entry: Stream.Descriptor): Entry {
     const metadata = Metadata.parse(entry.metadata)

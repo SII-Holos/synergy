@@ -103,6 +103,7 @@ test("bounded object reads follow contained links and only fetch intersecting ch
     const range = await WorkspaceContent.readRange(selection, "link", WorkspaceTree.chunkBytes + 2, 4)
     expect([...range.bytes]).toEqual([9, 9, 9, 9])
     expect(range.version).toBe(`sha256:${WorkspaceTree.hash(data)}`)
+    expect((await WorkspaceContent.readRange(selection, "link", Number.MAX_SAFE_INTEGER, 4)).bytes).toHaveLength(0)
     expect(reads).toHaveLength(2)
     await expect(WorkspaceContent.read(selection, "cycle")).rejects.toThrow("cycle")
     await WorkspaceContent.write(selection, { path: "link", data: new Uint8Array([1]), expectedVersion: range.version })

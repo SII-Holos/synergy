@@ -1,8 +1,12 @@
 import path from "node:path"
+import fs from "node:fs/promises"
+import { createHash } from "node:crypto"
 import { z } from "zod"
 import { RuntimeContext } from "../lifecycle/context"
 import { WorkspaceCatalog } from "./catalog"
 import { WorkspaceTree } from "./tree"
+import { WorkspacePortableTree as Portable } from "./portable-tree"
+import { Storage } from "../storage/storage"
 import { SensitivePathPolicy } from "../enforcement/sensitive-path"
 import { WorkspaceErrors } from "./errors"
 import { WorkspaceProtocol } from "./protocol"
@@ -36,8 +40,9 @@ export namespace WorkspaceBlobs {
 }
 
 export namespace WorkspaceContent {
+  type StoredTree = WorkspaceTree.Manifest | Portable.Root
   const cache = RuntimeContext.state(
-    () => [] as Array<{ store: BlobStore; hash: string; bytes: number; tree: WorkspaceTree.Manifest }>,
+    () => [] as Array<{ store: BlobStore; hash: string; bytes: number; tree: StoredTree }>,
   )
   export const Spec = z
     .object({
@@ -67,34 +72,227 @@ export namespace WorkspaceContent {
     return { info, store }
   }
 
-  export async function manifest(info: WorkspaceCatalog.Info, store: BlobStore): Promise<WorkspaceTree.Manifest> {
-    if (!info.content?.manifest) return { version: 1, entries: [] }
+  async function stored(info: WorkspaceCatalog.Info, store: BlobStore, source = store): Promise<StoredTree> {
+    const manifest = info.content?.manifest
+    if (!manifest) return { version: 1, entries: [] }
     const entries = cache()
-    const index = entries.findIndex((entry) => entry.store === store && entry.hash === info.content!.manifest)
+    const index = entries.findIndex((entry) => entry.store === store && entry.hash === manifest)
     if (index !== -1) {
       const cached = entries.splice(index, 1)[0]!
       entries.push(cached)
       return cached.tree
     }
     const bytes = WorkspaceTree.verify(
-      info.content.manifest,
-      await store.get(info.content.manifest, WorkspaceTree.manifestBytes),
+      manifest,
+      await source.get(manifest, WorkspaceTree.manifestBytes),
       WorkspaceTree.manifestBytes,
     )
-    const tree = WorkspaceTree.Manifest.parse(JSON.parse(new TextDecoder().decode(bytes)))
-    for (const entry of tree.entries) {
-      if (entry.kind === "file") {
-        for (const chunk of entry.chunks) Object.freeze(chunk)
-        Object.freeze(entry.chunks)
+    const raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+    const tree: StoredTree =
+      raw && typeof raw === "object" && "tree" in raw ? Portable.Root.parse(raw) : WorkspaceTree.Manifest.parse(raw)
+    if ("entries" in tree) {
+      tree.entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+      for (const entry of tree.entries) {
+        if (entry.kind === "file") {
+          for (const chunk of entry.chunks) Object.freeze(chunk)
+          Object.freeze(entry.chunks)
+        }
+        Object.freeze(entry)
       }
-      Object.freeze(entry)
+      Object.freeze(tree.entries)
+    } else {
+      Object.freeze(tree.tree.owners)
+      Object.freeze(tree.tree)
     }
-    Object.freeze(tree.entries)
     Object.freeze(tree)
-    entries.push({ store, hash: info.content.manifest, bytes: bytes.length, tree })
+    entries.push({ store, hash: manifest, bytes: bytes.length, tree })
     while (entries.length > 8 || entries.reduce((total, entry) => total + entry.bytes, 0) > WorkspaceTree.manifestBytes)
       entries.shift()
     return tree
+  }
+
+  export async function manifest(info: WorkspaceCatalog.Info, store: BlobStore): Promise<WorkspaceTree.Manifest> {
+    const tree = await stored(info, store)
+    if (!("entries" in tree)) throw new Error("Paged Workspace content requires its indexed tree owner")
+    return tree
+  }
+
+  export type Tree = Pick<Awaited<ReturnType<typeof Portable.open>>, "get" | "resolve" | "entries" | "read"> & {
+    readonly mode: number
+  }
+  const Position = z.number().int().nonnegative().safe()
+  function header(entry: WorkspaceTree.Entry): Portable.Entry {
+    if (entry.kind !== "file") return { ...entry }
+    const { chunks: _, ...value } = entry
+    return value
+  }
+  function legacy(tree: WorkspaceTree.Manifest, store: BlobStore): Tree {
+    const resolve = async (filename: string, follow = true) => {
+      const resolved = WorkspaceTree.resolve(tree, filename, follow)
+      return { path: resolved.path, entry: resolved.entry ? header(resolved.entry) : undefined }
+    }
+    return {
+      mode: 0o755,
+      async get(filename) {
+        const entry = WorkspaceTree.get(tree, filename)
+        return entry ? header(entry) : undefined
+      },
+      resolve,
+      entries(options = {}) {
+        const { prefix, after } = options
+        return (async function* () {
+          for (const entry of tree.entries)
+            if ((prefix === undefined || entry.path.startsWith(prefix)) && (after === undefined || entry.path > after))
+              yield header(entry)
+        })()
+      },
+      read(filename, options = {}) {
+        const offset = Position.parse(options.offset ?? 0)
+        const length = options.length === undefined ? undefined : Position.parse(options.length)
+        return (async function* () {
+          const entry = WorkspaceTree.resolve(tree, filename).entry
+          if (entry?.kind !== "file") throw new Error("Workspace file is absent or is not a regular file")
+          const begin = Math.min(offset, entry.size)
+          const end = begin + Math.min(length ?? entry.size - begin, entry.size - begin)
+          const digest = offset === 0 && end === entry.size ? createHash("sha256") : undefined
+          let start = 0
+          for (const chunk of entry.chunks) {
+            const stop = start + chunk.size
+            if (stop > offset && start < end) {
+              const bytes = WorkspaceTree.verify(chunk.hash, await store.get(chunk.hash, chunk.size), chunk.size)
+              if (bytes.length !== chunk.size) throw new Error("Workspace file chunk is incomplete")
+              const selected = bytes.subarray(Math.max(0, offset - start), Math.min(chunk.size, end - start))
+              digest?.update(selected)
+              yield selected
+            }
+            start = stop
+            if (start >= end) break
+          }
+          if (digest && digest.digest("hex") !== entry.hash) throw new Error("Workspace file checksum mismatch")
+        })()
+      },
+    }
+  }
+
+  export async function withTree<T>(
+    info: WorkspaceCatalog.Info,
+    store: BlobStore,
+    body: (tree: Tree) => Promise<T>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<T> {
+    const runtime = RuntimeContext.current()
+    const primary = runtime.storage
+    const root = runtime.host.root
+    const selected = Storage.current()
+    const owner = { store: selected.store, artifacts: selected.artifactDirectory, objects: selected.artifactObjects }
+    const namespace = JSON.stringify(owner.store.options)
+    const objectConfig = owner.objects && {
+      blobs: owner.objects.blobs,
+      writerID: owner.objects.writerID,
+      now: owner.objects.now,
+    }
+    const signal = options.signal
+    const get = store.get.bind(store)
+    const pending = new Set<Promise<Uint8Array>>()
+    const bound: BlobStore = {
+      put: store.put.bind(store),
+      async get(hash, maximum) {
+        current()
+        const reading = get(hash, maximum)
+        pending.add(reading)
+        try {
+          const bytes = await reading
+          current()
+          return bytes
+        } finally {
+          pending.delete(reading)
+        }
+      },
+    }
+    let open = true
+    let reader: Awaited<ReturnType<typeof Portable.open>> | undefined
+    function current() {
+      if (!open) throw new Error("Workspace tree callback has ended")
+      signal?.throwIfAborted()
+      if (RuntimeContext.current() !== runtime || runtime.storage !== primary || runtime.host.root !== root)
+        throw new Error("Workspace tree belongs to another Runtime")
+      const handle = Storage.current()
+      if (
+        handle.store !== owner.store ||
+        JSON.stringify(owner.store.options) !== namespace ||
+        handle.artifactDirectory !== owner.artifacts ||
+        handle.artifactObjects !== owner.objects ||
+        owner.objects?.blobs !== objectConfig?.blobs ||
+        owner.objects?.writerID !== objectConfig?.writerID ||
+        owner.objects?.now !== objectConfig?.now
+      )
+        throw new Error("Workspace tree belongs to another Store or artifact configuration")
+    }
+    async function* guarded<V>(source: AsyncIterable<V>) {
+      current()
+      const iterator = source[Symbol.asyncIterator]()
+      let complete = false
+      try {
+        for (;;) {
+          current()
+          const next = await iterator.next()
+          current()
+          if (next.done) {
+            complete = true
+            return
+          }
+          yield next.value
+        }
+      } finally {
+        if (!complete) await iterator.return?.()
+      }
+    }
+    try {
+      current()
+      const tree = await stored(info, store, bound)
+      current()
+      let source: Tree
+      if ("entries" in tree) source = legacy(tree, bound)
+      else {
+        const directory = path.join(runtime.host.root, "cache", "workspace-readers")
+        await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+        current()
+        reader = await Portable.open({ root: tree, store: bound, directory, signal })
+        current()
+        source = { ...reader, mode: tree.mode }
+      }
+      const result = await body(
+        Object.freeze({
+          mode: source.mode,
+          async get(filename: string) {
+            current()
+            const value = await source.get(filename)
+            current()
+            return value
+          },
+          async resolve(filename: string, follow?: boolean) {
+            current()
+            const value = await source.resolve(filename, follow)
+            current()
+            return value
+          },
+          entries(options?: { prefix?: string; after?: string }) {
+            current()
+            return guarded(source.entries(options))
+          },
+          read(filename: string, options?: { offset?: number; length?: number }) {
+            current()
+            return guarded(source.read(filename, options))
+          },
+        }),
+      )
+      current()
+      return result
+    } finally {
+      open = false
+      await Promise.allSettled([...pending])
+      await reader?.close()
+    }
   }
 
   export async function read(
@@ -104,20 +302,19 @@ export namespace WorkspaceContent {
   ): Promise<Uint8Array> {
     WorkspaceTree.Path.parse(filename)
     const { info, store } = await resolve(input)
-    const tree = await manifest(info, store)
-    const entry = WorkspaceTree.resolve(tree, filename).entry
-    if (!entry || entry.kind !== "file") throw new Error("Workspace file is absent or is not a regular file")
-    if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || entry.size > maximumBytes)
-      throw new Error("Workspace file exceeds the read limit")
-    const bytes = new Uint8Array(entry.size)
-    let offset = 0
-    for (const chunk of entry.chunks) {
-      const data = WorkspaceTree.verify(chunk.hash, await store.get(chunk.hash, chunk.size), chunk.size)
-      if (data.byteLength !== chunk.size) throw new Error("Workspace file chunk is incomplete")
-      bytes.set(data, offset)
-      offset += data.length
-    }
-    return WorkspaceTree.verify(entry.hash, bytes, maximumBytes)
+    return withTree(info, store, async (tree) => {
+      const entry = (await tree.resolve(filename)).entry
+      if (entry?.kind !== "file") throw new Error("Workspace file is absent or is not a regular file")
+      if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || entry.size > maximumBytes)
+        throw new Error("Workspace file exceeds the read limit")
+      const bytes = new Uint8Array(entry.size)
+      let offset = 0
+      for await (const chunk of tree.read(entry.path)) {
+        bytes.set(chunk, offset)
+        offset += chunk.length
+      }
+      return WorkspaceTree.verify(entry.hash, bytes, maximumBytes)
+    })
   }
 
   export async function readRange(input: Selection, filename: string, offset: number, length: number) {
@@ -130,23 +327,18 @@ export namespace WorkspaceContent {
     )
       throw new Error("Invalid Workspace read range")
     const { info, store } = await resolve(input)
-    const tree = await manifest(info, store)
-    const entry = WorkspaceTree.resolve(tree, filename).entry
-    if (!entry || entry.kind !== "file") throw new Error("Workspace file is absent or is not a regular file")
-    const bytes = new Uint8Array(Math.min(length, Math.max(0, entry.size - offset)))
-    let start = 0
-    for (const chunk of entry.chunks) {
-      const end = start + chunk.size
-      if (end > offset && start < offset + bytes.length) {
-        const data = WorkspaceTree.verify(chunk.hash, await store.get(chunk.hash, chunk.size), chunk.size)
-        if (data.length !== chunk.size) throw new Error("Workspace file chunk is incomplete")
-        const from = Math.max(offset, start)
-        const to = Math.min(offset + bytes.length, end)
-        bytes.set(data.subarray(from - start, to - start), from - offset)
+    return withTree(info, store, async (tree) => {
+      const entry = (await tree.resolve(filename)).entry
+      if (entry?.kind !== "file") throw new Error("Workspace file is absent or is not a regular file")
+      const bytes = new Uint8Array(Math.min(length, Math.max(0, entry.size - offset)))
+      let written = 0
+      for await (const chunk of tree.read(entry.path, { offset, length })) {
+        bytes.set(chunk, written)
+        written += chunk.length
       }
-      start = end
-    }
-    return { bytes, version: `sha256:${entry.hash}`, size: entry.size, mode: entry.mode }
+      if (written !== bytes.length) throw new Error("Workspace file range is incomplete")
+      return { bytes, version: `sha256:${entry.hash}`, size: entry.size, mode: entry.mode }
+    })
   }
 
   export async function prepareWrite(

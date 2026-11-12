@@ -93,55 +93,55 @@
 
 - [0078](0078-cold-navigation-migration-admission.md)
 
-- [0074: Agenda origin](0074-agenda-home-origin-blocked-session-creation.md)
+- [0074](0074-agenda-home-origin-blocked-session-creation.md)
 
-- [0072: Watcher concurrency](0072-native-watcher-exception-concurrency.md)
+- [0072](0072-native-watcher-exception-concurrency.md)
 
-- [0071: Cold hydration](0071-cold-conversation-hydration-motion.md)
+- [0071](0071-cold-conversation-hydration-motion.md)
 
-- [0070: Rebound](0070-new-row-following-rebound.md)
+- [0070](0070-new-row-following-rebound.md)
 
-- [0069: History anchors](0069-history-pagination-reading-anchor.md)
+- [0069](0069-history-pagination-reading-anchor.md)
 
-- [0068: Measurements](0068-conversation-measurement-identity.md)
+- [0068](0068-conversation-measurement-identity.md)
 
-- [0067: Isolated containment](0067-isolated-runtime-containment-gaps.md)
+- [0067](0067-isolated-runtime-containment-gaps.md)
 
-- [0066: Completion settlement](0066-completion-waited-for-file-settlement.md)
+- [0066](0066-completion-waited-for-file-settlement.md)
 
-- [0065: Session navigation](0065-session-navigation-flashed-introduction.md)
+- [0065](0065-session-navigation-flashed-introduction.md)
 
-- [0064: History latency](0064-history-pages-scanned-authoritative-storage.md)
-- [0064: Attachment identity](0064-visual-card-attachment-identity.md)
+- [0064](0064-history-pages-scanned-authoritative-storage.md)
+- [0064](0064-visual-card-attachment-identity.md)
 
-- [0063: Startup replay](0063-history-replay-blocked-startup.md)
+- [0063](0063-history-replay-blocked-startup.md)
 
-- [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
-- [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
-- [0061: Usage recovery](0061-streamed-usage-recovery.md)
+- [0062](0062-project-migration-required-live-directory-identity.md)
+- [0061](0061-concurrent-workspace-admission.md)
+- [0061](0061-streamed-usage-recovery.md)
 
-- [0059: Disclosure](0059-cold-process-disclosure-jank.md)
+- [0059](0059-cold-process-disclosure-jank.md)
 
-- [0058: Markdown settlement](0058-markdown-terminal-estimates-lost-reading.md)
-- [0057: Conversation lifetime](0057-conversation-rendering-lifetime-and-scope-retention.md)
-- [0056: PostgreSQL cleanup](0056-postgres-node-cleanup-repeated-candidates.md)
-- [0055: Workspace tool discovery](0055-discovery-omitted-workspace-selection.md)
-- [0054: Logical file paths](0054-logical-workspace-path-classification.md)
-- [0053: Incomplete Environment release](0053-absent-compute-lost-release-intent.md)
-- [0049: Runtime startup readiness and progress](0049-storage-recovery-startup-progress-gap.md)
-- [0048: Process stability](0048-process-layout-and-arrival-ownership.md)
-- [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
+- [0058](0058-markdown-terminal-estimates-lost-reading.md)
+- [0057](0057-conversation-rendering-lifetime-and-scope-retention.md)
+- [0056](0056-postgres-node-cleanup-repeated-candidates.md)
+- [0055](0055-discovery-omitted-workspace-selection.md)
+- [0054](0054-logical-workspace-path-classification.md)
+- [0053](0053-absent-compute-lost-release-intent.md)
+- [0049](0049-storage-recovery-startup-progress-gap.md)
+- [0048](0048-process-layout-and-arrival-ownership.md)
+- [0046](0046-structured-output-retained-tool-intent.md)
 
-- [0045: PostgreSQL startup DDL blocked writers](0045-postgres-startup-ddl-blocked-writers.md)
+- [0045](0045-postgres-startup-ddl-blocked-writers.md)
 
-- [0042: Compaction completion](0042-process-event-ownership-and-compaction-completion.md)
-- [0041: Lost completion signal](0041-cortex-progress-fixture-lost-release.md)
-- [0040: Vite ports](0040-vite-fixtures-shared-default-ports.md)
-- [0039: Process activation deadlock](0039-paused-output-blocked-process-activation.md)
-- [0038: Session latency](0038-session-interactions-amplified-global-work.md)
-- [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
-- [0043: Historical data blocked startup](0043-historical-data-blocked-startup.md)
-- [0036: Directory replacement blocked history](0036-directory-replacement-blocked-history.md)
+- [0042](0042-process-event-ownership-and-compaction-completion.md)
+- [0041](0041-cortex-progress-fixture-lost-release.md)
+- [0040](0040-vite-fixtures-shared-default-ports.md)
+- [0039](0039-paused-output-blocked-process-activation.md)
+- [0038](0038-session-interactions-amplified-global-work.md)
+- [0035](0035-native-titlebar-swallowed-controls.md)
+- [0043](0043-historical-data-blocked-startup.md)
+- [0036](0036-directory-replacement-blocked-history.md)
 
 | Number | Title                                                                      | Status      | Date       |
 | ------ | -------------------------------------------------------------------------- | ----------- | ---------- |
@@ -205,16 +205,18 @@
 
 | 0034 | [Composer uploads suppressed attachment content](0034-composer-upload-suppressed-content.md) | implemented | 2026-09-28 |
 
-- [0037: Mount identity](0037-mount-number-invalidated-directory.md)
+- [0037](0037-mount-number-invalidated-directory.md)
 
 Only append corrections.
 
-- [0115: Renewed cleanup intent reused an old generation](0115-renewed-cleanup-intent-reused-an-old-generation.md)
+- [0115](0115-renewed-cleanup-intent-reused-an-old-generation.md)
 
-- [0116: Native cleanup rejected returned Session history](0116-native-cleanup-rejected-returned-session-history.md)
+- [0116](0116-native-cleanup-rejected-returned-session-history.md)
 
-- [0117: Renderer reload reopened pending logout](0117-renderer-reload-reopened-pending-logout.md)
+- [0117](0117-renderer-reload-reopened-pending-logout.md)
 
-- [0118: Organization view recovery retained old requests](0118-organization-view-recovery-retained-old-requests.md)
+- [0118](0118-organization-view-recovery-retained-old-requests.md)
 
-- [0119: Portable writer retained mutable inputs](0119-portable-writer-retained-mutable-inputs.md)
+- [0119](0119-portable-writer-retained-mutable-inputs.md)
+
+- [0120](0120-workspace-readers-outlived-their-selected-storage.md)
