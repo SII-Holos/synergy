@@ -32,7 +32,7 @@ const Artifacts = z.discriminatedUnion("kind", [
   }),
 ])
 type Artifacts = z.infer<typeof Artifacts>
-const Disk = z.strictObject({
+const StagingDisk = z.strictObject({
   schemaVersion: z.literal(1),
   restoreID: ID,
   owner: RestorationRequest.shape.owner,
@@ -50,6 +50,20 @@ const Disk = z.strictObject({
     artifacts: Artifacts,
   }),
 })
+const Completion = z.strictObject({
+  schemaVersion: z.literal(2),
+  phase: z.literal("completed"),
+  intentHash: Hash,
+  publicationHash: Hash,
+})
+const CompletedDisk = StagingDisk.extend({
+  schemaVersion: z.literal(2),
+  phase: z.literal("completed"),
+  publicationHash: Hash,
+})
+const Disk = z.discriminatedUnion("schemaVersion", [StagingDisk, CompletedDisk])
+const StagingInfo = StagingDisk.omit({ target: true })
+const CompletedInfo = CompletedDisk.omit({ target: true })
 type Disk = z.infer<typeof Disk>
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
 const filename = (root: string) => path.join(root, "home-restoration.json")
@@ -65,6 +79,7 @@ interface Binding {
   storeConfigHash: string
   writer: ServerProcessLock.Ownership
   record: Disk
+  publicationHash?: string
 }
 interface Frame {
   binding: Binding
@@ -73,12 +88,60 @@ interface Frame {
 }
 const targets = new WeakMap<HomeRestoration.Target, Binding>()
 const permits = new WeakMap<HomeRestoration.InstallPermit, Frame>()
+const publications = new WeakMap<HomeRestoration.PublicationPermit, { frame: Frame; hash: string }>()
 const installedOwners = new WeakMap<
   HomeRestoration.InstallPermit,
   { frame: Frame; ownership: Readonly<HomeOwnershipFile.RestorationInfo> }
 >()
 const current = RuntimeContext.createAsyncContext<Frame>()
-const state = RuntimeContext.state(() => ({ installed: false, blocked: false, pending: 0 }))
+const state = RuntimeContext.state(() => ({
+  installed: false,
+  blocked: false,
+  pending: 0,
+  publicationOwners: new Map<string, HomeRestoration.PublicationOwner>(),
+}))
+
+function staging(record: Disk) {
+  const { publicationHash: _, ...base } = { publicationHash: undefined, ...record }
+  return StagingDisk.parse({ ...base, schemaVersion: 1, phase: "staging" })
+}
+function completion(record: Disk, publicationHash: string) {
+  return (
+    JSON.stringify(
+      Completion.parse({
+        schemaVersion: 2,
+        phase: "completed",
+        intentHash: digest(staging(record)),
+        publicationHash,
+      }),
+    ) + "\n"
+  )
+}
+function decode(bytes: Uint8Array, publicationHash?: string, baseOnly = false): Disk {
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+  try {
+    return StagingDisk.parse(JSON.parse(text))
+  } catch {}
+  const boundary = text.indexOf("\n")
+  const base = StagingDisk.parse(JSON.parse(text.slice(0, boundary)))
+  if (boundary < 0 || text.slice(0, boundary + 1) !== JSON.stringify(base) + "\n")
+    throw new RestorationError("Native restoration intent has no canonical original frame")
+  const tail = text.slice(boundary + 1)
+  try {
+    const committed = Completion.parse(JSON.parse(tail))
+    if (committed.intentHash !== digest(base) || tail !== completion(base, committed.publicationHash))
+      throw new RestorationError("Native restoration completion belongs to another original intent")
+    return CompletedDisk.parse({
+      ...base,
+      schemaVersion: 2,
+      phase: "completed",
+      publicationHash: committed.publicationHash,
+    })
+  } catch (error) {
+    if (baseOnly || (publicationHash && completion(base, publicationHash).startsWith(tail))) return base
+    throw error
+  }
+}
 
 function assertPrimary(binding: Binding) {
   if (RuntimeContext.current() !== binding.runtime)
@@ -173,7 +236,7 @@ async function target(expectedArtifacts?: Artifacts) {
     throw new RestorationError("Installation target native identity is unavailable")
   }
 }
-async function read(root: string): Promise<Disk | undefined> {
+async function read(root: string, publicationHash?: string, baseOnly = false): Promise<Disk | undefined> {
   let file: Awaited<ReturnType<typeof fs.open>>
   try {
     const before = await fs.lstat(filename(root))
@@ -203,7 +266,7 @@ async function read(root: string): Promise<Disk | undefined> {
       )
         throw new RestorationError("Native restoration intent changed while reading")
       try {
-        return Disk.parse(JSON.parse(Buffer.from(bytes.subarray(0, used)).toString("utf8")))
+        return decode(bytes.subarray(0, used), publicationHash, baseOnly)
       } catch {
         throw new RestorationError("Native restoration intent is invalid or unsupported")
       }
@@ -232,7 +295,7 @@ async function verify(binding: Binding, signal?: AbortSignal) {
   if (digest(await target(binding.record.target.artifacts)) !== digest(binding.record.target))
     throw new RestorationError("Installation target native identity changed")
   await ServerProcessLock.verifyOwnership(binding.writer)
-  const retained = await read(binding.record.target.root)
+  const retained = await read(binding.record.target.root, binding.publicationHash)
   if (!retained || digest(retained) !== digest(binding.record))
     throw new RestorationError("Installation intent changed or is unavailable")
   signal?.throwIfAborted()
@@ -242,13 +305,31 @@ async function verify(binding: Binding, signal?: AbortSignal) {
 export namespace HomeRestoration {
   export const Request = RestorationRequest
   export type Request = z.infer<typeof Request>
-  export const Info = Disk.omit({ target: true })
+  export const Info = z.discriminatedUnion("schemaVersion", [StagingInfo, CompletedInfo])
   export type Info = z.infer<typeof Info>
   export interface Target {
     readonly kind: "home-restoration-target"
   }
   export interface InstallPermit {
     readonly kind: "home-installation"
+  }
+  export interface PublicationPermit {
+    readonly kind: "home-publication"
+  }
+  export const PublicationStatus = z.strictObject({
+    publicationHash: Hash,
+    nativeReady: z.boolean(),
+    released: z.boolean(),
+  })
+  export interface PublicationOwner {
+    read(info: Info): Promise<z.infer<typeof PublicationStatus>>
+  }
+  export function registerPublicationOwner(owner: string, contribution: PublicationOwner) {
+    RuntimeContext.assertCompositionOpen("native Home publication owner")
+    const id = RestorationRequest.shape.owner.parse(owner)
+    if (state().publicationOwners.has(id))
+      throw new RestorationError("Native Home publication owner is already registered")
+    state().publicationOwners.set(id, { read: contribution.read.bind(contribution) })
   }
   export function register() {
     RuntimeContext.assertCompositionOpen("native Home restoration")
@@ -481,14 +562,196 @@ export namespace HomeRestoration {
     const record = await read(RuntimeContext.current().host.root)
     if (!record) return
     state().blocked = true
-    throw new RestorationError("Native Home restoration is incomplete; use its restricted recovery owner")
+    if (record.phase !== "completed")
+      throw new RestorationError("Native Home restoration is incomplete; use its restricted recovery owner")
+    await withPublication(
+      { installationID: record.installationID, publicationHash: record.publicationHash },
+      async (permit) => {
+        const status = await verifyPublication(permit)
+        if (!status.nativeReady || !status.released)
+          throw new RestorationError("Native Home restoration publication is not ready and released")
+      },
+    )
+    state().blocked = false
+  }
+  function publication(permit: PublicationPermit) {
+    const proof = publications.get(permit)
+    if (!proof || !proof.frame.open || current.getStore() !== proof.frame)
+      throw new RestorationError("Publication requires its original native callback")
+    assertPrimary(proof.frame.binding)
+    return proof
+  }
+  export function assertPublication(permit: PublicationPermit) {
+    publication(permit)
+  }
+  export function describePublication(permit: PublicationPermit) {
+    const proof = publication(permit)
+    const { target: _, ...info } = proof.frame.binding.record
+    return { installation: Info.parse(info), publicationHash: proof.hash }
+  }
+  async function verifyPublicationOwner(binding: Binding) {
+    await verify(binding)
+    const record = binding.record
+    const ownership = HomeOwnershipFile.RestorationInfo.parse(
+      await HomeOwnershipFile.open({
+        root: record.target.root,
+        env: binding.runtime.host.env,
+      }).read(),
+    )
+    if (
+      ownership.owner !== record.owner ||
+      ownership.installationID !== record.installationID ||
+      ownership.incarnation !== record.incarnation
+    )
+      throw new RestorationError("Publication belongs to another native installation owner")
+    await HomeOwnershipFile.open({
+      root: record.target.root,
+      env: binding.runtime.host.env,
+      selected: ownership,
+    }).assert({ required: true })
+    await verify(binding)
+  }
+  export async function verifyPublication(permit: PublicationPermit) {
+    const proof = publication(permit)
+    const binding = proof.frame.binding
+    await verifyPublicationOwner(binding)
+    const owner = state().publicationOwners.get(binding.record.owner)
+    if (!owner) throw new RestorationError("Publication requires its registered native domain owner")
+    const status = PublicationStatus.parse(await owner.read(describePublication(permit).installation))
+    publication(permit)
+    if (status.publicationHash !== proof.hash)
+      throw new RestorationError("Native publication differs from its actual committed domain receipt")
+    return status
+  }
+  export async function withPublication<T>(
+    input: { installationID: string; publicationHash: string },
+    body: (permit: PublicationPermit) => Promise<T>,
+  ): Promise<T> {
+    requireRegistered()
+    if (Storage.inTransaction())
+      throw new RestorationError("Publication requires an already committed domain receipt outside SQL")
+    const installationID = z.uuid().parse(input.installationID)
+    const hash = Hash.parse(input.publicationHash)
+    const runtime = RuntimeContext.current()
+    const handle = runtime.storage
+    if (!handle || Storage.current() !== handle || handle.artifactObjects)
+      throw new RestorationError("Publication requires its original primary native Store")
+    const record = await read(runtime.host.root, hash)
+    if (
+      !record ||
+      record.installationID !== installationID ||
+      (record.phase === "completed" && record.publicationHash !== hash)
+    )
+      throw new RestorationError("Publication belongs to another native installation")
+    state().blocked = true
+    const binding: Binding = {
+      runtime,
+      handle,
+      store: handle.store,
+      artifacts: handle.artifactDirectory,
+      storeConfigHash: digest(handle.store.options),
+      writer: await ServerProcessLock.currentOwnership(),
+      record,
+      publicationHash: hash,
+    }
+    return withFileLock({ directory: lockDirectory(record.target.root), key: "home-restoration" }, async () => {
+      await verifyPublicationOwner(binding)
+      const frame: Frame = { binding, open: true }
+      const permit = Object.freeze({ kind: "home-publication" as const })
+      publications.set(permit, { frame, hash })
+      try {
+        return await current.run(frame, async () => {
+          await verifyPublication(permit)
+          const result = await body(permit)
+          await verify(binding)
+          return result
+        })
+      } finally {
+        frame.open = false
+      }
+    })
+  }
+  export async function inspectCompleted() {
+    requireRegistered()
+    const runtime = RuntimeContext.current()
+    const record = await read(runtime.host.root)
+    if (!record || record.phase !== "completed") throw new RestorationError("Native Home restoration is incomplete")
+    const ownership = HomeOwnershipFile.RestorationInfo.parse(
+      await HomeOwnershipFile.open({
+        root: runtime.host.root,
+        env: runtime.host.env,
+      }).read(),
+    )
+    await assertPendingOwner(ownership)
+    const retained = await read(runtime.host.root)
+    if (RuntimeContext.current() !== runtime || digest(retained) !== digest(record))
+      throw new RestorationError("Native Home completion changed during inspection")
+    const { target: _, ...info } = record
+    return CompletedInfo.parse(info)
+  }
+  export async function completePublication(permit: PublicationPermit) {
+    const status = await verifyPublication(permit)
+    if (!status.nativeReady) throw new RestorationError("Publication requires confirmed current native settings")
+    const proof = publication(permit)
+    const binding = proof.frame.binding
+    if (binding.record.phase === "completed") return describePublication(permit).installation
+    const base = JSON.stringify(staging(binding.record)) + "\n"
+    const tail = Buffer.from(completion(binding.record, proof.hash))
+    const size = Buffer.byteLength(base)
+    if (size + tail.byteLength > 8192) throw new RestorationError("Native publication intent exceeds its format")
+    const file = filename(binding.record.target.root)
+    const before = await fs.lstat(file, { bigint: true })
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n)
+      throw new RestorationError("Native publication requires its original independent intent file")
+    const held = await fs.open(file, constants.O_RDWR | (constants.O_NOFOLLOW ?? 0))
+    try {
+      const original = await held.stat({ bigint: true })
+      if (
+        original.dev !== before.dev ||
+        original.ino !== before.ino ||
+        original.nlink !== 1n ||
+        original.size !== before.size
+      )
+        throw new RestorationError("Native publication intent changed while opening")
+      const bytes = new Uint8Array(Number(original.size))
+      const read = await held.read(bytes, 0, bytes.byteLength, 0)
+      if (
+        read.bytesRead !== bytes.byteLength ||
+        !Buffer.from(bytes.subarray(0, size)).equals(Buffer.from(base)) ||
+        digest(decode(bytes, proof.hash)) !== digest(binding.record)
+      )
+        throw new RestorationError("Native publication intent changed before completion")
+      await verifyPublicationOwner(binding)
+      let offset = 0
+      while (offset < tail.byteLength) {
+        publication(permit)
+        const wrote = await held.write(tail, offset, tail.byteLength - offset, size + offset)
+        if (!wrote.bytesWritten) throw new RestorationError("Native publication completion write made no progress")
+        offset += wrote.bytesWritten
+      }
+      await held.truncate(size + tail.byteLength)
+      await held.sync()
+      const retained = await fs.lstat(file, { bigint: true })
+      if (retained.dev !== original.dev || retained.ino !== original.ino || retained.nlink !== 1n)
+        throw new RestorationError("Native publication intent changed during completion")
+      binding.record = CompletedDisk.parse({
+        ...binding.record,
+        schemaVersion: 2,
+        phase: "completed",
+        publicationHash: proof.hash,
+      })
+      await verifyPublicationOwner(binding)
+      return describePublication(permit).installation
+    } finally {
+      await held.close()
+    }
   }
   export async function assertPendingOwner(value: HomeOwnershipFile.RestorationInfo) {
     requireRegistered()
     const ownership = HomeOwnershipFile.RestorationInfo.parse(value)
     const runtime = RuntimeContext.current()
     const { home, root } = runtime.host
-    const record = await read(root)
+    const record = await read(root, undefined, true)
     if (
       !record ||
       record.owner !== ownership.owner ||

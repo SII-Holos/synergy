@@ -496,6 +496,59 @@ export namespace RuntimeMaintenance {
         message: "Maintenance freezes ordinary canonical mutations",
       })
   }
+  export async function releaseRestoration(permit: HomeRestoration.PublicationPermit) {
+    if (Storage.inTransaction())
+      throw new Blocked({ message: "Publication release must own its final native transaction" })
+    HomeRestoration.assertPublication(permit)
+    const status = await HomeRestoration.verifyPublication(permit)
+    const { installation } = HomeRestoration.describePublication(permit)
+    if (installation.phase !== "completed" || !status.nativeReady)
+      throw new Blocked({ message: "Restored execution requires its completed native publication" })
+    using _lock = await Lock.write("runtime-maintenance")
+    const assert = () => {
+      HomeRestoration.assertPublication(permit)
+      if (!state().installed) throw new Blocked({ message: "Publication requires its native maintenance protection" })
+    }
+    assert()
+    const released = await mutate(
+      async (tx) => {
+        assert()
+        const retained = await read(tx, Restoration, restorationKey(installation.installationID))
+        const held = await current(tx)
+        if (
+          !retained ||
+          !held ||
+          retained.installationID !== installation.installationID ||
+          retained.incarnation !== installation.incarnation ||
+          retained.restoreID !== installation.restoreID ||
+          retained.requestHash !== installation.requestHash ||
+          retained.sourceHash !== installation.sourceHash ||
+          digest(await read(tx, Info, operationKey(retained.source.maintenanceID))) !== digest(retained.source)
+        )
+          throw new Blocked({ message: "Publication requires its original retained maintenance adoption" })
+        if (held.phase === "released") {
+          if (
+            digest(held) !==
+            digest({
+              ...retained.target,
+              phase: "released",
+              revision: retained.target.revision + 1,
+              updatedAt: held.updatedAt,
+            })
+          )
+            throw new Blocked({ message: "Published maintenance release has another original target" })
+          return held
+        }
+        await requireRestoration(tx, installation)
+        const result = Info.parse({ ...held, phase: "released", revision: held.revision + 1, updatedAt: Date.now() })
+        await tx.write(operationKey(held.maintenanceID), result)
+        return result
+      },
+      { commitGuard: assert },
+    )
+    state().pending = false
+    return released
+  }
   export async function assertDraining(lease: Lease) {
     const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
     if (info.phase !== "draining")

@@ -16,7 +16,7 @@ const manifestHash = (value: StorageCheckpoint.Manifest) =>
   createHash("sha256")
     .update(JSON.stringify(StorageCheckpoint.Manifest.parse(value)))
     .digest("hex")
-async function targetFixture(home?: string) {
+async function targetFixture(home?: string, publication = false) {
   const selected = await fs.realpath(
     home ?? (await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "maintenance-adoption-"))),
   )
@@ -24,9 +24,31 @@ async function targetFixture(home?: string) {
   runtime.run(() => {
     HomeRestoration.register()
     RuntimeMaintenance.registerProtection()
+    if (publication)
+      HomeRestoration.registerPublicationOwner("organization-runtime", {
+        async read(info) {
+          const row = await Storage.read<{ hash: string; settingsHash: string; installationID: string }>([
+            "publication",
+            info.installationID,
+          ])
+          if (row.installationID !== info.installationID) throw new Error("Publication belongs to another installation")
+          const file = Bun.file(path.join(selected, "current-settings.json"))
+          return {
+            publicationHash: row.hash,
+            nativeReady:
+              (await file.exists()) &&
+              createHash("sha256")
+                .update(await file.bytes())
+                .digest("hex") === row.settingsHash,
+            released: (await RuntimeMaintenance.status())?.phase === "released",
+          }
+        },
+      })
     RuntimeContext.sealComposition()
   })
   const root = path.join(selected, ".synergy")
+  if (publication && (await Bun.file(path.join(root, "home-restoration.json")).exists()))
+    await runtime.run(async () => expect((await HomeRestoration.inspectCompleted()).phase).toBe("completed"))
   const store = await TransactionalStore.open({
     backend: "sqlite",
     filename: path.join(root, "data", "restore.sqlite"),
@@ -48,6 +70,163 @@ async function targetFixture(home?: string) {
     },
   }
 }
+
+test("only a committed publication with current native settings completes and releases the original restored Home", async () => {
+  const source = await sourceFixture()
+  const target = await targetFixture(undefined, true)
+  const request = HomeRestoration.Request.parse({
+    restoreID: "complete-original-recovery",
+    owner: "organization-runtime",
+    sourceHash: manifestHash(source.manifest),
+    payload: {},
+  })
+  const hash = "f".repeat(64)
+  const settings = Buffer.from('{"current":"H1"}\n')
+  let installationID = ""
+  let expired: HomeRestoration.PublicationPermit | undefined
+  let targetClosed = false
+  try {
+    await target.run(async () => {
+      const selected = await HomeRestoration.begin(request)
+      await HomeRestoration.withTarget(selected, async (permit) => {
+        await HomeRestoration.installOwner(permit, {
+          identity: "a".repeat(64),
+          readerContract: "native-recovery-fixture-v1",
+        })
+        installationID = HomeRestoration.describe(permit).installationID
+        await StorageCheckpoint.restoreArchive({
+          directory: source.directory,
+          expected: source.manifest,
+          keys: source.keys,
+          restoreID: request.restoreID,
+          finalize: (tx, archive) =>
+            RuntimeMaintenance.adoptRestoration(tx, { permit, request, archive }).then(() => {}),
+        })
+        await RuntimeMaintenance.restorationTransaction({ permit, request }, () =>
+          Storage.write(["publication", installationID], {
+            hash,
+            installationID,
+            settingsHash: createHash("sha256").update(settings).digest("hex"),
+          }),
+        )
+      })
+      await expect(
+        HomeRestoration.withPublication({ installationID, publicationHash: "e".repeat(64) }, async () => {}),
+      ).rejects.toThrow()
+      await expect(
+        Storage.transaction(() =>
+          HomeRestoration.withPublication({ installationID, publicationHash: hash }, async () => {}),
+        ),
+      ).rejects.toThrow("committed")
+      await HomeRestoration.withPublication({ installationID, publicationHash: hash }, async (permit) => {
+        expired = permit
+        await expect(HomeRestoration.completePublication(permit)).rejects.toThrow("native")
+        await expect(RuntimeMaintenance.releaseRestoration(permit)).rejects.toThrow()
+        await Bun.write(path.join(target.home, "current-settings.json"), settings)
+      })
+      const intent = path.join(target.root, "home-restoration.json")
+      const originalOpen = fs.open
+      const partial = new Error("Interrupted completion tail")
+      using interrupted = spyOn(fs, "open").mockImplementation(async (...args) => {
+        const file = await originalOpen(...args)
+        if (String(args[0]) === intent && typeof args[1] === "number" && (args[1] & 2) === 2) {
+          const write = file.write.bind(file)
+          spyOn(file, "write").mockImplementation((async (
+            buffer: NodeJS.ArrayBufferView | string,
+            offset?: number | null,
+            length?: number | null,
+            position?: number | null,
+          ) => {
+            if (typeof buffer === "string") throw new Error("Completion requires bounded bytes")
+            if (typeof offset !== "number" || typeof length !== "number" || typeof position !== "number")
+              throw new Error("Completion requires its explicit original offset")
+            await write(buffer, offset, Math.min(17, length), position)
+            throw partial
+          }) as typeof file.write)
+        }
+        return file
+      })
+      await expect(
+        HomeRestoration.withPublication({ installationID, publicationHash: hash }, HomeRestoration.completePublication),
+      ).rejects.toBe(partial)
+      interrupted.mockRestore()
+      await expect(HomeRestoration.assertOrdinaryStartup()).rejects.toThrow()
+      const lost = new Error("Completion sync acknowledgement lost")
+      using unknown = spyOn(fs, "open").mockImplementation(async (...args) => {
+        const file = await originalOpen(...args)
+        if (String(args[0]) === intent && typeof args[1] === "number" && (args[1] & 2) === 2) {
+          const sync = file.sync.bind(file)
+          spyOn(file, "sync").mockImplementation(async () => {
+            await sync()
+            throw lost
+          })
+        }
+        return file
+      })
+      await expect(
+        HomeRestoration.withPublication({ installationID, publicationHash: hash }, HomeRestoration.completePublication),
+      ).rejects.toBe(lost)
+      unknown.mockRestore()
+      await expect(HomeRestoration.assertOrdinaryStartup()).rejects.toThrow()
+      const entered = Promise.withResolvers<void>()
+      const finish = Promise.withResolvers<void>()
+      const originalWrite = StoreTransaction.prototype.write
+      using delayed = spyOn(StoreTransaction.prototype, "write").mockImplementation(async function (
+        this: StoreTransaction,
+        key,
+        value,
+      ) {
+        await originalWrite.call(this, key, value)
+        const next = RuntimeMaintenance.Info.safeParse(value)
+        if (next.success && next.data.maintenanceID === installationID && next.data.phase === "released") {
+          entered.resolve()
+          await finish.promise
+        }
+      })
+      let pending: Promise<RuntimeMaintenance.Info> | undefined
+      await HomeRestoration.withPublication({ installationID, publicationHash: hash }, async (permit) => {
+        pending = RuntimeMaintenance.releaseRestoration(permit)
+        void pending.catch(() => {})
+        await entered.promise
+      })
+      finish.resolve()
+      await expect(pending!).rejects.toThrow("callback")
+      delayed.mockRestore()
+      expect((await RuntimeMaintenance.status())?.phase).toBe("recovery-held")
+      await HomeRestoration.withPublication({ installationID, publicationHash: hash }, async (permit) => {
+        await HomeRestoration.completePublication(permit)
+        const retained = await RuntimeMaintenance.restoration(installationID)
+        expect((await RuntimeMaintenance.releaseRestoration(permit)).phase).toBe("released")
+        expect(await RuntimeMaintenance.restoration(installationID)).toEqual(retained)
+        expect(await RuntimeMaintenance.operation(source.source.maintenanceID)).toEqual(source.source)
+      })
+      await HomeRestoration.assertOrdinaryStartup()
+      await Storage.write(["canonical", "ready"], true)
+      expect(() => HomeRestoration.assertPublication(expired!)).toThrow("callback")
+      await expect(RuntimeMaintenance.releaseRestoration({ kind: "home-publication" })).rejects.toThrow()
+    })
+    await target.close()
+    targetClosed = true
+    const cold = await targetFixture(target.home, true)
+    try {
+      await cold.run(async () => {
+        await HomeRestoration.assertOrdinaryStartup()
+        await RuntimeMaintenance.assertAdmission()
+        expect(await Storage.read(["canonical", "ready"])).toBe(true)
+        await HomeRestoration.withPublication({ installationID, publicationHash: hash }, async (permit) => {
+          await HomeRestoration.completePublication(permit)
+          expect((await RuntimeMaintenance.releaseRestoration(permit)).phase).toBe("released")
+        })
+      })
+    } finally {
+      await cold.close()
+    }
+  } finally {
+    await source.close()
+    if (!targetClosed) await target.close()
+    await fs.rm(target.home, { recursive: true, force: true })
+  }
+}, 15000)
 async function sourceFixture() {
   const runtime = await testRuntime({
     register() {
