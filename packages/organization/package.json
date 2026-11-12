@@ -27,6 +27,7 @@
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+    "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@hono/standard-validator": "0.4.0",
     "@modelcontextprotocol/sdk": "1.32.1",

@@ -26,6 +26,7 @@
     "packages/harness",
     "packages/local-runtime",
     "packages/cli",
+    "packages/sdk/js",
     "packages/util"
   ],
   "packages/organization-runtime": [

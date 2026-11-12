@@ -3,7 +3,7 @@ import path from "node:path"
 import { openOrganizationService } from "@ericsanchezok/synergy-organization/service"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { testResources } from "@ericsanchezok/synergy-testing/resources"
-import { cert, key } from "./fixtures/tls"
+import { cert, key } from "@ericsanchezok/synergy-testing/organization-tls"
 
 type Service = Awaited<ReturnType<typeof openOrganizationService>>
 type Socket = Parameters<Service["websocket"]["message"]>[0]

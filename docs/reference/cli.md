@@ -33,7 +33,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `migrate` | move synergy data to a new location (alias for 'data move') |
 | `migration` | manage schema and data migrations |
 | `models` | list all available models |
-| `org` | initialize or serve an organization in an explicit SYNERGY_HOME |
+| `org` | initialize, administer or serve a dedicated organization |
 | `plugin` | install, remove, update, and inspect plugins |
 | `remove` | remove packages and unused dependencies |
 | `secrets` | manage the secret vault |
@@ -408,6 +408,19 @@ install components, presets, plugins or applications
 | `--approve-plugin` (array) | approve the displayed API4 capability grant for these plugin ids |
 | `--resume` (boolean) | finish an interrupted plugin activation |
 
+## invite
+
+create one invitation over HTTPS and retain its token in a new private file
+
+| Option | Description |
+| --- | --- |
+| `--origin` (string) | exact public HTTPS organization origin |
+| `--login-name` (string) | current administrator login name |
+| `--password-file` (string) | absolute private password file; one final newline is ignored |
+| `--ca-file` (string) | absolute private file containing an additional trusted CA |
+| `--role` | role granted when the invitation is consumed |
+| `--output` (string) | absolute new private token file; existing files are never reused |
+
 ## learning
 
 configure experience learning parameters (writes to global config)
@@ -537,7 +550,7 @@ list unfinished Workspace mutations
 
 ## org
 
-initialize or serve an organization in an explicit SYNERGY_HOME
+initialize, administer or serve a dedicated organization
 
 
 ## pack [output]

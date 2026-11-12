@@ -25,6 +25,23 @@ mkdir -m 700 /absolute/private-bootstrap
 
 Initialization writes its single-use token only to the new mode-0600 file; stdout contains readiness metadata. Existing output files are rejected. Use the generated Organization SDK's `orgSetup.bootstrap` operation with this token to create the first owner, then remove the private token file. Register the actual Web/Desktop client using the [organization connection setup](../../packages/organization/README.md). The service can serve a separately built authorization page through `serve --web /absolute/web-directory`; that directory is not part of the minimal service image.
 
+## Invite a member
+
+Use an administrator's login and an absolute private password file. One final newline is ignored; other password whitespace is preserved. The command does not require a local Home. Run the same operation through `synergy org invite` in a full installation or through the independent executable:
+
+```sh
+./node_modules/.bin/synergy-org invite \
+  --origin https://organization.example.org \
+  --login-name owner \
+  --password-file /absolute/private/owner-password \
+  --role member \
+  --output /absolute/private/new-member-invitation.json
+```
+
+Use `--role admin` only when granting administrator access. Add `--ca-file /absolute/private/organization-ca.pem` for a private CA; HTTPS redirects are rejected. Password and CA files follow the same private regular-file checks as infrastructure credentials. The output must not exist; its parent directory must already be writable. The command publishes and syncs its private marker before any HTTP request, signs in, issues one invitation and attempts to revoke that login. Stdout contains role, expiry, output path and `loginRevoked`, never the token. A false `loginRevoked` requires revoking that temporary login through account management.
+
+Read a successful output's `token` through a trusted private channel, then remove the file when it is no longer needed. Retain failed or unknown output until the outcome is understood. Repeating a command with that path makes no HTTP request. A response can be lost after issuance; inspect and, if needed, revoke the existing invitation through invitation management before using a new output path. The command never automatically retries issuance. The [invitation decision](../decisions/implemented/feature/2026-11-13-issue-invitations-through-the-organization-cli.md) records these guarantees.
+
 ## Build an image from release archives
 
 On a Linux build host, use the standard workspace package build and native assets for the target architecture. The [deployment CI workflow](../../.github/workflows/organization-deployment.yml) builds its native helper, packs the same release packages, verifies an external installation, and builds and runs the container without publishing it.

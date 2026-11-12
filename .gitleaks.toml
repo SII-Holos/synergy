@@ -18,7 +18,7 @@ paths = [
   '''packages/plugin-host/test/.*/fixtures/.*''',
   '''packages/presets/test/.*/fixtures/.*''',
   '''packages/local-runtime/test/.*/fixtures/.*''',
-  '''packages/organization-runtime/test/support/fixtures/tls\.ts''',
+  '''packages/testing/fixtures/organization-tls\.ts''',
   # Public self-signed localhost key used only by the cross-origin browser fixture.
   '''apps/web/test/fixtures/organization-tls\.ts''',
   '''packages/server/test/.*/fixtures/.*''',

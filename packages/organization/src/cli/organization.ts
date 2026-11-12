@@ -4,6 +4,7 @@ import { cmd, type CommandModule } from "@ericsanchezok/synergy-util/cli-command
 import { openOrganizationService } from "../service"
 import { readOrganizationConfiguration } from "../configuration"
 import { loadOrganizationInfrastructure } from "../infrastructure"
+import { OrganizationInviteCommand } from "./invite"
 
 function explicitHome() {
   const home = process.env.SYNERGY_HOME
@@ -17,7 +18,7 @@ function explicitHome() {
 export const OrganizationCommand = cmd({
   command: "org",
   aliases: ["organization"],
-  describe: "initialize or serve an organization in an explicit SYNERGY_HOME",
+  describe: "initialize, administer or serve a dedicated organization",
   builder: (yargs) => {
     for (const command of organizationCommands) yargs.command(command)
     return yargs.demandCommand()
@@ -141,4 +142,8 @@ export const OrganizationServeCommand = cmd({
   },
 })
 
-export const organizationCommands = [OrganizationInitCommand, OrganizationServeCommand] as unknown as CommandModule[]
+export const organizationCommands = [
+  OrganizationInitCommand,
+  OrganizationServeCommand,
+  OrganizationInviteCommand,
+] as unknown as CommandModule[]
