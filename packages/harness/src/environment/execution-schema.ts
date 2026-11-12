@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { EnvironmentSchema } from "./schema"
-import { EnvironmentOrigin } from "./origin"
+import { EnvironmentOriginSchema } from "./origin-schema"
 import { ExecutionProtocol } from "./executor"
 import { WorkspaceProtocol } from "../workspace/protocol"
 import { WorkspaceEvidence } from "../workspace/evidence"
@@ -28,7 +28,7 @@ export namespace EnvironmentExecutionSchema {
     origin: z.never().optional(),
     schemaVersion: z.never().optional(),
   })
-  export const Info = Fields.extend({ origin: EnvironmentOrigin.Info }).meta({ ref: "EnvironmentExecutionInfo" })
+  export const Info = Fields.extend({ origin: EnvironmentOriginSchema.Info }).meta({ ref: "EnvironmentExecutionInfo" })
   export type Info = z.infer<typeof Info>
   export const PersistedInfo = Info.passthrough()
   export const Record = z.strictObject({ schemaVersion: z.literal(2), execution: PersistedInfo })

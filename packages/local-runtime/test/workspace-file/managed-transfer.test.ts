@@ -9,8 +9,10 @@ import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { storageTestBackends } from "../../../harness/test/support/storage-backends"
 import { WorkspaceFileService as Files } from "../../src/workspace-file/service"
-import { testRuntime } from "../support/runtime"
+import { testRuntime as localRuntime } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
 
 for (const backend of storageTestBackends())
   test(`${backend}: managed imports replay their operation and stream bounded chunks without preloading file content`, async () => {
@@ -43,6 +45,7 @@ for (const backend of storageTestBackends())
             backend: { provider: "objects", spec: { blobStore: "transfer-fixture", virtualRoot: "/workspace" } },
           })
           await using resources = await EnvironmentResources.resolve({
+            origin: runtime.origin("file-fixture"),
             scopeID: workspace.scopeID,
             workspaceID: workspace.id,
             needs: { workspace: true },

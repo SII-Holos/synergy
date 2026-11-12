@@ -1,6 +1,7 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, test } from "bun:test"
-import { testRuntime } from "../support/runtime"
+import { testRuntime as localRuntime } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
@@ -19,6 +20,7 @@ import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
 import { FileView } from "../../src/file/view"
 import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
+const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
 
 for (const live of [false, true])
   test(`object Workspace history captures and restores ${live ? "live" : "dormant"} writes without a controller directory`, async () => {
@@ -66,6 +68,7 @@ for (const live of [false, true])
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
           })
           await using resources = await EnvironmentResources.resolve({
+            origin: runtime.origin("file-fixture"),
             scopeID,
             workspaceID: workspace.id,
             environmentID: environment.id,
@@ -151,12 +154,14 @@ test("execution history survives a failed save and includes only explicitly refe
         { path: "same.txt", data: bytes, expectedVersion: null },
       )
     await using resources = await EnvironmentResources.resolve({
+      origin: runtime.origin("file-fixture"),
       scopeID,
       workspaceID: first.id,
       environmentID: environment.id,
       needs: { execution: "exec" },
     })
     await using other = await EnvironmentResources.resolve({
+      origin: runtime.origin("file-fixture"),
       scopeID,
       workspaceID: second.id,
       environmentID: environment.id,
@@ -304,6 +309,7 @@ test("execution completes with oversized files and a fresh environment restores 
           },
         )
         await using resources = await EnvironmentResources.resolve({
+          origin: runtime.origin("file-fixture"),
           scopeID,
           workspaceID: workspace.id,
           environmentID: environment.id,
@@ -361,6 +367,7 @@ test("execution completes with oversized files and a fresh environment restores 
         })
         const replacement = await Environment.bind({ scopeID, ownerID: "replacement", provider: "native", spec: {} })
         await using restored = await EnvironmentResources.resolve({
+          origin: runtime.origin("file-fixture"),
           scopeID,
           workspaceID: workspace.id,
           environmentID: replacement.id,

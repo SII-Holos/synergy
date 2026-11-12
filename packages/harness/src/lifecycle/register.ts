@@ -1,4 +1,5 @@
 import { SessionTransferGate } from "../session/transfer-gate"
+import { SessionTransferEpochs } from "../session/transfer-epochs"
 import { registerCoreEvents } from "../bus/register"
 import { WorkspaceOperations } from "../workspace/operations"
 import { registerConfigMigrations } from "../config/migration"
@@ -54,7 +55,7 @@ export function registerHarness() {
   registerSessionMaintenanceOwner()
   LoopJob.registerMaintenanceOwner()
   registerEnvironmentMaintenanceOwner()
-  SessionTransferGate.register()
+  SessionTransferGate.register({ epochs: SessionTransferEpochs })
   registerSessionResolver()
   registerSummaryJob()
   registerTitleJob()

@@ -16,6 +16,7 @@ import { EnvironmentExecutionSchema } from "./execution-schema"
 import { EnvironmentOrigin } from "./origin"
 import { upgradeAccessRecord } from "../migration/import"
 import { EnvironmentExecutionOriginIndex } from "./execution-origin-index"
+import { EnvironmentUseOwnership } from "./use-ownership"
 
 export namespace EnvironmentExecution {
   export const Info = EnvironmentExecutionSchema.Info
@@ -36,6 +37,18 @@ export namespace EnvironmentExecution {
   const pending = RuntimeContext.state(() => new Set<Pending>())
   const finishing = Storage.state(() => new Map<string, Promise<Info>>())
   const connections = Storage.state(() => new Map<string, Promise<Executor>>())
+  interface UseInput {
+    id: string
+    scopeID: string
+    environmentID: string
+    origin?: EnvironmentOrigin.Captured
+    digest?: string
+    intentDigest?: string
+    workspaces?: WorkspaceProtocol.Reference[]
+  }
+  const useOwner = RuntimeContext.state(() => ({
+    port: undefined as ReturnType<typeof EnvironmentUseOwnership.register<UseInput>> | undefined,
+  }))
 
   export function hasPendingRequests() {
     return pending().size > 0 || finishing().size > 0 || EnvironmentOrigin.hasRequests()
@@ -140,7 +153,74 @@ export namespace EnvironmentExecution {
   }
 
   export function registerRecovery() {
+    useOwner().port = EnvironmentUseOwnership.register<UseInput>("execution", {
+      capture(value, phase) {
+        const input = {
+          ...value,
+          workspaces: value.workspaces?.map((reference) => WorkspaceProtocol.Reference.parse(reference)),
+        }
+        input.id = ExecutionProtocol.ID.parse(input.id)
+        const origin = input.origin && EnvironmentOrigin.selected(input.origin)
+        if (phase === "admission" && (!origin || !input.digest))
+          throw new Error("Execution Use admission requires its original native input")
+        const ownership =
+          phase === "admission" && origin
+            ? {
+                kind: "execution-preparation" as const,
+                scopeID: input.scopeID,
+                operationID: input.id,
+                origin: origin.value,
+              }
+            : { kind: "execution" as const, scopeID: input.scopeID, operationID: input.id }
+        return {
+          selector: {
+            scopeID: input.scopeID,
+            environmentID: input.environmentID,
+            useID: useID(input.scopeID, input.id),
+          },
+          ownership,
+          async verify(target) {
+            if (phase === "admission") {
+              if (!origin || !input.digest) throw new Error("Execution Use lost its original admission")
+              await EnvironmentOrigin.assertAdmission(origin, input)
+              return
+            }
+            if (!target) throw new Error("Execution Use requires its actual allocation target")
+            const current = await stored(input.id, input.scopeID)
+            if (current.target.environmentID !== input.environmentID || !Environment.sameTarget(current.target, target))
+              throw new Error("Execution Use differs from its canonical operation target")
+            if (
+              (origin && JSON.stringify(current.origin) !== JSON.stringify(origin.value)) ||
+              (input.digest !== undefined && current.digest !== input.digest) ||
+              (input.intentDigest !== undefined && current.intentDigest !== input.intentDigest) ||
+              (input.workspaces !== undefined &&
+                JSON.stringify(current.workspaces) !== JSON.stringify(input.workspaces))
+            )
+              throw new Error("Execution Use differs from its original canonical input")
+            if (phase === "release" && !["saved", "completed"].includes(current.state))
+              throw new Error("Execution Use requires its original saved native retirement")
+          },
+        }
+      },
+      async inspect(ownership, selector, target) {
+        if (ownership.kind !== "execution" && ownership.kind !== "execution-preparation")
+          throw new Error("Execution Use has another owner")
+        const info = await stored(ownership.operationID, ownership.scopeID)
+        if (
+          info.scopeID !== selector.scopeID ||
+          useID(info.scopeID, info.id) !== selector.useID ||
+          !Environment.sameTarget(info.target, target)
+        )
+          throw new Error("Execution Use differs from its canonical receipt")
+      },
+    })
     StorageRecovery.register("environment-execution", recover)
+  }
+
+  function uses() {
+    const port = useOwner().port
+    if (!port) throw new Error("Execution Use owner is unavailable")
+    return port
   }
 
   export async function recover(progress?: () => void) {
@@ -252,6 +332,7 @@ export namespace EnvironmentExecution {
       scopeID: input.scopeID,
       useID: useID(input.scopeID, input.id),
       kind: "admission",
+      ownership: uses().admission(input),
       capabilities: [input.command.pty ? "pty" : "exec"],
       signal: input.signal,
     })
@@ -297,8 +378,13 @@ export namespace EnvironmentExecution {
             createdAt: now,
             updatedAt: now,
           })
-          await Environment.retainUse(use.target, input.scopeID, useID(input.scopeID, input.id))
           await write(info)
+          await Environment.retainUse(
+            use.target,
+            input.scopeID,
+            useID(input.scopeID, input.id),
+            uses().retention(input),
+          )
           return info
         },
         {
@@ -411,7 +497,12 @@ export namespace EnvironmentExecution {
       const latest = await stored(id, scopeID)
       if (latest.state === "completed") return Info.parse(latest)
       await Environment.assertTarget(info.target, scopeID)
-      await Environment.releaseUse(info.target, scopeID, useID(scopeID, id))
+      await Environment.releaseUse(
+        info.target,
+        scopeID,
+        useID(scopeID, id),
+        uses().retirement({ id, scopeID, environmentID: info.target.environmentID }),
+      )
       return write({ ...latest, state: "completed" })
     })
   }

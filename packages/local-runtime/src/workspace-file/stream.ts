@@ -43,19 +43,24 @@ export namespace WorkspaceFileStream {
         throw new TooLargeError(`File too large to stream (${stat.size} bytes, limit ${input.limit})`)
       const selected = EnvironmentResources.current()
       if (!selected) throw new FileMutation.AccessDeniedError("Managed stream requires selected resources")
+      const origin = selected.origin
+      if (selected.environment && !origin)
+        throw new FileMutation.AccessDeniedError("Managed stream requires its original resource origin")
       const runtime = RuntimeContext.current()
       const withinResources = runtime.bind(async <T>(fn: () => Promise<T>) =>
         EnvironmentResources.provide(selected, "managed-file-stream", fn),
       )
-      const lease = selected?.environment
-        ? await Environment.acquire(selected.environment.id, {
-            scopeID: selected.environment.scopeID,
-            useID: `file-stream:${crypto.randomUUID()}`,
-            kind: "admission",
-            capabilities: ["files"],
-            signal: input.signal,
-          })
-        : undefined
+      const lease =
+        selected.environment && origin
+          ? await Environment.acquire(selected.environment.id, {
+              scopeID: selected.environment.scopeID,
+              useID: `file-stream:${crypto.randomUUID()}`,
+              kind: "admission",
+              capabilities: ["files"],
+              ownership: origin,
+              signal: input.signal,
+            })
+          : undefined
       const owned = resources()
       let offset = 0
       let controller: ReadableStreamDefaultController<Uint8Array> | undefined

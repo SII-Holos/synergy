@@ -3,7 +3,7 @@ import { Environment } from "../../src/environment"
 import { EnvironmentProviders } from "../../src/environment/provider"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
-import { testRuntime } from "../support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "../support/environment-origin"
 
 test("a provider's accepted release callback belongs to its original Runtime and storage lifetime", async () => {
   await using foreign = await testRuntime()
@@ -40,7 +40,14 @@ test("a provider's accepted release callback belongs to its original Runtime and
   })
   await source.run(async () => {
     const info = await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "owned-release", spec: {} })
-    await (await Environment.acquire(info.id, { scopeID: "scope", useID: "fixture", capabilities: [] })).release()
+    await (
+      await Environment.acquire(info.id, {
+        scopeID: "scope",
+        useID: "fixture",
+        ownership: source.origin("fixture"),
+        capabilities: [],
+      })
+    ).release()
     const result = await Environment.deallocate(info.id, { scopeID: "scope" })
     expect(result.state).toBe("idle")
     expect(deallocations).toBe(1)
@@ -87,7 +94,14 @@ test.each(["returns", "throws"] as const)(
     })
     await runtime.run(async () => {
       const info = await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "early-release", spec: {} })
-      await (await Environment.acquire(info.id, { scopeID: "scope", useID: "fixture", capabilities: [] })).release()
+      await (
+        await Environment.acquire(info.id, {
+          scopeID: "scope",
+          useID: "fixture",
+          ownership: runtime.origin("fixture"),
+          capabilities: [],
+        })
+      ).release()
       let settled = false
       const releasing = Environment.deallocate(info.id, { scopeID: "scope" })
       void releasing.then(
@@ -150,7 +164,14 @@ test("distinct wrapper and native release failures retain both causes and the or
   })
   await runtime.run(async () => {
     const info = await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "failed-release", spec: {} })
-    await (await Environment.acquire(info.id, { scopeID: "scope", useID: "fixture", capabilities: [] })).release()
+    await (
+      await Environment.acquire(info.id, {
+        scopeID: "scope",
+        useID: "fixture",
+        ownership: runtime.origin("fixture"),
+        capabilities: [],
+      })
+    ).release()
     const original = await Environment.get(info.id, "scope")
     const releasing = Environment.deallocate(info.id, { scopeID: "scope" })
     void releasing.catch(() => {})

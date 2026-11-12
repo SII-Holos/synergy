@@ -15,7 +15,7 @@ Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClien
 
 - Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
 - Image decoding uses `AttachmentImageInput`; verify `test/attachment/image-input.test.ts` and Media's attachment suite.
-- Own native/Docker providers, Executor transport and receipts. Pass explicit Session/Host origins. Retain `OwnedProcess`/Workspace claims through final saving and publication. Verify `bun test test/environment test/workspace/coordinator.test.ts` and README's Docker integration.
+- Own native/Docker providers, Executor transport and receipts. Require Session/Host origins and owned Uses. Retain `OwnedProcess`/Workspace claims through final saving and publication. Verify `bun test test/environment test/workspace/coordinator.test.ts` and README's Docker integration.
 - Own PTYs, process maintenance, Linux ownership, watchers, sandboxes, Rust helpers and packaging. Use platform optional dependencies. Build: `bun script/build-pty.ts`; test process/maintenance, native-pty/pty/owned-process-linux. Require origins; drain completion; retain uncertain starts without killing/replaying. Register `SandboxHost` and `file-watcher` Scope startup; Harness owns policy/wrappers.
 - Linux watcher assets use `script/build-watcher.ts` and its pinned source patch. Validate the compiled binding and signal recovery; an unused C++ source edit does not fix the installed watcher.
 

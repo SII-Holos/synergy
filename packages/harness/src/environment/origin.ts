@@ -1,34 +1,21 @@
-import { z } from "zod"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
+import { EnvironmentOriginSchema as Schema } from "./origin-schema"
 
 export namespace EnvironmentOrigin {
-  const ID = z.string().min(1)
-  export const Session = z.strictObject({
-    kind: z.literal("session"),
-    scopeID: ID,
-    sessionID: ID,
-    rootID: ID,
-    runID: ID,
-    messageID: ID,
-    callID: ID,
-    tool: ID,
-  })
-  export type Session = z.infer<typeof Session>
-  const Host = z.strictObject({ kind: z.literal("host"), owner: ID, invocationID: ID })
-  export const Info = z.discriminatedUnion("kind", [
-    Session,
-    Host,
-    z.strictObject({ kind: z.literal("legacy-unknown") }),
-  ])
-  export type Info = z.infer<typeof Info>
+  export const Session = Schema.Session
+  export type Session = Schema.Session
+  export const Current = Schema.Current
+  export type Current = Schema.Current
+  export const Info = Schema.Info
+  export type Info = Schema.Info
   const originBrand: unique symbol = Symbol("Environment host origin")
   export interface Token {
     readonly [originBrand]: true
   }
   export type Input = Session | Token
   export interface Captured extends Token {
-    readonly value: Readonly<Exclude<Info, { kind: "legacy-unknown" }>>
+    readonly value: Readonly<Current>
     assertCurrent(): void
   }
   export interface Target {
@@ -92,7 +79,7 @@ export namespace EnvironmentOrigin {
 
   export function registerHost(owner: string) {
     RuntimeContext.assertCompositionOpen("Environment host origins")
-    owner = ID.parse(owner)
+    owner = Schema.Host.shape.owner.parse(owner)
     const runtime = RuntimeContext.current()
     if (state().hosts.has(owner)) throw new Error("Environment host origin is already registered")
     state().hosts.add(owner)
@@ -100,7 +87,7 @@ export namespace EnvironmentOrigin {
       capture(invocationID: string): Token {
         if (RuntimeContext.current() !== runtime || !state().hosts.has(owner))
           throw new Error("Environment host origin belongs to another Runtime")
-        return capture(Host.parse({ kind: "host", owner, invocationID }))
+        return capture(Schema.Host.parse({ kind: "host", owner, invocationID }))
       },
     })
   }

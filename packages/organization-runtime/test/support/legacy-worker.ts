@@ -13,7 +13,9 @@ export function registerWorker() {
       ? "purpose-bound-maintenance-v1"
       : env.SYNERGY_LEGACY_READER === "before-origin"
         ? "native-organization-ownership-v1"
-        : undefined
+        : env.SYNERGY_LEGACY_READER === "before-use"
+          ? "native-organization-ownership-v2"
+          : undefined
   HomeOwnership.select({
     owner: "organization-runtime",
     identity: runtimeIdentityDigest(identity),

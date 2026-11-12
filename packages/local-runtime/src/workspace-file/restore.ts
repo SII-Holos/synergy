@@ -20,8 +20,20 @@ import { randomUUID } from "node:crypto"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 
 export namespace WorkspaceFileRestore {
+  const registration = RuntimeContext.state<{ origin?: ReturnType<typeof EnvironmentOrigin.registerHost> }>(() => ({}))
+  export function register() {
+    registration().origin ??= EnvironmentOrigin.registerHost("workspace-file-restore")
+  }
+  function origin() {
+    const selected = EnvironmentResources.current()
+    const value = selected ? selected.origin : registration().origin?.capture(`restore:${randomUUID()}`)
+    if (!value) throw new SnapshotRestore.Invalid({ message: "File restoration requires its original resource origin" })
+    return value
+  }
   function previewFile(
     file: SnapshotRestore.File,
     version: SnapshotRestore.PreviewFile["version"],
@@ -64,6 +76,7 @@ export namespace WorkspaceFileRestore {
       const after = file.mode === "120000" ? Buffer.from(SnapshotLink.display(SnapshotLink.decode(target))) : target
       if (file.workspace.pathKind === "workspace") {
         await using resources = await EnvironmentResources.resolve({
+          origin: origin(),
           scopeID: ScopeContext.current.scope.id,
           workspaceID: file.workspace.id,
           workspaceGeneration: file.workspace.generation,
@@ -323,6 +336,7 @@ export namespace WorkspaceFileRestore {
       const processed = new Set<SnapshotRestore.File>()
       try {
         await using resources = await EnvironmentResources.resolve({
+          origin: origin(),
           scopeID: ScopeContext.current.scope.id,
           workspaceID: source.id,
           workspaceGeneration: source.generation,

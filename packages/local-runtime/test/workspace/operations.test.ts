@@ -49,6 +49,7 @@ test("confirmed rebinding releases an obsolete directory mount after active user
     const held = await Environment.acquire(environment.id, {
       scopeID: scope.id,
       useID: "active",
+      ownership: runtime.origin("active"),
       kind: "admission",
       capabilities: ["files"],
     })

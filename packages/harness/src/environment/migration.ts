@@ -7,6 +7,7 @@ import type { Migration } from "../migration/types"
 import { StoragePath } from "../storage/path"
 import { EnvironmentExecution } from "./execution"
 import { executionOriginRecordMigration, executionOriginPhysicalMigration } from "./execution-origin-migration"
+import { environmentUseRecordMigration, environmentUsePhysicalMigration } from "./use-migration"
 
 export async function migrateSessionEnvironment(
   owner: { scopeID: string; sessionID: string },
@@ -84,6 +85,8 @@ export const environmentMigrations: Migration[] = [
   },
   executionOriginRecordMigration,
   executionOriginPhysicalMigration,
+  environmentUseRecordMigration,
+  environmentUsePhysicalMigration,
 ]
 
 export function registerEnvironmentMigrations() {

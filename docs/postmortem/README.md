@@ -25,6 +25,8 @@
 
 - [0124](0124-latest-shared-history-did-not-navigate.md)
 
+- [0123](0123-retained-environment-use-was-overwritten-by-admission.md)
+
 - [0114](0114-portable-reader-forgot-original-cancellation.md)
 
 - [0113](0113-native-identity-reader-followed-linked-records.md)

@@ -56,6 +56,7 @@ export function registerWorkspace(coordinator = new WorkspaceCoordinator()) {
   registerSessionTransferWorkspaces()
   registerSessionTransferWorkspaceTarget()
   SnapshotLink.register({ type: (filename) => FileLink.type(filename) })
+  WorkspaceFileRestore.register()
   SnapshotRestore.register(WorkspaceFileRestore)
   WorkspaceFileImport.register(WorkspaceFileService)
   WorkspaceAccess.register(coordinator)

@@ -2,12 +2,12 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { prepareHostedHome, prepareMemberHome, readRuntimeHome } from "../src/home"
-import { Binding } from "../src/home-schema"
+import { Binding, NativeHomeReaderContract } from "../src/home-schema"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { readCredentials } from "../src/credentials"
 
 for (const kind of ["member", "hosted"] as const)
-  for (const reader of ["legacy", "before-origin"] as const)
+  for (const reader of ["legacy", "before-origin", "before-use"] as const)
     test(`new ${kind} Homes reject the ${reader} strict Node startup reader`, async () => {
       const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "native-reader-fence-"))
       try {
@@ -40,45 +40,46 @@ for (const kind of ["member", "hosted"] as const)
         for (const filename of ["home-ownership.json", "organization.json"])
           expect(JSON.parse(await fs.readFile(path.join(home.root, filename), "utf8"))).toMatchObject({
             schemaVersion: 2,
-            readerContract: "native-organization-ownership-v2",
+            readerContract: NativeHomeReaderContract,
           })
       } finally {
         await fs.rm(directory, { recursive: true, force: true })
       }
     })
 
-test.each(["member", "hosted"] as const)(
-  "ordinary %s startup never upgrades the unpublished pre-origin reader",
-  async (kind) => {
-    const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "native-origin-reader-"))
-    try {
-      const input = { baseDirectory: directory, origin: "https://organization.example" }
-      const home =
-        kind === "member"
-          ? await prepareMemberHome({
-              ...input,
-              identity: { orgID: "org", accountID: "member", deviceID: "device" },
-            })
-          : await prepareHostedHome({ ...input, identity: { orgID: "org", hostID: "hosted" } })
-      const ownerFile = path.join(home.root, "home-ownership.json")
-      const bindingFile = path.join(home.root, "organization.json")
-      const owner = HomeOwnershipFile.FencedInfo.parse(JSON.parse(await fs.readFile(ownerFile, "utf8")))
-      const binding = Binding.parse(JSON.parse(await fs.readFile(bindingFile, "utf8")))
-      const previousOwner = JSON.stringify({ ...owner, readerContract: "native-organization-ownership-v1" })
-      const previousBinding = JSON.stringify({ ...binding, readerContract: "native-organization-ownership-v1" })
-      await fs.writeFile(ownerFile, previousOwner)
-      await fs.writeFile(bindingFile, previousBinding)
-      await expect(readRuntimeHome(home.home, home.identity)).rejects.toThrow()
-      const retry =
-        kind === "member"
-          ? prepareMemberHome({ ...input, identity: { orgID: "org", accountID: "member", deviceID: "device" } })
-          : prepareHostedHome({ ...input, identity: { orgID: "org", hostID: "hosted" } })
-      await expect(retry).rejects.toThrow()
-      expect(await fs.readFile(ownerFile, "utf8")).toBe(previousOwner)
-      expect(await fs.readFile(bindingFile, "utf8")).toBe(previousBinding)
-      expect((await readCredentials(home.root))?.publicKey).toBe(home.publicKey)
-    } finally {
-      await fs.rm(directory, { recursive: true, force: true })
-    }
-  },
-)
+for (const previous of ["native-organization-ownership-v1", "native-organization-ownership-v2"] as const)
+  test.each(["member", "hosted"] as const)(
+    `ordinary %s startup never upgrades the unpublished ${previous} reader`,
+    async (kind) => {
+      const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "native-origin-reader-"))
+      try {
+        const input = { baseDirectory: directory, origin: "https://organization.example" }
+        const home =
+          kind === "member"
+            ? await prepareMemberHome({
+                ...input,
+                identity: { orgID: "org", accountID: "member", deviceID: "device" },
+              })
+            : await prepareHostedHome({ ...input, identity: { orgID: "org", hostID: "hosted" } })
+        const ownerFile = path.join(home.root, "home-ownership.json")
+        const bindingFile = path.join(home.root, "organization.json")
+        const owner = HomeOwnershipFile.FencedInfo.parse(JSON.parse(await fs.readFile(ownerFile, "utf8")))
+        const binding = Binding.parse(JSON.parse(await fs.readFile(bindingFile, "utf8")))
+        const previousOwner = JSON.stringify({ ...owner, readerContract: previous })
+        const previousBinding = JSON.stringify({ ...binding, readerContract: previous })
+        await fs.writeFile(ownerFile, previousOwner)
+        await fs.writeFile(bindingFile, previousBinding)
+        await expect(readRuntimeHome(home.home, home.identity)).rejects.toThrow()
+        const retry =
+          kind === "member"
+            ? prepareMemberHome({ ...input, identity: { orgID: "org", accountID: "member", deviceID: "device" } })
+            : prepareHostedHome({ ...input, identity: { orgID: "org", hostID: "hosted" } })
+        await expect(retry).rejects.toThrow()
+        expect(await fs.readFile(ownerFile, "utf8")).toBe(previousOwner)
+        expect(await fs.readFile(bindingFile, "utf8")).toBe(previousBinding)
+        expect((await readCredentials(home.root))?.publicKey).toBe(home.publicKey)
+      } finally {
+        await fs.rm(directory, { recursive: true, force: true })
+      }
+    },
+  )

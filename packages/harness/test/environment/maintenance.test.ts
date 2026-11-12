@@ -106,7 +106,12 @@ test("maintenance refuses new allocation and execution while exact accepted exec
         RuntimeMaintenance.Blocked,
       )
       await expect(
-        Environment.acquire(idle.id, { scopeID: "scope", useID: "new-allocation", capabilities: ["exec"] }),
+        Environment.acquire(idle.id, {
+          scopeID: "scope",
+          useID: "new-allocation",
+          ownership: runtime.origin("new-allocation"),
+          capabilities: ["exec"],
+        }),
       ).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
       expect(runtime.starts()).toBe(1)
       expect(runtime.allocations()).toBe(1)
@@ -162,22 +167,25 @@ test("an admitted provider allocation remains held until its real owner finishes
     const acquisition = Environment.acquire(environment.id, {
       scopeID: "scope",
       useID: "existing",
+      ownership: runtime.origin("existing"),
       capabilities: ["exec"],
     })
+    void acquisition.catch(() => {})
     await entered.promise
     let lease: RuntimeMaintenance.Lease | undefined
     try {
       lease = await begin()
       await expect(RuntimeMaintenance.drain(lease)).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
       finish.resolve()
-      await (await acquisition).release()
+      await expect(acquisition).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
+      expect(await Environment.uses(environment.id)).toEqual([])
       const receipt = await RuntimeMaintenance.drain(lease)
       await RuntimeMaintenance.freeze(lease, receipt)
       expect(runtime.allocations()).toBe(1)
       expect((await Environment.get(environment.id, "scope")).state).toBe("ready")
     } finally {
       finish.resolve()
-      await (await acquisition).release()
+      await acquisition.catch(() => {})
       if (lease) await RuntimeMaintenance.release(lease)
     }
   })

@@ -15,6 +15,7 @@ import { Log } from "../util/log"
 import { WorkspaceEvidence } from "./evidence"
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { addAbortListener } from "node:events"
+import { EnvironmentUseOwnership } from "../environment/use-ownership"
 
 export namespace WorkspaceOperations {
   const ObjectWrite = WorkspaceProtocol.WriteInput.omit({ mount: true }).extend({ kind: z.literal("objects-write") })
@@ -64,13 +65,107 @@ export namespace WorkspaceOperations {
     updatedAt: true,
   }).meta({ ref: "WorkspaceOperationSummary" })
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
+  interface UseInput {
+    id: string
+    scopeID: string
+    workspaceID: string
+    generation: number
+    target: Environment.Target
+    digest: string
+    mount: WorkspaceProtocol.Reference
+  }
+  const useOwner = RuntimeContext.state(() => ({
+    port: undefined as ReturnType<typeof EnvironmentUseOwnership.register<UseInput>> | undefined,
+  }))
+
+  function useInput(info: Info): UseInput {
+    if (!info.target || !("mount" in info.input)) throw new Error("Workspace Use requires its mounted operation")
+    return {
+      id: info.id,
+      scopeID: info.scopeID,
+      workspaceID: info.workspaceID,
+      generation: info.generation,
+      target: info.target,
+      digest: info.digest,
+      mount: info.input.mount,
+    }
+  }
+  function uses() {
+    const port = useOwner().port
+    if (!port) throw new Error("Workspace operation Use owner is unavailable")
+    return port
+  }
 
   export function register() {
+    useOwner().port = EnvironmentUseOwnership.register<UseInput>("workspace-operation", {
+      capture(value, phase) {
+        const input = {
+          ...value,
+          target: Environment.Target.parse(value.target),
+          mount: WorkspaceProtocol.Reference.parse(value.mount),
+        }
+        return {
+          selector: {
+            scopeID: input.scopeID,
+            environmentID: input.target.environmentID,
+            useID: useID(input.scopeID, input.id),
+          },
+          ownership: {
+            kind: "workspace-operation",
+            scopeID: input.scopeID,
+            workspaceID: input.workspaceID,
+            operationID: input.id,
+          },
+          async verify(target) {
+            if (target && !Environment.sameTarget(target, input.target))
+              throw new Error("Workspace operation Use target changed")
+            if (phase === "admission") {
+              const workspace = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
+              if (
+                workspace.binding.generation !== input.generation ||
+                workspace.activeMount?.state !== "active" ||
+                JSON.stringify(WorkspaceMounts.reference(workspace)) !== JSON.stringify(input.mount) ||
+                !Environment.sameTarget(workspace.activeMount.target, input.target)
+              )
+                throw new Error("Workspace operation Use requires its selected native mount")
+              return
+            }
+            const current = await get(input.id, input.scopeID)
+            if (
+              current.workspaceID !== input.workspaceID ||
+              current.generation !== input.generation ||
+              current.digest !== input.digest ||
+              !current.target ||
+              !Environment.sameTarget(current.target, input.target) ||
+              !("mount" in current.input) ||
+              JSON.stringify(current.input.mount) !== JSON.stringify(input.mount)
+            )
+              throw new Error("Workspace operation Use differs from its canonical native request")
+          },
+        }
+      },
+      async inspect(ownership, selector, target) {
+        if (ownership.kind !== "workspace-operation")
+          throw new Error("Workspace operation Use has another canonical owner")
+        const current = await get(ownership.operationID, ownership.scopeID)
+        if (
+          current.scopeID !== selector.scopeID ||
+          current.workspaceID !== ownership.workspaceID ||
+          useID(current.scopeID, current.id) !== selector.useID ||
+          !current.target ||
+          !Environment.sameTarget(current.target, target) ||
+          !("mount" in current.input)
+        )
+          throw new Error("Workspace Use differs from its original native operation")
+      },
+    })
     StorageRecovery.register("workspace-operations", recover)
     RuntimeMaintenance.register("workspace-operations", {
       version: 1,
       order: 225,
-      async suspend(context) { await RuntimeMaintenance.assertDraining(context.lease) },
+      async suspend(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+      },
       async drain(context) {
         await RuntimeMaintenance.assertDraining(context.lease)
         while (pending().size) {
@@ -85,24 +180,33 @@ export namespace WorkspaceOperations {
           await reconcile(info.id, info.scopeID)
         }
         const requirements = await inspectMaintenance(context.signal)
-        if (requirements.length) throw new RuntimeMaintenance.Blocked({ message: "Workspace operations require native save reconciliation", requirements })
+        if (requirements.length)
+          throw new RuntimeMaintenance.Blocked({
+            message: "Workspace operations require native save reconciliation",
+            requirements,
+          })
       },
       inspect: (context) => inspectMaintenance(context.signal),
-      async release(context) { context.signal.throwIfAborted() },
+      async release(context) {
+        context.signal.throwIfAborted()
+      },
     })
   }
 
   async function indexedOperation(row: { key: string[]; value: unknown }) {
-    if (row.key.length !== 3 || row.value !== true) throw new Error("Workspace maintenance found an invalid operation index")
+    if (row.key.length !== 3 || row.value !== true)
+      throw new Error("Workspace maintenance found an invalid operation index")
     const info = await get(row.key[2], row.key[1])
-    if (info.scopeID !== row.key[1] || info.id !== row.key[2]) throw new Error("Workspace maintenance found another operation identity")
+    if (info.scopeID !== row.key[1] || info.id !== row.key[2])
+      throw new Error("Workspace maintenance found another operation identity")
     return info
   }
 
   async function inspectMaintenance(signal: AbortSignal): Promise<RuntimeMaintenance.Requirement[]> {
     signal.throwIfAborted()
     const requirements = new Map<string, RuntimeMaintenance.Requirement>()
-    const add = (code: string, label: string) => requirements.set(code, { owner: "workspace-operations", code, label, recoverable: true })
+    const add = (code: string, label: string) =>
+      requirements.set(code, { owner: "workspace-operations", code, label, recoverable: true })
     if (pending().size) add("workspace_request_active", "Wait for accepted Workspace requests and their original saves")
     for await (const row of Storage.records({ prefix: StoragePath.workspaceOperationActive(), limit: 128 })) {
       signal.throwIfAborted()
@@ -243,6 +347,15 @@ export namespace WorkspaceOperations {
         kind: "admission",
         capabilities: ["files"],
         signal: input.signal,
+        ownership: uses().admission({
+          id: input.id,
+          scopeID: input.scopeID,
+          workspaceID: workspace.id,
+          generation: workspace.binding.generation,
+          target: workspace.activeMount.target,
+          digest,
+          mount: WorkspaceMounts.reference(workspace),
+        }),
       })
       let recorded = false
       try {
@@ -256,8 +369,7 @@ export namespace WorkspaceOperations {
             !Environment.sameTarget(use.target, workspace.activeMount!.target)
           )
             throw new WorkspaceCatalog.BindingChanged({ workspaceID: workspace.id, message: "Workspace mount changed" })
-          await Environment.retainUse(use.target, input.scopeID, useID(input.scopeID, input.id))
-          return persist(
+          const info = await persist(
             Info.parse({
               id: input.id,
               scopeID: input.scopeID,
@@ -272,6 +384,13 @@ export namespace WorkspaceOperations {
               updatedAt: Date.now(),
             }),
           )
+          await Environment.retainUse(
+            use.target,
+            input.scopeID,
+            useID(input.scopeID, input.id),
+            uses().retention(useInput(info)),
+          )
+          return info
         })
         recorded = true
         const files = await WorkspaceMounts.connect(workspace)
@@ -331,7 +450,12 @@ export namespace WorkspaceOperations {
     if (receipt.state === "failed") {
       await WorkspaceEvidence.incomplete(info.evidence)
       return Storage.transaction(async () => {
-        await Environment.releaseUse(info.target!, info.scopeID, useID(info.scopeID, info.id))
+        await Environment.releaseUse(
+          info.target!,
+          info.scopeID,
+          useID(info.scopeID, info.id),
+          uses().retirement(useInput(info)),
+        )
         return persist({
           ...info,
           state: "failed",
@@ -376,7 +500,12 @@ export namespace WorkspaceOperations {
       throw error
     }
     return Storage.transaction(async () => {
-      await Environment.releaseUse(info.target!, info.scopeID, useID(info.scopeID, info.id))
+      await Environment.releaseUse(
+        info.target!,
+        info.scopeID,
+        useID(info.scopeID, info.id),
+        uses().retirement(useInput(info)),
+      )
       return persist({ ...info, state: "completed", error: undefined, updatedAt: Date.now() })
     })
   }

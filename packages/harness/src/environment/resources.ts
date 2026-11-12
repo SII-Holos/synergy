@@ -126,7 +126,7 @@ export namespace EnvironmentResources {
       input.signal?.throwIfAborted()
       const target = { scopeID: input.scopeID, environmentID: input.environmentID ?? undefined }
       if (origin) await EnvironmentOrigin.assertAdmission(origin, target)
-      const resolved = await resolveSelection(input)
+      const resolved = await resolveSelection({ ...input, origin })
       try {
         if (origin) await EnvironmentOrigin.assertAdmission(origin, target)
         input.signal?.throwIfAborted()
@@ -146,7 +146,9 @@ export namespace EnvironmentResources {
     return origin ? EnvironmentOrigin.request(origin, perform) : perform()
   }
 
-  async function resolveSelection(input: Selection & { needs: Needs; signal?: AbortSignal }): Promise<Resolved> {
+  async function resolveSelection(
+    input: Selection & { origin?: EnvironmentOrigin.Captured; needs: Needs; signal?: AbortSignal },
+  ): Promise<Resolved> {
     input.signal?.throwIfAborted()
     if (!input.needs.workspace && !input.needs.execution) return result({ kind: "none" })
     if (input.needs.workspace && !input.workspaceID)
@@ -211,10 +213,16 @@ export namespace EnvironmentResources {
         workspaceID: workspace.id,
         message: "Environment cannot attach this Workspace backend",
       })
+    if (!input.origin)
+      throw new Environment.Unavailable({
+        environmentID,
+        message: "Environment admission requires its original resource origin",
+      })
     const use = await Environment.acquire(environmentID, {
       scopeID: input.scopeID,
       useID: `admission:${randomUUID()}`,
       kind: "admission",
+      ownership: input.origin,
       capabilities: [...(input.needs.execution ? [input.needs.execution] : []), ...(workspace ? ["files"] : [])],
       signal: input.signal,
     })

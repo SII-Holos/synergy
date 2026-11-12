@@ -77391,15 +77391,300 @@
                   "type": "number"
                 },
                 "kind": {
-                  "default": "operation",
                   "type": "string",
                   "enum": ["operation", "admission"]
                 },
                 "ownerEpoch": {
                   "type": "string"
+                },
+                "ownership": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "admission"
+                        },
+                        "origin": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "session"
+                                },
+                                "scopeID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "sessionID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "rootID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "runID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "messageID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "callID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "tool": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "scopeID",
+                                "sessionID",
+                                "rootID",
+                                "runID",
+                                "messageID",
+                                "callID",
+                                "tool"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "host"
+                                },
+                                "owner": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "invocationID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["kind", "owner", "invocationID"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["kind", "origin"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "execution-preparation"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "operationID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "origin": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "session"
+                                },
+                                "scopeID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "sessionID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "rootID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "runID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "messageID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "callID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "tool": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "scopeID",
+                                "sessionID",
+                                "rootID",
+                                "runID",
+                                "messageID",
+                                "callID",
+                                "tool"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "host"
+                                },
+                                "owner": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "invocationID": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["kind", "owner", "invocationID"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["kind", "scopeID", "operationID", "origin"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "execution"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "operationID": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["kind", "scopeID", "operationID"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "workspace-attachment"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "workspaceID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "bindingGeneration": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["kind", "scopeID", "workspaceID", "bindingGeneration"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "workspace-mount"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "workspaceID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "bindingGeneration": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "mountID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "mountGeneration": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["kind", "scopeID", "workspaceID", "bindingGeneration", "mountID", "mountGeneration"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "workspace-operation"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "workspaceID": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "operationID": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["kind", "scopeID", "workspaceID", "operationID"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "legacy-unknown"
+                        }
+                      },
+                      "required": ["kind"],
+                      "additionalProperties": false
+                    }
+                  ]
                 }
               },
-              "required": ["id", "target", "createdAt"]
+              "required": ["id", "target", "createdAt", "kind", "ownership"]
             }
           },
           "executions": {
@@ -84522,6 +84807,73 @@
         },
         "required": ["type", "properties"]
       },
+      "SessionNotificationSource": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "sessionID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "parentID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "references": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 65535
+                },
+                "fields": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 512
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": ["version", "fields"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["scopeID", "sessionID", "references"],
+        "additionalProperties": false
+      },
       "Event.session.error": {
         "type": "object",
         "properties": {
@@ -84535,7 +84887,10 @@
               "sessionID": {
                 "type": "string"
               },
-              "error": {}
+              "error": {},
+              "source": {
+                "$ref": "#/components/schemas/SessionNotificationSource"
+              }
             }
           }
         },
@@ -84580,6 +84935,9 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740991
+              },
+              "source": {
+                "$ref": "#/components/schemas/SessionNotificationSource"
               }
             },
             "required": ["sessionID", "unreadCount"]

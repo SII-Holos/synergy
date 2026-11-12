@@ -4,10 +4,11 @@ import {
   OrganizationRuntimeProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 
-export const NativeHomeReaderContract = "native-organization-ownership-v2"
+export const NativeHomeReaderContract = "native-organization-ownership-v3"
 export const ArchivedHomeReaderContract = z.enum([
   "native-organization-ownership-v1",
   "native-organization-ownership-v2",
+  "native-organization-ownership-v3",
 ])
 export const MemberIdentity = z.strictObject({
   orgID: OrganizationIdentity.ID,

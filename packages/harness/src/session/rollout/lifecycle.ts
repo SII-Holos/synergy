@@ -21,11 +21,10 @@ import { RolloutExecution } from "./execution"
 import { Bus } from "../../bus"
 import { SessionEvent } from "../event"
 import { ObservabilitySpans } from "../../observability/spans"
+import { RolloutOwner } from "./owner"
 
 export namespace RolloutLifecycle {
-  export function owner(session: Session.Info): RolloutSchema.Owner {
-    return { kind: "session", scopeID: session.scope.id, sessionID: session.id }
-  }
+  export const owner = RolloutOwner.session
 
   export async function parent(session: Session.Info): Promise<RolloutSchema.RunRecord["parent"]> {
     if (!session.cortex) return undefined

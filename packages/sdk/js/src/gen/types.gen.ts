@@ -12791,8 +12791,77 @@ export type EnvironmentActivity = {
     id: string
     target: EnvironmentTarget
     createdAt: number
-    kind?: "operation" | "admission"
+    kind: "operation" | "admission"
     ownerEpoch?: string
+    ownership:
+      | {
+          kind: "admission"
+          origin:
+            | {
+                kind: "session"
+                scopeID: string
+                sessionID: string
+                rootID: string
+                runID: string
+                messageID: string
+                callID: string
+                tool: string
+              }
+            | {
+                kind: "host"
+                owner: string
+                invocationID: string
+              }
+        }
+      | {
+          kind: "execution-preparation"
+          scopeID: string
+          operationID: string
+          origin:
+            | {
+                kind: "session"
+                scopeID: string
+                sessionID: string
+                rootID: string
+                runID: string
+                messageID: string
+                callID: string
+                tool: string
+              }
+            | {
+                kind: "host"
+                owner: string
+                invocationID: string
+              }
+        }
+      | {
+          kind: "execution"
+          scopeID: string
+          operationID: string
+        }
+      | {
+          kind: "workspace-attachment"
+          scopeID: string
+          workspaceID: string
+          bindingGeneration: number
+        }
+      | {
+          kind: "workspace-mount"
+          scopeID: string
+          workspaceID: string
+          bindingGeneration: number
+          mountID: string
+          mountGeneration: number
+        }
+      | {
+          kind: "workspace-operation"
+          scopeID: string
+          workspaceID: string
+          operationID: string
+        }
+      | {
+          kind: "legacy-unknown"
+        }
   }>
   executions: Array<EnvironmentExecutionInfo>
   files: Array<WorkspaceOperationSummary>
@@ -15064,11 +15133,26 @@ export type EventSessionDiff = {
   }
 }
 
+export type SessionNotificationSource = {
+  scopeID: string
+  sessionID: string
+  parentID?: string
+  references: {
+    [key: string]: {
+      version: number
+      fields: {
+        [key: string]: string | number | boolean | null
+      }
+    }
+  }
+}
+
 export type EventSessionError = {
   type: "session.error"
   properties: {
     sessionID?: string
     error?: unknown
+    source?: SessionNotificationSource
   }
 }
 
@@ -15085,6 +15169,7 @@ export type EventSessionCompletion = {
   properties: {
     sessionID: string
     unreadCount: number
+    source?: SessionNotificationSource
   }
 }
 

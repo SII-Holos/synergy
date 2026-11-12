@@ -7,12 +7,14 @@ import { readRecord } from "../../src/record"
 
 // The version-1 startup reader is retained to exercise the real previous strict file contract in Node.
 const ownerFields = { owner: z.string(), identity: z.string() }
-const currentPreOrigin = process.argv[4] === "before-origin"
-const Owner = currentPreOrigin
+const fenced = process.argv[4] === "before-origin" || process.argv[4] === "before-use"
+const previousContract =
+  process.argv[4] === "before-use" ? "native-organization-ownership-v2" : "native-organization-ownership-v1"
+const Owner = fenced
   ? z.strictObject({
       ...ownerFields,
       schemaVersion: z.literal(2),
-      readerContract: z.literal("native-organization-ownership-v1"),
+      readerContract: z.literal(previousContract),
     })
   : z.strictObject({ ...ownerFields, schemaVersion: z.literal(1) })
 const Identity = z.union([
@@ -28,14 +30,14 @@ const bindingFields = {
 const PreOriginBinding = z.strictObject({
   ...bindingFields,
   schemaVersion: z.literal(2),
-  readerContract: z.literal("native-organization-ownership-v1"),
+  readerContract: z.literal(previousContract),
 })
 const LegacyBinding = z.strictObject({ ...bindingFields, schemaVersion: z.literal(1) })
 const home = process.argv[2]
 const expected = Identity.parse(JSON.parse(process.argv[3]))
 const root = path.join(home, ".synergy")
 const owner = Owner.parse(JSON.parse(await fs.readFile(path.join(root, "home-ownership.json"), "utf8")))
-const binding = currentPreOrigin
+const binding = fenced
   ? await readRecord(path.join(root, "organization.json"), PreOriginBinding, "identity records")
   : await readRecord(path.join(root, "organization.json"), LegacyBinding, "identity records")
 const digest = createHash("sha256")
