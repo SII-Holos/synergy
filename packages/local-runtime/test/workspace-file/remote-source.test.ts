@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from "bun:test"
+import { createHash } from "node:crypto"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { z } from "zod"
@@ -10,6 +11,7 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceFileSource } from "@ericsanchezok/synergy-harness/workspace/file-source"
 import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
 import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
+import { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { NativeWorkspaceFiles } from "../../src/workspace/file-host"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
@@ -84,6 +86,83 @@ async function fixture() {
     },
   }
 }
+
+test("a remote file lease retains call-time inputs and bytes before deferred native work", async () => {
+  await using f = await fixture()
+  await using runtime = await testRuntime({ register: f.register })
+  await runtime.run(async () => {
+    const workspace = await WorkspaceCatalog.create({
+      scopeID: "home",
+      backend: { provider: "remote-fixture", spec: {} },
+    })
+    const lease = await WorkspaceFileSource.open({
+      workspace,
+      origin: EnvironmentOrigin.selected(f.origin()),
+    })
+    try {
+      const write: WorkspaceProtocol.WriteInput = {
+        id: "call-time-write",
+        mount: { ...lease.reference },
+        path: "original.txt",
+        data: Buffer.from("original bytes").toString("base64"),
+        expectedVersion: null,
+      }
+      const writing = lease.files.write(write)
+      write.path = "changed.txt"
+      write.data = Buffer.from("changed bytes").toString("base64")
+      write.mount.generation++
+      await writing
+      expect(await Bun.file(path.join(f.directory, "original.txt")).text()).toBe("original bytes")
+      expect(await Bun.file(path.join(f.directory, "changed.txt")).exists()).toBe(false)
+      await lease.files.acknowledge("call-time-write")
+
+      const read: WorkspaceProtocol.ReadInput = {
+        mount: { ...lease.reference },
+        path: "note.txt",
+        offset: 0,
+        maximumBytes: 6,
+      }
+      const reading = lease.files.read(read)
+      read.path = "missing.txt"
+      read.maximumBytes = 0
+      read.mount.workspaceID = "another-workspace"
+      expect(Buffer.from((await reading).data, "base64").toString()).toBe("remote")
+
+      const entry = await lease.files.stat(lease.reference, "note.txt")
+      const change: Extract<WorkspaceProtocol.Change, { kind: "copy" }> = {
+        kind: "copy",
+        from: "note.txt",
+        to: "copied.txt",
+        expectedVersion: entry!.entryVersion,
+      }
+      const mutation: WorkspaceProtocol.ChangeInput = {
+        id: "call-time-copy",
+        mount: { ...lease.reference },
+        change,
+      }
+      const copying = lease.files.mutate(mutation)
+      change.from = "missing.txt"
+      change.to = "changed-copy.txt"
+      change.expectedVersion = "changed-version"
+      mutation.mount.generation++
+      await copying
+      expect(await Bun.file(path.join(f.directory, "copied.txt")).text()).toBe("remote original\n")
+      expect(await Bun.file(path.join(f.directory, "note.txt")).text()).toBe("remote original\n")
+      await lease.files.acknowledge("call-time-copy")
+
+      const backing = new SharedArrayBuffer(16)
+      const bytes = Buffer.from(backing).subarray(1, -1)
+      bytes.write("call-time blob")
+      const hash = createHash("sha256").update(bytes).digest("hex")
+      const putting = lease.files.putBlob(hash, bytes)
+      bytes.fill(0)
+      await putting
+      expect(Buffer.from(await lease.files.getBlob(hash, 100)).toString()).toBe("call-time blob")
+    } finally {
+      await lease.release()
+    }
+  })
+}, 15000)
 
 test("ordinary file tools and the file service use a dormant remote owner without local content or compute", async () => {
   await using f = await fixture()

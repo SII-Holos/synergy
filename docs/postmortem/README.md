@@ -14,11 +14,12 @@
 - **Summary**.
 - **Timeline** — observations.
 - **Root cause**.
-- **Guardrails** — tests, docs, gates. Residency failures require `- [x] Machine check: <selector>` identifying it. See [Memory residency scope](../operations/memory-residency-scope.md).
+- **Guardrails** — tests, docs, gates. Residency requires `- [x] Machine check: <selector>`. [Memory residency scope](../operations/memory-residency-scope.md).
 - **Lessons**.
 
 ## Index
 
+- [0152](0152-remote-file-lease-used-mutated-call-inputs.md)
 - [0151](0151-native-recovery-config-wrote-a-replacement-root.md)
 - [0150](0150-space-selection-left-mobile-navigation-open.md)
 

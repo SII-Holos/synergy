@@ -149,12 +149,17 @@ export namespace WorkspaceFileSource {
         unavailable(workspace.id, "Workspace file binding changed during opening")
       assert()
       const directory = WorkspaceTree.VirtualRoot.parse(native.directory)
-      async function perform<T>(body: () => Promise<T>, effect = false): Promise<T> {
+      async function perform<Value, Result>(
+        value: Value,
+        body: (input: Value) => Promise<Result>,
+        effect = false,
+      ): Promise<Result> {
         assert()
         if (inspection && effect) unavailable(workspace.id, "Recovered file leases only inspect original receipts")
+        const original = structuredClone(value)
         const work = Promise.resolve().then(async () => {
           assert()
-          const result = await body()
+          const result = await body(original)
           assert()
           return result
         })
@@ -166,24 +171,28 @@ export namespace WorkspaceFileSource {
         return work
       }
       const files: WorkspaceFileHost = {
-        mount: (value) => perform(() => native.files.mount(value), true),
-        inspect: (value) => perform(() => native.files.inspect(value), true),
-        detach: (value) => perform(() => native.files.detach(value), true),
-        canonical: (value, path, follow) => perform(() => native.files.canonical(value, path, follow), true),
-        stat: (value, path, follow) => perform(() => native.files.stat(value, path, follow), true),
-        list: (value, path) => perform(() => native.files.list(value, path), true),
-        read: (value) => perform(() => native.files.read(value), true),
-        write: (value) => perform(() => native.files.write(value), true),
-        mutate: (value) => perform(() => native.files.mutate(value), true),
-        checkpoint: (value) => perform(() => native.files.checkpoint(value), true),
-        checkpointStatus: (id) => perform(() => native.files.checkpointStatus(id)),
-        acknowledge: (id) => perform(() => native.files.acknowledge(id)),
-        putBlob: (id, bytes) => perform(() => native.files.putBlob(id, bytes), true),
-        getBlob: (id, maximum) => perform(() => native.files.getBlob(id, maximum), true),
+        mount: (value) => perform(value, (input) => native.files.mount(input), true),
+        inspect: (value) => perform(value, (input) => native.files.inspect(input), true),
+        detach: (value) => perform(value, (input) => native.files.detach(input), true),
+        canonical: (value, path, follow) =>
+          perform(value, (input) => native.files.canonical(input, path, follow), true),
+        stat: (value, path, follow) => perform(value, (input) => native.files.stat(input, path, follow), true),
+        list: (value, path) => perform(value, (input) => native.files.list(input, path), true),
+        read: (value) => perform(value, (input) => native.files.read(input), true),
+        write: (value) => perform(value, (input) => native.files.write(input), true),
+        mutate: (value) => perform(value, (input) => native.files.mutate(input), true),
+        checkpoint: (value) => perform(value, (input) => native.files.checkpoint(input), true),
+        checkpointStatus: (id) => perform(id, (input) => native.files.checkpointStatus(input)),
+        acknowledge: (id) => perform(id, (input) => native.files.acknowledge(input)),
+        putBlob: async (id, bytes) => {
+          const original = Uint8Array.from(bytes)
+          return perform(id, (input) => native.files.putBlob(input, original), true)
+        },
+        getBlob: (id, maximum) => perform(id, (input) => native.files.getBlob(input, maximum), true),
         ...(native.files.observe
           ? {
               observe: (value: WorkspaceProtocol.Reference, signal?: AbortSignal) =>
-                perform(() => native.files.observe!(value, signal), true),
+                perform(value, (input) => native.files.observe!(input, signal), true),
             }
           : {}),
       }
