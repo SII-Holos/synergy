@@ -15,6 +15,7 @@ import { organizationOwnerFailure } from "./owner-error"
 import { OrganizationSessionCreate } from "./session-create"
 import { OrganizationSessionComposer } from "./session-composer"
 import { OrganizationSessionResources } from "./session-resources"
+import { OrganizationHandoff } from "./handoff"
 import { OrganizationSessionInteractions } from "./interactions"
 import { OrganizationKnowledge } from "./knowledge"
 import { OrganizationArtifacts } from "./artifacts"
@@ -375,11 +376,14 @@ function OrganizationSessionPage(props: {
                     _(session().shareState === "private" ? messages.private : messages.conversations)}
                 </h2>
               </div>
-              <Show when={session().creatorID === space.connection()?.account.accountID}>
-                <Button disabled={busy()} onClick={sharing}>
-                  {_(state.share?.shareState === "shared" ? messages.unshare : messages.share)}
-                </Button>
-              </Show>
+              <div class="organization-session-move-actions">
+                <OrganizationHandoff session={session()} changed={() => void load()} compact />
+                <Show when={session().creatorID === space.connection()?.account.accountID}>
+                  <Button disabled={busy()} onClick={sharing}>
+                    {_(state.share?.shareState === "shared" ? messages.unshare : messages.share)}
+                  </Button>
+                </Show>
+              </div>
             </div>
             <div class="organization-session-status">
               <span>{_(session().runtime?.state === "online" ? messages.online : messages.offline)}</span>

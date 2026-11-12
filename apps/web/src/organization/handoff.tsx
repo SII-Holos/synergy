@@ -1,0 +1,1184 @@
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
+import { useLingui } from "@lingui/solid"
+import {
+  OrganizationHandoffProtocol as Handoff,
+  type OrganizationSessionProtocol as Session,
+} from "@ericsanchezok/synergy-organization-protocol"
+import type {
+  OrgRuntimeRegistration,
+  OrgResourceView,
+  OrgCloudWorkspace,
+} from "@ericsanchezok/synergy-sdk/organization"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
+import { useSpace } from "@/context/space"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { WorkspaceError } from "./workspace-error"
+import { organizationHandoffMessages as messages } from "./handoff-messages"
+import { organizationWorkspaceMessages as common } from "./workspace-messages"
+import {
+  createOrganizationHandoffState,
+  organizationHandoffMachineKnown,
+  organizationHandoffOutcomeKnown,
+  type OrganizationHandoffAction,
+  type OrganizationHandoffSaved,
+} from "./handoff-state"
+import "./handoff.css"
+
+const terminal = (view: Handoff.View) => ["completed", "cancelled", "retired"].includes(view.phase)
+
+export function OrganizationHandoff(props: { session: Session.View; changed: () => void; compact?: boolean }) {
+  const { _ } = useLingui()
+  const dialog = useDialog()
+  const space = useSpace()
+  const view = space.current()!
+  const [menu, setMenu] = createSignal(false)
+  let anchor: HTMLSpanElement | undefined
+  let id: string | undefined
+  const close = () => {
+    setMenu(false)
+    if (id) dialog.close(id)
+    id = undefined
+  }
+  view.signal.addEventListener("abort", close, { once: true })
+  onCleanup(() => {
+    view.signal.removeEventListener("abort", close)
+    close()
+  })
+  const open = (trigger: HTMLButtonElement | undefined) => {
+    if (id || view.signal.aborted || !trigger?.isConnected) return
+    setMenu(false)
+    trigger.focus({ preventScroll: true })
+    id = dialog.push(
+      () => <OrganizationHandoffDialog session={props.session} changed={props.changed} close={close} />,
+      () => {
+        id = undefined
+      },
+    )
+  }
+  return (
+    <Show
+      when={props.compact}
+      fallback={
+        <Button onClick={(event: MouseEvent & { currentTarget: HTMLButtonElement }) => open(event.currentTarget)}>
+          {_(messages.move)}
+        </Button>
+      }
+    >
+      <span ref={anchor} class="organization-handoff-menu">
+        <Popover
+          variant="menu"
+          placement="bottom-end"
+          title={_(messages.actions)}
+          open={menu()}
+          onOpenChange={setMenu}
+          triggerAs={(attributes) => (
+            <Button
+              {...attributes}
+              variant="ghost"
+              aria-label={_(messages.actions)}
+              title={_(messages.actions)}
+              icon={getSemanticIcon("action.more")}
+            />
+          )}
+        >
+          <Button
+            variant="ghost"
+            onClick={() =>
+              open(anchor?.querySelector<HTMLButtonElement>('button[data-slot="popover-trigger"]') ?? undefined)
+            }
+          >
+            {_(messages.move)}
+          </Button>
+        </Popover>
+      </span>
+    </Show>
+  )
+}
+
+export function OrganizationHandoffDialog(props: { session: Session.View; changed: () => void; close: () => void }) {
+  const { _, i18n } = useLingui()
+  const space = useSpace()
+  const api = space.client()!
+  const owner = space.current()!
+  const connection = space.connection()!
+  const accountID = connection.account.accountID
+  const authRevision = connection.account.authRevision
+  const orgID = connection.orgID
+  const incarnation = connection.deploymentIncarnation
+  const sessionID = props.session.sessionID
+  const projectID = props.session.projectID
+  const controller = new AbortController()
+  const signal = AbortSignal.any([owner.signal, controller.signal])
+  const options = { throwOnError: true, signal } as const
+  const confirm = useConfirm()
+  const recovery = createOrganizationHandoffState({ storage: localStorage, owner: owner.key, projectID, sessionID })
+  const [state, setState] = createStore<{
+    runtimes: OrgRuntimeRegistration[]
+    history: Handoff.View[]
+    resources: OrgResourceView[]
+    workspaces: OrgCloudWorkspace[]
+    view?: Handoff.View
+    preview?: Handoff.Options
+    machine?: Handoff.MachineResult
+  }>({ runtimes: [], history: [], resources: [], workspaces: [] })
+  const [saved, setSaved] = createSignal<OrganizationHandoffSaved>()
+  const [destination, setDestination] = createSignal("")
+  const [kind, setKind] = createSignal<Handoff.WorkspaceMapping["kind"]>("native")
+  const [resourceID, setResourceID] = createSignal("")
+  const [workspaceID, setWorkspaceID] = createSignal("")
+  const [path, setPath] = createSignal("")
+  const [runtimeCursor, setRuntimeCursor] = createSignal<string>()
+  const [historyCursor, setHistoryCursor] = createSignal<string>()
+  const [resourceCursor, setResourceCursor] = createSignal<string>()
+  const [workspaceCursor, setWorkspaceCursor] = createSignal<string>()
+  const [busy, setBusy] = createSignal(false)
+  const [listing, setListing] = createSignal(false)
+  const [checking, setChecking] = createSignal(false)
+  const [resourcesLoading, setResourcesLoading] = createSignal(false)
+  const [workspacesLoading, setWorkspacesLoading] = createSignal(false)
+  const [error, setError] = createSignal<unknown>()
+  const [storageFailed, setStorageFailed] = createSignal(false)
+  const [accessLost, setAccessLost] = createSignal(false)
+  const [retryable, setRetryable] = createSignal(false)
+  let selectionRevision = 0
+  let workspaceRevision = 0
+  let handoffRevision = 0
+  let observedBinding = `${props.session.driverRuntimeID}:${props.session.bindingEpoch}`
+  let first: HTMLButtonElement | undefined
+  const current = () =>
+    !signal.aborted &&
+    space.current() === owner &&
+    props.session.sessionID === sessionID &&
+    props.session.projectID === projectID &&
+    space.connection()?.state === "ready" &&
+    space.connection()?.account.accountID === accountID &&
+    space.connection()?.account.authRevision === authRevision &&
+    space.connection()?.account.state === "active" &&
+    space.connection()?.orgID === orgID &&
+    space.connection()?.deploymentIncarnation === incarnation
+  const allowed = () => current() && !busy() && !storageFailed() && !accessLost() && props.session.permissions.execute
+  const pending = () => saved()?.pending
+  const sourceOwner = () =>
+    props.session.runtime?.runtimeKind === "member"
+      ? props.session.runtime.ownerID === accountID
+      : props.session.creatorID === accountID
+  const targetRuntime = () => state.runtimes.find((runtime) => runtime.runtimeID === state.view?.targetRuntimeID)
+  const targetOwner = () => {
+    const target = targetRuntime()
+    return target?.runtimeKind === "member"
+      ? target.accountID === accountID
+      : target?.runtimeKind === "hosted" && props.session.creatorID === accountID
+  }
+  const sourceCanDrive = () => state.view?.initiator === accountID
+  const label = (id: string) => {
+    const runtime = state.runtimes.find((entry) => entry.runtimeID === id)
+    return runtime
+      ? runtime.runtimeKind === "hosted"
+        ? runtime.name
+        : runtime.deviceID
+      : id === props.session.driverRuntimeID
+        ? (props.session.runtime?.name ?? _(messages.source))
+        : _(messages.destination)
+  }
+  function failure(error: unknown) {
+    if (!current()) return
+    setError(error)
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined
+    if (["AUTHENTICATION_REQUIRED", "reauthorization_required", "signed_out"].includes(String(code))) {
+      confirm.closeOwned()
+      space.authorizationRequired(owner)
+    }
+    if (["PERMISSION_DENIED", "SHARE_REVOKED", "permission_denied"].includes(String(code))) {
+      setAccessLost(true)
+      confirm.closeOwned()
+    }
+  }
+  function retain(id: string, action?: OrganizationHandoffAction) {
+    try {
+      const previous = saved()?.handoffID ?? state.view?.handoffID
+      const value = recovery.save(id, action)
+      if (previous !== id) {
+        handoffRevision++
+        setState("machine", undefined)
+        setRetryable(false)
+      }
+      setSaved(value)
+      return value
+    } catch (error) {
+      setStorageFailed(true)
+      throw error
+    }
+  }
+  function confirmed(id: string) {
+    try {
+      if (saved()?.handoffID === id) setSaved(recovery.confirmed(id))
+      setRetryable(false)
+    } catch (error) {
+      setStorageFailed(true)
+      throw error
+    }
+  }
+  function acceptView(value: unknown) {
+    const view = Handoff.View.parse(value)
+    const id = saved()?.handoffID ?? state.view?.handoffID
+    if (
+      view.sessionID !== sessionID ||
+      view.orgID !== orgID ||
+      view.deploymentIncarnation !== incarnation ||
+      (id && view.handoffID !== id)
+    )
+      throw new Error("Handoff returned another owner")
+    const previous = state.view?.phase
+    const action = pending()
+    if (
+      action?.kind === "prepare" &&
+      (view.targetRuntimeID !== action.body.targetRuntimeID ||
+        view.fromEpoch !== action.body.expectedBindingEpoch ||
+        view.mappingPlanRevision !== action.body.mappingPlanRevision ||
+        JSON.stringify(view.workspaceMapping) !== JSON.stringify(action.body.workspaceMapping))
+    )
+      throw new Error("Handoff returned another original plan")
+    if (action && organizationHandoffOutcomeKnown(action, view)) confirmed(view.handoffID)
+    setState("view", reconcile(view))
+    if (terminal(view)) {
+      try {
+        recovery.clear(view.handoffID)
+        setSaved(undefined)
+      } catch (error) {
+        setStorageFailed(true)
+        throw error
+      }
+      if (previous !== view.phase) props.changed()
+    }
+    return view
+  }
+  async function refresh() {
+    const id = saved()?.handoffID ?? state.view?.handoffID
+    if (!id) return
+    const revision = handoffRevision
+    const result = await api.orgHandoff.get({ handoffID: id }, options)
+    if (current() && revision === handoffRevision && (saved()?.handoffID ?? state.view?.handoffID) === id)
+      return acceptView(result.data)
+  }
+  async function runtime(id: string) {
+    if (state.runtimes.some((runtime) => runtime.runtimeID === id)) return
+    const result = await api.orgRuntime.get({ runtimeID: id }, options)
+    if (current()) setState("runtimes", reconcile([...state.runtimes, result.data]))
+  }
+  async function loadRuntimes(more = false) {
+    if (listing()) return
+    setListing(true)
+    try {
+      const result = await api.orgRuntime.list({ limit: 50, cursor: more ? runtimeCursor() : undefined }, options)
+      if (!current()) return
+      const previous = more
+        ? state.runtimes
+        : state.runtimes.filter((entry) =>
+            [state.view?.sourceRuntimeID, state.view?.targetRuntimeID].includes(entry.runtimeID),
+          )
+      setState(
+        "runtimes",
+        reconcile([...new Map([...previous, ...result.data.items].map((entry) => [entry.runtimeID, entry])).values()]),
+      )
+      setRuntimeCursor(result.data.cursor)
+    } catch (error) {
+      failure(error)
+    } finally {
+      if (current()) setListing(false)
+    }
+  }
+  async function history(more = false) {
+    try {
+      const result = await api.orgHandoff.list(
+        { sessionID, limit: 50, cursor: more ? historyCursor() : undefined },
+        options,
+      )
+      if (!current()) return
+      const rows = result.data.items.map((view) => Handoff.View.parse(view))
+      if (
+        rows.some(
+          (view) => view.orgID !== orgID || view.deploymentIncarnation !== incarnation || view.sessionID !== sessionID,
+        )
+      )
+        throw new Error("Handoff history returned another owner")
+      setState("history", reconcile(more ? [...state.history, ...rows] : rows))
+      setHistoryCursor(result.data.cursor)
+      if (!saved() && !state.view) {
+        const active = rows.find((view) => !terminal(view))
+        if (active) {
+          retain(active.handoffID)
+          acceptView(active)
+          await runtime(active.targetRuntimeID)
+        }
+      }
+    } catch (error) {
+      failure(error)
+    }
+  }
+  async function inspectChoices(id: string) {
+    if (!allowed() || pending() || !id) return
+    const revision = ++selectionRevision
+    setDestination(id)
+    setState("preview", undefined)
+    setChecking(true)
+    setError(undefined)
+    try {
+      const result = await api.orgHandoff.options(
+        { sessionID, requestID: generateSecureUUID(), targetRuntimeID: id },
+        options,
+      )
+      if (!current() || revision !== selectionRevision || destination() !== id) return
+      const value = Handoff.Options.parse(result.data)
+      if (
+        value.sessionID !== sessionID ||
+        value.projectID !== projectID ||
+        value.sourceRuntimeID !== props.session.driverRuntimeID ||
+        value.targetRuntimeID !== id ||
+        value.bindingEpoch !== props.session.bindingEpoch
+      )
+        throw { code: "STALE_BINDING" }
+      setState("preview", reconcile(value))
+      const initial = value.choices.find(
+        (choice) =>
+          !choice.requiresDifference && ["native", "organization-live", "organization-object"].includes(choice.kind),
+      )
+      if (initial && initial.kind !== "organization-native") chooseKind(initial.kind)
+    } catch (error) {
+      if (revision === selectionRevision) failure(error)
+    } finally {
+      if (current() && revision === selectionRevision) setChecking(false)
+    }
+  }
+  async function resources(more = false) {
+    if (resourcesLoading()) return
+    setResourcesLoading(true)
+    try {
+      const result = await api.orgProjectResources.list(
+        { projectID, limit: 50, cursor: more ? resourceCursor() : undefined },
+        options,
+      )
+      if (!current()) return
+      setState(
+        "resources",
+        reconcile(more ? [...state.resources, ...result.data.items] : result.data.items, { key: "resourceID" }),
+      )
+      setResourceCursor(result.data.cursor)
+    } catch (error) {
+      failure(error)
+    } finally {
+      if (current()) setResourcesLoading(false)
+    }
+  }
+  async function workspaces(id: string, more = false) {
+    if (!id || (more && workspacesLoading())) return
+    const revision = more ? workspaceRevision : ++workspaceRevision
+    setWorkspacesLoading(true)
+    setResourceID(id)
+    if (!more) {
+      setWorkspaceID("")
+      setState("workspaces", reconcile([]))
+      setWorkspaceCursor(undefined)
+    }
+    try {
+      const result = await api.orgCloudWorkspaces.list(
+        { projectID, resourceID: id, limit: 50, cursor: more ? workspaceCursor() : undefined },
+        options,
+      )
+      if (!current() || id !== resourceID() || revision !== workspaceRevision) return
+      setState(
+        "workspaces",
+        reconcile(more ? [...state.workspaces, ...result.data.items] : result.data.items, { key: "workspaceID" }),
+      )
+      setWorkspaceCursor(result.data.cursor)
+    } catch (error) {
+      if (id === resourceID() && revision === workspaceRevision) failure(error)
+    } finally {
+      if (current() && revision === workspaceRevision) setWorkspacesLoading(false)
+    }
+  }
+  function chooseKind(value: Handoff.WorkspaceMapping["kind"]) {
+    setKind(value)
+    if (value === "organization-object") void resources()
+  }
+  function mapping(): Handoff.WorkspaceMapping | undefined {
+    const preview = state.preview
+    if (!preview || !preview.choices.some((choice) => choice.kind === kind() && !choice.requiresDifference)) return
+    if (kind() === "native") return { kind: "native" }
+    if (!preview.source) return
+    const source = {
+      workspaceID: preview.source.reference.workspaceID,
+      generation: preview.source.reference.generation,
+    }
+    if (kind() === "organization-live" && preview.source.resource)
+      return { kind: "organization-live", source, resource: preview.source.resource }
+    const workspace = state.workspaces.find(
+      (workspace) =>
+        workspace.workspaceID === workspaceID() &&
+        workspace.resourceID === resourceID() &&
+        workspace.projectID === projectID &&
+        !workspace.activeMount,
+    )
+    const resource = state.resources.find(
+      (resource) =>
+        resource.resourceID === resourceID() &&
+        resource.state === "enabled" &&
+        resource.permissions.use &&
+        resource.definition.protocol === "workspace-storage",
+    )
+    if (kind() !== "organization-object" || !workspace || !resource || !path()) return
+    const parsed = Handoff.WorkspaceMapping.safeParse({
+      kind: "organization-object",
+      moveID: "validation",
+      source,
+      target: {
+        resourceID: resource.resourceID,
+        workspaceID: workspace.workspaceID,
+        generation: workspace.generation,
+        expectedRevision: workspace.revision,
+        path: path(),
+      },
+      acceptedDiffHash: null,
+    })
+    return parsed.success ? parsed.data : undefined
+  }
+  async function perform(action: OrganizationHandoffAction, id = saved()?.handoffID ?? state.view?.handoffID) {
+    if (!allowed() || !id) return false
+    if (pending() && JSON.stringify(pending()) !== JSON.stringify(action)) return false
+    const retained = !!pending()
+    try {
+      retain(id, action)
+    } catch (error) {
+      failure(error)
+      return false
+    }
+    setBusy(true)
+    setError(undefined)
+    setRetryable(false)
+    try {
+      if (action.kind === "drive") {
+        const response = await api.orgHandoff.drive({ handoffID: id, orgHandoffDrive: action.body }, options)
+        if (!current()) return false
+        const result = Handoff.MachineResult.parse(response.data)
+        const runtimeID = action.body.operation.endsWith("-source")
+          ? state.view?.sourceRuntimeID
+          : state.view?.targetRuntimeID
+        if (
+          result.handoffID !== id ||
+          result.requestID !== action.body.requestID ||
+          result.operation !== action.body.operation ||
+          result.runtimeID !== runtimeID
+        )
+          throw new Error("Handoff operation returned another participant")
+        setState("machine", reconcile(result))
+        setRetryable(result.state === "blocked")
+        if (organizationHandoffMachineKnown(action, result)) confirmed(id)
+        await refresh()
+        return result.state === "complete"
+      }
+      if (action.kind === "permit") {
+        const response = await api.orgHandoff.permit({ handoffID: id, orgHandoffPermitRequest: action.body }, options)
+        if (!current()) return false
+        const result = Handoff.SignedPermit.parse(response.data).permit
+        if (
+          result.handoffID !== id ||
+          result.purpose !== action.body.purpose ||
+          result.orgID !== orgID ||
+          result.deploymentIncarnation !== incarnation ||
+          result.sessionID !== sessionID
+        )
+          throw new Error("Handoff authorization returned another owner")
+        confirmed(id)
+        await refresh()
+        return true
+      }
+      const response =
+        action.kind === "prepare"
+          ? await api.orgHandoff.prepare({ sessionID, orgHandoffPrepare: action.body }, options)
+          : action.kind === "accept"
+            ? await api.orgHandoff.accept({ handoffID: id, orgHandoffAccept: action.body }, options)
+            : action.kind === "commit"
+              ? await api.orgHandoff.commit({ handoffID: id, body: {} }, options)
+              : await api.orgHandoff.cancel({ handoffID: id, body: {} }, options)
+      if (!current()) return false
+      acceptView(response.data)
+      if (saved()?.handoffID === id) confirmed(id)
+      return true
+    } catch (error) {
+      if (
+        current() &&
+        !retained &&
+        action.kind !== "drive" &&
+        error &&
+        typeof error === "object" &&
+        "outcome" in error &&
+        error.outcome === "not_dispatched"
+      ) {
+        try {
+          if (action.kind === "prepare") {
+            recovery.clear(id)
+            setSaved(undefined)
+            setState("preview", undefined)
+          } else confirmed(id)
+        } catch (error) {
+          setStorageFailed(true)
+          failure(error)
+        }
+      }
+      failure(error)
+      return false
+    } finally {
+      if (current()) setBusy(false)
+    }
+  }
+  function drive(operation: Handoff.Drive["operation"]) {
+    try {
+      const previous = state.machine
+      const runtimeID = operation.endsWith("-source") ? state.view?.sourceRuntimeID : state.view?.targetRuntimeID
+      return perform({
+        kind: "drive",
+        body: {
+          operation,
+          requestID: generateSecureUUID(),
+          ...(previous && previous.runtimeID === runtimeID ? { expectedRevision: previous.revision } : {}),
+        },
+      })
+    } catch (error) {
+      failure(error)
+      return Promise.resolve(false)
+    }
+  }
+  async function check(cursor?: string) {
+    if (busy() || !current()) return
+    setBusy(true)
+    setError(undefined)
+    try {
+      const view = await refresh()
+      if (!current() || !view || terminal(view)) return
+      const original = pending()
+      if (original?.kind !== "drive" && original?.kind !== "cancel") return
+      const role = original.kind === "cancel" || original.body.operation.endsWith("-source") ? "source" : "target"
+      const revision = state.machine?.revision
+      const request = {
+        requestID: generateSecureUUID(),
+        operation: role === "source" ? ("inspect-source" as const) : ("inspect-target" as const),
+        ...(cursor && revision ? { cursor, expectedRevision: revision } : {}),
+      }
+      const response = await api.orgHandoff.drive({ handoffID: view.handoffID, orgHandoffDrive: request }, options)
+      if (!current()) return
+      const result = Handoff.MachineResult.parse(response.data)
+      if (
+        result.handoffID !== view.handoffID ||
+        result.requestID !== request.requestID ||
+        result.operation !== request.operation ||
+        result.runtimeID !== (role === "source" ? view.sourceRuntimeID : view.targetRuntimeID)
+      )
+        throw new Error("Handoff inspection returned another participant")
+      if (cursor && result.revision !== revision) throw { code: "REVISION_CONFLICT" }
+      setState("machine", reconcile(result))
+      setRetryable(result.state === "blocked")
+      if (organizationHandoffMachineKnown(original, result)) confirmed(view.handoffID)
+      await refresh()
+    } catch (error) {
+      failure(error)
+    } finally {
+      if (current()) setBusy(false)
+    }
+  }
+  async function begin() {
+    try {
+      const preview = state.preview
+      const selected = mapping()
+      if (!allowed() || !sourceOwner() || pending() || !preview || !selected) return
+      const handoffID = generateSecureUUID()
+      const workspaceMapping =
+        selected.kind === "organization-object" ? { ...selected, moveID: generateSecureUUID() } : selected
+      await perform(
+        {
+          kind: "prepare",
+          body: {
+            handoffID,
+            targetRuntimeID: preview.targetRuntimeID,
+            expectedBindingEpoch: preview.bindingEpoch,
+            expectedControlRevision: preview.controlRevision,
+            mappingPlanRevision: 1,
+            workspaceMapping,
+          },
+        },
+        handoffID,
+      )
+    } catch (error) {
+      failure(error)
+    }
+  }
+  function surrender() {
+    const captured = state.view
+    if (!captured || !allowed() || pending()) return
+    confirm.show({
+      title: messages.surrender,
+      description: messages.surrenderHint,
+      confirmLabel: messages.surrender,
+      tone: "warning",
+      async onConfirm() {
+        if (!allowed() || state.view?.handoffID !== captured.handoffID || state.view.phase !== "prepared") return
+        if (await perform({ kind: "permit", body: { purpose: "handoff-surrender" } }, captured.handoffID))
+          await drive("surrender-source")
+      },
+    })
+  }
+  function cancel() {
+    const captured = state.view
+    if (!captured?.canCancel || !allowed() || pending()) return
+    confirm.show({
+      title: captured.cancelRequested ? messages.finishCancel : messages.cancel,
+      description: messages.cancelHint,
+      confirmLabel: captured.cancelRequested ? messages.finishCancel : messages.cancel,
+      tone: "warning",
+      async onConfirm() {
+        if (!allowed() || state.view?.handoffID !== captured.handoffID || !state.view.canCancel) return
+        if (state.view.cancelRequested || (await perform({ kind: "cancel" }, captured.handoffID)))
+          await drive("cancel-source")
+      },
+    })
+  }
+  function retire() {
+    const captured = state.view
+    if (!captured || !allowed() || pending()) return
+    confirm.show({
+      title: messages.retire,
+      description: messages.retireHint,
+      confirmLabel: messages.retire,
+      tone: "danger",
+      async onConfirm() {
+        if (
+          !allowed() ||
+          state.view?.handoffID !== captured.handoffID ||
+          !["surrendered", "committed", "activation_permitted"].includes(state.view.phase)
+        )
+          return
+        await drive("retire-target")
+      },
+    })
+  }
+  async function activate() {
+    if (await perform({ kind: "permit", body: { purpose: "handoff-activation" } })) await drive("activate-target")
+  }
+  onMount(() => {
+    try {
+      setSaved(recovery.read())
+    } catch (error) {
+      setStorageFailed(true)
+      failure(error)
+    }
+    void loadRuntimes()
+    void history()
+    if (saved())
+      void refresh()
+        .then((view) => view && runtime(view.targetRuntimeID))
+        .catch(failure)
+  })
+  createEffect(() => {
+    if (!current()) {
+      confirm.closeOwned()
+      props.close()
+    }
+  })
+  createEffect(() => {
+    if (!props.session.permissions.execute) confirm.closeOwned()
+  })
+  createEffect(() => {
+    const binding = `${props.session.driverRuntimeID}:${props.session.bindingEpoch}`
+    if (binding === observedBinding) return
+    observedBinding = binding
+    selectionRevision++
+    setState("preview", undefined)
+    setDestination("")
+  })
+  const aborted = () => {
+    confirm.closeOwned()
+    props.close()
+  }
+  signal.addEventListener("abort", aborted, { once: true })
+  onCleanup(() => {
+    signal.removeEventListener("abort", aborted)
+    controller.abort()
+    confirm.closeOwned()
+  })
+  const phase = () =>
+    state.view?.phase === "activation_permitted" ? messages.committed : messages[state.view?.phase ?? "preparing"]
+  const requirements = () => {
+    const action = pending()
+    if (
+      state.view?.cancelRequested &&
+      state.machine?.operation !== "cancel-source" &&
+      !(action?.kind === "drive" && action.body.operation === "cancel-source")
+    )
+      return []
+    return state.machine?.requirements.length ? state.machine.requirements : (state.view?.missingRequirements ?? [])
+  }
+  const sourceMissing = () =>
+    state.view?.missingRequirements.some((requirement) => requirement.code === "source_freeze")
+  const targetMissing = () =>
+    state.view?.missingRequirements.some((requirement) => requirement.code === "target_prepare")
+  const supportedChoices = () =>
+    state.preview?.choices.filter(
+      (choice) =>
+        ["native", "organization-live", "organization-object"].includes(choice.kind) && !choice.requiresDifference,
+    ) ?? []
+  const remoteWorkspace = () => {
+    const mapping = state.view?.workspaceMapping
+    return mapping?.kind === "organization-object"
+      ? mapping.target
+      : mapping?.kind === "organization-live"
+        ? mapping.resource
+        : undefined
+  }
+  return (
+    <Dialog
+      title={_(messages.move)}
+      size="form"
+      initialFocus={() => first}
+      footer={
+        <Button ref={first} variant="ghost" onClick={props.close}>
+          {_(messages.close)}
+        </Button>
+      }
+    >
+      <div class="organization-handoff">
+        <p>{_(messages.hint)}</p>
+        <WorkspaceError
+          error={error()}
+          retry={
+            !pending() && !busy()
+              ? () =>
+                  state.view ? void check() : destination() ? void inspectChoices(destination()) : void loadRuntimes()
+              : undefined
+          }
+        />
+        <Show when={!state.view && !saved()}>
+          <Show when={sourceOwner() && props.session.permissions.execute} fallback={<p>{_(messages.ownerHint)}</p>}>
+            <div class="organization-handoff-fields">
+              <label class="organization-handoff-field">
+                <span>{_(messages.destination)}</span>
+                <MenuField
+                  ariaLabel={_(messages.destination)}
+                  value={destination()}
+                  onChange={(id) => void inspectChoices(id)}
+                  triggerLabel={!destination() ? _(messages.chooseDestination) : undefined}
+                  disabled={busy() || checking() || listing()}
+                  options={state.runtimes
+                    .filter(
+                      (runtime) => runtime.runtimeID !== props.session.driverRuntimeID && runtime.state === "active",
+                    )
+                    .map((runtime) => ({ value: runtime.runtimeID, label: label(runtime.runtimeID) }))}
+                />
+              </label>
+              <Show when={listing()}>
+                <p role="status">{_(common.loading)}</p>
+              </Show>
+              <Show
+                when={
+                  !listing() &&
+                  !state.runtimes.some(
+                    (runtime) => runtime.runtimeID !== props.session.driverRuntimeID && runtime.state === "active",
+                  )
+                }
+              >
+                <p>{_(messages.noDestination)}</p>
+              </Show>
+              <div class="organization-handoff-actions">
+                <Show when={runtimeCursor()}>
+                  <Button disabled={listing()} onClick={() => void loadRuntimes(true)}>
+                    {_(common.more)}
+                  </Button>
+                </Show>
+                <Button variant="ghost" disabled={listing()} onClick={() => void loadRuntimes()}>
+                  {_(messages.refresh)}
+                </Button>
+              </div>
+              <Show when={checking()}>
+                <p role="status">{_(messages.checking)}</p>
+              </Show>
+              <Show when={state.preview}>
+                {(preview) => (
+                  <>
+                    <dl class="organization-handoff-summary">
+                      <div>
+                        <dt>{_(messages.source)}</dt>
+                        <dd>{preview().source?.label ?? _(messages.noSource)}</dd>
+                      </div>
+                      <div>
+                        <dt>{_(messages.target)}</dt>
+                        <dd>{label(preview().targetRuntimeID)}</dd>
+                      </div>
+                    </dl>
+                    <Show when={supportedChoices().length} fallback={<p role="status">{_(messages.unsupported)}</p>}>
+                      <div class="organization-handoff-field">
+                        <span>{_(messages.workspace)}</span>
+                        <Show
+                          when={supportedChoices().length > 1}
+                          fallback={
+                            <p>
+                              {_(
+                                kind() === "native"
+                                  ? messages.native
+                                  : kind() === "organization-live"
+                                    ? messages.live
+                                    : messages.object,
+                              )}
+                            </p>
+                          }
+                        >
+                          <MenuField
+                            ariaLabel={_(messages.workspace)}
+                            value={kind()}
+                            onChange={(kind) => chooseKind(kind as Handoff.WorkspaceMapping["kind"])}
+                            options={supportedChoices().map((choice) => ({
+                              value: choice.kind,
+                              label: _(
+                                choice.kind === "native"
+                                  ? messages.native
+                                  : choice.kind === "organization-live"
+                                    ? messages.live
+                                    : messages.object,
+                              ),
+                            }))}
+                          />
+                        </Show>
+                      </div>
+                      <p>{_(kind() === "organization-live" ? messages.liveHint : messages.nativeHint)}</p>
+                      <Show when={kind() === "organization-object"}>
+                        <label class="organization-handoff-field">
+                          <span>{_(messages.storage)}</span>
+                          <MenuField
+                            ariaLabel={_(messages.storage)}
+                            value={resourceID()}
+                            triggerLabel={!resourceID() ? _(messages.chooseStorage) : undefined}
+                            onChange={(id) => void workspaces(id)}
+                            options={state.resources
+                              .filter(
+                                (resource) =>
+                                  resource.state === "enabled" &&
+                                  resource.permissions.use &&
+                                  resource.definition.protocol === "workspace-storage",
+                              )
+                              .map((resource) => ({ value: resource.resourceID, label: resource.name }))}
+                          />
+                        </label>
+                        <Show when={resourcesLoading()}>
+                          <p role="status">{_(common.loading)}</p>
+                        </Show>
+                        <Show when={resourceCursor()}>
+                          <Button disabled={resourcesLoading()} onClick={() => void resources(true)}>
+                            {_(common.more)}
+                          </Button>
+                        </Show>
+                        <label class="organization-handoff-field">
+                          <span>{_(messages.workspace)}</span>
+                          <MenuField
+                            ariaLabel={_(messages.chooseWorkspace)}
+                            value={workspaceID()}
+                            onChange={setWorkspaceID}
+                            triggerLabel={!workspaceID() ? _(messages.chooseWorkspace) : undefined}
+                            options={state.workspaces
+                              .filter(
+                                (workspace) =>
+                                  !workspace.activeMount &&
+                                  workspace.resourceID === resourceID() &&
+                                  workspace.projectID === projectID,
+                              )
+                              .map((workspace) => ({ value: workspace.workspaceID, label: workspace.name }))}
+                          />
+                        </label>
+                        <Show when={workspacesLoading()}>
+                          <p role="status">{_(common.loading)}</p>
+                        </Show>
+                        <Show
+                          when={
+                            resourceID() &&
+                            !workspacesLoading() &&
+                            !state.workspaces.some((workspace) => !workspace.activeMount)
+                          }
+                        >
+                          <p>{_(messages.noWorkspace)}</p>
+                        </Show>
+                        <Show when={workspaceCursor()}>
+                          <Button disabled={workspacesLoading()} onClick={() => void workspaces(resourceID(), true)}>
+                            {_(common.more)}
+                          </Button>
+                        </Show>
+                        <TextField label={_(messages.path)} value={path()} onChange={setPath} maxLength={4096} />
+                      </Show>
+                      <Button
+                        variant="primary"
+                        disabled={!allowed() || checking() || !mapping()}
+                        onClick={() => void begin()}
+                      >
+                        {_(messages.begin)}
+                      </Button>
+                    </Show>
+                  </>
+                )}
+              </Show>
+            </div>
+          </Show>
+        </Show>
+        <Show when={state.view}>
+          {(view) => (
+            <>
+              <h3 aria-live="polite">{_(phase())}</h3>
+              <dl class="organization-handoff-summary">
+                <div>
+                  <dt>{_(messages.source)}</dt>
+                  <dd>{label(view().sourceRuntimeID)}</dd>
+                </div>
+                <div>
+                  <dt>{_(messages.target)}</dt>
+                  <dd>{label(view().targetRuntimeID)}</dd>
+                </div>
+                <div>
+                  <dt>{_(messages.workspace)}</dt>
+                  <dd>
+                    {_(
+                      view().workspaceMapping.kind === "native"
+                        ? messages.native
+                        : view().workspaceMapping.kind === "organization-live"
+                          ? messages.live
+                          : messages.object,
+                    )}
+                  </dd>
+                </div>
+                <Show when={remoteWorkspace()}>
+                  {(workspace) => (
+                    <>
+                      <div>
+                        <dt>{_(messages.storage)}</dt>
+                        <dd>
+                          {state.resources.find((resource) => resource.resourceID === workspace().resourceID)?.name ??
+                            workspace().resourceID}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{_(messages.cloudWorkspace)}</dt>
+                        <dd>
+                          {state.workspaces.find((entry) => entry.workspaceID === workspace().workspaceID)?.name ??
+                            workspace().workspaceID}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{_(messages.folder)}</dt>
+                        <dd>{workspace().path}</dd>
+                      </div>
+                    </>
+                  )}
+                </Show>
+              </dl>
+              <Show when={!terminal(view()) && requirements().length}>
+                <ul class="organization-handoff-requirements">
+                  <For each={requirements()}>
+                    {(requirement) => (
+                      <li>
+                        {requirement.code === "source_freeze"
+                          ? _(messages.sourceFreeze)
+                          : requirement.code === "target_prepare"
+                            ? _(messages.targetPrepare)
+                            : requirement.code === "target_consent"
+                              ? _(messages.targetConsent)
+                              : requirement.label}
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+              <Show when={requirements().length && state.machine?.requirementsCursor}>
+                <Button variant="ghost" disabled={busy()} onClick={() => void check(state.machine?.requirementsCursor)}>
+                  {_(messages.moreRequirements)}
+                </Button>
+              </Show>
+              <Show when={state.machine?.progress}>
+                {(progress) => (
+                  <p>
+                    {_({
+                      ...messages.progress,
+                      values: { bytes: new Intl.NumberFormat(i18n().locale).format(progress().bytes) },
+                    })}
+                  </p>
+                )}
+              </Show>
+              <Show when={view().phase === "completed"}>
+                <p>{_(messages.completedHint)}</p>
+              </Show>
+              <Show when={view().cancelRequested && !terminal(view())}>
+                <p role="status">{_(messages.cancelRequested)}</p>
+              </Show>
+              <Show
+                when={pending()}
+                fallback={
+                  <div class="organization-handoff-actions">
+                    <Show when={view().canAccept && !view().cancelRequested}>
+                      <Button
+                        variant="primary"
+                        disabled={!allowed()}
+                        onClick={() =>
+                          void perform({
+                            kind: "accept",
+                            body: { mappingPlanRevision: view().mappingPlanRevision, mappingHash: view().mappingHash },
+                          })
+                        }
+                      >
+                        {_(messages.accept)}
+                      </Button>
+                    </Show>
+                    <Show when={!view().targetAccepted && !view().canAccept && !view().cancelRequested}>
+                      <p>{_(messages.waiting)}</p>
+                    </Show>
+                    <Show
+                      when={
+                        view().phase === "preparing" &&
+                        !view().cancelRequested &&
+                        view().targetAccepted &&
+                        sourceCanDrive() &&
+                        sourceMissing()
+                      }
+                    >
+                      <Button disabled={!allowed()} onClick={() => void drive("prepare-source")}>
+                        {_(messages.prepareSource)}
+                      </Button>
+                    </Show>
+                    <Show
+                      when={
+                        view().phase === "preparing" &&
+                        !view().cancelRequested &&
+                        view().targetAccepted &&
+                        targetOwner() &&
+                        !sourceMissing() &&
+                        targetMissing()
+                      }
+                    >
+                      <Button disabled={!allowed()} onClick={() => void drive("prepare-target")}>
+                        {_(messages.prepareTarget)}
+                      </Button>
+                    </Show>
+                    <Show when={view().phase === "prepared" && !view().cancelRequested && sourceCanDrive()}>
+                      <Button variant="primary" disabled={!allowed()} onClick={surrender}>
+                        {_(messages.surrender)}
+                      </Button>
+                    </Show>
+                    <Show when={view().phase === "surrendered" && !view().cancelRequested && sourceCanDrive()}>
+                      <Button variant="primary" disabled={!allowed()} onClick={() => void perform({ kind: "commit" })}>
+                        {_(messages.commit)}
+                      </Button>
+                    </Show>
+                    <Show
+                      when={
+                        ["committed", "activation_permitted"].includes(view().phase) &&
+                        !view().cancelRequested &&
+                        targetOwner()
+                      }
+                    >
+                      <Button variant="primary" disabled={!allowed()} onClick={() => void activate()}>
+                        {_(messages.activate)}
+                      </Button>
+                    </Show>
+                    <Show when={view().canCancel}>
+                      <Button variant="ghost" disabled={!allowed()} onClick={cancel}>
+                        {_(view().cancelRequested ? messages.finishCancel : messages.cancel)}
+                      </Button>
+                    </Show>
+                    <Show
+                      when={
+                        ["surrendered", "committed", "activation_permitted"].includes(view().phase) &&
+                        !view().cancelRequested &&
+                        targetOwner()
+                      }
+                    >
+                      <Button variant="ghost" disabled={!allowed()} onClick={retire}>
+                        {_(messages.retire)}
+                      </Button>
+                    </Show>
+                  </div>
+                }
+              >
+                <p role="status">{_(busy() ? messages.working : retryable() ? messages.blocked : messages.unknown)}</p>
+              </Show>
+              <Show when={!terminal(view())}>
+                <Button variant="ghost" disabled={busy()} onClick={() => void check()}>
+                  {_(messages.check)}
+                </Button>
+              </Show>
+            </>
+          )}
+        </Show>
+        <Show when={saved() && !state.view}>
+          <p role="status">{_(busy() ? messages.working : messages.unknown)}</p>
+          <Button disabled={busy()} onClick={() => void check()}>
+            {_(messages.check)}
+          </Button>
+        </Show>
+        <Show when={pending()?.kind === "permit"}>
+          <p>{_(messages.retryPermitHint)}</p>
+          <Button
+            disabled={!allowed()}
+            onClick={() => {
+              const action = pending()
+              if (action?.kind === "permit") void perform(action)
+            }}
+          >
+            {_(messages.retryPermit)}
+          </Button>
+        </Show>
+        <Show when={retryable() && pending()?.kind === "drive"}>
+          <Button
+            disabled={!allowed()}
+            onClick={() => {
+              const action = pending()
+              if (action?.kind === "drive") void perform(action)
+            }}
+          >
+            {_(messages.retryOperation)}
+          </Button>
+        </Show>
+        <Show when={state.history.length || historyCursor()}>
+          <div class="organization-handoff-history">
+            <h3>{_(messages.history)}</h3>
+            <p>{_(messages.historyHint)}</p>
+            <For each={state.history}>
+              {(view) => (
+                <Button
+                  variant="ghost"
+                  disabled={busy() || !!pending()}
+                  onClick={() => {
+                    try {
+                      retain(view.handoffID)
+                      setState("view", undefined)
+                      void refresh()
+                        .then(() => runtime(view.targetRuntimeID))
+                        .catch(failure)
+                    } catch (error) {
+                      failure(error)
+                    }
+                  }}
+                >
+                  {label(view.targetRuntimeID)} ·{" "}
+                  {_(view.phase === "activation_permitted" ? messages.committed : messages[view.phase])}
+                </Button>
+              )}
+            </For>
+            <Show when={historyCursor()}>
+              <Button disabled={busy()} onClick={() => void history(true)}>
+                {_(common.more)}
+              </Button>
+            </Show>
+          </div>
+        </Show>
+      </div>
+    </Dialog>
+  )
+}

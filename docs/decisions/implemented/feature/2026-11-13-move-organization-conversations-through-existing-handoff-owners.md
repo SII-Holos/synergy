@@ -1,0 +1,35 @@
+# Decision Record: Move organization conversations through existing handoff owners
+
+Status: implemented
+
+## Problem
+
+Organization conversations have separate service reservation, native preparation, source surrender and destination activation owners. A Web move flow that guesses workspace references, retries an unknown mutation as a new request or starts execution after switching ownership can lose the original recovery state or act under another account.
+
+## Decision
+
+The conversation header opens a focused Move conversation dialog through the existing UI dialog owner. Runtime choices come from the generated paged directory API. Read-only handoff preflight supplies the actual source workspace, legal mapping choices, current binding epoch and control revision. Native mapping creates an independent private destination copy and retains source files; the inspected default destination folder is not presented as an overwrite or adoption target. Keeping organization storage uses its existing inspected reference without requiring another personal resource grant. Copying into organization storage requires an actually authorized resource, a dormant workspace and an explicit valid relative path, retaining their real generation and revision. Unsupported directory adoption and difference-dependent choices stay unavailable.
+
+The current execution owner can prepare a new move, including a member driver who is not the conversation creator. Destination consent uses the service's `canAccept` and exact mapping hash and revision. Source and destination preparation, irreversible surrender, service commit and paused destination activation remain separate visible steps. Destructive cancellation and destination retirement use the existing confirmation component. The flow never starts a member runtime, requests compute or sends Continue; ordinary conversation controls retain the latter operation.
+
+One versioned browser metadata record retains the original handoff and pending body under organization, account, deployment incarnation, project and conversation. Persistence succeeds before mutation. Unknown preparation is reconciled by its original handoff ID; unknown native operations are inspected through the same participant instead of replayed. A definitive owning `not_dispatched` service rejection can release that local pending intent and require fresh preflight. Native blocked operations retain their original request body for explicit recovery. A lost permit reply supports explicit retrieval of the same stored purpose; retrieval alone never surrenders or activates a runtime. Complete permits remain volatile. The service owner returns its retained permit before signing a new one, and the real owner fixture discards a committed reply and verifies one signing invocation across repeated recovery reads.
+
+The canonical cancellation-request flag acknowledges only the service intent. Reading that flag after a lost reply retains the original handoff and paused ownership; a second explicit confirmation drives cancellation on the original source. It never substitutes for the native source-cancelled fact. A canonical surrender that wins the race retires the obsolete cancellation intent without reopening source execution.
+
+Every request, callback and dialog retains its original Space view and account authority. Navigation, incarnation changes, account revocation and disposal invalidate old responses. Changes in execution permission close only this move owner's confirmations. Workspace selector epochs reject late responses after another resource selection, including a return to the first resource. Completed and cancelled moves refresh the existing conversation reader and leave native work paused.
+
+## Alternatives considered
+
+**Treat moving as one optimistic request.** Native preparation and surrender can outlive a renderer or response. A single success assumption would lose recoverable partial progress and confuse service commit with activation.
+
+**Use the target's default directory as an implicit adoption choice.** The existing native operation creates an independent copy. Adopting existing files requires its own difference review and native owner, so preflight metadata alone cannot enable it.
+
+**Create another runtime or allocate execution resources automatically.** A selected destination is an existing connected owner. Starting processes or acquiring compute is a separate user decision.
+
+**Discard an unknown operation when no visible row confirms it.** A finite history page or missing observation does not prove that the original operation failed. Recovery retains its ID and complete body until the owning result is known.
+
+## Consequences
+
+The UI reuses generated SDK calls, theme tokens, shared controls, localization descriptors and the existing dialog and Space lifetimes. The focused browser fixtures use isolated synthetic services and headless Chromium; they do not establish a real cross-device transfer or full organization acceptance. Native and keep-cloud flows, durable response loss, explicit permit retrieval, resource selection, revocation, keyboard behavior and narrow geometry remain independently verifiable. Catalog extraction and translations belong to the shared localization owner.
+
+The browser-rendered component and static message table use exact coverage-manifest entries tied to the rendered scenarios and localization checks. Pure pending-state and outcome helpers remain directly measured; complete package coverage retains the ordinary gate.

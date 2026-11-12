@@ -55,11 +55,11 @@ Keep tests under `test/`, mirroring their source domain.
 
 Keep browser conditions, isolation and timeouts in `script/test-options.ts`, shared by the package runner and CI planner.
 
-Run the narrow UI/context test while iterating, then `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` from the root with relevant tests selected. It uses the canonical executor and static gates. Complete Web/UI inventories and thresholds belong to CI; use `bun run verify coverage --package apps/web` when changing coverage policy, instrumentation or removing substantial coverage. See [develop-frontend](../../.synergy/skill/develop-frontend/SKILL.md#verify) for checks triggered by other risks.
+Iterate with focused UI/context tests. Before publication run `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` from the root. CI owns complete Web/UI inventories and thresholds. Coverage policy, instrumentation or substantial coverage removal requires `bun run verify coverage --package apps/web`. See [develop-frontend](../../.synergy/skill/develop-frontend/SKILL.md#verify) for other required checks.
 
 Browser capability or bootstrap changes also run `bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts` and, after the production build, `bun apps/web/script/private-http-smoke.ts` from the repository root.
 
-Optional-feature changes verify unknown, absent, selected, removed and reinstalled states through rendered controls and request counts. Hold replies across a same-URL reconnect epoch; old results must not restore features, resume autosave or erase retained drafts.
+Verify unknown, absent, selected, removed and reinstalled optional features through rendered controls and request counts. Hold replies across same-URL reconnects; stale results cannot restore features, resume autosave or erase drafts.
 
 For product copy, accessibility text, locale-sensitive formatting, or language settings, also run:
 
@@ -70,4 +70,4 @@ bun run localization:check
 
 Use the existing app or an isolated second instance for interaction checks. Verify both themes, keyboard/focus, loading/error states, session switching/reconnect when relevant, and the Desktop path for native Browser or Electron behavior. Do not bypass hooks or claim unrun checks.
 
-Retain owner-bound descendants/lazy drafts/files; keep passwords volatile. Finite pages cannot confirm absence. Retire owned confirmations on access loss. Verify revision-bound logout/publication-reload. Retain identity-bound notification sources across Space presentation.
+Retain owner-bound descendants/lazy drafts/files and identity-bound notification sources across Space presentation; passwords stay volatile. Finite pages cannot confirm absence. Retire only owned confirmations on access loss. Moves retain canonical preflight references and original pending bodies; cancellation intent never proves native completion. Keep Continue independent. Verify handoff-state/handoff.browser, sessions geometry, revision-bound logout/publication-reload.

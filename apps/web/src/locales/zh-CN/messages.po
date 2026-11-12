@@ -13617,6 +13617,262 @@ msgid "organization.auth.working"
 msgstr "正在连接…"
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.accept"
+msgstr "接受此次迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.actions"
+msgstr "对话操作"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.activate"
+msgstr "激活暂停的目标端"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.begin"
+msgstr "准备迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.blocked"
+msgstr "准备过程需要处理"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancel"
+msgstr "取消迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelHint"
+msgstr "取消准备，将对话保持在源端暂停。请等待源端确认后再恢复工作。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelled"
+msgstr "迁移已取消，源端保持暂停"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelRequested"
+msgstr "已提交取消申请。源端将在确认取消前保持暂停。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.check"
+msgstr "检查迁移状态"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.checking"
+msgstr "正在检查当前工作区…"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseDestination"
+msgstr "选择运行时"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseStorage"
+msgstr "选择已授权的存储"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseWorkspace"
+msgstr "选择未启用的工作区"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.close"
+msgstr "关闭"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cloudWorkspace"
+msgstr "存储工作区"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.commit"
+msgstr "完成迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.committed"
+msgstr "正在等待目标端"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.completed"
+msgstr "对话已迁移并暂停"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.completedHint"
+msgstr "准备好恢复工作时，关闭此窗口并在对话中选择继续。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.destination"
+msgstr "目标运行时"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.finishCancel"
+msgstr "确认源端取消"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.folder"
+msgstr "文件夹"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.hint"
+msgstr "将此对话及其工作区迁移到另一个运行时。迁移后保持暂停，直到你选择继续。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.history"
+msgstr "已有迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.historyHint"
+msgstr "检查已有迁移以恢复其原始进度。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.live"
+msgstr "保留组织工作区"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.liveHint"
+msgstr "继续使用同一组织存储和文件。此次迁移不会分配计算资源。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.moreRequirements"
+msgstr "更多准备条件"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.move"
+msgstr "迁移对话"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native"
+msgstr "创建独立的私有工作区副本"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.nativeHint"
+msgstr "在目标端创建独立工作区。源文件保留原位，不会覆盖目标端的现有文件夹。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noDestination"
+msgstr "没有其他可用的运行时。请连接目标运行时后刷新。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noSource"
+msgstr "此对话没有工作区文件。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noWorkspace"
+msgstr "此存储资源没有可用的未启用工作区。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.object"
+msgstr "复制到组织存储"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.ownerHint"
+msgstr "当前运行时的所有者可以发起迁移，目标成员可以在此接受已有迁移。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.path"
+msgstr "此工作区中的新文件夹"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepared"
+msgstr "迁移已就绪"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepareSource"
+msgstr "暂停并准备源端"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepareTarget"
+msgstr "准备目标端"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.preparing"
+msgstr "正在准备迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.progress"
+msgstr "已传输 {bytes} 字节"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.refresh"
+msgstr "刷新运行时列表"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retire"
+msgstr "停用目标副本"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retired"
+msgstr "目标副本已停用"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retireHint"
+msgstr "永久阻止此目标副本激活。源端已释放所有权，因此两个副本都不会通过此次迁移恢复运行。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryOperation"
+msgstr "重试同一操作"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryPermit"
+msgstr "取回原授权"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryPermitHint"
+msgstr "取回同一份授权，不释放或激活任一运行时。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.source"
+msgstr "源端"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.sourceFreeze"
+msgstr "正在等待源端暂停并排空工作。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.storage"
+msgstr "存储资源"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrender"
+msgstr "释放源端"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrendered"
+msgstr "源端已释放，正在等待完成"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrenderHint"
+msgstr "源端将不再处理此对话，文件保留原位。此步骤无法取消，目标端仍需激活。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.target"
+msgstr "目标端"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targetConsent"
+msgstr "正在等待目标成员接受此方案。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targetPrepare"
+msgstr "正在等待目标端校验文件和依赖。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.unknown"
+msgstr "上一步的结果尚未确认。请先检查此次迁移，再进行下一步。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.unsupported"
+msgstr "当前运行时不支持可用的工作区迁移方式。请检查连接后刷新。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.waiting"
+msgstr "目标成员须先接受此工作区方案，才能继续准备。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.working"
+msgstr "正在更新迁移状态…"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.workspace"
+msgstr "工作区"
+
+#. js-lingui-explicit-id
 msgid "organization.interactions.allowedAlways"
 msgstr "{name} 已选择始终允许。"
 

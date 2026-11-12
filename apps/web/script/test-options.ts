@@ -20,6 +20,7 @@ const playwrightIsolated = [
   "test/organization/members.browser.test.ts",
   "test/organization/transcript.browser.test.ts",
   "test/organization/sessions.browser.test.ts",
+  "test/organization/handoff.browser.test.ts",
   "test/organization/interactions.browser.test.ts",
   "test/organization/decision-outbox.browser.test.ts",
   "test/organization/question-drafts.browser.test.ts",

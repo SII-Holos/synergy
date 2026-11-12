@@ -1557,6 +1557,14 @@
         {
           "glob": "src/organization/space-page.tsx",
           "reason": "Real App project navigation, recovery, offline logout, successor requests, late-response isolation, narrow keyboard navigation and Chinese dark rendering run in test/organization/space.browser.test.ts; authorization.browser.test.ts covers real cross-origin HTTPS login and logout. Browser execution is outside Bun LCOV, while connection authority has direct behavioral coverage."
+        },
+        {
+          "glob": "src/organization/handoff.tsx",
+          "reason": "test/organization/handoff.browser.test.ts exercises actual Chromium move controls, original request recovery, cancellation acknowledgement, scope replacement, focus and English/Chinese narrow layouts; sessions.browser.test.ts retains the existing Composer geometry checks. Browser execution does not contribute Bun LCOV; handoff-state.ts retains directly measured persistence and outcome rules."
+        },
+        {
+          "glob": "src/organization/handoff-messages.ts",
+          "reason": "Static semantic descriptors are checked by official Lingui extraction, strict compilation and localization contracts, and actual English/Chinese catalogs render in test/organization/handoff.browser.test.ts. This module contains no authorization or transition decisions."
         }
       ]
     },

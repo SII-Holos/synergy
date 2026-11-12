@@ -1,0 +1,94 @@
+.organization-handoff {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.organization-handoff p {
+  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+.organization-handoff h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+.organization-handoff-fields {
+  display: grid;
+  gap: 16px;
+}
+.organization-handoff-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.organization-handoff-field > span {
+  font-size: 13px;
+  font-weight: 500;
+}
+.organization-handoff-summary {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding-block: 16px;
+  border-block: 1px solid var(--border-weaker-base);
+}
+.organization-handoff-summary > div {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 12px;
+}
+.organization-handoff-summary dt {
+  font-size: 13px;
+  color: var(--text-weak);
+  overflow-wrap: anywhere;
+}
+.organization-handoff-summary dd {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.organization-handoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.organization-handoff-history {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border-weaker-base);
+  padding-top: 16px;
+}
+.organization-handoff-requirements {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-inline-start: 20px;
+  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.organization-handoff [data-component="menu-field"],
+.organization-handoff [data-component="menu-field-trigger"] {
+  min-width: 0;
+  max-width: 100%;
+}
+.organization-session-move-actions {
+  display: flex;
+  justify-content: end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.organization-handoff-menu {
+  display: inline-flex;
+  align-items: center;
+}
+@media (max-width: 600px) {
+  .organization-handoff-actions > button {
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
+  }
+}

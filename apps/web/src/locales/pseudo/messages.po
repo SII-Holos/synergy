@@ -13617,6 +13617,262 @@ msgid "organization.auth.working"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.accept"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.actions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.activate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.begin"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.blocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelRequested"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.check"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.checking"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseDestination"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseStorage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cloudWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.commit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.committed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.completedHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.destination"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.finishCancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.folder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.history"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.historyHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.live"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.liveHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.moreRequirements"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.move"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.nativeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noDestination"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noSource"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.object"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.ownerHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.path"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepared"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepareSource"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepareTarget"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.progress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retire"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retireHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryOperation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryPermit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryPermitHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.sourceFreeze"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.storage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrender"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrendered"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrenderHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.target"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targetConsent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targetPrepare"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.unsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.waiting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.working"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.workspace"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.interactions.allowedAlways"
 msgstr ""
 

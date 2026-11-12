@@ -13617,6 +13617,262 @@ msgid "organization.auth.working"
 msgstr "Connecting…"
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.accept"
+msgstr "Accept this move"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.actions"
+msgstr "Conversation actions"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.activate"
+msgstr "Activate the paused destination"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.begin"
+msgstr "Prepare move"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.blocked"
+msgstr "Preparation needs attention"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancel"
+msgstr "Cancel move"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelHint"
+msgstr "Cancel preparation and keep the conversation paused on its source. Wait for the source's confirmation before resuming work."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelled"
+msgstr "Move cancelled; source remains paused"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cancelRequested"
+msgstr "Cancellation has been requested. The source remains paused until it confirms cancellation."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.check"
+msgstr "Check move status"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.checking"
+msgstr "Checking the current workspaces…"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseDestination"
+msgstr "Choose a runtime"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseStorage"
+msgstr "Choose authorized storage"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.chooseWorkspace"
+msgstr "Choose an inactive workspace"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.close"
+msgstr "Close"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.cloudWorkspace"
+msgstr "Storage workspace"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.commit"
+msgstr "Finish the move"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.committed"
+msgstr "Waiting for the destination"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.completed"
+msgstr "Conversation moved and paused"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.completedHint"
+msgstr "Close this window and use Continue in the conversation when you are ready to resume."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.destination"
+msgstr "Destination"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.finishCancel"
+msgstr "Confirm source cancellation"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.folder"
+msgstr "Folder"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.hint"
+msgstr "Move this conversation and its workspace to another runtime. It will remain paused until you choose Continue."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.history"
+msgstr "Existing moves"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.historyHint"
+msgstr "Inspect an existing move to recover its original progress."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.live"
+msgstr "Keep the organization workspace"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.liveHint"
+msgstr "Keep the same organization storage and files. No compute is allocated by this move."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.moreRequirements"
+msgstr "More requirements"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.move"
+msgstr "Move conversation"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native"
+msgstr "Create a private workspace copy"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.nativeHint"
+msgstr "Create a separate workspace on the destination. Source files stay in place; existing destination folders are not overwritten."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noDestination"
+msgstr "No other runtime is available. Connect a destination runtime, then refresh."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noSource"
+msgstr "This conversation has no workspace files."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.noWorkspace"
+msgstr "No inactive workspace is available for this storage resource."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.object"
+msgstr "Copy to organization storage"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.ownerHint"
+msgstr "The current runtime owner can start a move. Destination members can accept their existing moves here."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.path"
+msgstr "New folder in this workspace"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepared"
+msgstr "Ready to move"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepareSource"
+msgstr "Pause and prepare the source"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.prepareTarget"
+msgstr "Prepare the destination"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.preparing"
+msgstr "Preparing the move"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.progress"
+msgstr "Transferred {bytes} bytes"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.refresh"
+msgstr "Refresh runtimes"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retire"
+msgstr "Retire destination copy"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retired"
+msgstr "Destination copy retired"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retireHint"
+msgstr "Permanently prevent this destination copy from activating. The source has already released ownership, so neither copy will resume through this move."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryOperation"
+msgstr "Retry the same operation"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryPermit"
+msgstr "Retrieve the original authorization"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.retryPermitHint"
+msgstr "Retrieve the same authorization without releasing or activating either runtime."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.source"
+msgstr "From"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.sourceFreeze"
+msgstr "Waiting for the source to pause and drain its work."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.storage"
+msgstr "Storage resource"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrender"
+msgstr "Release the source"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrendered"
+msgstr "Source released; waiting to finish"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.surrenderHint"
+msgstr "The source will permanently stop owning this conversation. Its files stay in place. This step cannot be cancelled; the destination will still need activation."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.target"
+msgstr "To"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targetConsent"
+msgstr "Waiting for the destination member to accept this plan."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targetPrepare"
+msgstr "Waiting for the destination to verify its files and dependencies."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.unknown"
+msgstr "The last operation has no confirmed outcome. Check this move before taking another step."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.unsupported"
+msgstr "The current runtimes do not offer a supported workspace move. Refresh after checking their connections."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.waiting"
+msgstr "The destination member must accept this workspace plan before preparation can continue."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.working"
+msgstr "Updating this move…"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.workspace"
+msgstr "Workspace"
+
+#. js-lingui-explicit-id
 msgid "organization.interactions.allowedAlways"
 msgstr "Always allowed by {name}."
 
