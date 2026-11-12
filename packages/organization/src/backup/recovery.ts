@@ -1,0 +1,204 @@
+import { createHash } from "node:crypto"
+import { z } from "zod"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { OrganizationCurrentAuthority as Current } from "./current-authority"
+import { OrganizationRecoveryAuthority as Authority } from "./authority"
+import { OrganizationServiceNative as Native } from "./service-native"
+import { OrganizationSourceRetirement as Retirement } from "./source-retirement"
+import { OrganizationInstallationReference } from "./installation-reference"
+
+const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+const Receipt = z.strictObject({
+  version: z.literal(1),
+  target: OrganizationInstallationReference,
+  source: Retirement.Reference,
+  checkpoint: AuthorityJournal.Checkpoint,
+  appliedAt: z.number().int().nonnegative().safe(),
+})
+const key = (installationID: string) => ["organization-recovery", "current-policy", installationID]
+function fail(message: string): never {
+  throw new Error("Organization current-policy recovery " + message)
+}
+
+export namespace OrganizationRecovery {
+  export interface Target {
+    readonly kind: "organization-recovery-policy-target"
+  }
+  const targets = new WeakMap<
+    Target,
+    {
+      assert(): void
+      verify(): Promise<void>
+      run<T>(body: () => T): T
+      request: Native.InstallationRequest
+      permit: HomeRestoration.InstallPermit
+      reference: z.infer<typeof OrganizationInstallationReference>
+      checkpoint: AuthorityJournal.Checkpoint
+    }
+  >()
+  export async function withTarget<T>(
+    input: {
+      permit: HomeRestoration.InstallPermit
+      native: Native.Installed
+      prepared: Authority.Prepared
+      request: Native.InstallationRequest
+    },
+    body: (target: Target) => Promise<T>,
+  ) {
+    const permit = input.permit
+    const native = input.native
+    const prepared = input.prepared
+    const request = Native.InstallationRequest.parse(structuredClone(input.request))
+    const runtime = RuntimeContext.current()
+    const primary = Storage.current()
+    const store = primary.store
+    const configuration = hash(store.options)
+    const artifacts = primary.artifactDirectory
+    const objects = primary.artifactObjects
+    const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
+    let open = true
+    const assert = () => {
+      if (!open) fail("target callback has ended")
+      const active = Storage.current()
+      if (
+        RuntimeContext.current() !== runtime ||
+        runtime.storage !== primary ||
+        active.store !== store ||
+        active.artifactDirectory !== artifacts ||
+        active.artifactObjects !== objects ||
+        primary.store !== store ||
+        hash(store.options) !== configuration ||
+        primary.artifactDirectory !== artifacts ||
+        primary.artifactObjects !== objects ||
+        objects?.blobs !== ports?.blobs ||
+        objects?.writerID !== ports?.writerID ||
+        objects?.now !== ports?.now
+      )
+        fail("requires its original target Runtime and primary Store")
+      HomeRestoration.assertRequest(permit, request)
+      HomeRestoration.assertInstalledOwner(permit)
+      Native.assertInstalled(native)
+      Authority.assertPrepared(prepared)
+    }
+    const verify = async () => {
+      assert()
+      await Native.verifyInstalled(native)
+      await Authority.verify(prepared)
+      assert()
+    }
+    try {
+      await verify()
+      const info = Authority.describe(prepared)
+      const selected = HomeRestoration.describe(permit)
+      const installed = Native.inspectInstalled(native)
+      const reference = OrganizationInstallationReference.parse({
+        installationID: selected.installationID,
+        incarnation: selected.incarnation,
+        restoreID: selected.restoreID,
+        requestHash: selected.requestHash,
+        sourceHash: selected.sourceHash,
+        nativeHash: Native.sourceHash(installed.namespace),
+      })
+      if (
+        hash(info.reference) !== hash(reference) ||
+        request.sourceHash !== reference.sourceHash ||
+        request.payload.nativeHash !== reference.nativeHash
+      )
+        fail("requires the same original installed target and prepared signer")
+      const target: Target = Object.freeze({ kind: "organization-recovery-policy-target" })
+      targets.set(target, { assert, verify, run: runtime.run, permit, request, reference, checkpoint: info.checkpoint })
+      const result = await body(target)
+      await verify()
+      return result
+    } finally {
+      open = false
+    }
+  }
+  export async function reconstruct(input: { source: Current.Source; target: Target; signal?: AbortSignal }) {
+    const source = input.source
+    const target = targets.get(input.target)
+    const signal = input.signal
+    if (!target) fail("requires its original target evidence")
+    const sourceRuntime = RuntimeContext.current()
+    const current = Current.describe(source)
+    signal?.throwIfAborted()
+    await target.run(target.verify)
+    if (!current.after || hash(current.after) !== hash(target.checkpoint))
+      fail("requires its actual original H0 checkpoint anchor")
+    return Current.withCaptured(source, async (captured) => {
+      const cancellation =
+        signal && captured.signal ? AbortSignal.any([signal, captured.signal]) : (signal ?? captured.signal)
+      const assert = () => {
+        cancellation?.throwIfAborted()
+        captured.assertLive()
+        target.assert()
+      }
+      if (
+        Native.sourceHash(captured.namespace.expected) !== current.namespaceHash ||
+        Native.sourceHash(captured.native.expected) !== current.nativeHash
+      )
+        fail("captured policy belongs to another current source")
+      return target.run(async () => {
+        assert()
+        return AuthorityJournal.withAdoption(
+          { ...captured.namespace, keys: captured.keys, after: target.checkpoint, signal: cancellation },
+          async (evidence) => {
+            assert()
+            const checkpoint = AuthorityJournal.describeAdoption(evidence)
+            if (hash(checkpoint) !== hash(current.checkpoint))
+              fail("prepared policy has another final authority checkpoint")
+            const address = key(target.reference.installationID)
+            const retained = await Storage.readMany([address]).then(([value]) =>
+              value === undefined ? undefined : Receipt.parse(value),
+            )
+            const reference =
+              retained?.source ?? (await sourceRuntime.run(() => Current.retirementReference(source, target.reference)))
+            if (hash(reference.current) !== hash(current) || hash(reference.target) !== hash(target.reference))
+              fail("source reference belongs to another original target or current checkpoint")
+            const retired = await sourceRuntime.run(() =>
+              retained ? Retirement.complete(reference) : Current.retire(source, reference),
+            )
+            await sourceRuntime.run(() => Retirement.verify(retired))
+            cancellation?.throwIfAborted()
+            await target.verify()
+            return RuntimeMaintenance.restorationTransaction(
+              { permit: target.permit, request: target.request },
+              async (tx) => {
+                assert()
+                const [value] = await tx.readMany([address])
+                if (value !== undefined) {
+                  const receipt = Receipt.parse(value)
+                  if (
+                    hash(receipt.target) !== hash(target.reference) ||
+                    hash(receipt.source) !== hash(reference) ||
+                    hash(receipt.checkpoint) !== hash(checkpoint)
+                  )
+                    fail("publication receipt belongs to another original recovery")
+                  await AuthorityJournal.adopt(tx, evidence)
+                  assert()
+                  return receipt
+                }
+                await AuthorityJournal.adopt(tx, evidence)
+                assert()
+                const receipt = Receipt.parse({
+                  version: 1,
+                  target: target.reference,
+                  source: reference,
+                  checkpoint,
+                  appliedAt: Date.now(),
+                })
+                await tx.write(address, receipt)
+                return receipt
+              },
+              { signal: cancellation, commitGuard: assert },
+            )
+          },
+        )
+      })
+    })
+  }
+}

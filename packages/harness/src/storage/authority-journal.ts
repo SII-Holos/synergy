@@ -234,6 +234,21 @@ interface Action {
   actor?: ActorStamp.Info
 }
 const actions = new AsyncLocalStorage<Action>()
+const adoptionMutation = new AsyncLocalStorage<{
+  tx: StoreTransaction
+  key: string
+  open: boolean
+  consumed: boolean
+}>()
+const adoptionTransactions = new WeakMap<StoreTransaction, object>()
+const priorAuthorityMutations = new WeakSet<StoreTransaction>()
+interface ArchivedInput {
+  directory: string
+  expected: StorageCheckpoint.Manifest
+  keys: VaultKeyProvider
+  signal?: AbortSignal
+  after?: Header
+}
 
 async function read<T>(tx: StoreTransaction, schema: z.ZodType<T>, key: string[]): Promise<T | undefined> {
   const [value] = await tx.readMany([key])
@@ -304,6 +319,28 @@ async function track(tx: StoreTransaction, key: string[], domain: Domain, action
 }
 
 async function observe(tx: StoreTransaction, keys: readonly string[][], tree: boolean) {
+  const protectedKey = (key: readonly string[]) =>
+    startsWith(key, root) ||
+    startsWith(root, key) ||
+    domains().some((domain) =>
+      domain.prefixes.some((prefix) => startsWith(key, prefix) || (tree && startsWith(prefix, key))),
+    )
+  if (adoptionTransactions.has(tx)) {
+    const permitted = adoptionMutation.getStore()
+    if (keys.some(protectedKey)) {
+      if (
+        permitted?.open &&
+        !permitted.consumed &&
+        permitted.tx === tx &&
+        !tree &&
+        keys.every((key) => JSON.stringify(key) === permitted.key)
+      ) {
+        permitted.consumed = true
+        return
+      }
+      throw new StorageConflictError("Authority adoption seals its original policy and journal transaction")
+    }
+  } else if (keys.some(protectedKey)) priorAuthorityMutations.add(tx)
   const action = actions.getStore()
   if (action && (action.runtime !== RuntimeContext.current() || action.store !== Storage.current().store))
     throw new StorageConflictError("An authority action cannot cross Runtime or namespace ownership")
@@ -380,13 +417,11 @@ async function finish(tx: StoreTransaction, action: Action) {
 export namespace AuthorityJournal {
   export const Checkpoint = Header
   export type Checkpoint = z.infer<typeof Checkpoint>
-  export async function readArchivedCheckpoint(input: {
-    directory: string
-    expected: StorageCheckpoint.Manifest
-    keys: VaultKeyProvider
-    signal?: AbortSignal
-    after?: Checkpoint
-  }): Promise<Checkpoint> {
+  async function withArchivedIndex<T>(
+    input: ArchivedInput,
+    retain: boolean,
+    body: (database: Database, checkpoint: Checkpoint) => Promise<T>,
+  ): Promise<T> {
     const directory = input.directory
     const expected = StorageCheckpoint.Manifest.parse(input.expected)
     const signal = input.signal
@@ -406,13 +441,15 @@ export namespace AuthorityJournal {
         if (entry.key[0] !== root[0]) {
           const domain = domainFor(entry.key)
           const value = domain && project(domain, entry.key, entry.value)
-          if (value !== undefined && domain)
+          if (value !== undefined && domain) {
             insert.run(
               "projected",
               "",
               JSON.stringify(entry.key),
               JSON.stringify(Fingerprint.parse({ domainID: domain.id, key: entry.key, hash: digest(value) })),
             )
+            if (retain) insert.run("policy", "", JSON.stringify(entry.key), JSON.stringify(entry.value))
+          }
         } else if (JSON.stringify(entry.key) === JSON.stringify(headerKey)) {
           if (checkpoint) throw new StorageIntegrityError("A checkpoint contains repeated authority history")
           checkpoint = Checkpoint.parse(entry.value)
@@ -488,8 +525,170 @@ export namespace AuthorityJournal {
           throw new StorageIntegrityError("Archived authority policy has no matching fingerprint")
       }
       signal?.throwIfAborted()
-      return Checkpoint.parse(checkpoint)
+      return await body(database, Checkpoint.parse(checkpoint))
     }
+  }
+  export function readArchivedCheckpoint(input: ArchivedInput): Promise<Checkpoint> {
+    return withArchivedIndex(input, false, async (_database, checkpoint) => checkpoint)
+  }
+  export interface Adoption {
+    readonly kind: "authority-adoption"
+  }
+  const adoptions = new WeakMap<
+    Adoption,
+    {
+      database: Database
+      checkpoint: Checkpoint
+      after: Checkpoint
+      assert(): void
+      pending: Set<Promise<unknown>>
+    }
+  >()
+  function originalAdoption(evidence: Adoption) {
+    const frame = adoptions.get(evidence)
+    if (!frame) throw new StorageConflictError("Authority adoption requires original archive evidence")
+    frame.assert()
+    return frame
+  }
+  export function describeAdoption(evidence: Adoption) {
+    return Checkpoint.parse(originalAdoption(evidence).checkpoint)
+  }
+  export async function withAdoption<T>(
+    input: ArchivedInput & { after: Checkpoint },
+    body: (evidence: Adoption) => Promise<T>,
+  ): Promise<T> {
+    const after = Checkpoint.parse(input.after)
+    const signal = input.signal
+    const runtime = RuntimeContext.current()
+    const handle = runtime.storage
+    const selected = Storage.current()
+    const store = selected.store
+    const configuration = digest(store.options)
+    const artifactDirectory = selected.artifactDirectory
+    const objects = selected.artifactObjects
+    const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
+    const contract = contractHash()
+    let open = true
+    const assert = () => {
+      signal?.throwIfAborted()
+      if (!open) throw new StorageConflictError("Authority adoption callback has ended")
+      const current = Storage.current()
+      if (
+        RuntimeContext.current() !== runtime ||
+        runtime.storage !== handle ||
+        !handle ||
+        handle.store !== store ||
+        handle.artifactDirectory !== artifactDirectory ||
+        handle.artifactObjects !== objects ||
+        current.store !== store ||
+        digest(store.options) !== configuration ||
+        current.artifactDirectory !== artifactDirectory ||
+        current.artifactObjects !== objects ||
+        objects?.blobs !== ports?.blobs ||
+        objects?.writerID !== ports?.writerID ||
+        objects?.now !== ports?.now ||
+        contractHash() !== contract
+      )
+        throw new StorageConflictError("Authority adoption belongs to another Runtime or primary Store")
+    }
+    assert()
+    return withArchivedIndex({ ...input, after }, true, async (database, checkpoint) => {
+      assert()
+      const evidence: Adoption = Object.freeze({ kind: "authority-adoption" })
+      const pending = new Set<Promise<unknown>>()
+      adoptions.set(evidence, { database, checkpoint, after, assert, pending })
+      try {
+        return await body(evidence)
+      } finally {
+        open = false
+        await Promise.allSettled([...pending])
+      }
+    })
+  }
+  export function adopt(tx: StoreTransaction, evidence: Adoption): Promise<void> {
+    const frame = originalAdoption(evidence)
+    const store = Storage.current().store
+    if (!Storage.inWriteTransaction()) throw new StorageConflictError("Authority adoption requires a write transaction")
+    store.assertWriteTransaction(tx)
+    if (Storage.current().transaction !== tx || actions.getStore())
+      throw new StorageConflictError("Authority adoption requires its original independent recovery transaction")
+    const previous = adoptionTransactions.get(tx)
+    if (previous && previous !== frame)
+      throw new StorageConflictError("Authority adoption transaction already has another owner")
+    let completed = false
+    let failure: unknown
+    const work = Storage.transaction(
+      async () => {
+        try {
+          if (priorAuthorityMutations.has(tx))
+            throw new StorageConflictError("Authority adoption refuses a prior authority mutation")
+          frame.assert()
+          const current = await inspect()
+          frame.assert()
+          if (
+            !current.covered ||
+            !current.head ||
+            (digest(current.head) !== digest(frame.after) && digest(current.head) !== digest(frame.checkpoint))
+          )
+            throw new StorageIntegrityError("Authority adoption target cannot continue its original checkpoint")
+          adoptionTransactions.set(tx, frame)
+          const change = async (key: string[], value: unknown, remove = false) => {
+            frame.assert()
+            const permit = { tx, key: JSON.stringify(key), open: true, consumed: false }
+            try {
+              await adoptionMutation.run(permit, () => (remove ? tx.remove(key) : tx.write(key, value)))
+            } finally {
+              permit.open = false
+            }
+            frame.assert()
+          }
+          using lookup = frame.database.query<{ value: string }, [string]>(
+            "SELECT value FROM history WHERE kind='policy' AND journalID='' AND entryKey=?",
+          )
+          for (const domain of domains())
+            for (const prefix of domain.prefixes)
+              for await (const row of rows(tx, [...prefix])) {
+                frame.assert()
+                if (project(domain, row.key, row.value) !== undefined && !lookup.get(JSON.stringify(row.key)))
+                  await change(row.key, undefined, true)
+              }
+          using policies = frame.database.query<{ entryKey: string; value: string }, []>(
+            "SELECT entryKey,value FROM history WHERE kind='policy' AND journalID='' ORDER BY entryKey",
+          )
+          for (const row of policies.iterate()) await change(Key.parse(JSON.parse(row.entryKey)), JSON.parse(row.value))
+          for (const kind of ["baseline", "entries", "fingerprints"]) {
+            for await (const row of rows(tx, [...root, kind, frame.checkpoint.journalID]))
+              await change(row.key, undefined, true)
+            using history = frame.database.query<{ entryKey: string; value: string }, [string, string]>(
+              "SELECT entryKey,value FROM history WHERE kind=? AND journalID=? ORDER BY entryKey",
+            )
+            for (const row of history.iterate(kind, frame.checkpoint.journalID))
+              await change(Key.parse(JSON.parse(row.entryKey)), JSON.parse(row.value))
+          }
+          await change(headerKey, frame.checkpoint)
+          const final = await inspect()
+          frame.assert()
+          if (!final.covered || digest(final.head) !== digest(frame.checkpoint))
+            throw new StorageIntegrityError("Authority adoption did not reconstruct its verified current policy")
+          completed = true
+        } catch (error) {
+          failure = error
+          throw error
+        }
+      },
+      {
+        commitGuard() {
+          frame.assert()
+          if (!completed) throw failure ?? new StorageConflictError("Authority adoption did not complete before commit")
+        },
+      },
+    )
+    frame.pending.add(work)
+    work.then(
+      () => frame.pending.delete(work),
+      () => frame.pending.delete(work),
+    )
+    return work
   }
   export type Contribution = Domain
   export function selected() {

@@ -96,14 +96,17 @@ export namespace OrganizationSourceRetirement {
     const native = await OrganizationServiceHome.retirementOwner()
     const writer = await ServerProcessLock.currentOwnership()
     await ServerProcessLock.verifyOwnership(writer)
-    return Reference.parse({
+    const reference = Reference.parse({
       version: 1,
       current: source,
       target: selected,
-      owner: native.ownership,
+      owner: native.ownership.schemaVersion === 4 ? native.ownership.source : native.ownership,
       physicalHash: await native.files.physicalHash(),
       primaryConfigHash: hash(Storage.current().store.options),
     })
+    if (native.ownership.schemaVersion === 4 && native.ownership.referenceHash !== hash(reference))
+      fail("requires its original permanent reference")
+    return reference
   }
   export function describe(receipt: Receipt) {
     const original = receipts.get(receipt)

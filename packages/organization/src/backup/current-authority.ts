@@ -6,6 +6,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
+import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
 import { OrganizationServiceNative as Native } from "./service-native"
@@ -31,6 +32,13 @@ export namespace OrganizationCurrentAuthority {
       verify(): Promise<void>
       accept(work: () => Promise<Retirement.Receipt>): Promise<Retirement.Receipt>
       lease: RuntimeMaintenance.Lease
+      captured: {
+        namespace: { directory: string; expected: StorageCheckpoint.Manifest }
+        native: { directory: string; expected: StorageCheckpoint.Manifest }
+        keys: VaultKeyProvider
+        signal?: AbortSignal
+        assertLive(): void
+      }
     }
   >()
   function original(source: Source) {
@@ -46,6 +54,44 @@ export namespace OrganizationCurrentAuthority {
     const value = original(source)
     await value.verify()
     value.assert()
+  }
+  export async function withCaptured<T>(
+    source: Source,
+    body: (captured: {
+      namespace: { directory: string; expected: StorageCheckpoint.Manifest }
+      native: { directory: string; expected: StorageCheckpoint.Manifest }
+      keys: VaultKeyProvider
+      signal?: AbortSignal
+      assertLive(): void
+    }) => Promise<T>,
+  ) {
+    const value = original(source)
+    await value.verify()
+    value.assert()
+    const captured = value.captured
+    let open = true
+    try {
+      const result = await body({
+        namespace: {
+          directory: captured.namespace.directory,
+          expected: StorageCheckpoint.Manifest.parse(captured.namespace.expected),
+        },
+        native: {
+          directory: captured.native.directory,
+          expected: StorageCheckpoint.Manifest.parse(captured.native.expected),
+        },
+        keys: captured.keys,
+        signal: captured.signal,
+        assertLive() {
+          if (!open) fail("captured source callback has ended")
+          captured.assertLive()
+        },
+      })
+      value.assert()
+      return result
+    } finally {
+      open = false
+    }
   }
   export async function retirementReference(source: Source, target: z.infer<typeof OrganizationInstallationReference>) {
     const selected = OrganizationInstallationReference.parse(structuredClone(target))
@@ -212,6 +258,27 @@ export namespace OrganizationCurrentAuthority {
                 }),
                 assert,
                 lease,
+                captured: {
+                  namespace: { directory: archive.directory, expected: archive.namespace },
+                  native: { directory: native.directory, expected: native.namespace },
+                  keys,
+                  signal,
+                  assertLive() {
+                    signal?.throwIfAborted()
+                    if (
+                      !open ||
+                      runtime.storage !== handle ||
+                      handle.store !== store ||
+                      hash(store.options) !== configuration ||
+                      handle.artifactDirectory !== artifacts ||
+                      handle.artifactObjects !== objects ||
+                      objects?.blobs !== ports?.blobs ||
+                      objects?.writerID !== ports?.writerID ||
+                      objects?.now !== ports?.now
+                    )
+                      fail("captured source lifetime or native primary Store changed")
+                  },
+                },
                 accept(body) {
                   if (!accepting) fail("source callback no longer accepts retirement work")
                   assert()

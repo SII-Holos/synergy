@@ -6,6 +6,7 @@ import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
@@ -14,6 +15,8 @@ import { OrganizationBackupCohort as Cohort } from "../../src/backup/cohort"
 import { OrganizationRecoveryArchive as Archive } from "../../src/backup/archive"
 import { OrganizationServiceNative as Native } from "../../src/backup/service-native"
 import { OrganizationRecoveryAuthority as Authority } from "../../src/backup/authority"
+import { OrganizationCurrentAuthority as Current } from "../../src/backup/current-authority"
+import { OrganizationRecovery as Recovery } from "../../src/backup/recovery"
 import { OrganizationRecord as Record } from "../../src/storage/records"
 import { OrganizationStoragePath as Keys } from "../../src/storage/path"
 import { openOrganizationRecovery } from "../../src/service"
@@ -309,3 +312,116 @@ test("original cancellation during key retrieval publishes no signer or active a
     expect(await currentAuthority()).toEqual(before)
   })
 })
+
+test("the original H0 target adopts the real H1 private policy only after its current source is permanently fenced", async () => {
+  await target("current-policy", async (context) => {
+    const targetRuntime = RuntimeContext.current()
+    const before = await currentAuthority()
+    const prepared = await prepare(context)
+    const identity = Authority.describe(prepared)
+    const organization = Record.Info.parse(await Storage.read(Keys.info()))
+    const ownerID = organization.owners[0]
+    if (!ownerID) throw new Error("The real organization has no owner")
+    const expectedAccount = await source.service.maintenance.run(() => Storage.read(Keys.account(ownerID)))
+    expect(await Storage.read(Keys.account(ownerID))).not.toEqual(expectedAccount)
+    const receipt = await Recovery.withTarget({ ...context, prepared, request: input.request }, (selected) =>
+      source.service.maintenance.run(async () => {
+        const lease = await RuntimeMaintenance.begin({
+          purpose: "organization-backup",
+          requestID: "current-policy-reconstruction",
+          actor: {
+            kind: "system",
+            subjectID: "operator",
+            displayName: "Host operator",
+            clientKind: "system",
+            requestID: "current-policy-reconstruction",
+          },
+        })
+        await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+        await Current.withSource(
+          { lease, after: h1, directory: path.join(directory, "wrong-policy-anchor"), buildVersion: "fixture", keys },
+          async (current) => {
+            await expect(Recovery.reconstruct({ source: current, target: selected })).rejects.toThrow(
+              "H0 checkpoint anchor",
+            )
+            expect(await RuntimeMaintenance.retirement(lease.maintenanceID)).toBeUndefined()
+            expect(
+              (await Bun.file(path.join(source.service.home, ".synergy", "home-ownership.json")).json()).schemaVersion,
+            ).toBe(2)
+          },
+        )
+        const result = await Current.withSource(
+          { lease, after: h0, directory: path.join(directory, "final-policy"), buildVersion: "fixture", keys },
+          async (current) => {
+            await expect(Recovery.reconstruct({ source: current, target: { ...selected } })).rejects.toThrow("original")
+            const controller = new AbortController()
+            const reason = new Error("Original target policy publication cancelled at its last staged receipt")
+            let staged = false
+            const write = StoreTransaction.prototype.write
+            using boundary = spyOn(StoreTransaction.prototype, "write").mockImplementation(async function (
+              this: StoreTransaction,
+              ...args: Parameters<StoreTransaction["write"]>
+            ) {
+              await write.apply(this, args)
+              if (
+                JSON.stringify(args[0]) ===
+                JSON.stringify(["organization-recovery", "current-policy", context.installationID])
+              ) {
+                expect(
+                  (await Bun.file(path.join(source.service.home, ".synergy", "home-ownership.json")).json())
+                    .schemaVersion,
+                ).toBe(4)
+                staged = true
+                controller.abort(reason)
+              }
+            })
+            await expect(
+              Recovery.reconstruct({ source: current, target: selected, signal: controller.signal }),
+            ).rejects.toBe(reason)
+            expect(staged).toBe(true)
+            expect(await targetRuntime.run(() => AuthorityJournal.head())).toEqual(h0)
+            expect(await targetRuntime.run(() => Storage.read(Keys.account(ownerID)))).not.toEqual(expectedAccount)
+            expect(
+              (await Bun.file(path.join(source.service.home, ".synergy", "home-ownership.json")).json()).schemaVersion,
+            ).toBe(4)
+            boundary.mockRestore()
+            const receipt = await Recovery.reconstruct({ source: current, target: selected })
+            await targetRuntime.run(() =>
+              RuntimeMaintenance.restorationTransaction(
+                { permit: context.permit, request: input.request },
+                async (tx) => {
+                  const account = Record.Account.parse(await Storage.read(Keys.account(ownerID)))
+                  await tx.write(Keys.account(ownerID), {
+                    ...account,
+                    displayName: "Target-only name outside the redacted projection",
+                  })
+                },
+              ),
+            )
+            expect((await targetRuntime.run(() => AuthorityJournal.inspect())).covered).toBe(true)
+            expect(await Recovery.reconstruct({ source: current, target: selected })).toEqual(receipt)
+            expect(await targetRuntime.run(() => Storage.read(Keys.account(ownerID)))).toEqual(expectedAccount)
+            return receipt
+          },
+        )
+        await expect(RuntimeMaintenance.release(lease)).rejects.toThrow("retirement")
+        return result
+      }),
+    )
+    expect(receipt.checkpoint).toEqual(h1)
+    expect(receipt.target).toEqual(identity.reference)
+    expect(await Storage.read(Keys.account(ownerID))).toEqual(expectedAccount)
+    expect(await AuthorityJournal.head()).toEqual(h1)
+    expect((await AuthorityJournal.inspect()).covered).toBe(true)
+    expect((await RuntimeMaintenance.status())?.phase).toBe("recovery-held")
+    expect(RuntimeContext.isReady()).toBe(false)
+    const after = await currentAuthority()
+    expect(after.deployment).toEqual(before.deployment)
+    expect(after.signing).toEqual(before.signing)
+    expect(after.authHash).toEqual(before.authHash)
+    expect(Authority.describe(prepared)).toEqual(identity)
+    expect(await Bun.file(path.join(source.service.home, ".synergy", "home-ownership.json")).json()).toMatchObject({
+      schemaVersion: 4,
+    })
+  })
+}, 20_000)

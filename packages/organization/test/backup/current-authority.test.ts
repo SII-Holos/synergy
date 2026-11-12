@@ -72,6 +72,15 @@ test("a live frozen service proves its final authority suffix and actual native 
           expect(info.clientDefinitionsHash).toBe(createHash("sha256").update(JSON.stringify(clients)).digest("hex"))
           info.checkpoint.sequence = 0
           expect(Current.describe(source).checkpoint).toEqual(after)
+          const captured: { guard?: () => void } = {}
+          await Current.withCaptured(source, async (fixed) => {
+            fixed.assertLive()
+            captured.guard = fixed.assertLive
+            fixed.namespace.expected.archiveID = "mutated-description"
+          })
+          const guard = captured.guard
+          if (!guard) throw new Error("The actual source did not issue a capture lifetime")
+          expect(guard).toThrow("callback")
           expect(() => Current.describe({ ...source })).toThrow("original")
           await expect(
             Storage.provide({ ...Storage.current(), artifactDirectory: path.join(directory, "foreign") }, () =>
