@@ -21,7 +21,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Environment/mount release ownership: [Environments](../../docs/architecture/environments.md). Verify Local Runtime's `test/workspace/mount-maintenance.test.ts`.
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.
 
-`Storage.Handle` owns [Agent authority](../../docs/architecture/agent-storage.md), transactions and content lifetimes. Prepare effects before references; drain binary producers before closure. Pin checkpoints; verify complete logical scans against captured manifests. Fence restores. Archives require Host authority; history cannot authorize. Read object v1/v2. Maintenance drains native/detached writers; reopen admission after confirmed release. Preserve purpose/cohort holds. Test storage/secrets. SQLite: workspace-sqlite; PG: `SYNERGY_TEST_POSTGRES_URL`.
+`Storage.Handle` owns [Agent authority](../../docs/architecture/agent-storage.md), transactions and content lifetimes. Prepare effects before references; drain binary producers before closure. Pin checkpoints; verify complete logical scans against captured manifests. `assertWriteTransaction` fences callbacks. Archives require Host authority; history cannot authorize. Read object v1/v2. Maintenance drains native/detached writers; reopen admission after confirmed release. Preserve purpose/cohort holds. Test storage/secrets. SQLite: workspace-sqlite; PG: `SYNERGY_TEST_POSTGRES_URL`.
 
 Register PG contracts in `test/support/storage-backends.ts`; see [backend selection](../../.synergy/skill/testing-guide/SKILL.md).
 

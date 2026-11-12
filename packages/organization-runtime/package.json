@@ -15,7 +15,8 @@
     "./component": "./src/component.ts",
     "./launch": "./src/launch.ts",
     "./environment": "./src/environment.ts",
-    "./backup": "./src/backup/native.ts"
+    "./backup": "./src/backup/native.ts",
+    "./backup/knowledge": "./src/backup/knowledge.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

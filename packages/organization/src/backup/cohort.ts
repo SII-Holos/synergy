@@ -49,6 +49,7 @@ interface Binding {
   runtime?: RuntimeContext.Instance
   store?: Storage.Handle["store"]
   native?: NativeCapture
+  knowledge?: NativeCapture
 }
 class CohortError extends Error {
   override readonly name = "OrganizationBackupCohortBlocked"
@@ -173,13 +174,14 @@ export namespace OrganizationBackupCohort {
       segment: z.strictObject({ namespace: StorageCheckpoint.Manifest }),
       native: StorageCheckpoint.Manifest.optional(),
       hostedNative: StorageCheckpoint.Manifest.optional(),
+      hostedKnowledge: StorageCheckpoint.Manifest.optional(),
     })
     .refine(
       (value) => (value.identity.kind === "service") === !!value.native,
       "Service namespaces require their native Home segment",
     )
     .refine(
-      (value) => value.identity.kind === "hosted" || !value.hostedNative,
+      (value) => value.identity.kind === "hosted" || (!value.hostedNative && !value.hostedKnowledge),
       "Hosted native material requires a Hosted namespace",
     )
   export type NamespaceInventory = z.infer<typeof NamespaceInventory>
@@ -188,10 +190,11 @@ export namespace OrganizationBackupCohort {
     bindings.set(source, { runner, kind: "service" })
     return source
   }
-  export function hosted(runner: Runner, options: { native?: NativeCapture } = {}): Source {
+  export function hosted(runner: Runner, options: { native?: NativeCapture; knowledge?: NativeCapture } = {}): Source {
     const source = Object.freeze({ kind: "organization-backup-namespace" as const })
     const native = options.native?.bind(options)
-    bindings.set(source, { runner, kind: "hosted", native })
+    const knowledge = options.knowledge?.bind(options)
+    bindings.set(source, { runner, kind: "hosted", native, knowledge })
     return source
   }
   export async function capture(input: {
@@ -316,21 +319,26 @@ export namespace OrganizationBackupCohort {
                   directory: path.join(base, "snapshots"),
                   signal,
                 })
+                const hosted = owner(source.source)
+                const evidence =
+                  identity.kind === "service" || hosted.native || hosted.knowledge
+                    ? await capture.validateArchive(namespace, { signal })
+                    : undefined
                 const native =
                   identity.kind === "service"
                     ? await OrganizationServiceNative.capture({
-                        archive: await capture.validateArchive(namespace, { signal }),
+                        archive: evidence!,
                         lease: source.lease!,
                         directory: path.join(base, "native"),
                         keys,
                         signal,
                       })
                     : undefined
-                const hostedCapture = owner(source.source).native
+                const hostedCapture = hosted.native
                 const hostedNative =
                   identity.kind === "hosted" && hostedCapture
                     ? await hostedCapture({
-                        archive: await capture.validateArchive(namespace, { signal }),
+                        archive: evidence!,
                         lease: source.lease!,
                         directory: path.join(base, "hosted-native"),
                         keys,
@@ -339,6 +347,18 @@ export namespace OrganizationBackupCohort {
                     : undefined
                 if (hostedNative && hostedNative.directory !== path.join(base, "hosted-native"))
                   throw new CohortError("Hosted native capture changed its original destination")
+                const hostedKnowledge =
+                  identity.kind === "hosted" && hosted.knowledge
+                    ? await hosted.knowledge({
+                        archive: evidence!,
+                        lease: source.lease!,
+                        directory: path.join(base, "hosted-knowledge"),
+                        keys,
+                        signal,
+                      })
+                    : undefined
+                if (hostedKnowledge && hostedKnowledge.directory !== path.join(base, "hosted-knowledge"))
+                  throw new CohortError("Hosted knowledge capture changed its original destination")
                 return NamespaceInventory.parse({
                   version: 2,
                   ordinal,
@@ -347,6 +367,7 @@ export namespace OrganizationBackupCohort {
                   segment: { namespace: segment.namespace },
                   native: native?.namespace,
                   hostedNative: hostedNative?.namespace,
+                  hostedKnowledge: hostedKnowledge?.namespace,
                 })
               },
               { signal },

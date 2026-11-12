@@ -1492,6 +1492,7 @@ export class TransactionalStore {
     return this.admission.pending
   }
   private readonly writes = new StorageQueue("store.writes")
+  private readonly writeTransactions = new WeakSet<StoreTransaction>()
   private readonly owner = randomUUID()
   private closing?: Promise<void>
   private unavailable?: Error
@@ -1602,6 +1603,12 @@ export class TransactionalStore {
     if (this.closing) throw new StorageClosedError()
   }
 
+  assertWriteTransaction(tx: StoreTransaction): void {
+    if (!this.writeTransactions.has(tx))
+      throw new StorageOwnershipError("Native finalization requires this Store's original live write callback")
+    tx.assertHealthy()
+  }
+
   /** Reports a store that failed terminally; the host must restart the Runtime
    *  because this instance cannot serve further work. */
   onUnavailable(listener: (error: Error) => void): () => void {
@@ -1682,6 +1689,7 @@ export class TransactionalStore {
               this.artifactPack,
               this.admission,
             )
+            this.writeTransactions.add(tx)
             try {
               const result = await body(tx)
               tx.assertHealthy()
@@ -1698,6 +1706,7 @@ export class TransactionalStore {
                 )
               return result
             } finally {
+              this.writeTransactions.delete(tx)
               tx.finish()
             }
           }, options)

@@ -9,6 +9,7 @@ import { Skill } from "@ericsanchezok/synergy-local-runtime/skill/skill"
 import { SkillManifest } from "@ericsanchezok/synergy-local-runtime/skill/manifest"
 import { skillEntry } from "@ericsanchezok/synergy-local-runtime/skill/register"
 import { ActiveKnowledgeStore as ActiveStore } from "./knowledge-active"
+import { KnowledgeCache } from "./knowledge-cache"
 import {
   OrganizationKnowledgeProtocol as Knowledge,
   OrganizationPublicationProtocol as Publication,
@@ -53,29 +54,8 @@ async function read<T>(schema: z.ZodType<T>, address: string[]) {
   return value === undefined ? undefined : schema.parse(value)
 }
 
-function contained(directory: string, candidate: string) {
-  const relative = path.relative(directory, candidate)
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
-}
-
-async function privateDirectory(root: string, directory: string) {
-  const canonicalRoot = await fs.realpath(root)
-  const expected = contained(path.resolve(root), path.resolve(directory))
-    ? path.resolve(canonicalRoot, path.relative(root, directory))
-    : path.resolve(directory)
-  if (!contained(canonicalRoot, expected)) throw new Error("Knowledge cache cannot use an external directory")
-  let current = canonicalRoot
-  for (const segment of path.relative(canonicalRoot, expected).split(path.sep).filter(Boolean)) {
-    current = path.join(current, segment)
-    await fs.mkdir(current, { mode: 0o700 }).catch((error: unknown) => {
-      if (!(error && typeof error === "object" && "code" in error && error.code === "EEXIST")) throw error
-    })
-    const stat = await fs.lstat(current)
-    if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new Error("Knowledge cache cannot use a symbolic-link directory")
-  }
-  return expected
-}
+const contained = KnowledgeCache.contained
+const privateDirectory = KnowledgeCache.privateDirectory
 
 async function* cachedFiles(cacheID: string) {
   const prefix = key.files(cacheID)
@@ -89,45 +69,7 @@ async function* cachedFiles(cacheID: string) {
 }
 
 async function verifyDirectory(directory: string, cacheID: string, release: Knowledge.Release, signal?: AbortSignal) {
-  const manifest = createHash("sha256")
-  let count = 0
-  let bytes = 0
-  for await (const file of cachedFiles(cacheID)) {
-    signal?.throwIfAborted()
-    const filename = path.resolve(directory, Publication.Path.parse(file.path))
-    const stat = await fs.lstat(filename)
-    const canonical = await fs.realpath(filename)
-    if (!stat.isFile() || stat.isSymbolicLink() || !contained(directory, canonical) || stat.size !== file.bytes)
-      throw new Error("A cached knowledge file changed; preserve local edits before retrying")
-    const digest = createHash("sha256")
-    for await (const part of Bun.file(canonical).stream()) {
-      signal?.throwIfAborted()
-      digest.update(part)
-    }
-    if (digest.digest("hex") !== file.sha256)
-      throw new Error("A cached knowledge file changed; preserve local edits before retrying")
-    manifest.update(Publication.manifestLine(file))
-    count++
-    bytes += file.bytes
-  }
-  let physicalCount = 0
-  async function visit(current: string) {
-    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
-      signal?.throwIfAborted()
-      if (entry.isSymbolicLink()) throw new Error("Knowledge releases cannot contain symbolic links")
-      if (entry.isDirectory()) await visit(path.join(current, entry.name))
-      else if (entry.isFile()) physicalCount++
-      else throw new Error("Knowledge releases can only contain regular files")
-    }
-  }
-  await visit(directory)
-  if (
-    count !== release.fileCount ||
-    physicalCount !== count ||
-    bytes !== release.totalBytes ||
-    manifest.digest("hex") !== release.manifestHash
-  )
-    throw new Error("Knowledge release manifest is incomplete or changed")
+  return KnowledgeCache.verify(directory, release, cachedFiles(cacheID), signal)
 }
 
 function reference(release: Knowledge.Release): Knowledge.Reference {
@@ -142,6 +84,7 @@ async function prepareRelease(input: {
   signal?: AbortSignal
 }) {
   const { release, transport, signal } = input
+  const leaf = KnowledgeCache.leaf(release)
   const cacheID = hash(
     JSON.stringify([release.orgID, input.projectID, release.itemID, release.version, release.manifestHash]),
   )
@@ -158,8 +101,6 @@ async function prepareRelease(input: {
   const stagingRoot = await privateDirectory(input.root, path.join(root, "staging"))
   const cacheRoot = await privateDirectory(input.root, path.join(root, "releases"))
   const temporary = await fs.mkdtemp(path.join(stagingRoot, "release-"))
-  const leaf = release.kind === "skill" ? release.skill?.name : "material"
-  if (!leaf) throw new Error("Published Skill metadata is missing")
   const staging = path.join(temporary, leaf)
   const destination = path.join(cacheRoot, cacheID, leaf)
   await fs.mkdir(staging, { recursive: true, mode: 0o700 })

@@ -4,7 +4,7 @@ import path from "node:path"
 import { randomBytes } from "node:crypto"
 import { Database } from "bun:sqlite"
 import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
-import { TransactionalStore } from "../../src/storage/transactional-store"
+import { TransactionalStore, type StoreTransaction } from "../../src/storage/transactional-store"
 
 import { storageTestBackends } from "../support/storage-backends"
 
@@ -35,6 +35,30 @@ for (const backend of storageTestBackends()) {
       stores.push(store)
       return store
     }
+
+    test("native finalizers accept only an original Store's live write callback", async () => {
+      const target = await open()
+      const foreign = await open()
+      let escaped: StoreTransaction | undefined
+      await target.transaction(async (tx) => {
+        escaped = tx
+        expect(() => target.assertWriteTransaction(tx)).not.toThrow()
+        expect(() => foreign.assertWriteTransaction(tx)).toThrow("write callback")
+        await tx.write(["original"], { value: true })
+      })
+      expect(() => target.assertWriteTransaction(escaped!)).toThrow("write callback")
+      await target.snapshot(async (tx) => {
+        expect(() => target.assertWriteTransaction(tx)).toThrow("write callback")
+      })
+      await expect(
+        target.transaction(async (tx) => {
+          escaped = tx
+          target.assertWriteTransaction(tx)
+          throw new Error("original rollback")
+        }),
+      ).rejects.toThrow("original rollback")
+      expect(() => target.assertWriteTransaction(escaped!)).toThrow("write callback")
+    })
 
     test("commits related records together and rolls back every mutation on failure", async () => {
       const store = await open()
