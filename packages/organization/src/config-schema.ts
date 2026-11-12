@@ -2,6 +2,7 @@ import { z } from "zod"
 import { OrganizationClientAuth as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
+import { InfrastructureConfiguration } from "./infrastructure-schema"
 
 export const ORGANIZATION_CONFIG_FILENAME = "150-organization.jsonc"
 
@@ -75,6 +76,7 @@ export const RuntimeConnectionSettings = z
 export type RuntimeConnectionSettings = z.input<typeof RuntimeConnectionSettings>
 
 export const OrganizationSettings = z.strictObject({
+  infrastructure: InfrastructureConfiguration.optional(),
   authentication: AuthenticationSettings.optional(),
   clientAuthentication: ClientAuthenticationSettings.optional(),
   registration: RuntimeRegistrationSettings.optional(),
@@ -83,7 +85,7 @@ export const OrganizationSettings = z.strictObject({
 
 export const ConfigShape = {
   organization: OrganizationSettings.optional().describe(
-    "Dedicated organization service authentication, registered clients and machine connection settings; restart the service after changes.",
+    "Dedicated organization service authentication, registered clients, machine connections and explicit infrastructure; restart after changes.",
   ),
 }
 export type ConfigValues = z.output<z.ZodObject<typeof ConfigShape>>

@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "bin": {
+    "synergy-org-runtime": "./dist/entry.js"
+  },
   "exports": {
     "./home": "./src/home.ts",
     "./home-migration": "./src/home-migration.ts",

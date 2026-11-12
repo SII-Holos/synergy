@@ -8060,9 +8060,64 @@ export type Config = {
   mcpDefaults?: McpDefaultsConfig
   voice?: VoiceConfig
   /**
-   * Dedicated organization service authentication, registered clients and machine connection settings; restart the service after changes.
+   * Dedicated organization service authentication, registered clients, machine connections and explicit infrastructure; restart after changes.
    */
   organization?: {
+    infrastructure?: {
+      version: 1
+      database?: {
+        backend: "postgres"
+        urlFile: string
+        namespace: string
+        maxConnections?: number
+      }
+      stores?: {
+        [key: string]: {
+          provider: "s3" | "oss"
+          bucket: string
+          region: string
+          endpoint?: string
+          prefix?: string
+          credentialsFile: string
+        }
+      }
+      environments?: {
+        [key: string]: {
+          provider: "docker"
+          spec: {
+            image: string
+            memoryBytes?: number
+            cpus?: number
+            pids?: number
+            mounts?: Array<{
+              type: "bind" | "volume"
+              source: string
+              target: string
+              /**
+               * External mounts are read-only; writable files use a coordinated Workspace
+               */
+              readOnly?: true
+            }>
+          }
+          host: {
+            endpoint: string
+            engineTLS?: {
+              certFile: string
+              keyFile: string
+              caFile?: string
+            }
+            executionTLS?: {
+              certFile: string
+              keyFile: string
+              caFile?: string
+            }
+            executionHostname?: string
+            publishHostIP?: string
+          }
+          idleTimeoutMs?: number
+        }
+      }
+    }
     authentication?: {
       bootstrapMs?: number
       inviteMs?: number

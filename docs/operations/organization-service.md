@@ -68,4 +68,35 @@ Consistent encrypted backup and recovery use the [native maintenance and recover
 
 ## Additional infrastructure
 
-The minimal Compose file starts only the independent service. PostgreSQL and cloud providers are explicit programmatic service options; the executable's organization settings cover authentication and Runtime connection policy. Hosted Runtimes consume private supervisor requests, and Docker Execution Hosts retain their own authenticated endpoint and allocation owner. These require a configured integration before an optional profile can provide useful behavior; an unconnected database or object-store container is not a deployment of that feature.
+The executable reads optional `organization.infrastructure` from its dedicated `150-organization.jsonc`. Start from [infrastructure.example.jsonc](../../packages/organization/deploy/infrastructure.example.jsonc), remove unused entries, and set private file references for each backend. The service package's `./infrastructure` export provides `loadOrganizationInfrastructure()` for programmatic hosts. No personal resource configuration is read.
+
+PostgreSQL reads its URL from `database.urlFile` and uses an explicit stable `namespace`; `init` and `serve` require the same configuration. Object credentials are JSON containing `accessKeyId`, `secretAccessKey` and optional `sessionToken`. Every credential, certificate and key must be an absolute regular file, at most 64 KiB, without group/other permissions on POSIX. Match its owner to the service user. Rotate private files and restart to apply changes; JSONC stores references only.
+
+Store names become Workspace profile names. Environment names become Docker profiles backed by `organization-docker-<name>` providers. Administrators expose profiles through the existing resource API and grant account/project use. Selecting a profile does not allocate compute. Docker's native owner creates each allocation's target, credential, container, readiness and drainage. Build its image through `bun packages/local-runtime/script/build-execution-host.ts --image <tag>` and configure that exact tag. Remote Engine and Execution Host traffic requires configured TLS; the service needs neither a local Docker socket nor an unconditional executor container.
+
+The [infrastructure Compose override](../../packages/organization/deploy/compose.infrastructure.yml) mounts configuration and private files into initialization and serving. Independent `postgres` and `objects` profiles provide persistent backends with loopback ports. MinIO's loopback HTTP supports host-side development acceptance; service containers use a separately secured HTTPS object endpoint. Preserve SQL/object volumes, namespace and object prefix together. [environment.infrastructure.example](../../packages/organization/deploy/environment.infrastructure.example) lists deployment paths. Initialize private MinIO client configuration before running `object-initialize`.
+
+```sh
+docker compose -f compose.yml -f compose.infrastructure.yml --profile postgres up -d --wait postgres
+docker compose -f compose.yml -f compose.infrastructure.yml run --rm initialize
+docker compose -f compose.yml -f compose.infrastructure.yml up -d --wait organization
+```
+
+`bun script/organization-infrastructure-check.ts synergy-execution-host:local` provisions its own temporary PostgreSQL/MinIO project and private credentials. It checks actual SQL restart identity, object bytes and an allocated Execution Host running a command, then removes only its own containers and volumes. External composition still requires actual target reconstruction and coverage for native backup/restore; the existing guard rejects unsupported composition. Startup and health do not establish recoverability.
+
+## Hosted Runtime entry
+
+Install the matching organization Runtime package and invoke `synergy-org-runtime hosted-runtime`. Prepare its Home using `prepareHostedHome({ baseDirectory, identity: { orgID, hostID }, origin })` from `./home`; an administrator registers its key using generated `orgRuntime.registerHosted`. On private stdin supply the resulting ticket, prepared identity and deployment incarnation, explicit local port, ephemeral 64-hex bearer and optional CA in the existing `HostedLaunchRequest`. End at EOF; the request is bounded to 64 KiB and never appears in arguments/output. Retained registration permits restart without replaying the ticket. The local listener stays loopback-only.
+
+```sh
+SYNERGY_HOME=/absolute/prepared-hosted-home ./node_modules/.bin/synergy-org-runtime hosted-runtime < /absolute/private/hosted-request.json
+```
+
+Pack the Runtime together with service and CLI, then select `--hosted` when staging its separate image. The override's `hosted` profile mounts the prepared Home and private request, passing the request on stdin. It never provisions or registers identities implicitly. Give the image user access to both mounts; preserve the hosted Home independently of service/backend volumes.
+
+```sh
+bun script/organization-runtime-install-check.ts .artifacts/organization-packages
+bun script/organization-image.ts .artifacts/organization-packages .artifacts/organization-hosted-image x64 --hosted
+docker build -t synergy-organization-hosted:local .artifacts/organization-hosted-image
+docker compose -f compose.yml -f compose.infrastructure.yml --profile hosted up -d hosted
+```

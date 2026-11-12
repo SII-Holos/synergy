@@ -265,4 +265,4 @@ File: `150-organization.jsonc` · Merge: replace-domain
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `organization` | OrganizationSettings.optional (optional) | Dedicated organization service authentication, registered clients and machine connection settings; restart the service after changes. |
+| `organization` | OrganizationSettings.optional (optional) | Dedicated organization service authentication, registered clients, machine connections and explicit infrastructure; restart after changes. |

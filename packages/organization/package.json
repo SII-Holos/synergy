@@ -11,6 +11,8 @@
     "./service": "./src/service.ts",
     "./component": "./src/component.ts",
     "./config-schema": "./src/config-schema.ts",
+    "./infrastructure": "./src/infrastructure.ts",
+    "./infrastructure-schema": "./src/infrastructure-schema.ts",
     "./features": "./src/features.ts",
     "./http": "./src/http.ts"
   },

@@ -3,6 +3,7 @@ import path from "node:path"
 import { cmd, type CommandModule } from "@ericsanchezok/synergy-util/cli-command"
 import { openOrganizationService } from "../service"
 import { readOrganizationConfiguration } from "../configuration"
+import { loadOrganizationInfrastructure } from "../infrastructure"
 
 function explicitHome() {
   const home = process.env.SYNERGY_HOME
@@ -42,7 +43,11 @@ export const OrganizationInitCommand = cmd({
     const file = await fs.open(args.output, "wx", 0o600)
     let written = false
     try {
-      await using service = await openOrganizationService({ home, authentication: configuration.authentication })
+      await using service = await openOrganizationService({
+        home,
+        authentication: configuration.authentication,
+        ...(await loadOrganizationInfrastructure(configuration.infrastructure)),
+      })
       const deployment = await service.deployment()
       const token = await service.bootstrapToken()
       await file.writeFile(
@@ -103,6 +108,7 @@ export const OrganizationServeCommand = cmd({
       const configuration = await readOrganizationConfiguration(home)
       await using service = await openOrganizationService({
         ...configuration,
+        ...(await loadOrganizationInfrastructure(configuration.infrastructure)),
         home,
         publicOrigin: args.origin,
         web: args.web ? { directory: args.web } : undefined,

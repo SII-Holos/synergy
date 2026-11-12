@@ -8,6 +8,7 @@ on:
       - ".github/workflows/organization-deployment.yml"
       - "packages/organization/**"
       - "packages/organization-protocol/**"
+      - "packages/organization-runtime/**"
       - "packages/cli/src/main.ts"
       - "script/organization-*.ts"
       - "script/pack-workspace.ts"
@@ -37,12 +38,24 @@ jobs:
           mkdir -p packages/local-runtime/sandbox-assets/linux-x64
           cp packages/local-runtime/src/sandbox/helper-linux/target/x86_64-unknown-linux-gnu/release/synergy-sandbox-linux packages/local-runtime/sandbox-assets/linux-x64/
       - name: Pack the independent service and shared CLI
-        run: bun -e 'import {packWorkspace} from "./script/pack-workspace"; await packWorkspace(["packages/organization","packages/cli"], ".artifacts/organization-packages")'
+        run: bun -e 'import {packWorkspace} from "./script/pack-workspace"; await packWorkspace(["packages/organization","packages/cli","packages/organization-runtime"], ".artifacts/organization-packages")'
       - name: Verify actual installation outside the checkout
         run: bun script/organization-install-check.ts .artifacts/organization-packages
+      - name: Verify installed hosted Runtime enrollment and shutdown
+        run: bun script/organization-runtime-install-check.ts .artifacts/organization-packages
       - name: Stage the image from the same archives
         run: bun script/organization-image.ts .artifacts/organization-packages .artifacts/organization-image x64
       - name: Build the service image without publishing
         run: docker build -t synergy-organization:acceptance .artifacts/organization-image
       - name: Verify Compose initialization, health and persisted restart
         run: bun script/organization-compose-check.ts synergy-organization:acceptance
+      - name: Stage and build the hosted-capable image
+        run: |
+          bun script/organization-image.ts .artifacts/organization-packages .artifacts/organization-hosted-image x64 --hosted
+          docker build -t synergy-organization-hosted:acceptance .artifacts/organization-hosted-image
+      - name: Build the existing Execution Host image
+        run: |
+          sudo apparmor_parser -r packages/local-runtime/src/environment/vendor/synergy-execution.apparmor
+          bun packages/local-runtime/script/build-execution-host.ts --image synergy-execution-host:organization-acceptance
+      - name: Verify actual PostgreSQL, MinIO and Docker execution
+        run: bun script/organization-infrastructure-check.ts synergy-execution-host:organization-acceptance

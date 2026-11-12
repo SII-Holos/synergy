@@ -4,7 +4,7 @@ WORKDIR /opt/synergy
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --chown=bun:bun node_modules/ ./node_modules/
 COPY release.json ./release.json
-RUN mkdir -p /var/lib/synergy && chown bun:bun /var/lib/synergy
+RUN mkdir -p /var/lib/synergy/.synergy/config/synergy.d && chown -R bun:bun /var/lib/synergy
 USER bun
 VOLUME ["/var/lib/synergy"]
 EXPOSE 4080
