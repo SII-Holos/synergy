@@ -19,6 +19,7 @@ import { authorizeOrganization } from "./authorization"
 import { desktopOrganizationFetch } from "./desktop"
 import { removeOrganizationDecisionOutbox } from "./decision-outbox"
 import { removeOrganizationQuestionDrafts } from "./question-drafts"
+import { removeOrganizationPublications } from "./publication-store"
 import {
   createOrganizationSignOutStore,
   OrganizationSignOutIntent,
@@ -618,9 +619,12 @@ export function createOrganizationConnections(options: {
         if (globalThis.indexedDB) {
           await removeOrganizationDecisionOutbox(key)
           await removeOrganizationQuestionDrafts(key)
+          assertCurrent(controller, version)
+          await removeOrganizationPublications(key, globalThis.indexedDB, controller.signal)
         }
         assertCurrent(controller, version)
       } catch {
+        assertCurrent(controller, version)
         throw new OrganizationConnectionError("storage_unavailable")
       }
       if (entry.transport === "desktop") {

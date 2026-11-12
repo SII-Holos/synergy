@@ -13953,6 +13953,10 @@ msgid "organization.publication.authorName"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.publication.checkReceipt"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.publication.chooseFiles"
 msgstr ""
 
@@ -14021,6 +14025,14 @@ msgid "organization.publication.memberSelectionHint"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.publication.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.pendingHint"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.publication.preview"
 msgstr ""
 
@@ -14045,7 +14057,15 @@ msgid "organization.publication.publishVersion"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.publication.receiptMissing"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.publication.reference"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.refreshPending"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -14054,6 +14074,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "organization.publication.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.publication.retryOriginal"
 msgstr ""
 
 #. js-lingui-explicit-id

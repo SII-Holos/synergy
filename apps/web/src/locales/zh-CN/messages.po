@@ -13953,6 +13953,10 @@ msgid "organization.publication.authorName"
 msgstr "由 {name} 发布"
 
 #. js-lingui-explicit-id
+msgid "organization.publication.checkReceipt"
+msgstr "查询发布结果"
+
+#. js-lingui-explicit-id
 msgid "organization.publication.chooseFiles"
 msgstr "选择文件"
 
@@ -14021,6 +14025,14 @@ msgid "organization.publication.memberSelectionHint"
 msgstr "此会话使用执行电脑所有者已应用的项目版本。只有该所有者可以更新这些版本。"
 
 #. js-lingui-explicit-id
+msgid "organization.publication.pending"
+msgstr "待确认的发布"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.pendingHint"
+msgstr "再次发布前，请先查询原请求。关闭此页面不会取消组织已收到的发布。"
+
+#. js-lingui-explicit-id
 msgid "organization.publication.preview"
 msgstr "预览"
 
@@ -14045,8 +14057,16 @@ msgid "organization.publication.publishVersion"
 msgstr "发布新版本"
 
 #. js-lingui-explicit-id
+msgid "organization.publication.receiptMissing"
+msgstr "暂未找到发布记录，原请求仍可能完成。重试会沿用原请求和文件。"
+
+#. js-lingui-explicit-id
 msgid "organization.publication.reference"
 msgstr "版本引用"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.refreshPending"
+msgstr "刷新列表"
 
 #. js-lingui-explicit-id
 msgid "organization.publication.refreshStatus"
@@ -14055,6 +14075,10 @@ msgstr "刷新激活状态"
 #. js-lingui-explicit-id
 msgid "organization.publication.remove"
 msgstr "从我的项目移除"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.retryOriginal"
+msgstr "重试原发布"
 
 #. js-lingui-explicit-id
 msgid "organization.publication.saved"

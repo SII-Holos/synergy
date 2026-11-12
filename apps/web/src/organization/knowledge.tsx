@@ -16,6 +16,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { organizationOwnerFailure } from "./owner-error"
 import { WorkspaceError } from "./workspace-error"
 import { PublicationEditor } from "./publication-editor"
+import { PendingPublications } from "./publication-pending"
 import { PublicationFiles } from "./publication-files"
 import { publicationMessages as messages } from "./publication-messages"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
@@ -363,6 +364,15 @@ export function OrganizationKnowledge(props: {
             {_(messages.search)}
           </Button>
         </form>
+        <Show when={loaded() && !publishing()}>
+          <PendingPublications
+            purpose="knowledge"
+            scope={props.projectID ? { kind: "project", projectID: props.projectID } : { kind: "organization" }}
+            canPublish={canPublish()}
+            invalidated={failed}
+            resolved={() => void load()}
+          />
+        </Show>
         <Show when={loaded() && !state.items.length && !publishing()}>
           <div class="organization-empty">
             <h3>{_(messages.empty)}</h3>

@@ -20,6 +20,19 @@ export const publicationMessages = {
   selected: { id: "organization.publication.selected", message: "{count} files · {bytes} bytes" },
   uploading: { id: "organization.publication.uploading", message: "Uploading {path} · {bytes} of {total} bytes" },
   done: { id: "organization.publication.done", message: "Published" },
+  pending: { id: "organization.publication.pending", message: "Unconfirmed publications" },
+  pendingHint: {
+    id: "organization.publication.pendingHint",
+    message:
+      "Check the original request before publishing again. Closing this page does not cancel a publication already received by the organization.",
+  },
+  checkReceipt: { id: "organization.publication.checkReceipt", message: "Check publication result" },
+  receiptMissing: {
+    id: "organization.publication.receiptMissing",
+    message: "No receipt was found. The original request may still complete. A retry uses the same request and files.",
+  },
+  retryOriginal: { id: "organization.publication.retryOriginal", message: "Retry original publication" },
+  refreshPending: { id: "organization.publication.refreshPending", message: "Refresh list" },
   search: { id: "organization.publication.search", message: "Search publications" },
   empty: { id: "organization.publication.empty", message: "No publications yet" },
   emptyHint: {

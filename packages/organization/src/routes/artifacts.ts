@@ -19,6 +19,17 @@ export function artifactRoutes(publicOrigin?: string) {
   const { credentials } = browserCredentials(publicOrigin)
   return new Hono()
     .post(
+      "/artifacts/publication-receipts",
+      operation(
+        "orgArtifacts.publicationReceipt",
+        "Read the exact original publication receipt without publishing",
+        Artifact.PublicationReceipt,
+        true,
+      ),
+      validator("json", Artifact.Publish, validation),
+      async (c) => c.json(await Published.publicationReceipt(credentials(c), c.req.valid("json"))),
+    )
+    .post(
       "/artifacts",
       operation("orgArtifacts.publish", "Publish an immutable project artifact version", Artifact.Version, true),
       validator("json", Artifact.Publish, validation),

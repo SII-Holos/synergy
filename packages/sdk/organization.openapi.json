@@ -3131,6 +3131,64 @@
         ]
       }
     },
+    "/org/v1/knowledge/publication-receipts": {
+      "post": {
+        "operationId": "orgKnowledge.publicationReceipt",
+        "summary": "Read the exact original publication receipt without publishing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "itemID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "uploadID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "kind": { "type": "string", "enum": ["material", "skill"] }
+                },
+                "required": ["requestID", "itemID", "expectedRevision", "uploadID", "title", "kind"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgKnowledgePublicationReceipt" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/org/v1/knowledge/selection-updates": {
       "post": {
         "operationId": "orgKnowledge.beginSelectionUpdate",
@@ -4159,6 +4217,63 @@
             "required": true
           }
         ]
+      }
+    },
+    "/org/v1/artifacts/publication-receipts": {
+      "post": {
+        "operationId": "orgArtifacts.publicationReceipt",
+        "summary": "Read the exact original publication receipt without publishing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requestID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "artifactID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "expectedRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "uploadID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "title": { "type": "string", "minLength": 1, "maxLength": 200 }
+                },
+                "required": ["requestID", "artifactID", "expectedRevision", "uploadID", "title"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgArtifactPublicationReceipt" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
       }
     },
     "/org/v1/artifacts": {
@@ -10431,6 +10546,94 @@
         "required": ["uploadID", "fileID", "receivedBytes", "bytes", "chunkBytes"],
         "additionalProperties": false
       },
+      "OrgKnowledgeRelease": {
+        "type": "object",
+        "properties": {
+          "itemID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "organization" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "project" },
+                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "projectID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "kind": { "type": "string", "enum": ["material", "skill"] },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "authorID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "author": {
+            "type": "object",
+            "properties": {
+              "accountID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "loginName": { "type": "string", "maxLength": 320 }
+            },
+            "required": ["accountID", "displayName", "loginName"],
+            "additionalProperties": false
+          },
+          "publishedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "fileCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "totalBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "skill": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "description": { "type": "string", "minLength": 1, "maxLength": 1024 },
+              "license": { "type": "string" },
+              "compatibility": { "type": "string" }
+            },
+            "required": ["name", "description"],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "itemID",
+          "orgID",
+          "scope",
+          "kind",
+          "title",
+          "version",
+          "authorID",
+          "publishedAt",
+          "manifestHash",
+          "fileCount",
+          "totalBytes"
+        ],
+        "additionalProperties": false
+      },
+      "OrgKnowledgePublicationReceipt": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": { "state": { "type": "string", "const": "missing" } },
+            "required": ["state"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": { "type": "string", "const": "published" },
+              "release": { "$ref": "#/components/schemas/OrgKnowledgeRelease" }
+            },
+            "required": ["state", "release"],
+            "additionalProperties": false
+          }
+        ]
+      },
       "OrgKnowledgeSelectionSummary": {
         "type": "object",
         "properties": {
@@ -10534,75 +10737,6 @@
         "required": ["items"],
         "additionalProperties": false
       },
-      "OrgKnowledgeRelease": {
-        "type": "object",
-        "properties": {
-          "itemID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "scope": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": { "kind": { "type": "string", "const": "organization" } },
-                "required": ["kind"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": { "type": "string", "const": "project" },
-                  "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                },
-                "required": ["kind", "projectID"],
-                "additionalProperties": false
-              }
-            ]
-          },
-          "kind": { "type": "string", "enum": ["material", "skill"] },
-          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
-          "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "authorID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "author": {
-            "type": "object",
-            "properties": {
-              "accountID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-              "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
-              "loginName": { "type": "string", "maxLength": 320 }
-            },
-            "required": ["accountID", "displayName", "loginName"],
-            "additionalProperties": false
-          },
-          "publishedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-          "fileCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "totalBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "skill": {
-            "type": "object",
-            "properties": {
-              "name": { "type": "string", "minLength": 1, "maxLength": 64 },
-              "description": { "type": "string", "minLength": 1, "maxLength": 1024 },
-              "license": { "type": "string" },
-              "compatibility": { "type": "string" }
-            },
-            "required": ["name", "description"],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "itemID",
-          "orgID",
-          "scope",
-          "kind",
-          "title",
-          "version",
-          "authorID",
-          "publishedAt",
-          "manifestHash",
-          "fileCount",
-          "totalBytes"
-        ],
-        "additionalProperties": false
-      },
       "OrgKnowledgeVersionPage": {
         "type": "object",
         "properties": {
@@ -10691,6 +10825,25 @@
           "sourceAvailable"
         ],
         "additionalProperties": false
+      },
+      "OrgArtifactPublicationReceipt": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": { "state": { "type": "string", "const": "missing" } },
+            "required": ["state"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": { "type": "string", "const": "published" },
+              "version": { "$ref": "#/components/schemas/OrgArtifactVersion" }
+            },
+            "required": ["state", "version"],
+            "additionalProperties": false
+          }
+        ]
       },
       "OrgArtifactPage": {
         "type": "object",

@@ -57,6 +57,44 @@ function bridge(
   return { trusted, ipc }
 }
 
+test("publication receipt IPC admits only the two fixed authenticated POST routes", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const paths: string[] = []
+  const { trusted, ipc } = bridge(f, (async (request) => {
+    paths.push(new URL(request instanceof Request ? request.url : String(request)).pathname)
+    return Response.json({ state: "missing" })
+  }) as typeof fetch)
+  try {
+    for (const kind of ["knowledge", "artifacts"]) {
+      const path = `/org/v1/${kind}/publication-receipts`
+      expect(
+        await ipc.handle(trusted, "request", {
+          requestID: randomUUID(),
+          connectionID: connection.id,
+          method: "POST",
+          path,
+          body: "{}",
+        }),
+      ).toMatchObject({ ok: true, value: { status: 200, body: '{"state":"missing"}' } })
+      for (const changed of [{ method: "PUT" }, { path: `${path}/foreign` }, { path: `${path}%2fcredentials` }])
+        expect(
+          await ipc.handle(trusted, "request", {
+            requestID: randomUUID(),
+            connectionID: connection.id,
+            method: "POST",
+            path,
+            body: "{}",
+            ...changed,
+          }),
+        ).toMatchObject({ ok: false, error: { code: "invalid_request" } })
+    }
+    expect(paths).toEqual(["/org/v1/knowledge/publication-receipts", "/org/v1/artifacts/publication-receipts"])
+  } finally {
+    ipc.dispose()
+  }
+})
+
 test("real native notification IPC authenticates the fixed service stream and binds ACK and shutdown to its original document", async () => {
   await using f = await organizationFixture()
   const connection = await authorized(f)

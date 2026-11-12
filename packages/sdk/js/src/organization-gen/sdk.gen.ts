@@ -24,6 +24,8 @@ import type {
   OrgArtifactsGetResponses,
   OrgArtifactsListErrors,
   OrgArtifactsListResponses,
+  OrgArtifactsPublicationReceiptErrors,
+  OrgArtifactsPublicationReceiptResponses,
   OrgArtifactsPublishErrors,
   OrgArtifactsPublishResponses,
   OrgArtifactsReferenceErrors,
@@ -193,6 +195,8 @@ import type {
   OrgKnowledgeListResponses,
   OrgKnowledgePatchSelectionUpdateErrors,
   OrgKnowledgePatchSelectionUpdateResponses,
+  OrgKnowledgePublicationReceiptErrors,
+  OrgKnowledgePublicationReceiptResponses,
   OrgKnowledgePublishErrors,
   OrgKnowledgePublishResponses,
   OrgKnowledgeSearchErrors,
@@ -2517,6 +2521,51 @@ export class OrgPublications extends HeyApiClient {
 
 export class OrgKnowledge extends HeyApiClient {
   /**
+   * Read the exact original publication receipt without publishing
+   */
+  public publicationReceipt<ThrowOnError extends boolean = false>(
+    parameters?: {
+      requestID?: string
+      itemID?: string
+      expectedRevision?: number
+      uploadID?: string
+      title?: string
+      kind?: "material" | "skill"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "requestID" },
+            { in: "body", key: "itemID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "uploadID" },
+            { in: "body", key: "title" },
+            { in: "body", key: "kind" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgKnowledgePublicationReceiptResponses,
+      OrgKnowledgePublicationReceiptErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/knowledge/publication-receipts",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Stage an explicit update over the complete current knowledge manifest
    */
   public beginSelectionUpdate<ThrowOnError extends boolean = false>(
@@ -3123,6 +3172,49 @@ export class OrgKnowledge extends HeyApiClient {
 }
 
 export class OrgArtifacts extends HeyApiClient {
+  /**
+   * Read the exact original publication receipt without publishing
+   */
+  public publicationReceipt<ThrowOnError extends boolean = false>(
+    parameters?: {
+      requestID?: string
+      artifactID?: string
+      expectedRevision?: number
+      uploadID?: string
+      title?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "requestID" },
+            { in: "body", key: "artifactID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "uploadID" },
+            { in: "body", key: "title" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgArtifactsPublicationReceiptResponses,
+      OrgArtifactsPublicationReceiptErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/artifacts/publication-receipts",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Publish an immutable project artifact version
    */

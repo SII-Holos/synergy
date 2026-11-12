@@ -55,6 +55,13 @@ export namespace OrganizationKnowledgeProtocol {
     kind: Kind,
   })
   export type Publish = z.infer<typeof Publish>
+  export const PublicationReceipt = z
+    .discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("missing") }),
+      z.strictObject({ state: z.literal("published"), release: Release }),
+    ])
+    .meta({ ref: "OrgKnowledgePublicationReceipt" })
+  export type PublicationReceipt = z.infer<typeof PublicationReceipt>
   export const Query = z.strictObject({
     projectID: Identity.ID.optional(),
     kind: Kind.optional(),

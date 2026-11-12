@@ -8,7 +8,7 @@ Handoff proofs/plans bind purpose, ownership, operations, watermarks and connect
 
 API token schemas separate one-time secrets from metadata and bind explicit project/operation/expiry scope. Trusted routes select purposes; token scope never replaces current authorization. Reuse the portable account actor schema from Util, including optional signed token attribution. Command permits bind the logical request, actor, deployment, target, epochs, sequences and finite signing window; signature validity alone does not establish current execution admission. Preserve existing proof bytes when sharing signing primitives, and verify compiled Node imports across package boundaries.
 
-Hash the complete strict input and target. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
+Hash complete inputs/targets; distinguish missing publication receipts. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
 
 Desktop bridge versions require revision-bound logout phases; test old-request rejection in `test/desktop.test.ts`. Command stream frames separate transfer nonces from canonical logical IDs. Reuse command payload limits and Runtime chunk sizes; verify strict input/reply-only envelopes in `test/command-stream.test.ts`.
 

@@ -53,6 +53,8 @@ const routes: [string, RegExp][] = [
   ["PUT", new RegExp(`^/org/v1/sessions/${id}/(resources|share)$`)],
   ["GET", /^\/org\/v1\/knowledge(?:\/search)?$/],
   ["POST", /^\/org\/v1\/(knowledge|artifacts|publications\/uploads)$/],
+  ["POST", /^\/org\/v1\/knowledge\/publication-receipts$/],
+  ["POST", /^\/org\/v1\/artifacts\/publication-receipts$/],
   ["GET", new RegExp(`^/org/v1/(knowledge|artifacts)/${id}(?:/versions(?:/[1-9][0-9]*(?:/(?:files|reference))?)?)?$`)],
   ["DELETE", new RegExp(`^/org/v1/knowledge/${id}$`)],
   ["GET", new RegExp(`^/org/v1/projects/${id}/artifacts$`)],

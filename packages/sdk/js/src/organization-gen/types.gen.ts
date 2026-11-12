@@ -1855,6 +1855,47 @@ export type OrgPublicationChunkStatus = {
   chunkBytes: 4194304
 }
 
+export type OrgKnowledgeRelease = {
+  itemID: string
+  orgID: string
+  scope:
+    | {
+        kind: "organization"
+      }
+    | {
+        kind: "project"
+        projectID: string
+      }
+  kind: "material" | "skill"
+  title: string
+  version: number
+  authorID: string
+  author?: {
+    accountID: string
+    displayName: string
+    loginName: string
+  }
+  publishedAt: number
+  manifestHash: string
+  fileCount: number
+  totalBytes: number
+  skill?: {
+    name: string
+    description: string
+    license?: string
+    compatibility?: string
+  }
+}
+
+export type OrgKnowledgePublicationReceipt =
+  | {
+      state: "missing"
+    }
+  | {
+      state: "published"
+      release: OrgKnowledgeRelease
+    }
+
 export type OrgKnowledgeSelectionSummary = {
   revision: number
   manifestHash: string
@@ -1906,38 +1947,6 @@ export type OrgKnowledgePage = {
   cursor?: string
 }
 
-export type OrgKnowledgeRelease = {
-  itemID: string
-  orgID: string
-  scope:
-    | {
-        kind: "organization"
-      }
-    | {
-        kind: "project"
-        projectID: string
-      }
-  kind: "material" | "skill"
-  title: string
-  version: number
-  authorID: string
-  author?: {
-    accountID: string
-    displayName: string
-    loginName: string
-  }
-  publishedAt: number
-  manifestHash: string
-  fileCount: number
-  totalBytes: number
-  skill?: {
-    name: string
-    description: string
-    license?: string
-    compatibility?: string
-  }
-}
-
 export type OrgKnowledgeVersionPage = {
   items: Array<OrgKnowledgeRelease>
   cursor?: number
@@ -1983,6 +1992,15 @@ export type OrgArtifactVersion = {
   sourceAvailable: boolean
   sourceSessionID?: string
 }
+
+export type OrgArtifactPublicationReceipt =
+  | {
+      state: "missing"
+    }
+  | {
+      state: "published"
+      version: OrgArtifactVersion
+    }
 
 export type OrgArtifactPage = {
   items: Array<OrgArtifactVersion>
@@ -6925,6 +6943,60 @@ export type OrgPublicationsSealResponses = {
 
 export type OrgPublicationsSealResponse = OrgPublicationsSealResponses[keyof OrgPublicationsSealResponses]
 
+export type OrgKnowledgePublicationReceiptData = {
+  body: {
+    requestID: string
+    itemID: string
+    expectedRevision: number
+    uploadID: string
+    title: string
+    kind: "material" | "skill"
+  }
+  path?: never
+  query?: never
+  url: "/org/v1/knowledge/publication-receipts"
+}
+
+export type OrgKnowledgePublicationReceiptErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgKnowledgePublicationReceiptError =
+  OrgKnowledgePublicationReceiptErrors[keyof OrgKnowledgePublicationReceiptErrors]
+
+export type OrgKnowledgePublicationReceiptResponses = {
+  /**
+   * Success
+   */
+  200: OrgKnowledgePublicationReceipt
+}
+
+export type OrgKnowledgePublicationReceiptResponse =
+  OrgKnowledgePublicationReceiptResponses[keyof OrgKnowledgePublicationReceiptResponses]
+
 export type OrgKnowledgeBeginSelectionUpdateData = {
   body: {
     requestID: string
@@ -7826,6 +7898,59 @@ export type OrgKnowledgeStatusResponses = {
 }
 
 export type OrgKnowledgeStatusResponse = OrgKnowledgeStatusResponses[keyof OrgKnowledgeStatusResponses]
+
+export type OrgArtifactsPublicationReceiptData = {
+  body: {
+    requestID: string
+    artifactID: string
+    expectedRevision: number
+    uploadID: string
+    title: string
+  }
+  path?: never
+  query?: never
+  url: "/org/v1/artifacts/publication-receipts"
+}
+
+export type OrgArtifactsPublicationReceiptErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgArtifactsPublicationReceiptError =
+  OrgArtifactsPublicationReceiptErrors[keyof OrgArtifactsPublicationReceiptErrors]
+
+export type OrgArtifactsPublicationReceiptResponses = {
+  /**
+   * Success
+   */
+  200: OrgArtifactPublicationReceipt
+}
+
+export type OrgArtifactsPublicationReceiptResponse =
+  OrgArtifactsPublicationReceiptResponses[keyof OrgArtifactsPublicationReceiptResponses]
 
 export type OrgArtifactsPublishData = {
   body: {

@@ -177,6 +177,30 @@ export namespace OrganizationArtifacts {
     })
   }
 
+  export async function publicationReceipt(credentials: Credentials, value: Artifact.Publish) {
+    const input = Artifact.Publish.parse(value)
+    const requestHash = createHash("sha256").update(JSON.stringify(input)).digest("hex")
+    return Storage.snapshot(async () => {
+      const { account } = await authorize(credentials, "organization.read")
+      const receipt = await read(Receipt, keys.receipt(account.orgID, account.accountID, input.requestID))
+      if (receipt) {
+        const current = await item(credentials, receipt.artifactID)
+        if (receipt.artifactID !== input.artifactID || receipt.requestHash !== requestHash)
+          fail("REVISION_CONFLICT", "Artifact publication request changed")
+        return Artifact.PublicationReceipt.parse({
+          state: "published",
+          version: await view(credentials, await version(current, receipt.version)),
+        })
+      }
+      const upload = await Publications.status(credentials, input.uploadID)
+      if (upload.purpose !== "artifact" || upload.state !== "sealed")
+        fail("INVALID_REQUEST", "Artifact publication requires a sealed artifact upload")
+      const current = await read(Item, keys.item(account.orgID, input.artifactID))
+      if (current) await item(credentials, input.artifactID)
+      return Artifact.PublicationReceipt.parse({ state: "missing" })
+    })
+  }
+
   export async function get(credentials: Credentials, artifactID: string, selectedVersion?: number) {
     return Storage.snapshot(async () =>
       view(credentials, await version(await item(credentials, artifactID), selectedVersion)),

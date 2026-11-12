@@ -31,6 +31,13 @@ export namespace OrganizationArtifactProtocol {
     })
     .meta({ ref: "OrgArtifactVersion" })
   export type Version = z.infer<typeof Version>
+  export const PublicationReceipt = z
+    .discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("missing") }),
+      z.strictObject({ state: z.literal("published"), version: Version }),
+    ])
+    .meta({ ref: "OrgArtifactPublicationReceipt" })
+  export type PublicationReceipt = z.infer<typeof PublicationReceipt>
   export const Query = z.strictObject({
     limit: z.coerce.number().int().min(1).max(100).default(50),
     cursor: Identity.ID.optional(),

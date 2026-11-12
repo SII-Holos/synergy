@@ -13953,6 +13953,10 @@ msgid "organization.publication.authorName"
 msgstr "Published by {name}"
 
 #. js-lingui-explicit-id
+msgid "organization.publication.checkReceipt"
+msgstr "Check publication result"
+
+#. js-lingui-explicit-id
 msgid "organization.publication.chooseFiles"
 msgstr "Choose files"
 
@@ -14021,6 +14025,14 @@ msgid "organization.publication.memberSelectionHint"
 msgstr "This conversation uses its executing computer owner's applied project versions. Only that owner can update these versions."
 
 #. js-lingui-explicit-id
+msgid "organization.publication.pending"
+msgstr "Unconfirmed publications"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.pendingHint"
+msgstr "Check the original request before publishing again. Closing this page does not cancel a publication already received by the organization."
+
+#. js-lingui-explicit-id
 msgid "organization.publication.preview"
 msgstr "Preview"
 
@@ -14045,8 +14057,16 @@ msgid "organization.publication.publishVersion"
 msgstr "Publish new version"
 
 #. js-lingui-explicit-id
+msgid "organization.publication.receiptMissing"
+msgstr "No receipt was found. The original request may still complete. A retry uses the same request and files."
+
+#. js-lingui-explicit-id
 msgid "organization.publication.reference"
 msgstr "Versioned reference"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.refreshPending"
+msgstr "Refresh list"
 
 #. js-lingui-explicit-id
 msgid "organization.publication.refreshStatus"
@@ -14055,6 +14075,10 @@ msgstr "Refresh activation status"
 #. js-lingui-explicit-id
 msgid "organization.publication.remove"
 msgstr "Remove from my project"
+
+#. js-lingui-explicit-id
+msgid "organization.publication.retryOriginal"
+msgstr "Retry original publication"
 
 #. js-lingui-explicit-id
 msgid "organization.publication.saved"

@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0142](0142-publication-identity-disappeared-on-reload.md)
+
 - [0141](0141-cancelled-portability-discovery-paused-the-session.md)
 
 - [0143](0143-portable-environment-output-accepted-invalid-frames.md)

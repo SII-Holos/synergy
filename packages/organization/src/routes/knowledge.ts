@@ -21,6 +21,17 @@ export function knowledgeRoutes(publicOrigin?: string) {
   const { credentials } = browserCredentials(publicOrigin)
   return new Hono()
     .post(
+      "/knowledge/publication-receipts",
+      operation(
+        "orgKnowledge.publicationReceipt",
+        "Read the exact original publication receipt without publishing",
+        Knowledge.PublicationReceipt,
+        true,
+      ),
+      validator("json", Knowledge.Publish, validation),
+      async (c) => c.json(await Published.publicationReceipt(credentials(c), c.req.valid("json"))),
+    )
+    .post(
       "/knowledge/selection-updates",
       operation(
         "orgKnowledge.beginSelectionUpdate",

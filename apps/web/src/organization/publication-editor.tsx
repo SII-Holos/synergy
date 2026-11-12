@@ -1,10 +1,10 @@
-import { createSignal, onCleanup, Show } from "solid-js"
+import { createEffect, createSignal, onCleanup, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
-import type { OrganizationPublicationProtocol as Publication } from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationPublicationProtocol as Publication } from "@ericsanchezok/synergy-organization-protocol"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useSpace } from "@/context/space"
 import { organizationOwnerFailure } from "./owner-error"
@@ -12,6 +12,9 @@ import { WorkspaceError } from "./workspace-error"
 import { publicationMessages as messages } from "./publication-messages"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
 import { uploadPublication } from "./publication-transfer"
+import { PublicationIdentity, preparePublicationRecord, type PublicationRecord } from "./publication-record"
+import { createOrganizationPublicationStore } from "./publication-store"
+import { submitPublication } from "./publication-recovery"
 
 export function PublicationEditor(props: {
   purpose: "knowledge" | "artifact"
@@ -29,8 +32,24 @@ export function PublicationEditor(props: {
   const owner = space.current()!
   const controller = new AbortController()
   const signal = AbortSignal.any([owner.signal, controller.signal])
-  onCleanup(() => controller.abort())
-  const options = { throwOnError: true, signal } as const
+  const store = createOrganizationPublicationStore({ identity: PublicationIdentity.parse(owner.identity), signal })
+  const target = () =>
+    JSON.stringify([
+      props.purpose,
+      Publication.Scope.parse(props.scope),
+      props.sourceSessionID,
+      props.existing?.id,
+      props.existing?.revision,
+    ])
+  const originalTarget = target()
+  const current = () => !signal.aborted && target() === originalTarget
+  createEffect(() => {
+    if (target() !== originalTarget) controller.abort()
+  })
+  onCleanup(() => {
+    controller.abort()
+    store.dispose()
+  })
   const [title, setTitle] = createSignal(props.existing?.title ?? "")
   const [kind, setKind] = createSignal<"material" | "skill">(props.existing?.kind ?? "material")
   const [state, setState] = createStore({ files: [] as { path: string; blob: File }[] })
@@ -43,6 +62,18 @@ export function PublicationEditor(props: {
   const id = props.existing?.id ?? generateSecureUUID()
   let filesInput: HTMLInputElement | undefined
   let folderInput: HTMLInputElement | undefined
+  let pending: PublicationRecord | undefined
+  let selection:
+    | {
+        purpose: "knowledge" | "artifact"
+        scope: Publication.Scope
+        sourceSessionID?: string
+        revision: number
+        title: string
+        kind: "material" | "skill"
+        files: { path: string; blob: File }[]
+      }
+    | undefined
   function select(files: FileList | null, folder: boolean) {
     if (!files || attempted()) return
     const selection = Array.from(files).map((blob) => ({
@@ -53,52 +84,65 @@ export function PublicationEditor(props: {
     setError(undefined)
   }
   async function publish() {
-    if (busy() || !state.files.length || !title().trim()) return
+    if (!current() || busy() || !state.files.length || !title().trim()) return
+    const completed = props.published
+    const invalidated = props.invalidated
+    selection ??= {
+      purpose: props.purpose,
+      scope: Publication.Scope.parse(props.scope),
+      sourceSessionID: props.sourceSessionID,
+      revision: props.existing?.revision ?? 0,
+      title: title().trim(),
+      kind: kind(),
+      files: state.files.map((file) => ({ path: file.path, blob: file.blob })),
+    }
+    const original = selection
     setBusy(true)
     setAttempted(true)
     setError(undefined)
     try {
-      const upload = await uploadPublication(api, {
-        requestID,
-        purpose: props.purpose,
-        scope: props.scope,
-        sourceSessionID: props.sourceSessionID,
-        files: state.files,
-        signal,
-        progress: setProgress,
-      })
-      if (props.purpose === "knowledge") {
-        await api.orgKnowledge.publish(
-          {
-            requestID: publishRequestID,
-            itemID: id,
-            expectedRevision: props.existing?.revision ?? 0,
-            uploadID: upload.uploadID,
-            title: title().trim(),
-            kind: kind(),
+      if (!pending) {
+        const upload = await uploadPublication(api, {
+          requestID,
+          purpose: original.purpose,
+          scope: original.scope,
+          sourceSessionID: original.sourceSessionID,
+          files: original.files,
+          signal,
+          progress: (value) => {
+            if (current()) setProgress(value)
           },
-          options,
-        )
-      } else {
-        await api.orgArtifacts.publish(
-          {
-            requestID: publishRequestID,
-            artifactID: id,
-            expectedRevision: props.existing?.revision ?? 0,
-            uploadID: upload.uploadID,
-            title: title().trim(),
-          },
-          options,
+        })
+        if (!current()) return
+        const request = {
+          requestID: publishRequestID,
+          expectedRevision: original.revision,
+          uploadID: upload.uploadID,
+          title: original.title,
+        }
+        pending = await store.put(
+          preparePublicationRecord({
+            identity: PublicationIdentity.parse(owner.identity),
+            source: { scope: original.scope, sourceSessionID: original.sourceSessionID },
+            upload,
+            publication:
+              original.purpose === "knowledge"
+                ? { purpose: "knowledge", request: { ...request, itemID: id, kind: original.kind } }
+                : { purpose: "artifact", request: { ...request, artifactID: id } },
+            createdAt: Date.now(),
+          }),
         )
       }
-      if (!signal.aborted) props.published()
+      if (!current()) return
+      await submitPublication(api, store, pending, signal)
+      if (current()) completed()
     } catch (error) {
-      if (!signal.aborted) {
-        if (organizationOwnerFailure(error) && props.invalidated) props.invalidated(error)
+      if (current()) {
+        if (organizationOwnerFailure(error) && invalidated) invalidated(error)
         else setError(error)
       }
     } finally {
-      if (!signal.aborted) setBusy(false)
+      if (current()) setBusy(false)
     }
   }
   const size = () =>

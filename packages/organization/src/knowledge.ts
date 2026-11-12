@@ -270,6 +270,29 @@ export namespace OrganizationKnowledge {
     })
   }
 
+  export async function publicationReceipt(credentials: Credentials, value: Knowledge.Publish) {
+    const input = Knowledge.Publish.parse(value)
+    return Storage.snapshot(async () => {
+      const { account } = await authorize(credentials, "organization.read")
+      const receipt = await read(Receipt, keys.receipt(account.orgID, account.accountID, input.requestID))
+      if (receipt) {
+        const current = await item(credentials, receipt.itemID)
+        if (receipt.itemID !== input.itemID || receipt.requestHash !== digest(input))
+          fail("REVISION_CONFLICT", "Knowledge publication request changed")
+        return Knowledge.PublicationReceipt.parse({
+          state: "published",
+          release: releaseView(await getRelease(current, receipt.version)),
+        })
+      }
+      const upload = await Publications.status(credentials, input.uploadID)
+      if (upload.purpose !== "knowledge" || upload.state !== "sealed")
+        fail("INVALID_REQUEST", "Knowledge publication requires a sealed knowledge upload")
+      const current = await read(Item, keys.item(account.orgID, input.itemID))
+      if (current) await item(credentials, input.itemID)
+      return Knowledge.PublicationReceipt.parse({ state: "missing" })
+    })
+  }
+
   export async function get(credentials: Credentials, itemID: string, version?: number) {
     return Storage.snapshot(async () => releaseView(await getRelease(await item(credentials, itemID), version)))
   }
