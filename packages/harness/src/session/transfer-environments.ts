@@ -176,6 +176,46 @@ export namespace SessionTransferEnvironments {
     )
     assertOwner()
   }
+  async function preparedSource(binding: Epochs.Binding, signal: AbortSignal) {
+    const assertOwner = guard(signal)
+    const source = await Records.source({
+      scopeID: binding.scopeID,
+      sessionID: binding.sessionID,
+      handoffID: binding.handoffID,
+    })
+    const session = await Session.get(binding.sessionID)
+    await EnvironmentExecution.assertSessionDrained(
+      session.scope.id,
+      session.id,
+      session.environmentID,
+      session.workspaceID,
+    )
+    const current = await Environment.binding(session.scope.id, session.id)
+    const count = await historyCount(session.scope.id, session.id, signal)
+    const selected = await selection(session.environmentID, session.scope.id)
+    assertOwner()
+    if (!source || source.rootSessionID !== (binding.rootSessionID ?? binding.sessionID))
+      fail("Prepared Environment source evidence is absent")
+    if (
+      session.scope.id !== binding.scopeID ||
+      (source.selected?.environmentID ?? null) !== session.environmentID ||
+      (current?.id ?? null) !== session.environmentID ||
+      JSON.stringify(source.selected) !== JSON.stringify(selected) ||
+      executions(source) !== count
+    )
+      fail("Prepared Environment evidence disagrees with canonical Session selection")
+    return { source, session }
+  }
+  export async function assertPreparedSource(input: { binding: Epochs.Binding; signal: AbortSignal }) {
+    const binding = Epochs.Binding.parse(input.binding)
+    const signal = input.signal
+    const assertOwner = guard(signal)
+    const currentBinding = await Epochs.ownerPreparationBinding(binding)
+    if (JSON.stringify(currentBinding) !== JSON.stringify(binding))
+      fail("Prepared Environment evidence belongs to another source binding")
+    await preparedSource(binding, signal)
+    assertOwner()
+  }
   async function* exportEntries(context: Owners.SourceContext): AsyncGenerator<SessionTransferStream.Input> {
     context = { ...context, session: structuredClone(context.session) }
     const assertOwner = guard(context.signal)
@@ -185,22 +225,7 @@ export namespace SessionTransferEnvironments {
       (binding.rootSessionID ?? binding.sessionID) !== context.rootSessionID
     )
       fail("Frozen Environment evidence belongs to another source binding")
-    const source = await Records.source({
-      scopeID: context.session.scope.id,
-      sessionID: context.session.id,
-      handoffID: context.handoffID,
-    })
-    const session = await Session.get(context.session.id)
-    const current = await Environment.binding(session.scope.id, session.id)
-    const count = await historyCount(session.scope.id, session.id, context.signal)
-    assertOwner()
-    if (!source || source.rootSessionID !== context.rootSessionID) fail("Frozen Environment source evidence is absent")
-    if (
-      (source.selected?.environmentID ?? null) !== session.environmentID ||
-      (current?.id ?? null) !== session.environmentID ||
-      executions(source) !== count
-    )
-      fail("Frozen Environment evidence disagrees with canonical Session selection")
+    const { source, session } = await preparedSource(binding, context.signal)
     const entry = (key: string[], value: unknown): SessionTransferStream.Input => ({
       id: JSON.stringify([ownerID, key]),
       kind: "record",

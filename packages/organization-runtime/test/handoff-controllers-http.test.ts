@@ -15,17 +15,20 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import {
   SessionTransferCore as Core,
   SessionTransferSource as NativeSource,
+  SessionTransferEnvironments as Environments,
   SessionTransferWorkspaces as Files,
   SessionTransferStaging as Staging,
 } from "@ericsanchezok/synergy-harness/session/transfer"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { registerWorkspace } from "@ericsanchezok/synergy-local-runtime/register-workspace"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { fixture } from "./support/organization"
 import {
   prepareMemberHome,
@@ -86,11 +89,13 @@ test.each([
   "workspace-unknown",
   "workspace-mapping-conflict",
   "workspace-activation-unknown",
+  "environment-transfer",
 ] as const)(
   "generated HTTPS and actual enrolled machine Homes preserve %s without input replay",
   async (mode) => {
     const withResources = mode.startsWith("resource-")
     const withWorkspace = mode.startsWith("workspace-")
+    const withEnvironment = mode === "environment-transfer"
     const wake = withResources ? spyOn(SessionManager, "scheduleWake").mockImplementation(() => {}) : undefined
     using restoreWake = {
       [Symbol.dispose]() {
@@ -135,9 +140,14 @@ test.each([
         identity: runtimeIdentityDigest(identity),
         readerContract: NativeHomeReaderContract,
       })
-      registerWorkspace(coordinator)
+      if (withEnvironment)
+        registerLocalRuntime({ workers: false, environment: "native", workspaceCoordinator: coordinator })
+      else registerWorkspace(coordinator)
       Core.register()
       if (withWorkspace) Files.register()
+      if (withEnvironment) {
+        Environments.register()
+      }
       registerSessionSchema({ orgID: identity.orgID })
       if (withResources) registerMemberExecution(identity)
       registerOrganizationTransferOwner()
@@ -185,6 +195,7 @@ test.each([
     let sourceFailure: unknown
     let targetFailure: unknown
     let mappingConflict: "identity" | "receipt" = "identity"
+    let targetEnvironmentID: string | undefined
     const targetController = await target.run(() =>
       Target.create({ identity: hosted.identity, runtimeID: targetRegistration.runtimeID }),
     )
@@ -292,7 +303,7 @@ test.each([
                 ...(mode === "workspace-mapping-conflict" && mappingConflict === "receipt"
                   ? { workspaceReceiptHash: "f".repeat(64) }
                   : {}),
-                environmentID: null,
+                environmentID: targetEnvironmentID ?? null,
               }
             },
           }
@@ -340,6 +351,39 @@ test.each([
       const sourceDirectory = path.join(f.root, "source-workspace")
       const workspaceBytes = new Uint8Array([0, 255, 37, 128, 10])
       let sourceWorkspaceID: string | undefined
+      let sourceEnvironmentID: string | undefined
+      if (withEnvironment) {
+        await source.run(async () => {
+          const session = await Session.get(sessionID)
+          const environment = await Environment.bind({
+            scopeID: project.projectID,
+            ownerID: "controller-native-source",
+            provider: "native",
+            spec: {},
+          })
+          sourceEnvironmentID = environment.id
+          await ScopeContext.provide({
+            scope: session.scope,
+            workspace: null,
+            fn: () =>
+              Session.updateEnvironment(sessionID, {
+                expectedEnvironmentID: null,
+                environmentID: environment.id,
+              }),
+          })
+        })
+        targetEnvironmentID = await target.run(
+          async () =>
+            (
+              await Environment.bind({
+                scopeID: project.projectID,
+                ownerID: "controller-native-target",
+                provider: "native",
+                spec: {},
+              })
+            ).id,
+        )
+      }
       if (withWorkspace) {
         await fs.mkdir(sourceDirectory)
         await Bun.write(path.join(sourceDirectory, "private.bin"), workspaceBytes)
@@ -854,6 +898,16 @@ test.each([
             bindingEpoch: 2,
           },
         })
+        if (withEnvironment) {
+          expect((await Session.get(sessionID)).environmentID).toBe(targetEnvironmentID!)
+          expect((await Environment.binding(project.projectID, sessionID))?.id).toBe(targetEnvironmentID!)
+          expect(await Environment.get(targetEnvironmentID!, project.projectID)).toMatchObject({
+            state: "idle",
+            generation: 0,
+          })
+          expect(await Environment.uses(targetEnvironmentID!)).toEqual([])
+          expect(await SessionInbox.list(sessionID)).toEqual([])
+        }
         if (withWorkspace) {
           const session = await Session.get(sessionID)
           if (!session.workspaceID) throw new Error("Native handoff did not publish a Workspace")
@@ -871,6 +925,16 @@ test.each([
           expect(await Session.messages({ sessionID })).toEqual([])
         }
       })
+      if (withEnvironment)
+        await source.run(async () => {
+          expect((await Session.get(sessionID)).environmentID).toBe(sourceEnvironmentID!)
+          expect((await Environment.binding(project.projectID, sessionID))?.id).toBe(sourceEnvironmentID!)
+          expect(await Environment.get(sourceEnvironmentID!, project.projectID)).toMatchObject({
+            state: "idle",
+            generation: 0,
+          })
+          expect(await Environment.uses(sourceEnvironmentID!)).toEqual([])
+        })
       if (withWorkspace)
         expect(new Uint8Array(await Bun.file(path.join(sourceDirectory, "private.bin")).arrayBuffer())).toEqual(
           workspaceBytes,

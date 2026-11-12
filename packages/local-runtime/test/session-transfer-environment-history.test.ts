@@ -153,7 +153,30 @@ test("source preparation saves an exited native operation and retains its origin
           fromEpoch: 1,
           toEpoch: 2,
         }
-        const prepared = await Source.prepare({ binding, store, signal, async verify() {} })
+        let drainingProof = false
+        const prepared = await Source.prepare({
+          binding,
+          store,
+          signal,
+          async verify() {},
+          async beforeFreeze() {
+            await Environments.assertPreparedSource({ binding, signal })
+            drainingProof = true
+          },
+        })
+        expect(drainingProof).toBe(true)
+        await Environments.assertPreparedSource({ binding, signal })
+        const sealKey = ["environment_transfer", "source", binding.scopeID, binding.sessionID, binding.handoffID]
+        const seal = await Storage.read<{ selected: { generation: number } }>(sealKey)
+        await Storage.remove(sealKey)
+        await expect(Environments.assertPreparedSource({ binding, signal })).rejects.toThrow("evidence is absent")
+        await Storage.write(sealKey, seal)
+        await Storage.write(sealKey, {
+          ...seal,
+          selected: { ...seal.selected, generation: seal.selected.generation + 1 },
+        })
+        await expect(Environments.assertPreparedSource({ binding, signal })).rejects.toThrow("disagrees")
+        await Storage.write(sealKey, seal)
         const completed = await EnvironmentExecution.get(execution.id, "home")
         expect(completed.state).toBe("completed")
         expect(completed.outputCursor).toBeGreaterThan(1)

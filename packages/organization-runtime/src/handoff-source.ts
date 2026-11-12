@@ -13,6 +13,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import {
   SessionTransferSource as NativeSource,
   SessionTransferWorkspaces as Files,
+  SessionTransferEnvironments as Environments,
   SessionTransferEpochs as Epochs,
   SessionTransferOwners as Owners,
 } from "@ericsanchezok/synergy-harness/session/transfer"
@@ -172,18 +173,21 @@ export namespace OrganizationHandoffSource {
               },
             ],
           })
-        if (session.environmentID)
-          throw new Owners.Rejected({
-            message: "Source Environment needs its retained-use transfer proof",
-            requirements: [
-              {
-                code: "environment_transfer_missing",
-                owner: "session-environments",
-                label: "Drain and transfer the exact Session Environment use",
-                recoverable: true,
-              },
-            ],
-          })
+        if (session.environmentID) {
+          if (Owners.compatibility({ "session-environments": 2 }).length)
+            throw new Owners.Rejected({
+              message: "Source Environment needs its retained-use transfer proof",
+              requirements: [
+                {
+                  code: "environment_transfer_missing",
+                  owner: "session-environments",
+                  label: "Drain and transfer the exact Session Environment use",
+                  recoverable: true,
+                },
+              ],
+            })
+          await Environments.assertPreparedSource({ binding: member.binding, signal })
+        }
       }
     }
     async function release(handoffID: string) {
