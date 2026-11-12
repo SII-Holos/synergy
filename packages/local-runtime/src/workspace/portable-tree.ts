@@ -1,4 +1,5 @@
 import fs from "node:fs/promises"
+import { FileRename } from "../file/rename"
 import { constants, type BigIntStats } from "node:fs"
 import path from "node:path"
 import { Database } from "bun:sqlite"
@@ -225,8 +226,17 @@ export namespace NativeWorkspacePortableTree {
       await fs.rm(unicode)
     }
   }
-  export async function materialize(options: Options & { captured: Portable.Root }) {
-    const { directory, store, signal } = options
+  export async function materialize(
+    options: Options & {
+      captured: Portable.Root
+      owner?: { uid: number; gid: number }
+      beforePublish?(staged: string): Promise<void>
+    },
+  ) {
+    const { directory, signal, beforePublish } = options
+    const provider = options.store
+    const store = Object.freeze({ put: provider.put.bind(provider), get: provider.get.bind(provider) })
+    const owner = options.owner && { ...options.owner }
     const captured = Portable.Root.parse(options.captured)
     const destination = path.resolve(options.root)
     signal?.throwIfAborted()
@@ -236,8 +246,8 @@ export namespace NativeWorkspacePortableTree {
     const previous = await fs.lstat(destination, { bigint: true }).catch((e: NodeJS.ErrnoException) => {
       if (e.code !== "ENOENT") throw e
     })
-    if (previous && (!previous.isDirectory() || previous.isSymbolicLink() || (await fs.readdir(destination)).length))
-      throw new Error("Portable Workspace destination must be empty")
+    if (previous)
+      throw new Error("Portable Workspace destination must be absent; an existing empty directory is not retired")
     await outside(destination, directory)
     await initializeSqliteEngine()
     const cache = await temporary(directory)
@@ -278,14 +288,17 @@ export namespace NativeWorkspacePortableTree {
           throw new Error("Portable Workspace parent directory is absent or ambiguous")
         const file = filename(staged, relative)
         if (value.kind === "directory") await fs.mkdir(file, { mode: 0o700 })
-        else if (value.kind === "symlink") await fs.symlink(value.target, file)
-        else {
+        else if (value.kind === "symlink") {
+          await fs.symlink(value.target, file)
+          if (owner) await fs.lchown(file, owner.uid, owner.gid)
+        } else {
           const handle = await fs.open(file, "wx", 0o600)
           try {
             for await (const bytes of entry.content) {
               signal?.throwIfAborted()
               await handle.writeFile(bytes)
             }
+            if (owner) await handle.chown(owner.uid, owner.gid)
             await handle.chmod(value.mode)
             await handle.sync()
           } finally {
@@ -302,19 +315,22 @@ export namespace NativeWorkspacePortableTree {
       )
       for (const row of directories.iterate()) {
         signal?.throwIfAborted()
+        if (owner) await fs.chown(filename(staged, row.path), owner.uid, owner.gid)
         await fs.chmod(filename(staged, row.path), row.mode)
         await syncDirectory(filename(staged, row.path))
       }
+      if (owner) await fs.chown(staged, owner.uid, owner.gid)
       await fs.chmod(staged, captured.mode)
       await syncDirectory(staged)
+      signal?.throwIfAborted()
+      await beforePublish?.(staged)
       signal?.throwIfAborted()
       const current = await fs.lstat(destination, { bigint: true }).catch((e: NodeJS.ErrnoException) => {
         if (e.code !== "ENOENT") throw e
       })
-      if ((current ? identity(current) : undefined) !== (previous ? identity(previous) : undefined))
-        throw new Error("Portable Workspace destination changed during preparation")
-      if (current) await fs.rmdir(destination)
-      await fs.rename(staged, destination)
+      if (current) throw new Error("Portable Workspace destination changed during preparation")
+      signal?.throwIfAborted()
+      FileRename.exclusive(staged, destination)
       published = true
       await syncDirectory(parent)
       return destination

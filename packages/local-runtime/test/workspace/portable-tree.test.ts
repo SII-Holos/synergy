@@ -155,7 +155,6 @@ test("paged native restoration rejects corrupt bytes and cancellation without pu
     }
     const captured = await Portable.capture({ root: source, directory: path.join(tmp.path, "capture"), store })
     const destination = path.join(tmp.path, "destination")
-    await fs.mkdir(destination)
     const corrupt: BlobStore = {
       ...store,
       async get(hash, limit) {
@@ -167,7 +166,7 @@ test("paged native restoration rejects corrupt bytes and cancellation without pu
     await expect(
       Portable.materialize({ root: destination, directory: path.join(tmp.path, "bad"), captured, store: corrupt }),
     ).rejects.toThrow()
-    expect(await fs.readdir(destination)).toEqual([])
+    expect(await fs.readdir(tmp.path)).not.toContain("destination")
     const controller = new AbortController()
     const reason = new Error("Original native owner cancelled")
     const cancelled: BlobStore = {
@@ -187,7 +186,7 @@ test("paged native restoration rejects corrupt bytes and cancellation without pu
         signal: controller.signal,
       }),
     ).rejects.toBe(reason)
-    expect(await fs.readdir(destination)).toEqual([])
+    expect(await fs.readdir(tmp.path)).not.toContain("destination")
     expect((await fs.readdir(tmp.path)).some((name) => name.startsWith(".synergy-workspace-"))).toBe(false)
   })
 })
