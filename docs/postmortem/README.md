@@ -23,6 +23,8 @@
 
 - [0111](0111-cancelled-handoff-reenabled-retained-grants.md)
 
+- [0110](0110-native-file-proof-revived-after-retry.md)
+
 - [0109](0109-native-publication-lost-input-priority.md)
 
 - [0108](0108-staged-context-read-foreign-storage.md)

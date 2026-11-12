@@ -44,10 +44,16 @@ export namespace NativeSessionTransferPhysical {
     claims: Map<string, WorkspaceAccess.Lease>
     database?: Database
     directory?: string
+    capture?: CaptureFrame
+  }
+  interface CaptureFrame {
+    owner: Held
+    open: boolean
+    completed: boolean
   }
   const state = RuntimeContext.state(() => ({ coordinator: undefined as WorkspaceCoordinator | undefined }))
   const held = new WeakMap<Lease, Held>()
-  const context = RuntimeContext.createAsyncContext<{ owner: Held; open: boolean }>()
+  const context = RuntimeContext.createAsyncContext<CaptureFrame>()
   function fail(message: string): never {
     throw new Error("Session physical transfer " + message)
   }
@@ -236,7 +242,8 @@ export namespace NativeSessionTransferPhysical {
     if (owner.phase === "capturing") fail("capture is already in progress")
     const reuse = owner.phase === "captured"
     owner.phase = "capturing"
-    const frame = { owner, open: false }
+    const frame: CaptureFrame = { owner, open: false, completed: false }
+    owner.capture = frame
     try {
       await preparation(owner)
       if (!reuse) {
@@ -279,6 +286,7 @@ export namespace NativeSessionTransferPhysical {
       await validateInventory(owner)
       await preparation(owner)
       owner.phase = "captured"
+      frame.completed = true
       return result
     } catch (error) {
       owner.phase = "releasing"
@@ -340,6 +348,18 @@ export namespace NativeSessionTransferPhysical {
       return
     }
     if (owner.phase !== "captured") fail("has not completed native drainage and capture")
+  }
+  export function sourceCaptureVerifier(value: Epochs.Binding) {
+    const lease = sourceCapture(value)
+    const frame = context.getStore()
+    if (!frame) fail("requires its open source capture attempt")
+    return () => {
+      const owner = selected(lease)
+      if (owner.capture !== frame || (!frame.open && !frame.completed))
+        fail("source capture attempt is no longer valid")
+      assertSource(lease)
+      if (frame.open && context.getStore() !== frame) fail("belongs to another source capture attempt")
+    }
   }
   export function assertCurrent(lease: Lease) {
     const owner = selected(lease)

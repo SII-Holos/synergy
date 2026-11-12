@@ -34,6 +34,80 @@ function objects() {
   }
 }
 
+test("a failed final native capture attempt cannot regain file authority when its original lease succeeds on retry", async () => {
+  await using directory = await tmpdir()
+  await using runtime = await testRuntime({
+    register() {
+      registerWorkspace(new WorkspaceCoordinator({ directory: path.join(directory.path, "claims") }))
+      Core.register()
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const root = await Session.create({ workspaceID: null, environmentID: null })
+        const binding = {
+          sessionID: root.id,
+          scopeID: "home",
+          handoffID: "capture-attempt-identity",
+          sourceID: "source",
+          targetID: "target",
+          fromEpoch: 1,
+          toEpoch: 2,
+        }
+        const finalFailure = new Error("Final native writer verification failed")
+        let rejectFinal = false
+        const verify = ServerProcessLock.verifyOwnership
+        using fault = spyOn(ServerProcessLock, "verifyOwnership").mockImplementation(async (proof) => {
+          if (rejectFinal) {
+            rejectFinal = false
+            throw finalFailure
+          }
+          await verify(proof)
+        })
+        let lease: Physical.Lease | undefined
+        let failed: (() => void) | undefined
+        let completed: (() => void) | undefined
+        try {
+          await Source.prepare({
+            binding,
+            store: objects(),
+            signal: new AbortController().signal,
+            async verify() {},
+            async beforeFreeze() {
+              lease = await Physical.begin({ ...binding, rootSessionID: root.id })
+              await expect(
+                Physical.withCapture(lease, async () => {
+                  failed = Physical.sourceCaptureVerifier(binding)
+                  failed()
+                  rejectFinal = true
+                }),
+              ).rejects.toBe(finalFailure)
+              expect(() => failed!()).toThrow("capture")
+              await Physical.withCapture(lease, async () => {
+                expect(Physical.sourceCapture(binding)).toBe(lease!)
+                completed = Physical.sourceCaptureVerifier(binding)
+                completed()
+              })
+              Physical.assertSource(lease)
+              expect(() => failed!()).toThrow("capture attempt")
+              completed!()
+            },
+          })
+          if (!lease) throw new Error("Missing original native lease")
+          completed!()
+          await Physical.release(lease)
+          expect(() => completed!()).toThrow("released")
+        } finally {
+          if (lease) await Physical.release(lease)
+        }
+      },
+    }),
+  )
+})
+
 test("aggregate file owners receive only the exact open source capture lease and cannot retain it after release", async () => {
   await using directory = await tmpdir()
   await using runtime = await testRuntime({

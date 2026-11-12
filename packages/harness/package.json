@@ -39,6 +39,7 @@
     "./session/stored-snapshots": "./src/session/stored-snapshots.ts",
     "./session/snapshot-maintenance": "./src/session/snapshot-maintenance.ts",
     "./session/snapshot-git": "./src/session/snapshot-git.ts",
+    "./session/workspace-portable-schema": "./src/session/workspace-portable-schema.ts",
     "./scope": "./src/scope/index.ts",
     "./scope/context": "./src/scope/context.ts",
     "./workspace/runtime": "./src/workspace/runtime.ts",

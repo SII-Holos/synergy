@@ -1,4 +1,6 @@
 import { registerSessionTransferWorkspace } from "./session-transfer-workspace"
+import { registerSessionTransferWorkspaces } from "./session-transfer-workspaces"
+import { registerSessionTransferWorkspaceTarget } from "./session-transfer-workspace-target"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileLink } from "./file/link"
 import { SnapshotRestore } from "@ericsanchezok/synergy-harness/session/snapshot-restore"
@@ -51,6 +53,8 @@ export function registerWorkspace(coordinator = new WorkspaceCoordinator()) {
   NativeProcessMaintenance.register(coordinator)
   registerWorkspaceIdentityMigrations()
   registerSessionTransferWorkspace()
+  registerSessionTransferWorkspaces()
+  registerSessionTransferWorkspaceTarget()
   SnapshotLink.register({ type: (filename) => FileLink.type(filename) })
   SnapshotRestore.register(WorkspaceFileRestore)
   WorkspaceFileImport.register(WorkspaceFileService)

@@ -68,6 +68,13 @@ export namespace SessionTransferCore {
       for await (const row of Storage.records({ prefix, limit: 128 })) if (own(session, row.key)) yield row
   }
 
+  export async function* workspaceReferences(session: Readonly<Session.Info>, signal?: AbortSignal) {
+    for await (const row of records(session)) {
+      signal?.throwIfAborted()
+      yield* WorkspaceTransfer.recordReferences(row.key, row.value)
+    }
+  }
+
   export async function* snapshotRoots(
     session: Readonly<Session.Info>,
     records: AsyncIterable<Owners.StagedRecord>,
