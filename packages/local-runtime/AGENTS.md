@@ -7,7 +7,7 @@
 - `Skill.snapshot` reuses canonical parsing/collision rules for host-authorized roots without resetting Scope caches; test `test/skill/snapshot.test.ts`.
 - Question owns pending windows and answers; decide/reconcile uses native Session receipts. Restore Scope for deferred settlement and redact private answers. Verify question decision-receipt/pending-window suites.
 
-Run typecheck, focused tests and root package/dependency checks.
+Typecheck; run focused tests and package/dependency checks.
 
 Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClient` requires Runtime Handle/Scope. Workers use selected entrypoints. HTTP/in-process clients share `session-api.ts`; preserve Scope, Inbox scheduling and cancellation. Never import CLI, server or product implementations.
 
@@ -15,8 +15,8 @@ Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClien
 
 - Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
 - Image decoding uses `AttachmentImageInput`; verify `test/attachment/image-input.test.ts` and Media's attachment suite.
-- Own native/Docker providers, Executor transport and receipts. Use `OwnedProcess` and Workspace coordination; retain native deallocation claims through final save and publication. Verify `bun test test/environment test/workspace/coordinator.test.ts` and README's Docker integration.
-- Own PTYs, process maintenance, Linux ownership, watchers, sandboxes, Rust helpers and packaging. Use platform optional dependencies. Build: `bun script/build-pty.ts`; test process/maintenance, native-pty/pty/owned-process-linux. Drain completion; retain uncertain starts without killing/replaying. Register `SandboxHost` and `file-watcher` Scope startup; Harness owns policy/wrappers.
+- Own native/Docker providers, Executor transport and receipts. Pass explicit Session/Host origins. Retain `OwnedProcess`/Workspace claims through final saving and publication. Verify `bun test test/environment test/workspace/coordinator.test.ts` and README's Docker integration.
+- Own PTYs, process maintenance, Linux ownership, watchers, sandboxes, Rust helpers and packaging. Use platform optional dependencies. Build: `bun script/build-pty.ts`; test process/maintenance, native-pty/pty/owned-process-linux. Require origins; drain completion; retain uncertain starts without killing/replaying. Register `SandboxHost` and `file-watcher` Scope startup; Harness owns policy/wrappers.
 - Linux watcher assets use `script/build-watcher.ts` and its pinned source patch. Validate the compiled binding and signal recovery; an unused C++ source edit does not fix the installed watcher.
 
 Workspace removal and reclamation share the lifecycle gate and native retirement claim. Git/setup commands use the Workspace process owner; short metadata mutations cannot reserve read-only turns as writers. Preserve active users, on-disk locks and unverified commits. Run `bun test test/workspace` and Presets worktree suites.

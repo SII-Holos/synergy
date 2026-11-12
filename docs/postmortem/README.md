@@ -220,3 +220,5 @@ Only append corrections.
 - [0119](0119-portable-writer-retained-mutable-inputs.md)
 
 - [0120](0120-workspace-readers-outlived-their-selected-storage.md)
+
+- [0122](0122-shared-host-admission-outlived-its-task.md)

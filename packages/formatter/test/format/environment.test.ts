@@ -11,6 +11,7 @@ import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
@@ -19,8 +20,10 @@ import { File } from "@ericsanchezok/synergy-local-runtime/file"
 import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
 import { registerConfig } from "../../src/config-schema"
 import { Format } from "../../src"
+import { FormatterProcess } from "../../src/process"
 
 test("configured formatters use the active Environment and leave dormant object edits allocation-free", async () => {
+  let origin: ReturnType<typeof EnvironmentOrigin.registerHost> | undefined
   await using runtime = await testRuntime({
     composition: {
       register() {
@@ -30,6 +33,8 @@ test("configured formatters use the active Environment and leave dormant object 
           }),
         })
         registerConfig()
+        FormatterProcess.register()
+        origin = EnvironmentOrigin.registerHost("formatter-environment-fixture")
       },
     },
     register() {
@@ -44,6 +49,7 @@ test("configured formatters use the active Environment and leave dormant object 
       scope: Scope.home(),
       workspace: null,
       fn: async () => {
+        if (!origin) throw new Error("Fixture origin is unavailable")
         await Config.updateGlobal({
           formatter: {
             fixture: {
@@ -67,6 +73,7 @@ test("configured formatters use the active Environment and leave dormant object 
         for (const live of [false, true]) {
           await using resources = await EnvironmentResources.resolve({
             ...selection,
+            origin: origin.capture(`format-${live}`),
             needs: live ? { execution: "exec" } : { workspace: true },
           })
           await WorkspaceState.provide({ id: workspace.id, scopeID, generation: workspace.binding.generation }, () =>
