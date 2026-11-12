@@ -9,6 +9,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
+import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { OrganizationBackupCohort as Cohort } from "../../src/backup/cohort"
 import { OrganizationRecoveryArchive as Archive } from "../../src/backup/archive"
 import { OrganizationServiceNative as Native } from "../../src/backup/service-native"
@@ -47,6 +48,7 @@ const clients = [
 let directory: string
 let source: Awaited<ReturnType<typeof organizationFixture>>
 let input: Omit<Parameters<typeof Native.withInstalled>[0], "permit">
+let snapshot: StorageCheckpoint.Manifest
 let h0: Awaited<ReturnType<typeof AuthorityJournal.head>>
 let h1: typeof h0
 
@@ -84,6 +86,7 @@ beforeAll(async () => {
   const base = path.join(opened, "namespaces", "0000000000000000")
   const inventory = Cohort.NamespaceInventory.parse(await Bun.file(path.join(base, "namespace.json")).json())
   if (!inventory.native) throw new Error("Service native facet is missing")
+  snapshot = inventory.segment.namespace
   input = {
     directory: path.join(base, "native"),
     expected: inventory.native,
@@ -93,6 +96,7 @@ beforeAll(async () => {
       restoreID: "recovery-authority",
       source: inventory.namespace,
       expected: inventory.native,
+      snapshot: inventory.segment.namespace,
       cohort: {
         archiveID: report.archiveID,
         pagesHash: report.pagesHash,
@@ -120,18 +124,37 @@ async function target<T>(name: string, body: (context: InstalledContext) => Prom
   return runtime.run(async () => {
     const selected = await HomeRestoration.begin(input.request)
     return HomeRestoration.withTarget(selected, (permit) =>
-      Native.withInstalled({ ...input, permit }, async (native) => {
-        if (restore)
-          await StorageCheckpoint.restoreArchive({
-            directory: path.join(path.dirname(input.directory), "records"),
-            expected: input.source,
+      Native.withInstalled({ ...input, permit }, (native) =>
+        SnapshotMaintenance.withInstalledSegment(
+          {
+            directory: path.join(path.dirname(input.directory), "snapshots"),
+            namespaceDirectory: path.join(path.dirname(input.directory), "records"),
+            source: input.source,
+            expected: snapshot,
             keys,
-            restoreID: input.request.restoreID,
-            finalize: (tx, archive) =>
-              RuntimeMaintenance.adoptRestoration(tx, { permit, request: input.request, archive }).then(() => {}),
-          })
-        return body({ permit, native, installationID: HomeRestoration.describe(permit).installationID, home })
-      }),
+            permit,
+            request: input.request,
+          },
+          async (installed) => {
+            if (restore)
+              await StorageCheckpoint.restoreArchive({
+                directory: path.join(path.dirname(input.directory), "records"),
+                expected: input.source,
+                keys,
+                restoreID: input.request.restoreID,
+                finalize: (tx, archive) =>
+                  Native.adoptRestoration(tx, {
+                    permit,
+                    request: input.request,
+                    native,
+                    snapshot: installed,
+                    archive,
+                  }).then(() => {}),
+              })
+            return body({ permit, native, installationID: HomeRestoration.describe(permit).installationID, home })
+          },
+        ),
+      ),
     )
   })
 }

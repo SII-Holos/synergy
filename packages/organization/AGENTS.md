@@ -28,4 +28,4 @@ Publications verify immutable chunks before release. Knowledge stages pages befo
 
 Cloud locators own attribution only. Keep file CAS and operation receipts atomic and compose explicit infrastructure without personal configuration. Verify `test/cloud.test.ts`.
 
-Track accepted service operations and exact completions through maintenance. Freeze the roster before capture; incomplete native/resource segments block completion. Verify service-maintenance/cohort/service-native* with isolated Homes.
+Maintenance retains accepted completions and freezes rosters; incomplete segments block completion. Installation requests bind native/Snapshot; both owners guard adoption commits. Verify service-maintenance/cohort/service-native*/service-snapshot-install with isolated Homes.

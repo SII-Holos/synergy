@@ -63,6 +63,7 @@ async function fixture() {
     restoreID: "service-native-install",
     source: inventory.namespace,
     expected: inventory.native,
+    snapshot: inventory.segment.namespace,
     cohort: {
       archiveID: report.archiveID,
       pagesHash: report.pagesHash,

@@ -11,7 +11,7 @@ import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runti
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { withStorageQueueOptions } from "@ericsanchezok/synergy-harness/storage/queue"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
-import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
+import { TransactionalStore, type StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
@@ -275,22 +275,57 @@ export namespace OrganizationServiceNative {
     ordinal: z.number().int().nonnegative().safe(),
     source: Identity,
   })
+  function assertSource(
+    source: StorageCheckpoint.Manifest,
+    native: StorageCheckpoint.Manifest,
+    cohort: z.infer<typeof CohortMapping>,
+  ) {
+    const namespaceID = hash(Buffer.from(JSON.stringify({ kind: "service", ...cohort.source })))
+    if (
+      source.archiveID !== hash(Buffer.from(cohort.archiveID + ":" + cohort.ordinal)) ||
+      source.namespaceID !== namespaceID ||
+      native.archiveID !== "service-native" ||
+      native.namespaceID !== source.namespaceID ||
+      native.buildVersion !== source.buildVersion
+    )
+      fail("installation facets belong to another source namespace or cohort")
+  }
   export const InstallationRequest = HomeRestoration.Request.extend({
     owner: z.literal("organization"),
-    payload: z.strictObject({ nativeHash: OrganizationProtocol.Digest, cohort: CohortMapping }),
+    payload: z.strictObject({
+      nativeHash: OrganizationProtocol.Digest,
+      snapshot: z.strictObject({ manifestHash: OrganizationProtocol.Digest }),
+      cohort: CohortMapping,
+    }),
   })
   export type InstallationRequest = z.infer<typeof InstallationRequest>
   export function installationRequest(input: {
     restoreID: string
     source: StorageCheckpoint.Manifest
     expected: StorageCheckpoint.Manifest
+    snapshot: StorageCheckpoint.Manifest
     cohort: z.infer<typeof CohortMapping>
   }): InstallationRequest {
+    const source = StorageCheckpoint.Manifest.parse(input.source)
+    const native = StorageCheckpoint.Manifest.parse(input.expected)
+    const snapshot = StorageCheckpoint.Manifest.parse(input.snapshot)
+    const cohort = CohortMapping.parse(input.cohort)
+    assertSource(source, native, cohort)
+    if (
+      snapshot.archiveID !== "snapshot-segment" ||
+      snapshot.namespaceID !== source.namespaceID ||
+      snapshot.buildVersion !== source.buildVersion
+    )
+      fail("installation facets belong to another source namespace or cohort")
     return InstallationRequest.parse({
       restoreID: input.restoreID,
       owner: "organization",
-      sourceHash: sourceHash(input.source),
-      payload: { nativeHash: sourceHash(input.expected), cohort: structuredClone(input.cohort) },
+      sourceHash: sourceHash(source),
+      payload: {
+        nativeHash: sourceHash(native),
+        snapshot: { manifestHash: sourceHash(snapshot) },
+        cohort,
+      },
     })
   }
   export interface Installed {
@@ -321,6 +356,41 @@ export namespace OrganizationServiceNative {
       namespace: StorageCheckpoint.Manifest.parse(current.namespace),
     }
   }
+  export async function adoptRestoration(
+    tx: StoreTransaction,
+    input: {
+      permit: HomeRestoration.InstallPermit
+      request: InstallationRequest
+      native: Installed
+      snapshot: Parameters<typeof SnapshotMaintenance.assertInstalledSegment>[0]
+      archive: StorageCheckpoint.ImportEvidence
+    },
+  ) {
+    const permit = input.permit
+    const request = InstallationRequest.parse(structuredClone(input.request))
+    const native = input.native
+    const snapshot = input.snapshot
+    const archive = input.archive
+    const assert = () => {
+      HomeRestoration.assertCurrent(permit)
+      HomeRestoration.assertRequest(permit, request)
+      assertInstalled(native)
+      SnapshotMaintenance.assertInstalledSegment(snapshot)
+    }
+    assert()
+    const imported = StorageCheckpoint.assertImport(archive, tx)
+    const installed = inspectInstalled(native)
+    if (
+      sourceHash(imported) !== request.sourceHash ||
+      sourceHash(installed.manifest.source) !== request.sourceHash ||
+      sourceHash(installed.namespace) !== request.payload.nativeHash
+    )
+      fail("adoption belongs to another original namespace or native facet")
+    StorageCheckpoint.guardImport(archive, tx, assert)
+    const result = await RuntimeMaintenance.adoptRestoration(tx, { permit, request, archive })
+    assert()
+    return result
+  }
   export async function withInstalled<T>(
     input: Parameters<typeof verify>[0] & { permit: HomeRestoration.InstallPermit; request: InstallationRequest },
     body: (installed: Installed) => Promise<T>,
@@ -338,6 +408,7 @@ export namespace OrganizationServiceNative {
       fail("installation belongs to another namespace checkpoint or native owner")
     if (request.sourceHash !== sourceHash(source) || request.payload.nativeHash !== sourceHash(expected))
       fail("installation requires its original fixed native facet")
+    assertSource(source, expected, request.payload.cohort)
     HomeRestoration.assertRequest(permit, request)
     const runtime = RuntimeContext.current()
     const home = runtime.host.home

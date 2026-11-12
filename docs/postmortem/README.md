@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0131](0131-service-recovery-request-omitted-its-snapshot-facet.md)
+
 - [0132](0132-paged-workspace-attachment-used-a-legacy-parser.md)
 
 - [0130](0130-plugin-host-callback-lost-its-native-task-origin.md)
