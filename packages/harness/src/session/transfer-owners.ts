@@ -212,12 +212,14 @@ export namespace SessionTransferOwners {
     const ids = new Set<string>()
     const raw = z
       .object({
+        environmentID: z.string().min(1).nullable().optional(),
         cortex: z.unknown().optional(),
         blueprint: z.unknown().optional(),
         superplan: z.unknown().optional(),
         workflow: z.object({ kind: z.string(), extension: z.object({ kind: z.string() }).optional() }).optional(),
       })
       .parse(input)
+    if (raw.environmentID) ids.add("session-environments")
     if (raw.cortex) ids.add("cortex")
     if (raw.blueprint || raw.superplan) ids.add("blueprint")
     const kind = raw.workflow?.kind === "extension" ? raw.workflow.extension?.kind : raw.workflow?.kind

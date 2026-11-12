@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
@@ -20,6 +20,23 @@ const scenarios: {
   snapshot?: true
   message?: true
 }[] = [
+  ...(["none", "other", "current"] as const).map(
+    (proof) =>
+      ({
+        name: `${proof === "current" ? "this member's" : proof === "other" ? "another member's" : "missing"} Environment proof`,
+        ownerID: "session-environments",
+        fields: { environmentID: "retained-environment" },
+        declared: true,
+        proof,
+      }) as const,
+  ),
+  {
+    name: "undeclared Environment",
+    ownerID: "session-environments",
+    fields: { environmentID: "retained-environment" },
+    declared: false,
+    proof: "none",
+  },
   {
     name: "undeclared Cortex",
     ownerID: "cortex",
@@ -152,7 +169,8 @@ for (const scenario of scenarios)
           const raw = { ...base, ...fields }
           const projected = Session.Info.parse({ ...base, workspace: null })
           const hidden = Object.keys(scenario.fields)[0]
-          if (hidden) expect(projected).not.toHaveProperty(hidden)
+          if (hidden && hidden !== "environmentID") expect(projected).not.toHaveProperty(hidden)
+          if (hidden === "environmentID") expect(projected.environmentID).toBeNull()
           const root = await Stream.write({
             store,
             owners: { "session-core": 1, ...(scenario.declared ? { [scenario.ownerID]: 1 } : {}) },
@@ -247,18 +265,24 @@ for (const scenario of scenarios)
             mapping: {},
             signal: new AbortController().signal,
           })
-          const readVersion = context.staged.ownerVersion
-          if (!readVersion) throw new Error("Staged owner metadata port is unavailable")
+          if (!context.staged.ownerVersion) throw new Error("Staged owner metadata port is unavailable")
           let metadataReads = 0
-          context.staged.ownerVersion = async (ownerID) => {
-            metadataReads++
-            return readVersion(ownerID)
+          const read = Storage.readMany
+          const observed = spyOn(Storage, "readMany").mockImplementation(
+            async <T>(keys: Parameters<typeof Storage.readMany>[0]) => {
+              metadataReads += keys.filter((key) => key.at(-2) === scenario.ownerID && key.at(-1) === session.id).length
+              return read<T>(keys)
+            },
+          )
+          try {
+            if (scenario.proof === "current") {
+              await expect(Owners.validate("session-core", context)).resolves.toBeUndefined()
+              expect(metadataReads).toBe(1)
+            } else await expect(Owners.validate("session-core", context)).rejects.toThrow("required owner")
+            expect(ownerValidations).toBe(0)
+          } finally {
+            observed.mockRestore()
           }
-          if (scenario.proof === "current") {
-            await expect(Owners.validate("session-core", context)).resolves.toBeUndefined()
-            expect(metadataReads).toBe(1)
-          } else await expect(Owners.validate("session-core", context)).rejects.toThrow("required owner")
-          expect(ownerValidations).toBe(0)
         },
       }),
     )
