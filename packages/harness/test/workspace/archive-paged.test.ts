@@ -169,6 +169,23 @@ test("paged saved Workspace archives survive complete source loss and reject inc
     })
     const records = await Array.fromAsync(WorkspaceArchive.records(saved))
     await expect(Array.fromAsync(WorkspaceArchive.records({ ...saved }))).rejects.toThrow("original saved selection")
+    await expect(WorkspaceArchive.copyObjects({ ...saved }, targetStore)).rejects.toThrow("original saved selection")
+    const copyDirectory = path.join(temporary.path, "copy")
+    await fs.mkdir(copyDirectory)
+    const copied = files(copyDirectory)
+    const destination = {
+      async put(hash: string, bytes: Uint8Array) {
+        await copied.put(hash, bytes)
+        destination.put = async () => {
+          throw new Error("A later destination port cannot replace this copy")
+        }
+      },
+    }
+    expect(await WorkspaceArchive.copyObjects(saved, destination)).toBe(hash)
+    await using copiedTree = await Portable.open({ root, store: copied, directory: temporary.path })
+    expect(Buffer.concat(await Array.fromAsync(copiedTree.read("directory/file-0256")))).toEqual(
+      Buffer.from("payload 0"),
+    )
     expect(records[0]).toEqual({ kind: "manifest", version: 2, tree: root })
     expect(JSON.stringify(records)).not.toContain(sourceDirectory)
     expect(JSON.stringify(records)).not.toContain(head.id)
@@ -179,6 +196,7 @@ test("paged saved Workspace archives survive complete source loss and reject inc
   await using target = await testRuntime({ register: () => WorkspaceBlobs.register("fixture", targetStore) })
   await target.run(async () => {
     await expect(Array.fromAsync(WorkspaceArchive.records(captured.saved))).rejects.toThrow("another Runtime")
+    await expect(WorkspaceArchive.copyObjects(captured.saved, targetStore)).rejects.toThrow("another Runtime")
     const input = { scopeID: "target-scope", backend: { provider: "objects", spec: { blobStore: "fixture" } } }
     const restored = await WorkspaceArchive.restore(input, values(captured.records))
     expect(restored.id).not.toBe(captured.sourceID)
@@ -331,6 +349,8 @@ test("valid individual archive objects cannot hide a wrong complete-file digest"
       expectedRevision: head.revision,
     })
     await expect(Array.fromAsync(WorkspaceArchive.records(saved))).rejects.toThrow("checksum")
+    await expect(WorkspaceArchive.copyObjects(saved, files(target))).rejects.toThrow("checksum")
+    expect(await Bun.file(path.join(target, manifest)).exists()).toBe(false)
     await using reader = await Portable.open({ root: tree, store, directory: temporary.path })
     const records: unknown[] = [{ kind: "manifest", version: 2, tree }]
     for await (const object of reader.objects())

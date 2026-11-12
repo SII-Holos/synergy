@@ -27,6 +27,8 @@ export namespace WorkspaceArchive {
     })
     .strict()
   const End = z.object({ kind: z.literal("end"), manifest: WorkspaceTree.Hash }).strict()
+  type ArchiveRecord =
+    z.infer<typeof Header> | z.infer<typeof PagedHeader> | z.infer<typeof Chunk> | z.infer<typeof End>
   function verified(hash: string, bytes: Uint8Array, maximum: number) {
     try {
       return WorkspaceTree.verify(hash, bytes, maximum)
@@ -124,7 +126,7 @@ export namespace WorkspaceArchive {
       }
   }
 
-  export async function* records(snapshot: Saved, signal?: AbortSignal): AsyncGenerator<unknown> {
+  export async function* records(snapshot: Saved, signal?: AbortSignal): AsyncGenerator<ArchiveRecord> {
     const assert = snapshots.get(snapshot)
     if (!assert) throw new Invalid("Workspace archive requires its original saved selection")
     assert()
@@ -168,6 +170,33 @@ export namespace WorkspaceArchive {
     assert()
     signal?.throwIfAborted()
     yield { kind: "end", manifest: WorkspaceTree.hash(WorkspaceTree.encode(snapshot.tree)) }
+  }
+
+  export async function copyObjects(snapshot: Saved, destination: Pick<BlobStore, "put">, signal?: AbortSignal) {
+    const assert = snapshots.get(snapshot)
+    if (!assert) throw new Invalid("Workspace archive requires its original saved selection")
+    const put = destination.put.bind(destination)
+    let descriptor: Uint8Array | undefined
+    let manifest: string | undefined
+    for await (const record of records(snapshot, signal)) {
+      assert()
+      signal?.throwIfAborted()
+      if (record.kind === "manifest")
+        descriptor =
+          "entries" in record.tree
+            ? WorkspaceTree.encode(record.tree)
+            : new TextEncoder().encode(JSON.stringify(record.tree))
+      else if (record.kind === "chunk") await put(record.hash, Buffer.from(record.data, "base64"))
+      else manifest = record.manifest
+      assert()
+      signal?.throwIfAborted()
+    }
+    if (!descriptor || manifest !== WorkspaceTree.hash(descriptor))
+      throw new Invalid("Workspace archive copy did not complete")
+    await put(manifest, descriptor)
+    assert()
+    signal?.throwIfAborted()
+    return manifest
   }
 
   export function stream(snapshot: Saved, signal?: AbortSignal) {

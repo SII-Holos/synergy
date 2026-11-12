@@ -6,6 +6,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { WorkspaceCatalog } from "./catalog"
 import { WorkspaceContent, type BlobStore } from "./content"
+import { WorkspaceArchive } from "./archive"
 import { WorkspaceTree } from "./tree"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "./protocol"
 import { StorageRecovery } from "../storage/recovery"
@@ -373,12 +374,12 @@ export namespace WorkspaceMounts {
         })
       let source: WorkspaceProtocol.MountInput["source"]
       if (info.backend?.provider === "objects") {
-        const { store } = await WorkspaceContent.resolve({ workspaceID: info.id, scopeID: info.scopeID }, true)
-        const tree = await WorkspaceContent.manifest(info, store)
-        const bytes = WorkspaceTree.encode(tree)
-        const manifest = WorkspaceTree.hash(bytes)
-        await transfer(tree, store, { put: (hash, data) => files.putBlob(hash, data) })
-        await files.putBlob(manifest, bytes)
+        const saved = await WorkspaceArchive.saved({
+          workspaceID: info.id,
+          scopeID: info.scopeID,
+          expectedRevision: info.revision,
+        })
+        const manifest = await WorkspaceArchive.copyObjects(saved, { put: (hash, data) => files.putBlob(hash, data) })
         source = { kind: "materialized", manifest }
       } else {
         if (!active.path)
