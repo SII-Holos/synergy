@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { batch, createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -25,7 +25,10 @@ export function ResourceAccess(props: { resource: OrgResourceAdminView; invalida
   const controller = new AbortController()
   const signal = AbortSignal.any([view.signal, controller.signal])
   onCleanup(() => controller.abort())
-  const options = { throwOnError: true, signal } as const
+  const resourceID = props.resource.resourceID
+  let contextController = new AbortController()
+  let generation = 0
+  onCleanup(() => contextController.abort())
   const [kind, setKind] = createSignal<"account" | "project">("account")
   const [state, setState] = createStore({
     accounts: [] as OrgAccount[],
@@ -37,25 +40,63 @@ export function ResourceAccess(props: { resource: OrgResourceAdminView; invalida
   const [error, setError] = createSignal<unknown>()
   const [cursor, setCursor] = createSignal<string>()
   const [subjectCursor, setSubjectCursor] = createSignal<string>()
-  const current = () => !signal.aborted
+  const matches = () => space.current() === view && props.resource.resourceID === resourceID
+  const current = (version = generation) => !signal.aborted && matches() && version === generation
+  function clear() {
+    confirm.closeOwned()
+    setState(reconcile({ accounts: [], projects: [], grants: [] }))
+    setCursor(undefined)
+    setSubjectCursor(undefined)
+    setBusy(false)
+    setLoading(false)
+    setError(undefined)
+  }
+  createEffect(() => {
+    if (!matches() && !signal.aborted) {
+      generation++
+      contextController.abort()
+      controller.abort()
+      clear()
+    }
+  })
+  function select(value: "account" | "project") {
+    if (value === kind() || !current()) return
+    batch(() => {
+      generation++
+      contextController.abort()
+      contextController = new AbortController()
+      clear()
+      setKind(value)
+    })
+    void load(value)
+  }
   function failed(error: unknown) {
     if (organizationOwnerFailure(error)) props.invalidated(error)
     else setError(error)
   }
   async function load(selected = kind(), more = false) {
+    if (!current() || loading()) return
+    const version = generation
+    const requestSignal = AbortSignal.any([signal, contextController.signal])
     setLoading(true)
     setError(undefined)
     try {
       const [grants, subjects] = await Promise.all([
         api.orgResourceGrants.list(
-          { resourceID: props.resource.resourceID, kind: selected, limit: 50, cursor: more ? cursor() : undefined },
-          options,
+          { resourceID, kind: selected, limit: 50, cursor: more ? cursor() : undefined },
+          { throwOnError: true, signal: requestSignal },
         ),
         selected === "account"
-          ? api.orgAccounts.list({ limit: 50, cursor: more ? subjectCursor() : undefined }, options)
-          : api.orgProjects.list({ limit: 50, cursor: more ? subjectCursor() : undefined }, options),
+          ? api.orgAccounts.list(
+              { limit: 50, cursor: more ? subjectCursor() : undefined },
+              { throwOnError: true, signal: requestSignal },
+            )
+          : api.orgProjects.list(
+              { limit: 50, cursor: more ? subjectCursor() : undefined },
+              { throwOnError: true, signal: requestSignal },
+            ),
       ])
-      if (!current() || selected !== kind()) return
+      if (!current(version) || selected !== kind()) return
       setState(
         "grants",
         reconcile([
@@ -92,36 +133,58 @@ export function ResourceAccess(props: { resource: OrgResourceAdminView; invalida
           ]),
         )
     } catch (error) {
-      if (current() && selected === kind()) failed(error)
+      if (current(version) && selected === kind()) failed(error)
     } finally {
-      if (current() && selected === kind()) setLoading(false)
+      if (current(version) && selected === kind()) setLoading(false)
     }
   }
-  async function save(subjectID: string, grant: OrgResourceGrant | undefined) {
-    if (busy()) return
+  async function save(target: {
+    version: number
+    kind: "account" | "project"
+    subjectID: string
+    revision: number
+    enabled: boolean
+  }) {
+    if (busy() || !current(target.version) || kind() !== target.kind) return
+    const requestSignal = AbortSignal.any([signal, contextController.signal])
     setBusy(true)
     setError(undefined)
     try {
       const result = await api.orgResourceGrants.set(
         {
-          resourceID: props.resource.resourceID,
-          kind: kind(),
-          subjectID,
-          orgResourceGrantChange: { expectedRevision: grant?.revision ?? 0, enabled: !grant?.enabled },
+          resourceID,
+          kind: target.kind,
+          subjectID: target.subjectID,
+          orgResourceGrantChange: { expectedRevision: target.revision, enabled: target.enabled },
         },
-        options,
+        { throwOnError: true, signal: requestSignal },
       )
-      if (current())
-        setState("grants", reconcile([...state.grants.filter((entry) => entry.subject.id !== subjectID), result.data]))
+      if (current(target.version))
+        setState(
+          "grants",
+          reconcile([
+            ...state.grants.filter(
+              (entry) => entry.subject.id !== target.subjectID || entry.subject.kind !== target.kind,
+            ),
+            result.data,
+          ]),
+        )
     } catch (error) {
-      if (current()) failed(error)
+      if (current(target.version)) failed(error)
     } finally {
-      if (current()) setBusy(false)
+      if (current(target.version)) setBusy(false)
     }
   }
   function toggle(subjectID: string, grant?: OrgResourceGrant) {
-    if (!grant?.enabled) {
-      void save(subjectID, grant)
+    const target = {
+      version: generation,
+      kind: kind(),
+      subjectID,
+      revision: grant?.revision ?? 0,
+      enabled: !grant?.enabled,
+    }
+    if (target.enabled) {
+      void save(target)
       return
     }
     confirm.show({
@@ -129,7 +192,7 @@ export function ResourceAccess(props: { resource: OrgResourceAdminView; invalida
       description: messages.revokeHint,
       confirmLabel: messages.revoke,
       tone: "warning",
-      onConfirm: () => save(subjectID, grant),
+      onConfirm: () => save(target),
     })
   }
   onMount(() => void load())
@@ -144,10 +207,7 @@ export function ResourceAccess(props: { resource: OrgResourceAdminView; invalida
       <MenuField
         ariaLabel={_(messages.access)}
         value={kind()}
-        onChange={(value) => {
-          setKind(value)
-          void load(value)
-        }}
+        onChange={select}
         options={[
           { value: "account", label: _(messages.accounts) },
           { value: "project", label: _(messages.projects) },

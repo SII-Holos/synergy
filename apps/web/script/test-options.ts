@@ -12,6 +12,7 @@ const playwrightIsolated = [
   "test/organization/sign-out-store.browser.test.ts",
   "test/organization/workspace.browser.test.ts",
   "test/organization/workspace-recovery.browser.test.ts",
+  "test/organization/workspace-requests.browser.test.ts",
   "test/organization/members.browser.test.ts",
   "test/organization/transcript.browser.test.ts",
   "test/organization/sessions.browser.test.ts",

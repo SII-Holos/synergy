@@ -65,6 +65,8 @@ export function OrganizationKnowledge(props: {
   const [query, setQuery] = createSignal("")
   const [selected, setSelected] = createSignal<string>()
   const [publishing, setPublishing] = createSignal(false)
+  let publicationTitle: HTMLInputElement | undefined
+  let publicationTrigger: HTMLButtonElement | undefined
   const [blocked, setBlocked] = createSignal(false)
   let generation = 0
   const current = (version = generation) => !signal.aborted && version === generation
@@ -265,13 +267,17 @@ export function OrganizationKnowledge(props: {
             )}
           </p>
         </div>
-        <Show when={props.canManage && !blocked()}>
+        <Show when={props.canManage && !blocked() && !publishing()}>
           <Button
+            ref={(element: HTMLButtonElement) => {
+              publicationTrigger = element
+            }}
             size="large"
             variant="primary"
             onClick={() => {
               setSelected(undefined)
               setPublishing(true)
+              publicationTitle?.focus()
             }}
           >
             {_(messages.publish)}
@@ -317,9 +323,15 @@ export function OrganizationKnowledge(props: {
         <Show when={publishing()}>
           <PublicationEditor
             invalidated={failed}
+            titleRef={(element) => {
+              publicationTitle = element
+            }}
             purpose="knowledge"
             scope={props.projectID ? { kind: "project", projectID: props.projectID } : { kind: "organization" }}
-            cancel={() => setPublishing(false)}
+            cancel={() => {
+              setPublishing(false)
+              if (current() && !blocked()) publicationTrigger?.focus()
+            }}
             published={() => {
               setPublishing(false)
               void load()
@@ -347,7 +359,7 @@ export function OrganizationKnowledge(props: {
             {_(messages.search)}
           </Button>
         </form>
-        <Show when={loaded() && !state.items.length}>
+        <Show when={loaded() && !state.items.length && !publishing()}>
           <div class="organization-empty">
             <h3>{_(messages.empty)}</h3>
             <p>{_(messages.emptyHint)}</p>
@@ -447,6 +459,8 @@ function KnowledgeDetail(props: {
   const [cursor, setCursor] = createSignal<number>()
   const [release, setRelease] = createSignal<OrgKnowledgeRelease>()
   const [publishing, setPublishing] = createSignal(false)
+  let publicationTitle: HTMLInputElement | undefined
+  let publicationTrigger: HTMLButtonElement | undefined
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal<unknown>()
   async function load(more = false) {
@@ -564,13 +578,28 @@ function KnowledgeDetail(props: {
       </Show>
       <Show when={managing()}>
         <div class="organization-actions">
-          <Button onClick={() => setPublishing(!publishing())}>{_(messages.publishVersion)}</Button>
+          <Show when={!publishing()}>
+            <Button
+              ref={(element: HTMLButtonElement) => {
+                publicationTrigger = element
+              }}
+              onClick={() => {
+                setPublishing(true)
+                publicationTitle?.focus()
+              }}
+            >
+              {_(messages.publishVersion)}
+            </Button>
+          </Show>
           <Button onClick={withdraw}>{_(messages.withdraw)}</Button>
         </div>
       </Show>
       <Show when={publishing()}>
         <PublicationEditor
           invalidated={props.invalidated}
+          titleRef={(element) => {
+            publicationTitle = element
+          }}
           purpose="knowledge"
           scope={props.item.scope}
           existing={{
@@ -579,7 +608,10 @@ function KnowledgeDetail(props: {
             title: props.item.title,
             kind: props.item.kind,
           }}
-          cancel={() => setPublishing(false)}
+          cancel={() => {
+            setPublishing(false)
+            if (!signal.aborted) publicationTrigger?.focus()
+          }}
           published={props.updated}
         />
       </Show>

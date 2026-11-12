@@ -29,6 +29,8 @@ export function OrganizationArtifacts(props: { projectID: string; sessionID?: st
   const [error, setError] = createSignal<unknown>()
   const [selected, setSelected] = createSignal<string>()
   const [publishing, setPublishing] = createSignal(false)
+  let publicationTitle: HTMLInputElement | undefined
+  let publicationTrigger: HTMLButtonElement | undefined
   const [blocked, setBlocked] = createSignal(false)
   let generation = 0
   const current = (version = generation) => !signal.aborted && version === generation
@@ -83,8 +85,18 @@ export function OrganizationArtifacts(props: { projectID: string; sessionID?: st
           <h2>{_(messages.artifacts)}</h2>
           <p>{_(messages.artifactHint)}</p>
         </div>
-        <Show when={props.sessionID && props.canPublish && !blocked()}>
-          <Button size="large" variant="primary" onClick={() => setPublishing(true)}>
+        <Show when={props.sessionID && props.canPublish && !blocked() && !publishing()}>
+          <Button
+            ref={(element: HTMLButtonElement) => {
+              publicationTrigger = element
+            }}
+            size="large"
+            variant="primary"
+            onClick={() => {
+              setPublishing(true)
+              publicationTitle?.focus()
+            }}
+          >
             {_(messages.publish)}
           </Button>
         </Show>
@@ -97,17 +109,22 @@ export function OrganizationArtifacts(props: { projectID: string; sessionID?: st
         <Show when={publishing()}>
           <PublicationEditor
             invalidated={failed}
+            titleRef={(element) => {
+              publicationTitle = element
+            }}
             purpose="artifact"
             scope={{ kind: "project", projectID: props.projectID }}
             sourceSessionID={props.sessionID}
-            cancel={() => setPublishing(false)}
+            cancel={() => {
+              setPublishing(false)
+              if (current() && !blocked()) publicationTrigger?.focus()
+            }}
             published={published}
           />
         </Show>
-        <Show when={loaded() && !state.items.length}>
+        <Show when={loaded() && !state.items.length && !publishing()}>
           <div class="organization-empty">
             <h3>{_(messages.empty)}</h3>
-            <p>{_(messages.artifactHint)}</p>
           </div>
         </Show>
         <ul class="organization-publication-list">
@@ -170,6 +187,8 @@ function ArtifactDetail(props: {
   const [error, setError] = createSignal<unknown>()
   const [loading, setLoading] = createSignal(false)
   const [publishing, setPublishing] = createSignal(false)
+  let publicationTitle: HTMLInputElement | undefined
+  let publicationTrigger: HTMLButtonElement | undefined
   async function load(more = false) {
     setLoading(true)
     try {
@@ -233,17 +252,33 @@ function ArtifactDetail(props: {
           </>
         )}
       </Show>
-      <Show when={props.canPublish && props.sessionID}>
-        <Button onClick={() => setPublishing(!publishing())}>{_(messages.publishVersion)}</Button>
+      <Show when={props.canPublish && props.sessionID && !publishing()}>
+        <Button
+          ref={(element: HTMLButtonElement) => {
+            publicationTrigger = element
+          }}
+          onClick={() => {
+            setPublishing(true)
+            publicationTitle?.focus()
+          }}
+        >
+          {_(messages.publishVersion)}
+        </Button>
       </Show>
       <Show when={publishing()}>
         <PublicationEditor
           invalidated={props.invalidated}
+          titleRef={(element) => {
+            publicationTitle = element
+          }}
           purpose="artifact"
           scope={{ kind: "project", projectID: props.item.projectID }}
           sourceSessionID={props.sessionID}
           existing={{ id: props.item.artifactID, title: props.item.title, revision: props.item.revision }}
-          cancel={() => setPublishing(false)}
+          cancel={() => {
+            setPublishing(false)
+            if (!signal.aborted) publicationTrigger?.focus()
+          }}
           published={props.updated}
         />
       </Show>

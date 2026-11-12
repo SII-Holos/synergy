@@ -1,4 +1,4 @@
-import { batch, createSignal, For, onMount, Show, Switch, Match } from "solid-js"
+import { batch, createSignal, For, onCleanup, onMount, Show, Switch, Match } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -40,12 +40,43 @@ export function OrganizationProjects() {
   const [error, setError] = createSignal<unknown>()
   const [name, setName] = createSignal("")
   const [description, setDescription] = createSignal("")
-  const current = () => !view.signal.aborted
-  const options = { throwOnError: true, signal: view.signal } as const
+  const controller = new AbortController()
+  const signal = AbortSignal.any([view.signal, controller.signal])
+  let editor: AbortController | undefined
+  let generation = 0
+  let editorGeneration = 0
+  const [blocked, setBlocked] = createSignal(false)
+  const current = (version = generation) => !signal.aborted && space.current() === view && version === generation
+  const options = { throwOnError: true, signal } as const
+  onCleanup(() => {
+    controller.abort()
+    editor?.abort()
+  })
+  function closeEditor() {
+    editorGeneration++
+    editor?.abort()
+    editor = undefined
+    setBusy(false)
+    setCreating(false)
+    setEditing(false)
+  }
+  function edit(project?: OrgProjectView) {
+    closeEditor()
+    editor = new AbortController()
+    setName(project?.name ?? "")
+    setDescription(project?.description ?? "")
+    setCreating(!project)
+    setEditing(!!project)
+  }
   function failed(error: unknown) {
     const failure = organizationOwnerFailure(error)
     batch(() => {
       if (failure) {
+        generation++
+        confirm.closeOwned()
+        closeEditor()
+        setBlocked(true)
+        setLoading(false)
         setState("projects", reconcile([]))
         setState("project", undefined)
         setCursor(undefined)
@@ -62,84 +93,98 @@ export function OrganizationProjects() {
 
   async function load(more = false) {
     if (loading() || !current()) return
+    const version = generation
     setLoading(true)
     setError(undefined)
     try {
       if (projectID) {
         const result = await api.orgProjects.get({ projectID }, options)
-        if (current()) setState("project", reconcile(result.data))
+        if (current(version)) setState("project", reconcile(result.data))
       } else {
         const result = await api.orgProjects.list({ limit: 50, cursor: more ? cursor() : undefined }, options)
-        if (!current()) return
+        if (!current(version)) return
         setState("projects", reconcile(more ? [...state.projects, ...result.data.items] : result.data.items))
         setCursor(result.data.cursor)
       }
-      if (current()) setLoaded(true)
+      if (current(version)) {
+        setLoaded(true)
+        setBlocked(false)
+      }
     } catch (error) {
-      if (current()) failed(error)
+      if (current(version)) failed(error)
     } finally {
-      if (current()) setLoading(false)
+      if (current(version)) setLoading(false)
     }
   }
   async function save() {
-    if (busy() || !current()) return
+    if (busy() || blocked() || !current() || !editor || (!editing() && !creating()) || (projectID && !state.project))
+      return
+    const version = generation
+    const editVersion = editorGeneration
+    const request = { name: name().trim(), description: description(), expectedRevision: state.project?.revision }
+    const requestSignal = AbortSignal.any([signal, editor.signal])
+    const editingCurrent = () => current(version) && editVersion === editorGeneration && !requestSignal.aborted
     setBusy(true)
     setError(undefined)
     try {
-      if (projectID && state.project) {
+      if (projectID) {
+        if (request.expectedRevision === undefined) return
         const result = await api.orgProjects.update(
           {
             projectID,
             orgProjectChange: {
-              expectedRevision: state.project.revision,
-              name: name().trim(),
-              description: description(),
+              expectedRevision: request.expectedRevision,
+              name: request.name,
+              description: request.description,
             },
           },
-          options,
+          { throwOnError: true, signal: requestSignal },
         )
-        if (current()) {
+        if (editingCurrent()) {
           setState("project", reconcile(result.data))
-          setEditing(false)
+          closeEditor()
         }
       } else {
         const result = await api.orgProjects.create(
-          { orgProjectCreate: { name: name().trim(), description: description() } },
-          options,
+          { orgProjectCreate: { name: request.name, description: request.description } },
+          { throwOnError: true, signal: requestSignal },
         )
-        if (current()) space.project(result.data.projectID)
+        if (editingCurrent()) space.project(result.data.projectID)
       }
     } catch (error) {
-      if (current()) failed(error)
+      if (editingCurrent()) failed(error)
     } finally {
-      if (current()) setBusy(false)
+      if (editingCurrent()) setBusy(false)
     }
   }
   function changeLifecycle() {
     const project = state.project
-    if (!project) return
-    const restoring = project.state === "archived"
+    if (!project || blocked() || !current()) return
+    const version = generation
+    const target = { projectID: project.projectID, revision: project.revision, state: project.state }
+    const restoring = target.state === "archived"
     confirm.show({
       title: restoring ? messages.restore : messages.archive,
       description: restoring ? messages.restoreHint : messages.archiveHint,
       confirmLabel: restoring ? messages.restore : messages.archive,
       tone: "warning",
       async onConfirm() {
+        if (blocked() || !current(version)) return
         setBusy(true)
         setError(undefined)
         try {
           const result = await api.orgProjects.update(
             {
-              projectID: project.projectID,
-              orgProjectChange: { expectedRevision: project.revision, state: restoring ? "active" : "archived" },
+              projectID: target.projectID,
+              orgProjectChange: { expectedRevision: target.revision, state: restoring ? "active" : "archived" },
             },
             options,
           )
-          if (current()) setState("project", reconcile(result.data))
+          if (current(version)) setState("project", reconcile(result.data))
         } catch (error) {
-          if (current()) failed(error)
+          if (current(version)) failed(error)
         } finally {
-          if (current()) setBusy(false)
+          if (current(version)) setBusy(false)
         }
       },
     })
@@ -165,15 +210,7 @@ export function OrganizationProjects() {
         <Button variant="primary" size="large" type="submit" disabled={busy() || !name().trim()}>
           {_(busy() ? messages.working : projectID ? messages.save : messages.createProject)}
         </Button>
-        <Button
-          variant="ghost"
-          size="large"
-          type="button"
-          onClick={() => {
-            setCreating(false)
-            setEditing(false)
-          }}
-        >
+        <Button variant="ghost" size="large" type="button" onClick={closeEditor}>
           {_(messages.cancel)}
         </Button>
       </div>
@@ -194,16 +231,8 @@ export function OrganizationProjects() {
           <>
             <div class="organization-page-heading">
               <h2>{_(messages.projects)}</h2>
-              <Show when={space.connection()?.account.role !== "member" && !creating()}>
-                <Button
-                  size="large"
-                  variant="primary"
-                  onClick={() => {
-                    setCreating(true)
-                    setName("")
-                    setDescription("")
-                  }}
-                >
+              <Show when={space.connection()?.account.role !== "member" && !creating() && !blocked()}>
+                <Button size="large" variant="primary" onClick={() => edit()}>
                   {_(messages.createProject)}
                 </Button>
               </Show>
@@ -272,15 +301,7 @@ export function OrganizationProjects() {
                   </div>
                   <Show when={project().permissions.manage && !editing()}>
                     <div class="organization-actions">
-                      <Button
-                        onClick={() => {
-                          setName(project().name)
-                          setDescription(project().description)
-                          setEditing(true)
-                        }}
-                      >
-                        {_(messages.edit)}
-                      </Button>
+                      <Button onClick={() => edit(project())}>{_(messages.edit)}</Button>
                       <Button disabled={busy()} onClick={changeLifecycle}>
                         {_(project().state === "archived" ? messages.restore : messages.archive)}
                       </Button>
@@ -362,7 +383,7 @@ export function OrganizationProjects() {
                   <OrganizationArtifacts projectID={projectID!} />
                 </Match>
                 <Match when={projectView === "members" && project().permissions.manage}>
-                  <OrganizationProjectMembers projectID={projectID!} changed={() => void load()} />
+                  <OrganizationProjectMembers projectID={projectID!} changed={() => void load()} invalidated={failed} />
                 </Match>
               </Switch>
             </>

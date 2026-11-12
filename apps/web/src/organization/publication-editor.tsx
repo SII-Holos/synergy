@@ -21,6 +21,7 @@ export function PublicationEditor(props: {
   cancel: () => void
   published: () => void
   invalidated?: (error: unknown) => void
+  titleRef?: (element: HTMLInputElement) => void
 }) {
   const space = useSpace()
   const { _, i18n } = useLingui()
@@ -111,9 +112,9 @@ export function PublicationEditor(props: {
       }}
     >
       <h3>{_(props.existing ? messages.publishVersion : messages.publish)}</h3>
-      <p>{_(messages.publishHint)}</p>
       <WorkspaceError error={error()} />
       <TextField
+        ref={props.titleRef}
         label={_(messages.title)}
         value={title()}
         onChange={setTitle}
