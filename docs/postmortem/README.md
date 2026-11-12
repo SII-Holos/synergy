@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0127](0127-imported-link-followed-its-source-root-name.md)
+
 - [0125](0125-snapshot-retention-outlived-its-source-reader.md)
 
 - [0124](0124-latest-shared-history-did-not-navigate.md)
