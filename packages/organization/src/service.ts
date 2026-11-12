@@ -48,6 +48,7 @@ import { OrganizationServiceMaintenance } from "./service-maintenance"
 import { OrganizationServiceHome } from "./service-home"
 import { OrganizationServiceNative } from "./backup/service-native"
 import { OrganizationSourceRetirement } from "./backup/source-retirement"
+import { OrganizationCurrentAuthority } from "./backup/current-authority"
 import { OrganizationRecoveryPublication } from "./backup/publication"
 import { readOrganizationConfiguration } from "./configuration"
 import { OrganizationHealth } from "./health"
@@ -100,9 +101,19 @@ export async function openOrganizationSourceRetirement(
   return retirement
 }
 
+export async function openOrganizationPendingRetirement(
+  options: Pick<OrganizationServiceOptions, "home"> & { reference: OrganizationSourceRetirement.Reference },
+) {
+  const reference = OrganizationSourceRetirement.Reference.parse(structuredClone(options.reference))
+  const entry = await openOrganizationNamespace(options, "pending-retirement", reference)
+  if (entry.mode !== "pending-retirement") throw new Error("Pending source selected another native mode")
+  const { mode: _, ...source } = entry
+  return source
+}
+
 async function openOrganizationNamespace(
   options: OrganizationServiceOptions,
-  mode: "serve" | "upgrade" | "recovery" | "retirement",
+  mode: "serve" | "upgrade" | "recovery" | "retirement" | "pending-retirement",
   retirement?: OrganizationSourceRetirement.Reference,
 ) {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
@@ -168,6 +179,7 @@ async function openOrganizationNamespace(
         await OrganizationServiceMaintenance.stop()
         const errors: unknown[] = []
         try {
+          await OrganizationCurrentAuthority.drainPending()
           await OrganizationSourceRetirement.drain()
           await OrganizationRecoveryPublication.drain()
         } catch (error) {
@@ -207,13 +219,14 @@ async function openOrganizationNamespace(
       RuntimeMaintenance.registerProtection()
       if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
       else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()
-      else if (mode === "retirement") {
+      else if (mode === "retirement" || mode === "pending-retirement") {
         if (!retirement) throw new Error("Source retirement requires its original reference")
         await OrganizationServiceHome.selectForRetirement(OrganizationSourceRetirement.marker(retirement))
       } else restored = await OrganizationServiceHome.selectForStartup()
       ownership = await ServerProcessLock.acquire()
-      if (mode !== "recovery" && mode !== "retirement" && !restored) await HomeRestoration.assertOrdinaryStartup()
-      const owned = mode === "retirement" ? undefined : await HomeOwnership.assert()
+      if (mode !== "recovery" && mode !== "retirement" && mode !== "pending-retirement" && !restored)
+        await HomeRestoration.assertOrdinaryStartup()
+      const owned = mode === "retirement" || mode === "pending-retirement" ? undefined : await HomeOwnership.assert()
       const data = path.join(root, "data")
       const entries: string[] = await fs.readdir(data).catch((error: NodeJS.ErrnoException) => {
         if (error.code === "ENOENT") return []
@@ -246,7 +259,7 @@ async function openOrganizationNamespace(
           ...Object.fromEntries(Object.entries(settings).filter(([, value]) => value !== undefined)),
         })
       }
-      if (mode !== "recovery" && mode !== "retirement") {
+      if (mode !== "recovery" && mode !== "retirement" && mode !== "pending-retirement") {
         await OrganizationServiceHome.assertStartupOwner()
         OrganizationServiceMaintenance.register()
         OrganizationServiceHome.registerNamespaceIdentity()
@@ -257,6 +270,10 @@ async function openOrganizationNamespace(
           if (!connections) throw new Error("Organization Runtime presence is unavailable")
           return connections.availability(runtimeID)
         })
+      }
+      if (mode === "pending-retirement") {
+        OrganizationServiceMaintenance.register()
+        OrganizationCurrentAuthority.registerPendingSource()
       }
       MigrationRegistry.lock()
       RuntimeContext.sealComposition()
@@ -310,6 +327,18 @@ async function openOrganizationNamespace(
       if (mode === "recovery") {
         ready = true
         return { mode: "recovery" as const, home, run: maintenance.run, close, [Symbol.asyncDispose]: close }
+      }
+      if (mode === "pending-retirement") {
+        if (!retirement) throw new Error("Pending retirement requires its original reference")
+        ready = true
+        return {
+          mode: "pending-retirement" as const,
+          home,
+          source: OrganizationCurrentAuthority.pendingSource(retirement),
+          run: maintenance.run,
+          close,
+          [Symbol.asyncDispose]: close,
+        }
       }
       if (mode === "retirement") {
         if (!retirement) throw new Error("Source retirement requires its original reference")

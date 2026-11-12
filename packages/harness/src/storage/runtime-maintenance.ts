@@ -4,6 +4,8 @@ import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { RuntimeContext } from "../lifecycle/context"
 import { HomeRestoration } from "../lifecycle/home-restoration"
+import { HomeOwnershipFile } from "../lifecycle/home-ownership-file"
+import { ServerProcessLock } from "../util/server-process-lock"
 import { Lock } from "../util/lock"
 import { Storage } from "./storage"
 import { StorageMutationGuard } from "./mutation-guard"
@@ -98,12 +100,14 @@ export namespace RuntimeMaintenance {
     inspect(context: Context): Promise<Requirement[]>
     release(context: Context): Promise<void>
     released?(context: Context): Promise<void>
+    reconcileFrozen?(context: Context): Promise<void>
   }
   interface LeaseIdentity {
     runtime: RuntimeContext.Instance
     store: Storage.Handle["store"]
     maintenanceID: string
     cohortHash: string
+    resumed?: { source: Info; referenceHash: string; assert(): void }
   }
   interface ReceiptIdentity extends LeaseIdentity {
     revision: number
@@ -116,6 +120,15 @@ export namespace RuntimeMaintenance {
     owners: new Map<string, Contribution>(),
     installed: false,
     pending: false,
+    retirementSource: undefined as
+      | {
+          inspect(evidence: object): {
+            source: Info
+            marker: HomeOwnershipFile.RetirementInfo
+            configurationHash: string
+          }
+        }
+      | undefined,
   }))
 
   async function read<T>(tx: StoreTransaction, schema: z.ZodType<T>, key: string[]): Promise<T | undefined> {
@@ -249,6 +262,7 @@ export namespace RuntimeMaintenance {
     if (!value || value.runtime !== RuntimeContext.current() || value.store !== Storage.current().store)
       throw new Blocked({ message: "Maintenance lease belongs to another Runtime or namespace" })
     if (value.cohortHash !== cohortHash()) throw new Blocked({ message: "Maintenance writer cohort changed" })
+    value.resumed?.assert()
     return value
   }
   async function requireCurrent(tx: StoreTransaction, lease: Lease) {
@@ -257,7 +271,8 @@ export namespace RuntimeMaintenance {
     if (
       !info ||
       info.maintenanceID !== held.maintenanceID ||
-      info.sourceRuntimeID !== held.runtime.id ||
+      info.sourceRuntimeID !== (held.resumed?.source.sourceRuntimeID ?? held.runtime.id) ||
+      (held.resumed && digest(info) !== digest(held.resumed.source)) ||
       info.cohortHash !== held.cohortHash
     )
       throw new Blocked({ message: "Maintenance lease is no longer the current native operation" })
@@ -278,8 +293,140 @@ export namespace RuntimeMaintenance {
     ID.parse(maintenanceID)
     return Retirements.read(maintenanceID)
   }
+  export function registerRetirementSource(
+    ownerID: string,
+    owner: NonNullable<ReturnType<typeof state>["retirementSource"]>,
+  ) {
+    RuntimeContext.assertCompositionOpen("Frozen retirement source")
+    if (!state().owners.has(ownerID) || state().retirementSource)
+      throw new Blocked({ message: "Frozen retirement requires its single installed maintenance owner" })
+    state().retirementSource = { inspect: owner.inspect.bind(owner) }
+  }
+  export async function withRetirementSource<T>(
+    input: { evidence: object; signal?: AbortSignal },
+    body: (lease: Lease) => Promise<T>,
+  ) {
+    if (Storage.inTransaction()) throw new Blocked({ message: "Cold retirement requires its native boundary" })
+    const owner = state().retirementSource
+    if (!owner) throw new Blocked({ message: "Cold retirement requires its installed Current owner" })
+    const selected = owner.inspect(input.evidence)
+    const source = Info.parse(structuredClone(selected.source))
+    const marker = HomeOwnershipFile.RetirementInfo.parse(structuredClone(selected.marker))
+    const configurationHash = Hash.parse(selected.configurationHash)
+    const signal = input.signal
+    const runtime = RuntimeContext.current()
+    const primary = Storage.current()
+    const store = primary.store
+    const configuration = digest(store.options)
+    if (
+      source.phase !== "frozen" ||
+      source.purpose !== "organization-backup" ||
+      marker.maintenanceID !== source.maintenanceID ||
+      configuration !== configurationHash ||
+      store.options.backend !== "sqlite" ||
+      store.options.readonly ||
+      primary.artifactObjects ||
+      source.cohortHash !== cohortHash()
+    )
+      throw new Blocked({ message: "Cold retirement requires its exact frozen native source" })
+    const writer = await ServerProcessLock.currentOwnership()
+    const files = HomeOwnershipFile.open({ root: runtime.host.root, env: runtime.host.env, selected: marker })
+    let open = true
+    const assert = () => {
+      signal?.throwIfAborted()
+      if (
+        !open ||
+        RuntimeContext.current() !== runtime ||
+        runtime.storage !== primary ||
+        Storage.current().store !== store ||
+        Storage.current().artifactDirectory !== artifacts ||
+        Storage.current().artifactObjects ||
+        primary.store !== store ||
+        digest(store.options) !== configuration ||
+        primary.artifactObjects ||
+        primary.artifactDirectory !== artifacts
+      )
+        throw new Blocked({ message: "Cold retirement native source callback changed" })
+      ServerProcessLock.assertCurrent(writer)
+      const current = owner.inspect(input.evidence)
+      if (
+        digest(current.source) !== digest(source) ||
+        digest(current.marker) !== digest(marker) ||
+        current.configurationHash !== configurationHash
+      )
+        throw new Blocked({ message: "Cold retirement Current evidence changed" })
+    }
+    const artifacts = primary.artifactDirectory
+    const lease: Lease = Object.freeze({ maintenanceID: source.maintenanceID, purpose: source.purpose })
+    leases.set(lease, {
+      runtime,
+      store,
+      maintenanceID: source.maintenanceID,
+      cohortHash: source.cohortHash,
+      resumed: { source, referenceHash: marker.referenceHash, assert },
+    })
+    const verify = async () => {
+      assert()
+      await ServerProcessLock.verifyOwnership(writer)
+      if (
+        (await files.physicalHash()) !== marker.physicalHash ||
+        (await files.inspectRetirement(marker.source)) !== "source"
+      )
+        throw new Blocked({ message: "Cold retirement requires its original unfenced physical Home" })
+      await Storage.snapshot(async (tx) => {
+        if (digest(await requireCurrent(tx, lease)) !== digest(source))
+          throw new Blocked({ message: "Cold retirement frozen operation changed" })
+        const request = await read(
+          tx,
+          z.strictObject({ maintenanceID: ID, requestHash: Hash }),
+          requestKey(source.requestID),
+        )
+        if (request?.maintenanceID !== source.maintenanceID || request.requestHash !== source.requestHash)
+          throw new Blocked({ message: "Cold retirement has no original maintenance request" })
+        for (const [id, owner] of owners()) {
+          const retained = await read(
+            tx,
+            z.strictObject({
+              version: z.literal(1),
+              ownerID: ID,
+              ownerVersion: Count,
+              phase: z.literal("drained"),
+              tailRevision: Count,
+            }),
+            ownerKey(source.maintenanceID, id),
+          )
+          if (
+            !retained ||
+            retained.ownerID !== id ||
+            retained.ownerVersion !== owner.version ||
+            retained.tailRevision !== source.tailRevision
+          )
+            throw new Blocked({ message: "Cold retirement has no original owner drainage" })
+        }
+      })
+      assert()
+    }
+    try {
+      await verify()
+      const currentContext = context(lease, signal)
+      for (const [, owner] of owners()) {
+        if (!owner.reconcileFrozen)
+          throw new Blocked({ message: "A frozen writer has no native cold reconciliation owner" })
+        await owner.reconcileFrozen(currentContext)
+      }
+      await inspectOwners(currentContext)
+      await verify()
+      return await body(lease)
+    } finally {
+      open = false
+      leases.delete(lease)
+    }
+  }
   export async function reserveRetirement(lease: Lease, value: string) {
     const referenceHash = Hash.parse(value)
+    const resumed = identity(lease).resumed
+    if (resumed && resumed.referenceHash !== referenceHash)
+      throw new Blocked({ message: "Cold retirement cannot reserve another reference" })
     const frame = frozenWork.getStore()
     const assert = () => {
       if (
@@ -737,7 +884,7 @@ export namespace RuntimeMaintenance {
     }
   }
   export async function drain(lease: Lease, options: { signal?: AbortSignal } = {}): Promise<DrainReceipt> {
-    identity(lease)
+    if (identity(lease).resumed) throw new Blocked({ message: "Cold retirement cannot establish another drainage" })
     using lock = options.signal
       ? await Lock.writeWithSignal("runtime-maintenance", options.signal)
       : await Lock.write("runtime-maintenance")
@@ -796,7 +943,7 @@ export namespace RuntimeMaintenance {
     })
   }
   export async function release(lease: Lease, options: { signal?: AbortSignal } = {}) {
-    identity(lease)
+    if (identity(lease).resumed) throw new Blocked({ message: "Cold retirement cannot release its original hold" })
     using lock = options.signal
       ? await Lock.writeWithSignal("runtime-maintenance", options.signal)
       : await Lock.write("runtime-maintenance")

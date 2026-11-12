@@ -13,6 +13,7 @@ import { OrganizationServiceNative as Native } from "./service-native"
 import { OrganizationCurrentAuthorityInfo as Info } from "./current-authority-schema"
 import { OrganizationInstallationReference } from "./installation-reference"
 import { OrganizationSourceRetirement as Retirement } from "./source-retirement"
+import { OrganizationPendingSource } from "./pending-source"
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
 type Info = z.infer<typeof Info>
@@ -21,6 +22,10 @@ function fail(message: string): never {
 }
 
 export namespace OrganizationCurrentAuthority {
+  export const pendingSource = OrganizationPendingSource.create
+  export const resumeRetirement = OrganizationPendingSource.resume
+  export const drainPending = OrganizationPendingSource.drain
+  export const registerPendingSource = OrganizationPendingSource.register
   export interface Source {
     readonly kind: "organization-current-authority"
   }

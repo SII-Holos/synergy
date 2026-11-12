@@ -83,6 +83,14 @@ export namespace OrganizationServiceMaintenance {
       async drain(context) {
         await drain(context.signal)
       },
+      async reconcileFrozen(context) {
+        if ((await RuntimeMaintenance.assertHeld(context.lease)).phase !== "frozen")
+          throw new RuntimeMaintenance.Blocked({
+            message: "Service cold reconciliation requires its original frozen operation",
+          })
+        state().suspended = true
+        await drain(context.signal)
+      },
       async inspect() {
         return state().operations.size
           ? [
